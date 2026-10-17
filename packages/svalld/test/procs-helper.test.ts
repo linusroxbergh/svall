@@ -114,7 +114,7 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
     const { fleet, paths, tmux, c } = await boot(async () => [row(process.pid), row(tmuxPid), row(4242)]);
     marks = { char: c.id, home: paths.home };
     tmuxPid = (await tmux.serverPid())!;
-    const victims = await fleet['owned'](c);
+    const victims = await fleet['owned'](c, await fleet['readLive']());
     expect(victims.map((p) => p.pid)).toEqual([4242]);
   });
 });

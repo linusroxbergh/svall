@@ -33,7 +33,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; readProcs?: () => Promise<LiveProc[]> } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
     const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -774,9 +774,17 @@ runIf('Fleet', () => {
 
   describe('sleepCharacter', () => {
     const live = (ps: Proc[]): LiveProc[] => ps.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args }));
-    // the agent's pid and args reach the fleet through the same list the sweep reads
+    // the agent's pid and args reach the fleet through the same list the sweep reads; nothing the sleep ends is signalled
+    const ended = { kills: 0, waits: 0, gate: Promise.resolve() };
+    const sleepBoot = () => {
+      return boot({
+        readProcs: async () => live(procsRef.list),
+        endOpts: { kill: () => { ended.kills++; }, wait: async () => { ended.waits++; await ended.gate; } },
+      }).then((x) => { procsRef.list = x.procs; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); return x; });
+    };
+    const procsRef = { list: [] as Proc[] };
     it('puts a working robot to sleep without marking it interrupted', async () => {
-      const b = await boot({ readProcs: async () => live(b.procs) });
+      const b = await sleepBoot();
       const { c } = await withAgent(b);
       const windowId = c.tmux!.windowId;
       b.store.update((d) => { d.characters[c.id].agent!.status = 'working'; });
@@ -789,7 +797,7 @@ runIf('Fleet', () => {
     });
 
     it('closes the second terminal with it', async () => {
-      const b = await boot({ readProcs: async () => live(b.procs) });
+      const b = await sleepBoot();
       const { c } = await withAgent(b);
       const second = (await b.fleet.openSecond(c.id)).second!.tmux.windowId;
       await b.fleet.sleepCharacter(c.id);
@@ -798,7 +806,7 @@ runIf('Fleet', () => {
     });
 
     it('refuses a robot it could not resume', async () => {
-      const b = await boot({ readProcs: async () => live(b.procs) });
+      const b = await sleepBoot();
       const { c, transcriptPath } = await withAgent(b);
       fs.rmSync(transcriptPath);
       const before = structuredClone(b.store.state.characters[c.id]);
@@ -811,12 +819,36 @@ runIf('Fleet', () => {
     });
 
     it('leaves a slept robot asleep at the next start', async () => {
-      const b = await boot({ readProcs: async () => live(b.procs) });
+      const b = await sleepBoot();
       const { c } = await withAgent(b);
       b.store.update((d) => { d.characters[c.id].agent!.status = 'working'; });
       await b.fleet.sleepCharacter(c.id);
       await b.fleet.resumeInterrupted();
       expect(b.store.state.characters[c.id].tmux).toBeUndefined();
+    });
+  
+    it('makes a revive started right after wait for the agent and what it started to end', async () => {
+      const b = await sleepBoot();
+      const { c } = await withAgent(b);
+      let release!: () => void;
+      ended.gate = new Promise<void>((r) => { release = r; });
+      await b.fleet.sleepCharacter(c.id);
+      const revived = b.fleet.reviveCharacter(c.id);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(b.store.state.characters[c.id].tmux).toBeUndefined();
+      release();
+      expect((await revived).tmux).toBeDefined();
+    });
+
+    it('lets one of two concurrent sleeps win, and ends the robot once', async () => {
+      const b = await sleepBoot();
+      const { c } = await withAgent(b);
+      const waits = ended.waits;
+      const [x, y] = await Promise.allSettled([b.fleet.sleepCharacter(c.id), b.fleet.sleepCharacter(c.id)]);
+      expect([x.status, y.status].sort()).toEqual(['fulfilled', 'rejected']);
+      expect((x.status === 'rejected' ? x : y as PromiseRejectedResult).reason).toMatchObject({ code: 'invalid' });
+      await b.fleet['ending'].get(c.id);
+      expect(ended.waits - waits).toBe(1);
     });
   });
 
