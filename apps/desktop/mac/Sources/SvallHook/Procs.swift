@@ -42,9 +42,18 @@ private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice
     return (args[...], char, home)
 }
 
-private func contains(_ hay: ArraySlice<UInt8>, _ needle: Bytes) -> Bool {
-    guard hay.count >= needle.count else { return false }
-    return (hay.startIndex...(hay.endIndex - needle.count)).contains { hay[$0..<($0 + needle.count)].elementsEqual(needle) }
+private func find(_ hay: ArraySlice<UInt8>, _ needle: Bytes) -> Int? {
+    guard hay.count >= needle.count else { return nil }
+    return (hay.startIndex...(hay.endIndex - needle.count)).first { hay[$0..<($0 + needle.count)].elementsEqual(needle) }
+}
+
+private let appMark = Array(".app/".utf8)
+private let frameworkMark = Array(".framework/".utf8)
+
+/// Whether `path` lies in an app bundle; an app a framework bundles, as Python.framework's Python.app, is none.
+private func isApp(_ path: ArraySlice<UInt8>) -> Bool {
+    guard let app = find(path, appMark) else { return false }
+    return find(path[..<app], frameworkMark) == nil
 }
 
 /// Prints `{"procs":[…]}`, one row per process of this user, for svalld to attribute load to robots.
@@ -74,9 +83,8 @@ func procs() -> Never {
         var path = Bytes(repeating: 0, count: 4096)
         let pathLen = max(0, Int(proc_pidpath(pid, &path, UInt32(path.count))))
         // svalld ignores the marks of apps and never reads their args, and reading them is the costliest step
-        let isApp = contains(path[..<pathLen], Array(".app/".utf8))
         // a process whose arguments can't be read stays, so its descendants keep their place in the tree
-        let marks = (isApp ? nil : argsAndMarks(pid, &argBuf)) ?? (args: ArraySlice<UInt8>(), char: nil, home: nil)
+        let marks = (isApp(path[..<pathLen]) ? nil : argsAndMarks(pid, &argBuf)) ?? (args: ArraySlice<UInt8>(), char: nil, home: nil)
 
         let ticks = Double(usage.ri_user_time &+ usage.ri_system_time)
         var row: [(key: Text, value: JSON)] = [

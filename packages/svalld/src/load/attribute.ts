@@ -5,6 +5,12 @@ import type { LiveProc } from './procs.js';
 export type Scope = { home: string; panes: Map<string, number[]>; appPid?: number; own: number[] };
 export type Owners = { chars: Map<string, LiveProc[]>; app: LiveProc[]; codex: LiveProc[] };
 
+/** Whether `path` lies in an app bundle; an app a framework bundles, as Python.framework's Python.app, is none. */
+const isApp = (path: string): boolean => {
+  const app = path.indexOf('.app/');
+  return app >= 0 && !path.slice(0, app).includes('.framework/');
+};
+
 export function attribute(procs: LiveProc[], scope: Scope): Owners {
   const byPid = new Map(procs.map((p) => [p.pid, p]));
   const children = new Map<number, LiveProc[]>();
@@ -29,18 +35,22 @@ export function attribute(procs: LiveProc[], scope: Scope): Owners {
 
   for (const [char, panePids] of scope.panes) for (const pid of panePids) claim(byPid.get(pid), owners.chars.get(char)!);
 
-  const inApp = (p: LiveProc): boolean => {
+  // what svalld, its tmux server or the app runs is theirs, and what runs in an app the user's, whatever marks it carries
+  const theirs = new Set([...scope.own, ...(scope.appPid === undefined ? [] : [scope.appPid])]);
+  const marksCount = (p: LiveProc): boolean => {
     const seen = new Set<number>();
     for (let q: LiveProc | undefined = p; q && q.pid > 1 && !seen.has(q.pid); q = byPid.get(q.ppid)) {
-      if (q.path.includes('.app/')) return true;
+      if (theirs.has(q.pid) || isApp(q.path)) return false;
       seen.add(q.pid);
     }
-    return false;
+    return true;
   };
+  // a session on codex's shared server starts what it runs with the marks of the robot that started the server
+  const codexMarks = new Set(procs.filter((p) => isCodexServer(p.args) && p.char).map((p) => `${p.char}\n${p.home}`));
   for (const p of procs) {
-    if (claimed.has(p.pid) || p.home !== scope.home || !p.char) continue;
+    if (claimed.has(p.pid) || p.home !== scope.home || !p.char || codexMarks.has(`${p.char}\n${p.home}`)) continue;
     const mine = owners.chars.get(p.char);
-    if (!mine || inApp(p)) continue;
+    if (!mine || !marksCount(p)) continue;
     claimed.add(p.pid);
     mine.push(p);
   }

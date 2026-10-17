@@ -44,6 +44,18 @@ describe('attribute', () => {
     expect(pids(o.chars.get('c_a'))).toEqual([]);
   });
 
+  it("counts a framework's Python, whose binary sits in an app inside the framework", () => {
+    const python = '/opt/homebrew/Cellar/python@3.15/3.15.0/Frameworks/Python.framework/Versions/3.15/Resources/Python.app/Contents/MacOS/Python';
+    const o = attribute([proc(10, 1), proc(34, 1, { path: python, char: 'c_a', home: H })], scope());
+    expect(pids(o.chars.get('c_a'))).toEqual([10, 34]);
+  });
+
+  it("skips what runs inside an app's own framework", () => {
+    const helper = '/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper';
+    const o = attribute([proc(44, 1, { path: helper, char: 'c_a', home: H })], scope());
+    expect(pids(o.chars.get('c_a'))).toEqual([]);
+  });
+
   it('survives a ppid cycle while looking for an app', () => {
     const o = attribute([proc(42, 43, { char: 'c_a', home: H }), proc(43, 42)], scope());
     expect(pids(o.chars.get('c_a'))).toEqual([42]);
@@ -61,6 +73,23 @@ describe('attribute', () => {
     ], scope());
     expect(pids(o.codex)).toEqual([50, 51]);
     expect(pids(o.chars.get('c_a'))).toEqual([10, 11]);
+  });
+
+  it("gives no robot what a session on codex's shared server starts, which carries the marks of the robot that started it", () => {
+    const escaped = proc(52, 1, { char: 'c_a', home: H });
+    const o = attribute([proc(10, 1), proc(50, 1, { args: 'codex app-server --managed-daemon', char: 'c_a', home: H }), escaped], scope());
+    expect(pids(o.chars.get('c_a'))).toEqual([10]);
+    expect(pids(attribute([proc(10, 1), escaped], scope()).chars.get('c_a'))).toEqual([10, 52]);
+  });
+
+  it('gives no robot what svalld, the tmux server or the app run, whatever their marks', () => {
+    const marked = { char: 'c_a', home: H };
+    const o = attribute([
+      proc(10, 20), proc(20, 1), proc(21, 20, marked), proc(22, 1), proc(23, 22, marked),
+      proc(99, 1, { path: '/Applications/Svall.app/Contents/MacOS/Svall' }), proc(98, 99, marked),
+    ], scope({ own: [20, 22], appPid: 99 }));
+    expect(pids(o.chars.get('c_a'))).toEqual([10]);
+    expect(pids(o.app)).toEqual([20, 21, 22, 23, 98, 99]);
   });
 
   it('gives WebKit to the app by responsibility, and the tmux server alone', () => {

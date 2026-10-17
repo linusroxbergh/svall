@@ -23,8 +23,11 @@ afterEach(() => { for (const c of children.splice(0)) c.kill('SIGKILL'); });
 
 type Row = { pid: number; ppid: number; start: number; cpu: number; mem: number; resp?: number; path: string; args: string; char?: string; home?: string };
 const procs = (): Row[] => JSON.parse(execFileSync(helper, ['procs'], { encoding: 'utf8' })).procs;
+const PROBE = { SVALL_CHAR_ID: 'c_probe', SVALL_HOME: '/tmp/svall-probe-home' };
+// Homebrew's and python.org's Python exec a binary inside Python.framework's Python.app
+const python = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/Library/Frameworks/Python.framework/Versions/Current/bin/python3'].find((p) => fs.existsSync(p));
 const child = (code: string): ChildProcess => {
-  const c = spawn(process.execPath, ['-e', code], { stdio: 'ignore', env: { ...process.env, SVALL_CHAR_ID: 'c_probe', SVALL_HOME: '/tmp/svall-probe-home' } });
+  const c = spawn(process.execPath, ['-e', code], { stdio: 'ignore', env: { ...process.env, ...PROBE } });
   children.push(c);
   return c;
 };
@@ -59,8 +62,19 @@ describe('svall-hook procs', () => {
     expect(procs().some((p) => p.pid === 1)).toBe(false);
   });
 
+  it("reads a framework Python's marks and arguments, though its binary sits in Python.app", async (ctx) => {
+    if (!python) return ctx.skip('no framework Python is installed');
+    const c = spawn(python, ['-c', 'import time; time.sleep(60)'], { stdio: 'ignore', env: { ...process.env, ...PROBE } });
+    children.push(c);
+    await waitFor(() => procs().some((p) => p.pid === c.pid && p.path.includes('.app/')));
+    const row = procs().find((p) => p.pid === c.pid)!;
+    expect(row.char).toBe('c_probe');
+    expect(row.home).toBe('/tmp/svall-probe-home');
+    expect(row.args).toContain('time.sleep(60)');
+  });
+
   it('leaves the arguments and marks of apps out', (ctx) => {
-    const app = procs().find((p) => p.path.includes('.app/'));
+    const app = procs().find((p) => p.path.includes('.app/') && !p.path.slice(0, p.path.indexOf('.app/')).includes('.framework/'));
     if (!app) return ctx.skip('no app process of this user is running');
     expect(app.args).toBe('');
     expect(app.char).toBeUndefined();
@@ -89,15 +103,16 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
     return { fleet, paths, tmux, c };
   }
 
+  // backgrounded from a shell that exits, so launchd adopts it as it does a robot's nohup server
+  const spawnMarked = (id: string, h: string, bin = process.execPath, code = '-e "setInterval(()=>{},1000)"'): number => {
+    const out = execFileSync('/bin/sh', ['-c', `"$0" ${code} >/dev/null 2>&1 & echo $!`, bin], { encoding: 'utf8', env: { ...process.env, SVALL_CHAR_ID: id, SVALL_HOME: h } });
+    const pid = Number(out.trim());
+    cleanup.push(async () => { try { process.kill(pid, 'SIGKILL'); } catch { /* already ended */ } });
+    return pid;
+  };
+
   it('ends what it started in the background and spares another fleet\'s processes', async () => {
     const { fleet, paths, c } = await boot(() => readProcs(helper));
-    // backgrounded from a shell that exits, so launchd adopts it as it does a robot's nohup server
-    const spawnMarked = (id: string, h: string): number => {
-      const out = execFileSync('/bin/sh', ['-c', '"$0" -e "setInterval(()=>{},1000)" >/dev/null 2>&1 & echo $!', process.execPath], { encoding: 'utf8', env: { ...process.env, SVALL_CHAR_ID: id, SVALL_HOME: h } });
-      const pid = Number(out.trim());
-      cleanup.push(async () => { try { process.kill(pid, 'SIGKILL'); } catch { /* already ended */ } });
-      return pid;
-    };
     const mine = spawnMarked(c.id, paths.home);
     const other = spawnMarked(c.id, '/tmp/svall-other-fleet');
     await waitFor(() => procs().some((r) => r.pid === mine && r.char === c.id) && procs().some((r) => r.pid === other));
@@ -105,6 +120,16 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
     await fleet.closeCharacter(c.id);
     await waitFor(() => !alive(mine));
     expect(alive(other)).toBe(true);
+  }, 20_000);
+
+  it('ends a server it left running on a framework Python', async (ctx) => {
+    if (!python) return ctx.skip('no framework Python is installed');
+    const { fleet, paths, c } = await boot(() => readProcs(helper));
+    const server = spawnMarked(c.id, paths.home, python, '-c "import time; time.sleep(600)"');
+    await waitFor(() => procs().some((r) => r.pid === server && r.char === c.id));
+
+    await fleet.closeCharacter(c.id);
+    await waitFor(() => !alive(server));
   }, 20_000);
 
   it('never lists svalld or the fleet\'s tmux server among a robot\'s processes', async () => {
