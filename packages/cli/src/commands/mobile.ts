@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import QRCode from 'qrcode';
 import { SHIM } from '@svall/svalld/profile';
+import { isRelease } from '@svall/svalld/release';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
 import { withClient } from './fleet.js';
@@ -25,8 +26,8 @@ export function mobileCommand(connect: () => Promise<Client>, json: () => boolea
       printResult(status, false, () => [
         qr,
         status.url,
-        status.logins.length ? `only ${status.logins.join(', ')} may drive the fleet; to let others in, list them and yourself in mobile.logins in config.json and restart the daemon` : 'no login may drive the fleet until mobile.logins in config.json names one and the daemon restarts',
-        ...(status.pageMissing ? ['the phone page is missing: pnpm --filter @svall/desktop-web build:mobile'] : []),
+        status.logins.length ? `only ${status.logins.join(', ')} may drive the fleet; to let others in, list them and yourself in mobile.logins in fleet.json and restart the daemon` : 'no login may drive the fleet until mobile.logins in fleet.json names one and the daemon restarts',
+        ...(status.pageMissing ? [isRelease() ? 'this release carries no phone page' : 'the phone page is missing: pnpm --filter @svall/desktop-web build:mobile'] : []),
         'On the phone: open the link, then Share → Add to Home Screen.',
       ].join('\n'));
     });

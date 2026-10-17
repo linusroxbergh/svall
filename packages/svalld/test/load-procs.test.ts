@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseHelper, parsePs, readProcs } from '../src/load/procs.js';
 
@@ -24,6 +27,10 @@ describe('parsePs', () => {
   it('reads h:mm:ss times', () => {
     expect(parsePs('7 1 1:02:03.50 10 x')[0].cpuNs).toBe(3723.5e9);
   });
+
+  it("reads procps's times past a day", () => {
+    expect(parsePs('7 1 2-01:00:00 10 x')[0].cpuNs).toBe((2 * 86_400 + 3600) * 1e9);
+  });
 });
 
 describe('readProcs', () => {
@@ -32,4 +39,17 @@ describe('readProcs', () => {
     expect(procs.length).toBeGreaterThan(0);
     expect(procs.some((p) => p.pid === process.pid)).toBe(true);
   });
+
+  it('gives up on a ps that does not answer within 10 s', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-ps-'));
+    fs.writeFileSync(path.join(dir, 'ps'), '#!/bin/sh\nexec sleep 60\n', { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = `${dir}:${PATH}`;
+    try {
+      await expect(readProcs(undefined)).rejects.toMatchObject({ killed: true });
+    } finally {
+      process.env.PATH = PATH;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 });

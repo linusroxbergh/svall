@@ -1,28 +1,67 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { trimEnd, type Repo } from '@svall/protocol';
 
 const exec = promisify(execFile);
 
-export async function resolveRepo(cwd: string): Promise<Repo | undefined> {
-  const git = async (args: string[]) => (await exec('git', args, { cwd, timeout: 10_000, killSignal: 'SIGKILL' })).stdout.trim().split('\n');
-  try {
-    // one rev-parse answers the paths and the branch together; every character in the fleet asks this.
-    // Before its first commit HEAD resolves to nothing, though the paths are out by then and it names a branch already
-    const [root, common, dir, branch] = await git(['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir', '--abbrev-ref', 'HEAD'])
-      .catch(async (e: { stdout?: string }) => {
-        const paths = e.stdout?.trim().split('\n') ?? [];
-        if (paths.length < 3) throw e;
-        return [...paths.slice(0, 3), ...await git(['symbolic-ref', '--short', 'HEAD'])];
-      });
-    // only a linked worktree keeps its own git dir beside a shared common one; a submodule's two are the
-    // same path inside .git/modules, where the checkout it belongs to is its own root
-    const isWorktree = dir !== common;
-    return { root, mainRoot: isWorktree ? path.dirname(common) : root, branch, isWorktree };
-  } catch {
-    return undefined;
+export type GitResult = { code: number; stdout: string; stderr: string };
+/** Runs one git command in `cwd`. A git that cannot start or runs out of time answers a non-zero code. */
+export type GitRunner = (args: readonly string[], cwd: string) => Promise<GitResult>;
+
+// variables that would point git at another repository than the one around cwd
+const REDIRECTS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE'];
+
+/** git as a reader beside the user's own: messages in English, and no index refresh that takes its lock. */
+export function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM'): GitRunner {
+  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
+  for (const k of REDIRECTS) delete env[k];
+  return (args, cwd) => new Promise((resolve) => {
+    const child = spawn('git', args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    child.stdout.on('data', (c: Buffer) => out.push(c));
+    child.stderr.on('data', (c: Buffer) => err.push(c));
+    child.on('error', (e) => resolve({ code: -1, stdout: '', stderr: e.message }));
+    child.on('close', (code, signal) => resolve({
+      code: code ?? -1,
+      stdout: Buffer.concat(out).toString(),
+      stderr: signal ? `git ${args[0]} stopped by ${signal}` : Buffer.concat(err).toString(),
+    }));
+  });
+}
+
+export const runGit: GitRunner = gitRunner();
+
+/** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
+export type GitDirs = { root: string; commonDir: string; gitDir: string };
+
+export const DIRS_ARGS = ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'] as const;
+
+export function parseDirs(stdout: string): GitDirs {
+  const [root, commonDir, gitDir] = stdout.replace(/\n$/, '').split('\n');
+  return { root, commonDir, gitDir };
+}
+
+// every character in the fleet asks this, so a git that hangs is killed after ten seconds
+const quickGit: GitRunner = gitRunner(10_000, 'SIGKILL');
+
+export async function resolveRepo(cwd: string, git: GitRunner = quickGit): Promise<Repo | undefined> {
+  // one rev-parse answers the paths and the branch together. Before its first commit HEAD resolves to nothing,
+  // though the paths are out by then and it names a branch already
+  const r = await git([...DIRS_ARGS, '--abbrev-ref', 'HEAD'], cwd);
+  let branch = r.stdout.replace(/\n$/, '').split('\n')[3];
+  if (r.code !== 0) {
+    if (r.stdout.trim().split('\n').length < 3) return undefined;
+    const head = await git(['symbolic-ref', '--short', 'HEAD'], cwd);
+    if (head.code !== 0) return undefined;
+    branch = head.stdout.trim();
   }
+  const { root, commonDir, gitDir } = parseDirs(r.stdout);
+  // only a linked worktree keeps its own git dir beside a shared common one; a submodule's two are the
+  // same path inside .git/modules, where the checkout it belongs to is its own root
+  const isWorktree = gitDir !== commonDir;
+  return { root, mainRoot: isWorktree ? path.dirname(commonDir) : root, branch, isWorktree };
 }
 
 // the browsable url behind a remote: scp-style and url-style both land on https, without the .git.

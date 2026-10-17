@@ -5,7 +5,7 @@ import { shq } from '../text.js';
 // the folder access an OpenCode launch sets ahead of its command
 const ACCESS = /^\s*OPENCODE_CONFIG_CONTENT='(?:[^']|'\\'')*'\s+/;
 
-// the agent a command starts, as config.json may write it with a stray leading space
+// the agent a command starts, as fleet.json may write it with a stray leading space
 export const agentKindOf = (command: string): AgentKind | undefined =>
   /^\s*(claude|codex|opencode)(\s|$)/.exec(command.replace(ACCESS, ''))?.[1] as AgentKind | undefined;
 

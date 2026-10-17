@@ -14,7 +14,11 @@ export function parseHelper(out: string): LiveProc[] | undefined {
   } catch { return undefined; }
 }
 
-const cpuNs = (time: string): number => Math.round(time.split(':').reduce((s, part) => s * 60 + Number(part), 0) * 1e9);
+// procps puts the days before a time past one, as 2-01:00:00
+const cpuNs = (time: string): number => {
+  const [, days = '0', clock] = /^(?:(\d+)-)?(.*)$/.exec(time)!;
+  return Math.round((Number(days) * 86_400 + clock.split(':').reduce((s, part) => s * 60 + Number(part), 0)) * 1e9);
+};
 
 /** `ps -axww -o pid=,ppid=,time=,rss=,args=`. */
 export function parsePs(out: string): LiveProc[] {
@@ -37,5 +41,5 @@ export async function readProcs(helper: string | undefined): Promise<LiveProc[]>
       if (parsed) return parsed;
     } catch { /* missing or failing helper: ps */ }
   }
-  return parsePs((await exec('ps', ['-axww', '-o', 'pid=,ppid=,time=,rss=,args='], { encoding: 'utf8', maxBuffer: MAX_BUFFER })).stdout);
+  return parsePs((await exec('ps', ['-axww', '-o', 'pid=,ppid=,time=,rss=,args='], { encoding: 'utf8', maxBuffer: MAX_BUFFER, timeout: 10_000 })).stdout);
 }

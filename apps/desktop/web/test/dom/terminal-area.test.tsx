@@ -84,3 +84,24 @@ test('a wake the fleet refuses says why and leaves the button', async () => {
   expect(screen.getByTestId('revive')).toBeTruthy();
   expect(store.getState().toast?.text).toBe('no session to resume');
 });
+
+test('one a handover could not resume says why and waits for the button while the fleet asks for handover', () => {
+  act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
+  const f = fleet();
+  delete f.characters.c1.tmux;
+  f.characters.c1.resumeError = 'codex exited back to its shell';
+  act(() => store.getState().setFleet(f));
+  render(<TerminalArea id="c1" />);
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(screen.getByTestId('resume-error').textContent).toBe('codex exited back to its shell');
+  expect(screen.getByTestId('revive')).toBeTruthy();
+  expect(call).not.toHaveBeenCalled();
+});
+
+test('a dormant character wakes nothing while a handover rests the fleet', () => {
+  act(() => store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', safe: [], reason: 'moving' } }));
+  render(<TerminalArea id="c1" />);
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(screen.getByTestId('terminal-held')).toBeTruthy();
+  expect(call).not.toHaveBeenCalled();
+});

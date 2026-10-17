@@ -16,7 +16,7 @@ import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
 import { Section } from './Section.js';
-import { contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
+import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
 import { StarIcon } from './Sidebar.js';
 
 type Patch = Omit<Params<'char.update'>, 'id'>;
@@ -72,6 +72,8 @@ export function SideCard({ id }: { id: string }) {
   const details = useApp((s) => !s.sections['character.details']?.shut);
   const active = useApp((s) => s.active);
   const load = useLoad(details && active)?.chars?.[id];
+  const handover = useApp((s) => !!s.shell?.handoverEnabled);
+  const failed = useApp((s) => resumeErrorOf(s, s.fleet.characters[id]));
   if (!c) return null;
 
   const status = statusOf(c);
@@ -143,6 +145,13 @@ export function SideCard({ id }: { id: string }) {
                 <div className="row"><span>ram</span><b className="tnum" data-testid="side-ram">{memText(load.mem)}</b></div>
                 <div className="row"><span>procs</span><b className="tnum" data-testid="side-procs">{load.procs}</b></div>
               </>
+            )}
+            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
+            {handover && (
+              <label className="row" title="A handover of this fleet waits until this is off">
+                <span>keep on this machine</span>
+                <b><input type="checkbox" data-testid="side-keep-here" checked={!!c.keepHere} onChange={(e) => save({ keepHere: e.target.checked })} /></b>
+              </label>
             )}
           </div>
         </Section>

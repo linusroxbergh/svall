@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import WebSocket from 'ws';
 import { fleetNameProblem, HelloReply, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
-import { loadConfig } from './config.js';
+import { peekConfig } from './config.js';
 import { Invalid, NotFound } from './errors.js';
 import { resolvePaths, userPaths } from './paths.js';
 import { PRIVATE, profileHome, profileLabel, profileOf } from './profile.js';
@@ -69,7 +69,7 @@ export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
 }
 
 const configName = (home: string): string | undefined => {
-  try { return loadConfig(resolvePaths(home).config).name; } catch { return undefined; }
+  try { return peekConfig(resolvePaths(home)).name; } catch { return undefined; }
 };
 
 export const displayName = (home: string, homedir = os.homedir()): string => configName(home) ?? profileOf(home, homedir);
@@ -93,7 +93,7 @@ export async function handshake(home: string, timeoutMs: number, restart?: strin
   const paths = resolvePaths(home);
   const port = Number(fs.readFileSync(paths.port, 'utf8'));
   const token = fs.readFileSync(paths.token, 'utf8').trim();
-  const host = loadConfig(paths.config).host;
+  const host = peekConfig(paths).host;
   const ws = new WebSocket(`ws://${host}:${port}`);
   try {
     await new Promise<void>((resolve, reject) => {

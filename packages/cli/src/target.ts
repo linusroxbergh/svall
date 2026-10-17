@@ -10,7 +10,7 @@ export type Target = { name: string; home: string; managed: boolean };
 export function targetFor(name: string, homedir?: string): Target {
   if (!isProfileName(name)) throw new Error(`invalid profile name ${name}`);
   const home = profileHome(name, homedir);
-  const named = name === PRIVATE || fs.existsSync(path.join(home, 'config.json')) ? undefined : fleetNamed(name, homedir);
+  const named = name === PRIVATE || ['fleet.json', 'config.json'].some((f) => fs.existsSync(path.join(home, f))) ? undefined : fleetNamed(name, homedir);
   return named ? { name: profileOf(named, homedir), home: named, managed: true } : { name, home, managed: true };
 }
 
@@ -23,3 +23,6 @@ export function resolveTarget(o: { profile?: string; env?: string; homedir?: str
   }
   return targetFor(PRIVATE, o.homedir);
 }
+
+/** The profile a far machine is asked for: the target's own name, unless it is the private fleet a far machine runs by default or no profile's home. */
+export const farProfile = (t: Target): string | undefined => (t.managed && t.name !== PRIVATE ? t.name : undefined);

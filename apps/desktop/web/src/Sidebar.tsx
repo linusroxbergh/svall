@@ -6,7 +6,7 @@ import type { DropTarget } from './drop.js';
 import { memoByValue, useApp } from './hooks.js';
 import { characterMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
-import { boardIsland, boardViewed, charactersOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, STARRED, statusOf, wantsUser } from './selectors.js';
+import { boardIsland, boardViewed, charactersOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the characters that want the user
 const attentionIn = (chars: Character[]): number => chars.filter(wantsUser).length;
@@ -149,6 +149,7 @@ const CharacterRow = memo(function CharacterRow({ c, editing, setEditing }: { c:
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id);
   const reorderHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
   const hoverAfter = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after);
+  const failed = useApp((s) => resumeErrorOf(s, c));
   const [dragging, setDragging] = useState(false);
   const status = statusOf(c);
   return (
@@ -169,7 +170,10 @@ const CharacterRow = memo(function CharacterRow({ c, editing, setEditing }: { c:
           if (name) saveCharacter(deps(), c.id, { name });
         }} />
       ) : (
-        <span className="sb-name">{c.name}</span>
+        <>
+          <span className="sb-name">{c.name}</span>
+          {failed && <span className="sb-sub mono" data-testid={`sb-resume-error-${c.id}`} title={failed}>resume failed</span>}
+        </>
       )}
       {!editing && <Marks c={c} />}
       {!editing && <StarButton c={c} testid={`sb-char-star-${c.id}`} />}

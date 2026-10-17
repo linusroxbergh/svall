@@ -16,6 +16,13 @@ export function opencodePaths(env: NodeJS.ProcessEnv = process.env, home: string
   return { dir, plugin: path.join(dir, 'plugins', `${SHIM}.js`), data };
 }
 
+/** OpenCode's data, config, state and cache folders where `env` puts them. */
+export function opencodeFolders(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string[] {
+  const { dir, data } = opencodePaths(env, home);
+  const under = (xdg: string | undefined, fallback: string): string => path.join(xdg ? path.resolve(xdg) : path.join(home, fallback), 'opencode');
+  return [data, dir, under(env.XDG_STATE_HOME, '.local/state'), under(env.XDG_CACHE_HOME, '.cache')];
+}
+
 const pluginText = (): string => fs.readFileSync(path.join(assetDir('hooks'), 'opencode-plugin.js'), 'utf8');
 
 /** Whether `text`, the plugin file as it is, is the plugin this build ships. */

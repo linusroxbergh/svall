@@ -8,7 +8,10 @@ import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
 import { ConfirmSleep } from './ConfirmSleep.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
+import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
+import { connectionBanner, upgradeFor } from './host.js';
+import { HostSetup } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
@@ -30,6 +33,13 @@ const OUTDATED = () => (window.__svallVariant === 'release'
   ? 'Svall and svalld versions differ: quit and reopen Svall'
   : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
 
+// the machines panel opens on the machine, and its Upgrade runs only once the user starts it
+function Upgrade() {
+  const name = useApp((s) => (s.shell?.handoverEnabled ? upgradeFor(s.connection) : undefined));
+  if (!name) return null;
+  return <button className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
+}
+
 export function App() {
   const loaded = useApp((s) => s.loaded);
   const status = useApp((s) => s.status);
@@ -43,6 +53,10 @@ export function App() {
   const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
+  // the fleet the page holds stays on the screen while its machine is away; only this line changes
+  const away = useApp((s) => connectionBanner(s.connection, !!s.shell?.handoverEnabled));
+  // a fleet on another machine is waited for there, so this Mac's daemon, its log and its setup say nothing about it
+  const elsewhere = useApp((s) => !!s.connection && s.connection.owner !== 'local');
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
   // a launch finds svalld in moments, even one still starting; the setup hint and the log wait out that grace
@@ -55,6 +69,14 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  if (!loaded && elsewhere) {
+    return (
+      <>
+        <div className="connect" data-testid="connect-screen">{away ? <div>{away}<br /><Upgrade /></div> : <Starting />}</div>
+        <HostSetup />
+      </>
+    );
+  }
   if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {
     const log = shell && `${shell.home}/svalld.log`;
@@ -76,7 +98,8 @@ export function App() {
   }
   return (
     <div className="app">
-      {status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
+      {away && <div className="banner" data-testid="connection-banner">{away} <Upgrade /></div>}
+      {!away && status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           Ghostty config: {configErrors.join('; ')}
@@ -109,6 +132,8 @@ export function App() {
       <ConfirmClose />
       <ConfirmSleep />
       <ConfirmDeleteIsland />
+      <HostSetup />
+      <HandoverSheet />
       <ScribeAsk />
       <FleetPicker />
       <LinkAsk />

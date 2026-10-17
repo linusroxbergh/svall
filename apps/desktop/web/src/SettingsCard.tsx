@@ -90,7 +90,7 @@ function MainAgent() {
   const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
   return (
     <div className="row">
-      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>{shim()} char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
+      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>{shim()} char new --run</code> start. A <code>home.command</code> in fleet.json overrides it for the crew.</Info></span>
       <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
@@ -125,6 +125,17 @@ function FleetName() {
       </div>
       {error && <div className="row" data-testid="set-fleet-name-error"><span /><b className="fleet-error">{error}</b></div>}
     </>
+  );
+}
+
+function Machines() {
+  return (
+    <div className="rows">
+      <div className="row">
+        <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Svall installs itself there over ssh, checks what it needs, and reports what is still to do. <code>svall host</code> does the same from a terminal.</Info></span>
+        <b><button className="btn set-open" data-testid="settings-hosts" onClick={() => app.store.getState().toggleHost(true)}>Set up</button></b>
+      </div>
+    </div>
   );
 }
 
@@ -297,7 +308,7 @@ function Machine() {
       <div className="opens">
         <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Terminal font, colours and cursor"
           onClick={() => openConfig(app.bridge, 'ghostty')}>Ghostty config</button>
-        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Port, mission control and fleet defaults"
+        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Mission control, fleet defaults, scribe, phone logins and handover"
           onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
       </div>
     </>
@@ -331,7 +342,8 @@ function Browser() {
 
 const PANES = [
   ['machine', 'This machine', Machine], ['browser', 'Browser', Browser], ['keyboard', 'Keyboard', Keybindings],
-  ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['updates', 'Updates', Update],
+  ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['machines', 'Machines', Machines],
+  ['updates', 'Updates', Update],
 ] as const;
 type Pane = (typeof PANES)[number][0];
 
@@ -339,12 +351,14 @@ type Pane = (typeof PANES)[number][0];
 export function SettingsCard() {
   const bindings = useApp((s) => s.settings.bindings);
   const update = useApp((s) => s.update);
+  const handover = useApp((s) => !!s.shell?.handoverEnabled);
   const shell = app.bridge.present;
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => (box.current ? holdCutout(app.bridge, box.current) : undefined), []);
   const [picked, pick] = useState<Pane>('machine');
-  // banners need the shell, and Updates stands only while one waits; a pane that goes leaves the first in its place
-  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update));
+  // banners need the shell, Machines waits on fleet.json's handover.enabled, and Updates stands only while one waits;
+  // a pane that goes leaves the first in its place
+  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'machines' || handover) && (p !== 'updates' || update));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
   return (
     <div className="set-win" ref={box} data-testid="settings" role="dialog" aria-label="Settings">

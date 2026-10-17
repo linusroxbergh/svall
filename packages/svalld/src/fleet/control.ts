@@ -1,6 +1,7 @@
 import type { EventEmitter } from 'node:events';
-import { markDormant } from '../dormancy.js';
+import { loseSecond, markDormant } from '../dormancy.js';
 import type { Logger } from '../log.js';
+import { secondName } from '../reconcile.js';
 import type { Store } from '../store.js';
 import type { ControlClient } from '../tmux/control.js';
 import type { Tmux } from '../tmux/tmux.js';
@@ -13,7 +14,12 @@ export type PaneEvents = {
   'control-reset': [];
 };
 
-type Deps = { store: Store; tmux: Tmux; log: Logger; events: Pick<EventEmitter<PaneEvents>, 'emit'>; reconcile: () => Promise<void> };
+type Deps = {
+  store: Store; tmux: Tmux; log: Logger; events: Pick<EventEmitter<PaneEvents>, 'emit'>; reconcile: () => Promise<void>;
+  writable: () => boolean; track: (work: Promise<unknown>, what: string) => void;
+  // whether the last poll saw the agent in a window, by name, quit to its shell
+  atShell: (key: string) => boolean;
+};
 
 /** The fleet's tmux control client: pane output for the terminals, windows that close, and a client attached afresh
  *  whenever the one before it is lost. */
@@ -30,13 +36,19 @@ export class ControlLink {
 
   constructor(private deps: Deps) {}
 
-  async attach(): Promise<void> {
+  /** Attaches a client, again after a stop. */
+  start(): Promise<void> {
+    this.stopped = false;
+    return this.attach();
+  }
+
+  private async attach(): Promise<void> {
     const { events } = this.deps;
     const c = this.deps.tmux.connect();
     c.on('output', (paneId, data) => { const id = this.charByPane(paneId); if (id && this.streaming.has(id)) events.emit('output', id, data); });
     c.on('pause', (paneId) => { const id = this.charByPane(paneId); if (id) events.emit('pause', id); });
     c.on('continue', (paneId) => { const id = this.charByPane(paneId); if (id) events.emit('continue', id); });
-    c.on('window-close', (windowId) => { this.windowClosed(windowId).catch((e) => this.deps.log.error(`window ${windowId} closed: ${String(e)}`)); });
+    c.on('window-close', (windowId) => { if (this.deps.writable()) this.deps.track(this.windowClosed(windowId), `window ${windowId} closed`); });
     // a client that exits before it is ready fails start, and the caller's retry is the one recovery
     let ready = false;
     let gone = false;
@@ -85,11 +97,11 @@ export class ControlLink {
 
   // tmux also reports a close when a viewer session holding a linked window goes away
   private async windowClosed(windowId: string): Promise<void> {
-    if (await this.deps.tmux.hasWindow(windowId)) return;
+    if (await this.deps.tmux.hasWindow(windowId) || !this.deps.writable()) return;
     const id = this.charByWindow(windowId);
     if (id) { this.deps.store.update((d) => { const ch = d.characters[id]; if (ch) markDormant(ch); }); return; }
-    const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux.windowId === windowId)?.id;
-    if (owner) this.deps.store.update((d) => { delete d.characters[owner]?.second; });
+    const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux?.windowId === windowId)?.id;
+    if (owner) this.deps.store.update((d) => { const ch = d.characters[owner]; if (ch) loseSecond(ch, undefined, this.deps.atShell(secondName(owner))); });
   }
 
   // a stop at any step ends the recovery there, or it would start the server the stop just ended

@@ -9,7 +9,7 @@ const T0 = 1_000_000_000;
 const agent = (status: AgentStatus, extra: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 0, ...extra });
 const patch = (f: FleetState, id: string, p: Partial<Character>): FleetState =>
   ({ ...f, characters: { ...f.characters, [id]: { ...f.characters[id]!, ...p } } });
-const second = (status: AgentStatus, extra: Partial<Agent> = {}): Character['second'] => ({ tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status, extra), unread: false });
+const second = (status: AgentStatus, extra: Partial<Agent> = {}): Character['second'] => ({ cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status, extra), unread: false });
 const phone = (login: string, since = 1) => ({ login, since });
 const need = (o: Partial<Need> = {}): Need => ({ working: 0, shells: 0, waiting: 0, phones: 0, since: 0, ...o });
 const mobile = (phones: { login: string; since: number }[]): MobileStatus => ({ serving: true, url: '', port: 1, logins: [], phones });
@@ -84,6 +84,18 @@ describe('followAwake', () => {
     expect(holds()).toEqual([null]);
     store.getState().setStatus('online');
     store.getState().setStatus('offline');
+    expect(holds()).toEqual([null, '1 agent working', null]);
+    stop();
+  });
+
+  it('holds nothing while the fleet runs on another machine, which goes on while this Mac sleeps', () => {
+    const { store, holds, stop } = setup(patch(fleet(), 'c0', { agent: agent('working', { lastActivityAt: T0 }) }));
+    store.getState().setConnectionState({ state: 'online', owner: 'trift' });
+    store.getState().setStatus('online');
+    expect(holds()).toEqual([null]);
+    store.getState().setConnectionState({ state: 'online', owner: 'local' });
+    expect(holds()).toEqual([null, '1 agent working']);
+    store.getState().setConnectionState({ state: 'owner-changed', owner: 'trift' });
     expect(holds()).toEqual([null, '1 agent working', null]);
     stop();
   });

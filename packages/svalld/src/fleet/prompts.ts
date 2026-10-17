@@ -15,7 +15,7 @@ const STEP_MS = 1000;
 // how often a held prompt looks again at its agent's prompt line
 const HOLD_MS = 1000;
 
-type Deps = { fleet: Fleet; store: Store; tmux: Tmux; config: Config; log: Logger; reviving: ReadonlyMap<string, unknown> };
+type Deps = { fleet: Fleet; store: Store; tmux: Tmux; config: Config; log: Logger; reviving: ReadonlyMap<string, unknown>; writable: () => boolean; assertOwner: () => void };
 // the pane and the agent session a prompt was sent to, which alone may take it
 type Held = { text: string; enter: boolean; paneId: string; sessionId?: string };
 
@@ -48,8 +48,9 @@ export class Prompts {
     return this.inLane(lane, async () => {
       const t = fleet.terminal(id, term);
       const free = await this.free(c.name, id, term, t.tmux.paneId);
-      // a shell, or a program other than an agent, takes the text as it comes
-      if (free === undefined || (free && !this.held.has(lane))) {
+      // a shell, or a program other than an agent, takes the text as it comes; a freeze since the call came in refuses it
+      if (free === undefined && !this.deps.writable()) this.deps.assertOwner();
+      if (free === undefined || (free && !this.held.has(lane) && this.deps.writable())) {
         await this.send(id, text, enter, term);
         return 'delivered';
       }
@@ -99,10 +100,10 @@ export class Prompts {
   }
 
   // the oldest held prompt goes in once the agent is between turns with its prompt line free, so a wait takes the end of its
-  // turn, not the user's; a pane or agent session other than the one they were sent to drops them all
+  // turn, not the user's; a frozen fleet keeps them, and a pane or agent session other than the one they were sent to drops them all
   private async deliverHeld(lane: string, id: string, term?: 2): Promise<void> {
     const queue = this.held.get(lane);
-    if (!queue) return;
+    if (!queue || !this.deps.writable()) return;
     const c = this.deps.store.state.characters[id];
     const t = term === 2 ? c?.second : c;
     // prompts held before the agent reported in are for the first session it reports
@@ -115,7 +116,7 @@ export class Prompts {
     if (t.agent?.status === 'working') return;
     const free = await this.free(c.name, id, term, t.tmux.paneId).catch((e: unknown) => { if (e instanceof Blocked) return false; throw e; });
     if (free === undefined) return gone();
-    if (!free) return;
+    if (!free || !this.deps.writable()) return;
     await this.send(id, queue[0].text, queue[0].enter, term);
     queue.shift();
     if (!queue.length) this.drop(lane);

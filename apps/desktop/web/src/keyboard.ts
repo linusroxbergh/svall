@@ -65,7 +65,11 @@ function closeAllModals(store: AppStore): void {
   s.setCapturingKey(undefined);
 }
 
+// the machines panel and the handover sheet hold Esc and the focus, so no other dialog opens while either is up
+export const covered = (s: AppState): boolean => s.hostOpen || s.handoverOpen;
+
 export function openFleetPicker(store: AppStore): void {
+  if (covered(store.getState())) return;
   closeAllModals(store);
   store.getState().setFleetPicker('menu');
 }
@@ -83,6 +87,7 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
     goTo(ctx, r?.c.id, r?.starred);
   };
   const closeModals = () => closeAllModals(store);
+  if (covered(s) && (action.type === 'newCharacter' || action.type === 'missionControl' || action.type === 'closeCharacter')) return;
 
   switch (action.type) {
     // one modal at a time: the backdrops share a layer, so a second would mount unseen and take the keys
