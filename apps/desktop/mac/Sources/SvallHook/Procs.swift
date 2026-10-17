@@ -9,11 +9,9 @@ private func decoded(_ b: ArraySlice<UInt8>) -> JSON {
 }
 
 /// A process's argv joined by spaces, with the values of `SVALL_CHAR_ID` and `SVALL_HOME` from its environment.
-private func argsAndMarks(_ pid: Int32) -> (args: ArraySlice<UInt8>, char: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?)? {
+private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice<UInt8>, char: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?)? {
     var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-    var size = 0
-    guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return nil }
-    var buf = Bytes(repeating: 0, count: size)
+    var size = buf.count
     guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > 4 else { return nil }
     let argc = buf.withUnsafeBytes { Int($0.load(as: Int32.self)) }
     var i = 4
@@ -40,6 +38,11 @@ private func argsAndMarks(_ pid: Int32) -> (args: ArraySlice<UInt8>, char: Array
     return (args[...], char, home)
 }
 
+private func contains(_ hay: ArraySlice<UInt8>, _ needle: Bytes) -> Bool {
+    guard hay.count >= needle.count else { return false }
+    return (hay.startIndex...(hay.endIndex - needle.count)).contains { hay[$0..<($0 + needle.count)].elementsEqual(needle) }
+}
+
 /// Prints `{"procs":[…]}`, one row per process of this user, for svalld to attribute load to robots.
 func procs() -> Never {
     var timebase = mach_timebase_info_data_t()
@@ -53,6 +56,7 @@ func procs() -> Never {
     var pids = [Int32](repeating: 0, count: capacity)
     let count = Int(proc_listallpids(&pids, Int32(capacity * MemoryLayout<Int32>.size)))
     let uid = getuid()
+    var argBuf = Bytes(repeating: 0, count: 1 << 20)
     var rows = [JSON]()
     for pid in pids.prefix(max(0, count)) where pid > 0 {
         var info = proc_bsdinfo()
@@ -62,9 +66,12 @@ func procs() -> Never {
         let ok = withUnsafeMutablePointer(to: &usage) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
         }
-        guard ok == 0, let marks = argsAndMarks(pid) else { continue }
+        guard ok == 0 else { continue }
         var path = Bytes(repeating: 0, count: 4096)
-        let pathLen = Int(proc_pidpath(pid, &path, UInt32(path.count)))
+        let pathLen = max(0, Int(proc_pidpath(pid, &path, UInt32(path.count))))
+        // svalld ignores the marks of apps and never reads their args, and reading them is the costliest step
+        let isApp = contains(path[..<pathLen], Array(".app/".utf8))
+        guard let marks = isApp ? (args: ArraySlice<UInt8>(), char: nil, home: nil) : argsAndMarks(pid, &argBuf) else { continue }
 
         let ticks = Double(usage.ri_user_time &+ usage.ri_system_time)
         var row: [(key: Text, value: JSON)] = [
@@ -75,7 +82,7 @@ func procs() -> Never {
             (text("mem"), .number(Double(usage.ri_phys_footprint))),
         ]
         if let responsible { row.append((text("resp"), .number(Double(responsible(pid))))) }
-        row.append((text("path"), decoded(path[..<max(0, pathLen)])))
+        row.append((text("path"), decoded(path[..<pathLen])))
         row.append((text("args"), decoded(marks.args)))
         if let c = marks.char { row.append((text("char"), decoded(c))) }
         if let h = marks.home { row.append((text("home"), decoded(h))) }

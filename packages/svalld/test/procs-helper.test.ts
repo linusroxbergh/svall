@@ -49,4 +49,13 @@ describe('svall-hook procs', () => {
   it('lists no process of another user', () => {
     expect(procs().some((p) => p.pid === 1)).toBe(false);
   });
+
+  it('leaves the arguments and marks of apps out', (ctx) => {
+    const app = procs().find((p) => p.path.includes('.app/'));
+    if (!app) return ctx.skip('no app process of this user is running');
+    expect(app.args).toBe('');
+    expect(app.char).toBeUndefined();
+    expect(app.home).toBeUndefined();
+    expect(app.mem).toBeGreaterThan(0);
+  });
 });
