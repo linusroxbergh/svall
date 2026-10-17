@@ -10,7 +10,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -20,8 +20,47 @@ jobs:
           cache: pnpm
       - run: brew install tmux
       - run: pnpm install --frozen-lockfile
+      # the pinned rsync and Node the controller build caches under vendor/, which the transfer tests drive
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            vendor/rsync
+            vendor/node
+          key: vendor-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/release/pins.json') }}
+      - run: pnpm --filter @svall/desktop-web build:mobile
+      - run: node scripts/build-controller.mjs --out "$RUNNER_TEMP/controller"
       - run: pnpm typecheck
       - run: pnpm --filter @svall/desktop-web build
-      - run: pnpm --filter @svall/desktop-web build:mobile
       - run: pnpm --filter @svall/desktop-web build:site
       - run: pnpm test
+        env:
+          SVALL_REQUIRE_RSYNC: '1'
+      # the app's Swift tests link GhosttyKit, prebuilt for the Ghostty commit HEAD records
+      - run: |
+          scripts/ghostty-kit.sh fetch
+          ln -sfn "$PWD/vendor/ghostty-kit/GhosttyKit.xcframework" apps/desktop/mac/GhosttyKit.xcframework
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: swift test --package-path apps/desktop/mac
+
+  # a fleet handed between two Linux containers on real sshd, rsync, tmux, Git and systemd; see docs/integration.md
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/integration/fleet-handover.sh --out "$RUNNER_TEMP/fleet-handover"
+      - id: logs
+        if: failure()
+        run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/fleet-handover"
+      - if: failure() && steps.logs.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: fleet-handover-logs
+          path: ${{ runner.temp }}/fleet-handover

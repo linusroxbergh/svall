@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PushStatus } from '@svall/protocol';
-import { readJsonOrQuarantine, writeJsonAtomic } from '../jsonfile.js';
+import { writeJsonAtomic } from '../atomic.js';
+import { readJsonOrQuarantine } from '../jsonfile.js';
 
 export const Subscription = z.object({
   endpoint: z.string(),
@@ -49,6 +50,6 @@ export class PushStore {
   }
 
   private persist(): void {
-    writeJsonAtomic(this.file, { subscriptions: this.subs }, { mode: 0o600 });
+    writeJsonAtomic(this.file, { subscriptions: this.subs });
   }
 }

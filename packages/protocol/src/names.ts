@@ -1,5 +1,8 @@
 // svall's own commands, which `svall <name>` would run instead of opening a fleet by that name
-const RESERVED = ['status', 'island', 'char', 'scribe', 'browser', 'mobile', 'setup', 'agent', 'doctor', 'uninstall', 'help'];
+export const RESERVED = [
+  'status', 'island', 'char', 'scribe', 'browser', 'mobile', 'setup', 'agent', 'doctor', 'uninstall',
+  'host', 'handover', 'gateway', 'fleet', 'connect', 'connection-info', 'version', 'help',
+];
 const NAME = /^[a-z][a-z0-9-]*$/;
 // Svall Dev's homes are ~/.svall-dev and ~/.svall-dev-<name>, so no release fleet may be named into them
 const DEV = /^dev(-|$)/;

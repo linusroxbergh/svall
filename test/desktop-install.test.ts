@@ -97,7 +97,7 @@ function checks(stubs: Record<string, string>, setUp = false) {
   const files = {
     'bin/pnpm': CHECK_OK, 'bin/git': '', 'bin/xcodebuild': '', 'bin/launchctl': '',
     'scripts/ghostty-kit.sh': '[ "$1" = current ]', 'scripts/ghostty-build.sh': '',
-    ...(setUp ? { '.svall-dev/config.json': '', 'Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.plist': '', '.local/bin/svall-dev': '' } : {}),
+    ...(setUp ? { '.svall-dev/fleet.json': '', 'Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.plist': '', '.local/bin/svall-dev': '' } : {}),
     ...stubs,
   };
   for (const [file, body] of Object.entries(files)) {

@@ -12,8 +12,9 @@ export const agentInFront = (command: string): AgentKind | undefined =>
   /^\d+\.\d+\.\d+$/.test(command) ? 'claude' : command === 'claude' || command === 'codex' || command === 'opencode' ? command : undefined;
 
 export function readComposer(kind: AgentKind, s: Screen): Composer {
-  // all three hide the cursor while a dialog or a menu has the keys
-  if (s.cursor === undefined) return 'hidden';
+  // all three hide the cursor while a dialog or a menu has the keys. A Claude Code that paints its own cursor hides the
+  // terminal's for good, parked on its prompt line
+  if (!s.shown && !(kind === 'claude' && plain(s.rows[s.cursor] ?? '').startsWith('❯\u00a0'))) return 'hidden';
   if (kind === 'opencode') return readOpencode(s.rows, s.cursor);
   // Claude Code and Codex start the prompt line with a marker and draw its placeholder faint. A row without the
   // marker has the cursor further down a draft, or in a field of their own. Claude Code follows its marker with a no-break space
@@ -43,19 +44,22 @@ function readOpencode(rows: string[], cursor: number): Composer {
   return input.every((t) => OPENCODE_PLACEHOLDER.test(t)) ? 'empty' : 'draft';
 }
 
-// a row as capture-pane -e prints it, without its escapes, and without its faint text unless `faint`
+type Attrs = { dim: boolean; inverse: boolean };
+
+// a row as capture-pane -e prints it, without its escapes, and without its faint text unless `faint`; with that text goes
+// the inverse letter before it, a cursor Claude Code paints on its placeholder's first letter
 function plain(row: string, faint = true): string {
-  let out = '';
-  let dim = false;
+  const cells: (Attrs & { ch: string })[] = [];
+  let attrs: Attrs = { dim: false, inverse: false };
   for (let i = 0; i < row.length; i++) {
     if (row[i] !== '\x1b') {
-      if (faint || !dim) out += row[i];
+      cells.push({ ch: row[i], ...attrs });
       continue;
     }
     if (row[i + 1] === '[') {
       let end = i + 2;
       while (end < row.length && !/[@-~]/.test(row[end])) end++;
-      if (row[end] === 'm') dim = sgrFaint(row.slice(i + 2, end), dim);
+      if (row[end] === 'm') attrs = sgr(row.slice(i + 2, end), attrs);
       i = end;
     } else if (row[i + 1] === ']') {
       // an OSC, as a hyperlink, ends at BEL or at ESC \
@@ -63,17 +67,21 @@ function plain(row: string, faint = true): string {
       i = end < 0 ? row.length : i + end + (row[i + end] === '\x07' ? 0 : 1);
     } else i++;
   }
-  return out;
+  return cells.filter((c, k) => faint || !(c.dim || (c.inverse && cells[k + 1]?.dim))).map((c) => c.ch).join('');
 }
 
-// the numbers after 38, 48 or 58 name a colour, so a 2 among them is no faint
-function sgrFaint(params: string, dim: boolean): boolean {
+// the numbers after 38, 48 or 58 name a colour, so a 2 or a 7 among them is neither faint nor inverse
+function sgr(params: string, attrs: Attrs): Attrs {
+  let { dim, inverse } = attrs;
   const ps = params.split(';');
   for (let k = 0; k < ps.length; k++) {
     const n = Number(ps[k].split(':')[0] || 0);
-    if (n === 0 || n === 22) dim = false;
+    if (n === 0) dim = inverse = false;
+    else if (n === 22) dim = false;
     else if (n === 2) dim = true;
+    else if (n === 27) inverse = false;
+    else if (n === 7) inverse = true;
     else if ((n === 38 || n === 48 || n === 58) && !ps[k].includes(':')) k += ps[k + 1] === '5' ? 2 : 4;
   }
-  return dim;
+  return { dim, inverse };
 }

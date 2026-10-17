@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { agentInFront, readComposer } from '../src/agent/composer.js';
 import { parseScreen } from '../src/tmux/tmux.js';
 
-// panes of Claude Code 2.1.296, Codex 0.161–0.162 and OpenCode 2.0.26 as `Tmux.screen` read them, cut to their last rows
+// panes of Claude Code 2.1.296–2.1.302, Codex 0.161–0.162 and OpenCode 2.0.26 as `Tmux.screen` read them, cut to their last rows
 const screen = (name: string) => parseScreen(fs.readFileSync(path.join(import.meta.dirname, 'fixtures/composer', `${name}.txt`), 'utf8'));
 
 describe('readComposer', () => {
@@ -23,6 +23,12 @@ describe('readComposer', () => {
     ['claude', 'claude-trust', 'hidden'],
     // the free-text option's own field shows the cursor
     ['claude', 'claude-question-field', 'draft'],
+    // a Claude Code that paints its own cursor hides the terminal's for good, parked where the keys go
+    ['claude', 'claude-empty-painted', 'empty'],
+    ['claude', 'claude-working-queued-painted', 'empty'],
+    ['claude', 'claude-draft-painted', 'draft'],
+    ['claude', 'claude-permission-painted', 'hidden'],
+    ['claude', 'claude-trust-painted', 'hidden'],
     ['codex', 'codex-empty', 'empty'],
     ['codex', 'codex-working', 'empty'],
     ['codex', 'codex-draft', 'draft'],
@@ -61,9 +67,24 @@ describe('readComposer', () => {
     expect(readComposer('opencode', { ...s, cursor: two + 1 })).toBe('draft');
   });
 
+  it('reads an empty prompt line of a Claude Code painting its own cursor out of focus, which paints none, as empty', () => {
+    const s = screen('claude-empty-painted');
+    s.rows[s.cursor] = s.rows[s.cursor].replace('\x1b[7m \x1b[0m', '');
+    expect(readComposer('claude', s)).toBe('empty');
+  });
+
+  it('reads a one-letter draft under the cursor Claude Code paints as the draft', () => {
+    expect(readComposer('claude', { rows: ['\x1b[39m❯\u00a0\x1b[7mx\x1b[0m', '\x1b[38;5;244m────'], cursor: 0, shown: false, command: '2.1.302' })).toBe('draft');
+  });
+
+  // a letter with faint text after it is the draft's, unless it is inverse
+  it.each(['\x1b[7m\x1b[0m', '\x1b[7m\x1b[27m', '\x1b[38;5;7m'])('takes no inverse after %j', (sgr) => {
+    expect(readComposer('claude', { rows: [`${sgr}❯\u00a0y\x1b[2mz\x1b[0m`, '────'], cursor: 0, shown: true, command: '2.1.302' })).toBe('draft');
+  });
+
   it('takes a colour argument of 2 for no faint', () => {
-    expect(readComposer('claude', { rows: ['\x1b[38;5;2m❯ \x1b[39m'], cursor: 0, command: 'claude' })).toBe('empty');
-    expect(readComposer('claude', { rows: ['\x1b[38;2;2;2;2m❯ \x1b[2mplaceholder\x1b[0m'], cursor: 0, command: 'claude' })).toBe('empty');
+    expect(readComposer('claude', { rows: ['\x1b[38;5;2m❯ \x1b[39m'], cursor: 0, shown: true, command: 'claude' })).toBe('empty');
+    expect(readComposer('claude', { rows: ['\x1b[38;2;2;2;2m❯ \x1b[2mplaceholder\x1b[0m'], cursor: 0, shown: true, command: 'claude' })).toBe('empty');
   });
 });
 

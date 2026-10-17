@@ -10,7 +10,7 @@ export const chr = (id: string, islandId: string, cell: { x: number; y: number }
 
 // islands deliberately out of name order; strip order must be c2 (alpha), c0, c1 (beta)
 export const fleet = (): FleetState => ({
-  version: 8,
+  version: 9,
   islands: {
     i_b: isl('i_b', 'beta', 0), i_a: isl('i_a', 'alpha', 8), i_e: isl('i_e', 'empty', 16),
     home: isl('home', 'mission control', 30, { kind: 'home', size: { w: 8, h: 4 }, seed: 7 }),

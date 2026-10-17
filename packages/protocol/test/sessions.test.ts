@@ -15,7 +15,7 @@ describe('sessions', () => {
   it('lists a session per terminal, the second under its own key', () => {
     const f = { ...emptyState(), characters: {
       a: char('a', { agent: agent('working') }),
-      b: char('b', { unread: true, second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked') } }),
+      b: char('b', { unread: true, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked') } }),
     } };
     expect([...sessionsOf(f).values()]).toEqual([
       { key: 'a', charId: 'a', agent: agent('working'), unread: false },
@@ -33,7 +33,7 @@ describe('sessions', () => {
   });
 
   it('takes the fuller of the two contexts', () => {
-    const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('idle', { contextPct: 80 }) };
+    const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('idle', { contextPct: 80 }) };
     expect(contextPctOf(char('a'))).toBeUndefined();
     expect(contextPctOf(char('a', { agent: agent('idle', { contextPct: 12 }), second }))).toBe(80);
   });

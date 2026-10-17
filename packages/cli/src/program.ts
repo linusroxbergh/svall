@@ -1,19 +1,27 @@
 import fs from 'node:fs';
 import { Command } from 'commander';
 import { SHIM } from '@svall/svalld/profile';
-import { Client } from './client.js';
 import { agentCommand } from './commands/agent.js';
 import { browserCommands } from './commands/browser.js';
 import { charCommands } from './commands/char.js';
+import { connectCommand } from './commands/connect.js';
+import { connectionInfoCommand } from './commands/connection.js';
 import { doctorCommand } from './commands/doctor.js';
+import { fleetCommands } from './commands/fleet-recover.js';
+import { gatewayCommands } from './commands/gateway.js';
+import { handoverCommand } from './commands/handover.js';
+import { hostCommands } from './commands/host.js';
 import { islandCommands } from './commands/island.js';
 import { mobileCommand } from './commands/mobile.js';
 import { scribeCommands } from './commands/scribe.js';
 import { setupCommand } from './commands/setup.js';
 import { statusCommand } from './commands/status.js';
 import { uninstallCommand } from './commands/uninstall.js';
+import { versionCommand } from './commands/version.js';
+import { connectFor } from './controller/connection.js';
+import { closeMastersOnSignal } from './controller/ssh.js';
 import { launch, realDeps } from './launch.js';
-import { resolveTarget, targetFor } from './target.js';
+import { farProfile, resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
 
 /** Whether `word` is `name` with one letter added, dropped, changed, or two neighbours swapped. */
@@ -30,8 +38,9 @@ export function buildProgram(): Command {
     .description('Svall fleet control; with no command it opens the app')
     .option('--json', 'machine-readable output')
     .option('-p, --profile <name>', 'the fleet to work on (default: $SVALL_HOME, else private)')
+    .option('--host <name|local>', 'the machine to reach (default: the one that owns the fleet)')
     // commander's own .version() wants the string up front, which would run git on every command
-    .option('-V, --version', 'print the app version, or the commit a checkout is on')
+    .option('-V, --version', 'print the app version, the release installed, or the commit a checkout is on')
     .on('option:version', () => {
       process.stdout.write(`${checkoutVersion()}\n`);
       process.exit(0);
@@ -43,7 +52,12 @@ export function buildProgram(): Command {
   const json = () => Boolean(program.opts().json);
   const target = () => resolveTarget({ profile: program.opts().profile, env: process.env.SVALL_HOME });
   const home = () => target().home;
-  const connect = () => Client.connect(home());
+  const profile = () => farProfile(target());
+  const connect = () => {
+    // a command routed to another machine holds a master there, which must not outlive it
+    closeMastersOnSignal();
+    return connectFor({ home: home(), host: program.opts().host, profile: profile() });
+  };
 
   program.action(async (profile?: string) => {
     const t = profile === undefined ? target() : targetFor(profile);
@@ -62,7 +76,14 @@ export function buildProgram(): Command {
   program.addCommand(setupCommand(target, json));
   program.addCommand(agentCommand(target, json));
   program.addCommand(doctorCommand(target, json));
+  program.addCommand(hostCommands(json));
+  program.addCommand(handoverCommand({ target, profile, json }));
+  program.addCommand(gatewayCommands());
+  program.addCommand(fleetCommands(home, json, profile, target));
   program.addCommand(uninstallCommand(json));
+  program.addCommand(connectCommand(home, profile));
+  program.addCommand(connectionInfoCommand(home, json));
+  program.addCommand(versionCommand(json));
 
   return program;
 }
