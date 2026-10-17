@@ -138,8 +138,14 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 21 with robot portraits', () => {
-    expect(PROTOCOL_VERSION).toBe(21);
+  it('is 22 with the load reading', () => {
+    expect(PROTOCOL_VERSION).toBe(22);
+    expect(methods['load.get'].params.safeParse({}).success).toBe(true);
+    const u = { cpu: 1, mem: 2, procs: 3 };
+    expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: { c_a: { ...u, shellOnly: true, sleepable: false } } }).success).toBe(true);
+  });
+
+  it('was 21 with robot portraits', () => {
     expect(methods['robots.set'].params.safeParse({ enabled: false }).success).toBe(true);
     expect(methods['char.update'].params.parse({ id: 'c_a', robot: 42 }).robot).toBe(42);
   });

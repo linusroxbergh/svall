@@ -92,4 +92,75 @@ describe('LoadSampler', () => {
     expect(s.total.procs).toBeGreaterThanOrEqual(3);
     load.stop();
   });
+
+  it('matches a ps row, which has no start, to the helper row of the same pid', async () => {
+    const { load } = sampler([[proc(10, 1, 900, { start: 0 })], [proc(10, 1, 1000, { start: 5 })]]);
+    const p = load.get();
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await p).chars.c_a.cpu).toBeCloseTo(20);
+    load.stop();
+  });
+
+  it('skips a tick while a reading is in flight', async () => {
+    let n = 0;
+    let release!: () => void;
+    const read = vi.fn(async () => {
+      if (++n === 3) await new Promise<void>((r) => { release = r; });
+      return [proc(10, 1, 0)];
+    });
+    const load = new LoadSampler({ read, scope: async () => scope(), sleepable: () => true });
+    const first = load.get();
+    await vi.advanceTimersByTimeAsync(500);
+    await first;
+    for (let i = 0; i < 3; i++) { void load.get(); await vi.advanceTimersByTimeAsync(4000); }
+    expect(read).toHaveBeenCalledTimes(3);
+    release();
+    void load.get();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(read).toHaveBeenCalledTimes(4);
+    load.stop();
+  });
+
+  it('starts afresh after a stop that landed while scope was pending', async () => {
+    let release!: () => void;
+    let slow = false;
+    const read = vi.fn(async () => [proc(10, 1, 0)]);
+    const load = new LoadSampler({
+      read,
+      scope: async () => { if (slow) await new Promise<void>((r) => { release = r; }); return scope(); },
+      sleepable: () => true,
+    });
+    const first = load.get();
+    await vi.advanceTimersByTimeAsync(500);
+    await first;
+    slow = true;
+    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    slow = false;
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    const before = read.mock.calls.length;
+    const again = load.get();
+    await vi.advanceTimersByTimeAsync(500);
+    await again;
+    expect(read.mock.calls.length - before).toBe(2);
+    load.stop();
+  });
+
+  it('starts no timer when stopped during the first reading', async () => {
+    let release!: () => void;
+    let n = 0;
+    const read = vi.fn(async () => {
+      if (++n === 1) await new Promise<void>((r) => { release = r; });
+      return [proc(10, 1, 0)];
+    });
+    const load = new LoadSampler({ read, scope: async () => scope(), sleepable: () => true });
+    void load.get();
+    load.stop();
+    release();
+    await vi.advanceTimersByTimeAsync(500);
+    const seen = read.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(read).toHaveBeenCalledTimes(seen);
+  });
 });
