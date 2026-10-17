@@ -71,7 +71,7 @@ export function SideCard({ id }: { id: string }) {
   useTick(10_000);
   const details = useApp((s) => !s.sections['character.details']?.shut);
   const active = useApp((s) => s.active);
-  const load = useLoad(details && active)?.chars[id];
+  const load = useLoad(details && active)?.chars?.[id];
   if (!c) return null;
 
   const status = statusOf(c);

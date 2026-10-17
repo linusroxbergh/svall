@@ -166,8 +166,8 @@ export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; deletingIsland?: string; fleetPicker?: string; resourcesOpen: boolean; fleet: FleetState }): boolean =>
-  s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
+export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; sleepingCharacter?: string; deletingIsland?: string; fleetPicker?: string; resourcesOpen: boolean; fleet: FleetState }): boolean =>
+  s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.sleepingCharacter !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
   || s.resourcesOpen || !!s.fleet.scribeAsk;
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work

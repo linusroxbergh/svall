@@ -7,6 +7,8 @@ describe('loadText', () => {
     expect(cpuText(3.21)).toBe('3.2%');
     expect(cpuText(0)).toBe('0.0%');
     expect(cpuText(250.4)).toBe('250%');
+    // rounding to one decimal can reach 10 before the switch to whole numbers does
+    expect(cpuText(9.96)).toBe('10.0%');
   });
 
   it('spells memory in MB, or GB from 1 GB', () => {

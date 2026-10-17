@@ -5,6 +5,7 @@ import { revealFile, shim } from './bridge.js';
 import { ConfirmClose } from './ConfirmClose.js';
 import { ContextMenu } from './ContextMenu.js';
 import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
+import { ConfirmSleep } from './ConfirmSleep.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
@@ -106,6 +107,7 @@ export function App() {
       <NewCharacter />
       <MissionPrompt />
       <ConfirmClose />
+      <ConfirmSleep />
       <ConfirmDeleteIsland />
       <ScribeAsk />
       <FleetPicker />

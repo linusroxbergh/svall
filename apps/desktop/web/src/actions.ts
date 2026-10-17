@@ -268,6 +268,10 @@ export const deleteIsland = (d: ActionDeps, id: string): void => {
   d.api.call('island.delete', { id }).catch(toast(d));
 };
 
+// everything the robot started ends; opening it again resumes its session, and one svalld cannot resume is refused
+export const sleepCharacter = (d: ActionDeps, id: string): Promise<void> =>
+  d.api.call('char.sleep', { id }).then(() => {}, toast(d));
+
 // an island's or a character's own field, written straight back to the fleet
 export const saveEntityField = (d: ActionDeps, r: FieldRef, value: string): void => {
   if (r.tier === 'character') saveCharacter(d, r.id, r.field === 'note' ? { note: value } : { instructions: value });

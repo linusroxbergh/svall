@@ -4,10 +4,11 @@ import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
+import { LoadPanel } from './LoadPanel.js';
 import { MobilePanel } from './PhonePanel.js';
 import { UsagePanel } from './Usage.js';
 
-// all three glyphs share one 24-square and stroke weight
+// the glyphs share one 24-square and stroke weight
 const Phone = () => (
   <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
     <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
@@ -22,6 +23,12 @@ const Meter = () => (
   </svg>
 );
 
+const Pulse = () => (
+  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 12h4l2.5-6 5 12 2.5-6h4" />
+  </svg>
+);
+
 const Gear = () => (
   <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="3" />
@@ -33,6 +40,7 @@ const Gear = () => (
 export function UtilityDock() {
   const usageOpen = useApp((s) => s.usageOpen);
   const mobileOpen = useApp((s) => s.mobileOpen);
+  const loadOpen = useApp((s) => s.loadOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const usageTab = useApp((s) => s.settings.usageTab);
@@ -46,7 +54,7 @@ export function UtilityDock() {
   const box = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const open = usageOpen || mobileOpen;
+  const open = usageOpen || mobileOpen || loadOpen;
 
   useEffect(() => {
     // the surfaces have answered this close; the next one takes the keyboard as it always does
@@ -54,6 +62,7 @@ export function UtilityDock() {
     const shut = () => {
       app.store.getState().toggleUsage(false, { keepPageFocus: true });
       app.store.getState().toggleMobile(false, { keepPageFocus: true });
+      app.store.getState().toggleLoad(false, { keepPageFocus: true });
     };
     app.bridge.send({ type: 'term.focus' });
     // the press that opened the panel lands on the tab, which counts as inside; a press anywhere else
@@ -89,13 +98,17 @@ export function UtilityDock() {
           <button className="use-tab" data-testid="usage-tab" aria-expanded={usageOpen} aria-controls="corner-panel"
             title="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter /><span className="use-tab-label">Usage</span></button>
         )}
+        <button className="use-tab" data-testid="load-tab" aria-expanded={loadOpen} aria-controls="corner-panel"
+          title="Load" aria-label="Load" onClick={() => app.store.getState().toggleLoad()}><Pulse /><span className="use-tab-label">Load</span></button>
         <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} title={keyTip(settingsLabel, 'toggleSettings', bindings)} aria-label={settingsLabel}
           onClick={() => app.store.getState().toggleSettings()}><Gear /><span className="use-tab-label">Settings</span>
           {update && <i className="use-status" data-update data-testid="settings-update" aria-hidden="true" />}</button>
       </div>
       {open && (
-        <div className="use-panel" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : 'mobile-panel'} aria-live="polite">
-          {usageOpen ? <><div className="use-panel-title">Plan usage</div><UsagePanel /></> : <MobilePanel />}
+        // the load reads anew every few seconds, which a live region would announce each time
+        <div className="use-panel" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : 'mobile-panel'}
+          data-load={loadOpen || undefined} aria-live={loadOpen ? 'off' : 'polite'}>
+          {usageOpen ? <><div className="use-panel-title">Plan usage</div><UsagePanel /></> : loadOpen ? <><div className="use-panel-title">Load</div><LoadPanel /></> : <MobilePanel />}
         </div>
       )}
     </div>
