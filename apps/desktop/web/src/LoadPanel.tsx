@@ -4,7 +4,7 @@ import { sleepCharacter } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { useLoad } from './load.js';
-import { cpuText, memText } from './loadText.js';
+import { coresText, memText } from './loadText.js';
 import { slotStatus } from './selectors.js';
 
 const Moon = () => (
@@ -30,7 +30,7 @@ function Row({ testid, name, use, of, appRow, children }: { testid: string; name
   return (
     <div className="load-row" data-testid={testid} data-app={appRow || undefined}>
       {name}
-      <span className="load-n">{cpuText(use.cpu)}</span>
+      <span className="load-n">{coresText(use.cpu)}</span>
       <span className="load-n">{memText(use.mem)}</span>
       <span className="load-n">{use.procs}</span>
       <span className="load-acts">{children}</span>
@@ -55,7 +55,7 @@ function RobotRow({ c, use, of }: { c: Character; use: LoadChar; of: number }) {
   );
 }
 
-/** The Svall app and every robot by what they cost the machine, each robot with its Sleep and Delete. */
+/** Every robot and Svall itself by what they cost the machine, each robot with its Sleep and Delete. */
 export function LoadPanel() {
   const load = useLoad(true);
   const characters = useApp((s) => s.fleet.characters);
@@ -73,14 +73,14 @@ export function LoadPanel() {
   return (
     <>
       <div className="load-tot">
-        <Total label="CPU" text={cpuText(load.total.cpu)} testid="load-total-cpu" />
+        <Total label="CPU" text={`${coresText(load.total.cpu)} of ${load.cores} cores`} testid="load-total-cpu" />
         <Total label="RAM" text={memText(load.total.mem)} />
         <Total label="Procs" text={String(load.total.procs)} />
       </div>
-      <div className="load-row load-head"><span /><span className="load-n">cpu</span><span className="load-n">ram</span><span className="load-n">#</span></div>
-      <Row testid="load-app" name={<span className="load-nm">Svall app</span>} use={load.app} of={of} appRow />
+      <div className="load-row load-head"><span /><span className="load-n">cores</span><span className="load-n">ram</span><span className="load-n">#</span></div>
       <div className="load-grp" data-testid="load-robots">Robots <em>{rows.length}</em></div>
       {rows.map((r) => r.row)}
+      <Row testid="load-app" name={<span className="load-nm">Svall itself</span>} use={load.app} of={of} appRow />
     </>
   );
 }

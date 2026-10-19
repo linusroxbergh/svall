@@ -21,7 +21,7 @@ const { useLoad } = await import('../../src/load.js');
 beforeEach(() => {
   call.mockImplementation(answer);
   freshStore();
-  snap = { at: 0, total: use(61, 900 * MB, 14), app: use(30, 500 * MB, 5), chars: { c0: robot(5), c1: robot(20), c2: robot(1, { shellOnly: true }) } };
+  snap = { at: 0, cores: 8, total: use(61, 900 * MB, 14), app: use(30, 500 * MB, 5), chars: { c0: robot(5), c1: robot(20), c2: robot(1, { shellOnly: true }) } };
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -29,12 +29,13 @@ afterEach(() => { vi.useRealTimers(); });
 const shown = async () => { render(<><LoadPanel /><ConfirmSleep /></>); await screen.findByTestId('load-app'); };
 const row = (id: string) => screen.getByTestId(`load-row-${id}`);
 
-test('the Svall app heads the list, and the robots follow by cpu, a robot running only its shell left out', async () => {
+test('the robots come by cpu and Svall itself last, a robot running only its shell left out', async () => {
   snap.codex = use(10);
   await shown();
   const order = screen.getAllByTestId(/^load-(app|codex|row-)/).map((el) => el.dataset.testid);
-  expect(order).toEqual(['load-app', 'load-row-c1', 'load-codex', 'load-row-c0']);
-  expect(screen.getByTestId('load-total-cpu').textContent).toBe('61%');
+  expect(order).toEqual(['load-row-c1', 'load-codex', 'load-row-c0', 'load-app']);
+  expect(screen.getByTestId('load-app').textContent).toContain('Svall itself');
+  expect(screen.getByTestId('load-total-cpu').textContent).toBe('0.61 of 8 cores');
   expect(screen.getByTestId('load-robots').textContent).toBe('Robots 3');
   expect(screen.getByTestId('load-codex').textContent).toContain('Codex server (shared)');
   // the shared server is no robot's to end

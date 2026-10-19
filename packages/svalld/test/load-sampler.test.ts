@@ -90,6 +90,7 @@ describe('LoadSampler', () => {
     expect(s.total.mem).toBe(parts.reduce((n, u) => n + u.mem, 0));
     expect(s.total.cpu).toBeCloseTo(parts.reduce((n, u) => n + u.cpu, 0));
     expect(s.total.procs).toBeGreaterThanOrEqual(3);
+    expect(s.cores).toBeGreaterThan(0);
     load.stop();
   });
 
