@@ -7,6 +7,8 @@ describe('loadText', () => {
     expect(coresText(1240)).toBe('12.4');
     expect(coresText(45.2)).toBe('0.45');
     expect(coresText(0)).toBe('0.00');
+    // rounding to two decimals can reach one core before the switch to one decimal does
+    expect(coresText(99.6)).toBe('1.0');
   });
 
   it('spells memory in MB, or GB from 1 GB', () => {

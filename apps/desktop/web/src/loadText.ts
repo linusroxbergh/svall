@@ -1,7 +1,7 @@
 // cores kept busy, from a percent of one core: two decimals below one core, one above
 export function coresText(pct: number): string {
   const cores = pct / 100;
-  return cores.toFixed(cores < 1 ? 2 : 1);
+  return cores.toFixed(Math.round(cores * 100) < 100 ? 2 : 1);
 }
 
 export function memText(bytes: number): string {
