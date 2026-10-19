@@ -77,4 +77,5 @@ button.load-nm:hover { background: none; color: var(--sand); }
 .load-ib svg { width: 14px; height: 14px; }
 .load-bar { grid-column: 1 / 5; height: 3px; margin-top: calc(-1 * var(--sp-2xs)); overflow: hidden; border-radius: var(--r-pill); background: var(--line-soft); }
 .load-bar i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--sand); }
+.load-row[data-app] { margin-top: var(--sp-lg); }
 .load-row[data-app] .load-bar i { background: var(--sel); }

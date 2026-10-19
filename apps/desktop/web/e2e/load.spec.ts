@@ -1,6 +1,6 @@
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 
-test('the load tab lists the Svall app and the robot, whose row deletes it, and the robot pane shows what it costs', async ({ page, svall }) => {
+test('the load tab lists the robot and Svall itself, whose row deletes it, and the robot pane shows what it costs', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('load') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'busy', command: FAKE_CLAUDE });
   await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].agent?.kind).toBe('claude');
@@ -23,7 +23,7 @@ test('the load tab lists the Svall app and the robot, whose row deletes it, and 
   await expect(panel).toHaveCount(0);
 
   const card = page.getByTestId('side-card');
-  await expect(card.getByTestId('side-cpu')).toHaveText(/^\d+(\.\d)?%$/);
+  await expect(card.getByTestId('side-cpu')).toHaveText(/^\d+\.\d{1,2} cores$/);
   await expect(card.getByTestId('side-ram')).toHaveText(/^\d+(\.\d)? (MB|GB)$/);
   await expect(card.getByTestId('side-procs')).toHaveText(/^[1-9]\d*$/);
 });
