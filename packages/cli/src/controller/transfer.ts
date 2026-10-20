@@ -383,7 +383,7 @@ class Mirror {
   private finish(outcome: EntryOutcome, proof?: { verifiedKey: string; verifiedScan: string }): EntryOutcome {
     const scrubbed = this.scrub(outcome);
     const error = scrubbed.status === 'failed' ? scrubbed.error : scrubbed.status === 'blocked' ? scrubbed.blocker.message : undefined;
-    this.put({ state: scrubbed.status, ...proof, ...(error && { error }) });
+    this.put({ state: scrubbed.status, ...proof, ...(scrubbed.status === 'verified' && { bytes: this.progress.totalBytes }), ...(error && { error }) });
     this.journal.flush();
     return scrubbed;
   }

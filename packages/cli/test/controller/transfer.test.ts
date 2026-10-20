@@ -244,6 +244,22 @@ describe('transfer with a scripted rsync', () => {
     expect(events.filter((e) => e.state === 'transferring').map((e) => e.bytes)).toEqual([0, 10, 20, 30]);
   });
 
+  it('counts a copy by the bytes rsync sent, and a verified entry as all of its bytes, sent now or there before', async () => {
+    const src = tree(tmp(), { 'a.txt': 'aaaa', 'b.txt': 'bbbbbb' });
+    const state = tmp();
+    const entries = [await root({ source: src, claimed: '/far/app' })];
+    const events: EntryProgress[] = [];
+    // the far side already holds b.txt, so rsync sends only a.txt
+    const rsync = fakeRsync((argv) => (argv.includes('--dry-run') ? {} : { lines: ['<f+++++++++ a.txt', '              4  40%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/3)'] }));
+    await transfer(options({ entries, stateDir: state, onProgress: (p) => events.push(p), deps: { run: rsync.run } }));
+    expect(events.map((e) => [e.state, e.bytes, e.totalBytes])).toEqual([['transferring', 0, 10], ['verifying', 4, 10], ['verified', 10, 10]]);
+    expect(readJournal(state).entries.r_app).toMatchObject({ state: 'verified', bytes: 10, totalBytes: 10 });
+
+    const resumed: EntryProgress[] = [];
+    await transfer(options({ entries, stateDir: state, onProgress: (p) => resumed.push(p), deps: { run: fakeRsync().run } }));
+    expect(resumed.map((e) => [e.state, e.bytes])).toEqual([['verifying', 0], ['verified', 10]]);
+  });
+
   it('tells a watcher of a 50,000-file copy as often as of a one-file copy: once per state and second', async () => {
     const src = tree(tmp(), { 'a.txt': 'a' });
     let now = 0;
@@ -696,11 +712,12 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     ssh.execute({ rsync: RSYNC });
     await master.close();
     master = await SshMaster.open({ destination: 'trift', socketDir: ssh.socketDir });
-    const resumed = await transfer({ transactionId: 'tx-cut', roles: PUSH, master, rsync: RSYNC, stateDir: state, entries: [entry] });
+    const events: EntryProgress[] = [];
+    const resumed = await transfer({ transactionId: 'tx-cut', roles: PUSH, master, rsync: RSYNC, stateDir: state, entries: [entry], onProgress: (p) => events.push(p) });
     expect(resumed.status).toBe('verified');
     expect(content(await scan(claimed, []))).toEqual(content(entry.files));
     // what the first pass finished was not sent again
-    const sent = readJournal(state, 'tx-cut').entries.r_app.bytes;
+    const sent = events.find((e) => e.state === 'verifying')!.bytes;
     expect(sent).toBeGreaterThan(0);
     expect(sent).toBeLessThan(12 * 512 * 1024);
   });

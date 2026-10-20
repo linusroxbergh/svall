@@ -20,6 +20,7 @@ export const EntryProgress = z.object({
   // entries rsync has gone through, of those it has listed
   done: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
+  // the size of the files rsync sent, leaving out those already there; a verified entry's is all of totalBytes
   bytes: z.number().int().nonnegative(),
   totalBytes: z.number().int().nonnegative(),
   items: z.number().int().nonnegative(),
