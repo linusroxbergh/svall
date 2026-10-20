@@ -5,11 +5,11 @@
   background: radial-gradient(125% 95% at 50% 8%, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%); }
 /* the dot grid slides with the pan; the gradient and vignette stay put */
 .map::after { content: ""; position: absolute; inset: 0; pointer-events: none;
-  box-shadow: inset 0 0 190px 40px var(--shade-1); }
+  box-shadow: inset 0 0 200px 50px color-mix(in srgb, var(--shade-1) 70%, var(--shade-2)); }
 .map-overlay { position: absolute; inset: 0; pointer-events: none; }
 .map-grain { position: absolute; inset: 0; pointer-events: none;
   background: url('../assets/map-grain.png') repeat, radial-gradient(125% 95% at 50% 8%, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%);
-  background-size: 128px 128px, auto; background-blend-mode: soft-light, normal; opacity: .42; }
+  background-size: 128px 128px, auto; background-blend-mode: soft-light, normal; opacity: .46; }
 .map-grid { position: absolute; inset: -200px; pointer-events: none;
   background-image: radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.4px);
   background-size: var(--cell) var(--cell); background-position: var(--gx, 0) var(--gy, 0); }

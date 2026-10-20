@@ -2,9 +2,9 @@
   color-scheme: dark;
   --sea-0: #1E2A38;
   --sea-1: #2A3A4C;
-  --grid: rgba(220,205,173,.055);
-  --contour: rgba(236,220,186,.12);
-  --contour-2: rgba(236,220,186,.05);
+  --grid: rgba(220,205,173,.065);
+  --contour: rgba(236,220,186,.14);
+  --contour-2: rgba(236,220,186,.06);
 
   --sand: #E6D8B8;
   --sand-deep: #B9AA86;
@@ -129,12 +129,12 @@
   /* islands: the cream card, its disc, the sea and the lamp */
   --cream: #FFFDF4;
   --white: #FFFFFF;     /* a disc's shine, and the ground a QR code needs */
-  --card-0: #F0E9D8; --card-1: #E6DCC5; --card-2: #D9CCAF;
+  --card-0: #EDE5CF; --card-1: #E2D7BE; --card-2: #D4C6A7;
   --card-tint: #786844; --card-band: #B4A175;
-  --disc-0: #F8F7F1; --disc-1: #F0EAD8; --disc-2: #D6C9AD;
+  --disc-0: #F6F4EA; --disc-1: #ECE5D1; --disc-2: #D3C6A8;
   --shell-dim: #9AA7B2;
   --lamp: #FFE28C;
-  --map-0: #516579; --map-1: #3C4E5E; --map-2: #2B3645;
+  --map-0: #4B5F72; --map-1: #374959; --map-2: #26303D;
 
   /* code */
   --syntax-string: #9BBA86; --syntax-op: #BAD1A2;
