@@ -364,7 +364,7 @@ describe('doctor on Linux', () => {
   const show = showOf(unit);
   const gateway = showOf('svall-gateway.service');
   const running = 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n';
-  const linux = (commands: Record<string, string | Error> = {}, o: { daemonEnv?: Record<string, string>; files?: Record<string, string> } = {}) => fake({
+  const linux = (commands: Record<string, string | Error> = {}, o: { daemonEnv?: Record<string, string>; files?: Record<string, string>; found?: AgentKind[] } = {}) => fake({
     platform: 'linux',
     commands: {
       [show]: running,
@@ -438,6 +438,25 @@ describe('doctor on Linux', () => {
 
     const absent = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
     expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });
+  });
+
+  it('warns when AppArmor keeps Codex\'s sandbox from starting, naming the bwrap profile that lets it', async () => {
+    const restrict = { '/proc/sys/kernel/apparmor_restrict_unprivileged_userns': '1\n' };
+    const sandbox = 'codex sandbox -- true';
+    const denied = Object.assign(new Error(`Command failed: ${sandbox}\nbwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n`), { code: 1 });
+    const blocked = byName(await doctor(priv, linux({ [sandbox]: denied }, { files: restrict, found: ['codex'] }).deps));
+    expect(blocked['codex sandbox']).toMatchObject({
+      status: 'warn',
+      detail: 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex character asks before each one: '
+        + 'sudo apt install bubblewrap apparmor-profiles, sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
+    });
+    expect(byName(await doctor(priv, linux({ [sandbox]: '' }, { files: restrict, found: ['codex'] }).deps))['codex sandbox'].status).toBe('ok');
+
+    const open = linux({}, { files: { '/proc/sys/kernel/apparmor_restrict_unprivileged_userns': '0\n' }, found: ['codex'] });
+    expect(byName(await doctor(priv, open.deps))['codex sandbox']).toMatchObject({ status: 'skip', detail: 'AppArmor does not restrict user namespaces here' });
+    expect(open.calls).not.toContain(sandbox);
+    expect(byName(await doctor(priv, linux({}, { files: restrict }).deps))['codex sandbox']).toMatchObject({ status: 'skip', detail: 'not installed' });
+    expect(byName(await doctor(priv, fake({ found: ['codex'], files: restrict }).deps))['codex sandbox']).toBeUndefined();
   });
 
   it('names the apt package when tmux or gh is missing', async () => {

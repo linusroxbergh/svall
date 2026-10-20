@@ -311,6 +311,23 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
 }
 
+// Codex's documented Ubuntu 24.04 fix (learn.chatgpt.com/docs/sandboxing): the profile that lets /usr/bin/bwrap make user namespaces
+const BWRAP_PROFILE = 'sudo apt install bubblewrap apparmor-profiles, sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+
+// Codex runs each command in a bwrap user namespace, which AppArmor's restriction denies a program it has no profile for
+async function codexSandbox(d: DoctorDeps): Promise<Check> {
+  const name = 'codex sandbox';
+  if (!d.found.includes('codex')) return { name, status: 'skip', detail: 'not installed' };
+  if (d.read('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')?.trim() !== '1') return { name, status: 'skip', detail: 'AppArmor does not restrict user namespaces here' };
+  try {
+    await d.run('codex', ['sandbox', '--', 'true'], { path: d.agentPath });
+    return { name, status: 'ok', detail: 'starts, with AppArmor restricting user namespaces' };
+  } catch (e) {
+    const why = (e as Error).message.trim().split('\n').at(-1);
+    return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${why}), so a Codex character asks before each one: ${BWRAP_PROFILE}` };
+  }
+}
+
 export function opencodeCheck(d: Pick<DoctorDeps, 'opencode' | 'exists' | 'read' | 'found' | 'integrations'>): Check {
   if (d.integrations && !d.integrations.includes('opencode')) return { name: 'opencode plugin', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('opencode') && !d.exists(d.opencode.dir)) return { name: 'opencode plugin', status: 'skip', detail: 'not installed' };
@@ -352,6 +369,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
     hooks(d),
     await codexCheck(d),
+    ...(linux ? [await codexSandbox(d)] : []),
     opencodeCheck(d),
     shims(d),
     ...(linux ? [] : [plistCheck(t, d)]),

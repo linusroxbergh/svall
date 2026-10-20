@@ -217,16 +217,16 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
 
-// the companion doctor's check of each agent's Svall hooks, whose detail ends with what to do there
-const HOOK_CHECKS = { claude: 'hooks', codex: 'codex hooks', opencode: 'opencode plugin' } as const satisfies Record<AgentKind, string>;
+// the companion doctor's checks of each agent's Svall hooks and of Codex's sandbox, whose details end with what to do there
+const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['codex hooks', 'codex sandbox'], opencode: ['opencode plugin'] };
 
 /**
  * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of, and the
- * companion doctor's check of its hooks: every one of them is something to go and do, never something that stops setup.
+ * companion doctor's checks of that agent: every one of them is something to go and do, never something that stops setup.
  */
 async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<void> {
   const PATH = unitPath({ runtime: releaseRuntime(path.posix.join(o.svallBase, 'current')), homedir: o.home, prefix: o.svallBase });
-  for (const kind of Object.keys(HOOK_CHECKS) as (keyof typeof HOOK_CHECKS)[]) {
+  for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
       const call = (args: string[]) => master.run(['env', shq(`PATH=${PATH}`), a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
@@ -239,10 +239,10 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
       const login = await call(a.loginArgs);
       if (login.code === 0 && a.loggedIn(login.stdout)) {
-        const hooks = o.report.checks.find((c) => c.name === HOOK_CHECKS[kind]);
-        if (hooks?.status !== 'warn' && hooks?.status !== 'fail') return { value: undefined, detail: `${version}, logged in` };
-        const at = hooks.detail.lastIndexOf(': ');
-        return todo(`${version}, logged in; the ${hooks.name} check there says ${hooks.detail}`, at < 0 ? hooks.detail : hooks.detail.slice(at + 2));
+        const check = o.report.checks.find((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
+        if (!check) return { value: undefined, detail: `${version}, logged in` };
+        const at = check.detail.lastIndexOf(': ');
+        return todo(`${version}, logged in; the ${check.name} check there says ${check.detail}`, at < 0 ? check.detail : check.detail.slice(at + 2));
       }
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);
     });

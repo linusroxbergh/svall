@@ -293,6 +293,20 @@ describe('host add', () => {
     expect(registry.get('trift')?.id).toBe(REMOTE);
   });
 
+  it('names the AppArmor profile Codex\'s sandbox needs there, from the companion\'s own doctor', async () => {
+    const fix = 'sudo apt install bubblewrap apparmor-profiles, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex character asks before each one: ${fix}`;
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'ok', detail: 'trusted' }, { name: 'codex sandbox', status: 'warn', detail: blocked }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('codex').at(-1)).toMatchObject({
+      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked}`, action: `ssh trift.test, then ${fix}`,
+    });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok' });
+  });
+
   it('writes the registry record under the machine id the companion reports', async () => {
     healthy();
     const d = await daemon();
