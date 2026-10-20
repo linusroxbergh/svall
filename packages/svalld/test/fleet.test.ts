@@ -572,6 +572,8 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].revive).toEqual({ command: 'claude --resume 9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e' });
     await expect(fleet.run(c.id, 'x', false)).rejects.toBeInstanceOf(Dormant);
     await expect(fleet.run(c.id, 'x', false)).rejects.toThrow(`${c.name} is dormant; revive it first`);
+    // a wait reports a dormant character as it does a deleted one: without a terminal, the status will not come
+    expect(await fleet.waitFor(c.id, ['idle'], 100)).toBe('gone');
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd' } });
     store.update((d) => { d.characters[c.id].revive = { command: 'echo revived' }; });
     const r = await fleet.reviveCharacter(c.id);

@@ -66,4 +66,16 @@ describe('editContext', () => {
     expect(editContext([{ ...stored, pinned: true }], { ...none, unpin: ['~/notes/spec.md'] })).toEqual([stored]);
     expect(editContext([stored], { ...none, drop: ['~/notes/spec.md'] })).toEqual([]);
   });
+  it('matches a path with a trailing slash and a view inside a PR to the stored item', () => {
+    const folder: ContextItem = { kind: 'folder', ref: path.join(os.homedir(), 'notes'), label: '', source: 'manual' };
+    const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/a/b/pull/7', label: '#7', source: 'manual' };
+    expect(editContext([folder, pr], { ...none, drop: ['~/notes/'] })).toEqual([pr]);
+    expect(editContext([folder, pr], { ...none, pin: ['https://github.com/a/b/pull/7/files'] })).toEqual([folder, { ...pr, pinned: true }]);
+    expect(editContext([folder, { ...pr, pinned: true }], { ...none, unpin: ['HTTPS://GitHub.com/a/b/pull/7#issuecomment-1'] })).toEqual([folder, pr]);
+  });
+  it('refuses a pin, unpin or drop ref that matches no item', () => {
+    expect(() => editContext([auto, a], { ...none, pin: ['https://nowhere'] })).toThrow('--pin https://nowhere matches no context item');
+    expect(() => editContext([auto, a], { ...none, unpin: ['https://a', '~/notes/'] })).toThrow('--unpin ~/notes/ matches no context item');
+    expect(() => editContext([auto], { ...none, context: ['https://b'], drop: ['https://a'] })).toThrow('--drop https://a matches no context item');
+  });
 });

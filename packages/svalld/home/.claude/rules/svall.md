@@ -52,7 +52,7 @@ control buttons; each finishes its task and stays `done` until closed.
 | start a Claude one on another model | `svall char new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472"` |
 
 `svall char wait` exits 0 on a matched state, 2 on timeout and 3 when the
-robot is gone, so a loop can branch on the exit code.
+robot has no terminal (deleted or dormant), so a loop can branch on the exit code.
 
 `svall char run` prints `delivered`, or `queued` while the user has a draft or a
 dialog in that terminal: it goes in once they are gone and the agent is between

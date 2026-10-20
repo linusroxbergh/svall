@@ -298,7 +298,7 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
     svall island create feature
     svall char new --island feature --cwd ~/repo --claude
     svall char run <id> "review the failing tests in src/api"
-    svall char wait <id> --until done,blocked     # exits 0 on a match, 2 on timeout, 3 when gone
+    svall char wait <id> --until done,blocked     # exits 0 on a match, 2 on timeout, 3 when it has no terminal (deleted or dormant)
     svall char read <id> --transcript --lines 20
     svall char revive <id>                        # a dormant character, resumed
     svall char show <id>                          # the brief its agent gets
