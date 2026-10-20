@@ -166,7 +166,11 @@ export function List() {
   const noun = profile ? 'profile' : 'doc';
   // a filter that leaves one file needs no choosing — CLAUDE.md is the usual one — so the pane shows it
   const only = groups.length === 1 && groups[0].items.length === 1 ? groups[0].items[0] : undefined;
-  useEffect(() => { if (only && opensItself(only)) { openedItself(); void chooseResource(deps(), only); } }, [source?.rootId, what, only?.id]);
+  useEffect(() => {
+    if (!only || !opensItself(only)) return;
+    if (document.activeElement?.matches('.res-find')) openedItself();
+    void chooseResource(deps(), only);
+  }, [source?.rootId, what, only?.id]);
   return (
     <div className="res-list" data-testid="resources-list">
       <input className="res-find" data-testid="resources-filter" placeholder="filter" aria-label="Filter resources" value={query} onChange={(e) => setQuery(e.target.value)} />

@@ -6,7 +6,7 @@ type At = { col: number; row: number };
 type Step = At | 'editor' | undefined;
 
 // A row the arrows picked shows its file without sending the keys after it, so the walk can go on, and so
-// does a file the list opened by itself, so a filter being typed keeps them; a row the pointer picked hands
+// does a file the list opened under a filter being typed, which keeps them; a row the pointer picked hands
 // them to the editor as it always has. The pane asks once, as it opens the file.
 let walked = false;
 export const takesKeys = (): boolean => { const was = walked; walked = false; return !was; };

@@ -207,3 +207,28 @@ test('a row the pointer picks still hands the keys to its file', async () => {
   expect(screen.getByTestId('editor').dataset.path).toBe('AGENTS.md');
   expect(document.activeElement?.closest('.editor')).not.toBeNull();
 });
+
+test('a file the list opens on its own under a chip leaves nothing behind that a later Enter pick would trip on', async () => {
+  const C = 'r:/u/.claude';
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [
+    { kind: 'instructions' as const, items: [{ id: 'instructions:CLAUDE.md', name: 'CLAUDE.md', reveal: '/u/.claude/CLAUDE.md', target: 'file' as const, open: { rootId: C, path: 'CLAUDE.md' } }] },
+    { kind: 'skills' as const, items: [{ id: 'skills:tidy', name: 'tidy', reveal: '/u/.claude/skills/tidy', target: 'folder' as const, open: { rootId: C, path: 'skills/tidy/SKILL.md', folder: 'skills/tidy' } }] },
+  ] };
+  call.mockImplementation((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: '/u/.claude' } : {}));
+  store.getState().setResources([src]);
+  store.getState().toggleResources(true, { where: C, what: 'all' });
+  render(<OnMap />);
+  await act(async () => {});
+  const claude = screen.getByTestId('resources-item-instructions-CLAUDE.md');
+  fireEvent.pointerDown(claude);
+  await act(async () => { fireEvent.click(claude); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
+  // the chip leaves one file, the one already shown, so the pane mounts nothing
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-what-instructions')); });
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-what-all')); });
+  const tidy = screen.getByTestId('resources-item-skills-tidy');
+  tidy.focus();
+  await act(async () => { fireEvent.click(tidy); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('skills/tidy/SKILL.md');
+  expect(document.activeElement?.closest('.editor')).not.toBeNull();
+});
