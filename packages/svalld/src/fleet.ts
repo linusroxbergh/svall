@@ -789,7 +789,9 @@ export class Fleet extends EventEmitter<Events> {
 
   async onSocketEvent(e: SocketEvent): Promise<string | undefined> {
     const reply = await this.agentEvents.apply(e);
-    if ('hook' in e && e.hook.name === 'SessionStart' && e.hook.pid && e.hook.term !== 2) void this.rememberFlags(e.hook.charId, e.hook.pid);
+    // only a start the character took: one dropped as a server's or a nested run's reads nothing
+    if ('hook' in e && e.hook.name === 'SessionStart' && e.hook.pid && e.hook.term !== 2
+      && this.deps.store.state.characters[e.hook.charId]?.agent?.pid === e.hook.pid) void this.rememberFlags(e.hook.charId, e.hook.pid);
     return reply;
   }
 
