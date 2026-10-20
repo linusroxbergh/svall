@@ -78,8 +78,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
         if !ghostty_surface_binding_action(surface, action, UInt(action.utf8.count)) { NSLog("ghostty refused %@", action) }
     }
 
-    /// The last line with text in it, scrollback included: what a command that just ended said last. The banner
-    /// login(1) prints without ~/.hushlogin is not the command's.
+    /// The last line with text in it, scrollback included: what a command that just ended said last.
     func lastLine() -> String? {
         guard let surface else { return nil }
         var text = ghostty_text_s()
@@ -89,8 +88,17 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
             rectangle: false)
         guard ghostty_surface_read_text(surface, all, &text) else { return nil }
         defer { ghostty_surface_free_text(surface, &text) }
-        let lines = String(cString: text.text).split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
-        return lines.last { !$0.isEmpty && !$0.hasPrefix("Last login:") }
+        return Self.lastLine(of: String(cString: text.text))
+    }
+
+    /// The banner login(1) prints without ~/.hushlogin is not the command's, nor the line ssh ends a connection with:
+    /// a far tmux that refused to attach said why on the line before.
+    static func lastLine(of text: String) -> String? {
+        let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+        return lines.last {
+            !$0.isEmpty && !$0.hasPrefix("Last login:")
+                && !(($0.hasPrefix("Shared connection to ") || $0.hasPrefix("Connection to ")) && $0.hasSuffix(" closed."))
+        }
     }
 
     func setOccluded(_ occluded: Bool) {
