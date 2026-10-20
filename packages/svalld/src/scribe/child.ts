@@ -21,7 +21,7 @@ export function runChild(
     const fail = (e: Error) => { proc.kill('SIGKILL'); reject(e); };
     const timer = setTimeout(() => fail(new Error(`${o.label} timed out after ${timeoutMs}ms`)), timeoutMs);
     const abort = () => fail(new Error(`${o.label} stopped`));
-    o.signal?.addEventListener('abort', abort, { once: true });
+    if (o.signal?.aborted) abort(); else o.signal?.addEventListener('abort', abort, { once: true });
     const settle = () => { clearTimeout(timer); o.signal?.removeEventListener('abort', abort); };
     proc.stdout.setEncoding('utf8').on('data', (d: string) => { out += d; });
     proc.stderr.setEncoding('utf8').on('data', (d: string) => { err += d; });

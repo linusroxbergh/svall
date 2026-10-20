@@ -65,6 +65,8 @@ export class Fleet extends EventEmitter<Events> {
   // the windows of agents ended for idleness or put to sleep, until tmux has closed them, the agent has exited and a
   // sleep has ended what it started
   private ending = new Map<string, Promise<void>>();
+  // the window names of characters being closed, which a listing meanwhile must not adopt
+  private closing = new Set<string>();
   // when the user last looked at each character's main terminal
   private seen = new Map<string, number>();
   private openingSecond = new Map<string, Promise<Character>>();
@@ -181,10 +183,10 @@ export class Fleet extends EventEmitter<Events> {
     this.link.continuePane(id);
   }
 
-  // the windows tmux has, less those still closing for idleness or a sleep, which are not to be taken back
+  // the windows tmux has, less those still closing for idleness, a sleep or a close, which are not to be taken back
   private async listWindows(): Promise<LiveWindow[]> {
     const ending = new Set(this.ending.keys());
-    return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
+    return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name) && !this.closing.has(w.name));
   }
 
   /** Each character's pane pids, the Svall app's pid and svalld's own, for attributing `procs`. */
@@ -205,11 +207,11 @@ export class Fleet extends EventEmitter<Events> {
     return (this.deps.readProcs ?? (() => readProcs(fs.existsSync(hookHelper) ? hookHelper : undefined)))();
   }
 
-  // `c` is already out of the state, so its windows' panes join the scope by hand
+  // `c` is already out of the state, or closing, so its windows' panes join the scope by hand
   private async owned(c: Character, procs: LiveProc[]): Promise<LiveProc[]> {
     const scope = await this.loadScope(procs);
     const ids = new Set([c.tmux?.windowId, c.second?.tmux.windowId]);
-    scope.panes.set(c.id, (await this.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
+    scope.panes.set(c.id, (await this.deps.tmux.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
     // svalld, its tmux server and the app may carry a robot's marks but are never the robot's to end
     const keep = new Set([...scope.own, scope.appPid]);
     return (attribute(procs, scope).chars.get(c.id) ?? []).filter((p) => !keep.has(p.pid));
@@ -568,10 +570,16 @@ export class Fleet extends EventEmitter<Events> {
   async closeCharacter(id: string): Promise<void> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.char(id);
+    for (const name of [id, secondName(id)]) this.closing.add(name);
     this.deps.store.update((d) => { delete d.characters[id]; });
-    const victims = await this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; });
-    if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
-    if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    let victims: LiveProc[] = [];
+    try {
+      victims = await this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; });
+      if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
+      if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    } finally {
+      for (const name of [id, secondName(id)]) this.closing.delete(name);
+    }
     void endProcs(victims, () => this.readLive(), this.deps.endOpts).catch((e) => this.deps.log.error(`end ${id}: ${String(e)}`));
     // nothing the fleet keeps outside the state outlives the character
     this.seen.delete(id);
@@ -671,7 +679,7 @@ export class Fleet extends EventEmitter<Events> {
         const cur = d.characters[id];
         if (cur?.tmux?.windowId === w.windowId) { delete cur.tmux; if (c.revive) cur.revive = c.revive; }
       });
-      await this.deps.tmux.killWindow(w.windowId);
+      await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`revive ${id}: ${String(k)}`));
       throw e;
     }
     return this.char(id);

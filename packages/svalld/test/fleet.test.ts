@@ -1119,6 +1119,24 @@ runIf('Fleet', () => {
     expect(Object.keys(store.state.characters)).toHaveLength(crew);
   });
 
+  it('does not adopt the windows of a character whose close is reading the processes', async () => {
+    const reading = { hold: Promise.resolve() };
+    const { fleet, store } = await boot({ pollMs: 60_000, readProcs: async () => { await reading.hold; return []; } });
+    const crew = Object.keys(store.state.characters).length;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the close holds its windows until it has read what runs in them; a recovery reconciles meanwhile
+    let release!: () => void;
+    reading.hold = new Promise<void>((r) => { release = r; });
+    const closing = fleet.closeCharacter(c.id);
+    await waitFor(() => !store.state.characters[c.id]);
+    await fleet.reconcileNow();
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+    release();
+    await closing;
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+  });
+
   it('keeps an agent that reported in while a poll listed its pane at a shell', async () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
