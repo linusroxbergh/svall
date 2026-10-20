@@ -56,7 +56,9 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.characters));
   const secondNames = new Set(Object.keys(state.characters).map(secondName));
-  const strays = live.filter((w) => !knownIds.has(w.name) && !secondNames.has(w.name));
+  // a window held, when the listing was taken, by a character closed since goes with it, and is nobody's to adopt
+  const held = new Set([...before].filter(([id]) => !knownIds.has(id)).flatMap(([, b]) => [b.main, b.second]));
+  const strays = live.filter((w) => !knownIds.has(w.name) && !secondNames.has(w.name) && !held.has(w.windowId));
   // a stray named like a character id keeps that id, so the SVALL_CHAR_ID its agent carries still reaches it
   const taken = new Set(knownIds);
   const strayIds = strays.map((w) => {

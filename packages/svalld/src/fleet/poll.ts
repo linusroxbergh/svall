@@ -94,6 +94,8 @@ export class Poll {
 
   private async tick(): Promise<void> {
     const before = snapshot(this.deps.store.state);
+    const activeAt = new Map(Object.values(this.deps.store.state.characters)
+      .flatMap((c) => [[c.id, c.agent?.lastActivityAt], [secondName(c.id), c.second?.agent?.lastActivityAt]]));
     const live = await this.deps.listWindows();
     // a stop while tmux answered has ended what the listing shows
     if (this.stopped) return;
@@ -107,6 +109,8 @@ export class Poll {
     const silent: { id: string; pid: number }[] = [];
     // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
     const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
+      // an agent that reported in while tmux answered is not the one the listing shows at a shell
+      if (slot.agent && slot.agent.lastActivityAt !== activeAt.get(key)) { this.shellStreak.delete(key); return; }
       if (slot.agent && isShellCommand(command, this.deps.config.shell) && !suspended.has(slot.agent.pid ?? 0)) {
         const n = (this.shellStreak.get(key) ?? 0) + 1;
         this.shellStreak.set(key, n);

@@ -61,6 +61,8 @@ export class Scribe {
   private lastStart = -Infinity;
   // the last sweep asked for, which runs after any before it
   private sweeping?: { key: string; done: Promise<string[]> };
+  private stopped = false;
+  private aborter = new AbortController();
 
   // what a transcript holds at a daemon start was there for the passes before it; only what it grows by is new
   constructor(private deps: Deps) {
@@ -72,6 +74,12 @@ export class Scribe {
   /** Drops what the scribe remembers of a character that is gone. */
   forget(id: string): void {
     this.seen.delete(id);
+  }
+
+  /** Starts no more passes and ends the one running; nothing a pass answers from here on reaches the fleet. */
+  stop(): void {
+    this.stopped = true;
+    this.aborter.abort();
   }
 
   private now(): number {
@@ -89,7 +97,7 @@ export class Scribe {
 
   // called on every fleet poll: queue what is due, and start the next pass once the last one is done and spaced
   tick(): void {
-    if (this.off() || this.sweeping) return;
+    if (this.stopped || this.off() || this.sweeping) return;
     const now = this.now();
     for (const id of Object.keys(this.deps.store.state.characters)) {
       const job: Job = { kind: 'char', id };
@@ -157,11 +165,12 @@ export class Scribe {
   }
 
   private async safe(job: Job, namesOnly?: boolean): Promise<string[]> {
-    if (this.off()) return [];
+    if (this.stopped || this.off()) return [];
     if (job.kind === 'char') this.active.add(job.id);
     try {
       return job.kind === 'char' ? await this.passCharacter(job.id, namesOnly) : await this.passIsland(job.id);
     } catch (e) {
+      if (this.stopped) return [];
       const what = job.kind === 'char' ? this.deps.store.state.characters[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
       const { message: head, cause } = e as Error;
       // the child's stderr is shown, and kept out of the log a tester pastes into a bug report
@@ -175,7 +184,9 @@ export class Scribe {
   }
 
   private async ask(system: string, prompt: string): Promise<string> {
-    const text = await this.deps.run(system, prompt);
+    const text = await this.deps.run(system, prompt, this.aborter.signal);
+    // an answer that came as the fleet stopped is not written, nor is the pass's failure
+    if (this.stopped) throw new Error('the scribe has stopped');
     if (this.deps.store.state.scribeError) this.deps.store.update((d) => { delete d.scribeError; });
     return text;
   }

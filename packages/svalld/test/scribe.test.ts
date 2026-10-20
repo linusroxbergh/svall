@@ -13,7 +13,7 @@ import { cleanHomes, makeHome } from './helpers.js';
 const T0 = 1_000_000_000;
 const settle = async () => { for (let n = 0; n < 5; n++) await new Promise((r) => setImmediate(r)); };
 
-type Call = { system: string; prompt: string };
+type Call = { system: string; prompt: string; signal?: AbortSignal };
 
 function world(answers: (call: Call) => string | Promise<string>, brief: (island: Island, character: Character) => string = (i, c) => renderBrief(i, c), log: Logger = silentLogger, awake?: () => Promise<boolean>) {
   const home = makeHome();
@@ -22,7 +22,7 @@ function world(answers: (call: Call) => string | Promise<string>, brief: (island
   const calls: Call[] = [];
   const scribe = new Scribe({
     store, log, now: () => now, brief, awake,
-    run: async (system, prompt) => { calls.push({ system, prompt }); return answers({ system, prompt }); },
+    run: async (system, prompt, signal) => { calls.push({ system, prompt, signal }); return answers({ system, prompt }); },
   });
   store.update((d) => { delete d.scribeAsk; });
   const island = (id: string, extra: Partial<Island> = {}) => store.update((d) => {
@@ -503,5 +503,41 @@ describe('Scribe, swept', () => {
     expect(one).toBe(two);
     expect(one).toEqual(['golden heron  failed: no model', 'island i1  failed: no model']);
     expect(w.calls).toHaveLength(2);
+  });
+});
+
+describe('Scribe.stop', () => {
+  it('aborts the pass running, writes nothing it answers after, and starts no more', async () => {
+    let answer!: (text: string) => void;
+    const w = world(() => new Promise<string>((r) => { answer = r; }));
+    w.island('i1');
+    w.char('a');
+    w.scribe.tick();
+    await settle();
+    expect(w.calls).toHaveLength(1);
+    w.scribe.stop();
+    expect(w.calls[0].signal?.aborted).toBe(true);
+    answer(JSON.stringify({ note: 'late' }));
+    await settle();
+    expect(w.store.state.characters.a.note).toBe('');
+    expect(w.store.state.scribeError).toBeUndefined();
+    w.advance(SPACING_MS);
+    w.char('b');
+    w.scribe.tick();
+    await settle();
+    expect(w.calls).toHaveLength(1);
+  });
+
+  it('records no failure from a pass the stop cut off', async () => {
+    let fail!: (e: Error) => void;
+    const w = world(() => new Promise<string>((_, reject) => { fail = reject; }));
+    w.island('i1');
+    w.char('a');
+    w.scribe.tick();
+    await settle();
+    w.scribe.stop();
+    fail(new Error('claude -p stopped'));
+    await settle();
+    expect(w.store.state.scribeError).toBeUndefined();
   });
 });
