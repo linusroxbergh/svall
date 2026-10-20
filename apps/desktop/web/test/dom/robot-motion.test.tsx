@@ -15,6 +15,7 @@ window.matchMedia = ((media: string) => ({
 })) as never;
 
 const removes: (() => void)[] = [];
+const TIMELINE = {};
 
 // a robot on a card with the given status; an action it plays moves two parts and lasts until end() is called
 function robot(status: string) {
@@ -23,12 +24,12 @@ function robot(status: string) {
   card.innerHTML = '<svg data-idle="blink" data-work="type"></svg>';
   document.body.append(card);
   const bot = card.firstElementChild as SVGElement;
-  const r = { bot, parts: [] as { finished: Promise<void>; playbackRate: number }[], end: () => {} };
+  const r = { bot, parts: [] as { finished: Promise<void>; playbackRate: number; timeline: object | null }[], end: () => {} };
   Object.assign(bot, {
     getAnimations: () => {
       if (!bot.dataset.act) return [];
       const finished = new Promise<void>((done) => { r.end = done; });
-      r.parts = [{ finished, playbackRate: 1 }, { finished, playbackRate: 1 }];
+      r.parts = [{ finished, playbackRate: 1, timeline: TIMELINE }, { finished, playbackRate: 1, timeline: TIMELINE }];
       return r.parts;
     },
   });
@@ -77,6 +78,25 @@ describe('the robot scheduler', () => {
     expect(r.bot.dataset.act).toBeUndefined();
     await tick(2);
     expect(r.bot.dataset.act).toBe('blink');
+  });
+
+  it('lets go of each part\'s timeline once its action ends, played out or stopped', async () => {
+    const r = robot('idle');
+    setMotion(true);
+    await tick();
+    const played = r.parts;
+    expect(played.map((a) => a.timeline)).toEqual([TIMELINE, TIMELINE]);
+    r.end();
+    await tick();
+    expect(played.map((a) => a.timeline)).toEqual([null, null]);
+    await tick(LONGEST);
+    const stopped = r.parts;
+    expect(stopped).not.toBe(played);
+    setMotion(false);
+    // the cancel settles the stopped action's animations
+    r.end();
+    await tick();
+    expect(stopped.map((a) => a.timeline)).toEqual([null, null]);
   });
 
   it('rests its centre give or take a tenth, after a first rest anywhere up to the centre', async () => {

@@ -28,6 +28,8 @@ async function play(bot: SVGElement, run: Run): Promise<void> {
     const rate = 1 / jitter();
     for (const a of parts) a.playbackRate = rate;
     await Promise.all(parts.map((a) => a.finished.catch(() => {})));
+    // macOS 26's WebKit never frees an Animation that keeps its timeline, nor the CSS animation behind it
+    for (const a of parts) a.timeline = null;
     // stopped or removed while it played
     if (bots.get(bot) !== run) return;
     delete bot.dataset.act;
