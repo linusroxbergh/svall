@@ -28,12 +28,13 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
 // a revive's SessionStart gets the whole brief, so what the session was told before is never read again
 export const dropBrief = (c: Character): void => { if (c.agent) delete c.agent.brief; };
 
+// `flags` are the launch flags ps showed the agent's process; without them, the ones remembered at its start
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.tmux;
   delete c.hint;
   delete c.codexDaemon;
   dropBrief(c);
-  c.revive = { command: reviveCommand(c, flags) };
+  c.revive = { command: reviveCommand(c, flags ?? c.agent?.flags) };
   // its monitors and subagents die with it, which a finished turn says nothing of
   if (c.agent?.monitors || c.agent?.subagents) {
     if (c.revive.command) c.revive.interrupted = true;
@@ -49,10 +50,11 @@ export function markDormant(c: Character, flags?: string[]): void {
 }
 
 // an agent resting this long, since its last turn or the user's last look, with nothing running for it and nothing
-// the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets
+// the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets.
+// A second terminal is the user's own shell beside the agent, which only a sleep closes
 export function drowsy(c: Character, now: number, afterMs: number, seenAt = 0): boolean {
   const a = c.agent;
-  if (!c.tmux || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
+  if (!c.tmux || c.second || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
   return (a.status === 'idle' || a.status === 'done') && now - Math.max(a.lastActivityAt, seenAt) >= afterMs;
 }
 
@@ -91,8 +93,7 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
   const words = args.trim().split(/\s+/);
   if (!runsAgent(args, kind)) return undefined;
   let i = path.basename(words[0]) === 'node' ? 2 : 1;
-  const resume = kind === 'codex' && words[i] === 'resume';
-  if (resume) i++;
+  let resume = false;
   const out: string[] = [];
   // ps joins argv with spaces, so a prompt's words can pass for flags and one value can pass for several words: the
   // options end at `--` or the first bare word, past which no word may look like a flag
@@ -100,7 +101,9 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
     const w = words[i];
     // svalld puts an OpenCode prompt last, and its words can pass for flags
     if (w === '--' || (kind === 'opencode' && w === '--prompt')) return out;
-    // codex resume takes its session as a word among the options
+    // codex takes resume or fork after its global flags, as the character's zsh puts --no-daemon first, and the
+    // session as a word among the options
+    if (kind === 'codex' && !resume && (w === 'resume' || w === 'fork')) { resume = true; continue; }
     if (resume && isSessionId(w)) continue;
     if (!w.startsWith('-')) return words.slice(i).some((x) => x.startsWith('-')) ? undefined : out;
     if (keptSwitches.includes(w)) { out.push(w); continue; }
@@ -140,15 +143,23 @@ export function sleepFlags(c: Character, procs: Pick<Proc, 'pid' | 'args'>[]): s
 
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };
 
-/** Every process, as ps lists them; empty when ps fails. */
+/** Every process, as ps lists them; throws when ps fails or outstays 5 s. */
 export async function processes(): Promise<Proc[]> {
-  try {
-    const { stdout } = await exec('ps', ['-axww', '-o', 'pid=,ppid=,pgid=,args='], { timeout: 5_000, maxBuffer: 64 * 1024 * 1024 });
-    return stdout.split('\n').flatMap((line) => {
-      const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-      return m ? [{ pid: Number(m[1]), ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] }] : [];
-    });
-  } catch { return []; }
+  const { stdout } = await exec('ps', ['-axww', '-o', 'pid=,ppid=,pgid=,args='], { timeout: 5_000, maxBuffer: 64 * 1024 * 1024 });
+  return stdout.split('\n').flatMap((line) => {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    return m ? [{ pid: Number(m[1]), ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] }] : [];
+  });
+}
+
+/** Remembers on `c`'s agent the launch flags a resume repeats, read off its process among `procs`, for a dormancy
+ *  that finds no process to read them from. */
+export function rememberFlags(c: Character, procs: Proc[]): void {
+  const a = c.agent;
+  const proc = a && procs.find((p) => p.pid === a.pid);
+  if (!a || !proc) return;
+  const flags = startFlags(proc.args, a.kind);
+  if (flags?.length) a.flags = flags; else delete a.flags;
 }
 
 // the Bash tool starts each command in a process group of its own, while MCP servers share the agent's: a descendant
@@ -222,7 +233,8 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
   // an agent ended for idleness or a sleep can take a minute to exit, and the server's end reaches it anyway
   const settled = Promise.all([...o.ending.values(), ...reviving.values()].map((p) => p.catch(() => {})));
   await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);
-  const procs = await o.processes();
+  // without ps, each agent resumes with the flags remembered at its start, and none is waited on
+  const procs = await o.processes().catch((e) => { o.log.error(`quit: ps failed, resuming each agent with the flags it started with: ${String(e)}`); return []; });
   // only a pid still running its agent is waited on, and killed if it outstays the wait
   const agentProc = (a?: Agent) => a && procs.find((p) => p.pid === a.pid && runsAgent(p.args, a.kind));
   const pids: number[] = [];

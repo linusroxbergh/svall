@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Character, FleetState } from '@svall/protocol';
-import { drowsy, markDormant, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
+import { drowsy, markDormant, rememberFlags, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -42,6 +42,10 @@ describe('drowsy', () => {
     expect(drowsy(char({ agent: undefined }), late, HOUR)).toBe(false);
     expect(drowsy(char({ tmux: undefined }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ sessionId: 'x; rm -rf ~' }) }), late, HOUR)).toBe(false);
+  });
+
+  it('leaves a character with a second terminal open, which only a sleep closes', () => {
+    expect(drowsy(char({ second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false } }), 100 * HOUR, HOUR)).toBe(false);
   });
 });
 
@@ -95,6 +99,15 @@ describe('startFlags', () => {
     expect(startFlags(`codex resume -c tui.resume_cwd=session ${SID} --add-dir /x`, 'codex')).toEqual([]);
     expect(startFlags(`codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=session -m gpt-5.5 ${SID}`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
     expect(startFlags('codex --no-daemon -m gpt-5.5 -- fix it', 'codex')).toEqual(['-m', "'gpt-5.5'"]);
+  });
+
+  it("reads a codex resume or fork typed into the character's zsh, which puts --no-daemon before it", () => {
+    expect(startFlags(`codex --no-daemon resume -m gpt-5.5 ${SID}`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
+    expect(startFlags(`codex --no-daemon fork --yolo ${SID}`, 'codex')).toEqual(['--yolo']);
+    expect(startFlags(`codex --no-daemon resume ${SID}`, 'codex')).toEqual([]);
+    // a bare word after the subcommand is a prompt, and the session id is one only when resuming
+    expect(startFlags(`codex --no-daemon resume ${SID} explain -m gpt-5.5`, 'codex')).toBeUndefined();
+    expect(startFlags(`codex ${SID} -m gpt-5.5`, 'codex')).toBeUndefined();
   });
 
   it('reads an agent run by node, and nothing from a process that is not the agent', () => {
@@ -171,6 +184,22 @@ describe('markDormant', () => {
       expect(c.agent).toMatchObject({ status: 'done' });
       expect(c.agent?.monitors).toBeUndefined();
       expect(c.agent?.subagents).toBeUndefined();
+    }
+  });
+  it('resumes with the flags remembered at the start when none are read off the process', () => {
+    const c = char({ agent: agent({ pid: 7 }) });
+    rememberFlags(c, [{ pid: 7, ppid: 1, pgid: 7, args: 'claude --effort high' }]);
+    expect(c.agent?.flags).toEqual(['--effort', "'high'"]);
+    markDormant(c);
+    expect(c.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
+    // read off the process, the flags ps shows win
+    const again = char({ agent: agent({ pid: 7, flags: ['--effort', "'high'"] }) });
+    markDormant(again, []);
+    expect(again.revive).toEqual({ command: `claude --resume ${SID}` });
+    // a launch without flags, or one no resume repeats, remembers none
+    for (const args of ['claude', 'claude --settings /x/deny.json']) {
+      rememberFlags(c, [{ pid: 7, ppid: 1, pgid: 7, args }]);
+      expect(c.agent).not.toHaveProperty('flags');
     }
   });
   it('forgets the brief the session was told, going dormant or already dormant at a listing', () => {
