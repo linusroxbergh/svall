@@ -41,7 +41,9 @@ enum AttachCommand {
             // splits it again, so the socket and session are quoted a second time for that shell
             let far = "-S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
             // past sshd's MaxSessions on the master, ssh opens a login of its own, as the master did, without a prompt
-            return "ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) tmux \(far)"
+            // ssh hands the far tmux its TERM, and Linux ships no xterm-ghostty terminfo. libghostty runs `exec -l <command>`,
+            // which would take a bare TERM= for the program, so env sets it
+            return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) tmux \(far)"
         }
     }
 }

@@ -14,7 +14,7 @@ final class AttachCommandTests: XCTestCase {
         let command = AttachCommand.build(route: route, attach: attach, tmux: "/opt/homebrew/bin/tmux", masterAnswers: { _ in true })
         // the socket and session are quoted once for this shell and once more for the far one. A terminal past the
         // master's MaxSessions opens a login of its own, which never prompts
-        XCTAssertEqual(command, "ssh -S '/tmp/svall/studio.sock' -o ControlMaster=no -o BatchMode=yes -tt -- 'linus@studio' tmux -S ''\\''/tmp/svall/fleet.sock'\\''' attach -t ''\\''=char-1'\\'''")
+        XCTAssertEqual(command, "env TERM=xterm-256color ssh -S '/tmp/svall/studio.sock' -o ControlMaster=no -o BatchMode=yes -tt -- 'linus@studio' tmux -S ''\\''/tmp/svall/fleet.sock'\\''' attach -t ''\\''=char-1'\\'''")
     }
 
     /// With the helper's master gone, ssh would dial the destination itself, where no check covers which machine answers.
@@ -70,6 +70,30 @@ final class AttachCommandTests: XCTestCase {
         shell.waitUntilExit()
         let words = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").map(String.init)
         XCTAssertEqual(words, ["tmux", "-S", "/home/li nus/.svall/tmux.sock", "attach", "-t", "=v-it's $(x)"])
+    }
+
+    /// libghostty runs the command as `exec -l <command>` with TERM=xterm-ghostty, which ssh would hand the far
+    /// tmux; a Linux machine has no terminfo for it, and tmux there refuses to attach.
+    func testTheFarSideIsHandedXterm256color() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-ssh-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let ssh = dir.appendingPathComponent("ssh").path
+        try "#!/bin/sh\necho \"$TERM\"\n".write(toFile: ssh, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ssh)
+
+        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
+        let command = try XCTUnwrap(AttachCommand.build(route: route, attach: attach, tmux: "tmux", masterAnswers: { _ in true }))
+
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/bash")
+        shell.arguments = ["--noprofile", "--norc", "-c", "exec -l \(command)"]
+        shell.environment = ["PATH": "\(dir.path):/usr/bin:/bin", "TERM": "xterm-ghostty"]
+        let out = Pipe()
+        shell.standardOutput = out
+        try shell.run()
+        shell.waitUntilExit()
+        XCTAssertEqual(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self), "xterm-256color\n")
     }
 
     func testNoCommandIsBuiltWhileTheRouteIsUnknown() {

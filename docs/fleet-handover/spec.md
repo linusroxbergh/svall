@@ -255,7 +255,7 @@ tmux -S <socket> attach -t <session>
 or:
 
 ```text
-ssh -S <control-socket> -o ControlMaster=no -o BatchMode=yes -tt -- <ssh-destination> \
+env TERM=xterm-256color ssh -S <control-socket> -o ControlMaster=no -o BatchMode=yes -tt -- <ssh-destination> \
   tmux -S <socket> attach -t <session>
 ```
 
