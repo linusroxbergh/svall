@@ -12,7 +12,7 @@ import { chr, fleet } from '../fixtures.js';
 const call = vi.fn(() => Promise.resolve({}));
 const fire = vi.fn();
 vi.mock('../../src/mobile/boot.js', () => ({
-  phone: { api: () => ({ call, fire }), onTermEvent: () => () => {} },
+  phone: { api: () => ({ call, fire }), get store() { return store; }, onTermEvent: () => () => {} },
 }));
 // xterm measures a real screen; the pane under test is the ask, not the terminal
 const open = vi.fn(() => Promise.resolve());

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSPropert
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { chooseResource } from './resources/choose.js';
-import { loadResources } from './resources/load.js';
+import { reloadResources } from './resources/load.js';
 import { placeTip } from './settings.js';
 import { Caret } from './Sidebar.js';
 
@@ -33,7 +33,7 @@ export function AgentProfilePick({ id }: { id: string }) {
     void deps().api.call('char.update', { id, agentProfile: v }).then(
       () => { if (v && running) toast(`${v} applies from the next prompt`, 'ok'); },
       (e: Error) => toast(e.message, 'error'));
-    void loadResources(deps());
+    void reloadResources(deps());
   };
   // before the listing has come there is nothing to say a profile is missing
   const hint = picked === undefined || !fleet ? undefined

@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api.js';
 import type { Bridge, ToShell } from '../src/bridge.js';
 import { chooseResource } from '../src/resources/choose.js';
-import { followResources, listingKey, loadResources } from '../src/resources/load.js';
+import { followResources, listingKey, loadResources, reloadResources } from '../src/resources/load.js';
 import { createAppStore } from '../src/store/index.js';
+import { theme } from '../src/theme.js';
 import { fleet } from './fixtures.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -22,6 +23,51 @@ describe('loadResources', () => {
     expect(store.getState().resources).toEqual(sources);
     await loadResources({ api: { call: () => Promise.reject(new Error('down')) } as never, store });
     expect(store.getState().resources).toEqual(sources);
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+  it('serves a burst of asks with one read, and asks again once that read has aged', async () => {
+    vi.useFakeTimers();
+    const { api, calls } = fakeApi();
+    const store = createAppStore();
+    const d = { api, store };
+    await Promise.all([loadResources(d), loadResources(d), loadResources(d)]);
+    expect(calls()).toBe(1);
+    expect(store.getState().resources[0].name).toBe('Claude');
+    await loadResources(d);
+    expect(calls()).toBe(1);
+    vi.advanceTimersByTime(theme.resourcesFreshMs);
+    await loadResources(d);
+    expect(calls()).toBe(2);
+  });
+  it('reads afresh on a reload, whatever its age', async () => {
+    const { api, calls } = fakeApi();
+    const d = { api, store: createAppStore() };
+    await loadResources(d);
+    await reloadResources(d);
+    expect(calls()).toBe(2);
+  });
+  it('keeps the answer of the latest read when an earlier one lands after it', async () => {
+    const answers: ((v: unknown) => void)[] = [];
+    const api = { call: () => new Promise((r) => answers.push(r)) } as unknown as Pick<Api, 'call'>;
+    const store = createAppStore();
+    const d = { api, store };
+    const first = loadResources(d);
+    const second = reloadResources(d);
+    expect(answers).toHaveLength(2);
+    answers[1]({ sources: [{ rootId: 'r:/h', root: '/h', name: 'later', tier: 'global', islandIds: [], characterIds: [], groups: [] }] });
+    await second;
+    answers[0]({ sources: [{ rootId: 'r:/h', root: '/h', name: 'earlier', tier: 'global', islandIds: [], characterIds: [], groups: [] }] });
+    await first;
+    expect(store.getState().resources[0].name).toBe('later');
+  });
+  it('does not keep a read that failed', async () => {
+    let n = 0;
+    const api = { call: () => (++n === 1 ? Promise.reject(new Error('down')) : Promise.resolve({ sources: [] })) } as unknown as Pick<Api, 'call'>;
+    const d = { api, store: createAppStore() };
+    await loadResources(d);
+    await loadResources(d);
+    expect(n).toBe(2);
   });
 });
 

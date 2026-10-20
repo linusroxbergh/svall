@@ -9,13 +9,13 @@ import { EditorPane } from './EditorPane.js';
 import { Foot } from './Foot.js';
 import { pointerPicked, shelfKey } from './keys.js';
 import { List } from './List.js';
-import { loadResources } from './load.js';
+import { reloadResources } from './load.js';
 import { Split } from './Split.js';
 import { Where } from './Where.js';
 
 // the listing and the open files are read again; nothing under ~/.claude is watched
 function refresh(): void {
-  void loadResources(deps());
+  void reloadResources(deps());
   for (const id of Object.keys(app.store.getState().ide)) if (id.startsWith('r:')) void checkDisk(deps(), id);
 }
 
