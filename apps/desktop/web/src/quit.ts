@@ -43,3 +43,15 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
   });
   return () => { unwatch(); off(); };
 }
+
+/** Reloads the page when the shell finds its process grown large in the background, once its docs are written, unless the
+ * app is back in front or the reload would drop an unsaved file or a browser tab. */
+export function followMemory({ store, bridge, reload = () => location.reload() }: { store: AppStore; bridge: Pick<Bridge, 'onMessage'>; reload?: () => void }): () => void {
+  return bridge.onMessage((m) => {
+    if (m.type !== 'memory.high') return;
+    void flushDocs().then(() => {
+      const s = store.getState();
+      if (!s.active && !unsavedFiles(s.ide).length && !Object.keys(s.webviews).length) reload();
+    }, () => {});
+  });
+}

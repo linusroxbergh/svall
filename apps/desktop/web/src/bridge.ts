@@ -93,7 +93,9 @@ export type FromShell =
   | { type: 'quit.stop' }
   // the menu's Open Fleet…
   | { type: 'fleets' }
-  | { type: 'openFleet.failed'; home: string; reason: string };
+  | { type: 'openFleet.failed'; home: string; reason: string }
+  // the page's web process has grown large while the app sat in the background, and a reload would free it
+  | { type: 'memory.high' };
 
 type Handler = (msg: FromShell) => void;
 type Port = { postMessage(json: string): void };
