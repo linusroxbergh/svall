@@ -17,18 +17,28 @@ enum FleetDaemon {
 
     private static var lastStart = Date.distantPast
 
-    /// Starts the daemon, loading its job first when launchd has not; a running one is left be. At most every 10 s, as
-    /// launchd itself spaces restarts, so a daemon that keeps failing is not started on every page retry.
+    /// Starts the daemon, loading its job first when launchd has not, or has the label from another plist (a test fleet's,
+    /// another copy of Svall's); a running one of ours is left be. At most every 10 s, as launchd itself spaces restarts,
+    /// so a daemon that keeps failing is not started on every page retry.
     static func start() {
         guard let label, let plist, Date().timeIntervalSince(lastStart) > 10 else { return }
         lastStart = Date()
-        let domain = "gui/\(getuid())"
+        let domain = "gui/\(getuid())", job = "\(domain)/\(label)"
+        // launchd names the plist by its real path
+        let ours = realpath(plist, nil).map { p in defer { free(p) }; return String(cString: p) } ?? plist
         DispatchQueue.global(qos: .userInitiated).async {
-            if run("/bin/launchctl", ["kickstart", "\(domain)/\(label)"]) != 0 {
+            let loaded = loadedPlist(run("/bin/launchctl", ["print", job]))
+            if loaded != ours {
+                if loaded != nil { run("/bin/launchctl", ["bootout", job]) }
                 run("/bin/launchctl", ["bootstrap", domain, plist])
-                run("/bin/launchctl", ["kickstart", "\(domain)/\(label)"])
             }
+            run("/bin/launchctl", ["kickstart", job])
         }
+    }
+
+    /// The plist `launchctl print` says its job was loaded from.
+    static func loadedPlist(_ printed: String) -> String? {
+        printed.split(separator: "\n").first { $0.hasPrefix("\tpath = ") }.map { String($0.dropFirst("\tpath = ".count)) }
     }
 
     /// Ends the fleet off the main thread when the daemon could not be asked to, then calls `done` on main: the daemon first, so
@@ -48,14 +58,16 @@ enum FleetDaemon {
     }
 
     @discardableResult
-    private static func run(_ path: String, _ args: [String]) -> Int32 {
+    private static func run(_ path: String, _ args: [String]) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args
-        p.standardOutput = FileHandle.nullDevice
+        let out = Pipe()
+        p.standardOutput = out
         p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return -1 }
+        guard (try? p.run()) != nil else { return "" }
+        let printed = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         p.waitUntilExit()
-        return p.terminationStatus
+        return printed
     }
 }
