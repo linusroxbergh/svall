@@ -78,10 +78,10 @@ export function Home({
             <g {...label} style={{ pointerEvents: 'visiblePainted' }}>
               <path className="land" d={sand} fill="url(#s-home)" stroke="rgba(120,104,68,.28)" strokeWidth="1" />
               <path className="land grass" d={dune} fill="rgba(255,250,236,.33)" />
-              <LandTexture id="home" shape={sand} />
             </g>
-            <Waterline sand={sand} />
           </svg>
+          <LandTexture shape={sand} />
+          <svg className="waterline" width={bw} height={bh} viewBox={`0 0 ${bw} ${bh}`}><Waterline sand={sand} /></svg>
           {over && (
             <div className="drop-cell" data-testid="drop-cell" data-free={over.free}
               style={{ left: pad + over.local.x * cell, top: pad + over.local.y * cell, width: cell, height: cell }} />

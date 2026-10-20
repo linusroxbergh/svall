@@ -20,7 +20,9 @@
 .map-world .island svg{display:block;overflow:visible;pointer-events:none}
 .map-world .island .land{cursor:grab}
 .island .grass{filter:brightness(var(--map-tone, 1)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent))}
-.island .land-texture{opacity:.22}
+/* the ground's textures and the waterline over them are layers over the land's svg, out of hit testing */
+.island > .grass-texture,.island > .land-texture,.island > .waterline{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.island > .land-texture{opacity:.22}
 .map-world .island[data-dragging="true"]{opacity:.7}
 .map-world .island[data-dragging="true"] .land{cursor:grabbing}
 .map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:--ox var(--dur-fast) var(--ease-out),--oy var(--dur-fast) var(--ease-out)}
@@ -29,7 +31,7 @@
   background:color-mix(in srgb,var(--sand) 5%,transparent)}
 
 [data-drop-hover="true"]{outline:2px solid var(--sel);outline-offset:2px}
-.island[data-drop-hover="true"] svg{filter:brightness(1.15)}
+.island[data-drop-hover="true"] :is(svg,.grass-texture,.land-texture){filter:brightness(1.15)}
 
 .ilabel{position:absolute;left:50%;transform:translateX(-50%);z-index:12;cursor:pointer;
   display:flex;align-items:center;gap:var(--sp-md);white-space:nowrap;
