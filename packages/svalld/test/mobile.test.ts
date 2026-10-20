@@ -353,8 +353,8 @@ runIf('phone sockets', () => {
     const api = await boot();
     // an agent's pane runs something other than a shell, or the poll ends the agent
     const c = await api.fleet.createCharacter({ islandId: api.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
-    api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
+    await api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
+    await api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
     expect(api.store.state.characters[c.id].agent?.status).toBe('blocked');
     // a tap comes seconds later, after the fleet has polled the pane several times
     await waitForPolls(api.fleet, 3);

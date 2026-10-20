@@ -92,7 +92,7 @@ export class Fleet extends EventEmitter<Events> {
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
     this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow() });
     this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents(), processes: this.sleep.processes });
-    this.agentEvents = new AgentEvents({ store, config, log, render: (island, c) => this.render(island, c) });
+    this.agentEvents = new AgentEvents({ store, config, log, render: (island, c) => this.render(island, c), processes: this.sleep.processes });
     this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
   }
 
@@ -787,7 +787,7 @@ export class Fleet extends EventEmitter<Events> {
     return this.prompts.waitFor(id, until, timeoutMs, signal, term);
   }
 
-  onSocketEvent(e: SocketEvent): string | undefined {
+  onSocketEvent(e: SocketEvent): Promise<string | undefined> {
     return this.agentEvents.apply(e);
   }
 }

@@ -200,8 +200,8 @@ runIf('API', () => {
     // an agent's pane runs something other than a shell, or the poll ends the agent
     const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp', command: 'sleep 600' })) as { result: { id: string } };
     expect(await c.call('char.answer', { id: ch.result.id, answer: 'approve' })).toMatchObject({ error: { code: 'invalid' } });
-    fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
-    fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
+    await fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
+    await fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
     expect((await c.call('state.get')) as { result: { characters: Record<string, { agent?: { prompt?: string } }> } }).toMatchObject({ result: { characters: { [ch.result.id]: { agent: { prompt: 'Bash?' } } } } });
     expect(await c.call('char.answer', { id: ch.result.id, answer: 'deny' })).toMatchObject({ result: {} });
     c.ws.close();

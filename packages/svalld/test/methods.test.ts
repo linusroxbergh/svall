@@ -36,15 +36,15 @@ describe('names every object has', () => {
     expect(({} as { description?: string }).description).toBeUndefined();
   });
 
-  it('finds no character by such an id for a hook or a statusline to report on', () => {
+  it('finds no character by such an id for a hook or a statusline to report on', async () => {
     const paths = resolvePaths(makeHome());
     const store = Store.load(paths.state, () => {});
     const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config: Config.parse({}), log: silentLogger });
     const before = structuredClone(store.state);
     for (const charId of ['__proto__', 'constructor', 'toString']) {
-      expect(fleet.onSocketEvent({ hook: { charId, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-4111-8111-111111111111', pid: process.pid } })).toBeUndefined();
-      expect(fleet.onSocketEvent({ hook: { charId, backend: 'claude', name: 'Stop', cwd: '/' } })).toBeUndefined();
-      expect(fleet.onSocketEvent({ status: { charId, contextPct: 40 } })).toBeUndefined();
+      expect(await fleet.onSocketEvent({ hook: { charId, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-4111-8111-111111111111', pid: process.pid } })).toBeUndefined();
+      expect(await fleet.onSocketEvent({ hook: { charId, backend: 'claude', name: 'Stop', cwd: '/' } })).toBeUndefined();
+      expect(await fleet.onSocketEvent({ status: { charId, contextPct: 40 } })).toBeUndefined();
     }
     expect(store.state).toEqual(before);
     expect(({} as { agent?: unknown }).agent).toBeUndefined();
