@@ -233,4 +233,21 @@ describe('a robot inlined on a card', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('keeps each design\'s actions in one sheet in the head, so copies coming and going leave the page\'s sheets alone', async () => {
+    const src = fs.readFileSync(path.join(robotsDir, 'robot-01.svg'), 'utf8');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(src)));
+    try {
+      const { container, unmount } = render(<><Robot n={1} /><Robot n={1} /></>);
+      await act(async () => {});
+      expect(container.querySelectorAll('.stage > svg')).toHaveLength(2);
+      expect(container.querySelectorAll('style')).toHaveLength(0);
+      const sheets = [...document.head.querySelectorAll('style')];
+      expect(sheets.filter((s) => s.textContent!.includes('@keyframes r01-sway'))).toHaveLength(1);
+      unmount();
+      expect([...document.head.querySelectorAll('style')]).toEqual(sheets);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
