@@ -69,11 +69,11 @@ export const Island = memoByValue(function Island({
         <g {...land} {...hold} style={{ pointerEvents: 'visiblePainted' }}>
           <path className="land" d={sand} fill={`url(#${sid})`} />
           <path className="land grass" d={grass} fill={`url(#${gid})`} stroke="var(--shore)" strokeWidth="1" />
-          <GrassTexture seed={seed} shape={grass} w={fw} h={fh} />
-          <LandTexture id={island.id} shape={sand} />
         </g>
-        <Waterline sand={sand} />
       </svg>
+      <GrassTexture seed={seed} shape={grass} w={fw} h={fh} />
+      <LandTexture shape={sand} />
+      <svg className="waterline" width={bw} height={bh} viewBox={`0 0 ${bw} ${bh}`}><Waterline sand={sand} /></svg>
       {/* a hidden island leaves the map; the sidebar is where it comes back */}
       <div className="ilabel" data-testid={`island-label-${island.id}`} style={{ top: pad - LABEL_OFFSET }} {...label} {...hold}>
         <button className="itog" data-testid={`island-toggle-${island.id}`} title="Hide island" aria-label={`Hide ${island.name}`}
