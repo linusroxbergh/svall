@@ -6,12 +6,22 @@ import { addRobot } from './motion.js';
 const texts = new Map<number, string>();
 const loads = new Map<number, Promise<void>>();
 
+// every design's actions in one sheet that only grows: a robot mounting or leaving never changes the page's sheets
+let shared: HTMLStyleElement | undefined;
+function hoist(svg: string): string {
+  return svg.replace(/<style[^>]*>([\s\S]*?)<\/style>/g, (_, css: string) => {
+    shared ??= document.head.appendChild(document.createElement('style'));
+    shared.append(css);
+    return '';
+  });
+}
+
 function load(n: number): Promise<void> {
   let p = loads.get(n);
   if (!p) {
     p = fetch(robotUrl(n))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
-      .then((t) => { texts.set(n, t); }, () => { loads.delete(n); });
+      .then((t) => { texts.set(n, hoist(t)); }, () => { loads.delete(n); });
     loads.set(n, p);
   }
   return p;
