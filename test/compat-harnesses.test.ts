@@ -35,9 +35,10 @@ const opencodeFiles = (): Files => ({
   'packages/schema/src/form.ts': '',
   'packages/schema/src/shell.ts': '',
   'packages/plugin/src/promise/session.ts': 'hook("prompt") hook("context")',
-  'packages/plugin/src/promise/tool.ts': 'hook("execute.before") hook("execute.after")',
+  'packages/plugin/src/promise/tool.ts': 'hook("execute.before") hook("execute.after") transform remove(id)',
   'packages/plugin/src/promise/event.ts': 'Pick<EventApi, "subscribe">',
   'packages/core/src/tool/plugin/shell.ts': 'metadata: { status: output.status, shellID: output.shellID } status: "running"',
+  'packages/core/src/tool/plugin/opencode.ts': 'name: "worktree_create" options: { namespace: "opencode" }',
 });
 
 describe('checks', () => {
@@ -60,7 +61,7 @@ describe('checks', () => {
     expect(HARNESSES.opencode.check(opencodeFiles()).missing).toEqual([]);
     const f = opencodeFiles();
     f['packages/schema/src/session-event.ts'] = f['packages/schema/src/session-event.ts']!.replace('"session.step.ended"', '"session.step.done"').replace('tokens: 1, ', '');
-    f['packages/plugin/src/promise/tool.ts'] = 'hook("execute.before")';
+    f['packages/plugin/src/promise/tool.ts'] = 'hook("execute.before") transform remove(id)';
     f['packages/schema/src/form.ts'] = undefined;
     expect(HARNESSES.opencode.check(f).missing).toEqual(['packages/schema/src/form.ts', 'event session.step.ended', 'field tokens', 'plugin API "execute.after"']);
   });
