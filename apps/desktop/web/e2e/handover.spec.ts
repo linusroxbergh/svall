@@ -172,8 +172,9 @@ test('the sheet carries a move to the gateway through all five sections, then th
     { event: 'handover.entity', data: { transactionId: 'tx1', kind: 'root', id: 'r_0a1b', phase: 'transfer', bytes: 12_000_000, totalBytes: 40_000_000 } },
     { event: 'handover.entity', data: { transactionId: 'tx1', kind: 'session', id: 's0', phase: 'transfer', bytes: 400, totalBytes: 1000 } });
   await expect(page.getByTestId('handover-row-transfer-r_0a1b')).toContainText('12.0 MB of 40.0 MB');
-  // each row is named by what preflight said it is: where a root lands, whose a session is
-  await expect(page.getByTestId('handover-row-transfer-r_0a1b')).toContainText('/home/ada/app');
+  // each row is named by what preflight said it is: where a root lands, as the user would say it, whose a session is
+  await expect(page.getByTestId('handover-row-transfer-r_0a1b')).toContainText('~/app');
+  await expect(page.getByTestId('handover-row-transfer-r_0a1b').locator('.ho-who')).toHaveAttribute('title', '/home/ada/app');
   await expect(page.getByTestId('handover-row-transfer-s0')).toContainText("bo's session");
   await expect(page.getByTestId('handover-section-rest')).toHaveAttribute('data-state', 'done');
   await expect(page.getByTestId('handover-section-transfer')).toHaveAttribute('data-state', 'active');
@@ -188,7 +189,7 @@ test('the sheet carries a move to the gateway through all five sections, then th
     { event: 'handover.result', data: { status: 'complete', transactionId: 'tx1', generation: 2, characters: [{ id: a.id, ok: true, notice: trust }, { id: b.id, ok: false, error: 'bo did not start: claude exited 1' }] } });
   await receive(page, { type: 'handover.exit', code: 0 });
   // the move succeeded, whatever one character did
-  await expect(page.getByTestId('handover-headline')).toHaveText('The fleet runs on studio now. 1 character did not resume; retry below.');
+  await expect(page.getByTestId('handover-headline')).toHaveText('The fleet runs on studio now. 1 character did not resume.');
   await expect(page.getByTestId(`handover-row-resume-${b.id}`)).toContainText('claude exited 1');
   await expect(page.getByTestId(`handover-row-resume-${a.id}`)).toContainText(`resumed; ${trust}`);
   await expect(page.getByTestId(`handover-row-resume-${a.id}`)).toHaveAttribute('data-status', 'ok');
@@ -366,7 +367,8 @@ test('preflight blockers name what they are about, and a new start carries the c
     { code: 'external_writer', message: 'the source /home/l/w/app kept changing through 3 passes; close whatever writes there, then resume', entity: { kind: 'root', id: 'r_0a1b' } },
   ] } });
   await receive(page, { type: 'handover.exit', code: 1 });
-  await expect(page.getByTestId('handover-headline')).toHaveText('Nothing moved. Settle what is listed, then try again.');
+  await expect(page.getByTestId('handover-headline')).toHaveText('4 things to settle before the fleet moves to This Mac. Nothing has moved.');
+  await expect(page.getByTestId('handover-try-again')).toHaveText('Move to This Mac');
   await expect(page.getByTestId('handover-blocker-external_writer')).toContainText('on studio or in its copy on This Mac');
   await expect(page.getByTestId('handover-blocker-destination_occupied')).toContainText('folder r_0a1b');
   await expect(page.getByTestId('handover-blocker-destination_occupied')).toContainText('nothing is deleted');

@@ -174,7 +174,7 @@ export function sectionStates(run: HandoverRun): { id: SectionId; label: string;
   const phase = r && 'phase' in r ? r.phase : run.status?.phase ?? run.phase;
   const finished = r?.status === 'complete' || run.status?.standing === 'moved';
   const at = phase && phase !== 'aborted' ? sectionAt(phase) : phase === 'aborted' ? sectionAt(run.phase ?? 'begin') : run.preflight ? 0 : -1;
-  const here: SectionState = decisionPending(run) ? 'waiting' : live(run) ? 'active' : 'stopped';
+  const here: SectionState = decisionPending(run) || r?.status === 'blocked' ? 'waiting' : live(run) ? 'active' : 'stopped';
   return SECTIONS.map((s, i) => ({
     id: s.id, label: s.label,
     state: finished || i < at ? 'done' : i === at ? (r?.status === 'detached' ? 'active' : here) : 'pending',
@@ -357,6 +357,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Log it in on ${ctx.destination}, in a terminal there. A login never moves with the fleet.`;
     case 'agent_hooks_missing':
       return `Run svall setup on ${ctx.destination}, then try again.`;
+    case 'path_unsupported':
+      return 'Move what it names, or cd that terminal to a folder that travels, or close the character; then try again.';
     default:
       return undefined;
   }
@@ -369,13 +371,44 @@ export function upgradeAsked(b: Blocker, ctx: HintContext): string | undefined {
   return machineName(linux) ? linux : undefined;
 }
 
-/** Who or what an entity is for the user: a character's name, where a root lands and whose a session is, as preflight said, or else its id. */
-export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names): string | undefined {
+/** A path as the user says it: the account's home as `~`. */
+export const shortPath = (p: string): string => p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~');
+
+/** The full path a blocker or row is about, when it is about a folder: a root's, or the one a Git message leads with. */
+export function entityPath(e: Blocker['entity'], names?: Names, message?: string): string | undefined {
+  if (!e) return undefined;
+  if (e.kind === 'root') return names?.roots[e.id];
+  if (e.kind === 'git') return /^(\/[^:]+):/.exec(message ?? '')?.[1];
+  return undefined;
+}
+
+/** Who or what an entity is for the user: a character's name, a folder by its short path, whose a session is; an id only when nothing names it. */
+export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names, message?: string): string | undefined {
   if (!e) return undefined;
   if (e.kind === 'character') return name(e.id);
-  if (e.kind === 'root') return names?.roots[e.id] ?? `folder ${e.id}`;
   if (e.kind === 'session') return names?.sessions?.[e.id] ? `${names.sessions[e.id]}'s session` : `session ${e.id}`;
-  return `repository ${e.id}`;
+  const path = entityPath(e, names, message);
+  if (path) return shortPath(path);
+  return e.kind === 'root' ? `folder ${e.id}` : 'repository';
+}
+
+/** A blocker's message as a problem on one line, the remedy the helper added after it, and the agent's question when it quotes one. */
+export function problemOf(message: string, explained: boolean): { problem: string; remedy?: string; quote?: string } {
+  const cut = explained ? message.indexOf('; ') : -1;
+  const [problem, remedy] = cut < 0 ? [message, undefined] : [message.slice(0, cut), message.slice(cut + 2)];
+  const q = /^(.*?): ("[^"]+")$/.exec(problem);
+  return q ? { problem: q[1], quote: q[2], ...(remedy && { remedy }) } : { problem, ...(remedy && { remedy }) };
+}
+
+/** What picking a blocker's choice will do, for the row that holds it. */
+export function planOf(choice: Choice, b: Blocker, ctx: HintContext, names?: Names): string {
+  const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
+  switch (choice) {
+    case 'interrupt': return `${who} will be stopped with Escape and resume from its transcript on ${ctx.destination}.`;
+    case 'terminate': return `What runs in ${who}'s terminal will be ended; the shell reopens in its folder on ${ctx.destination}.`;
+    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message) ?? 'that folder'} on ${ctx.destination} will be set aside first, to a timestamped folder beside it.`;
+    case 'carry': return `${who}'s folder will be carried whole, with the repositories in it.`;
+  }
 }
 
 export function formatBytes(n: number): string {
@@ -392,6 +425,29 @@ export function fraction(row: Progress): number | undefined {
   if (row.totalBytes) return Math.min(1, (row.bytes ?? 0) / row.totalBytes);
   if (row.total) return Math.min(1, (row.done ?? 0) / row.total);
   return undefined;
+}
+
+/** Every transfer row as one: bytes sent against bytes to send, a verified row counting as whole. */
+export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number; done: number; total: number } {
+  const t = { bytes: 0, totalBytes: 0, done: 0, total: 0 };
+  for (const r of rows) {
+    if (r.section !== 'transfer') continue;
+    t.total++;
+    const whole = r.phase === 'verify' && !r.error;
+    if (whole || fraction(r) === 1) t.done++;
+    t.totalBytes += r.totalBytes ?? 0;
+    t.bytes += whole ? r.totalBytes ?? 0 : Math.min(r.bytes ?? 0, r.totalBytes ?? r.bytes ?? 0);
+  }
+  return t;
+}
+
+/** How the resume went for every character the freeze rested: agents resume from transcripts, shells reopen as they are opened. */
+export function resumeTally(run: HandoverRun): { resumed: number; failed: number; shells: number } {
+  const rested = run.rows.filter((r) => r.section === 'rest').map((r) => r.id);
+  const agents = run.rows.filter((r) => r.section === 'resume');
+  const failed = run.result?.status === 'complete' ? run.result.characters.filter((c) => !c.ok).length : agents.filter((r) => r.error).length;
+  const resumed = run.result?.status === 'complete' ? run.result.characters.filter((c) => c.ok).length : agents.filter((r) => !r.error).length;
+  return { resumed, failed, shells: rested.filter((id) => !agents.some((a) => a.id === id)).length };
 }
 
 export function rowText(row: Row): string {
@@ -418,12 +474,15 @@ export function headline(run: HandoverRun, destination: string): string {
       const failed = r.characters.filter((c) => !c.ok).length;
       return [
         `The fleet runs on ${destination} now.`,
-        failed ? `${failed} ${failed === 1 ? 'character' : 'characters'} did not resume; retry below.` : '',
+        failed ? `${failed} ${failed === 1 ? 'character' : 'characters'} did not resume.` : '',
         r.pending?.length ? `${r.pending.join(' and ')} has not heard that it finished${r.error ? ` (${r.error})` : ''}; Retry tells it.` : '',
       ].filter(Boolean).join(' ');
     }
     case 'aborted': return 'Stopped before the commit: the fleet stays where it was.';
-    case 'blocked': return 'Nothing moved. Settle what is listed, then try again.';
+    case 'blocked': {
+      const n = r.blockers.length;
+      return `${n} ${n === 1 ? 'thing' : 'things'} to settle before the fleet moves to ${destination}. Nothing has moved.`;
+    }
     case 'interrupted':
       if (commitUnknown(r)) return `Whether the fleet moved to ${destination} is not known yet: ${r.error}. Check again asks the gateway.`;
       return isCommitted(run)
@@ -433,7 +492,10 @@ export function headline(run: HandoverRun, destination: string): string {
     case 'none': return r.reason;
   }
   if (run.error) return `The helper did not run: ${run.error}`;
-  if (decisionPending(run)) return 'Waiting for your choice.';
+  if (decisionPending(run)) {
+    const n = run.decision!.blockers.length;
+    return `${n === 1 ? 'One thing' : `${n} things`} to decide before the fleet goes on.`;
+  }
   if (!live(run)) return '';
   if (run.aborting) return 'Stopping: the fleet goes back to where it was…';
   if (!run.phase && !run.preflight) return run.to ? 'Starting…' : 'Looking for a handover…';
