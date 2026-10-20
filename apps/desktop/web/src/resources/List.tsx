@@ -8,6 +8,7 @@ import { followLink } from '../LinkAsk.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { createDoc, deleteDoc, deleteResource, renameDoc } from './docs.js';
 import { chooseResource } from './choose.js';
+import { openedItself } from './keys.js';
 import { badgeOf, countsBySource, isCard, isField, kindLabel, kindOf, kindRows, qualifierOf, shelfSource, shortPath, tierOf, visible, whereGroups, whereTier, type CardItem, type Item, type Kind, type Source, type Tier, type What } from './model.js';
 
 const NONE: string[] = [];
@@ -165,7 +166,7 @@ export function List() {
   const noun = profile ? 'profile' : 'doc';
   // a filter that leaves one file needs no choosing — CLAUDE.md is the usual one — so the pane shows it
   const only = groups.length === 1 && groups[0].items.length === 1 ? groups[0].items[0] : undefined;
-  useEffect(() => { if (only && opensItself(only)) void chooseResource(deps(), only); }, [source?.rootId, what, only?.id]);
+  useEffect(() => { if (only && opensItself(only)) { openedItself(); void chooseResource(deps(), only); } }, [source?.rootId, what, only?.id]);
   return (
     <div className="res-list" data-testid="resources-list">
       <input className="res-find" data-testid="resources-filter" placeholder="filter" aria-label="Filter resources" value={query} onChange={(e) => setQuery(e.target.value)} />

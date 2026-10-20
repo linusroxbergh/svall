@@ -171,3 +171,39 @@ test('the grip drags the shelf from its corner and the size is kept once it is l
   expect(kept.w).toBeCloseTo(0.7);
   expect(kept.h).toBeCloseTo(0.7);
 });
+
+// two instruction files, so the filter can leave one of them
+const twoFiles = () => {
+  const C = 'r:/u/.claude';
+  const row = (name: string) => ({ id: `instructions:${name}`, name, reveal: `/u/.claude/${name}`, target: 'file' as const, open: { rootId: C, path: name } });
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [{ kind: 'instructions' as const, items: [row('CLAUDE.md'), row('AGENTS.md')] }] };
+  call.mockImplementation((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: '/u/.claude' } : {}));
+  store.getState().setResources([src]);
+  store.getState().toggleResources(true, { where: C, what: 'all' });
+};
+
+test('a filter typed down to one file shows it and keeps the keys in the filter', async () => {
+  twoFiles();
+  render(<OnMap />);
+  await act(async () => {});
+  const find = screen.getByTestId('resources-filter') as HTMLInputElement;
+  fireEvent.pointerDown(find);
+  find.focus();
+  await act(async () => { fireEvent.change(find, { target: { value: 'CLA' } }); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
+  expect(document.activeElement).toBe(find);
+  await act(async () => { fireEvent.change(find, { target: { value: 'CLAU' } }); });
+  expect(find.value).toBe('CLAU');
+  expect(document.activeElement).toBe(find);
+});
+
+test('a row the pointer picks still hands the keys to its file', async () => {
+  twoFiles();
+  render(<OnMap />);
+  await act(async () => {});
+  const row = screen.getByTestId('resources-item-instructions-AGENTS.md');
+  fireEvent.pointerDown(row);
+  await act(async () => { fireEvent.click(row); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('AGENTS.md');
+  expect(document.activeElement?.closest('.editor')).not.toBeNull();
+});
