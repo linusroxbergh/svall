@@ -9,7 +9,7 @@ import { dropBuffers } from './ide/buffers.js';
 import { createRepoWatch, type RepoWatch } from './ide/watch.js';
 import { installKeyHandlers, openFleetPicker } from './keyboard.js';
 import { followNotifications } from './notifications.js';
-import { followQuit } from './quit.js';
+import { followMemory, followQuit } from './quit.js';
 import { followResources } from './resources/load.js';
 import { applyZoom } from './settings.js';
 import { followFleet } from './store/fleet.js';
@@ -80,6 +80,7 @@ function createApp(): AppContext {
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });
     followQuit({ store, bridge, api: () => api });
+    followMemory({ store, bridge });
     followAwake({ store, bridge });
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
