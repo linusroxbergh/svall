@@ -54,6 +54,21 @@ describe('AgentEvents and the shared codex server', () => {
     expect(store.state.characters.c_a.agent).toBeUndefined();
   });
 
+  it('applies a character\'s events in arrival order while one of them waits on ps', async () => {
+    const { store, hook, reads } = events([{ pid: 300, ppid: 1, pgid: 300, args: 'codex --no-daemon' }]);
+    store.update((d) => {
+      d.characters.c_a.tmux = { windowId: '@1', paneId: '%1' };
+      d.characters.c_a.agent = { kind: 'codex', sessionId: SID, status: 'done', lastActivityAt: 1, pid: 100, contextPct: 42, lastPrompt: { id: 'p', text: 'go', at: 1 } };
+    });
+    await hook('Stop', 100);
+    // a revive resumed the session in a new process, and the old one's end comes while the new pid is looked up
+    const started = hook('SessionStart', 300);
+    const ended = hook('SessionEnd', 100);
+    await Promise.all([started, ended]);
+    expect(reads()).toBe(2);
+    expect(store.state.characters.c_a.agent).toMatchObject({ sessionId: SID, pid: 300, contextPct: 42, lastPrompt: { text: 'go' } });
+  });
+
   it('hears a codex on a server of its own, and spends no read on an event without a pid', async () => {
     const { store, hook, reads } = events([{ pid: 500, ppid: 1, pgid: 500, args: 'codex --no-daemon' }]);
     await hook('SessionStart', 500);

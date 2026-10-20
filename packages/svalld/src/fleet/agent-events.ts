@@ -26,10 +26,21 @@ export class AgentEvents {
   private rolloutMark = new Map<string, RolloutMark>();
   private servers = new Map<number, { server: Promise<boolean>; at: number }>();
   private listing?: Promise<Proc[]>;
+  private chains = new Map<string, Promise<unknown>>();
 
   constructor(private deps: Deps) {}
 
-  async apply(e: SocketEvent): Promise<string | undefined> {
+  // a character's events land in the order they arrived, however long the server check on one of them takes
+  apply(e: SocketEvent): Promise<string | undefined> {
+    const id = ('hook' in e ? e.hook : e.status).charId;
+    const run = (this.chains.get(id) ?? Promise.resolve()).then(() => this.run(e));
+    const tail = run.catch(() => {});
+    this.chains.set(id, tail);
+    tail.then(() => { if (this.chains.get(id) === tail) this.chains.delete(id); });
+    return run;
+  }
+
+  private async run(e: SocketEvent): Promise<string | undefined> {
     if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.charId, e.hook.pid); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
     let reply: string | undefined;
@@ -101,7 +112,8 @@ export class AgentEvents {
   private async processes(pid: number): Promise<Proc[]> {
     const shared = this.listing;
     const procs = await (shared ?? this.list());
-    return !shared || procs.some((p) => p.pid === pid) ? procs : this.list();
+    if (!shared || procs.some((p) => p.pid === pid)) return procs;
+    return this.listing ?? this.list();
   }
 
   private list(): Promise<Proc[]> {
