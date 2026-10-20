@@ -621,6 +621,38 @@ describe('buildInventory with the discovered Git graphs', () => {
     expect(inv.warnings).toEqual(d.discovery.warnings);
   });
 
+  it("carries a worktree in OpenCode's worktree folder, the default one or one either machine's environment names, with its repository, and nothing else of OpenCode's", () => {
+    const s = seed();
+    const data = path.join(s.mac, '.local/share/opencode');
+    const named = path.join(s.mac, 'xdg/opencode');
+    const theirs = path.join(s.mac, 'xdg-there/opencode');
+    const trees = [path.join(data, 'worktree/752593/react-boilerplate'), path.join(named, 'worktree/752593/api'), path.join(theirs, 'worktree/752593/docs')];
+    for (const d of [...trees.map((w) => path.join(w, 'src')), path.join(data, 'snapshot')]) fs.mkdirSync(d, { recursive: true });
+    s.maps.source.opencode = [named];
+    s.maps.destination.opencode = [theirs];
+    // one character stands in a folder inside its worktree
+    trees.forEach((w, i) => { s.state.characters[`oc${i}`] = char(`oc${i}`, { cwd: i === 1 ? path.join(w, 'src') : w }); });
+    s.state.characters.folder = char('folder', { cwd: path.join(data, 'worktree') });
+    s.state.characters.snap = char('snap', { cwd: path.join(data, 'snapshot') });
+    const graph: GitGraph = {
+      id: 'g_app', commonDir: path.join(s.repo, '.git'), main: checkout(s.repo, path.join(s.repo, '.git'), ['main']),
+      worktrees: trees.map((w, i) => checkout(w, path.join(s.repo, '.git/worktrees', path.basename(w)), [`oc${i}`])), unused: [], stash: [],
+    };
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps, { graphs: [graph], blockers: [], warnings: [] });
+    expect(inv.blockers.map((b) => b.message).sort()).toEqual([
+      `${path.join(data, 'snapshot')} lies in ${data}, which stays on its machine`,
+      `${path.join(data, 'worktree')} lies in ${data}, which stays on its machine`,
+    ].sort());
+    const rel = (p: string): string => path.relative(s.mac, p);
+    expect(inv.roots.filter((r) => r.kind === 'repo' || r.kind === 'worktree').map((r) => [r.kind, rel(r.path), r.foldedInto])).toEqual([
+      ['worktree', '.local/share/opencode/worktree/752593/react-boilerplate', undefined],
+      ['repo', 'code/app', undefined],
+      ['worktree', 'xdg-there/opencode/worktree/752593/docs', undefined],
+      ['worktree', 'xdg/opencode/worktree/752593/api', undefined],
+    ]);
+    expect(inv.roots.filter((r) => r.kind !== 'worktree' && r.path.includes('opencode'))).toEqual([]);
+  });
+
   it('blocks a graph root reached through a link, as the graph\'s, and keeps what discovery blocked', () => {
     const s = seed();
     const d = discovered(s);
@@ -714,6 +746,32 @@ describe('buildInventory with the discovered Git graphs', () => {
       ['home', path.join(home, '.svall/home')],
     ]);
     expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_symlinked', entity: { kind: 'character', id: 'app' } })]);
+  });
+
+  it.skipIf(!hasGit)("carries a worktree OpenCode made in its data folder, with the work in it, and its repository (needs git)", async () => {
+    const base = tmp();
+    fs.writeFileSync(path.join(base, 'gitconfig'), '');
+    const home = path.join(base, 'home');
+    const repo = path.join(home, 'src/beta');
+    const tree = path.join(home, '.local/share/opencode/worktree/752593/react-boilerplate');
+    fs.mkdirSync(repo, { recursive: true });
+    git(base, repo, 'init', '-q');
+    git(base, repo, 'commit', '-q', '--allow-empty', '-m', 'first');
+    git(base, repo, 'worktree', 'add', '-q', '-b', 'react-boilerplate', tree);
+    fs.writeFileSync(path.join(tree, 'App.tsx'), 'work in progress\n');
+    const state = emptyState();
+    state.characters = { oc: char('oc', { cwd: tree }) };
+    const maps: MachineMaps = {
+      source: { machineId: MAC, home, fleetHome: path.join(home, '.svall') },
+      destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.svall') },
+    };
+    const inv = buildInventory(state, { fleet: FLEET }, maps, await discoverGit(state, { excludes: DEFAULT_EXCLUDES }));
+    expect(inv.blockers).toEqual([]);
+    expect(inv.roots.map((r) => [r.kind, r.path])).toEqual([
+      ['worktree', tree],
+      ['home', path.join(home, '.svall/home')],
+      ['repo', repo],
+    ]);
   });
 });
 

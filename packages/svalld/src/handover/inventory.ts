@@ -10,7 +10,7 @@ import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
 import { exportSnapshot, holds, portablePathValues, realPath, type PathValue } from './portable-path.js';
 
 /** Where one machine keeps what a handover moves: its home, this fleet's own home, where each agent's carried sessions land, and
- *  OpenCode's own folders where its environment puts them. */
+ *  OpenCode's own folders where its environment puts them, its data folder first. */
 export type MachineMap = { machineId: MachineId; home: string; fleetHome: string; agentHomes?: Partial<Record<AgentKind, string>>; opencode?: string[] };
 export type MachineMaps = { source: MachineMap; destination: MachineMap };
 export type InventoryConfigs = { fleet: FleetConfig };
@@ -154,18 +154,19 @@ function missionOf(fleetHome: string, home: string): string | undefined {
   return cwd && realPath(cwd.path);
 }
 
-/** Files a root may not hold, and folders it may neither hold nor lie in. */
-export type MachineLocal = { files: string[]; dirs: string[] };
+/** Files a root may not hold, and folders it may neither hold nor lie in, unless it lies in one of `worktrees`. */
+export type MachineLocal = { files: string[]; dirs: string[]; worktrees: string[] };
 
 /**
  * What an account keeps for itself and a handover never carries or lands on: each agent's login and config, where the
  * environment puts them and where the default does, OpenCode's database, snapshots, config, state and cache whole, its ssh keys,
- * and Svall's own install, units and shims.
+ * and Svall's own install, units and shims. The worktrees OpenCode makes in its data folder hold the user's code, and travel.
  */
 export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes' | 'opencode'>): MachineLocal {
   const at = (...p: string[]): string => path.posix.join(m.home, ...p);
   const claudes = [...new Set([at('.claude'), m.agentHomes?.claude ?? at('.claude')])];
   const codexes = [...new Set([at('.codex'), m.agentHomes?.codex ?? at('.codex')])];
+  const opencodeData = [...new Set([at('.local', 'share', 'opencode'), ...(m.opencode ?? []).slice(0, 1)])];
   return {
     files: [
       at('.claude.json'), ...claudes.flatMap((d) => [path.posix.join(d, '.credentials.json'), path.posix.join(d, '.claude.json')]),
@@ -178,12 +179,14 @@ export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes' | 'openco
         ...(m.opencode ?? []),
       ]),
     ],
+    worktrees: opencodeData.map((d) => path.posix.join(d, 'worktree')),
   };
 }
 
-function credentialClash(root: InventoryRoot, local: { files: string[]; dirs: string[] }): string | undefined {
+function credentialClash(root: InventoryRoot, local: MachineLocal): string | undefined {
   const held = [...local.files, ...local.dirs].find((p) => holds(root.path, p));
   if (held) return held === root.path ? `${root.path} stays on its machine` : `${root.path} holds ${held}, which stays on its machine`;
+  if (local.worktrees.some((w) => root.path !== w && holds(w, root.path))) return undefined;
   const dir = local.dirs.find((d) => holds(d, root.path));
   return dir && `${root.path} lies in ${dir}, which stays on its machine`;
 }
@@ -286,7 +289,8 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles');
   // the destination checks its own by real path when it claims a root
   const [here, there] = [machineLocal(source), machineLocal(destination)];
-  const local = { files: [...new Set([...here.files.map((p) => realPath(p)), ...there.files])], dirs: [...new Set([...here.dirs.map((p) => realPath(p)), ...there.dirs])] };
+  const both = (k: keyof MachineLocal): string[] => [...new Set([...here[k].map((p) => realPath(p)), ...there[k]])];
+  const local: MachineLocal = { files: both('files'), dirs: both('dirs'), worktrees: both('worktrees') };
   const allowed = placed.filter((r) => {
     const fleetHome = fleetHomeClash(r, travels, homes);
     if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: r.id } });

@@ -347,6 +347,7 @@ export class ReplicaStore {
     const dirs = (this.opts.local?.dirs ?? []).map((p) => this.canonical(p));
     const held = [...files, ...dirs].find((p) => holds(at, p));
     if (held) return held === at ? `${at} stays on this machine` : `${at} holds ${held}, which stays on this machine`;
+    if ((this.opts.local?.worktrees ?? []).map((w) => this.canonical(w)).some((w) => at !== w && holds(w, at))) return undefined;
     const dir = dirs.find((d) => holds(d, at));
     return dir && `${at} lies in ${dir}, which stays on this machine`;
   }

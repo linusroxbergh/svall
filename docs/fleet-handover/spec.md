@@ -536,8 +536,12 @@ visibly a new session and is never the automatic handover path.
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
 OpenCode's data, config, state and cache folders (`~/.local/share/opencode`, `~/.config/opencode`,
 `~/.local/state/opencode`, `~/.cache/opencode`, and where the daemon's `XDG_DATA_HOME` and
-`XDG_CONFIG_HOME` put them on each machine) are machine-local whole: a handover never
-carries a root in or holding one, nor lands on one.
+`XDG_CONFIG_HOME` put them on each machine) are machine-local: a handover never carries a root
+holding one or lying in one, nor lands on one, except a root inside the `worktree` folder of the
+data folder. OpenCode makes the Git worktrees its agent asks for there, so such a root is the
+user's code, and a worktree there travels as any other worktree of the repository Git names, the
+main checkout with it. It lands at the same path, and the destination's OpenCode finds it through
+Git once the Git import has registered it.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
 afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
 on the two machines; the warning names the settings, skills and MCP servers each machine keeps,

@@ -524,7 +524,7 @@ describe('real paths', () => {
     fs.mkdirSync(account);
     fs.symlinkSync(path.join(w.work, 'dotfiles', 'ssh'), path.join(account, '.ssh'));
     fs.mkdirSync(path.join(account, '.local', 'share', 'svall', 'gateway'), { recursive: true });
-    const local = { files: [path.join(account, '.claude', '.credentials.json')], dirs: [path.join(account, '.ssh'), path.join(account, '.local', 'share', 'svall')] };
+    const local = { files: [path.join(account, '.claude', '.credentials.json')], dirs: [path.join(account, '.ssh'), path.join(account, '.local', 'share', 'svall')], worktrees: [] };
     const store = w.store({ local });
     for (const [root, held] of [
       [dir(path.join(w.work, 'dotfiles')), real(path.join(w.work, 'dotfiles', 'ssh'))],
@@ -536,6 +536,18 @@ describe('real paths', () => {
       expect(() => store.archive(root, [root.id])).toThrow(held);
     }
     expect(fs.readdirSync(path.join(w.work, 'dotfiles'))).toEqual(['ssh']);
+  });
+
+  it("claims a worktree in OpenCode's worktree folder, which holds the user's code, and nothing else of OpenCode's", async () => {
+    const w = world();
+    const data = path.join(w.base, 'account', '.local', 'share', 'opencode');
+    fs.mkdirSync(path.join(data, 'worktree'), { recursive: true });
+    const store = w.store({ local: { files: [], dirs: [data], worktrees: [path.join(data, 'worktree')] } });
+    const tree: ReplicaRoot = { id: 'r_wt', kind: 'worktree', entry: 'dir', path: path.join(data, 'worktree', '752593', 'react-boilerplate') };
+    expect(await store.claim(tree, claimFor(TX))).toMatchObject({ ok: true, kind: 'absent' });
+    for (const root of [dir(path.join(data, 'worktree')), dir(path.join(data, 'snapshot'))]) {
+      expect(await store.claim(root, claimFor(TX))).toMatchObject({ ok: false, blocker: { code: 'path_unsupported', message: expect.stringContaining(`lies in ${real(data)}`) } });
+    }
   });
 
   it("refuses mission control's folder, the fleet .env, docs or agent profiles when a link leads them elsewhere in the fleet home", async () => {
