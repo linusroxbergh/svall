@@ -16,6 +16,7 @@ function fakeApi() {
 }
 
 describe('loadResources', () => {
+  afterEach(() => { vi.useRealTimers(); });
   it('puts the listing in the store, and leaves the store alone when svalld cannot answer', async () => {
     const store = createAppStore();
     const sources = [{ rootId: 'r:/d/islands/i1', root: '/d/islands/i1', name: 'one', tier: 'island', docs: 'r:/d/islands/i1', islandIds: ['i1'], characterIds: [], groups: [] }];
@@ -25,7 +26,6 @@ describe('loadResources', () => {
     expect(store.getState().resources).toEqual(sources);
   });
 
-  afterEach(() => { vi.useRealTimers(); });
   it('serves a burst of asks with one read, and asks again once that read has aged', async () => {
     vi.useFakeTimers();
     const { api, calls } = fakeApi();
