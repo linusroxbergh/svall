@@ -180,13 +180,21 @@ export const checking = (run: HandoverRun): boolean => !!run.checking && !run.st
 export const verdictOf = (run: HandoverRun): Verdict | undefined =>
   (run.status?.standing === 'none' && !run.status.safe.length && run.result?.status === 'blocked' ? undefined : run.status);
 
-/** A status past the commit that leaves only resuming, which the sheet then does without asking, once per run it rebuilds. */
-export const goesOnByItself = (run: HandoverRun | undefined): boolean => !!run?.status && !run.following && !run.goingOn
-  && (run.status.standing === 'committed' || run.status.standing === 'moved') && run.status.safe.length === 1 && run.status.safe[0] === 'resume';
+/**
+ * Past the commit, a status or a stopped run that leaves only resuming, which the sheet then does without asking, once
+ * per run it rebuilds or follows.
+ */
+export function goesOnByItself(run: HandoverRun | undefined): boolean {
+  if (!run || run.following || run.goingOn) return false;
+  const only = (safe: SafeAction[]) => safe.length === 1 && safe[0] === 'resume';
+  const s = run.status;
+  if (s) return (s.standing === 'committed' || s.standing === 'moved') && only(s.safe);
+  return run.result?.status === 'interrupted' && only(run.result.safe) && isCommitted(run);
+}
 
-/** The run a resume the sheet started by itself follows: what the status rebuilt, at the furthest step either reached. */
+/** The run a resume the sheet started by itself follows: what it goes on from, at the furthest step reached. */
 export function goOn(run: HandoverRun): HandoverRun {
-  const at = run.status?.phase;
+  const at = run.status?.phase ?? (run.result && 'phase' in run.result ? run.result.phase : undefined);
   const phase = at && (!run.phase || step(at) > step(run.phase)) ? at : run.phase;
   return { ...run, following: true, goingOn: true, phase, status: undefined, result: undefined, error: undefined, decision: undefined, retry: undefined, cancelled: undefined, aborting: undefined };
 }

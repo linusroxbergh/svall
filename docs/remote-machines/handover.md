@@ -227,8 +227,8 @@ What else to know:
   the app opens, and `status` says what to do.
 - **A dropped link** takes the controller from about 45 seconds to two and a half minutes to give up, depending on
   the step: each call waits up to 30 seconds and is asked up to four times, and the ssh connection is closed after 45
-  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort, or Retry after
-  the commit. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
+  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort before the
+  commit; after it, the sheet resumes by itself once, then offers Retry. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
   it then ends complete, and `svall handover --resume` finishes what they missed.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.

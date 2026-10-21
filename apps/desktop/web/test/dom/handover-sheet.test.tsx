@@ -286,6 +286,26 @@ test('a resume the sheet started by itself is not started again by what its help
   expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
 });
 
+test('a watched run that stops past the commit, with resuming all that is safe, resumes by itself once', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  const stopped: HandoverEvent = { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'activate', error: 'ssh to trift closed', safe: ['resume'] } };
+  say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer', 'verify', 'prepare', 'ready', 'commit', 'activate'), stopped);
+  expect(resumes(send)).toBe(0);
+  act(() => store.getState().handoverExit(1));
+  expect(resumes(send)).toBe(1);
+  expect(screen.getByTestId('handover-headline').textContent).toBe("The fleet is trift's now, so the sheet resumes it there by itself…");
+  say(stopped);
+  act(() => store.getState().handoverExit(1));
+  expect(resumes(send)).toBe(1);
+  expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
+  // before the commit, a stop waits for Resume or Abort
+  act(() => store.getState().handoverFollow('trift'));
+  say(...changed('begin', 'freeze', 'transfer'), { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'transfer', error: 'ssh to trift closed', safe: ['resume', 'abort'] } });
+  act(() => store.getState().handoverExit(1));
+  expect(resumes(send)).toBe(1);
+});
+
 const openAtChecks = (code: 'transaction_open' | 'generation_mismatch' | 'identity_mismatch', message: string): HandoverEvent =>
   ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code, message }] } });
 const attaches = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.attach').length;
