@@ -1,0 +1,10 @@
+# OpenCode handover — common rules for every task
+
+- Repo: svall, PR #2 (branch worktree-port-pr-1). Merge of main is 8d5efd6e. Each task works in its own worktree named in its brief, on its own branch from 8d5efd6e; commit there, never push, never touch the main checkout or another task's worktree.
+- Read: docs/fleet-handover/README.md, docs/fleet-handover/spec.md (binding; "Agent sessions", "Terminal records", rest/settle sections), /Users/linusroxbergh/.svall/docs/repos/svall-c41064da/opencode-support.md, ledger/opencode-spike.md (this folder), and the Ruling lines about OpenCode at the end of ledger/progress.md.
+- Goal: the handover covers OpenCode (>= 2.0.22, svall's existing minimum) the way it covers Claude and Codex. The merge left OpenCode refused (`HANDOVER_KINDS` in sessions/registry.ts, `incompatible_adapter`); that refusal goes away when the adapter lands.
+- Test-first: write the failing test, see it fail for the right reason, then implement. Mirror the existing Claude/Codex tests (fakes, fault suites, failpoints) for OpenCode wherever they exist.
+- Env in every shell: `unset -f node pnpm npx; export PATH=$HOME/.nvm/versions/node/v24.18.0/bin:$PATH; unset SVALL_HOME SVALL_CHAR_ID TMUX`. Run `pnpm install` once in a fresh worktree. Verify with `pnpm typecheck`, the vitest projects you touched (`pnpm vitest run --project svalld|cli|protocol|@svall/desktop-web`), and `pnpm test:faults` if you touched handover code. Known load flakes are in the README; rerun alone.
+- Never run a real opencode against the user's own data or `opencode serve --service`. A live check, if any, uses a sandbox HOME=/tmp/svoc-* as the spike did.
+- Commits: one sentence describing behaviour, repo style, no attribution lines. Minimal comments; match surrounding style; touch only your files (listed in your brief). If you need a change in a file you don't own, stop and say so in your report instead.
+- Report (<= 400 words): commit SHAs, what changed per file, tests added (and that each fails without the fix), suite counts, open questions.

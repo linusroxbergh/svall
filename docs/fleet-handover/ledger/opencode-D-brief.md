@@ -1,0 +1,6 @@
+# Task OC-D — protocol, web, Swift, integration scripts enumerations
+
+Worktree: /Users/linusroxbergh/linus_laboratory/svall/.claude/worktrees/oc-handover-d (branch oc-handover-d).
+Owns: packages/protocol/src/** except handover.ts's session-adapter parts if OC-A needs them (coordinate by reporting, not editing, if unsure), apps/desktop/web/** (src and e2e), apps/desktop/mac/** (Swift), scripts/integration/**, scripts/spikes/** and their tests. Not packages/svalld or packages/cli.
+
+Build: find every place the PR's handover code (diff 18efb2ab..8d5efd6e restricted to your paths) enumerates agents as claude/codex — labels, icons, handover sheet rows, Add Machine agent checks, blocker/warning texts, Swift helper/sheet models, protocol enums/schemas for handover events, host checks, the integration harness (scripts/integration/fleet-handover.mjs, machine.mjs, claude.mjs — add an OpenCode character with a fake or real opencode as the harness does for codex, so the container round trip covers it) — and make them cover OpenCode. Tests first: web unit + Playwright where handover UI lists agents, Swift tests where the Swift side decodes agent kinds. If a protocol schema change is needed, keep the protocol version as is unless the wire format of an existing message changes incompatibly (then report it).
