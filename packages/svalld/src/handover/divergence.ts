@@ -62,8 +62,9 @@ function roles(paths: Iterable<string>, gitDir: boolean): (p: string) => { role:
 const under = (dir: string, p: string): string => (dir === '' ? p : `${dir}/${p}`);
 
 /**
- * Each Git directory's refs by what they resolve to, a loose ref ahead of a packed one; null for a directory one of
- * whose ref files does not say what it holds. A directory with no ref file here is not listed.
+ * Each Git directory's refs by what they resolve to, a loose ref ahead of a packed one, and a packed ref that only a
+ * fetch moves left out as its loose file is; null for a directory one of whose ref files does not say what it holds. A
+ * directory with no ref file here is not listed.
  */
 function resolveRefs(files: Iterable<TransferFile>, role: ReturnType<typeof roles>): Map<string, Map<string, string> | null> {
   const dirs = new Map<string, { loose: Map<string, string>; packed: Map<string, string> } | null>();
@@ -76,7 +77,9 @@ function resolveRefs(files: Iterable<TransferFile>, role: ReturnType<typeof role
     if (!refs) dirs.set(dir, refs = { loose: new Map(), packed: new Map() });
     const name = dir === '' ? f.path : f.path.slice(dir.length + 1);
     if (f.type !== 'file' || (name === 'packed-refs' ? !f.refs : f.ref === undefined)) dirs.set(dir, null);
-    else if (name === 'packed-refs') for (const [ref, value] of Object.entries(f.refs!)) refs.packed.set(ref, value);
+    else if (name === 'packed-refs') {
+      for (const [ref, value] of Object.entries(f.refs!)) if (!VOLATILE.test(ref)) refs.packed.set(ref, value);
+    }
     else refs.loose.set(name, f.ref!);
   }
   return new Map([...dirs].map(([dir, refs]) => [dir, refs && new Map([...refs.packed, ...refs.loose])]));

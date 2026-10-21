@@ -124,6 +124,9 @@ describe('compareReplica on Git state', () => {
     const packedAll = [file('.git/HEAD'), packed('.git/packed-refs', { 'refs/heads/main': c, 'refs/tags/v1': d, 'refs/heads/old': c })];
     expect(diverged(compareReplica([loose], packedAll))).toBe(false);
     expect(diverged(compareReplica([packedAll], loose))).toBe(false);
+    // a remote's refs carry no work, loose or packed, as a fetch or a prune changes them
+    const fetched = [file('.git/HEAD'), packed('.git/packed-refs', { 'refs/heads/main': c, 'refs/tags/v1': d, 'refs/heads/old': c, 'refs/remotes/origin/main': d, 'refs/prefetch/remotes/origin/x': d })];
+    expect(diverged(compareReplica([[...loose, ref('.git/refs/remotes/origin/main', c)]], fetched))).toBe(false);
     const moved = compareReplica([loose], [file('.git/HEAD'), packed('.git/packed-refs', { 'refs/heads/main': d, 'refs/tags/v1': d }), ref('.git/refs/heads/new', c)]);
     expect(moved.changed.preview).toEqual(['.git/refs/heads/main']);
     expect(moved.removed.preview).toEqual(['.git/refs/heads/old']);
