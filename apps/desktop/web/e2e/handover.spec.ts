@@ -10,8 +10,8 @@ import type { HandoverEvent } from '../src/handover.js';
 type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
 
 /** A stand-in for the native shell: it answers the connection, names the gateway, and records what the page asks for. */
-async function fakeShell(page: Page, port: number, token: string, handoverEnabled = true, gateway: string | null = 'studio'): Promise<void> {
-  await page.addInitScript(({ port, token, handoverEnabled, gateway }) => {
+async function fakeShell(page: Page, port: number, token: string, handoverEnabled = true, gateway: string | null = 'studio', profile?: string): Promise<void> {
+  await page.addInitScript(({ port, token, handoverEnabled, gateway, profile }) => {
     const w = window as unknown as Shell & { webkit: unknown };
     w.__sent = [];
     w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
@@ -19,12 +19,12 @@ async function fakeShell(page: Page, port: number, token: string, handoverEnable
       w.__sent.push(m);
       if (m.type === 'connection') {
         setTimeout(() => {
-          w.__svall.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, ...(gateway && { gateway }) }));
+          w.__svall.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, ...(gateway && { gateway }), ...(profile && { profile }) }));
           w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token }));
         }, 0);
       }
     } } } };
-  }, { port, token, handoverEnabled, gateway });
+  }, { port, token, handoverEnabled, gateway, profile });
 }
 
 const sent = (page: Page) => page.evaluate(() => (window as unknown as Shell).__sent);
@@ -379,7 +379,7 @@ test('a launch after a finished move that once asked leaves an open terminal alo
 });
 
 test('a journal the gateway has moved on from offers Forget, and a standing with nothing to decide stays shut', async ({ page, svall }) => {
-  await fakeShell(page, svall.port, svall.token);
+  await fakeShell(page, svall.port, svall.token, true, 'studio', 'work');
   await svall.open();
   await readBack(page, { event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', transactionId: TX, safe: [], reason: `the gateway cannot say whether ${TX} committed (ssh: connect to host studio port 22: Operation timed out); nothing is safe until it answers` } });
   await expect(page.getByTestId('handover-tab')).toBeVisible();
@@ -390,7 +390,7 @@ test('a journal the gateway has moved on from offers Forget, and a standing with
   } }] });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
   await expect(page.getByTestId('handover-headline')).toHaveText("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
-  await expect(page.getByTestId('handover-way-out').locator('code')).toHaveText(['svall handover status', 'svall fleet recover --force-owner local']);
+  await expect(page.getByTestId('handover-way-out').locator('code')).toHaveText(['svall -p work handover status', 'svall -p work fleet recover --force-owner local']);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-resume')).toHaveCount(0);
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);

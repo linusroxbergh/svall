@@ -108,9 +108,7 @@ describe('the handover a sheet follows', () => {
   });
 
   it("names the fleet a command acts on by its profile, as the shell's own svall calls do", () => {
-    expect(svallFor('/Users/ada/.svall')).toBe('svall');
-    expect(svallFor('/Users/ada/.svall-work')).toBe('svall -p work');
-    expect(svallFor('/tmp/fleet-x')).toBe('svall');
+    expect(svallFor('work')).toBe('svall -p work');
     expect(svallFor(undefined)).toBe('svall');
   });
 

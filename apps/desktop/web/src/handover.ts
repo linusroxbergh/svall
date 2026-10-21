@@ -218,11 +218,8 @@ export function goOn(run: HandoverRun): HandoverRun {
   return { ...run, following: true, goingOn: true, phase, status: undefined, result: undefined, error: undefined, decision: undefined, retry: undefined, cancelled: undefined, aborting: undefined };
 }
 
-/** `svall` as typed for a window's fleet: with `-p <profile>` for any home but the private one, as the shell's own calls are. */
-export const svallFor = (fleetHome: string | undefined): string => {
-  const profile = fleetHome && /^\/(?:Users|home)\/[^/]+\/\.svall-([^/]+)$/.exec(fleetHome)?.[1];
-  return profile ? `svall -p ${profile}` : 'svall';
-};
+/** `svall` as typed for a window's fleet: with `-p <profile>` when the shell names one, as its own calls are. */
+export const svallFor = (profile: string | undefined): string => (profile ? `svall -p ${profile}` : 'svall');
 
 /** The way on from a terminal where the sheet has none, as handover.md gives it; commands stand between backticks. */
 export function wayOut(run: HandoverRun, svall = 'svall'): string | undefined {

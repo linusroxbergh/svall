@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import './setup.js';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { HandoverEvent } from '../../src/handover.js';
 import { setAppStore } from '../../src/hooks.js';
@@ -502,8 +502,14 @@ test('a resume or abort that finds nothing safe has the sheet read the status, a
   expect(attaches(send)).toBe(1);
 });
 
-test("the commands the sheet names act on this window's fleet", () => {
-  store.getState().setShell({ home: '/Users/ada/.svall-work', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+test("the commands the sheet names act on this window's fleet, by the profile the shell names it by", () => {
+  // a home that reads like a profile names none unless the shell says so, as a Dev build's own does
+  store.getState().setShell({ home: '/Users/ada/.svall-dev', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+  render(<HandoverSheet />);
+  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
+  expect(screen.getByTestId('handover-way-out').querySelector('code')?.textContent).toBe('svall handover status');
+  cleanup();
+  store.getState().setShell({ home: '/Users/ada/.svall-work', log: [], op: false, handoverEnabled: true, gateway: 'trift', profile: 'work' });
   render(<HandoverSheet />);
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
   expect([...screen.getByTestId('handover-way-out').querySelectorAll('code')].map((c) => c.textContent)).toEqual(['svall -p work handover status', 'svall -p work fleet recover --force-owner local']);

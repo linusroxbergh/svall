@@ -347,7 +347,7 @@ export function HandoverSheet() {
   const owner = runsOn ?? 'local';
   const characters = useApp((s) => s.fleet.characters);
   const home = useApp((s) => accountHome(s.shell?.home));
-  const svall = useApp((s) => svallFor(s.shell?.home));
+  const svall = useApp((s) => svallFor(s.shell?.profile));
   const shut = useRef<HTMLButtonElement>(null);
   // the user asked to pick a destination over a run the sheet still shows
   const [picking, setPicking] = useState(false);
