@@ -206,16 +206,22 @@ export function goOn(run: HandoverRun): HandoverRun {
   return { ...run, following: true, goingOn: true, phase, status: undefined, result: undefined, error: undefined, decision: undefined, retry: undefined, cancelled: undefined, aborting: undefined };
 }
 
+/** `svall` as typed for a window's fleet: with `-p <profile>` for any home but the private one, as the shell's own calls are. */
+export const svallFor = (fleetHome: string | undefined): string => {
+  const profile = fleetHome && /^\/(?:Users|home)\/[^/]+\/\.svall-([^/]+)$/.exec(fleetHome)?.[1];
+  return profile ? `svall -p ${profile}` : 'svall';
+};
+
 /** The way on from a terminal where the sheet has none, as handover.md gives it; commands stand between backticks. */
-export function wayOut(run: HandoverRun): string | undefined {
+export function wayOut(run: HandoverRun, svall = 'svall'): string | undefined {
   const s = verdictOf(run);
   if (s?.standing === 'superseded') {
-    return '`svall handover status` says where the fleet stands now. Forget is enough when another handover or a recovery moved it on; '
-      + "if the gateway was set up again, `svall fleet recover --force-owner local` then makes this Mac the fleet's owner.";
+    return `\`${svall} handover status\` says where the fleet stands now. Forget is enough when another handover or a recovery moved it on; `
+      + `if the gateway was set up again, \`${svall} fleet recover --force-owner local\` then makes this Mac the fleet's owner.`;
   }
   if (s ? s.standing === 'unknown' : commitUnknown(run.result)) {
-    return 'Once the gateway answers, `svall handover status` in a terminal says what is safe. If it is gone for good, '
-      + "`svall fleet recover --force-owner local --gateway <machine>` makes this Mac the fleet's owner, with another of your machines as its gateway.";
+    return `Once the gateway answers, \`${svall} handover status\` in a terminal says what is safe. If it is gone for good, `
+      + `\`${svall} fleet recover --force-owner local --gateway <machine>\` makes this Mac the fleet's owner, with another of your machines as its gateway.`;
   }
   return undefined;
 }
@@ -381,8 +387,8 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
 
 export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry', carry: 'Carry the folder whole' };
 
-// home: the account's home, which is the same path on both machines, when the page knows it
-export type HintContext = { destination: string; source: string; pull: boolean; home?: string; name(id: string): string };
+// home: the account's home, which is the same path on both machines, when the page knows it; svall: the command for this window's fleet
+export type HintContext = { destination: string; source: string; pull: boolean; home?: string; svall?: string; name(id: string): string };
 
 // a session OpenCode's database went on with; a divergence of files, whatever the agent, ends with the files
 const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Za-z]{14}) past the copy coming in$/;
@@ -393,6 +399,7 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   // the Linux machine, by the name ssh and svall host know it by
   const linux = ctx.pull ? ctx.source : ctx.destination;
   const host = machineName(linux) ? linux : '<machine>';
+  const svall = ctx.svall ?? 'svall';
   switch (b.code) {
     case 'identity_mismatch':
       return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message. A machine set up again is added and made the gateway again, as "A gateway set up again" in handover.md says.';
@@ -419,13 +426,13 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'mission_control_shared':
       return 'Give one of the fleets a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
     case 'transcript_missing':
-      return 'An agent that never reported a transcript has no working hooks: run `svall doctor`. To move without that conversation, exit the agent and try again.';
+      return `An agent that never reported a transcript has no working hooks: run \`${svall} doctor\`. To move without that conversation, exit the agent and try again.`;
     case 'ssh_interactive':
       return `Run \`ssh ${host}\` once in Terminal and answer what it asks, and keep a key's passphrase in the agent with \`ssh-add --apple-use-keychain\`; then try again.`;
     case 'platform_unsupported':
       return "If the repository runs there, add the platform to its .svall/handover.json; otherwise close the characters working in it.";
     case 'rsync_unsupported':
-      return `On ${linux}, install rsync 3.2.3 or newer (\`sudo apt install rsync\`); on this Mac, \`svall doctor\` checks the one Svall brings.`;
+      return `On ${linux}, install rsync 3.2.3 or newer (\`sudo apt install rsync\`); on this Mac, \`${svall} doctor\` checks the one Svall brings.`;
     case 'git_mismatch':
       return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
     case 'git_extension':
@@ -434,8 +441,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {
       const owner = !ctx.pull ? 'local' : machineName(ctx.source) ? ctx.source : '<machine>';
-      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again; \`svall handover status\` says which. `
-        + `With nothing open, restart Svall's daemon on ${ctx.source}, which takes the gateway's newer record; a gateway set up again needs \`svall fleet recover --force-owner ${owner}\`.`;
+      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again; \`${svall} handover status\` says which. `
+        + `With nothing open, restart Svall's daemon on ${ctx.source}, which takes the gateway's newer record; a gateway set up again needs \`${svall} fleet recover --force-owner ${owner}\`.`;
     }
     case 'agent_working':
       return `Continue waiting lets it finish its turn. Interrupt and carry stops every agent still at work with Escape; each resumes from its transcript on ${ctx.destination}.`;

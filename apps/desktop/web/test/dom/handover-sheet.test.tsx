@@ -446,6 +446,17 @@ test('a resume or abort that finds nothing safe has the sheet read the status, a
   expect(attaches(send)).toBe(1);
 });
 
+test("the commands the sheet names act on this window's fleet", () => {
+  store.getState().setShell({ home: '/Users/ada/.svall-work', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+  render(<HandoverSheet />);
+  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
+  expect([...screen.getByTestId('handover-way-out').querySelectorAll('code')].map((c) => c.textContent)).toEqual(['svall -p work handover status', 'svall -p work fleet recover --force-owner local']);
+  act(() => store.getState().handoverFollow('trift'));
+  say(openAtChecks('generation_mismatch', 'This Mac holds this fleet at a later generation than the gateway'));
+  expect([...screen.getByTestId('handover-blocker-generation_mismatch').querySelectorAll('em code')].map((c) => c.textContent))
+    .toEqual(['svall -p work handover status', 'svall -p work fleet recover --force-owner local']);
+});
+
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
   preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
   { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000, verified: true } },

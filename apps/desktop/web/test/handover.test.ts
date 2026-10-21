@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing } from '@svall/protocol';
 import {
   actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  blockerSide, goOn, rowText, sectionStates, shortPath, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
 const tx = 'tx-1';
@@ -105,6 +105,13 @@ describe('the handover a sheet follows', () => {
     const row = run.rows.find((r) => r.id === 'r_a')!;
     expect(row.error).toBeUndefined();
     expect(rowText(row)).toBe('12.0 MB of 40.0 MB; what was there is kept at /home/ada/a.archived-1');
+  });
+
+  it("names the fleet a command acts on by its profile, as the shell's own svall calls do", () => {
+    expect(svallFor('/Users/ada/.svall')).toBe('svall');
+    expect(svallFor('/Users/ada/.svall-work')).toBe('svall -p work');
+    expect(svallFor('/tmp/fleet-x')).toBe('svall');
+    expect(svallFor(undefined)).toBe('svall');
   });
 
   it("turns only the account's own home into ~", () => {
