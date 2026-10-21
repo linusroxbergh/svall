@@ -118,7 +118,8 @@ changed. If something on that replica changed while the machine did not own the 
 the handover rather than overwrite it: copy the changes back by hand, or archive the replica. What an OS or editor
 writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml` and `.vscode/*.log` files) never counts as a
 change, and neither does Git packing a repository's refs. Such a file moves like any other and replaces the other
-machine's, but a copy never deletes one only the other machine has. Once a folder's first copy pass is done, whatever a later pass replaces or deletes there is moved into a sibling
+machine's, but a copy never deletes one only the other machine has, unless the folder holding it is gone from the
+machine the fleet is on. Once a folder's first copy pass is done, whatever a later pass replaces or deletes there is moved into a sibling
 folder named `<folder>.overwritten-<handover id>`, a subfolder for each pass, and the folder's row and the result name
 those files, twenty at most and a count of the rest.
 

@@ -139,8 +139,9 @@ export function rsyncArgv(job: RsyncJob): string[] {
     ...(job.dryRun ? ['--dry-run', ...(job.checksum === false ? [] : ['--checksum'])] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2', ...(job.backupDir ? ['--backup', `--backup-dir=${job.backupDir}`] : [])]),
     ...(job.delete ? ['--delete'] : []),
     ...(job.mkpath ? ['--mkpath'] : []),
-    // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`
-    ...(job.delete ? NOISE.map((n) => `--filter=P ${n}`) : []),
+    // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`; a perishable one for
+    // noise spares it in a folder that stays and lets a folder the source dropped go whole
+    ...(job.delete ? NOISE.map((n) => `--filter=-rp ${n}`) : []),
     ...(job.protect ?? []).map((p) => `--filter=P /${p}/**`),
     ...(job.filterFile ? [`--exclude-from=${job.filterFile}`] : []),
     ...(job.filesFrom ? ['--from0', `--files-from=${job.filesFrom}`] : []),

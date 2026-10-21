@@ -441,7 +441,7 @@ target/
 Excluded platform caches stay destination-local and are never used in source verification. Files an
 OS or editor writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log`)
 transfer, since a repository may track them, but no comparison counts them as a change and no copy
-deletes one the destination alone holds; a Git
+deletes one the destination alone holds in a folder the source still has; a Git
 directory's refs are compared by what they resolve to, so packing them is no change either.
 
 ## Git repository graphs
@@ -501,9 +501,10 @@ file as `.git.archived` beside a `.git` reading `gitdir: /nonexistent`, so git t
 registration nor finds a repository above; `README.archived.txt` names each one's branch and commit. Handover never
 silently deletes destination-only work.
 
-Rsync runs incrementally over SSH with argv-safe arguments. Protect rules ahead of the filter file keep `--delete`
-from removing OS or editor noise only the destination holds, and any object in the object store of a Git directory
-whose worktrees the destination keeps. A partial transfer leaves an inactive,
+Rsync runs incrementally over SSH with argv-safe arguments. Rules ahead of the filter file keep `--delete`
+from removing OS or editor noise only the destination holds in a folder the source still has, as perishable
+receiver-side excludes that let a folder the source dropped go whole, and any object in the object store of a Git
+directory whose worktrees the destination keeps, as protect rules. A partial transfer leaves an inactive,
 transaction-marked replica which `--resume` can continue cheaply. The source remains authoritative
 until ownership commits.
 
@@ -992,7 +993,8 @@ honest remapped URL when its preferred local port is occupied.
 - A failed destination agent login before freeze blocks; a resume failure after commit leaves one
   dormant, retryable character without reactivating the source.
 - A destination file edited while inactive is never overwritten without explicit archive approval;
-  OS and editor noise is no edit, and a copy may replace it but never deletes it.
+  OS and editor noise is no edit, and a copy may replace it, or remove a folder the source dropped with it, but
+  deletes it nowhere else.
 
 ## Release gate
 
