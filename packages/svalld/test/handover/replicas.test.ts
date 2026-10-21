@@ -533,7 +533,7 @@ describe('real paths', () => {
       [dir(path.join(account, '.claude')), `${real(account)}/.claude/.credentials.json`],
     ] as const) {
       expect(await store.claim(root, claimFor(TX))).toMatchObject({ ok: false, blocker: { code: 'path_unsupported', message: expect.stringContaining(held) } });
-      expect(() => store.archive(root, [root.id])).toThrow(held);
+      await expect(store.archive(root, [root.id], claimFor(TX))).rejects.toThrow(held);
     }
     expect(fs.readdirSync(path.join(w.work, 'dotfiles'))).toEqual(['ssh']);
   });
@@ -585,27 +585,59 @@ describe('real paths', () => {
 });
 
 describe('archiving', () => {
+  // more changed files than an archive moves one by one
+  const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`new/${i}.txt`, 'new']));
+
   async function diverged() {
     const w = world();
     const app = tree(path.join(w.work, 'app'), { 'a.txt': 'a' });
     w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
-    write(app, 'a.txt', 'edited');
+    tree(app, { 'a.txt': 'edited', ...many });
     return { w, app, canonical: path.join(real(w.work), 'app') };
   }
 
   it('moves a root aside only when the choice names it, and frees its path', async () => {
     const { w, app, canonical } = await diverged();
     const store = w.store();
-    expect(() => store.archive(dir(app), undefined)).toThrow(expect.objectContaining({ code: 'not_approved' }));
-    expect(() => store.archive(dir(app), ['r_other', path.join(w.work, 'other')])).toThrow(expect.objectContaining({ code: 'not_approved' }));
+    await expect(store.archive(dir(app), undefined, claimFor(TX))).rejects.toThrow(expect.objectContaining({ code: 'not_approved' }));
+    await expect(store.archive(dir(app), ['r_other', path.join(w.work, 'other')], claimFor(TX))).rejects.toThrow(expect.objectContaining({ code: 'not_approved' }));
     expect(fs.readFileSync(path.join(app, 'a.txt'), 'utf8')).toBe('edited');
 
-    expect(store.archive(dir(app), ['r_app'])).toEqual({ path: canonical, archivedTo: `${canonical}.archived-${STAMP}` });
+    expect(await store.archive(dir(app), ['r_app'], claimFor(TX))).toEqual({ path: canonical, archivedTo: `${canonical}.archived-${STAMP}` });
     expect(fs.readFileSync(`${canonical}.archived-${STAMP}/a.txt`, 'utf8')).toBe('edited');
     expect(fs.existsSync(app)).toBe(false);
     expect(fs.existsSync(w.recordFile(app))).toBe(false);
     expect(await store.claim(dir(app), claimFor(TX))).toMatchObject({ ok: true, kind: 'absent' });
-    expect(store.archive(dir(app), [app]).archivedTo).toBe(`${canonical}.archived-${STAMP}-2`);
+    expect((await store.archive(dir(app), [app], claimFor(TX))).archivedTo).toBe(`${canonical}.archived-${STAMP}-2`);
+  });
+
+  it('moves only the files that changed aside when few did, and the root it leaves is a replica of what stays', async () => {
+    const w = world();
+    const app = tree(path.join(w.work, 'app'), { 'a.txt': 'a', 'b.txt': 'b', 'sub/c.txt': 'c', 'd.txt': 'd', '.git/HEAD': 'ref: refs/heads/main\n' });
+    const incoming = await content(app);
+    w.store().seal(dir(app), sealAs('tx-0', incoming), 'source');
+    tree(app, { 'a.txt': 'edited', 'sub/new.txt': 'mine', '.DS_Store': 'finder' });
+    fs.rmSync(path.join(app, 'd.txt'));
+    const store = w.store();
+    expect(await store.claim(dir(app), claimFor(TX, incoming))).toMatchObject({ ok: false, blocker: { code: 'destination_diverged' } });
+    const canonical = path.join(real(w.work), 'app');
+    expect(await store.archive(dir(app), ['r_app'], claimFor(TX, incoming))).toEqual({ path: canonical, archivedTo: `${canonical}.archived-${STAMP}` });
+    expect((await content(`${canonical}.archived-${STAMP}`)).map((f) => f.path)).toEqual(['a.txt', 'sub/new.txt']);
+    expect(fs.readFileSync(`${canonical}.archived-${STAMP}/a.txt`, 'utf8')).toBe('edited');
+    expect((await content(app)).map((f) => f.path)).toEqual(['.DS_Store', '.git/HEAD', 'b.txt', 'sub/c.txt']);
+    expect(await store.claim(dir(app), claimFor(TX, incoming))).toMatchObject({ ok: true, kind: 'replica' });
+  });
+
+  it('moves the whole root aside when a change it found cannot be moved alone or read', async () => {
+    const w = world();
+    const commit = 'c'.repeat(40);
+    const app = tree(path.join(w.work, 'app'), { 'a.txt': 'a', '.git/HEAD': 'ref: refs/heads/main\n', '.git/packed-refs': `${commit} refs/heads/main\n` });
+    w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
+    // a branch moved inside packed-refs is a change to a ref, which is no file of its own
+    write(app, '.git/packed-refs', `${'d'.repeat(40)} refs/heads/main\n`);
+    const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
+    expect(fs.existsSync(app)).toBe(false);
+    expect(fs.readFileSync(path.join(archivedTo, 'a.txt'), 'utf8')).toBe('a');
   });
 
   it('never replaces a sibling that holds the name already, or takes it first', async () => {
@@ -620,7 +652,7 @@ describe('archiving', () => {
         },
       },
     });
-    expect(store.archive(dir(app), [canonical]).archivedTo).toBe(`${canonical}.archived-${STAMP}-4`);
+    expect((await store.archive(dir(app), [canonical], claimFor(TX))).archivedTo).toBe(`${canonical}.archived-${STAMP}-4`);
     expect(fs.readFileSync(`${canonical}.archived-${STAMP}/older.txt`, 'utf8')).toBe('older');
     expect(fs.readFileSync(`${canonical}.archived-${STAMP}-2`, 'utf8')).toBe('a file');
     expect(fs.readdirSync(`${canonical}.archived-${STAMP}-3`)).toEqual(['racer.txt']);
@@ -634,8 +666,8 @@ describe('archiving', () => {
     tree(common, { 'worktrees/wt/HEAD': 'ref: refs/heads/feat\n', 'worktrees/wt/commondir': '../..\n', 'packed-refs': `# pack-refs with: peeled\n${commit} refs/heads/feat\n` });
     const app = tree(path.join(w.work, 'wt'), { 'a.txt': 'a', '.git': `gitdir: ${common}/worktrees/wt\n` });
     w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
-    write(app, 'a.txt', 'edited');
-    const { archivedTo } = w.store().archive(dir(app), ['r_app']);
+    tree(app, { 'a.txt': 'edited', ...many });
+    const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
     expect(fs.existsSync(path.join(archivedTo, '.git'))).toBe(false);
     expect(fs.readFileSync(path.join(archivedTo, '.git.archived'), 'utf8')).toBe(`gitdir: ${common}/worktrees/wt\n`);
     expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toBe(
@@ -647,31 +679,31 @@ describe('archiving', () => {
     fs.writeFileSync(path.join(common, 'worktrees/wt/HEAD'), `${commit}\n`);
     const again = tree(path.join(w.work, 'wt'), { '.git': 'gitdir: ../main/.git/worktrees/wt\n' });
     w.store().seal(dir(again), sealAs('tx-1', []), 'source');
-    const detached = w.store().archive(dir(again), ['r_app']).archivedTo;
+    const detached = (await w.store().archive(dir(again), ['r_app'], claimFor(TX))).archivedTo;
     expect(fs.readFileSync(path.join(detached, 'README.archived.txt'), 'utf8')).toContain('the linked worktree detached at cccc');
     const main = tree(path.join(w.work, 'main'), { 'b.txt': 'b' });
     w.store().seal(dir(main, 'r_main'), sealAs('tx-2', []), 'source');
-    const kept = w.store().archive(dir(main, 'r_main'), ['r_main']).archivedTo;
+    const kept = (await w.store().archive(dir(main, 'r_main'), ['r_main'], claimFor(TX))).archivedTo;
     expect(fs.statSync(path.join(kept, '.git')).isDirectory()).toBe(true);
     expect(fs.existsSync(path.join(kept, 'README.archived.txt'))).toBe(false);
   });
 
-  it('moves a file root aside without replacing a file already there', () => {
+  it('moves a file root aside without replacing a file already there', async () => {
     const w = world();
     const note = path.join(w.work, 'todo.md');
     fs.writeFileSync(note, 'mine');
     fs.writeFileSync(`${real(w.work)}/todo.md.archived-${STAMP}`, 'older');
     const root: ReplicaRoot = { id: 'r_note', kind: 'context', entry: 'file', path: note };
-    const { archivedTo } = w.store().archive(root, ['r_note']);
+    const { archivedTo } = await w.store().archive(root, ['r_note'], claimFor(TX));
     expect(archivedTo).toBe(`${real(w.work)}/todo.md.archived-${STAMP}-2`);
     expect(fs.readFileSync(archivedTo, 'utf8')).toBe('mine');
     expect(fs.readFileSync(`${real(w.work)}/todo.md.archived-${STAMP}`, 'utf8')).toBe('older');
     expect(fs.existsSync(note)).toBe(false);
   });
 
-  it('refuses to move the fleet home or anything holding it', () => {
+  it('refuses to move the fleet home or anything holding it', async () => {
     const w = world();
-    expect(() => w.store().archive(dir(w.base, 'r_base'), ['r_base'])).toThrow(expect.objectContaining({ code: 'invalid' }));
+    await expect(w.store().archive(dir(w.base, 'r_base'), ['r_base'], claimFor(TX))).rejects.toThrow(expect.objectContaining({ code: 'invalid' }));
     expect(fs.existsSync(w.home)).toBe(true);
   });
 });

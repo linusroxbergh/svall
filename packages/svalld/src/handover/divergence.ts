@@ -126,14 +126,14 @@ export const diverged = (d: Divergence): boolean => [d.added, d.removed, d.chang
  */
 export async function proveReplica(
   at: string, accepted: readonly (readonly TransferFile[])[], excludes: readonly string[], sfs: ScanFs = realScanFs, kind?: TransferRoot['kind'],
-  ignore?: (relative: string) => boolean,
+  ignore?: (relative: string) => boolean, limit = PREVIEW,
 ): Promise<{ divergence: Divergence; files: TransferFile[] }> {
   const excluded = rootMatcher(kind, excludes);
   const scan = await scanPath(at, excluded, sfs);
   const files = (scan?.files ?? []).filter((f) => !ignore?.(f.path));
   // the scan never reaches a path the excludes name or one under an excluded folder; the root itself is always read
   const kept = accepted.map((version) => version.filter((f) => (f.path === '' || !excludedPath(f.path, excluded)) && !ignore?.(f.path)));
-  return { divergence: compareReplica(kept, files, scan?.problems ?? [], PREVIEW, kind === 'gitdir'), files };
+  return { divergence: compareReplica(kept, files, scan?.problems ?? [], limit, kind === 'gitdir'), files };
 }
 
 /** What differs in the root at `at`, kind by kind, with the paths the report names; the root itself shows by its own name. */

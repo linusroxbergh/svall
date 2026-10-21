@@ -493,7 +493,8 @@ nothing. Changes made while that machine did not own the fleet block the handove
 - cancel and recover the changes manually; or
 - explicitly archive the divergent destination root and continue.
 
-Archiving renames the root to a timestamped sibling and reports the recovery path. Handover never
+Archiving renames the root to a timestamped sibling and reports the recovery path; a root that differs
+in at most 20 files moves only those into the sibling and keeps the rest as its replica. Handover never
 silently deletes destination-only work.
 
 Rsync runs incrementally over SSH with argv-safe arguments. A partial transfer leaves an inactive,

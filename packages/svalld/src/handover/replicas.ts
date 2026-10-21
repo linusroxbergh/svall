@@ -110,6 +110,8 @@ type Blocked = { kind: 'blocked'; blocker: Blocker; divergence?: Divergence };
 type Verdict = { kind: 'reserve' | 'adopt' | 'resume' } | { kind: 'replica'; found: TransferFile[] } | Blocked;
 
 const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+// the most paths an archive sets aside one by one; a root that differs in more is set aside whole
+const FEW = 20;
 // the name rsync gives a file it has not finished writing: `.<name>.` and six characters, beside where the file goes
 const RSYNC_PARTIAL = /^(.*\/)?\.([^/]+)\.[A-Za-z0-9]{6}$/;
 /** Whether `p` is rsync's unfinished copy of one of the `incoming` paths. */
@@ -255,10 +257,12 @@ export class ReplicaStore {
   }
 
   /**
-   * Renames a root to a timestamped sibling no other file or folder holds, forgets its record so the path
-   * can be reserved, and returns where the old content now lies. Only when `approved` names the root.
+   * Sets a root's content aside in a timestamped sibling no other file or folder holds, and returns where it now lies;
+   * only when `approved` names the root. A folder that differs from what handover left in at most a few files, each one
+   * there to move, keeps the rest, and its record names that rest as handover's, so `t` claims it as a replica. Any other
+   * root is renamed whole, and its record forgotten so the path can be reserved.
    */
-  archive(root: ReplicaRoot, approved: readonly string[] | undefined): { path: string; archivedTo: string } {
+  async archive(root: ReplicaRoot, approved: readonly string[] | undefined, t: Inspect): Promise<{ path: string; archivedTo: string }> {
     const at = this.canonical(root.path);
     if (!approved?.some((name) => name === root.id || name === root.path || name === at)) {
       throw new ReplicaError('not_approved', `archiving ${at} takes a choice that names it`);
@@ -272,16 +276,51 @@ export class ReplicaStore {
       if (errno(e) === 'ENOENT') throw new ReplicaError('missing', `nothing is at ${at}`);
       throw e;
     }
+    const few = st.isDirectory() ? await this.few(root, at, t) : undefined;
     const stamp = new Date((this.opts.now ?? Date.now)()).toISOString().replace(/\.\d+Z$/, 'Z').replaceAll(':', '');
     for (let n = 1; n <= 100; n++) {
       const to = `${at}.archived-${stamp}${n > 1 ? `-${n}` : ''}`;
-      if (!this.moveAside(at, to, st.isDirectory())) continue;
-      const held = this.read(at);
-      if (held.bytes) this.put(at, held.bytes, undefined);
+      if (few) {
+        if (!this.moveOut(at, to, few.moved)) continue;
+        this.put(at, few.bytes, few.record);
+      } else {
+        if (!this.moveAside(at, to, st.isDirectory())) continue;
+        const held = this.read(at);
+        if (held.bytes) this.put(at, held.bytes, undefined);
+      }
       if (st.isDirectory()) this.detach(to, at);
       return { path: at, archivedTo: to };
     }
     throw new ReplicaError('conflict', `every archive name beside ${at} is taken`);
+  }
+
+  /**
+   * The paths to set aside from a root whose record a claim by `t` would prove it against, when it differs in at most a
+   * few, each a file or link there; and its record once they are gone, naming what stays as what handover left.
+   */
+  private async few(root: ReplicaRoot, at: string, t: Inspect): Promise<{ moved: string[]; bytes: Buffer; record: ReplicaRecord } | undefined> {
+    const { bytes, record: r } = this.read(at);
+    if (!bytes || !r || r.state === 'reserved' || (r.state === 'receiving' && r.transactionId === t.transactionId)) return undefined;
+    const accepted = r.state === 'sealed' ? [r.baseline] : [r.baseline, r.incoming, ...(t.incoming ? [t.incoming] : [])];
+    const { divergence: d, files } = await proveReplica(at, accepted, t.excludes, this.opts.scanFs, root.kind, kept(t.keep ?? []), FEW + 1);
+    const moved = [...d.added.preview, ...d.changed.preview];
+    const there = new Set(files.map((f) => f.path));
+    if (d.unchecked.count || d.added.count + d.changed.count + d.removed.count > FEW || !moved.every((p) => there.has(p))) return undefined;
+    const baseline = files.filter((f) => !moved.includes(f.path));
+    return { moved, bytes, record: r.state === 'sealed' ? { ...r, baseline } : { ...r, baseline, incoming: [] } };
+  }
+
+  /** Moves each path under `from` to the same path in a folder `to` made for it; false when anything holds that name. */
+  private moveOut(from: string, to: string, paths: readonly string[]): boolean {
+    try { this.fs.mkdir(to, false); } catch (e) {
+      if (errno(e) === 'EEXIST') return false;
+      throw e;
+    }
+    for (const p of paths) {
+      this.fs.mkdir(path.dirname(path.join(to, p)), true);
+      this.fs.rename(path.join(from, p), path.join(to, p));
+    }
+    return true;
   }
 
   /**

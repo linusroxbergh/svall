@@ -376,7 +376,7 @@ export class DestinationHandover {
       let archivedTo: string | undefined;
       if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {
         try {
-          archivedTo = boundary('destination.claim.archive', () => this.replicas.archive(r, p.archive)).archivedTo;
+          archivedTo = (await boundary('destination.claim.archive', () => this.replicas.archive(r, p.archive, claim))).archivedTo;
           check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
         } catch (e) {
           if (!(e instanceof ReplicaError && e.code === 'not_approved')) throw e;
