@@ -83,6 +83,10 @@ const STEP_LABEL: Record<string, string> = {
 /** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */
 export const stepLabel = (step: string): string => STEP_LABEL[step] ?? step;
 
+/** What a step said, without the machine the panel already names when the sentence starts with it. */
+export const stepSaid = (row: HostStep, machine: string): string | undefined =>
+  (row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail);
+
 export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', enable: "Make it this fleet's gateway",
 };

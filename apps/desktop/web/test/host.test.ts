@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, machineName, outcomeOf,
-  runActions, sshDestination, stepLabel, withoutTokens,
+  runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
@@ -126,6 +126,12 @@ describe('a step by name', () => {
     expect(stepLabel('weather')).toBe('weather');
   });
 
+  it('leaves out the machine the panel already names where a step starts with it', () => {
+    expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toBe('runs release 0.5.0');
+    expect(stepSaid({ step: 'fleet', status: 'ok', detail: "studio's unused fleet is now this fleet" }, 'studio')).toBe("studio's unused fleet is now this fleet");
+    expect(stepSaid({ step: 'ssh', status: 'ok', detail: 'studios answered' }, 'studio')).toBe('studios answered');
+    expect(stepSaid({ step: 'ssh', status: 'ok' }, 'studio')).toBeUndefined();
+  });
 });
 
 describe('the attended checklist', () => {
