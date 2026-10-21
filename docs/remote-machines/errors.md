@@ -346,7 +346,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `shims` | both | The `svall` in `~/.local/bin` runs this build. |
 | `gh` | both | The GitHub CLI is logged in, for pull request links. |
 | `config` | both | `fleet.json` and `node.json` parse, and no `config.json.bak` is in the way of a split. It warns of a `config.json` beside `fleet.json`, which the daemon moves aside unread as it starts. |
-| `machine id` | both | `~/.config/svall/machine.json` was made on this machine's hardware (the Mac's IOPlatformUUID, Linux's `/etc/machine-id`). It warns of one copied from another machine, which gives this one that machine's id. |
+| `machine id` | both | `~/.config/svall/machine.json` was made on this machine's hardware (the Mac's IOPlatformUUID, Linux's `/etc/machine-id`, both kept as a hash). It warns of one copied from another machine, which gives this one that machine's id. |
 | `svalld` | both | The fleet's daemon runs and answers. |
 | `hook receiver` | both | The daemon's hook socket answers. |
 | `hooks` | both | Claude Code's settings hold Svall's hooks. |

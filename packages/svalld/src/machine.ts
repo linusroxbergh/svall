@@ -19,13 +19,17 @@ export function configDir(): string {
   return process.env.SVALL_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'svall');
 }
 
-/** The Mac's IOPlatformUUID, or Linux's machine-id. `ioreg` is named outright: launchd starts svalld on a PATH without /usr/sbin. */
+/**
+ * The Mac's IOPlatformUUID, or Linux's machine-id, keyed for svall as machine-id(5) asks, so the id itself is never
+ * kept. `ioreg` is named outright: launchd starts svalld on a PATH without /usr/sbin.
+ */
 export function hardwareId(platform: NodeJS.Platform = process.platform, ioreg = '/usr/sbin/ioreg'): string | undefined {
+  const keyed = (id: string | undefined): string | undefined => id && crypto.createHmac('sha256', id).update('svall').digest('hex');
   if (platform === 'darwin') {
-    try { return /"IOPlatformUUID" = "([^"]+)"/.exec(execFileSync(ioreg, ['-rd1', '-c', 'IOPlatformExpertDevice'], { encoding: 'utf8' }))?.[1]; } catch { return undefined; }
+    try { return keyed(/"IOPlatformUUID" = "([^"]+)"/.exec(execFileSync(ioreg, ['-rd1', '-c', 'IOPlatformExpertDevice'], { encoding: 'utf8' }))?.[1]); } catch { return undefined; }
   }
   for (const file of ['/etc/machine-id', '/var/lib/dbus/machine-id']) {
-    try { const id = fs.readFileSync(file, 'utf8').trim(); if (id) return id; } catch { /* the next one */ }
+    try { const id = fs.readFileSync(file, 'utf8').trim(); if (id) return keyed(id); } catch { /* the next one */ }
   }
   return undefined;
 }

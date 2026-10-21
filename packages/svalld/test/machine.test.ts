@@ -101,15 +101,17 @@ describe('the hardware a machine id was made on', () => {
   it("reads the Mac's IOPlatformUUID and Linux's machine-id", () => {
     const bin = makeHome();
     fs.writeFileSync(path.join(bin, 'ioreg'), '#!/bin/sh\nprintf \'+-o J316sAP  <class IOPlatformExpertDevice>\\n    "IOPlatformUUID" = "0A1B-2C3D"\\n\'\n', { mode: 0o755 });
-    expect(hardwareId('darwin', path.join(bin, 'ioreg'))).toBe('0A1B-2C3D');
+    // the id itself never leaves this machine's reader: what is kept is it hashed for svall, as machine-id(5) asks
+    const keyed = (id: string): string => crypto.createHmac('sha256', id).update('svall').digest('hex');
+    expect(hardwareId('darwin', path.join(bin, 'ioreg'))).toBe(keyed('0A1B-2C3D'));
     const files: Record<string, string> = { '/var/lib/dbus/machine-id': 'f00d\n' };
     vi.spyOn(fs, 'readFileSync').mockImplementation(((f: string) => {
       if (!(f in files)) throw Object.assign(new Error(`ENOENT: ${f}`), { code: 'ENOENT' });
       return files[f];
     }) as typeof fs.readFileSync);
-    expect(hardwareId('linux')).toBe('f00d');
+    expect(hardwareId('linux')).toBe(keyed('f00d'));
     files['/etc/machine-id'] = 'beef\n';
-    expect(hardwareId('linux')).toBe('beef');
+    expect(hardwareId('linux')).toBe(keyed('beef'));
     delete files['/etc/machine-id'];
     delete files['/var/lib/dbus/machine-id'];
     expect(hardwareId('linux')).toBeUndefined();
@@ -118,7 +120,7 @@ describe('the hardware a machine id was made on', () => {
   // launchd starts svalld on a PATH without /usr/sbin, where ioreg lies
   it.runIf(process.platform === 'darwin')('reads the Mac\'s IOPlatformUUID on the PATH launchd starts svalld with', () => {
     vi.stubEnv('PATH', daemonPath());
-    expect(hardwareId('darwin')).toMatch(/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/);
+    expect(hardwareId('darwin')).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('tells a machine that shares another one\'s id how to get its own', () => {
