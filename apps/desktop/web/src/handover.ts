@@ -123,8 +123,10 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
   if (!readable(e)) return run;
   const tx = 'transactionId' in e.data && typeof e.data.transactionId === 'string' ? e.data.transactionId : undefined;
   // the controller goes on from a decision only once it is answered; a daemon's relayed row can trail the decision
-  // a line after the status the sheet asked for is the run that status found
-  const next: HandoverRun = { ...run, checking: undefined, transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }) };
+  // a line after the status the sheet asked for is the run that status found, which need not go where the start did
+  const next: HandoverRun = {
+    ...run, checking: undefined, ...(run.checking && { to: undefined }), transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }),
+  };
   switch (e.event) {
     case 'handover.preflight':
       return { ...next, preflight: { summary: e.data.summary, blockers: scrubbed(e.data.blockers), warnings: scrubbed(e.data.warnings), ...(e.data.names && { names: e.data.names }) } };

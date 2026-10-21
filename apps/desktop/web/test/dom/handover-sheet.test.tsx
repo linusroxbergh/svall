@@ -316,6 +316,7 @@ const attaches = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.fil
 test('a handover already open at the checks is looked up, and the sheet offers what its status says is safe in place of a new start', () => {
   const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
+  act(() => store.getState().setConnectionState({ state: 'online', owner: 'local' }));
   const open = openAtChecks('transaction_open', `this fleet is already in handover ${TX} (preparing); resume or abort it first`);
   say(open);
   act(() => store.getState().handoverExit(1));
@@ -358,6 +359,29 @@ test('a generation the gateway does not share, with nothing open, keeps its bloc
   expect(screen.getByTestId('handover-sheet').textContent).not.toMatch(new RegExp(`${MAC}|at generation`));
   expect(screen.getByTestId('handover-try-again').textContent).toBe('Move to trift');
   expect(attaches(send)).toBe(1);
+});
+
+test('the handover a check finds is named by where the fleet runs, not by the start the checks stopped, which may have gone the other way', () => {
+  render(<HandoverSheet />);
+  const open = openAtChecks('transaction_open', `this fleet is already in handover ${TX} (preparing); resume or abort it first`);
+  act(() => { store.getState().setConnectionState({ state: 'online', owner: 'local' }); store.getState().handoverFollow('local'); });
+  say(open);
+  act(() => store.getState().handoverExit(1));
+  act(() => store.getState().handoverReplay([open,
+    { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: '' } }]));
+  expect(screen.getByTestId('handover-route').textContent).toBe('This Mac→trift');
+  // one with nothing open leaves the start the checks stopped, and its Move to
+  act(() => store.getState().handoverFollow('trift'));
+  say(open);
+  act(() => store.getState().handoverExit(1));
+  act(() => store.getState().handoverReplay([open, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: '' } }]));
+  expect(screen.getByTestId('handover-try-again').textContent).toBe('Move to trift');
+  // a live helper the status found is the other handover too
+  act(() => store.getState().handoverFollow('local'));
+  say(open);
+  act(() => store.getState().handoverExit(1));
+  say(...changed('begin', 'freeze'));
+  expect(screen.getByTestId('handover-route').textContent).toBe('This Mac→trift');
 });
 
 test('a status the sheet could not read says so and offers to look again, without asking again by itself', () => {

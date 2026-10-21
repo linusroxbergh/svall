@@ -1,7 +1,7 @@
 import type { HandoverChoices } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { ConnectionState, HostArgs, HostOp, HostStep } from '../bridge.js';
-import { applyEvent, endFollow, followRun, goOn, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
+import { applyEvent, endFollow, followRun, goOn, needsUser, readable, verdictOf, type HandoverEvent, type HandoverRun } from '../handover.js';
 import { applyStep, beginRun, endRun, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
@@ -75,7 +75,9 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   }),
   // folded in one step, so no line of a finished run holds or closes a terminal on its way to the status
   handoverReplay: (events) => set((s) => {
-    const handover = { ...events.reduce(applyEvent, followRun(s.handover?.to)), following: false };
+    const rebuilt = events.reduce(applyEvent, followRun(s.handover?.to));
+    // a status the sheet asked for after the checks stopped a start is about another handover, which need not go where the start did
+    const handover = { ...rebuilt, following: false, ...(s.handover?.checking && verdictOf(rebuilt) && { to: undefined }) };
     return { handover, handoverOpen: s.handoverOpen || (!!handover.status && needsUser(handover.status)) };
   }),
   handoverExit: (code, error) => set((s) => (s.handover ? { handover: endFollow(s.handover, code, error) } : {})),
