@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  FleetId, Generation, HandoverChoices, HandoverPhase, LandedRoot, MachineId, Sha256, TransactionId, TransferManifestV1,
-  type OwnerRecord, type OwnershipInfo, type Result, type SafeAction, type Standing, type Verdict,
+  FleetId, Generation, HandoverChoices, HandoverPhase, LandedRoot, MachineId, OwnerRecord, Sha256, TransactionId, TransferManifestV1,
+  type OwnershipInfo, type Result, type SafeAction, type Standing, type Verdict,
 } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/handover/durable';
 import { boundary } from '@svall/svalld/handover/failpoints';
@@ -24,6 +24,8 @@ export const ControllerJournal = z.object({
   fleetId: FleetId,
   // absent until the gateway's Begin has answered
   transactionId: TransactionId.optional(),
+  // what every send of this Begin carries, journaled before the first, by which the gateway tells it apart
+  nonce: z.guid().optional(),
   // the source's generation, g; the destination takes the fleet at g + 1
   generation: Generation,
   source: Route,
@@ -34,6 +36,8 @@ export const ControllerJournal = z.object({
   manifestDigest: Sha256.optional(),
   landedDigest: Sha256.optional(),
   preparedDigest: Sha256.optional(),
+  // the gateway's record of this handover committed, which the destination takes when it cannot ask the gateway itself
+  committed: OwnerRecord.optional(),
   startedAt: z.number(),
   updatedAt: z.number(),
 });
@@ -104,7 +108,10 @@ export function fileStore(dir: string): ControllerStore {
 export type Seen<T> = { ok: true; value: T } | { ok: false; error: string };
 
 /** The four journals: the controller's own, the gateway's record, and what each daemon holds. */
+/** `local`: the machine this controller runs on; `names`: what the registry calls a machine the verdict may name. */
 export type Observation = {
+  local?: MachineId;
+  names?: Partial<Record<MachineId, string>>;
   controller?: ControllerJournal;
   gateway: Seen<OwnerRecord>;
   source?: Seen<{ status: Result<'handover.status'>; ownership: OwnershipInfo }>;
@@ -119,9 +126,9 @@ function found(o: Observation, record: OwnerRecord | undefined): Found | undefin
   const tx = record?.transaction;
   if (c) {
     const [fromMachineId, toMachineId] = [c.source.machineId, c.destination.machineId];
-    // a Begin whose answer never arrived is the gateway's open preparing handover between the same machines
+    // a Begin whose answer never arrived is the gateway's open preparing handover between the same machines, with its nonce
     const begun = !c.transactionId && tx && tx.phase === 'preparing' && tx.fromMachineId === fromMachineId && tx.toMachineId === toMachineId
-      && record.generation === c.generation;
+      && record.generation === c.generation && (tx.nonce === undefined || tx.nonce === c.nonce);
     return { transactionId: c.transactionId ?? (begun ? tx.id : undefined), generation: c.generation, fromMachineId, toMachineId };
   }
   if (tx && record) {
@@ -178,6 +185,10 @@ export function assess(o: Observation): Verdict {
     if (tx.phase === 'committed') {
       if (unread) return lost('committed');
       return verdict('committed', 'continue', ['resume'], `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`);
+    }
+    // before the commit only the controller that began it goes on, since the destination takes claim and prepare from it alone
+    if (tx.controllerId && o.local && tx.controllerId !== o.local && (o.local === f.fromMachineId || o.local === f.toMachineId)) {
+      return verdict('open', 'none', ['abort'], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${o.names?.[tx.controllerId] ?? tx.controllerId}, whose controller began it, or is aborted back to ${f.fromMachineId}`);
     }
     const said = `${tx.id} is ${tx.phase} and has not committed; it can go on, or be aborted back to ${f.fromMachineId}`;
     return verdict('open', 'continue', ['resume', 'abort'], sourceUnread

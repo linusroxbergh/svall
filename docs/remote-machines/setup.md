@@ -87,7 +87,8 @@ and never copies a login, so these are yours:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
-- Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out.
+- Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out, and a
+  handover to the machine stops at its checks until it is on.
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
   `opencode auth login`.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
@@ -142,12 +143,15 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | `svall host list` | | Every machine in the registry, with its id and whether it is a gateway. |
 | `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
-| `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. |
+| `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads. |
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
 | `svall host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until
-both machines run the same release, a handover stops with `incompatible_release`.
+both machines run the same release, a handover stops with `incompatible_release`. While the machine runs a fleet of
+this Mac, the first update you ask for waits and says so: an update can leave that fleet out of the Mac's reach until
+the machine runs the same release, and `host upgrade` installs only the Mac's own. Bring the fleet back with
+`svall handover local` first, or ask again to update now and then upgrade the machine.
 
 On the Linux machine itself:
 

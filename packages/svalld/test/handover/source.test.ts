@@ -1501,3 +1501,15 @@ describe("this machine's agent CLIs", () => {
     ]);
   });
 });
+
+describe("this machine's lingering", () => {
+  it('is what system.info says where loginctl answers, and nothing on a Mac or where it does not', async () => {
+    const paths = resolvePaths(makeHome());
+    const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
+    const info = (linger?: () => Promise<{ user: string; on: boolean }>) =>
+      handlers['system.info']({}, { ownership, handover: new HandoverService({ ownership, journal: openJournal(paths), ...(linger && { linger }), ...idleSides(paths) }) } as Ctx);
+    expect((await info(async () => ({ user: 'linus', on: false }))).linger).toEqual({ user: 'linus', on: false });
+    expect((await info(async () => { throw new Error('loginctl is not installed'); })).linger).toBeUndefined();
+    expect((await info()).linger).toBeUndefined();
+  });
+});

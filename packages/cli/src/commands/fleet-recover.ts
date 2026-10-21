@@ -22,15 +22,15 @@ export type GatewayPort = (op: 'get' | 'force', fleetId: FleetId, params?: Recor
 /** A daemon of this fleet on one machine. Opening it throws when it cannot be reached. */
 export type DaemonPort = { call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>>; close(): void };
 
-export type RecoverOptions = { forceOwner: string; confirm?: string; gateway?: string; profile?: string };
+export type RecoverOptions = { forceOwner: string; gateway?: string; profile?: string };
 
 export type RecoverDeps = {
   fleetHome: string;
   registry: MachineRegistry;
   gateway(entry: MachineEntry): GatewayPort;
   daemon(entry: MachineEntry): Promise<DaemonPort>;
-  /** whether there is a person at a terminal to type the fleet id */
-  interactive: boolean;
+  /** why no person at a terminal outside the fleets runs this, so none can type the fleet id; unset when one does */
+  unattended: string | undefined;
   ask(question: string): Promise<string>;
   emit(e: RecoverEvent): void;
   now(): Date;
@@ -185,7 +185,7 @@ function describeHeld(h: Held, name: (id: MachineId) => string): string {
 }
 
 /**
- * `svall fleet recover --force-owner`: shows what every party holds of the fleet, then, confirmed by the fleet id,
+ * `svall fleet recover --force-owner`: shows what every party holds of the fleet, then, once a person types the fleet id,
  * writes a record naming the chosen owner at the gateway above every generation shown, audits it on both sides,
  * and hands it to every machine that answers. A gateway that is gone for good can be replaced by one that holds none, or
  * with none to take its place, leave this machine to run the fleet alone with no gateway.
@@ -295,9 +295,8 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   });
   if (!plan) return refuse(...refusal);
 
-  const typed = o.confirm ?? (d.interactive ? await d.ask('Type the fleet id to write this record: ') : undefined);
-  if (typed === undefined) return refuse('nothing was written: a run with no terminal to ask in names the fleet with --confirm <fleet id>');
-  if (typed !== fleet.id) return refuse('nothing was written: that is not this fleet\'s id');
+  if (d.unattended) return refuse(`nothing was written: forcing ownership needs a person at a terminal outside any fleet's agents and tmux panes, and this run ${d.unattended}`);
+  if (await d.ask('Type the fleet id to write this record: ') !== fleet.id) return refuse('nothing was written: that is not this fleet\'s id');
 
   const tell = async (m: MachineView, params: Params<'ownership.adopt'>): Promise<{ ownership?: OwnershipInfo; adopted?: boolean; error?: string }> => {
     try {
@@ -519,15 +518,25 @@ export function render(e: RecoverEvent, name: (id: MachineId) => string): string
   }
 }
 
+/** Why this run is not a person's at a terminal outside the fleets, or undefined when it is. */
+export function unattended(env: NodeJS.ProcessEnv, tty: boolean): string | undefined {
+  if (!tty) return 'has no terminal';
+  if (env.SVALL_CHAR_ID) return 'is a character\'s';
+  // $TMUX names the server the terminal runs in, and a fleet's is the tmux.sock in its home
+  const sock = env.TMUX?.split(',')[0];
+  const home = sock && path.dirname(sock);
+  if (home && sock === resolvePaths(home).tmuxSock && fs.existsSync(resolvePaths(home).fleetConfig)) return 'is in a fleet\'s tmux pane';
+  return undefined;
+}
+
 export function fleetCommands(home: () => string, json: () => boolean, profile: () => string | undefined, target: () => Target): Command {
   const fleet = new Command('fleet').description('the fleet as a whole, across the machines it can run on');
   fleet.addCommand(provisionCommand(target, json));
   fleet.command('recover')
     .description('disaster recovery: write a new ownership record at the gateway, after showing every generation and the risks; never part of an ordinary retry')
     .requiredOption('--force-owner <machine>', 'the machine that is to own the fleet, or local for this one')
-    .option('--confirm <fleet id>', 'the fleet id, typed out: how a run with no terminal to ask in confirms')
     .option('--gateway <machine>', 'a machine from the registry, holding no record of this fleet, to take over from a gateway that is gone for good')
-    .action(async (o: { forceOwner: string; confirm?: string; gateway?: string }) => {
+    .action(async (o: { forceOwner: string; gateway?: string }) => {
       // the masters this opens must not outlive a Ctrl-C
       closeMastersOnSignal();
       const registry = MachineRegistry.load();
@@ -549,7 +558,7 @@ export function fleetCommands(home: () => string, json: () => boolean, profile: 
           fleetHome, registry,
           gateway: (entry) => authorityOp(entry, registry.localId, masters),
           daemon,
-          interactive: !json() && process.stdin.isTTY === true,
+          unattended: unattended(process.env, process.stdin.isTTY === true && process.stdout.isTTY === true),
           ask: (q) => ask(q),
           emit: out,
           now: () => new Date(),

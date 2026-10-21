@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import {
@@ -59,10 +60,10 @@ export type Daemon = { call<M extends MethodName>(method: M, params: Params<M>):
 /** The gateway's compare-and-swap operations on this fleet's record, answered the same way. */
 export type Gateway = {
   get(): Promise<OwnerRecord>;
-  begin(p: { expectedGeneration: number; fromMachineId: MachineId; toMachineId: MachineId }): Promise<OwnerRecord>;
+  begin(p: { expectedGeneration: number; fromMachineId: MachineId; toMachineId: MachineId; controllerId: MachineId; nonce: string }): Promise<OwnerRecord>;
   ready(p: { transactionId: string; expectedGeneration: number; preparedDigest: string }): Promise<OwnerRecord>;
   commit(p: { transactionId: string; expectedGeneration: number }): Promise<OwnerRecord>;
-  abort(p: { transactionId: string; expectedGeneration: number }): Promise<OwnerRecord>;
+  abort(p: { transactionId: string; expectedGeneration: number } | { nonce: string }): Promise<OwnerRecord>;
   complete(p: { transactionId: string; generation: number }): Promise<OwnerRecord>;
 };
 
@@ -156,6 +157,16 @@ function differences(source: Side, a: SystemInfo, destination: Side, b: SystemIn
       message: `${x.kind} ${x.version} runs on ${source.route.name} and ${y.version} on ${destination.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
     }];
   });
+}
+
+/** A Linux machine that will run `what` of the fleet, whose account stops its services at logout and starts them again only at a login. */
+function lingerOff(side: Side, info: SystemInfo, what: string): Blocker[] {
+  if (info.linger?.on !== false) return [];
+  const run = `loginctl enable-linger ${info.linger.user}`;
+  return [{
+    code: 'linger_off',
+    message: `lingering is off for ${info.linger.user} on ${side.route.name}, so ${what} stops there when you log out and stays down after a restart until you log in; ${side.route.ssh ? `ssh ${side.route.ssh}, then ${run}` : `run ${run}`}`,
+  }];
 }
 
 /** A link a carried root holds, where its target lies, and whether what a carried root copies there holds it; undefined when none does. */
@@ -291,7 +302,9 @@ export class Handover {
     // a manifest answered without its file lists would have the destination judge every root as empty
     const stripped = pre.blockers.some((x) => x.code === 'too_many_files' || x.code === 'manifest_too_large');
     const there = stripped ? { blockers: [], warnings: [] } : await this.destinationChecks(source, destination, pre.manifest, choices);
-    blockers.push(...pre.blockers, ...there.blockers);
+    const gateway = pre.manifest.fleet.gatewayMachineId;
+    blockers.push(...pre.blockers, ...there.blockers, ...lingerOff(destination, b, gateway === to ? 'the fleet with its gateway' : 'the fleet'));
+    if (gateway === from) blockers.push(...lingerOff(source, a, "the fleet's gateway"));
     const warnings = [...pre.warnings, ...there.warnings, ...differences(source, a, destination, b, pre.manifest)];
     const out = { generation: record.generation, summary: pre.manifestSummary, blockers: settle(blockers), warnings: settle(warnings), manifest: pre.manifest };
     this.observer.send({ event: 'handover.preflight', data: { summary: out.summary, blockers: out.blockers, warnings: out.warnings, names: namesOf(pre.manifest) } });
@@ -448,6 +461,8 @@ export class Handover {
   /** Begin: the gateway opens the transaction from the source to the destination at generation g. */
   private async begin(): Promise<void> {
     if (this.journal.transactionId) return;
+    const nonce = this.journal.nonce ?? crypto.randomUUID();
+    if (!this.journal.nonce) this.save({ nonce });
     const { source, destination, generation } = this.journal;
     let record: OwnerRecord;
     let unanswered = false;
@@ -455,7 +470,9 @@ export class Handover {
       // its answer is read even after a cancel: it names the transaction the abort has to close
       record = await this.retrying('begin', async () => {
         try {
-          return await this.cancellable(() => this.d.gateway.begin({ expectedGeneration: generation, fromMachineId: source.machineId, toMachineId: destination.machineId }), false);
+          return await this.cancellable(() => this.d.gateway.begin({
+            expectedGeneration: generation, fromMachineId: source.machineId, toMachineId: destination.machineId, controllerId: this.d.local, nonce,
+          }), false);
         } catch (e) {
           if (transient(e)) unanswered = true;
           throw e;
@@ -479,6 +496,8 @@ export class Handover {
         return;
       }
       if (!(e instanceof Refused)) throw e;
+      // every Begin sent was answered, so none can open a handover later and its nonce has nothing to let go
+      if (!unanswered) this.save({ nonce: undefined });
       throw new Blocked('begin', [beginRefused(e)]);
     }
     const tx = record.transaction;
@@ -490,13 +509,13 @@ export class Handover {
     this.phase('begin');
   }
 
-  /** The handover the gateway holds preparing between this journal's machines at its generation, which only this Begin can have opened. */
+  /** The handover the gateway holds preparing between this journal's machines at its generation, opened by this Begin's nonce. */
   private async openedHere(): Promise<{ id: string } | undefined> {
-    const { source, destination, generation } = this.journal;
+    const { source, destination, generation, nonce } = this.journal;
     const r = await this.d.gateway.get();
     const tx = r.transaction;
     const ours = tx?.phase === 'preparing' && r.generation === generation && r.ownerMachineId === source.machineId
-      && tx.fromMachineId === source.machineId && tx.toMachineId === destination.machineId;
+      && tx.fromMachineId === source.machineId && tx.toMachineId === destination.machineId && (tx.nonce === undefined || tx.nonce === nonce);
     return ours ? tx : undefined;
   }
 
@@ -617,6 +636,7 @@ export class Handover {
       const archive = this.journal.choices.archiveRoots;
       const r = await this.retrying('transfer', () => this.cancellable(() => destination.daemon.call('handover.claim', {
         transactionId: tx, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, ...(archive?.length ? { archive } : {}), ...(landed.length && { landed }),
+        controllerId: this.d.local,
       })), this.cancel$.signal);
       const ids = r.roots.map((c) => c.id).sort();
       if (ids.length !== carried.length || ids.some((id, i) => id !== carried[i])) {
@@ -653,7 +673,7 @@ export class Handover {
 
   private prepareParams(manifest: FrozenManifest, landed: LandedRoot[]): Params<'handover.prepare'> {
     const { transactionId, generation } = this.tx;
-    return { transactionId, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, landed };
+    return { transactionId, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, landed, controllerId: this.d.local };
   }
 
   /** Prepare: the destination proves what landed, imports Git, places the sessions and writes the state it would run. */
@@ -693,17 +713,18 @@ export class Handover {
     if (this.cancel$.signal.aborted) throw new Cancelled();
     this.phase('commit');
     const { attempts } = this.d.retry ?? RETRY;
+    let record: OwnerRecord | undefined;
     for (let n = 1; ; n++) {
       let asked: unknown;
       try {
-        const record = await boundary('controller.commit', () => this.d.gateway.commit({ transactionId, expectedGeneration: generation }));
+        record = await boundary('controller.commit', () => this.d.gateway.commit({ transactionId, expectedGeneration: generation }));
         if (!committed(record)) throw new Stopped('commit', `the gateway answered the commit with ${describe(record)}; ask it again before anything else`, [], 'commit_unknown');
         break;
       } catch (e) {
         if (e instanceof Stopped) throw e;
         asked = e;
       }
-      const record = await this.retrying('commit', () => this.d.gateway.get()).catch(() => undefined);
+      record = await this.retrying('commit', () => this.d.gateway.get()).catch(() => undefined);
       if (!record) throw new Stopped('commit', `whether ${transactionId} committed is unknown (${messageOf(asked)}); resume asks the gateway again`, [], 'commit_unknown');
       if (committed(record)) break;
       const tx = record.transaction;
@@ -715,15 +736,18 @@ export class Handover {
       }
     }
     this.committed = true;
+    // what a destination that cannot reach the gateway itself confirms the commit by
+    this.save({ committed: record });
     if (this.cancel$.signal.aborted) this.detach();
   }
 
   /** Activate: the destination confirms the commit, runs the prepared state and starts the terminals the handover rested. */
   private async activate(): Promise<CharacterResult[]> {
     const { transactionId, generation } = this.tx;
+    const { committed } = this.journal;
     const destination = await this.side(this.journal.destination.machineId);
     this.phase('activate');
-    const r = await this.retrying('activate', () => destination.daemon.call('handover.activate', { transactionId, generation: generation + 1 }));
+    const r = await this.retrying('activate', () => destination.daemon.call('handover.activate', { transactionId, generation: generation + 1, ...(committed && { committed }) }));
     for (const c of r.characters) {
       this.observer.send({ event: 'handover.entity', data: { transactionId, kind: 'character', id: c.id, phase: 'activate', ...(c.error && { error: c.error }), ...(c.notice && { notice: c.notice }) } });
     }
@@ -799,8 +823,14 @@ export class Handover {
 
   /** After the gateway let go: the source takes its fleet back and reopens what it rested, and the destination drops what it prepared. */
   private async letGo(done: Outcome): Promise<Outcome> {
-    const { transactionId, generation, phase } = this.journal;
+    const { transactionId, generation, phase, nonce } = this.journal;
     if (!transactionId) {
+      // a Begin never seen answered may yet arrive: the gateway lets go what it opened, and refuses it once retired
+      if (nonce) {
+        await this.retrying('aborted', () => this.d.gateway.abort({ nonce })).catch((e: unknown) => {
+          throw e instanceof Refused ? new Stopped('aborted', `the gateway would not let go of this handover's Begin: ${e.message}`, ['abort']) : e;
+        });
+      }
       this.d.store.clear();
       return done;
     }
@@ -1013,6 +1043,8 @@ export class Handover {
     const controller = this.d.store.read(aside);
     const gateway = await this.seen(() => this.retrying('begin', () => this.d.gateway.get()));
     const tx = gateway.ok ? gateway.value.transaction : undefined;
+    const drives = tx?.controllerId;
+    const local = { local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) } }) };
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
@@ -1028,14 +1060,14 @@ export class Handover {
     };
     if (from && to) {
       const [s, d] = await Promise.all([source(from), destination(to)]);
-      return { controller, gateway, source: s, destination: d };
+      return { ...local, controller, gateway, source: s, destination: d };
     }
     // no journal names the machines: a daemon that holds a handover says which side of it it is
     const held = await Promise.all(this.d.machines.map(async (id) => ({ id, s: await status(id) })));
     const on = (side: 'fromMachineId' | 'toMachineId') => held.find((x) => x.s.ok && x.s.value.transaction?.[side] === x.id);
     const [f, t] = [on('fromMachineId'), on('toMachineId')];
     const [s, d] = await Promise.all([f && source(f.id, f.s), t && destination(t.id, t.s)]);
-    return { controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
+    return { ...local, controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
   }
 
   /** The journal a resume or abort acts on: the controller's own, or one rebuilt from the other three. */

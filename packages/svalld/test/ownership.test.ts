@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
@@ -9,9 +10,10 @@ import { dispatch, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { Fleet, type RefreshLinks } from '../src/fleet.js';
 import { silentLogger } from '../src/log.js';
-import { machineId } from '../src/machine.js';
+import { copiedRemedy, machineId } from '../src/machine.js';
 import { startDaemon } from '../src/main.js';
 import { classification } from '../src/ownership/guard.js';
+import { DestinationJournal, SourceJournal } from '../src/handover/journal.js';
 import { OwnershipState } from '../src/ownership/state.js';
 import { resolvePaths } from '../src/paths.js';
 import { releaseVersion } from '../src/release.js';
@@ -149,6 +151,18 @@ describe('ownership state', () => {
     OwnershipState.load({ paths: resolvePaths(gatewayed), fleetId, machineId: me, log });
     expect(lines.join('\n')).toContain('This fleet is read-only until its ownership record is repaired.');
     expect(lines.join('\n')).not.toContain('svall fleet recover');
+  });
+
+  it("never owns a fleet on a machine that shares another one's id, whatever record names it, and says how to get one of its own", async () => {
+    const home = makeHome();
+    record(home, { fleetId, generation: 2, ownerMachineId: me });
+    const o = OwnershipState.load({ paths: resolvePaths(home), fleetId, machineId: me, log: silentLogger, copied: '/c/machine.json' });
+    expect(o.isOwner()).toBe(false);
+    await o.installCommitted({ fleetId, generation: 3, ownerMachineId: me });
+    expect(o.writable()).toBe(false);
+    for (const kind of ['mutation', 'terminal'] as const) {
+      expect(() => o.assertOwner(kind)).toThrow(expect.objectContaining({ code: 'not_owner', message: `this machine cannot run this fleet: ${copiedRemedy('/c/machine.json')}` }));
+    }
   });
 
   it('holds a daemon read-only for a reason the record does not carry', () => {
@@ -309,6 +323,20 @@ describe('the mutation fence', () => {
     // a phone still sees where a handover stands
     const status = await dispatch({ id: 1, method: 'handover.status', params: {} }, { ...trapCtx(o), viewer: phone });
     expect('error' in status && status.error.code).not.toBe('unauthorized');
+  });
+
+  it("refuses every mutation, terminal, transaction and recovery on a machine that shares another one's id, and answers reads", async () => {
+    const home = makeHome();
+    record(home, { fleetId, generation: 2, ownerMachineId: me });
+    const o = OwnershipState.load({ paths: resolvePaths(home), fleetId, machineId: me, log: silentLogger, copied: '/c/machine.json' });
+    for (const method of [...named('mutation'), ...named('terminal'), ...named('transaction'), ...named('recovery')]) {
+      const res = await call(o, method);
+      expect('error' in res && res.error, method).toMatchObject({ code: 'not_owner', message: expect.stringContaining('/c/machine.json') });
+    }
+    for (const method of named('read')) {
+      const res = await call(o, method);
+      expect('error' in res && res.error.code, method).not.toBe('not_owner');
+    }
   });
 
   it('lets read and transaction methods past the fence', async () => {
@@ -482,6 +510,81 @@ runIf('a daemon starting with a gateway', () => {
     }
   });
 
+  it('lets the fleet go while it runs once the gateway names another machine at a higher generation', async () => {
+    const here = machineId();
+    const home = gated(here);
+    let held: OwnerRecord = { fleetId, generation: 2, ownerMachineId: here };
+    const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => held }, gatewayEveryMs: 100 });
+    const client = await TestClient.connect(d.port, d.token);
+    const paths = resolvePaths(home);
+    try {
+      expect(await client.call('island.create', { name: 'yes' })).toMatchObject({ result: { name: 'yes' } });
+      held = { fleetId, generation: 3, ownerMachineId: other };
+      await waitFor(async () => ((await client.call('ownership.get')) as { result: { generation: number } }).result.generation === 3);
+      expect(await client.call('island.create', { name: 'no' })).toMatchObject({ error: { code: 'not_owner' } });
+      // a fleet another machine now runs keeps no terminal here
+      await waitFor(() => new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows').then(() => false, () => true));
+    } finally {
+      client.ws.close();
+      await d.stop();
+    }
+  });
+
+  it('while it runs, keeps the fleet past a gateway behind it, and waits for a start to run one the gateway hands it', async () => {
+    const here = machineId();
+    const cases: [string, MachineId, OwnerRecord, string][] = [
+      // a gateway restored from a backup answers a generation it has since passed
+      ['behind', here, { fleetId, generation: 1, ownerMachineId: other }, 'result'],
+      ['naming this machine', other, { fleetId, generation: 3, ownerMachineId: here }, 'error'],
+    ];
+    for (const [what, owner, later, island] of cases) {
+      const home = gated(owner);
+      let held: OwnerRecord = { fleetId, generation: 2, ownerMachineId: owner };
+      let asks = 0;
+      const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => { asks++; return held; } }, gatewayEveryMs: 40 });
+      const client = await TestClient.connect(d.port, d.token);
+      try {
+        held = later;
+        const from = asks;
+        await waitFor(() => asks >= from + 3);
+        expect(await client.call('ownership.get'), what).toMatchObject({ result: { generation: 2, ownerMachineId: owner } });
+        expect(await client.call('island.create', { name: 'x' }), what).toHaveProperty(island);
+      } finally {
+        client.ws.close();
+        await d.stop();
+      }
+    }
+  });
+
+  it('while it runs, leaves a handover journal open on either side to answer for the records the gateway gives', async () => {
+    const here = machineId();
+    const journals: [string, MachineId, object, OwnerRecord][] = [
+      ['source', here, SourceJournal.parse({ role: 'source', transactionId: 'tx-1', generation: 2, fleetId, fromMachineId: here, toMachineId: other, phase: 'transfer', updatedAt: 1 }),
+        { fleetId, generation: 3, ownerMachineId: other, transaction: { id: 'tx-1', fromMachineId: here, toMachineId: other, phase: 'committed', startedAt: 1 } }],
+      ['destination', other, DestinationJournal.parse({ role: 'destination', transactionId: 'tx-1', generation: 3, fleetId, fromMachineId: other, toMachineId: here, phase: 'prepare', manifestDigest: 'a'.repeat(64), updatedAt: 1 }),
+        { fleetId, generation: 3, ownerMachineId: here, transaction: { id: 'tx-1', fromMachineId: other, toMachineId: here, phase: 'committed', startedAt: 1 } }],
+    ];
+    for (const [role, owner, journal, later] of journals) {
+      const home = gated(owner);
+      const paths = resolvePaths(home);
+      fs.mkdirSync(paths.handoverDir, { recursive: true });
+      fs.writeFileSync(paths.journal, JSON.stringify(journal));
+      let held: OwnerRecord = { fleetId, generation: 2, ownerMachineId: owner };
+      let asks = 0;
+      const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => { asks++; return held; } }, gatewayEveryMs: 40 });
+      const client = await TestClient.connect(d.port, d.token);
+      try {
+        held = later;
+        const from = asks;
+        await waitFor(() => asks >= from + 3);
+        expect(await client.call('ownership.get'), role).toMatchObject({ result: { generation: 2, ownerMachineId: owner, frozen: true, journal: { role, transactionId: 'tx-1' } } });
+      } finally {
+        client.ws.close();
+        await d.stop();
+      }
+    }
+  });
+
   it('starts on the record it holds when the gateway does not answer', async () => {
     const home = gated(machineId());
     const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => { throw new Error('connect ECONNREFUSED'); } } });
@@ -493,6 +596,118 @@ runIf('a daemon starting with a gateway', () => {
       client.ws.close();
       await d.stop();
     }
+  });
+});
+
+runIf('a daemon whose machine.json was made on other hardware', () => {
+  const homes: string[] = [];
+  afterEach(async () => {
+    delete process.env.SVALL_CONFIG_DIR;
+    for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
+    cleanHomes();
+  });
+
+  // machine.json as a backup restore or Migration Assistant brings it from the machine with hardware HW-A
+  function copied(): { file: string; id: MachineId } {
+    process.env.SVALL_CONFIG_DIR = makeHome();
+    const file = path.join(process.env.SVALL_CONFIG_DIR, 'machine.json');
+    const id = MachineId.parse(crypto.randomUUID());
+    fs.writeFileSync(file, JSON.stringify({ id, hardwareId: 'HW-A' }));
+    return { file, id };
+  }
+
+  function fleetHome(gatewayMachineId?: MachineId): string {
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ id: fleetId, shell: '/bin/sh', ...(gatewayMachineId && { gatewayMachineId }) }));
+    return home;
+  }
+
+  const made = (file: string): string => `${file} was made on hardware HW-A, and this machine is HW-B`;
+
+  it('runs no fleet a gateway holds: not at its start, nor on what the gateway, a relay or a handover names it', async () => {
+    const { file, id } = copied();
+    const home = fleetHome(other);
+    record(home, { fleetId, generation: 2, ownerMachineId: id });
+    const errors: string[] = [];
+    let asked = 0;
+    const d = await startDaemon({
+      home, port: 0, log: { info() {}, error: (l) => { errors.push(l); } }, hardware: () => 'HW-B', gatewayEveryMs: 20,
+      authority: { get: async () => { asked++; return { fleetId, generation: 3, ownerMachineId: id }; } },
+    });
+    const client = await TestClient.connect(d.port, d.token);
+    try {
+      expect(errors).toEqual([`${made(file)}, so this fleet is read-only here: ${copiedRemedy(file)}; \`svall doctor\` checks it`]);
+      const refused = { error: { code: 'not_owner', message: `this machine cannot run this fleet: ${copiedRemedy(file)}` } };
+      expect(await client.call('island.create', { name: 'no' })).toMatchObject(refused);
+      expect(await client.call('ownership.adopt', { record: { fleetId, generation: 4, ownerMachineId: id } })).toMatchObject(refused);
+      expect(await client.call('handover.activate', { transactionId: 'tx-1', generation: 3 })).toMatchObject(refused);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(asked).toBe(0);
+      expect(await client.call('island.create', { name: 'no' })).toMatchObject(refused);
+      expect(fs.existsSync(resolvePaths(home).tmuxSock)).toBe(false);
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ id, hardwareId: 'HW-A' });
+    } finally {
+      client.ws.close();
+      await d.stop();
+    }
+  });
+
+  it('takes the file as its own for a fleet no gateway holds, once, while no fleet here names a gateway', async () => {
+    const { file, id } = copied();
+    const home = fleetHome();
+    const errors: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const d = await startDaemon({ home, port: 0, log: { info() {}, error: (l) => { errors.push(l); } }, hardware: () => 'HW-B' });
+      try {
+        expect(d.store.state.islands.home.kind).toBe('home');
+      } finally {
+        await d.stop();
+      }
+    }
+    expect(errors).toEqual([`${made(file)}; no fleet here names a gateway, so the file is this machine's from now on`]);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ id, hardwareId: 'HW-B' });
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).owner, 'utf8'))).toMatchObject({ ownerMachineId: id });
+  });
+
+  it('runs a fleet no gateway holds when the file cannot be bound to this machine', async () => {
+    const { file, id } = copied();
+    fs.chmodSync(path.dirname(file), 0o500);
+    const home = fleetHome();
+    const errors: string[] = [];
+    try {
+      const d = await startDaemon({ home, port: 0, log: { info() {}, error: (l) => { errors.push(l); } }, hardware: () => 'HW-B' });
+      try {
+        expect(d.store.state.islands.home.kind).toBe('home');
+      } finally {
+        await d.stop();
+      }
+    } finally {
+      fs.chmodSync(path.dirname(file), 0o700);
+    }
+    expect(errors).toEqual([expect.stringMatching(new RegExp(`^${made(file)}; no fleet here names a gateway, and the file could not be bound to this machine: .*EACCES`))]);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ id, hardwareId: 'HW-A' });
+  });
+
+  it('runs a fleet no gateway holds, and leaves the file as it is while another fleet here names a gateway', async () => {
+    const { file, id } = copied();
+    const gatewayed = path.join(os.homedir(), '.svall-work');
+    fs.mkdirSync(gatewayed);
+    fs.writeFileSync(resolvePaths(gatewayed).fleetConfig, JSON.stringify({ id: crypto.randomUUID(), gatewayMachineId: other }));
+    const home = fleetHome();
+    const errors: string[] = [];
+    try {
+      const d = await startDaemon({ home, port: 0, log: { info() {}, error: (l) => { errors.push(l); } }, hardware: () => 'HW-B' });
+      try {
+        expect(d.store.state.islands.home.kind).toBe('home');
+      } finally {
+        await d.stop();
+      }
+    } finally {
+      fs.rmSync(gatewayed, { recursive: true, force: true });
+    }
+    expect(errors).toEqual([`${made(file)}, and another fleet here names a gateway: ${copiedRemedy(file)}`]);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ id, hardwareId: 'HW-A' });
   });
 });
 

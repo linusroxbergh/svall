@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -264,11 +265,17 @@ describe('a fleet authority as its daemon reaches it', () => {
     const named = `noise\n${JSON.stringify({ release: 'dev', machineId: TRIFT }, null, 2)}\n`;
     let answer = { code: 0, stdout: `${named}${JSON.stringify({ result: { record } })}\n`, stderr: '' };
     const ssh: SshRun = async (argv) => { calls.push(argv); return answer; };
-    const far = fleetAuthority({ gatewayMachineId: TRIFT, machineId: MAC, registry, ssh });
+    // short, as a socket path has to be
+    const control = fs.mkdtempSync('/tmp/svgw-');
+    closers.push(() => fs.rmSync(control, { recursive: true, force: true }));
+    const far = fleetAuthority({ gatewayMachineId: TRIFT, machineId: MAC, registry, ssh, controlDir: path.join(control, 'ssh') });
 
     expect(await far.get(FLEET)).toEqual(record);
     expect(calls).toEqual([[
-      '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', 'linus@trift',
+      '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
+      '-o', 'ControlMaster=auto', '-o', 'ControlPersist=10m', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3',
+      '-o', `ControlPath=${path.join(control, 'ssh', `gw-${crypto.createHash('sha256').update('linus@trift').digest('hex').slice(0, 12)}`)}`,
+      '--', 'linus@trift',
       `'sh' '-c' '"$1" version --json; exec "$1" gateway owner get --fleet "$2"' 'svall-owner' '/home/linus/it'\\''s here/current/bin/svall' '${FLEET}'`,
     ]]);
 
@@ -296,6 +303,17 @@ describe('a fleet authority as its daemon reaches it', () => {
     // a registry that names no route to the gateway it is asked for is a wrong question, not a gateway away
     expect(await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry, ssh }).get(FLEET))).toMatchObject({ code: 'invalid_request', message: expect.stringMatching(/no ssh route/), data: { unrouted: true } });
     expect((await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry: path.join(prefix(), 'none.json'), ssh }).get(FLEET))).code).toBe('disconnected');
+  });
+
+  it('keeps no connection to the gateway where its control socket would not fit a socket path', async () => {
+    const registry = path.join(prefix(), 'machines.json');
+    fs.writeFileSync(registry, JSON.stringify({
+      machines: { [TRIFT]: { name: 'trift', ssh: 'linus@trift', platform: 'linux', arch: 'x64', home: '/home/linus', svallBase: '/home/linus/.local/share/svall', gateway: true } },
+    }));
+    const calls: string[][] = [];
+    const ssh: SshRun = async (argv) => { calls.push(argv); return { code: 255, stdout: '', stderr: 'Connection refused' }; };
+    await failure(fleetAuthority({ gatewayMachineId: TRIFT, machineId: MAC, registry, ssh, controlDir: path.join(prefix(), 'x'.repeat(80)) }).get(FLEET));
+    expect(calls[0].slice(0, 5)).toEqual(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--']);
   });
 
   it('refuses the answer of a machine the gateway\'s ssh route now reaches in its place', async () => {
