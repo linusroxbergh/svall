@@ -714,12 +714,12 @@ function readFleet(file: string): FleetConfig {
  * The record that says this fleet is this Mac's: the gateway's own, asked for over ssh and created
  * where there is none. A record another machine holds is not this Mac's to take.
  */
-async function seedAuthority(master: SshMaster, entry: Registered, fleetId: FleetId, name: string, d: HostDeps): Promise<Outcome<void>> {
+async function seedAuthority(master: SshMaster, entry: Registered, fleetId: FleetId, name: string, d: HostDeps, generation?: number): Promise<Outcome<void>> {
   const owner = d.machineId();
   const exe = svallExe(entry.record.svallBase);
   let frame = await remoteOwner({ master, exe, op: 'get', fleetId });
   if ('error' in frame && frame.error.code === 'not_found') {
-    frame = await remoteOwner({ master, exe, op: 'create', fleetId, params: { initialOwnerMachineId: owner } });
+    frame = await remoteOwner({ master, exe, op: 'create', fleetId, params: { initialOwnerMachineId: owner, ...(generation && { generation }) } });
   }
   if ('error' in frame) {
     const repair = frame.error.code === 'authority_corrupt'
@@ -795,7 +795,7 @@ export function enableHost(name: string, o: { fleetHome: string }, d: HostDeps):
       await run.step('authority', async () => {
         master = await d.openMaster(entry.record.ssh);
         await sameMachine(master, entry);
-        return seedAuthority(master, entry, readFleet(file).id, name, d);
+        return seedAuthority(master, entry, readFleet(file).id, name, d, cachedOwner(o.fleetHome)?.generation);
       });
       await run.step('fleet', async () => {
         const copy = await provisionCopy(master!, entry, readFleet(file).id, profileOf(o.fleetHome, d.homedir));

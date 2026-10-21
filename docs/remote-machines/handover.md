@@ -282,7 +282,8 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
 - This Mac's daemon takes a record above every generation it saw, lets go any handover its journal holds (the
   terminals it rested reopen, and what it prepared is dropped), and runs the fleet. `fleet.json` names no gateway
   from then on, so no handover moves the fleet until `svall host enable <host> --fleet <fleet>` makes a machine its
-  gateway again. This Mac's own journal of a handover is dropped with it.
+  gateway again, at the generation this Mac holds (see [A gateway set up again](#a-gateway-set-up-again)). This
+  Mac's own journal of a handover is dropped with it.
 - With this Mac's daemon not running, the command writes `owner.json` and `fleet.json` itself and ends `incomplete`
   until the daemon starts, unless a handover journal lies there, which only the daemon lets go: start it first
   (`svall doctor` says why it is not running).
@@ -312,8 +313,9 @@ svall host add studio --ssh ada@studio        # installs the companion; the regi
 svall host enable studio --fleet private      # a new record naming this Mac the owner, and the machine's copy
 ```
 
-The new record starts at generation 0. If the fleet has moved before, this Mac holds a later generation, which a
-daemon never gives up for a lower one, so a handover stops at Checks with `generation_mismatch`. `svall fleet recover
+The new record starts at the generation this Mac's `owner.json` holds, so the next handover begins there. Where
+another machine holds a later generation, such as one that ran the fleet since, a daemon never gives up its
+generation for a lower one, so a handover stops at Checks with `generation_mismatch`. `svall fleet recover
 --force-owner local` then writes a record above both, and this Mac takes it.
 
 An account under another user name is another ssh destination: run `svall host remove studio` first, with `--forget`

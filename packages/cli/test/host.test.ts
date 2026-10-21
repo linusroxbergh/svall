@@ -1567,6 +1567,18 @@ describe('host enable', () => {
     expect(written(home).gatewayMachineId).toBe(REMOTE);
   });
 
+  it('creates the record at the generation this Mac holds the fleet at, so the first handover begins there', async () => {
+    ssh.reply(['owner', 'get'], refuses('not_found', `the gateway holds no record for fleet ${FLEET}`));
+    ssh.reply(['owner', 'create'], answers({ generation: 6 }));
+    ssh.reply(['fleet', 'provision'], provisioned());
+    const home = fleetHome();
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 6, ownerMachineId: MAC }));
+
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
+    expect(out.result).toBe('ready');
+    expect(ownerCalls().at(-1)).toEqual([SVALL, 'gateway', 'owner', 'create', '--fleet', FLEET, '--params', JSON.stringify({ initialOwnerMachineId: MAC, generation: 6 })]);
+  });
+
   it('names the gateway in fleet.json as it lies, through a link, keeping its own keys and mode and writing no defaults', async () => {
     ssh.reply(['owner', 'get'], answers({}));
     ssh.reply(['fleet', 'provision'], provisioned());
