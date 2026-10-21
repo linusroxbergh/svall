@@ -300,6 +300,7 @@ describe('fleet recover --force-owner', () => {
     const risks = seen.risks.join(' ');
     expect(risks).toMatch(/trift is not reached here and never learns of this record/);
     expect(risks).toMatch(/stays on that machine's disk only/);
+    expect(risks).toMatch(/mac prepared handover tx1 and has not run it: this record drops what it prepared/);
     expect(risks).toMatch(/No machine is this fleet's gateway from here on/);
     const record: OwnerRecord = { fleetId, generation: 6, ownerMachineId: w.mac };
     expect(w.daemons.get(w.mac)!.adopted).toEqual([{ record }]);

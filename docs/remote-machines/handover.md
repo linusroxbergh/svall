@@ -256,8 +256,9 @@ svall fleet recover --force-owner local --gateway spare       # another registry
    again once it answers.
 
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
-carried. `--gateway` needs a machine from the registry that holds no record of the fleet, and is refused while the
-current gateway still answers.
+carried. A machine that prepared a handover it never ran drops what it prepared, and the risks name it. `--gateway`
+needs a machine from the registry that holds no record of the fleet, and is refused while the current gateway still
+answers.
 
 ### When the only gateway is gone
 

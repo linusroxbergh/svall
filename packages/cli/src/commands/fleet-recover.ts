@@ -147,6 +147,13 @@ function generations(gateways: { name: string; held?: Held }[], machines: Machin
   return out;
 }
 
+/** What a machine that becomes the owner loses of a handover it prepared and never ran, which the record lets go. */
+const unrun = (machines: MachineView[], owner: MachineId): string[] => machines.flatMap((m) => {
+  const j = m.ownership?.journal;
+  if (m.machineId !== owner || j?.role !== 'destination' || (j.phase !== 'prepare' && j.phase !== 'commit')) return [];
+  return [`${m.name} prepared handover ${j.transactionId} and has not run it: this record drops what it prepared, so ${m.name} runs the fleet as it held it before that handover, without what the handover carried.`];
+});
+
 const aloneRisks = (o: { owner: string; lost: string }): string[] => [
   `${o.lost} is not reached here and never learns of this record: if it comes back still running this fleet, both machines run it until it is stopped there.`,
   `Work done since the last handover on a machine that loses the fleet stays on that machine's disk only; none of it is carried to ${o.owner}.`,
@@ -265,7 +272,10 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
       ...(route && { route }),
       shown,
       ...(plan && { plan }),
-      risks: !plan ? [] : 'standalone' in plan ? aloneRisks({ owner: plan.owner, lost: gatewayName }) : risks({ owner: plan.owner, gateway: plan.gateway, ...(replacement && { lost: gatewayName }) }),
+      risks: !plan ? [] : [
+        ...('standalone' in plan ? aloneRisks({ owner: plan.owner, lost: gatewayName }) : risks({ owner: plan.owner, gateway: plan.gateway, ...(replacement && { lost: gatewayName }) })),
+        ...unrun(machines, owner.id),
+      ],
     },
   });
   if (!plan) return refuse(...refusal);
