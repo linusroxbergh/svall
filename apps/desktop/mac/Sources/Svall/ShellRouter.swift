@@ -328,6 +328,9 @@ final class ShellRouter {
             hostRun?.cancel()
         case .hostList:
             listMachines()
+        case .handoverEnable(let on):
+            do { try SvallHome.setHandoverEnabled(on) } catch { bridge.send(.notice(text: "Remote machines could not be turned \(on ? "on" : "off"): \(error)")) }
+            sendShellInfo()
         case .handoverStart(let to, let choices, let check):
             guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile, check: check ?? false) else {
                 return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices svall handover takes"))

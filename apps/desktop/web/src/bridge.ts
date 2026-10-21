@@ -77,6 +77,8 @@ export type ToShell =
   | { type: 'host.cancel' }
   // `svall host list`, answered by host.machines
   | { type: 'host.list' }
+  // sets fleet.json's handover.enabled, then sends shell.info again
+  | { type: 'handover.enable'; on: boolean }
   // the shell starts, resumes or aborts a handover as a detached helper, then follows it with `handover attach`,
   // whose stdin carries the user's answers; `to` is `local` or the gateway's name, and `check` runs the checks alone
   | { type: 'handover.start'; to: string; choices?: HandoverChoices; check?: boolean }

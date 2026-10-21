@@ -297,3 +297,24 @@ test('Machines says when the list could not be read, and offers to read it again
   fireEvent.click(screen.getByTestId('machines-reload'));
   expect(sent).toEqual([{ type: 'host.list' }]);
 });
+
+test('remote machines is a fleet switch the shell writes to fleet.json, says what it shows, and stays on while the fleet names a gateway', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: false });
+  render(<SettingsCard />);
+  show('fleet');
+  const on = screen.getByTestId('set-handover');
+  expect(on.getAttribute('aria-checked')).toBe('false');
+  expect(screen.queryByTestId('settings-tab-machines')).toBeNull();
+  fireEvent.click(on);
+  expect(sent).toContainEqual({ type: 'handover.enable', on: true });
+  // the shell sends its info again, and the Machines pane is there without a relaunch
+  act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true }));
+  expect(screen.getByTestId('set-handover').getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByTestId('settings-tab-machines')).toBeTruthy();
+  const link = screen.getByRole('link', { name: 'Setting up a Linux machine' });
+  fireEvent.click(link);
+  expect(sent).toContainEqual({ type: 'openUrl', url: 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md' });
+
+  act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' }));
+  expect((screen.getByTestId('set-handover') as HTMLButtonElement).disabled).toBe(true);
+});

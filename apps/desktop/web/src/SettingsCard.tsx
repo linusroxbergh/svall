@@ -129,6 +129,22 @@ function FleetName() {
   );
 }
 
+const SETUP_DOC = 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md';
+
+// fleet.json's handover.enabled, which the shell writes and then names again in shell.info
+function RemoteMachines() {
+  const on = useApp((s) => !!s.shell?.handoverEnabled);
+  const gateway = useApp((s) => s.shell?.gateway);
+  return (
+    <div className="row">
+      <span>remote machines (experimental)<Info id="remote">Shows Settings → Machines, the Handover button and each card&apos;s keep on this machine switch, to move this fleet to a Linux machine and back. <a href={SETUP_DOC} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Setting up a Linux machine</a> walks through it.</Info></span>
+      <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-handover" disabled={on && !!gateway}
+        title={on && gateway ? `${gateway} is this fleet's gateway: remove it under Machines first` : undefined}
+        onClick={() => app.bridge.send({ type: 'handover.enable', on: !on })}>{on ? 'on' : 'off'}</button></b>
+    </div>
+  );
+}
+
 const checked = (c: NonNullable<MachineRow['check']>): string => {
   const when = new Date(c.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   const found = c.failed ? `${c.failed} ${c.failed === 1 ? 'check' : 'checks'} failed` : c.warned ? `${c.warned} ${c.warned === 1 ? 'warning' : 'warnings'}` : 'ready';
@@ -205,6 +221,7 @@ function Scribe() {
           </b>
         </div>
         <Dormancy />
+        {app.bridge.present && <RemoteMachines />}
       </div>
     </>
   );

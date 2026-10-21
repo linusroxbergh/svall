@@ -40,6 +40,7 @@ enum ToShell: Decodable {
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
     case hostList
+    case handoverEnable(on: Bool)
     case handoverStart(to: String, choices: HandoverChoices?, check: Bool?)
     case handoverResume
     case handoverAbort
@@ -96,6 +97,7 @@ enum ToShell: Decodable {
         case "host.start": self = .hostStart(op: try c.decode(HostOp.self, forKey: .op), args: try c.decode(HostArgs.self, forKey: .args))
         case "host.cancel": self = .hostCancel
         case "host.list": self = .hostList
+        case "handover.enable": self = .handoverEnable(on: try c.decode(Bool.self, forKey: .on))
         case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices), check: try c.decodeIfPresent(Bool.self, forKey: .check))
         case "handover.resume": self = .handoverResume
         case "handover.abort": self = .handoverAbort

@@ -39,6 +39,21 @@ enum SvallHome {
         return handover["enabled"] as? Bool ?? false
     }
 
+    /// Sets `handover.enabled` in fleet.json, every other key kept, where a linked file points and with the mode it had;
+    /// a fleet.json that is missing or does not parse is refused and left as it was.
+    static func setHandoverEnabled(_ on: Bool, at home: String = path) throws {
+        let file = URL(fileURLWithPath: home + "/fleet.json").resolvingSymlinksInPath()
+        guard let data = FileManager.default.contents(atPath: file.path) else { throw ShellError("\(home)/fleet.json cannot be read") }
+        guard var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { throw ShellError("\(file.path) is not a fleet config") }
+        var handover = json["handover"] as? [String: Any] ?? [:]
+        handover["enabled"] = on
+        json["handover"] = handover
+        let mode = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.posixPermissions]
+        let text = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try (text + Data("\n".utf8)).write(to: file, options: .atomic)
+        if let mode { try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: file.path) }
+    }
+
     /// Whether a handover of this fleet is open here: the controller keeps its journal from Begin until every side has let go,
     /// and the daemon its own while it is the source or destination of one.
     static func handoverOpen(at home: String = path) -> Bool {

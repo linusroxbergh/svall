@@ -42,16 +42,11 @@ that holds it (`/Volumes/work`) must exist there first, owned by the account.
 
 ## Turning it on
 
-Everything for another machine in the app waits on one setting per fleet. Open the fleet's `fleet.json` (Settings →
-Fleet config, or `~/.svall/fleet.json`) and set:
-
-```json
-"handover": { "enabled": true }
-```
-
-keeping any other keys in the `handover` object as they are. Then quit and reopen the app. Settings gains a
-**Machines** section, the sidebar's foot a **Handover** button, and each character's card a **keep on this machine**
-switch.
+Everything for another machine in the app waits on one setting per fleet: Settings → The fleet → **remote machines
+(experimental)**. Turned on, Settings gains a **Machines** section, the sidebar's foot a **Handover** button, and each
+character's card a **keep on this machine** switch, without reopening the app. It stays on while the fleet names a
+gateway. The switch writes `"handover": { "enabled": true }` into the fleet's `fleet.json`, keeping the other keys; set by
+hand there, it takes effect when the app opens again.
 
 The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
 
