@@ -361,7 +361,9 @@ export class SourceHandover {
     }
     await this.mayTakeBack(p);
     if (held) boundary('source.abort.journal', () => this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() }));
-    await this.revive(p.transactionId, held?.stoppedTerminals ?? [], 'aborted');
+    // a journal closes only once what it stopped has reopened; one that could not be read leaves what each slot says rested it
+    const lost = this.journal.journalState().kind === 'quarantined';
+    await this.revive(p.transactionId, held?.stoppedTerminals ?? (lost ? this.restedBy(p.transactionId) : []), 'aborted');
     await this.release(p.transactionId);
     return {};
   }
@@ -560,12 +562,15 @@ export class SourceHandover {
     // a terminal whose window a rest that died closed still names that window, and reopens only once it names none
     const live = new Set((await this.d.tmux.listWindows()).map((w) => w.windowId));
     const { store, kill, clock } = this.d;
-    // an OpenCode resumed beside the server its closed window left would share its database with it
-    await serversGone({ store, journal: this.journal, processes: this.processes, kill, clock }, this.d.rest ?? {}, (t) => {
-      const c = store.state.characters[t.characterId];
-      const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
-      return !window || !live.has(window);
-    });
+    // an OpenCode resumed beside the server its closed window left would share its database with it; a journal that
+    // could not be read names no server
+    if (this.open(transactionId)) {
+      await serversGone({ store, journal: this.journal, processes: this.processes, kill, clock }, this.d.rest ?? {}, (t) => {
+        const c = store.state.characters[t.characterId];
+        const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
+        return !window || !live.has(window);
+      });
+    }
     this.d.store.update((d) => {
       for (const t of stopped) {
         const c = d.characters[t.characterId];
@@ -586,6 +591,14 @@ export class SourceHandover {
         this.progress(transactionId, c.id, { error: (e as Error).message }, phase);
       }
     }
+  }
+
+  /** The terminals whose slot names this handover as the one that rested it. */
+  private restedBy(transactionId: string): SourceJournal['stoppedTerminals'] {
+    return Object.values(this.d.store.state.characters).flatMap((c) => [
+      ...(c.restedBy === transactionId ? [{ characterId: c.id }] : []),
+      ...(c.second?.restedBy === transactionId ? [{ characterId: c.id, term: 2 as const }] : []),
+    ]);
   }
 
   /**

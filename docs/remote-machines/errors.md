@@ -200,11 +200,11 @@ handover helper is running on this Mac, it names its pid instead; `svall handove
 | --- | --- | --- |
 | `none` | No handover of this fleet is open anywhere. A controller journal whose Begin the gateway never took offers `--abort` to clear it. | nothing, or abort |
 | `open` | A handover is open and has not committed. | resume or abort |
-| `committed` | The gateway has committed; the fleet belongs to the destination and only its activation goes on. | resume |
-| `moved` | The gateway closed the handover after the commit; what is left (the source's or the destination's close) only needs finishing. | resume |
+| `committed` | The gateway has committed; the fleet belongs to the destination and only its activation goes on. With the destination's journal unreadable, nothing is safe: the reason names the file it was moved to and the ways out. | resume, or nothing |
+| `moved` | The gateway closed the handover after the commit; what is left (the source's or the destination's close) only needs finishing. With the destination's journal unreadable, as for `committed`. | resume, or nothing |
 | `returned` | The gateway no longer holds the handover and the source owns the fleet at its generation; an abort only needs finishing. | abort |
 | `superseded` | The gateway has moved on past the handover this Mac's journal names, through another handover or a recovery. | `svall handover --forget` |
-| `unknown` | The gateway cannot say whether the handover committed, or the destination's journal could not be read. Nothing is safe until the gateway answers or someone looks at that machine. | nothing |
+| `unknown` | The gateway cannot say whether the handover committed. Nothing is safe until it answers. | nothing |
 
 ### Action
 

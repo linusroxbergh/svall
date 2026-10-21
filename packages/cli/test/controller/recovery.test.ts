@@ -117,6 +117,25 @@ describe('assess', () => {
     expect(assess(o)).toMatchObject(want);
   });
 
+  it('names the file a quarantined journal was moved to and the ways out, on either machine', () => {
+    const broken = '/home/ada/.svall/handover/journal.json.broken-1';
+    const lost = assess({
+      controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) },
+      destination: { ok: true, value: { status: { quarantined: broken } } },
+    });
+    expect(lost).toMatchObject({ standing: 'committed', action: 'none', safe: [] });
+    expect(lost.reason).toContain(`moved to ${broken}`);
+    expect(lost.reason).toContain('put it back at /home/ada/.svall/handover/journal.json');
+    expect(lost.reason).toContain('svall fleet recover --force-owner <machine>');
+    expect(lost.reason).not.toMatch(/someone looks/);
+    const source = assess({
+      controller: journal(), gateway: { ok: true, value: at(4, mac, tx('preparing')) },
+      source: { ok: true, value: { status: { quarantined: '/Users/ada/.svall/handover/journal.json.broken-2' }, ownership: { fleetId, generation: 4, ownerMachineId: mac, frozen: true } } },
+    });
+    expect(source).toMatchObject({ standing: 'open', safe: ['resume', 'abort'] });
+    expect(source.reason).toMatch(/moved to \/Users\/ada\/\.svall\/handover\/journal\.json\.broken-2.*abort takes the fleet back to .* and reopens the terminals the handover rested there/);
+  });
+
   it('never offers an abort once the gateway has moved the fleet', () => {
     for (const record of [at(5, trift, tx('committed')), at(5, trift)]) {
       for (const phase of ['freeze', 'transfer', 'prepare', 'ready', 'commit', 'activate', 'complete'] as const) {

@@ -1270,6 +1270,22 @@ describe('source abort', () => {
     expect(b.world.log).toEqual(['activate', 'reconcile']);
   });
 
+  it('reopens the terminals it rested when its journal could not be read, by the handover each one names as having rested it', async () => {
+    const b = await frozen();
+    b.gateway.abort();
+    fs.writeFileSync(b.paths.journal, '{ not json');
+    const again = await b.restart();
+    expect(again.handover.status()).toEqual({ quarantined: expect.stringContaining(`${b.paths.journal}.broken-`) });
+    expect(again.ownership.writable()).toBe(false);
+
+    await again.handover.abort({ transactionId: TX, generation: 4 });
+
+    expect(b.world.log).toEqual(['ensure-server', 'revive c_ada', 'second c_ada', 'revive c_bo', 'activate', 'reconcile']);
+    // c_cy was dormant before the handover and stays so
+    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(again.ownership.writable()).toBe(true);
+  });
+
   it('refuses to take back a fleet frozen for another handover', async () => {
     const b = await frozen();
     b.gateway.abort();

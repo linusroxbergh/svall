@@ -228,6 +228,12 @@ What else to know:
   seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort, or Retry after
   the commit. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
   it then ends complete, and `svall handover --resume` finishes what they missed.
+- **A handover journal a machine cannot read** is moved aside to `handover/journal.json.broken-<time>` in its fleet
+  home, and that machine starts read-only. On the machine the fleet came from, Abort takes the fleet back and reopens
+  the terminals the handover rested. On the machine it went to, nothing is safe until you repair that file, put it
+  back at `handover/journal.json`, restart the fleet's daemon there and resume, or name the machine to run the fleet
+  with `svall fleet recover --force-owner <machine>`, which runs it from the state that machine holds. `svall
+  handover status` names the file.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the

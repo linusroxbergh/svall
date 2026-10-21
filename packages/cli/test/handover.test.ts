@@ -1087,6 +1087,17 @@ describe('the human reading of a session the destination went on with', () => {
   });
 });
 
+describe('the human reading of where a handover stands', () => {
+  const read = (v: Verdict): string[] => new View(() => {}, { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' }).status(v);
+
+  it('waits on the gateway only where the gateway could not say, and on the ways out a lost journal names otherwise', () => {
+    const lost: Verdict = { standing: 'committed', transactionId: 'tx-1', journals: {}, safe: [], action: 'none', reason: 'tx-1 moved this fleet to trift, whose handover journal could not be read' };
+    expect(read(lost).at(-1)).toBe('Nothing is safe until one of the ways out above is taken.');
+    const unknown: Verdict = { standing: 'unknown', transactionId: 'tx-1', journals: {}, safe: [], action: 'none', reason: 'the gateway cannot say whether tx-1 committed' };
+    expect(read(unknown).at(-1)).toBe('Nothing is safe until the gateway answers.');
+  });
+});
+
 describe('the human reading of sizes', () => {
   it('counts bytes in thousands, as the sheet does', () => {
     const printed: string[] = [];

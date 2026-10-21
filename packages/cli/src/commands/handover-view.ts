@@ -261,7 +261,7 @@ export class View {
     if (v.helper) lines.push(`  running here as pid ${v.helper.pid}; \`${svall('handover attach')}\` follows it`);
     if (v.standing === 'superseded') lines.push(`Next: \`${svall('handover --forget')}\` drops this controller's journal of it; the daemons and the gateway keep theirs.`);
     else if (v.safe.length) lines.push(`Safe: ${v.safe.map((s) => `\`${svall(`handover --${s}`)}\``).join(' or ')}.`);
-    else lines.push('Nothing is safe until the gateway answers.');
+    else lines.push(v.standing === 'unknown' ? 'Nothing is safe until the gateway answers.' : 'Nothing is safe until one of the ways out above is taken.');
     return lines;
   }
 }
