@@ -270,8 +270,9 @@ has a new id and never meets them.
      machines with the same home;
   3. raise the adapter's minimum only when an older release stops working.
 
-  Until the probe passes, the release is untested with handover, not refused. OpenCode has no fixture or live probe;
-  the integration run's mock follows 2.0.22.
+  Until the probe passes, the release is untested with handover, not refused. OpenCode has an export fixture
+  (`opencode/<version>`) but no live probe; the integration run's mock follows 2.0.22. `pnpm compat` checks each new
+  release's session layout, resume and trust keys, and OpenCode's export, import and login output.
 
 ## Performance and limits
 
