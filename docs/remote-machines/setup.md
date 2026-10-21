@@ -57,7 +57,7 @@ The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` co
 
 ## Adding the machine
 
-In the app, open Settings → Machines → **Set up**, give the machine a name (lowercase letters, digits and dashes,
+In the app, open Settings → Machines → **Add machine**, give the machine a name (lowercase letters, digits and dashes,
 such as `studio`) and its ssh destination (such as `ada@studio`), and choose **Add machine**. From a terminal:
 
 ```sh
@@ -137,10 +137,13 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 
 ## Looking after it
 
+Settings → Machines lists every machine with its ssh destination, the fleets on this Mac it is the gateway of, and the
+release and result of its last check, each with the buttons below.
+
 | Command | In the app | What it does |
 | --- | --- | --- |
-| `svall host list` | | Every machine in the registry, with its id and whether it is a gateway. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
+| `svall host list` | Settings → Machines | Every machine in the registry, with its id, the fleets on this Mac it is the gateway of, and its last check. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path; `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. |
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
@@ -183,7 +186,8 @@ On the Linux machine, all under the account:
 
 On the Mac:
 
-- `~/.config/svall/machine.json`, this Mac's machine id, and `machines.json`, the registry. A registry that
+- `~/.config/svall/machine.json`, this Mac's machine id, `machines.json`, the registry, and `checks.json`, each
+  machine's last check. A registry that
   cannot be read is moved aside to `machines.json.broken-<time>` with a warning, and a command that then misses a
   machine names that copy.
 - In each fleet home: `fleet.json` names the gateway, `owner.json` holds this machine's copy of the ownership record,

@@ -113,6 +113,7 @@ function createApp(): AppContext {
       if (m.type === 'notice') { store.getState().showToast(m.text); return; }
       if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }
       if (m.type === 'host.done') { store.getState().hostDone(m.op, m.code); return; }
+      if (m.type === 'host.machines') { store.getState().setMachines(m.machines, m.error); return; }
       if (m.type !== 'connection') return;
       if (!m.port) {
         portlessSince ??= Date.now();

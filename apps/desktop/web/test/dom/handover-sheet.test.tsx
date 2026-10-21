@@ -91,7 +91,8 @@ test('a release blocker opens the machines panel on the Linux machine, in place 
   });
   fireEvent.click(screen.getByTestId('handover-upgrade'));
   expect(screen.queryByTestId('handover-sheet')).toBeNull();
-  expect((screen.getByTestId('host-name') as HTMLInputElement).value).toBe('trift');
+  expect(screen.getByTestId('host-machine').textContent).toBe('trift');
+  expect(screen.getByTestId('host-setup').querySelector('[data-testid="machine-upgrade"]')).not.toBeNull();
 });
 
 test('a folder that holds repositories no character works in blocks on its character until Carry the folder whole is chosen, and the start again carries it', () => {

@@ -127,17 +127,17 @@ test('a fleet on a machine on another version opens the machines panel on it, an
   const screen = page.getByTestId('connect-screen');
   await expect(screen).toContainText('studio is on another version of Svall.');
   await screen.getByTestId('connection-upgrade').click();
-  await expect(page.getByTestId('host-name')).toHaveValue('studio');
+  await expect(page.getByTestId('host-machine')).toHaveText('studio');
   const starts = async () => (await sent()).filter((m) => m.type === 'host.start');
   expect(await starts()).toEqual([]);
-  await page.getByTestId('host-upgrade').click();
+  await page.getByTestId('machine-upgrade').click();
   expect(await starts()).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'studio' } }]);
 
   // the upgrade went through and the shell asked again: the panel stays while the fleet comes back
   for (const state of ['connecting', 'online'] as const) {
     await page.evaluate((m) => { const w = window as unknown as Shell; w.__state = m; w.__svall.receive(JSON.stringify(m)); },
       { type: 'connection.state', state, owner: 'studio' } as State);
-    await expect(page.getByTestId('host-name')).toHaveValue('studio');
+    await expect(page.getByTestId('host-machine')).toHaveText('studio');
   }
 });
 

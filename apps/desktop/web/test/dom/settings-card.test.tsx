@@ -246,3 +246,54 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   expect(store.getState().settings.robotMotion).toBe(false);
   expect(checked('set-robot-motion')).toBe('false');
 });
+
+test('Machines lists every machine with its ssh, the fleets it is the gateway of, its release and last check, each with its own actions, and Add machine last', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+  render(<SettingsCard />);
+  show('machines');
+  expect(sent).toContainEqual({ type: 'host.list' });
+  act(() => store.getState().setMachines([
+    { name: 'mac', id: 'm0', platform: 'darwin-arm64', gateway: false, fleets: [] },
+    { name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64', gateway: true, fleets: ['private', 'work'], check: { at: Date.UTC(2026, 9, 21, 12, 0), failed: 0, warned: 2, release: '0.13.0' } },
+    { name: 'studio', id: 'm2', ssh: 'ada@studio', platform: 'linux-arm64', gateway: false, fleets: [] },
+  ]));
+  // this Mac is no machine to act on
+  expect(screen.queryByTestId('machine-mac')).toBeNull();
+  const trift = screen.getByTestId('machine-trift');
+  expect(trift.textContent).toContain('ada@trift');
+  expect(trift.textContent).toContain('gateway for private, work');
+  expect(trift.textContent).toContain('release 0.13.0');
+  expect(trift.textContent).toContain('2 warnings');
+  expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
+  // the gateway of this fleet is not offered to be made it again
+  expect(trift.querySelector('[data-testid="machine-enable"]')).toBeNull();
+  expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-enable"]')).not.toBeNull();
+
+  fireEvent.click(trift.querySelector('[data-testid="machine-doctor"]')!);
+  expect(sent).toContainEqual({ type: 'host.start', op: 'doctor', args: { name: 'trift' } });
+  expect(store.getState().hostOpen).toBe(true);
+  expect(store.getState().hostMachine).toBe('trift');
+
+  // one run at a time
+  expect((screen.getByTestId('machine-studio').querySelector('[data-testid="machine-forget"]') as HTMLButtonElement).disabled).toBe(true);
+  act(() => { store.getState().hostDone('doctor', 0); store.getState().toggleHost(false); });
+  fireEvent.click(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-forget"]')!);
+  expect(store.getState().hostConfirm).toEqual({ name: 'studio', forget: true });
+  expect(store.getState().hostMachine).toBe('studio');
+
+  act(() => store.getState().toggleHost(false));
+  fireEvent.click(screen.getByTestId('machine-add'));
+  expect(store.getState().hostOpen).toBe(true);
+  expect(store.getState().hostMachine).toBeUndefined();
+});
+
+test('Machines says when the list could not be read, and offers to read it again', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+  render(<SettingsCard />);
+  show('machines');
+  act(() => store.getState().setMachines([], 'svall host list exited with code 1'));
+  expect(screen.getByTestId('machines-error').textContent).toContain('svall host list exited with code 1');
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('machines-reload'));
+  expect(sent).toEqual([{ type: 'host.list' }]);
+});

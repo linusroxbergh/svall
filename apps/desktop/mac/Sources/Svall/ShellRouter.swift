@@ -14,6 +14,9 @@ final class ShellRouter {
     private var remote: RemoteConnection!
     // one host operation at a time: the page watches this one until it ends or is cancelled
     private var hostRun: HostProcess?
+    // `svall host list` for the Machines pane, and whether it was asked for again while it ran
+    private var listing: LineChild?
+    private var listAgain = false
     // the handover helper the page follows; absent in a build with no svall beside it
     private var handover: HandoverSession?
     private let awake = KeepAwake()
@@ -323,6 +326,8 @@ final class ShellRouter {
             startHost(op: op, args: args)
         case .hostCancel:
             hostRun?.cancel()
+        case .hostList:
+            listMachines()
         case .handoverStart(let to, let choices, let check):
             guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile, check: check ?? false) else {
                 return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices svall handover takes"))
@@ -413,6 +418,7 @@ final class ShellRouter {
         child.onExit = { [weak self] code in
             self?.hostRun = nil
             self?.bridge.send(.hostDone(op: op.rawValue, code: code))
+            self?.listMachines()
             if op.rewritesFleetConfig {
                 self?.followGateway()
                 self?.sendShellInfo()
@@ -428,6 +434,29 @@ final class ShellRouter {
             hostRun = nil
             bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: "\(error)", action: nil)))
             bridge.send(.hostDone(op: op.rawValue, code: 1))
+        }
+    }
+
+    /// The registry as `svall host list --json` gives it; a list asked for while one runs is read again after it.
+    private func listMachines() {
+        if listing != nil { listAgain = true; return }
+        guard let executable = ControllerProcess.locate() else {
+            return bridge.send(.hostMachines(machines: [], error: "this build has no svall beside it to list machines with"))
+        }
+        let child = LineChild(executable: executable, arguments: ["host", "list", "--json"], stdin: false)
+        var text = ""
+        child.onLine = { text += $0 + "\n" }
+        child.onExit = { [weak self] code, stderr in
+            guard let self else { return }
+            listing = nil
+            let rows = code == 0 ? (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [[String: Any]] : nil
+            bridge.send(.hostMachines(machines: rows ?? [], error: rows == nil ? stderr.last ?? "svall host list exited with code \(code)" : nil))
+            if listAgain { listAgain = false; listMachines() }
+        }
+        listing = child
+        do { try child.start() } catch {
+            listing = nil
+            bridge.send(.hostMachines(machines: [], error: "\(error)"))
         }
     }
 

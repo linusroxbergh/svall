@@ -1,14 +1,17 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
-import { PROTOCOL_VERSION } from '@svall/protocol';
+import { z } from 'zod';
+import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
+import { writeJsonAtomic } from '@svall/svalld/atomic';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { printResult, table } from '../format.js';
-import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type StepEvent } from '../controller/host.js';
+import { addHost, doctorHost, enableHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { targetFor } from '../target.js';
@@ -89,6 +92,37 @@ export function doctorVerdict(checks: Check[], machine: { name: string; gateway:
   return `${ready}${warned ? `; ${plural(warned, 'warning')}` : ''}`;
 }
 
+const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
+/** What the last `host doctor` here found: when, how many checks failed and warned, and the release the machine said it runs. */
+export type LastCheck = z.infer<typeof LastCheck>;
+
+// beside the registry, by machine id, so a renamed machine keeps its check
+const checksFile = (dir: string): string => path.join(dir, 'checks.json');
+
+/** Every machine's last check; a file that cannot be read holds none. */
+export function lastChecks(dir: string): Record<string, LastCheck> {
+  try { return z.record(z.string(), LastCheck).parse(JSON.parse(fs.readFileSync(checksFile(dir), 'utf8'))); } catch { return {}; }
+}
+
+function recordCheck(dir: string, id: MachineId, report: HostReport): void {
+  const count = (status: string) => report.checks.filter((c) => c.status === status).length;
+  const check: LastCheck = { at: Date.now(), failed: count('fail'), warned: count('warn'), ...(report.release && { release: report.release }) };
+  writeJsonAtomic(checksFile(dir), { ...lastChecks(dir), [id]: check });
+}
+
+/** One machine as `host list --json` gives it: no ssh for this one, the fleets here it is the gateway of, and its last check. */
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[]; check?: LastCheck };
+
+export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, fleetsOf: (id: MachineId) => string[]): MachineRow[] {
+  return registry.list().map(({ id, record }) => ({
+    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, gateway: record.gateway,
+    fleets: fleetsOf(id), ...(checks[id] && { check: checks[id] }),
+  }));
+}
+
+const checkedLine = (c: LastCheck): string =>
+  `${new Date(c.at).toISOString().slice(0, 16).replace('T', ' ')}: ${c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : 'ready'}`;
+
 /** Either one NDJSON object per step and a final result, or the same events as doctor-style lines. */
 function reporter(json: boolean, last: (o: HostOutcome) => string): { emit: (e: StepEvent) => void; finish: (o: HostOutcome) => void } {
   const write = (v: unknown) => process.stdout.write(`${JSON.stringify(v)}\n`);
@@ -121,13 +155,14 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
       runFlow(json(), (out) => outcomeText(out, 'add', name), (d) => addHost({ name, ...o }, d), dir()));
 
   host.command('list')
-    .description('every machine in the registry')
+    .description('every machine in the registry, the fleets here it is the gateway of, and its last check')
     .action(() => {
-      const rows = MachineRegistry.load(dir()).list().map(({ id, record }) => ({
-        name: record.name, ssh: record.ssh ?? '(this machine)',
-        platform: `${record.platform}-${record.arch}`, gateway: record.gateway ? 'yes' : 'no', id,
-      }));
-      printResult(rows, json(), () => table(rows));
+      const rows = machineRows(MachineRegistry.load(dir()), lastChecks(dir()), (id) => fleetsNaming(id, os.homedir()));
+      printResult(rows, json(), () => table(rows.map((r) => ({
+        name: r.name, ssh: r.ssh ?? '(this machine)', platform: r.platform,
+        gateway: r.fleets.length ? `for ${r.fleets.join(', ')}` : r.gateway ? 'yes' : 'no',
+        release: r.check?.release ?? '', checked: r.check ? checkedLine(r.check) : '', id: r.id,
+      }))));
     });
 
   host.command('doctor')
@@ -135,7 +170,9 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .argument('<name>', 'the machine in the registry')
     .action(async (name: string) => {
       const report = await doctorHost(name, realDeps(() => { /* a diagnosis prints a table, not steps */ }, dir()));
-      const gateway = MachineRegistry.load(dir()).get(name)?.record.gateway ?? false;
+      const entry = MachineRegistry.load(dir()).get(name);
+      if (entry) recordCheck(dir(), entry.id, report);
+      const gateway = entry?.record.gateway ?? false;
       printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks), doctorVerdict(report.checks, { name, gateway })].join('\n'));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
     });

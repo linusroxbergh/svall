@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setRobots, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
-import { openConfig, openUrl, shim } from './bridge.js';
+import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
 import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
+import { MachineActions } from './HostSetup.js';
 import { Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -128,12 +129,41 @@ function FleetName() {
   );
 }
 
+const checked = (c: NonNullable<MachineRow['check']>): string => {
+  const when = new Date(c.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const found = c.failed ? `${c.failed} ${c.failed === 1 ? 'check' : 'checks'} failed` : c.warned ? `${c.warned} ${c.warned === 1 ? 'warning' : 'warnings'}` : 'ready';
+  return `checked ${when}: ${found}`;
+};
+
+/** Every machine this Mac can hand a fleet to, each with what can be done to it, and a new one last. */
 function Machines() {
+  const machines = useApp((s) => s.machines);
+  const error = useApp((s) => s.machinesError);
+  const list = () => app.bridge.send({ type: 'host.list' });
+  useEffect(list, []);
   return (
-    <div className="rows">
+    <div className="rows" data-testid="machines">
+      {machines?.filter((m) => m.ssh).map((m) => (
+        <div key={m.id} className="machine" data-testid={`machine-${m.name}`}>
+          <div className="row">
+            <span><b>{m.name}</b> {m.ssh}</span>
+            <b className="machine-said">
+              {[m.fleets.length ? `gateway for ${m.fleets.join(', ')}` : '', m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
+                .filter(Boolean).join(' · ')}
+            </b>
+          </div>
+          <MachineActions name={m.name} />
+        </div>
+      ))}
+      {error && (
+        <div className="row" data-testid="machines-error">
+          <span>{error}</span>
+          <b><button className="btn set-open" data-testid="machines-reload" onClick={list}>Read again</button></b>
+        </div>
+      )}
       <div className="row">
         <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Svall installs itself there over ssh, checks what it needs, and reports what is still to do. <code>svall host</code> does the same from a terminal.</Info></span>
-        <b><button className="btn set-open" data-testid="settings-hosts" onClick={() => app.store.getState().toggleHost(true)}>Set up</button></b>
+        <b><button className="btn set-open" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
       </div>
     </div>
   );

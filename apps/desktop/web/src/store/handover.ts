@@ -1,6 +1,6 @@
 import type { HandoverChoices } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
-import type { ConnectionState, HostArgs, HostOp, HostStep } from '../bridge.js';
+import type { ConnectionState, HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyEvent, endFollow, followRun, goOn, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
 import { applyStep, beginRun, endRun, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
@@ -18,6 +18,9 @@ export type HandoverState = {
   hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
+  // the registry as the shell last read it, and why it could not
+  machines?: MachineRow[];
+  machinesError?: string;
   // the handover the sheet follows, and the sheet itself
   handover?: HandoverRun;
   handoverOpen: boolean;
@@ -30,6 +33,7 @@ export type HandoverActions = {
   hostStep(op: HostOp, event: HostStep): void;
   hostDone(op: HostOp, code: number): void;
   confirmHost(ask?: HostConfirm): void;
+  setMachines(machines: MachineRow[], error?: string): void;
   toggleHandover(open?: boolean): void;
   handoverFollow(to?: string, choices?: HandoverChoices): void;
   // a resume the sheet starts by itself, keeping what the run it goes on from showed
@@ -52,16 +56,20 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   hostOpen: false,
   hostMachine: undefined,
   hostConfirm: undefined,
+  machines: undefined,
+  machinesError: undefined,
   handover: undefined,
   handoverOpen: false,
   // the fleet the page already holds stands while its machine is away: only the report changes
   setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
   toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined }; }),
-  hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined }),
+  // the panel follows the machine its run is about, an add's included
+  hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
   hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event) } : {})),
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
+  setMachines: (machines, machinesError) => set({ machines, machinesError }),
   toggleHandover: (open) => set((s) => ({ handoverOpen: open ?? !s.handoverOpen })),
   handoverFollow: (to, choices) => set({ handover: followRun(to, choices) }),
   handoverGoOn: () => set((s) => (s.handover ? { handover: goOn(s.handover) } : {})),

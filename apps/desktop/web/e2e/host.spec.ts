@@ -47,7 +47,9 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
 
   await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await page.getByTestId('settings-hosts').click();
+  // the pane reads the registry as it opens
+  await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
+  await page.getByTestId('machine-add').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
   // before any run, what the machine needs
   await expect(page.getByTestId('host-intro')).toContainText('same path as yours on this Mac');
@@ -81,7 +83,8 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await expect(page.getByTestId('host-outcome')).toContainText('svall doctor');
   await expect(page.getByTestId('host-next-gateway')).toHaveCount(0);
 
-  // an add that went through is added, and the panel offers the gateway it still needs
+  // an add that stopped short is offered again as it was asked, and one that went through offers the gateway it still needs
+  await expect(page.getByTestId('host-ssh')).toHaveValue('linus@studio');
   await page.getByTestId('host-add').click();
   await receive(page, { type: 'host.step', op: 'add', event: { step: 'registry', status: 'ok', detail: "studio is in this Mac's list of machines" } });
   await receive(page, { type: 'host.done', op: 'add', code: 0 });
@@ -97,10 +100,11 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await page.getByTestId('settings-open').click();
   await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await page.getByTestId('settings-hosts').click();
-  await page.getByTestId('host-name').fill('studio');
-
-  await page.getByTestId('host-doctor').click();
+  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await expect(page.getByTestId('machine-studio')).toContainText('not checked yet');
+  await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
+  const panel = page.getByTestId('host-setup');
+  await expect(panel.getByTestId('host-machine')).toHaveText('studio');
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   // the shell turns each of the report's checks into a step
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'tmux', status: 'ok', detail: '3.5a' } });
@@ -111,26 +115,26 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0, protocol 4');
   await expect(page.getByTestId('host-outcome')).toContainText("ready to be this fleet's gateway; 1 warning");
 
-  await page.getByTestId('host-doctor').click();
+  await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 1 });
   await expect(page.getByTestId('host-outcome')).toContainText('1 check blocks a handover:systemd: svall-svalld@private.service is inactive');
 
-  await page.getByTestId('host-upgrade').click();
+  await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'studio answers on release 0.5.0' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 0 });
   await expect(page.getByTestId('host-outcome')).toHaveText('studio is upgraded');
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // an upgrade stopped in install leaves no rollback to offer
-  await page.getByTestId('host-upgrade').click();
+  await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'install', status: 'fail', detail: 'svall setup exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
   await expect(page.getByTestId('host-outcome')).toContainText('Upgrade stopped at Install');
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // one whose own rollback failed too offers the rollback the CLI names
-  await page.getByTestId('host-upgrade').click();
+  await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'warn', detail: 'studio did not answer' } });
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'rollback', status: 'fail', detail: 'svall setup --rollback exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
@@ -139,11 +143,12 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await receive(page, { type: 'host.done', op: 'rollback', code: 0 });
 
   // the gateway is this window's own fleet, which the shell names; the page sends only the machine
-  await expect(page.getByTestId('host-enable')).toHaveText("Make it this fleet's gateway");
-  await page.getByTestId('host-enable').click();
+  await expect(panel.getByTestId('machine-enable')).toHaveText('Make gateway');
+  await panel.getByTestId('machine-enable').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'enable', code: 0 });
   await receive(page, { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' });
+  await expect(panel.getByTestId('machine-enable')).toHaveCount(0);
   await expect(page.getByTestId('host-outcome')).toContainText("studio is this fleet's gateway: ready for handover");
   await page.getByTestId('host-next-handover').click();
   await expect(page.getByTestId('host-setup')).toHaveCount(0);
@@ -156,11 +161,12 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await page.getByTestId('settings-open').click();
   await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await page.getByTestId('settings-hosts').click();
-  await page.getByTestId('host-name').fill('studio');
+  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] }] });
   const starts = async () => (await sent(page)).filter((m) => m.type === 'host.start');
+  const row = page.getByTestId('machine-studio');
+  const panel = page.getByTestId('host-setup');
 
-  await page.getByTestId('host-remove').click();
+  await row.getByTestId('machine-remove').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'remove');
   await expect(page.getByTestId('host-confirm')).toContainText('uninstalls Svall there');
   expect(await starts()).toEqual([]);
@@ -168,14 +174,17 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await expect(page.getByTestId('host-confirm')).toHaveCount(0);
   expect(await starts()).toEqual([]);
 
-  await page.getByTestId('host-remove').click();
+  await panel.getByTestId('machine-remove').click();
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio' } });
   await expect(page.getByTestId('host-confirm')).toHaveCount(0);
   await receive(page, { type: 'host.done', op: 'remove', code: 0 });
   await expect(page.getByTestId('host-outcome')).toHaveText('studio is removed');
+  // a machine that is gone is offered nothing more
+  await expect(panel.getByTestId('machine-forget')).toHaveCount(0);
 
-  await page.getByTestId('host-forget').click();
+  await page.getByTestId('host-close').click();
+  await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
   expect(await starts()).toHaveLength(1);
   await page.getByTestId('host-confirm-yes').click();
@@ -238,7 +247,8 @@ test('a machine on another version opens the machines panel on it from the banne
   await handoverOn(page);
   await page.getByTestId('connection-upgrade').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
-  await expect(page.getByTestId('host-name')).toHaveValue('studio');
+  await expect(page.getByTestId('host-machine')).toHaveText('studio');
+  await expect(page.getByTestId('host-name')).toHaveCount(0);
   expect((await sent(page)).filter((m) => m.type === 'host.start')).toEqual([]);
 });
 

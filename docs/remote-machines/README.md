@@ -20,7 +20,7 @@ The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` co
 
 1. On the Linux machine, make an account whose home is the same path as yours on the Mac, such as `/Users/ada`.
 2. Turn handover on in the fleet's `fleet.json` and reopen the app.
-3. Settings → Machines → **Set up**: add the machine, then **Make it this fleet's gateway**. Or from a terminal:
+3. Settings → Machines → **Add machine**, then **Make it this fleet's gateway**. Or from a terminal:
 
    ```sh
    svall host add studio --ssh ada@studio

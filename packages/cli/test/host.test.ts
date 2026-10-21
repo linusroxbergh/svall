@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, PROTOCOL_VERSION } from '@svall/protocol';
 import { shq } from '@svall/svalld/text';
-import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
+import { addHost, doctorHost, enableHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -717,6 +717,24 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
   });
 
+  it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off for linus' }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
+    const config = path.join(work, 'config');
+    registered().save();
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await hostCommands(() => true, () => config).parseAsync(['doctor', 'trift'], { from: 'user' });
+    } finally {
+      out.mockRestore();
+    }
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
+    expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
+  });
+
   it('names the remote user, not the machine, when the companion reports no linger of its own', async () => {
     ssh.reply(['doctor', '--json'], { stdout: doctorJson() });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
@@ -1252,6 +1270,35 @@ esac
     await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     await d.close();
     expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/svall/staging-1.2.3`, `${HOME}/.cache/svall/companion-1.2.3.tar.gz`]);
+  });
+});
+
+describe('host list', () => {
+  it('names each machine with its ssh, the fleets here it is the gateway of, and its last check, this Mac without an ssh', async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'ada@trift', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: true }, REMOTE);
+    const { machineRows } = await import('../src/commands/host.js');
+    const check = { at: 1, failed: 0, warned: 2, release: '1.2.3' };
+    const rows = machineRows(registry, { [REMOTE]: check }, (id) => (id === REMOTE ? ['private', 'work'] : []));
+    expect(rows).toEqual([
+      { name: registry.localMachine().name, id: registry.localId, platform: `${process.platform === 'linux' ? 'linux' : 'darwin'}-${process.arch}`, gateway: false, fleets: [] },
+      { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', gateway: true, fleets: ['private', 'work'], check },
+    ]);
+  });
+
+  it('finds the fleets on this Mac whose fleet.json names a machine as their gateway, by profile', () => {
+    const fleet = (dir: string, gateway?: string) => {
+      fs.mkdirSync(path.join(work, dir), { recursive: true });
+      fs.writeFileSync(path.join(work, dir, 'fleet.json'), JSON.stringify({ id: FLEET, ...(gateway && { gatewayMachineId: gateway }) }));
+    };
+    fleet('.svall', REMOTE);
+    fleet('.svall-work', REMOTE);
+    fleet('.svall-lab', OTHER_MAC);
+    fleet('.svall-home');
+    fs.mkdirSync(path.join(work, '.svall-broken'));
+    fs.writeFileSync(path.join(work, '.svall-broken', 'fleet.json'), '{');
+    expect(fleetsNaming(REMOTE, work).sort()).toEqual(['private', 'work']);
   });
 });
 
