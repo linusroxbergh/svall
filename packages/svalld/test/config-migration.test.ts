@@ -209,6 +209,47 @@ describe('finishing an interrupted split', () => {
   });
 });
 
+describe('two starts splitting at once', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('runs on the split the other start finished while this one was reading', () => {
+    const p = resolvePaths(legacyHome('{"port":47900}'));
+    const rename = fs.renameSync;
+    let other: string | undefined;
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (other === undefined) { vi.mocked(fs.renameSync).mockRestore(); other = loadConfig(p).id; }
+      rename(from, to);
+    });
+    const config = loadConfig(p);
+    expect(config.id).toBe(other);
+    expect(read(p.fleetConfig).id).toBe(other);
+    expect(config.port).toBe(47900);
+  });
+
+  it('finishes the split of a config.json the other start moved aside as this one looked for its backup', () => {
+    const p = resolvePaths(legacyHome());
+    const exists = fs.existsSync;
+    vi.spyOn(fs, 'existsSync').mockImplementation((file) => {
+      if (file === `${p.legacyConfig}.bak` && exists(p.legacyConfig)) fs.renameSync(p.legacyConfig, `${p.legacyConfig}.bak`);
+      return exists(file);
+    });
+    expect(loadConfig(p).port).toBe(47900);
+    expect(read(p.fleetConfig).id).toMatch(UUID);
+  });
+
+  it('keeps the fleet.json the other start wrote first, id and all', () => {
+    const p = resolvePaths(legacyHome('{"port":47900}'));
+    const other = { id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' };
+    const link = fs.linkSync;
+    vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
+      if (to === p.fleetConfig && !fs.existsSync(p.fleetConfig)) fs.writeFileSync(p.fleetConfig, JSON.stringify(other));
+      link(from, to);
+    });
+    expect(loadConfig(p).id).toBe(other.id);
+    expect(read(p.fleetConfig)).toEqual(other);
+  });
+});
+
 describe('a config.json a dotfile manager links in', () => {
   /** A fleet home whose config.json links to a file kept elsewhere, as stow and home-manager keep it. */
   function linkedHome(): { p: ReturnType<typeof resolvePaths>; dotfile: string } {

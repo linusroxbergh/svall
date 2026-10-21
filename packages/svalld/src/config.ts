@@ -4,7 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from './atomic.js';
-import { writeDurable } from './handover/durable.js';
+import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
 import { HOME_CWD, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { variant } from './runtime.js';
@@ -120,6 +120,8 @@ export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>
 export const configStray = (paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>, has: (file: string) => boolean): boolean =>
   has(paths.legacyConfig) && has(paths.fleetConfig) && !configRelinked(paths);
 
+const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+
 /**
  * Writes whichever of the two config files this fleet is missing, out of its config.json when it
  * still has one, and returns the files written. An unreadable config.json stops it before any write.
@@ -129,16 +131,21 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (l
   const has = (file: string): boolean => fs.existsSync(file);
   const backup = `${paths.legacyConfig}.bak`;
   // a config.json is put beside the new files byte-exact before anything is read out of it, so the
-  // only file the split ever reads is one nothing edits any more
+  // only file the split ever reads is one nothing edits any more; one another start moves first is that start's to split
   if (configStray(paths, has)) {
     const aside = `${paths.legacyConfig}.unread-${Date.now()}`;
-    fs.renameSync(paths.legacyConfig, aside);
-    say(`${paths.legacyConfig} moved to ${aside} unread: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}; copy anything you still want from it into them`);
+    try {
+      fs.renameSync(paths.legacyConfig, aside);
+      say(`${paths.legacyConfig} moved to ${aside} unread: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}; copy anything you still want from it into them`);
+    } catch (e) { if (errno(e) !== 'ENOENT') throw e; }
   } else if (has(paths.legacyConfig) && !configRelinked(paths)) {
     const refused = configRefusal(paths, has);
-    if (refused) throw new InvalidConfig(refused);
-    read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
-    fs.renameSync(paths.legacyConfig, backup);
+    // the backup another start has just made is no refusal
+    if (refused && has(paths.legacyConfig)) throw new InvalidConfig(refused);
+    try {
+      read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
+      fs.renameSync(paths.legacyConfig, backup);
+    } catch (e) { if (errno(e) !== 'ENOENT') throw e; }
   }
   const wrote: string[] = [];
   const split = has(backup) && !has(paths.fleetConfig) ? splitLegacy(backup) : undefined;
@@ -146,10 +153,12 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (l
     writeJsonAtomic(paths.nodeConfig, split?.node ?? seed);
     wrote.push(paths.nodeConfig);
   }
-  // last, so a fleet.json is only ever there once the split behind it is whole
+  // last, so a fleet.json is only ever there once the split behind it is whole; and never replaced, so two starts run on one id
   if (!has(paths.fleetConfig)) {
-    writeJsonAtomic(paths.fleetConfig, split?.fleet ?? { id: newFleetId() });
-    wrote.push(paths.fleetConfig);
+    try {
+      createDurable(paths.fleetConfig, split?.fleet ?? { id: newFleetId() }, { mode: 0o600 });
+      wrote.push(paths.fleetConfig);
+    } catch (e) { if (errno(e) !== 'EEXIST') throw e; }
   }
   return wrote;
 }
