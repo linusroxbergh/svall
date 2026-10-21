@@ -209,7 +209,8 @@ one, or equal and naming another owner while no handover journal is open there. 
 is ignored, so a stale gateway never rolls ownership back. A fleet whose `fleet.json` names a
 gateway and that has no cached record owns nothing until the gateway names its owner. If the
 gateway is permanently lost, recovery requires `svall fleet recover --force-owner <machine>` and
-presents the generations and risks before writing a new authority; it is never automatic.
+presents the generations and risks before writing a new authority; it is never automatic, and it
+writes only once a person at a terminal outside any fleet's agents and tmux panes types the fleet id.
 
 On app or CLI launch, the controller asks the gateway for the current owner, then opens either the
 local direct connection or the owner's SSH route. If the gateway is temporarily unavailable, it may

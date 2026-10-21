@@ -266,7 +266,8 @@ svall fleet recover --force-owner local --gateway spare       # another registry
 
 1. It shows what the gateway and every machine hold, this Mac's journal and cached route, every generation it saw,
    the record it would write (at a generation above all of them) and the risks.
-2. It writes only after you type the fleet id; without a terminal, `--confirm <fleet id>` does that.
+2. It writes only after you type the fleet id at its prompt, in a terminal of your own outside any fleet's agents and
+   tmux panes. Any other run shows the same and writes nothing.
 3. It records the write in `controller/recoveries.ndjson` in the fleet home, and with a gateway also in the gateway's
    `recoveries.ndjson`, then tells every machine that answers: the one it names runs the fleet, and the others let go
    and close their terminals.
