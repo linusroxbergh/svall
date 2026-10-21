@@ -628,7 +628,30 @@ describe('archiving', () => {
     expect(await store.claim(dir(app), claimFor(TX, incoming))).toMatchObject({ ok: true, kind: 'replica' });
   });
 
-  it('moves the whole root aside when a change it found cannot be moved alone or read', async () => {
+  it('moves the whole root aside when a change lies in Git\'s records, whose objects the copy would delete', async () => {
+    const w = world();
+    const app = tree(path.join(w.work, 'app'), { 'a.txt': 'a', '.git/HEAD': 'ref: refs/heads/main\n', [`.git/refs/heads/main`]: `${'c'.repeat(40)}\n` });
+    w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
+    // a stash made there: its ref and log, and objects only this copy holds
+    tree(app, { '.git/refs/stash': `${'e'.repeat(40)}\n`, '.git/logs/refs/stash': 'stash\n', '.git/objects/ee/eeee': 'only here' });
+    const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
+    expect(fs.existsSync(app)).toBe(false);
+    expect(fs.readFileSync(path.join(archivedTo, '.git/objects/ee/eeee'), 'utf8')).toBe('only here');
+  });
+
+  it('moves the whole root aside when a change it found cannot be read', async () => {
+    const w = world();
+    const app = tree(path.join(w.work, 'app'), { 'a.txt': 'a', 'b.txt': 'b' });
+    w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
+    write(app, 'locked.txt', 'mine');
+    fs.chmodSync(path.join(app, 'locked.txt'), 0);
+    const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
+    expect(fs.existsSync(app)).toBe(false);
+    expect(fs.readdirSync(archivedTo).sort()).toEqual(['a.txt', 'b.txt', 'locked.txt']);
+    fs.chmodSync(path.join(archivedTo, 'locked.txt'), 0o600);
+  });
+
+  it('moves the whole root aside when a change it found cannot be moved alone', async () => {
     const w = world();
     const commit = 'c'.repeat(40);
     const app = tree(path.join(w.work, 'app'), { 'a.txt': 'a', '.git/HEAD': 'ref: refs/heads/main\n', '.git/packed-refs': `${commit} refs/heads/main\n` });

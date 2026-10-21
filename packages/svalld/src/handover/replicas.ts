@@ -296,7 +296,8 @@ export class ReplicaStore {
 
   /**
    * The paths to set aside from a root whose record a claim by `t` would prove it against, when it differs in at most a
-   * few, each a file or link there; and its record once they are gone, naming what stays as what handover left.
+   * few, each a file or link there and none in Git's records, whose objects the copy would delete; and its record once
+   * they are gone, naming what stays as what handover left.
    */
   private async few(root: ReplicaRoot, at: string, t: Inspect): Promise<{ moved: string[]; bytes: Buffer; record: ReplicaRecord } | undefined> {
     const { bytes, record: r } = this.read(at);
@@ -305,7 +306,8 @@ export class ReplicaStore {
     const { divergence: d, files } = await proveReplica(at, accepted, t.excludes, this.opts.scanFs, root.kind, kept(t.keep ?? []), FEW + 1);
     const moved = [...d.added.preview, ...d.changed.preview];
     const there = new Set(files.map((f) => f.path));
-    if (d.unchecked.count || d.added.count + d.changed.count + d.removed.count > FEW || !moved.every((p) => there.has(p))) return undefined;
+    const git = root.kind === 'gitdir' || [...moved, ...d.removed.preview].some((p) => p.split('/').includes('.git'));
+    if (git || d.unchecked.count || d.added.count + d.changed.count + d.removed.count > FEW || !moved.every((p) => there.has(p))) return undefined;
     const baseline = files.filter((f) => !moved.includes(f.path));
     return { moved, bytes, record: r.state === 'sealed' ? { ...r, baseline } : { ...r, baseline, incoming: [] } };
   }
