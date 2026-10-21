@@ -668,8 +668,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     const fleets = await run.step('fleet', () => Promise.resolve(gatewayFleets(entry, d)));
     // never --purge from here: the fleets and their tmux servers are the far machine's to delete
     const uninstalled = await run.step('uninstall', async () => {
-      const untouched = `${entry.record.ssh} still has Svall installed; run svall uninstall there to remove it`;
-      if (o.forget) return { value: false, status: 'skip' as const, detail: `${name} is left untouched`, action: untouched };
+      if (o.forget) return { value: false, status: 'skip' as const, detail: `${name} is left untouched: ${entry.record.ssh} keeps Svall until svall uninstall runs there` };
       let master: SshMaster | undefined;
       try {
         master = await d.openMaster(entry.record.ssh);

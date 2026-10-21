@@ -1260,8 +1260,9 @@ describe('host remove', () => {
     const out = await removeHost('trift', { forget: true }, deps({ registry }));
     expect(registry.get('trift')).toBeUndefined();
     expect(ssh.calls()).toEqual([]);
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip' });
-    expect(out.actions.join(' ')).toContain('trift.test');
+    // a forget that went through leaves nothing to do, so it ends ready and exits 0
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: expect.stringContaining('trift.test') });
   });
 
   it('reports a far uninstall that failed for itself with its exit and what it said, not as a machine out of reach', async () => {
@@ -1448,8 +1449,8 @@ describe('host remove', () => {
     const registry = registered('refused.test');
     const out = await removeHost('trift', { forget: true }, deps({ registry }));
     expect(registry.get('trift')).toBeUndefined();
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip' });
-    expect(out.actions.join(' ')).toContain('refused.test');
+    expect(out.result).toBe('ready');
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: expect.stringContaining('refused.test') });
   });
 });
 
