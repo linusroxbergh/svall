@@ -69,6 +69,25 @@ test('a fleet on another machine that cannot be reached says so in place of the 
   await expect(screen).not.toContainText('svalld not running');
 });
 
+test('a fleet on this Mac whose gateway did not answer says so, and offers the copy here read-only when the shell has one', async ({ page }) => {
+  const sent = await fakeShell(page, {
+    port: 0, token: '',
+    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio', copyHere: true },
+    state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'unreachable', machine: 'studio', destination: 'linus@studio',
+      message: 'the gateway studio did not answer, and it has named no owner here before to go on. The gateway said: ssh could not reach linus@studio' },
+  });
+  await page.clock.install();
+  await page.goto('/');
+  await page.clock.fastForward(theme.connectGraceMs);
+  const screen = page.getByTestId('connect-screen');
+  await expect(screen).toContainText('The gateway studio did not answer, so where the fleet runs is not known; trying again.');
+  await expect(screen).not.toContainText('svalld not running');
+  await expect(screen).not.toContainText('setup');
+  await expect(screen.getByTestId('connection-here')).toHaveText("Open this Mac's copy, read-only");
+  await screen.getByTestId('connection-here').click();
+  expect((await sent()).filter((m) => m.type === 'connection.here')).toEqual([{ type: 'connection.here' }]);
+});
+
 test('a fleet on this Mac that asks for handover keeps the advice for its own daemon', async ({ page }) => {
   await fakeShell(page, {
     port: 0, token: '',

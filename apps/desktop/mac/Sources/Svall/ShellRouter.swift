@@ -364,7 +364,9 @@ final class ShellRouter {
         case .connectionRetry:
             // a helper that gave up waits to be stopped; one still retrying starts over from the first wait
             guard let helper = ControllerProcess.locate() else { return }
-            remote.reconnect(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+            remote.retry(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+        case .connectionHere:
+            if let why = remote.openHere() { bridge.send(.notice(text: why)) }
         }
     }
 
@@ -440,7 +442,7 @@ final class ShellRouter {
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
                                ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: SvallHome.handoverEnabled(),
-                               gateway: SvallHome.gatewayName()))
+                               gateway: SvallHome.gatewayName(), copyHere: RemoteConnection.copyHere(home: SvallHome.path, daemon: SvallHome.connection() != nil)))
     }
 
     private func followHandover(_ run: (HandoverSession) throws -> Void) {

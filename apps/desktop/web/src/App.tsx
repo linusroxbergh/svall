@@ -49,6 +49,7 @@ function BannerBody({ banner }: { banner: Banner }) {
       {banner.ssh && <> Run <code data-testid="connection-ssh">ssh {banner.ssh}</code> once in Terminal, then Reconnect.</>}
       {banner.actions.map((a) => {
         switch (a) {
+          case 'here': return <button key={a} className="btn" data-testid="connection-here" onClick={() => app.bridge.send({ type: 'connection.here' })}>Open this Mac&apos;s copy, read-only</button>;
           case 'upgrade': return <button key={a} className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
           case 'check': return <button key={a} className="btn" data-testid="connection-check" onClick={() => check(name)}>Check {name}</button>;
           case 'reconnect': return <button key={a} className="btn" data-testid="connection-reconnect" onClick={() => app.bridge.send({ type: 'connection.retry' })}>Reconnect</button>;
@@ -74,6 +75,7 @@ export function App() {
   const toast = useApp((s) => s.toast);
   const connection = useApp((s) => s.connection);
   const handoverEnabled = useApp((s) => !!s.shell?.handoverEnabled);
+  const copyHere = useApp((s) => !!s.shell?.copyHere);
   // a far daemon whose route has opened says nothing until it answers; past a while the banner says so
   const [silent, setSilent] = useState(false);
   const farOnline = !loaded && connection?.state === 'online' && connection.owner !== 'local' ? connection.owner : undefined;
@@ -84,9 +86,11 @@ export function App() {
     return () => clearTimeout(t);
   }, [farOnline]);
   // the fleet the page holds stays on the screen while its machine is away; only this line changes
-  const away = connectionBanner(connection, { handoverEnabled, silent });
-  // a fleet on another machine is waited for there, so this Mac's daemon, its log and its setup say nothing about it
-  const elsewhere = useApp((s) => !!s.connection && s.connection.owner !== 'local');
+  const away = connectionBanner(connection, { handoverEnabled, copyHere: copyHere && !loaded, silent });
+  // a fleet on another machine, or one whose gateway did not answer, is waited for there, so this Mac's daemon,
+  // its log and its setup say nothing about it
+  const trouble = connection?.state === 'error' && !!connection.machine && connection.machine !== 'local';
+  const elsewhere = !!connection && (connection.owner !== 'local' || (!!away && trouble));
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
   // a launch finds svalld in moments, even one still starting; the setup hint and the log wait out that grace

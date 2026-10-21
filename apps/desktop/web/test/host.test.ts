@@ -198,6 +198,16 @@ describe('the connection state the shell reports', () => {
     expect(connectionBanner(err({ owner: 'studio', kind: 'auth' }), on)).toMatchObject({ ssh: 'studio' });
   });
 
+  it('says a gateway that did not answer leaves where the fleet runs unknown, and offers this Mac\'s copy only when the shell has one', () => {
+    const gate = err({ owner: 'local', kind: 'unreachable', machine: 'gate', destination: 'linus@gate' });
+    expect(connectionBanner(gate, on)).toMatchObject({
+      text: 'The gateway gate did not answer, so where the fleet runs is not known; trying again.', actions: ['reconnect'],
+    });
+    expect(connectionBanner(gate, { ...on, copyHere: true })).toMatchObject({ actions: ['here', 'reconnect'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other', machine: 'gate' }), on))
+      .toMatchObject({ text: 'The gateway gate did not answer, so where the fleet runs is not known.', actions: ['check', 'reconnect'] });
+  });
+
   it('says a far daemon that has not answered since the route opened has not, and offers a check', () => {
     expect(FAR_ANSWER_MS).toBe(60_000);
     expect(connectionBanner({ state: 'online', owner: 'studio' }, { ...on, silent: true }))
@@ -212,6 +222,7 @@ describe('the connection state the shell reports', () => {
     expect(connectionBanner({ state: 'connecting', owner: 'local' }, off)).toBeUndefined();
     expect(connectionBanner({ state: 'connecting', owner: 'studio' }, off)).toEqual({ text: 'connecting to studio…', actions: [] });
     expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), off)).toMatchObject({ actions: ['reconnect'] });
+    expect(connectionBanner(err({ owner: 'local', kind: 'unreachable', machine: 'gate' }), { ...off, copyHere: true })).toBeUndefined();
   });
 
   it('never repeats a token the shell passed on', () => {

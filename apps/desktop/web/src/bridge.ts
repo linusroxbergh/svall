@@ -8,7 +8,8 @@ export type Connection = { host: string; port: number; token: string };
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
 // handoverEnabled: fleet.json's handover.enabled, which every control for another machine waits on
 // gateway: the registry name of the machine fleet.json names as its gateway
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string };
+// copyHere: this Mac's daemon runs and the gateway has named no owner here before, so its copy may be opened while the gateway is away
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string; copyHere?: boolean };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
@@ -93,7 +94,9 @@ export type ToShell =
   // keeps the Mac from idle-sleeping under this reason, on battery too when asked; none lets go
   | { type: 'awake'; reason?: string; battery?: boolean }
   // a fresh connect helper, whatever the last one gave up on
-  | { type: 'connection.retry' };
+  | { type: 'connection.retry' }
+  // the fleet's copy on this Mac, while the helper cannot say where the fleet runs
+  | { type: 'connection.here' };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }

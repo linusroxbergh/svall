@@ -237,7 +237,9 @@ the banner says it in one sentence naming the machine, with what it said under *
 `daemon_down` are retried by themselves, backing off to every 16 seconds; the others wait for **Reconnect** in the
 banner, or for the window to be reopened. The banner offers **Check** (`svall host doctor`) for a machine whose daemon
 is down or that failed for another reason, and says so too when the far daemon has not answered a minute after its
-route opened.
+route opened. When the gateway did not answer and has never named an owner to this Mac, the banner offers
+**Open this Mac's copy, read-only**, while this Mac's daemon runs; that daemon takes a change only while its own
+record says this Mac owns the fleet, and **Reconnect** keeps the copy open until the fleet is found.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |

@@ -55,6 +55,7 @@ enum ToShell: Decodable {
     case folderPick(start: String)
     case awake(reason: String?, battery: Bool?)
     case connectionRetry
+    case connectionHere
 
     private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, reason, battery }
 
@@ -109,6 +110,7 @@ enum ToShell: Decodable {
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason), battery: try c.decodeIfPresent(Bool.self, forKey: .battery))
         case "connection.retry": self = .connectionRetry
+        case "connection.here": self = .connectionHere
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -124,7 +126,7 @@ enum FromShell {
     case handoverEvent([String: Any])
     case handoverReplay([[String: Any]])
     case handoverExit(code: Int32, error: String?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?, copyHere: Bool)
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -174,8 +176,8 @@ enum FromShell {
             var json: [String: Any] = ["type": "handover.exit", "code": Int(code)]
             if let error { json["error"] = error }
             return json
-        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway):
-            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled]
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway, let copyHere):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled, "copyHere": copyHere]
             if let gateway { json["gateway"] = gateway }
             return json
         case .key(let chord): return ["type": "key", "chord": chord]
