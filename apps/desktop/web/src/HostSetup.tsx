@@ -23,7 +23,6 @@ export function MachineActions({ name }: { name: string }) {
     <span className="machine-acts">
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs for a handover, checked now" onClick={() => run('doctor')}>Check</button>
       <button className="btn set-open" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={() => run('upgrade')}>Upgrade</button>
-      <button className="btn set-open" data-testid="machine-rollback" disabled={running} title="Put back the release the machine ran before" onClick={() => run('rollback')}>{OP_TITLE.rollback}</button>
       {gateway !== name && (
         <button className="btn set-open" data-testid="machine-enable" disabled={running}
           title="Make this machine the gateway that keeps this fleet's ownership record; the fleet stays on this Mac" onClick={() => run('enable')}>Make gateway</button>

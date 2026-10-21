@@ -268,6 +268,8 @@ test('Machines lists every machine with its ssh, the fleets it is the gateway of
   // the gateway of this fleet is not offered to be made it again
   expect(trift.querySelector('[data-testid="machine-enable"]')).toBeNull();
   expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-enable"]')).not.toBeNull();
+  // a rollback is offered only by the upgrade whose own rollback failed
+  expect(trift.querySelector('[data-testid="machine-rollback"]')).toBeNull();
 
   fireEvent.click(trift.querySelector('[data-testid="machine-doctor"]')!);
   expect(sent).toContainEqual({ type: 'host.start', op: 'doctor', args: { name: 'trift' } });
