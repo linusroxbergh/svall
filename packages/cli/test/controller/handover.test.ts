@@ -462,6 +462,8 @@ describe('preflight', () => {
       w.gateway.begin = () => w.call('gateway', 'begin', () => { throw new Refused(refused, said[refused]); });
       const out = await controller(w).start(trift, {});
       expect(out, refused).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code, message: expect.stringMatching(says) }] });
+      // a Begin answered, if with a refusal, opened nothing to let go
+      expect(w.ops, refused).not.toContain('gateway:abort');
       expect(settledOn(w)).toBe('source');
     }
   });

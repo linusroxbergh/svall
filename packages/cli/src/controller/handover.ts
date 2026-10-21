@@ -496,6 +496,8 @@ export class Handover {
         return;
       }
       if (!(e instanceof Refused)) throw e;
+      // every Begin sent was answered, so none can open a handover later and its nonce has nothing to let go
+      if (!unanswered) this.save({ nonce: undefined });
       throw new Blocked('begin', [beginRefused(e)]);
     }
     const tx = record.transaction;
