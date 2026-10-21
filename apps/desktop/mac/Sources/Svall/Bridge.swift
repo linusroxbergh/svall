@@ -53,9 +53,11 @@ enum ToShell: Decodable {
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
-    case awake(reason: String?)
+    case awake(reason: String?, battery: Bool?)
+    case connectionRetry
+    case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, reason }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -106,7 +108,9 @@ enum ToShell: Decodable {
         case "setup.plan": self = .setupPlan
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
-        case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
+        case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason), battery: try c.decodeIfPresent(Bool.self, forKey: .battery))
+        case "connection.retry": self = .connectionRetry
+        case "connection.here": self = .connectionHere
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -115,14 +119,14 @@ enum ToShell: Decodable {
 /// Messages to the webview. Mirrors FromShell in bridge.ts.
 enum FromShell {
     case connection(SvallConnection?)
-    case connectionState(state: String, owner: String, kind: String?, message: String?)
+    case connectionState(RemoteConnection.State)
     case notice(text: String)
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
     case handoverEvent([String: Any])
     case handoverReplay([[String: Any]])
     case handoverExit(code: Int32, error: String?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?, profile: String?)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?, profile: String?, copyHere: Bool)
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -152,10 +156,12 @@ enum FromShell {
     var json: [String: Any] {
         switch self {
         case .connection(let c): return ["type": "connection", "host": c?.host ?? "", "port": c?.port ?? 0, "token": c?.token ?? ""]
-        case .connectionState(let state, let owner, let kind, let message):
-            var json: [String: Any] = ["type": "connection.state", "state": state, "owner": owner]
-            if let kind { json["kind"] = kind }
-            if let message { json["message"] = message }
+        case .connectionState(let s):
+            var json: [String: Any] = ["type": "connection.state", "state": s.state, "owner": s.owner]
+            if let kind = s.kind { json["kind"] = kind }
+            if let message = s.message { json["message"] = message }
+            if let machine = s.machine { json["machine"] = machine }
+            if let destination = s.destination { json["destination"] = destination }
             return json
         case .notice(let text): return ["type": "notice", "text": text]
         case .hostStep(let op, let step):
@@ -170,8 +176,8 @@ enum FromShell {
             var json: [String: Any] = ["type": "handover.exit", "code": Int(code)]
             if let error { json["error"] = error }
             return json
-        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway, let profile):
-            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled]
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway, let profile, let copyHere):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled, "copyHere": copyHere]
             if let gateway { json["gateway"] = gateway }
             if let profile { json["profile"] = profile }
             return json

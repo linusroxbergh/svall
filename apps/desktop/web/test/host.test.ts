@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, connectionBanner, connectionText, endRun, groupSteps, machineName, readyForHandover,
-  runActions, sshDestination, upgradeFor, withoutTokens,
+  applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, machineName, outcomeOf,
+  runActions, sshDestination, stepLabel, withoutTokens,
 } from '../src/host.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
@@ -53,29 +53,60 @@ describe('host run', () => {
 });
 
 describe('the end of a run', () => {
-  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[]) =>
-    endRun(steps.reduce(applyStep, beginRun(op, { name: 'box' })), code);
+  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
+    endRun(steps.reduce(applyStep, beginRun(op, { name: 'box', ...args })), code);
 
-  it('is ready for handover when an add finishes clean', () => {
-    expect(readyForHandover(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok')]))).toBe(true);
-    expect(readyForHandover(ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' })]))).toBe(false);
-    expect(readyForHandover({ ...ended('add', 0, [step('ssh', 'ok')]), running: true, code: undefined })).toBe(false);
+  it('says an add that finished clean added the machine, and offers to make it the gateway until it is one', () => {
+    const add = ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]);
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added', next: 'gateway' });
+    expect(outcomeOf(add, 'studio')).toEqual({ text: 'box is added', next: 'gateway' });
+    expect(outcomeOf(add, 'box')).toEqual({ text: 'box is added: ready for handover', next: 'handover' });
   });
 
-  it('is ready for handover when a check finds nothing failing and nothing left to do', () => {
-    expect(readyForHandover(ended('doctor', 0, [step('tmux', 'ok'), step('release', 'ok')]))).toBe(true);
-    // a check that does not apply to this machine is no reason to wait
-    expect(readyForHandover(ended('doctor', 0, [step('tmux', 'ok'), step('codex', 'skip', { detail: 'not installed' })]))).toBe(true);
-    expect(readyForHandover(ended('doctor', 0, [step('tmux', 'ok'), step('linger', 'warn')]))).toBe(false);
-    expect(readyForHandover(ended('doctor', 0, [step('release', 'fail')]))).toBe(false);
-    expect(readyForHandover(ended('doctor', 1, [step('release', 'fail')]))).toBe(false);
-    expect(readyForHandover(ended('doctor', 0, []))).toBe(false);
+  it('lists what an add left to do, and still offers the gateway', () => {
+    const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]);
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added; still to do:', list: ['log in'], next: 'gateway' });
+    // one stopped part way never reached the registry
+    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]), undefined)).toEqual({ text: 'Add machine ended with exit 143' });
   });
 
-  it('says nothing about handover after an upgrade, a removal or a new gateway', () => {
-    for (const op of ['upgrade', 'remove', 'enable'] as const) {
-      expect(readyForHandover(ended(op, 0, [step('machine', 'ok')]))).toBe(false);
-    }
+  it('names the step a run stopped at and what it said, with what is left to do', () => {
+    const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })]);
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'Add machine stopped at Install: svall setup exited 1', list: ['log in'] });
+    expect(outcomeOf(ended('remove', 1, []), undefined)).toEqual({ text: 'Remove ended with exit 1' });
+  });
+
+  it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'fail', { detail: 'setup --rollback exited 1' })]), undefined).next).toBe('rollback');
+    // an upgrade stopped before it installed left the machine as it was, and one stopped in install has no release to go back from
+    expect(outcomeOf(ended('upgrade', 1, [step('master', 'fail', { detail: 'no' })]), undefined).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 1, [step('install', 'fail', { detail: 'no' })]), undefined).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'warn', { action: 'read the log' })]), undefined).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is upgraded' });
+  });
+
+  it('says a check is ready and how many warnings it found, or lists the checks that block', () => {
+    const fine = ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('gh', 'warn'), step('codex', 'skip'), step('release', 'ok')]);
+    expect(outcomeOf(fine, 'box')).toEqual({ text: 'ready for handover; 2 warnings', next: 'handover' });
+    expect(outcomeOf(fine, undefined)).toEqual({ text: "ready to be this fleet's gateway; 2 warnings", next: 'gateway' });
+    expect(outcomeOf(ended('doctor', 0, [step('release', 'ok')]), 'box').text).toBe('ready for handover');
+    const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
+    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'systemd: inactive'] });
+  });
+
+  it('says what a new gateway, a removal and a rollback did, and offers the handover once there is a gateway', () => {
+    expect(outcomeOf(ended('enable', 0, [step('fleet', 'ok')]), 'box')).toEqual({ text: "box is this fleet's gateway: ready for handover", next: 'handover' });
+    expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]), undefined)).toEqual({ text: 'box is removed' });
+    expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }), undefined)).toEqual({ text: 'box is forgotten' });
+    expect(outcomeOf(ended('rollback', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is rolled back' });
+  });
+});
+
+describe('a step by name', () => {
+  it('reads as plain words, and a step it does not know as itself', () => {
+    expect(['master', 'identity', 'authority', 'fleet', 'registry'].map(stepLabel))
+      .toEqual(['Connection', 'Installed release', 'Ownership record', 'Fleets', 'Machine list']);
+    expect(stepLabel('weather')).toBe('weather');
   });
 });
 
@@ -136,35 +167,74 @@ describe('what the page may ask for', () => {
 });
 
 describe('the connection state the shell reports', () => {
-  it('says where the fleet is and what is in the way', () => {
-    expect(connectionText({ state: 'connecting', owner: 'studio' })).toBe('connecting to studio…');
-    expect(connectionText({ state: 'owner-changed', owner: 'studio' })).toBe('the fleet moved to studio; reconnecting…');
-    expect(connectionText({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' }))
-      .toBe('studio is not reachable: ssh closed');
-    expect(connectionText({ state: 'error', owner: 'local', kind: 'version', message: 'companion 3, controller 4' }))
-      .toBe('this machine is on another version: companion 3, controller 4');
-    expect(connectionText({ state: 'online', owner: 'studio' })).toBeUndefined();
+  const on = { handoverEnabled: true };
+  const err = (o: { owner: string; kind: string; message?: string; machine?: string; destination?: string }) => ({ state: 'error' as const, message: 'what it said', ...o });
+
+  it('says where the fleet is going, with nothing to do about it', () => {
+    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, on)).toEqual({ text: 'connecting to studio…', actions: [] });
+    expect(connectionBanner({ state: 'owner-changed', owner: 'studio' }, on)).toEqual({ text: 'the fleet moved to studio; reconnecting…', actions: [] });
+    expect(connectionBanner({ state: 'online', owner: 'studio' }, on)).toBeUndefined();
   });
 
-  it('reaches a fleet on this Mac only once it asks for handover', () => {
-    const down = { state: 'error', owner: 'local', kind: 'daemon_down', message: 'svalld is not running' } as const;
-    expect(connectionBanner(undefined, true)).toBeUndefined();
-    expect(connectionBanner(down, false)).toBeUndefined();
-    expect(connectionBanner({ state: 'connecting', owner: 'local' }, false)).toBeUndefined();
-    expect(connectionBanner(down, true)).toBe('this machine is not reachable: svalld is not running');
-    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, false)).toBe('connecting to studio…');
+  it('names the machine once in one plain sentence, folds what it said away, and offers Reconnect on every error', () => {
+    expect(connectionBanner(err({ owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' }), on)).toEqual({
+      text: 'studio is not reachable; trying again.', detail: 'ssh: connect to host studio port 22: Operation timed out', machine: 'studio', actions: ['reconnect'],
+    });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'daemon_down', machine: 'studio' }), on))
+      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: ['check', 'reconnect'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), on))
+      .toMatchObject({ text: 'studio is on another version of Svall.', machine: 'studio', actions: ['upgrade', 'reconnect'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: ['check', 'reconnect'] });
+    expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), on))
+      .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: ['reconnect'] });
   });
 
-  it('offers an upgrade only for a machine whose release the connection refused', () => {
-    expect(upgradeFor({ state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' })).toBe('studio');
-    expect(upgradeFor({ state: 'error', owner: 'local', kind: 'version', message: 'companion 3, controller 4' })).toBeUndefined();
-    expect(upgradeFor({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' })).toBeUndefined();
-    expect(upgradeFor({ state: 'connecting', owner: 'studio' })).toBeUndefined();
-    expect(upgradeFor(undefined)).toBeUndefined();
+  it('sends a refused login or host key to one ssh in Terminal, then Reconnect', () => {
+    expect(connectionBanner(err({ owner: 'studio', kind: 'auth', machine: 'studio', destination: 'linus@studio' }), on))
+      .toMatchObject({ text: 'studio did not let ssh log in.', ssh: 'linus@studio', actions: ['reconnect'] });
+    expect(connectionBanner(err({ owner: 'local', kind: 'host_key', machine: 'gate', destination: 'linus@gate' }), on))
+      .toMatchObject({ text: "ssh does not trust gate's host key.", ssh: 'linus@gate', machine: 'gate' });
+    // a helper that names no destination is reached by the machine's name
+    expect(connectionBanner(err({ owner: 'studio', kind: 'auth' }), on)).toMatchObject({ ssh: 'studio' });
+  });
+
+  it('says a gateway that did not answer leaves where the fleet runs unknown, and offers this Mac\'s copy only when the shell has one', () => {
+    const gate = err({ owner: 'local', kind: 'unreachable', machine: 'gate', destination: 'linus@gate' });
+    expect(connectionBanner(gate, on)).toMatchObject({
+      text: 'The gateway gate did not answer, so where the fleet runs is not known; trying again.', actions: ['reconnect'],
+    });
+    expect(connectionBanner(gate, { ...on, copyHere: true })).toMatchObject({ actions: ['here', 'reconnect'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other', machine: 'gate' }), on))
+      .toMatchObject({ text: 'The gateway gate did not answer, so where the fleet runs is not known.', actions: ['check', 'reconnect'] });
+  });
+
+  it('says a connection helper that stopped or has not answered has not said where the fleet runs, never that this Mac is out of reach', () => {
+    const helper = err({ owner: 'local', kind: 'helper', message: 'the connection helper has not answered in 10 s' });
+    expect(connectionBanner(helper, on)).toEqual({
+      text: 'The connection helper has not said where the fleet runs.', detail: 'the connection helper has not answered in 10 s', actions: ['reconnect'],
+    });
+    expect(connectionBanner(helper, { ...on, copyHere: true })?.actions).toEqual(['here', 'reconnect']);
+    expect(connectionBanner(err({ owner: 'studio', kind: 'helper' }), { ...on, copyHere: true })?.actions).toEqual(['reconnect']);
+  });
+
+  it('says a far daemon that has not answered since the route opened has not, and offers a check', () => {
+    expect(FAR_ANSWER_MS).toBe(60_000);
+    expect(connectionBanner({ state: 'online', owner: 'studio' }, { ...on, silent: true }))
+      .toEqual({ text: "studio's svalld has not answered.", machine: 'studio', actions: ['check', 'reconnect'] });
+    expect(connectionBanner({ state: 'online', owner: 'local' }, { ...on, silent: true })).toBeUndefined();
+  });
+
+  it('reaches a fleet on this Mac only once it asks for handover, and offers the Machines panel only then', () => {
+    const off = { handoverEnabled: false };
+    expect(connectionBanner(undefined, on)).toBeUndefined();
+    expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), off)).toBeUndefined();
+    expect(connectionBanner({ state: 'connecting', owner: 'local' }, off)).toBeUndefined();
+    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, off)).toEqual({ text: 'connecting to studio…', actions: [] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), off)).toMatchObject({ actions: ['reconnect'] });
+    expect(connectionBanner(err({ owner: 'local', kind: 'unreachable', machine: 'gate' }), { ...off, copyHere: true })).toBeUndefined();
   });
 
   it('never repeats a token the shell passed on', () => {
-    expect(connectionText({ state: 'error', owner: 'local', kind: 'other', message: 'token=s3cr3t' }))
-      .toBe('this machine is not reachable: token=…');
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other', message: 'token=s3cr3t' }), on)?.detail).toBe('token=…');
   });
 });

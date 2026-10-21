@@ -1,6 +1,6 @@
 import net from 'node:net';
 import {
-  FIRST_DELAY, localConnectionInfo, localFleetId, MAX_DELAY, remoteConnectionInfo, resolveOwner, retryable, type GatewayMemo,
+  FIRST_DELAY, localConnectionInfo, localFleetId, MAX_DELAY, OnMachine, remoteConnectionInfo, resolveOwner, retryable, type GatewayMemo,
 } from './connection.js';
 import { LOCAL, type MachineEntry, type MachineRegistry } from './registry.js';
 import { readRoute } from './route.js';
@@ -13,7 +13,8 @@ const PORT_CHECK_TIMEOUT = 5000;
 export type ConnectEvent =
   | { type: 'connecting'; owner: string }
   | { type: 'online'; host: string; port: number; token: string; remote?: { name: string; destination: string; controlSocket: string } }
-  | { type: 'error'; kind: string; message: string }
+  // machine: the one that did not answer, `local` for this one's daemon; destination: the ssh that reaches it
+  | { type: 'error'; kind: string; message: string; machine?: string; destination?: string }
   | { type: 'owner-changed'; owner: string };
 
 export type ConnectDeps = {
@@ -42,11 +43,16 @@ type Ended = { moved: Owner } | { dead: true } | { failed: unknown };
 const nameOf = (owner: Owner): string => (owner === LOCAL ? LOCAL : owner.record.name);
 const keyOf = (owner: Owner): string => (owner === LOCAL ? LOCAL : owner.id);
 
-const failed = (err: unknown): ConnectEvent => ({
-  type: 'error',
-  kind: err instanceof SshError ? err.kind : 'other',
-  message: (err as Error).message,
-});
+/** `at`: the machine an attempt was reaching, unless the error names another. */
+function failed(err: unknown, at?: Owner): ConnectEvent {
+  const on = err instanceof OnMachine ? err.machine : at;
+  return {
+    type: 'error',
+    kind: err instanceof SshError ? err.kind : 'other',
+    message: (err as Error).message,
+    ...(on === LOCAL ? { machine: LOCAL } : on ? { machine: on.record.name, ...(on.record.ssh ? { destination: on.record.ssh } : {}) } : {}),
+  };
+}
 
 /** Who an attempt is announced as before the owner is known: what we last knew, else the cached route. */
 function announce(d: ConnectDeps, last: Owner | undefined): string {
@@ -193,7 +199,7 @@ export async function runConnect(d: ConnectDeps): Promise<number> {
     try {
       live = await goOnline(owner, d);
     } catch (err) {
-      d.emit(failed(err));
+      d.emit(failed(err, owner));
       if (!retryable(err)) return await idle();
       delay = await wait(d, delay);
       continue;

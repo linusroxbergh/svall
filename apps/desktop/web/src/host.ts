@@ -62,11 +62,53 @@ export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, runnin
 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
-/** An add that finished clean, or a check with nothing failing or left to do (a skip does not apply). */
-export function readyForHandover(run: HostRun): boolean {
-  if (run.running || run.code !== 0) return false;
-  if (run.op === 'add') return runActions(run).length === 0;
-  return run.op === 'doctor' && run.steps.length > 0 && run.steps.every((s) => s.status === 'ok' || s.status === 'skip');
+const STEP_LABEL: Record<string, string> = {
+  name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
+  space: 'Free space', linger: 'Lingering', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
+  service: 'Services', identity: 'Installed release', authority: 'Ownership record', fleet: 'Fleets', claude: 'Claude Code',
+  codex: 'Codex', opencode: 'OpenCode', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
+};
+
+/** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */
+export const stepLabel = (step: string): string => STEP_LABEL[step] ?? step;
+
+export const OP_TITLE: Record<HostOp, string> = {
+  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', enable: "Make it this fleet's gateway",
+};
+
+/** How a finished run ends: what it did, what is left, and the one step the panel offers next. */
+export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' | 'rollback' };
+
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/** `gateway`: the machine this fleet names as its gateway, before which nothing is ready for handover. */
+export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome {
+  const name = run.args.name;
+  const actions = runActions(run);
+  const list = actions.length ? { list: actions } : {};
+  const theGateway = gateway === name;
+  const onward = theGateway ? { next: 'handover' as const } : { next: 'gateway' as const };
+  if (run.op === 'doctor') {
+    const failed = run.steps.filter((s) => s.status === 'fail');
+    if (failed.length) return { text: `${plural(failed.length, 'check')} block${failed.length === 1 ? 's' : ''} a handover:`, list: failed.map((s) => `${stepLabel(s.step)}: ${s.detail ?? 'failed'}`) };
+    const warned = run.steps.filter((s) => s.status === 'warn').length;
+    const ready = theGateway ? 'ready for handover' : "ready to be this fleet's gateway";
+    if (run.code === 0) return { text: `${ready}${warned ? `; ${plural(warned, 'warning')}` : ''}`, ...list, ...onward };
+  }
+  const failed = run.steps.find((s) => s.status === 'fail');
+  // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
+  const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
+  if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list, ...rollback };
+  // an add is done once its machine is in the registry, whatever it left to do; a stopped one never got there
+  if (run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok')) {
+    return { text: `${name} is added${actions.length ? '; still to do:' : theGateway ? ': ready for handover' : ''}`, ...list, ...onward };
+  }
+  if (run.code !== 0) return { text: actions.length ? 'still to do:' : `${OP_TITLE[run.op]} ended with exit ${run.code}`, ...list, ...rollback };
+  const done: Partial<Record<HostOp, string>> = {
+    upgrade: `${name} is upgraded`, rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}`,
+    enable: `${name} is this fleet's gateway: ready for handover`,
+  };
+  return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, ...list, ...(run.op === 'enable' ? { next: 'handover' as const } : {}) };
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;
@@ -77,25 +119,58 @@ export const sshDestination = (value: string): boolean => SSH.test(value);
 
 const who = (owner: string) => (owner === 'local' ? 'this machine' : owner);
 
-/** What the banner says while the fleet is not answering here; nothing at all once it is online. */
-export function connectionText(c: ConnectionState): string | undefined {
-  const message = c.message ? withoutTokens(c.message) : undefined;
-  switch (c.state) {
-    case 'online': return undefined;
-    case 'connecting': return `connecting to ${who(c.owner)}…`;
-    case 'owner-changed': return `the fleet moved to ${who(c.owner)}; reconnecting…`;
-    case 'error': {
-      const trouble = c.kind === 'version' ? 'is on another version' : 'is not reachable';
-      return `${who(c.owner)} ${trouble}${message ? `: ${message}` : ''}`;
-    }
+/** How long a far daemon may stay silent after its route opened before the banner says so. */
+export const FAR_ANSWER_MS = 60_000;
+
+export type BannerAction = 'reconnect' | 'check' | 'upgrade' | 'here';
+/** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. `ssh`: the destination to run ssh to once. */
+export type Banner = { text: string; detail?: string; machine?: string; ssh?: string; actions: BannerAction[] };
+
+/** `machine`: the one that did not answer; none for a helper that failed before it reached one. */
+function errorText(c: ConnectionState, machine: string | undefined): Pick<Banner, 'text' | 'ssh'> {
+  if (machine === undefined) return { text: 'The connection helper has not said where the fleet runs.' };
+  const name = machine === 'local' ? 'this Mac' : machine;
+  // a machine other than the one the fleet was announced on is the gateway, asked who owns it
+  const gateway = machine !== 'local' && machine !== c.owner;
+  const unknown = `The gateway ${machine} did not answer, so where the fleet runs is not known`;
+  switch (c.kind) {
+    case 'auth': return { text: `${name} did not let ssh log in.`, ssh: c.destination ?? machine };
+    case 'host_key': return { text: `ssh does not trust ${name}'s host key.`, ssh: c.destination ?? machine };
+    case 'version': return { text: `${name} is on another version of Svall.` };
+    case 'unreachable': return { text: gateway ? `${unknown}; trying again.` : `${name} is not reachable; trying again.` };
+    case 'daemon_down': return { text: machine === 'local' ? 'svalld is not running on this Mac; trying again.' : `${name}'s svalld is not running; trying again.` };
+    default: return { text: gateway ? `${unknown}.` : `${name} could not be reached.` };
   }
 }
 
-/** The machine whose release the connection refused, which its Upgrade under Settings → Machines can match; never this Mac. */
-export const upgradeFor = (c: ConnectionState | undefined): string | undefined =>
-  (c?.state === 'error' && c.kind === 'version' && c.owner !== 'local' ? c.owner : undefined);
-
-/** A fleet on this Mac reports its connection only once it asks for handover; a remote one always does. */
-export function connectionBanner(c: ConnectionState | undefined, handoverEnabled: boolean): string | undefined {
-  return c && (c.owner !== 'local' || handoverEnabled) ? connectionText(c) : undefined;
+/**
+ * What the banner says while the fleet is not answering here, and what it offers; nothing once it is online, unless
+ * the far daemon has been `silent` since. A fleet on this Mac reports its connection only once it asks for handover,
+ * which the Machines panel and this Mac's copy (`copyHere`: the shell has one to open) wait on too.
+ */
+export function connectionBanner(c: ConnectionState | undefined, o: { handoverEnabled: boolean; copyHere?: boolean; silent?: boolean }): Banner | undefined {
+  if (!c || (c.owner === 'local' && !o.handoverEnabled)) return undefined;
+  const remote = (machine: string) => o.handoverEnabled && machine !== 'local';
+  switch (c.state) {
+    case 'online': {
+      if (!o.silent || c.owner === 'local') return undefined;
+      return { text: `${c.owner}'s svalld has not answered.`, machine: c.owner, actions: [...(remote(c.owner) ? ['check' as const] : []), 'reconnect'] };
+    }
+    case 'connecting': return { text: `connecting to ${who(c.owner)}…`, actions: [] };
+    case 'owner-changed': return { text: `the fleet moved to ${who(c.owner)}; reconnecting…`, actions: [] };
+    case 'error': {
+      const machine = c.kind === 'helper' ? undefined : c.machine ?? c.owner;
+      const { text, ssh } = errorText(c, machine);
+      const away = machine === undefined || remote(machine);
+      const actions: BannerAction[] = [
+        ...(c.owner === 'local' && away && o.copyHere ? ['here' as const] : []),
+        ...(machine && c.kind === 'version' && remote(machine) ? ['upgrade' as const] : []),
+        ...(machine && (c.kind === 'daemon_down' || c.kind === 'other' || !c.kind) && remote(machine) ? ['check' as const] : []),
+        'reconnect',
+      ];
+      return {
+        text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine && machine !== 'local' ? { machine } : {}), ...(ssh ? { ssh } : {}), actions,
+      };
+    }
+  }
 }

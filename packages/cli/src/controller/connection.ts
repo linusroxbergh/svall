@@ -5,7 +5,8 @@ import { peekConfig } from '@svall/svalld/config';
 import { versionMachineId, type OwnerAnswer } from '@svall/svalld/gateway/client';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
-import { isProfileName, PRIVATE } from '@svall/svalld/profile';
+import { svalldUnitName } from '@svall/svalld/linux/setup';
+import { isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { Client } from '../client.js';
@@ -26,6 +27,11 @@ export const retryable = (err: unknown): boolean => err instanceof SshError && R
 /** A companion that runs another fleet under the profile asked: no retry changes that, only `svall host enable`. */
 export class FleetMismatch extends SshError {
   constructor(message: string) { super('other', message); }
+}
+
+/** A failure on one machine of the registry, which whoever reports it can name, with the ssh that reaches it. */
+export class OnMachine extends SshError {
+  constructor(kind: SshErrorKind, message: string, readonly machine: MachineEntry) { super(kind, message); }
 }
 
 /** A far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere does. */
@@ -67,10 +73,14 @@ type ConnectionInfo = z.infer<typeof ConnectionInfo>;
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 
 /** What this machine's own daemon answers about the fleet it runs. */
-export function localConnectionInfo(fleetHome: string): ConnectionInfo {
+export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform = process.platform): ConnectionInfo {
   const paths = resolvePaths(fleetHome);
   if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
-    throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). Start it with \`svall setup\` or \`pnpm svalld\`.`);
+    // on Linux the daemon is a systemd unit, which says why it is down
+    const how = platform === 'linux'
+      ? `\`systemctl --user status ${svalldUnitName(profileOf(paths.home))}\` there says why, as \`svall host doctor <machine>\` does from the Mac`
+      : 'Start it with `svall setup` or `pnpm svalld`';
+    throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). ${how}.`);
   }
   const config = peekConfig(paths);
   // without a gateway no record but this machine's own can exist, so there is no generation to report
@@ -230,24 +240,23 @@ async function overSsh(fleetId: FleetId, gateway: MachineEntry, d: OwnerDeps): P
 }
 
 /**
- * The route the gateway last answered, good only while the daemon it names is still at that
- * generation: an owner that has moved on since is exactly what a stale route would route into.
+ * The owner the gateway last named, good only while the daemon there still holds the fleet at the generation it
+ * named: an owner that has moved on since is exactly what a stale route would route into.
  */
-async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile?: string }, d: OwnerDeps, cause: unknown): Promise<typeof LOCAL | MachineEntry> {
+async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile?: string }, d: OwnerDeps, gateway: MachineEntry, cause: unknown): Promise<typeof LOCAL | MachineEntry> {
   // a gateway that refused for good stays the reason wherever the route cannot stand in for it; any
   // other failure, an ssh that could not even be spawned included, is one a later attempt can get past
   const kind: SshErrorKind = cause instanceof SshError && !RETRIED.includes(cause.kind) ? cause.kind : 'unreachable';
-  const why = (detail: string, k = kind): SshError =>
-    new SshError(k, `the gateway did not answer (${(cause as Error).message}), and ${detail}`);
+  const why = (detail: string, k = kind, on = gateway): SshError =>
+    new OnMachine(k, `the gateway ${gateway.record.name} did not answer, and ${detail}. The gateway said: ${(cause as Error).message}`, on);
   const route = readRoute(fleetHome);
-  if (!route) throw why('no route from an earlier answer was cached here');
+  if (!route) throw why('it has named no owner here before to go on');
   if (route.ownerMachineId === d.registry.localId) {
-    const held = cachedOwner(fleetHome)?.generation;
-    if (held === route.generation) return LOCAL;
-    throw why(`this machine holds generation ${held ?? 'none'}, not the cached route's ${route.generation}`);
+    if (cachedOwner(fleetHome)?.generation === route.generation) return LOCAL;
+    throw why('it last named this machine, which no longer holds the fleet as it did then');
   }
   const entry = d.registry.get(route.ownerMachineId);
-  if (!entry?.record.ssh) throw why(`the cached route names ${route.ownerMachineId}, which is no machine this controller can reach`);
+  if (!entry?.record.ssh) throw why('it last named a machine that is not in the registry');
   let generation: number | undefined;
   try {
     const master = await d.openMaster(entry.record.ssh);
@@ -258,11 +267,9 @@ async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile
     }
   } catch (err) {
     // whether another attempt can help is the cached owner's to say
-    throw why(`${entry.record.name} could not be asked about the cached route either: ${(err as Error).message}`, err instanceof SshError ? err.kind : 'unreachable');
+    throw why(`${entry.record.name}, which it last named as the owner, did not answer either: ${(err as Error).message}`, err instanceof SshError ? err.kind : 'unreachable', entry);
   }
-  if (generation !== route.generation) {
-    throw why(`${entry.record.name} holds generation ${generation ?? 'none'}, not the cached route's ${route.generation}`);
-  }
+  if (generation !== route.generation) throw why(`${entry.record.name}, which it last named as the owner, no longer holds the fleet as it did then`);
   return entry;
 }
 
@@ -282,7 +289,7 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   if (!gateway) throw new SshError('other', `${resolvePaths(fleetHome).fleetConfig} names gateway ${gatewayId}, which is not a machine in the registry${d.registry.setAside()}`);
 
   const cached = { fleetId: config.id, profile: o.profile };
-  if (o.memo?.refused) return await fromCachedRoute(fleetHome, cached, d, o.memo.refused);
+  if (o.memo?.refused) return await fromCachedRoute(fleetHome, cached, d, gateway, o.memo.refused);
   let answer: OwnerAnswer;
   try {
     answer = await askGateway(config.id, gateway, d);
@@ -291,12 +298,12 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
       o.memo.refused = err as Error;
       o.memo.onRefused?.(err as Error);
     }
-    return await fromCachedRoute(fleetHome, cached, d, err);
+    return await fromCachedRoute(fleetHome, cached, d, gateway, err);
   }
   if ('error' in answer) {
     // a fleet the gateway has no record of has never been handed anywhere
     if (answer.error.code === 'not_found') return LOCAL;
-    throw new SshError('other', `${gateway.record.name} would not name this fleet's owner: ${answer.error.message}`);
+    throw new OnMachine('other', `${gateway.record.name} would not name this fleet's owner: ${answer.error.message}`, gateway);
   }
   const { ownerMachineId, generation } = answer.record;
   try {
@@ -306,7 +313,7 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   }
   if (ownerMachineId === d.registry.localId) return LOCAL;
   const owner = d.registry.get(ownerMachineId);
-  if (!owner) throw new SshError('other', `${gateway.record.name} holds this fleet for ${ownerMachineId}, which is not a machine in the registry; add it with \`svall host add\`${d.registry.setAside()}`);
+  if (!owner) throw new OnMachine('other', `${gateway.record.name} holds this fleet for a machine that is not in the registry; add it with \`svall host add\`${d.registry.setAside()}`, gateway);
   return owner;
 }
 

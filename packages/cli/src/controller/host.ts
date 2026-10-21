@@ -36,14 +36,15 @@ const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string };
-export type HostOutcome = { result: 'ready' | 'actions'; actions: string[] };
+// stopped: the step a run failed at, past which nothing ran
+export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
 
 export type HostDeps = {
   emit(event: StepEvent): void;
   registry: MachineRegistry;
   openMaster(destination: string): Promise<SshMaster>;
-  /** one ssh the user can answer: a new host key, a passphrase, a password */
-  interactiveSsh(destination: string): Promise<number>;
+  /** one ssh the user can answer: a new host key, a passphrase, a password; stderr: the last of what ssh said */
+  interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
   fetch: FetchLike;
   controller: { release: string; protocol: number; releaseRoot: string };
   /** this Mac's own id: the owner a fleet's first authority record names */
@@ -65,7 +66,7 @@ type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: str
 /** The step events a host command emits, and the actions they leave the user with. */
 class Runner {
   readonly actions: string[] = [];
-  private failed = false;
+  private failed?: string;
 
   constructor(private readonly emit: (e: StepEvent) => void) {}
 
@@ -81,7 +82,7 @@ class Runner {
       r = await fn();
     } catch (err) {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
-      this.failed = true;
+      this.failed = step;
       this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}) });
       throw e;
@@ -95,7 +96,7 @@ class Runner {
   }
 
   outcome(): HostOutcome {
-    return { result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions };
+    return { result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions, ...(this.failed && { stopped: this.failed }) };
   }
 }
 
@@ -239,10 +240,10 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
       const login = await call(a.loginArgs);
       if (login.code === 0 && a.loggedIn(login.stdout)) {
-        const check = o.report.checks.find((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
-        if (!check) return { value: undefined, detail: `${version}, logged in` };
-        const at = check.detail.lastIndexOf(': ');
-        return todo(`${version}, logged in; the ${check.name} check there says ${check.detail}`, at < 0 ? check.detail : check.detail.slice(at + 2));
+        const checks = o.report.checks.filter((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
+        if (!checks.length) return { value: undefined, detail: `${version}, logged in` };
+        const how = (detail: string) => { const at = detail.lastIndexOf(': '); return at < 0 ? detail : detail.slice(at + 2); };
+        return todo(`${version}, logged in; ${checks.map((c) => `the ${c.name} check there says ${c.detail}`).join('; ')}`, checks.map((c) => how(c.detail)).join('; and '));
       }
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);
     });
@@ -328,8 +329,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
     const held = await run.step('name', () => Promise.resolve(claimName(d.registry, o)));
 
     await run.step('ssh', async () => {
-      const code = await d.interactiveSsh(o.ssh);
-      if (code !== 0) throw new StepError(`ssh ${o.ssh} exited ${code}`, `ssh ${o.ssh} and complete the host key and authentication`);
+      const { code, stderr } = await d.interactiveSsh(o.ssh);
+      if (code !== 0) {
+        throw new StepError(`ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`,
+          `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then add the machine again`);
+      }
       return { value: undefined, detail: `${o.ssh} accepted an interactive login` };
     });
 
@@ -345,7 +349,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
       }
       if (held) await sameMachine(opened, held).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `one control master to ${o.ssh}` };
+      return { value: opened, detail: `connected to ${o.ssh}` };
     });
 
     try {
@@ -415,7 +419,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
         }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the companion speaks protocol ${v.protocol}, not this controller's ${d.controller.protocol}`);
-        return { value: id.data, detail: `${v.release}, machine ${id.data}` };
+        return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
 
       await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report }, run);
@@ -429,7 +433,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
         d.registry.save();
-        return Promise.resolve({ value: entry, detail: `${o.name} is machine ${entry.id}` });
+        return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
     } finally {
       await master.close().catch(() => undefined);
@@ -513,6 +517,17 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; ') });
 
+const rollbackTo = (name: string): string => `svall host upgrade ${name} --rollback <release> puts back a release kept there`;
+
+/** The one master an upgrade or a rollback rides on, to the machine the registry names. */
+async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<SshMaster>> {
+  const opened = await d.openMaster(entry.record.ssh).catch((err: unknown) => {
+    throw new StepError((err as Error).message, `ssh ${entry.record.ssh} once in Terminal and see what it answers, then run this again`);
+  });
+  await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+  return { value: opened, detail: `connected to ${entry.record.ssh}` };
+}
+
 /**
  * `svall host upgrade`: a new release installed by its own setup, as the setup of the release it replaces may not speak
  * its protocol, then a probe that puts the old one back if it does not answer.
@@ -520,11 +535,7 @@ const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } 
 export function upgradeHost(name: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
-    const master = await run.step('master', async () => {
-      const opened = await d.openMaster(entry.record.ssh);
-      await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `one control master to ${entry.record.ssh}` };
-    });
+    const master = await run.step('master', () => checkedMaster(d, entry));
     try {
       const companion = await run.step('release', () => companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch));
       const remote = remotePaths(entry.record.home, companion.version);
@@ -562,7 +573,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
         const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
           : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;
         const action = `ssh ${entry.record.ssh} and read the daemon log; ${runs}`;
-        if (out instanceof Error) throw new StepError(out.message, action);
+        if (out instanceof Error) throw new StepError(out.message, `${action}; ${rollbackTo(name)}`);
         return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${now}`, action };
       });
     } finally {
@@ -578,13 +589,9 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
 export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
-    const master = await run.step('master', async () => {
-      const opened = await d.openMaster(entry.record.ssh);
-      await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `one control master to ${entry.record.ssh}` };
-    });
+    const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
-    const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}`;
+    const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}; ${rollbackTo(name)}`;
     try {
       const now = await run.step('rollback', async () => {
         const out = await remoteRollback(master, { svallBase: base, from: await currentRelease(master, base), ...(o.to !== undefined && { to: o.to }) })
@@ -668,8 +675,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     const fleets = await run.step('fleet', () => Promise.resolve(gatewayFleets(entry, d)));
     // never --purge from here: the fleets and their tmux servers are the far machine's to delete
     const uninstalled = await run.step('uninstall', async () => {
-      const untouched = `${entry.record.ssh} still has Svall installed; run svall uninstall there to remove it`;
-      if (o.forget) return { value: false, status: 'skip' as const, detail: `${name} is left untouched`, action: untouched };
+      if (o.forget) return { value: false, status: 'skip' as const, detail: `${name} is left untouched: ${entry.record.ssh} keeps Svall until svall uninstall runs there` };
       let master: SshMaster | undefined;
       try {
         master = await d.openMaster(entry.record.ssh);
@@ -683,10 +689,13 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
           throw new StepError(`${name} refuses: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 1000)}`,
             `on each other Mac whose fleet it names, bring that fleet home with svall handover local and run svall host remove ${name} --forget; then ${onThere(entry.record.ssh, 'svall uninstall --force')}, and svall host remove ${name} --forget here`);
         }
-        if (r.code !== 0) throw new StepError(`svall uninstall exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+        if (r.code !== 0) {
+          throw new StepError(`svall uninstall exited ${r.code} on ${entry.record.ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,
+            `${onThere(entry.record.ssh, 'svall uninstall')} and see what stops it; svall host remove ${name} --forget drops the route and leaves the machine as it is`);
+        }
         return { value: true, detail: r.stdout.trim().split('\n').at(-1) ?? 'svall uninstall' };
       } catch (err) {
-        if (err instanceof StepError && err.action) throw err;
+        if (err instanceof StepError) throw err;
         throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
           `svall host remove ${name} --forget drops the route and leaves the machine untouched`);
       } finally {
@@ -729,9 +738,10 @@ async function seedAuthority(master: SshMaster, entry: Registered, fleetId: Flee
   }
   const record = frame.record;
   if (record.fleetId !== fleetId || record.ownerMachineId !== owner) {
-    throw new StepError(`${name} holds fleet ${record.fleetId} for ${record.ownerMachineId} at generation ${record.generation}, not for this machine`);
+    const holder = d.registry.get(record.ownerMachineId)?.record.name;
+    throw new StepError(`${name} records this fleet as ${holder ? `${holder}'s` : "another machine's"}, not this Mac's`);
   }
-  return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
+  return { value: undefined, detail: `${name} records this fleet as this Mac's` };
 }
 
 /** The exit code of a refusal only the user can settle: `svall fleet provision` finding a fleet home in use, or `svall uninstall` a fleet it would strand. */

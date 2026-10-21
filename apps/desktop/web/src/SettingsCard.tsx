@@ -295,7 +295,7 @@ function Machine() {
         </div>
         {shell && (
           <div className="row">
-            <span>keep Mac awake<Info id="keep-awake">Stops idle sleep so agents keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery. A server an agent leaves running keeps it awake up to 30 minutes after an agent last did something, and so does a character waiting on you or your phone when set to need you. Each fleet sets its own.</Info></span>
+            <span>keep Mac awake<Info id="keep-awake">Stops idle sleep so agents keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery but a handover. A server an agent leaves running keeps it awake up to 30 minutes after an agent last did something, and so does a character waiting on you or your phone when set to need you. Each fleet sets its own.</Info></span>
             <b><select className="fld inline" aria-label="Keep Mac awake" value={keepAwake} data-testid="set-keep-awake"
               onChange={(e) => set({ keepAwake: e.target.value as KeepAwake })}>
               <option value="off">off</option>

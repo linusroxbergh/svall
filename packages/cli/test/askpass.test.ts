@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { askpassPath } from '@svall/svalld/release';
-import { interactiveEnv } from '../src/commands/host.js';
+import { interactiveEnv, interactiveSsh } from '../src/commands/host.js';
 import { cleanHomes, makeHome } from '../../svalld/test/helpers.js';
 
 afterEach(cleanHomes);
@@ -14,6 +14,22 @@ describe('the first, interactive ssh', () => {
   it('asks in a dialog when there is no terminal to ask in, as when the app runs it', () => {
     expect(interactiveEnv({ tty: false, platform: 'darwin', askpass: '/r/bin/svall-askpass', env }))
       .toEqual({ PATH: '/usr/bin:/bin', SSH_ASKPASS: '/r/bin/svall-askpass', SSH_ASKPASS_REQUIRE: 'force' });
+  });
+
+  it('passes on what ssh writes to stderr, and hands back its last lines', async () => {
+    const dir = makeHome();
+    fs.writeFileSync(path.join(dir, 'ssh'), '#!/bin/sh\necho one >&2\necho two >&2\necho three >&2\necho "Host key verification failed." >&2\nexit 255\n', { mode: 0o755 });
+    const before = process.env.PATH;
+    const passed: string[] = [];
+    process.env.PATH = `${dir}:${before}`;
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => { passed.push(String(chunk)); return true; });
+    try {
+      expect(await interactiveSsh('trift.test')).toEqual({ code: 255, stderr: 'two\nthree\nHost key verification failed.' });
+    } finally {
+      process.env.PATH = before;
+      vi.restoreAllMocks();
+    }
+    expect(passed.join('')).toBe('one\ntwo\nthree\nHost key verification failed.\n');
   });
 
   it('asks in the terminal when there is one, and leaves Linux alone', () => {

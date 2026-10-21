@@ -14,6 +14,8 @@ final class RemoteConnection {
     struct State {
         let state: String, owner: String
         let kind: String?, message: String?
+        // the machine that did not answer, and the ssh that reaches it
+        var machine: String?, destination: String?
     }
 
     private var helper: ControllerProcess?
@@ -26,6 +28,8 @@ final class RemoteConnection {
     private var owner = "local"
     private var rebuildWhenOnline = false
     private var saidOnline = false
+    // the user opened the fleet's copy here while the helper could not say where the fleet runs
+    private var openedHere = false
     // the window went to this Mac's daemon while the helper still runs, which only the helper's next route overrides
     private var fellBack = false
     // what the helper last said while the window had fallen back, which the window does not show
@@ -70,14 +74,14 @@ final class RemoteConnection {
         helper.onEvent = { [weak self] event in self?.handle(event) }
         helper.onExit = { [weak self] status in
             guard let self else { return }
-            let said = State(state: "error", owner: owner, kind: "other", message: "the connection helper stopped (exit \(status))")
+            let said = State(state: "error", owner: owner, kind: "helper", message: "the connection helper stopped (exit \(status))")
             guard !fellBack else { unshown = said; return }
             publish(said)
             fallBackIfLocalOnly()
         }
         do { try helper.start() } catch {
             NSLog("svall: could not start the connection helper: %@", "\(error)")
-            publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper could not start (\(error.localizedDescription))"))
+            publish(State(state: "error", owner: owner, kind: "helper", message: "the connection helper could not start (\(error.localizedDescription))"))
             fallBackIfLocalOnly()
         }
         starts += 1
@@ -98,7 +102,15 @@ final class RemoteConnection {
         helper?.stop()
         helper = next
         online = nil
+        openedHere = false
         start()
+    }
+
+    /// The banner's Reconnect: a fresh helper, and a copy here the user opened stays open until it says where the fleet runs.
+    func retry(with next: ControllerProcess) {
+        let here = openedHere
+        reconnect(with: next)
+        if here { _ = openHere() }
     }
 
     /// A fleet that gained a gateway since the window opened on this Mac gets the helper it went without.
@@ -118,6 +130,22 @@ final class RemoteConnection {
     func retryIfIdle(with next: @autoclosure () -> ControllerProcess?) {
         guard idle, let next = next() else { return }
         reconnect(with: next)
+    }
+
+    /// The banner's Open this Mac's copy, while the helper cannot say where the fleet runs; that daemon takes a change only
+    /// while its own record says this Mac owns the fleet. Says why when there is no copy here to open.
+    func openHere() -> String? {
+        guard route == .pending else { return nil }
+        guard local() != nil else { return "svalld is not running on this Mac" }
+        openedHere = true
+        fallBack()
+        return nil
+    }
+
+    /// Whether the banner may offer this Mac's copy: its daemon runs, and the gateway has named no owner here before. A
+    /// route it named is the helper's to trust or refuse, and one it refused is not to be opened anyway.
+    static func copyHere(home: String, daemon: Bool) -> Bool {
+        daemon && !FileManager.default.fileExists(atPath: home + "/controller/route.json")
     }
 
     /// The window says which machine the fleet is on; a fleet on this Mac is just the fleet.
@@ -160,7 +188,7 @@ final class RemoteConnection {
             publish(State(state: "online", owner: owner, kind: nil, message: nil))
             return fallBack()
         }
-        publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper has not answered in \(String(format: "%g", answerWithin)) s"))
+        publish(State(state: "error", owner: owner, kind: "helper", message: "the connection helper has not answered in \(String(format: "%g", answerWithin)) s"))
     }
 
     /// Whether the route the controller last cached names this Mac at the generation its daemon holds, as `svall connect`
@@ -182,6 +210,7 @@ final class RemoteConnection {
             publish(State(state: "connecting", owner: owner, kind: nil, message: nil))
         case .online(let connection, let remote):
             saidOnline = true
+            openedHere = false
             fellBack = false
             unshown = nil
             owner = remote?.name ?? "local"
@@ -194,13 +223,14 @@ final class RemoteConnection {
             if rebuildWhenOnline || (attachedOver != .pending && attachedOver != route) { onSurfaces() }
             attachedOver = route
             rebuildWhenOnline = true
-        case .error(let kind, let message):
-            let said = State(state: "error", owner: owner, kind: kind, message: message)
+        case .error(let kind, let message, let machine, let destination):
+            let said = State(state: "error", owner: owner, kind: kind, message: message, machine: machine, destination: destination)
             guard !fellBack else { unshown = said; return }
             publish(said)
             fallBackIfLocalOnly()
         case .ownerChanged(let owner):
             self.owner = owner
+            openedHere = false
             fellBack = false
             unshown = nil
             online = nil

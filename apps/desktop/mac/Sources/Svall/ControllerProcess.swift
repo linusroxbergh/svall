@@ -47,13 +47,14 @@ struct RemoteRoute: Equatable {
 enum ControllerEvent: Equatable {
     case connecting(owner: String)
     case online(connection: SvallConnection, remote: RemoteRoute?)
-    case error(kind: String, message: String)
+    /// `machine`: the one that did not answer, `local` for this Mac's daemon; `destination`: the ssh that reaches it
+    case error(kind: String, message: String, machine: String?, destination: String?)
     case ownerChanged(owner: String)
 
     private struct Line: Decodable {
         struct Remote: Decodable { let name: String, destination: String, controlSocket: String }
         let type: String
-        let owner: String?, host: String?, port: Int?, token: String?, kind: String?, message: String?
+        let owner: String?, host: String?, port: Int?, token: String?, kind: String?, message: String?, machine: String?, destination: String?
         let remote: Remote?
     }
 
@@ -68,7 +69,7 @@ enum ControllerEvent: Equatable {
                            remote: line.remote.map { RemoteRoute(name: $0.name, destination: $0.destination, controlSocket: $0.controlSocket) })
         case "error":
             guard let kind = line.kind, let message = line.message else { return nil }
-            return .error(kind: kind, message: message)
+            return .error(kind: kind, message: message, machine: line.machine, destination: line.destination)
         case "owner-changed":
             return line.owner.map { .ownerChanged(owner: $0) }
         default:
@@ -139,7 +140,7 @@ final class ControllerProcess {
 
 /// The host operations the page may ask the shell to run, and nothing else.
 enum HostOp: String, Decodable {
-    case add, doctor, upgrade, remove, enable
+    case add, doctor, upgrade, rollback, remove, enable
 
     /// doctor prints its checks as one report when it ends; the others print a step per line as they go
     var printsReport: Bool { self == .doctor }
@@ -170,7 +171,8 @@ enum HostCommand {
     /// `fleet` is the profile of the fleet this window runs, which only enable names.
     static func arguments(op: HostOp, args: HostArgs, fleet: String?) -> [String]? {
         guard args.name.allowed(by: machineNamePattern) else { return nil }
-        var argv = ["host", op.rawValue, args.name]
+        // a rollback is the upgrade command's
+        var argv = ["host", op == .rollback ? "upgrade" : op.rawValue, args.name]
         switch op {
         case .add:
             guard let ssh = args.ssh, args.forget == nil,
@@ -184,6 +186,9 @@ enum HostCommand {
             if args.forget == true { argv.append("--forget") }
         case .doctor, .upgrade:
             guard args.ssh == nil, args.forget == nil else { return nil }
+        case .rollback:
+            guard args.ssh == nil, args.forget == nil else { return nil }
+            argv.append("--rollback")
         }
         return argv + ["--json"]
     }
