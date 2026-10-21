@@ -75,10 +75,17 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   // what the step said is kept, without the token it carried
   await expect(page.getByTestId('host-step-probe')).toContainText('ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-step-probe')).not.toContainText('s3cr3t');
-  // steps read as plain words
+  // steps read as plain words, and the run ends on the step it stopped at, with what is left to do
   await expect(page.getByTestId('host-step-master')).toContainText('Connection');
-  await expect(page.getByTestId('host-outcome')).toContainText('still to do');
+  await expect(page.getByTestId('host-outcome')).toContainText('Add machine stopped at Final check: ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-outcome')).toContainText('svall doctor');
+
+  // an add that went through is added
+  await page.getByTestId('host-add').click();
+  await receive(page, { type: 'host.step', op: 'add', event: { step: 'registry', status: 'ok', detail: "studio is in this Mac's list of machines" } });
+  await receive(page, { type: 'host.done', op: 'add', code: 0 });
+  await expect(page.getByTestId('host-outcome')).toContainText('studio is added');
+  await expect(page.getByTestId('host-outcome')).not.toContainText('ready for handover');
 });
 
 test('a check says ready for handover when nothing failed or is left to do; an upgrade never does', async ({ page, svall }) => {
@@ -103,7 +110,7 @@ test('a check says ready for handover when nothing failed or is left to do; an u
   await page.getByTestId('host-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'studio answers on release 0.5.0' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 0 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('Upgrade: done');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is upgraded');
 
   // the gateway is this window's own fleet, which the shell names; the page sends only the machine
   await expect(page.getByTestId('host-enable')).toHaveText("Make it this fleet's gateway");
@@ -134,7 +141,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio' } });
   await expect(page.getByTestId('host-confirm')).toHaveCount(0);
   await receive(page, { type: 'host.done', op: 'remove', code: 0 });
-  await expect(page.getByTestId('host-outcome')).toHaveText('Remove: done');
+  await expect(page.getByTestId('host-outcome')).toHaveText('studio is removed');
 
   await page.getByTestId('host-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');

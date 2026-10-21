@@ -58,22 +58,39 @@ function realDeps(emit: (e: StepEvent) => void, dir: string): HostDeps {
 const line = (e: StepEvent): string =>
   `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd();
 
+type Op = 'add' | 'upgrade' | 'rollback' | 'remove' | 'enable';
+
+/** What a run that went through did, in the words the Machines panel uses. */
+export function doneLine(op: Op, name: string, o: { forget?: boolean } = {}): string {
+  switch (op) {
+    case 'add': return `${name} is added`;
+    case 'upgrade': return `${name} is upgraded`;
+    case 'rollback': return `${name} is rolled back`;
+    case 'remove': return `${name} is ${o.forget ? 'forgotten' : 'removed'}`;
+    case 'enable': return `${name} is this fleet's gateway: ready for handover`;
+  }
+}
+
+/** The last line a run prints: what it did, or what is still to do. An add that stopped at no step has added its machine. */
+export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forget?: boolean } = {}): string {
+  const done = doneLine(op, name, flags);
+  if (o.result === 'ready') return op === 'add' ? `${done}; svall host enable ${name} --fleet <fleet> makes it this fleet's gateway` : done;
+  const head = o.stopped ? `stopped at ${o.stopped}; still to do:` : op === 'add' ? `${done}; still to do:` : 'still to do:';
+  return [head, ...o.actions.map((a) => `  ${a}`)].join('\n');
+}
+
 /** Either one NDJSON object per step and a final result, or the same events as doctor-style lines. */
-function reporter(json: boolean): { emit: (e: StepEvent) => void; finish: (o: HostOutcome) => void } {
+function reporter(json: boolean, last: (o: HostOutcome) => string): { emit: (e: StepEvent) => void; finish: (o: HostOutcome) => void } {
   const write = (v: unknown) => process.stdout.write(`${JSON.stringify(v)}\n`);
   if (json) return { emit: write, finish: write };
   return {
     emit: (e) => { if (e.status !== 'start') process.stdout.write(`${line(e)}\n`); },
-    finish: (o) => {
-      process.stdout.write(o.result === 'ready'
-        ? 'ready for handover\n'
-        : `${['still to do:', ...o.actions.map((a) => `  ${a}`)].join('\n')}\n`);
-    },
+    finish: (o) => { process.stdout.write(`${last(o)}\n`); },
   };
 }
 
-async function runFlow(json: boolean, run: (d: HostDeps) => Promise<HostOutcome>, dir: string): Promise<void> {
-  const out = reporter(json);
+async function runFlow(json: boolean, last: (o: HostOutcome) => string, run: (d: HostDeps) => Promise<HostOutcome>, dir: string): Promise<void> {
+  const out = reporter(json, last);
   const outcome = await run(realDeps(out.emit, dir));
   out.finish(outcome);
   if (outcome.result !== 'ready') process.exitCode = 1;
@@ -91,7 +108,7 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean }) =>
-      runFlow(json(), (d) => addHost({ name, ...o }, d), dir()));
+      runFlow(json(), (out) => outcomeText(out, 'add', name), (d) => addHost({ name, ...o }, d), dir()));
 
   host.command('list')
     .description('every machine in the registry')
@@ -119,10 +136,10 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .option('--rollback [release]', 'put the machine back on this release, or on the one before, and check its daemons answer from it')
     .action((name: string, o: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string }) => {
-      if (o.rollback === undefined) return runFlow(json(), (d) => upgradeHost(name, o, d), dir());
+      if (o.rollback === undefined) return runFlow(json(), (out) => outcomeText(out, 'upgrade', name), (d) => upgradeHost(name, o, d), dir());
       if (o.release !== undefined || o.allowUnsigned) throw new Error('--rollback installs nothing, so it takes no --release or --allow-unsigned');
       const to = typeof o.rollback === 'string' ? o.rollback : undefined;
-      return runFlow(json(), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir());
+      return runFlow(json(), (out) => outcomeText(out, 'rollback', name), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir());
     });
 
   host.command('remove')
@@ -130,14 +147,14 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .argument('<name>', 'the machine in the registry')
     .option('--forget', 'drop the route for a machine that cannot be reached, leaving it untouched')
     .action((name: string, o: { forget?: boolean }) =>
-      runFlow(json(), (d) => removeHost(name, o, d), dir()));
+      runFlow(json(), (out) => outcomeText(out, 'remove', name, o), (d) => removeHost(name, o, d), dir()));
 
   host.command('enable')
     .description('name this machine the gateway for a fleet')
     .argument('<name>', 'the machine in the registry')
     .requiredOption('--fleet <profile>', 'the fleet whose gateway it is to be')
     .action((name: string, o: { fleet: string }) =>
-      runFlow(json(), (d) => enableHost(name, { fleetHome: targetFor(o.fleet).home }, d), dir()));
+      runFlow(json(), (out) => outcomeText(out, 'enable', name), (d) => enableHost(name, { fleetHome: targetFor(o.fleet).home }, d), dir()));
 
   return host;
 }

@@ -255,8 +255,8 @@ none of the helper's retries, and moves, terminals and all, once the helper name
 
 `svall host add`, `upgrade` (and `upgrade --rollback`), `remove` and `enable` run their steps in order and stop at the
 first that fails. Each
-step's `action` is something for you to do; the run ends with **ready for handover** or a list of what is still to
-do, and exits 1 unless it is ready.
+step's `action` is something for you to do; the run ends with a line saying what it did (`enable` with **ready for
+handover**) or a list of what is still to do, and exits 1 unless nothing is left.
 
 ### Step statuses
 

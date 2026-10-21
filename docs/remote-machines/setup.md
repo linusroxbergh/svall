@@ -80,7 +80,7 @@ Both run the same steps and show each as it finishes:
    closes a window there.
 7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
 
-It ends with **ready for handover**, or with a list of what is still for you to do. Svall never runs `sudo` and
+It ends by saying the machine is added, or with a list of what is still for you to do. Svall never runs `sudo` and
 never copies a login, so these are yours:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync

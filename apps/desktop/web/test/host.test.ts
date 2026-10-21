@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, connectionBanner, connectionText, endRun, groupSteps, machineName, readyForHandover,
+  applyStep, beginRun, connectionBanner, connectionText, endRun, groupSteps, machineName, outcomeOf,
   runActions, sshDestination, stepLabel, upgradeFor, withoutTokens,
 } from '../src/host.js';
 
@@ -53,29 +53,38 @@ describe('host run', () => {
 });
 
 describe('the end of a run', () => {
-  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[]) =>
-    endRun(steps.reduce(applyStep, beginRun(op, { name: 'box' })), code);
+  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
+    endRun(steps.reduce(applyStep, beginRun(op, { name: 'box', ...args })), code);
 
-  it('is ready for handover when an add finishes clean', () => {
-    expect(readyForHandover(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok')]))).toBe(true);
-    expect(readyForHandover(ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' })]))).toBe(false);
-    expect(readyForHandover({ ...ended('add', 0, [step('ssh', 'ok')]), running: true, code: undefined })).toBe(false);
+  it('says an add that finished clean added the machine', () => {
+    const add = ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]);
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added' });
+    expect(outcomeOf(add, 'box')).toEqual({ text: 'box is added: ready for handover' });
   });
 
-  it('is ready for handover when a check finds nothing failing and nothing left to do', () => {
-    expect(readyForHandover(ended('doctor', 0, [step('tmux', 'ok'), step('release', 'ok')]))).toBe(true);
-    // a check that does not apply to this machine is no reason to wait
-    expect(readyForHandover(ended('doctor', 0, [step('tmux', 'ok'), step('codex', 'skip', { detail: 'not installed' })]))).toBe(true);
-    expect(readyForHandover(ended('doctor', 0, [step('tmux', 'ok'), step('linger', 'warn')]))).toBe(false);
-    expect(readyForHandover(ended('doctor', 0, [step('release', 'fail')]))).toBe(false);
-    expect(readyForHandover(ended('doctor', 1, [step('release', 'fail')]))).toBe(false);
-    expect(readyForHandover(ended('doctor', 0, []))).toBe(false);
+  it('lists what an add left to do', () => {
+    const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]);
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added; still to do:', list: ['log in'] });
+    // one stopped part way never reached the registry
+    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]), undefined)).toEqual({ text: 'Add machine ended with exit 143' });
   });
 
-  it('says nothing about handover after an upgrade, a removal or a new gateway', () => {
-    for (const op of ['upgrade', 'remove', 'enable'] as const) {
-      expect(readyForHandover(ended(op, 0, [step('machine', 'ok')]))).toBe(false);
-    }
+  it('says a check is ready for handover only when nothing failed or is left to do', () => {
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'ok'), step('codex', 'skip', { detail: 'not installed' })]), undefined)).toEqual({ text: 'ready for handover' });
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'ok'), step('linger', 'warn')]), undefined).text).not.toBe('ready for handover');
+  });
+
+  it('names the step a run stopped at and what it said, with what is left to do', () => {
+    const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })]);
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'Add machine stopped at Install: svall setup exited 1', list: ['log in'] });
+    expect(outcomeOf(ended('remove', 1, []), undefined)).toEqual({ text: 'Remove ended with exit 1' });
+  });
+
+  it('says what an upgrade, a new gateway and a removal did', () => {
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is upgraded' });
+    expect(outcomeOf(ended('enable', 0, [step('fleet', 'ok')]), 'box')).toEqual({ text: "box is this fleet's gateway: ready for handover" });
+    expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]), undefined)).toEqual({ text: 'box is removed' });
+    expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }), undefined)).toEqual({ text: 'box is forgotten' });
   });
 });
 

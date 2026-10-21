@@ -224,7 +224,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await wentBack(registry);
     const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then add the machine again';
-    expect(out).toEqual({ result: 'actions', actions: [action] });
+    expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
     expect(step('identity').at(-1)).toEqual({
       step: 'identity', status: 'fail',
       detail: 'trift runs release 1.2.2, not 1.2.3: its setup went back, as the daemon of 1.2.3 did not answer', action,
@@ -662,7 +662,7 @@ esac
       gateway(registry);
       const out = await wentBack(registry);
       const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then svall host upgrade trift, or add the machine again';
-      expect(out).toEqual({ result: 'actions', actions: [action] });
+      expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
       expect(step('identity').at(-1)).toMatchObject({ status: 'fail', action });
       expect(step('registry')).toEqual([]);
       expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
@@ -1790,6 +1790,34 @@ describe('the localhost sshd integration', () => {
     } finally {
       process.env.PATH = fake;
     }
+  });
+});
+
+describe('the last line a run prints', () => {
+  it('names what each command did as the Machines panel does, and ready for handover only once there is a gateway', async () => {
+    const { doneLine } = await import('../src/commands/host.js');
+    expect(doneLine('add', 'trift')).toBe('trift is added');
+    expect(doneLine('upgrade', 'trift')).toBe('trift is upgraded');
+    expect(doneLine('rollback', 'trift')).toBe('trift is rolled back');
+    expect(doneLine('remove', 'trift')).toBe('trift is removed');
+    expect(doneLine('remove', 'trift', { forget: true })).toBe('trift is forgotten');
+    expect(doneLine('enable', 'trift')).toBe("trift is this fleet's gateway: ready for handover");
+  });
+
+  it('says an add that left things to do added the machine, unless it stopped short of the registry', async () => {
+    const { outcomeText } = await import('../src/commands/host.js');
+    const linger = 'ssh trift, then loginctl enable-linger linus';
+    expect(outcomeText({ result: 'ready', actions: [] }, 'add', 'trift'))
+      .toBe("trift is added; svall host enable trift --fleet <fleet> makes it this fleet's gateway");
+    expect(outcomeText({ result: 'actions', actions: [linger] }, 'add', 'trift')).toBe(`trift is added; still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'actions', actions: [linger], stopped: 'install' }, 'add', 'trift')).toBe(`stopped at install; still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'actions', actions: [linger] }, 'upgrade', 'trift')).toBe(`still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'ready', actions: [] }, 'remove', 'trift', { forget: true })).toBe('trift is forgotten');
+  });
+
+  it('records the step a run stopped at', async () => {
+    const out = await removeHost('trift', {}, deps());
+    expect(out).toMatchObject({ result: 'actions', stopped: 'machine' });
   });
 });
 

@@ -1,14 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
-import { groupSteps, machineName, readyForHandover, runActions, sshDestination, stepLabel, type HostRun } from './host.js';
+import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
-
-const OP_TITLE: Record<HostOp, string> = {
-  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', remove: 'Remove', enable: "Make it this fleet's gateway",
-};
 
 function start(op: HostOp, args: HostArgs): void {
   app.store.getState().hostStarted(op, args);
@@ -16,20 +12,13 @@ function start(op: HostOp, args: HostArgs): void {
 }
 
 function Outcome({ run }: { run: HostRun }) {
-  const actions = runActions(run);
+  const gateway = useApp((s) => s.shell?.gateway);
   if (run.running) return <div className="host-note" data-testid="host-running">{OP_TITLE[run.op]}: running…</div>;
-  if (readyForHandover(run)) return <div className="host-note" data-testid="host-outcome">ready for handover</div>;
-  if (actions.length > 0) {
-    return (
-      <div className="host-note" data-testid="host-outcome">
-        still to do:
-        <ul>{actions.map((a) => <li key={a}>{a}</li>)}</ul>
-      </div>
-    );
-  }
+  const o = outcomeOf(run, gateway);
   return (
     <div className="host-note" data-testid="host-outcome">
-      {OP_TITLE[run.op]}: {run.code === 0 ? 'done' : `ended with exit ${run.code}`}
+      {o.text}
+      {o.list && <ul>{o.list.map((a) => <li key={a}>{a}</li>)}</ul>}
     </div>
   );
 }

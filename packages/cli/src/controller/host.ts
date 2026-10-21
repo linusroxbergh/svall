@@ -36,7 +36,8 @@ const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string };
-export type HostOutcome = { result: 'ready' | 'actions'; actions: string[] };
+// stopped: the step a run failed at, past which nothing ran
+export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
 
 export type HostDeps = {
   emit(event: StepEvent): void;
@@ -65,7 +66,7 @@ type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: str
 /** The step events a host command emits, and the actions they leave the user with. */
 class Runner {
   readonly actions: string[] = [];
-  private failed = false;
+  private failed?: string;
 
   constructor(private readonly emit: (e: StepEvent) => void) {}
 
@@ -81,7 +82,7 @@ class Runner {
       r = await fn();
     } catch (err) {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
-      this.failed = true;
+      this.failed = step;
       this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}) });
       throw e;
@@ -95,7 +96,7 @@ class Runner {
   }
 
   outcome(): HostOutcome {
-    return { result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions };
+    return { result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions, ...(this.failed && { stopped: this.failed }) };
   }
 }
 
