@@ -9,23 +9,27 @@ export type Connection = { host: string; port: number; token: string };
 // handoverEnabled: fleet.json's handover.enabled, which every control for another machine waits on
 // gateway: the registry name of the machine fleet.json names as its gateway
 // profile: the one `svall -p` names this fleet by, absent for the private fleet and a home of its own
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string; profile?: string };
+// copyHere: this Mac's daemon runs and the gateway has named no owner here before, so its copy may be opened while the gateway is away
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string; profile?: string; copyHere?: boolean };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
 // the machines a fleet can be handed to: what the shell may run `svall host …` for, and with what
-export type HostOp = 'add' | 'doctor' | 'upgrade' | 'remove' | 'enable';
+export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable';
 // enable names no fleet: the shell supplies the one this window runs
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string };
 
-// where the fleet this window shows is running, as the shell's connect helper reports it
+// where the fleet this window shows is running, as the shell's connect helper reports it;
+// machine: the one that did not answer (`local` for this Mac's daemon), destination: the ssh that reaches it
 export type ConnectionState = {
   state: 'connecting' | 'online' | 'error' | 'owner-changed';
   owner: string;
   kind?: string;
   message?: string;
+  machine?: string;
+  destination?: string;
 };
 
 export type ToShell =
@@ -88,8 +92,12 @@ export type ToShell =
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string }
-  // keeps the Mac from idle-sleeping under this reason; none lets go
-  | { type: 'awake'; reason?: string };
+  // keeps the Mac from idle-sleeping under this reason, on battery too when asked; none lets go
+  | { type: 'awake'; reason?: string; battery?: boolean }
+  // a fresh connect helper, whatever the last one gave up on
+  | { type: 'connection.retry' }
+  // the fleet's copy on this Mac, while the helper cannot say where the fleet runs
+  | { type: 'connection.here' };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }

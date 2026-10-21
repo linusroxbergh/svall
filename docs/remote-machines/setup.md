@@ -75,13 +75,15 @@ Both run the same steps and show each as it finishes:
 4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
-   Svall's hooks in place (for OpenCode, Svall's plugin), as the machine's own `svall doctor` finds them.
+   Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's own
+   `svall doctor` finds them.
 6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
 
-It ends with **ready for handover**, or with a list of what is still for you to do. Svall never runs `sudo` and
-never copies a login, so these are yours:
+It ends by saying the machine is added, or with a list of what is still for you to do. Once it is added, **Make it
+this fleet's gateway** (`svall host enable <name> --fleet <fleet>`) readies it for handover. Svall never runs `sudo`
+and never copies a login, so these are yours:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
@@ -92,6 +94,12 @@ never copies a login, so these are yours:
   them with `/hooks`.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
   `svall doctor` says to do there.
+- Codex's sandbox kept from starting by AppArmor, as on Ubuntu 24.04, where a Codex character would ask before each
+  command: the action installs the AppArmor profile that lets `bwrap` make its user namespace,
+  `sudo apt install bubblewrap apparmor-profiles`, then
+  `sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/` and
+  `sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict`. A sandbox that fails for another reason names it;
+  run `codex sandbox -- true` there to see it.
 
 Adding the same machine again runs every check again and changes nothing that is already right.
 
@@ -132,9 +140,9 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | Command | In the app | What it does |
 | --- | --- | --- |
 | `svall host list` | | Every machine in the registry, with its id and whether it is a gateway. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`; none of these stops a handover. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
-| `svall host upgrade <name> --rollback [release]` | | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. |
+| `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. |
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
 | `svall host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
 

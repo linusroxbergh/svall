@@ -75,7 +75,7 @@ final class ShellRouter {
         remote.onState = { [weak self] state in
             self?.webView.window?.title = RemoteConnection.windowTitle(base: SvallHome.displayName, owner: state.owner)
             guard self?.listening == true else { return }
-            self?.bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
+            self?.bridge.send(.connectionState(state))
         }
         remote.onSurfaces = { [weak self] in self?.surfaces.rebuild() }
         surfaces.route = { [weak self] in self?.remote.route ?? .local }
@@ -218,9 +218,7 @@ final class ShellRouter {
             followGateway()
             sendShellInfo()
             bridge.send(.connection(remote.connection))
-            if let state = remote.state {
-                bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
-            }
+            if let state = remote.state { bridge.send(.connectionState(state)) }
             sendAppActive()
             notifier.refreshPermission()
             bridge.send(.updateAvailable(Updates.shared.waiting))
@@ -361,8 +359,14 @@ final class ShellRouter {
         case .retitle:
             webView.window?.title = RemoteConnection.windowTitle(base: SvallHome.displayName, owner: remote.state?.owner ?? "local")
             awake.apply()
-        case .awake(let reason):
-            awake.hold(reason)
+        case .awake(let reason, let battery):
+            awake.hold(reason, battery: battery ?? false)
+        case .connectionRetry:
+            // a helper that gave up waits to be stopped; one still retrying starts over from the first wait
+            guard let helper = ControllerProcess.locate() else { return }
+            remote.retry(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+        case .connectionHere:
+            if let why = remote.openHere() { bridge.send(.notice(text: why)) }
         }
     }
 
@@ -414,7 +418,7 @@ final class ShellRouter {
                 self?.sendShellInfo()
             }
             // the version a helper gave up on may be the gateway's, which the upgrade has just changed
-            if op == .upgrade, code == 0, args.name == SvallHome.gatewayName() {
+            if op == .upgrade || op == .rollback, code == 0, args.name == SvallHome.gatewayName() {
                 self?.remote.retryIfIdle(with: ControllerProcess.locate().map {
                     ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
                 })
@@ -438,7 +442,8 @@ final class ShellRouter {
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
                                ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: SvallHome.handoverEnabled(),
-                               gateway: SvallHome.gatewayName(), profile: SvallHome.profile))
+                               gateway: SvallHome.gatewayName(), profile: SvallHome.profile,
+                               copyHere: RemoteConnection.copyHere(home: SvallHome.path, daemon: SvallHome.connection() != nil)))
     }
 
     private func followHandover(_ run: (HandoverSession) throws -> Void) {

@@ -78,7 +78,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     emit: (e) => events.push(e),
     registry: MachineRegistry.load(path.join(work, 'config')),
     openMaster: (destination) => SshMaster.open({ destination, socketDir: ssh.socketDir }),
-    interactiveSsh: () => Promise.resolve(0),
+    interactiveSsh: () => Promise.resolve({ code: 0, stderr: '' }),
     fetch: () => Promise.reject(new Error('no download in this test')),
     controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release') },
     machineId: () => MAC,
@@ -152,6 +152,8 @@ describe('host add', () => {
     await d.close();
 
     expect(out.result).toBe('ready');
+    // each step names the machine, never its id
+    expect(JSON.stringify(events)).not.toContain(REMOTE);
     const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : w[0] === 'env' ? `${w[2]} ${w[3]}` : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
     expect(order.slice(0, 8)).toEqual([
       'uname -sm', 'cat /etc/os-release',
@@ -222,7 +224,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await wentBack(registry);
     const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then add the machine again';
-    expect(out).toEqual({ result: 'actions', actions: [action] });
+    expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
     expect(step('identity').at(-1)).toEqual({
       step: 'identity', status: 'fail',
       detail: 'trift runs release 1.2.2, not 1.2.3: its setup went back, as the daemon of 1.2.3 did not answer', action,
@@ -307,6 +309,21 @@ describe('host add', () => {
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok' });
   });
 
+  it('names every Codex check that warns there, untrusted hooks and a blocked sandbox alike', async () => {
+    const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
+    const blocked = 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex character asks before each one: sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted }, { name: 'codex sandbox', status: 'warn', detail: blocked }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('codex').at(-1)).toMatchObject({
+      status: 'warn',
+      detail: `codex-cli 0.156.1, logged in; the codex hooks check there says ${untrusted}; the codex sandbox check there says ${blocked}`,
+      action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
+    });
+  });
+
   it('writes the registry record under the machine id the companion reports', async () => {
     healthy();
     const d = await daemon();
@@ -336,9 +353,20 @@ describe('host add', () => {
     const seen: string[] = [];
     healthy();
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({
-      interactiveSsh: (destination) => { seen.push(destination); return Promise.resolve(0); },
+      interactiveSsh: (destination) => { seen.push(destination); return Promise.resolve({ code: 0, stderr: '' }); },
     }));
     expect(seen).toEqual(['trift.test']);
+  });
+
+  it('names what ssh said when the interactive login fails, and the Terminal run that settles it', async () => {
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({
+      interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Host key verification failed.' }),
+    }));
+    expect(out.result).toBe('actions');
+    expect(step('ssh').at(-1)).toEqual({
+      step: 'ssh', status: 'fail', detail: 'ssh trift.test exited 255: Host key verification failed.',
+      action: 'run ssh trift.test once in Terminal and answer its host key and login there, then add the machine again',
+    });
   });
 
   it('stops at a far home other than this Mac\'s, naming the commands that make an account whose home is this one', async () => {
@@ -649,7 +677,7 @@ esac
       gateway(registry);
       const out = await wentBack(registry);
       const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then svall host upgrade trift, or add the machine again';
-      expect(out).toEqual({ result: 'actions', actions: [action] });
+      expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
       expect(step('identity').at(-1)).toMatchObject({ status: 'fail', action });
       expect(step('registry')).toEqual([]);
       expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
@@ -1087,7 +1115,7 @@ esac
     const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringMatching(/no other release is kept there, so it runs the new one$/) });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringMatching(/no other release is kept there, so it runs the new one; svall host upgrade trift --rollback <release> puts back a release kept there$/) });
   });
 
   it('counts a new release whose own setup put the old one back as not answering, and says which the machine runs', async () => {
@@ -1173,6 +1201,17 @@ esac
     expect(step('probe')[0]).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
     expect(none.result).toBe('actions');
     expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
+    expect(step('rollback').at(-1)?.action).toContain('svall host upgrade trift --rollback <release>');
+  });
+
+  it('names the ssh to try in Terminal when an upgrade or a rollback cannot connect', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    for (const run of [() => upgradeHost('trift', {}, deps({ registry })), () => rollbackHost('trift', {}, deps({ registry }))]) {
+      events.length = 0;
+      expect((await run()).result).toBe('actions');
+      expect(step('master').at(-1)).toMatchObject({ status: 'fail', action: 'ssh refused.test once in Terminal and see what it answers, then run this again' });
+    }
   });
 
   it('keeps a new release whose companion doctor exits 1 over a check unrelated to the daemon', async () => {
@@ -1260,8 +1299,20 @@ describe('host remove', () => {
     const out = await removeHost('trift', { forget: true }, deps({ registry }));
     expect(registry.get('trift')).toBeUndefined();
     expect(ssh.calls()).toEqual([]);
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip' });
-    expect(out.actions.join(' ')).toContain('trift.test');
+    // a forget that went through leaves nothing to do, so it ends ready and exits 0
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: expect.stringContaining('trift.test') });
+  });
+
+  it('reports a far uninstall that failed for itself with its exit and what it said, not as a machine out of reach', async () => {
+    ssh.reply(['uninstall'], { stderr: 'svall: tmux refused to stop the fleet\n', code: 1 });
+    const registry = registered('trift.test');
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('actions');
+    const failed = step('uninstall').at(-1);
+    expect(failed).toMatchObject({ status: 'fail', detail: 'svall uninstall exited 1 on trift.test: svall: tmux refused to stop the fleet' });
+    expect(failed?.action).toContain('ssh trift.test, then svall uninstall');
+    expect(registry.get('trift')).toBeDefined();
   });
 
   const fleetAt = (name: string, o: { gateway?: string; owner?: string } = {}): string => {
@@ -1437,8 +1488,8 @@ describe('host remove', () => {
     const registry = registered('refused.test');
     const out = await removeHost('trift', { forget: true }, deps({ registry }));
     expect(registry.get('trift')).toBeUndefined();
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip' });
-    expect(out.actions.join(' ')).toContain('refused.test');
+    expect(out.result).toBe('ready');
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: expect.stringContaining('refused.test') });
   });
 });
 
@@ -1565,6 +1616,8 @@ describe('host enable', () => {
       [SVALL, 'gateway', 'owner', 'create', '--fleet', FLEET, '--params', JSON.stringify({ initialOwnerMachineId: MAC })],
     ]);
     expect(written(home).gatewayMachineId).toBe(REMOTE);
+    expect(step('authority').at(-1)).toMatchObject({ status: 'ok', detail: "trift records this fleet as this Mac's" });
+    for (const id of [FLEET, MAC, REMOTE]) expect(JSON.stringify(events)).not.toContain(id);
   });
 
   it('creates the record at the generation this Mac holds the fleet at, so the first handover begins there', async () => {
@@ -1632,7 +1685,7 @@ describe('host enable', () => {
     expect(written(home).gatewayMachineId).toBeUndefined();
   });
 
-  it('refuses a fleet another machine holds, naming the owner and generation, and leaves fleet.json alone', async () => {
+  it('refuses a fleet another machine holds, naming that machine, and leaves fleet.json alone', async () => {
     ssh.reply(['owner', 'get'], answers({ generation: 3, ownerMachineId: OTHER_MAC }));
     const home = fleetHome();
 
@@ -1640,8 +1693,8 @@ describe('host enable', () => {
     expect(out.result).toBe('actions');
     const failure = step('authority').at(-1);
     expect(failure).toMatchObject({ status: 'fail' });
-    expect(failure?.detail).toContain(OTHER_MAC);
-    expect(failure?.detail).toContain('generation 3');
+    // another Mac is in no registry here, and its id says nothing to the user
+    expect(failure?.detail).toBe("trift records this fleet as another machine's, not this Mac's");
     expect(step('fleet')).toEqual([]);
     expect(written(home).gatewayMachineId).toBeUndefined();
   });
@@ -1764,6 +1817,44 @@ describe('the localhost sshd integration', () => {
     } finally {
       process.env.PATH = fake;
     }
+  });
+});
+
+describe('the last line a run prints', () => {
+  it('names what each command did as the Machines panel does, and ready for handover only once there is a gateway', async () => {
+    const { doneLine } = await import('../src/commands/host.js');
+    expect(doneLine('add', 'trift')).toBe('trift is added');
+    expect(doneLine('upgrade', 'trift')).toBe('trift is upgraded');
+    expect(doneLine('rollback', 'trift')).toBe('trift is rolled back');
+    expect(doneLine('remove', 'trift')).toBe('trift is removed');
+    expect(doneLine('remove', 'trift', { forget: true })).toBe('trift is forgotten');
+    expect(doneLine('enable', 'trift')).toBe("trift is this fleet's gateway: ready for handover");
+  });
+
+  it('says an add that left things to do added the machine, unless it stopped short of the registry', async () => {
+    const { outcomeText } = await import('../src/commands/host.js');
+    const linger = 'ssh trift, then loginctl enable-linger linus';
+    expect(outcomeText({ result: 'ready', actions: [] }, 'add', 'trift'))
+      .toBe("trift is added; svall host enable trift --fleet <fleet> makes it this fleet's gateway");
+    expect(outcomeText({ result: 'actions', actions: [linger] }, 'add', 'trift')).toBe(`trift is added; still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'actions', actions: [linger], stopped: 'install' }, 'add', 'trift')).toBe(`stopped at install; still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'actions', actions: [linger] }, 'upgrade', 'trift')).toBe(`still to do:\n  ${linger}`);
+    expect(outcomeText({ result: 'ready', actions: [] }, 'remove', 'trift', { forget: true })).toBe('trift is forgotten');
+  });
+
+  it('ends a check with ready and its warnings, or the checks that block a handover', async () => {
+    const { doctorVerdict } = await import('../src/commands/host.js');
+    const ok = { name: 'release', status: 'ok' as const, detail: '1.2.3' };
+    const warn = { name: 'tmux', status: 'warn' as const, detail: '3.4' };
+    expect(doctorVerdict([ok, warn, warn], { name: 'trift', gateway: true })).toBe('ready for handover; 2 warnings');
+    expect(doctorVerdict([ok], { name: 'trift', gateway: false })).toBe("ready to be a fleet's gateway: svall host enable trift --fleet <fleet>");
+    expect(doctorVerdict([ok, warn, { name: 'systemd', status: 'fail', detail: 'inactive' }], { name: 'trift', gateway: true }))
+      .toBe('1 check blocks a handover: systemd');
+  });
+
+  it('records the step a run stopped at', async () => {
+    const out = await removeHost('trift', {}, deps());
+    expect(out).toMatchObject({ result: 'actions', stopped: 'machine' });
   });
 });
 

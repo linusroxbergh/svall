@@ -255,15 +255,22 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 
 ## Connection errors
 
-The app and `svall` reach a fleet on another machine through ssh. When that fails, the banner and the error name one of
-these. Only `unreachable` and `daemon_down` are retried by themselves: the app backs off to every 16 seconds for as
-long as the window is open, and a `svall` command tries five times, waiting up to 8 seconds between tries. The others
-wait until the window is reopened or the command runs again.
+The app and `svall` reach a fleet on another machine through ssh. When that fails, the error names one of these, and
+the banner says it in one sentence naming the machine, with what it said under **Details**. Only `unreachable` and
+`daemon_down` are retried by themselves: the app backs off to every 16 seconds for as long as the window is open, and
+a `svall` command tries five times, waiting up to 8 seconds between tries. The others wait for **Reconnect** in the
+banner, for the window to be reopened or for the command to run again. The banner offers **Check**
+(`svall host doctor`) for a machine whose daemon is down or that failed for another reason, and says so too when the
+far daemon has not answered a minute after its route opened. When the gateway or the app's connection helper did not
+answer and the gateway has never named an owner to this Mac, the banner offers **Open this Mac's copy**, while this
+Mac's daemon runs; that daemon takes a change only while its own record says this Mac owns the fleet, and
+**Reconnect** keeps the copy open until the fleet is found. When the app's own connection helper stops, cannot start or
+has not answered, the banner says it has not said where the fleet runs, with **Reconnect**.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |
-| `auth` | ssh was refused: no key it accepts, or a password it cannot ask for. | `ssh <host>` in a terminal; add the key to the agent. |
-| `host_key` | The host key is unknown or has changed. | `ssh <host>` once and check the key. A changed key needs a look before you trust it. |
+| `auth` | ssh was refused: no key it accepts, or a password it cannot ask for. | `ssh <host>` once in Terminal; add the key to the agent; then **Reconnect**. |
+| `host_key` | The host key is unknown or has changed. | `ssh <host>` once in Terminal and check the key, then **Reconnect**. A changed key needs a look before you trust it. |
 | `unreachable` | The machine did not answer, refused the connection, or the link dropped. | Check Tailscale and the machine; it reconnects by itself. |
 | `version` | `svall` is missing there, cannot run, or speaks another protocol. | `svall host upgrade <host>`. |
 | `daemon_down` | The fleet's daemon is not running there. | `svall host doctor <host>`; on Linux, `systemctl --user status svall-svalld@<fleet>`. |
@@ -272,15 +279,15 @@ wait until the window is reopened or the command runs again.
 A window opens a fleet with no gateway in `fleet.json` on this Mac at once. For one with a gateway, it waits up to 10
 seconds for the connection helper to say where the fleet is; a helper that has not answered by then, as one stuck on
 ssh, leaves the window on this Mac when the route `svall` last cached names this Mac at the generation its daemon
-holds, and otherwise shows `other`: "the connection helper has not answered in 10 s". A window left on this Mac shows
-none of the helper's retries, and moves, terminals and all, once the helper names where the fleet is.
+holds, and otherwise shows kind `helper`: "the connection helper has not answered in 10 s". A window left on this
+Mac shows none of the helper's retries, and moves, terminals and all, once the helper names where the fleet is.
 
 ## Host commands
 
 `svall host add`, `upgrade` (and `upgrade --rollback`), `remove` and `enable` run their steps in order and stop at the
 first that fails. Each
-step's `action` is something for you to do; the run ends with **ready for handover** or a list of what is still to
-do, and exits 1 unless it is ready.
+step's `action` is something for you to do; the run ends with a line saying what it did (`enable` with **ready for
+handover**) or a list of what is still to do, and exits 1 unless nothing is left.
 
 ### Step statuses
 
@@ -298,7 +305,7 @@ do, and exits 1 unless it is ready.
 | --- | --- | --- | --- |
 | `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter) and the ssh destination. | Pick another name, or `svall host remove` the machine that holds it. |
 | `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet, and a fleet with no gateway has an `owner.json` naming this Mac: a daemon that could not read `~/.config/svall` runs as the machine its `owner.json` names. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes that machine the gateway, or `svall fleet recover --force-owner local` leaves the fleet with none; then enable again. For an `owner.json` naming another machine, quit Svall and open it on the fleet again, so its daemon starts as this Mac; then enable again. |
-| `ssh` | add | An interactive ssh, so you can accept the host key and log in. | `ssh <destination>` in a terminal and complete it. |
+| `ssh` | add | An interactive ssh, so you can accept the host key and log in. A failure names ssh's exit and the last of what it said. | `ssh <destination>` once in Terminal and complete it, then add the machine again. |
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps, which asks nothing: Svall needs a key ssh can use without asking, and a password gets only past the `ssh` step. For an upgrade, with or without `--rollback`, and an add of a name already in the registry, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A refused login: install a key with `ssh-copy-id <destination>` and keep its passphrase in the agent (`ssh-add --apple-use-keychain`), then add the machine again. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |
 | `os` | add | Linux on x86-64 or arm64, running Ubuntu. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
 | `home` | add | The account's home is the Mac's home path, and short enough for the gateway's socket (at most 65 bytes). | Make an account with the right home ([setup](setup.md#the-same-home-path)) and add it again. |
@@ -316,10 +323,10 @@ do, and exits 1 unless it is ready.
 | `codex` | add | The same for Codex (0.156.0 or newer). When it is not logged in, the action also says to trust Svall's hooks once with `/hooks`. | As for `claude`. |
 | `opencode` | add | The same for OpenCode (2.0.22 or newer), with Svall's OpenCode plugin as the machine's doctor finds it. | As for `claude`. |
 | `probe` | add, upgrade, upgrade --rollback | add: the machine's own fleet answers through a forwarded port from the release just installed, its gateway authority answers, and tmux opens a window, on a socket of its own with the units' PATH, and closes it. upgrade, with or without `--rollback`: the machine's doctor answers with its daemon and gateway units running, and its fleet answers from the release now current. | An add stops here. An upgrade whose probe fails goes back to the release before (`rollback`). After `--rollback`, read the daemon log there; the action names the release it runs now. |
-| `rollback` | upgrade, upgrade --rollback | Puts back the release the machine ran before, or the kept release `--rollback <release>` names. The machine's own `svall setup --rollback` restarts its units and checks each fleet's daemon answers from that release. | Read the daemon log there; the action names the release it runs now. |
+| `rollback` | upgrade, upgrade --rollback | Puts back the release the machine ran before, or the kept release `--rollback <release>` names. The machine's own `svall setup --rollback` restarts its units and checks each fleet's daemon answers from that release. | Read the daemon log there; the action names the release it runs now, and when the rollback failed, `svall host upgrade <host> --rollback <release>` to put back another release kept there. |
 | `registry` | add, remove | Writes or drops the machine in this Mac's registry. | Check `~/.config/svall` is writable. |
 | `fleet` | remove, enable | remove: the fleets that name this machine as their gateway, which must all be on this Mac, no fleet this machine owns through any gateway, and no handover open on any fleet here, whatever its gateway. enable: gives the machine its copy of the fleet. | remove: bring each fleet back with `svall handover local` and settle open handovers first. enable: if the machine already holds another fleet under that name, move its fleet home aside and run enable again. |
-| `uninstall` | remove | Runs `svall uninstall` on the machine, once it has checked the ssh destination reaches the machine the registry names, with `--force-fleet` for each fleet the `fleet` step found naming it as their gateway. That passes only those fleets' gateway records, so the machine still refuses, and the step fails with its reason, for anything else uninstalling would strand: another Mac's fleet records, a record left by a fleet that no longer names it, a fleet it runs for its gateway, or an open handover. Its fleets, their files and the gateway's records stay there. | A refusal: on each other Mac whose fleet it names, bring that fleet home with `svall handover local` and run `svall host remove <host> --forget`; then `ssh <destination>`, run `svall uninstall --force`, and `svall host remove <host> --forget` here. `svall host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
+| `uninstall` | remove | Runs `svall uninstall` on the machine, once it has checked the ssh destination reaches the machine the registry names, with `--force-fleet` for each fleet the `fleet` step found naming it as their gateway. That passes only those fleets' gateway records, so the machine still refuses, and the step fails with its reason, for anything else uninstalling would strand: another Mac's fleet records, a record left by a fleet that no longer names it, a fleet it runs for its gateway, or an open handover. Its fleets, their files and the gateway's records stay there. With `--forget` it is skipped and the machine is left untouched. | Another failure names the exit and what `svall uninstall` said: `ssh <destination>` and run it to see what stops it. A refusal: on each other Mac whose fleet it names, bring that fleet home with `svall handover local` and run `svall host remove <host> --forget`; then `ssh <destination>`, run `svall uninstall --force`, and `svall host remove <host> --forget` here. `svall host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
 | `authority` | enable | Checks the ssh destination reaches the machine the registry names, then creates the gateway's record naming this Mac as the owner, or finds it there already. | A record held by another machine: `svall handover status`. An unreadable one: see `authority_corrupt`. Another machine at the destination: as for `master`. |
 
 ### Doctor checks
