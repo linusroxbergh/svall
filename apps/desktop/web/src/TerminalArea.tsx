@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
 import { openSecondTerminal, reviveCharacter } from './actions.js';
 import { app, deps } from './boot.js';
-import { holdsTerminals } from './handover.js';
+import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
@@ -22,6 +22,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const veiled = useApp(isVeiled);
   // the fleet is between machines: its terminals were rested at the source and reopen where it lands
   const resting = useApp((s) => holdsTerminals(s.handover));
+  const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
   const ref = useRef<HTMLDivElement>(null);
@@ -72,7 +73,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   }, [key, opacity, resting, veiled]);
 
   if (!c) return null;
-  if (resting) return <div className="revive" data-testid="terminal-held">Resting for the handover…</div>;
+  if (resting) return <div className="revive" data-testid="terminal-held">{restingSays}</div>;
   if (error) {
     return (
       <div className="revive" data-testid="terminal-error">

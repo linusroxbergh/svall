@@ -693,6 +693,17 @@ export function transferPace(run: HandoverRun): { rate: number; leftMs: number; 
   return { rate, leftMs, text: `${formatBytes(Math.round(rate))}/s, ${leftText(leftMs)}` };
 }
 
+/** What a terminal the handover rested says: the step it is at, how far the copy is, or that it waits for an answer. */
+export function restingLine(run: HandoverRun | undefined): string {
+  const head = 'Resting for the handover';
+  if (!run) return `${head}…`;
+  if (decisionPending(run)) return `${head}: it waits for you in Handover.`;
+  const at = live(run) ? sectionStates(run).find((s) => s.state === 'active') : undefined;
+  if (!at) return `${head}: Handover says where it stands.`;
+  const t = transferTotals(run.rows);
+  return `${head}: ${at.label}${at.id === 'transfer' && t.totalBytes ? `, ${Math.floor((t.bytes / t.totalBytes) * 100)}%` : ''}…`;
+}
+
 /** How the resume went for every character the freeze rested: agents resume from transcripts, shells reopen as they are opened. */
 export function resumeTally(run: HandoverRun): { resumed: number; failed: number; shells: number } {
   const rested = run.rows.filter((r) => r.section === 'rest').map((r) => r.id);

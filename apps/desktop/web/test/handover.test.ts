@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
   actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  blockerSide, goOn, restPlan, rowText, sectionStates, shortPath, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, restingLine, restPlan, rowText, sectionStates, shortPath, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 import { chr } from './fixtures.js';
 
@@ -136,6 +136,14 @@ describe('the handover a sheet follows', () => {
     expect(transferPace(run)?.text).toBe('83.3 KB/s, about 12 min left');
     // a run read back, with no time of its own, is never paced
     expect(transferPace(play([...through('transfer'), root(10_000_000), root(40_000_000)]))).toBeUndefined();
+  });
+
+  it('says where a handover stands on a terminal it rested', () => {
+    expect(restingLine(play(through('freeze')))).toBe('Resting for the handover: Resting characters…');
+    const moving = play([...through('transfer'), entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes: 25, totalBytes: 100 })]);
+    expect(restingLine(moving)).toBe('Resting for the handover: Transferring files and sessions, 25%…');
+    const asks = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'transfer', blockers: [{ code: 'destination_diverged', message: 'changed' }] } }]);
+    expect(restingLine(asks)).toBe('Resting for the handover: it waits for you in Handover.');
   });
 
   it('shows progress in bytes', () => {
