@@ -16,6 +16,12 @@ enum FleetDaemon {
     }
 
     private static var lastStart = Date.distantPast
+    private static let held = NSLock()
+    // false once a quit stops the fleet; read off the main thread
+    private static var startsWanted = true
+
+    /// A quit is stopping the fleet: a start already on its way leaves the daemon unstarted.
+    static func holdStarts() { held.withLock { startsWanted = false } }
 
     /// Starts the daemon, loading its job first when launchd has not, or has the label from another plist (a test fleet's,
     /// another copy of Svall's); a running one of ours is left be. At most every 10 s, as launchd itself spaces restarts,
@@ -38,6 +44,7 @@ enum FleetDaemon {
                     }
                 }
             }
+            guard held.withLock({ startsWanted }) else { return }
             run("/bin/launchctl", ["kickstart", job])
         }
     }
