@@ -735,6 +735,16 @@ describe('host doctor', () => {
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
   });
 
+  it('keeps a check that could not reach the machine as failed, so host list never shows an older ready', async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.save();
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    await expect(hostCommands(() => true, () => config).parseAsync(['doctor', 'trift'], { from: 'user' })).rejects.toThrow();
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 1, warned: 0 } });
+  });
+
   it('names the remote user, not the machine, when the companion reports no linger of its own', async () => {
     ssh.reply(['doctor', '--json'], { stdout: doctorJson() });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });

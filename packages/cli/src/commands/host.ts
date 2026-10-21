@@ -104,9 +104,10 @@ export function lastChecks(dir: string): Record<string, LastCheck> {
   try { return z.record(z.string(), LastCheck).parse(JSON.parse(fs.readFileSync(checksFile(dir), 'utf8'))); } catch { return {}; }
 }
 
-function recordCheck(dir: string, id: MachineId, report: HostReport): void {
-  const count = (status: string) => report.checks.filter((c) => c.status === status).length;
-  const check: LastCheck = { at: Date.now(), failed: count('fail'), warned: count('warn'), ...(report.release && { release: report.release }) };
+// a check that could not reach the machine is one that failed
+function recordCheck(dir: string, id: MachineId, report: HostReport | undefined): void {
+  const count = (status: string) => report?.checks.filter((c) => c.status === status).length ?? 0;
+  const check: LastCheck = { at: Date.now(), failed: report ? count('fail') : 1, warned: count('warn'), ...(report?.release && { release: report.release }) };
   writeJsonAtomic(checksFile(dir), { ...lastChecks(dir), [id]: check });
 }
 
@@ -169,8 +170,11 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .description('what the machine answers about itself, and what only this controller can check')
     .argument('<name>', 'the machine in the registry')
     .action(async (name: string) => {
-      const report = await doctorHost(name, realDeps(() => { /* a diagnosis prints a table, not steps */ }, dir()));
       const entry = MachineRegistry.load(dir()).get(name);
+      const report = await doctorHost(name, realDeps(() => { /* a diagnosis prints a table, not steps */ }, dir())).catch((e: unknown) => {
+        if (entry) recordCheck(dir(), entry.id, undefined);
+        throw e;
+      });
       if (entry) recordCheck(dir(), entry.id, report);
       const gateway = entry?.record.gateway ?? false;
       printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks), doctorVerdict(report.checks, { name, gateway })].join('\n'));
