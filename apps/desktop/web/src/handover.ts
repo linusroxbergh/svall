@@ -50,6 +50,8 @@ export type HandoverRun = {
   goingOn?: boolean;
   // the sheet asked where the handover stands, and nothing has answered yet
   checking?: boolean;
+  // the run it asked about, which a status that finds nothing open hands back
+  stopped?: HandoverRun;
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -133,7 +135,7 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
   // the controller goes on from a decision only once it is answered; a daemon's relayed row can trail the decision
   // a line after the status the sheet asked for is the run that status found, which need not go where the start did
   const next: HandoverRun = {
-    ...run, checking: undefined, ...(run.checking && { to: undefined }), transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }),
+    ...run, checking: undefined, ...(run.checking && { to: undefined, stopped: undefined }), transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }),
   };
   switch (e.event) {
     case 'handover.preflight':

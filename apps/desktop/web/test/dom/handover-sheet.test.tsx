@@ -329,11 +329,20 @@ test('a resume the sheet started by itself that finds nothing safe has the statu
 test('a start refused with nothing safe keeps its error when the status it reads finds nothing open', () => {
   const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
-  const refused: HandoverEvent = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error: 'ssh: connect to host trift port 22: Connection refused', safe: [] } };
-  say(refused);
+  const nothingOpen: HandoverEvent = { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } };
+  // the launcher refuses on stdout alone, so the events file still holds the run before it
+  say({ event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error: 'the handover helper exited before it listened; ~/.svall/controller/helper.log says why', safe: [], stop: 'unexpected' } });
   act(() => store.getState().handoverExit(1));
   expect(attaches(send)).toBe(1);
-  act(() => store.getState().handoverReplay([refused, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } }]));
+  act(() => store.getState().handoverReplay([...finished({ id: 'c0', ok: true }), nothingOpen]));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Stopped at Checks: the handover helper exited before it listened; ~/.svall/controller/helper.log says why');
+  expect(attaches(send)).toBe(1);
+  // one the helper wrote down comes back from the events file the same
+  act(() => store.getState().handoverFollow('trift'));
+  const refused: HandoverEvent = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error: 'ssh: connect to host trift port 22: Connection refused', safe: [], stop: 'unexpected' } };
+  say(refused);
+  act(() => store.getState().handoverExit(1));
+  act(() => store.getState().handoverReplay([refused, nothingOpen]));
   expect(screen.getByTestId('handover-headline').textContent).toBe('Stopped at Checks: ssh: connect to host trift port 22: Connection refused');
   // a run that stopped with a way on, which something since has closed, offers none of it
   act(() => store.getState().handoverReplay([{ event: 'handover.result', data: { status: 'interrupted', transactionId: TX, phase: 'transfer', error: 'ssh to trift closed', safe: ['resume', 'abort'] } },

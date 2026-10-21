@@ -1,7 +1,7 @@
 import type { HandoverChoices } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { ConnectionState, HostArgs, HostOp, HostStep } from '../bridge.js';
-import { applyEvent, endFollow, followRun, goOn, needsUser, readable, verdictOf, type HandoverEvent, type HandoverRun } from '../handover.js';
+import { applyEvent, endFollow, followRun, goOn, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
 import { applyStep, beginRun, endRun, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
@@ -66,7 +66,9 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   handoverFollow: (to, choices) => set({ handover: followRun(to, choices) }),
   handoverGoOn: () => set((s) => (s.handover ? { handover: goOn(s.handover) } : {})),
   // the status may find a live helper, whose lines then start from nothing, as a follow's do; a resume the sheet started stays its own
-  handoverCheck: () => set((s) => (s.handover ? { handover: { ...followRun(s.handover.to), checking: true, ...(s.handover.goingOn && { goingOn: true }) } } : {})),
+  handoverCheck: () => set((s) => (s.handover
+    ? { handover: { ...followRun(s.handover.to), checking: true, ...(s.handover.goingOn && { goingOn: true }), stopped: s.handover } }
+    : {})),
   handoverEvent: (e) => set((s) => {
     if (!readable(e)) return {};
     const handover = applyEvent(s.handover ?? followRun(), e);
@@ -76,9 +78,12 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   // folded in one step, so no line of a finished run holds or closes a terminal on its way to the status
   handoverReplay: (events) => set((s) => {
     const rebuilt = events.reduce(applyEvent, followRun(s.handover?.to));
-    // a status the sheet asked for after the checks stopped a start is about another handover, which need not go where the start did
-    const handover = {
-      ...rebuilt, following: false, ...(s.handover?.checking && verdictOf(rebuilt) && { to: undefined }), ...(s.handover?.checking && s.handover.goingOn && { goingOn: true }),
+    const asked = s.handover?.checking ? s.handover : undefined;
+    const nothingOpen = rebuilt.status?.standing === 'none' && !rebuilt.status.safe.length;
+    // with nothing open the run the sheet asked about stands, which the events file lacks when the launcher refused;
+    // otherwise the status found another handover, which need not go where that run did
+    const handover = asked?.stopped && nothingOpen ? { ...asked.stopped, following: false, status: rebuilt.status } : {
+      ...rebuilt, following: false, ...(asked?.goingOn && { goingOn: true }), ...(asked && { to: undefined }),
     };
     return { handover, handoverOpen: s.handoverOpen || (!!handover.status && needsUser(handover.status)) };
   }),
