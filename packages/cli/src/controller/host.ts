@@ -240,10 +240,10 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
       const login = await call(a.loginArgs);
       if (login.code === 0 && a.loggedIn(login.stdout)) {
-        const check = o.report.checks.find((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
-        if (!check) return { value: undefined, detail: `${version}, logged in` };
-        const at = check.detail.lastIndexOf(': ');
-        return todo(`${version}, logged in; the ${check.name} check there says ${check.detail}`, at < 0 ? check.detail : check.detail.slice(at + 2));
+        const checks = o.report.checks.filter((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
+        if (!checks.length) return { value: undefined, detail: `${version}, logged in` };
+        const how = (detail: string) => { const at = detail.lastIndexOf(': '); return at < 0 ? detail : detail.slice(at + 2); };
+        return todo(`${version}, logged in; ${checks.map((c) => `the ${c.name} check there says ${c.detail}`).join('; ')}`, checks.map((c) => how(c.detail)).join('; and '));
       }
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);
     });

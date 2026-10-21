@@ -75,7 +75,8 @@ Both run the same steps and show each as it finishes:
 4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
-   Svall's hooks in place (for OpenCode, Svall's plugin), as the machine's own `svall doctor` finds them.
+   Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's own
+   `svall doctor` finds them.
 6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.

@@ -309,6 +309,21 @@ describe('host add', () => {
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok' });
   });
 
+  it('names every Codex check that warns there, untrusted hooks and a blocked sandbox alike', async () => {
+    const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
+    const blocked = 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex character asks before each one: sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted }, { name: 'codex sandbox', status: 'warn', detail: blocked }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('codex').at(-1)).toMatchObject({
+      status: 'warn',
+      detail: `codex-cli 0.156.1, logged in; the codex hooks check there says ${untrusted}; the codex sandbox check there says ${blocked}`,
+      action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
+    });
+  });
+
   it('writes the registry record under the machine id the companion reports', async () => {
     healthy();
     const d = await daemon();
