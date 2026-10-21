@@ -464,6 +464,34 @@ describe('a record a recovery relays', () => {
     }
   });
 
+  // the line `svall fleet recover` writes in the fleet home before it tells this daemon to run the fleet alone
+  const audit = (home: string, after: object, at = new Date()): void => {
+    fs.mkdirSync(path.join(home, 'controller'), { recursive: true });
+    fs.appendFileSync(path.join(home, 'controller', 'recoveries.ndjson'), `${JSON.stringify({ at: at.toISOString(), fleetId, gatewayMachineId: null, before: null, after })}\n`);
+  };
+
+  it('runs the fleet alone only on the audit fleet recover wrote of that very record in the last ten minutes, and changes nothing without one', async () => {
+    const named: Authority = { get: async () => { throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'); } };
+    const wrong: [string, (home: string) => void][] = [
+      ['none', () => {}],
+      ['another generation', (home) => audit(home, { ...relayed, generation: 8 })],
+      ['another owner', (home) => audit(home, { ...relayed, ownerMachineId: other })],
+      ['through a gateway', (home) => fs.appendFileSync(path.join(home, 'controller', 'recoveries.ndjson'), `${JSON.stringify({ at: new Date().toISOString(), fleetId, gatewayMachineId: third, before: null, after: relayed })}\n`)],
+      ['stale', (home) => audit(home, relayed, new Date(Date.now() - 11 * 60_000))],
+    ];
+    for (const [what, arrange] of wrong) {
+      const b = boot({ record: { generation: 4, ownerMachineId: other }, named });
+      fs.mkdirSync(path.join(b.home, 'controller'), { recursive: true });
+      arrange(b.home);
+      await expect(b.handover.relay({ record: relayed }), what).rejects.toMatchObject({ code: 'invalid_params', message: expect.stringContaining('svall fleet recover') });
+      expect(b.ownership.record(), what).toMatchObject({ generation: 4, ownerMachineId: other });
+      expect(b.log, what).toEqual([]);
+    }
+    const b = boot({ record: { generation: 4, ownerMachineId: other }, named });
+    audit(b.home, relayed, new Date(Date.now() - 9 * 60_000));
+    expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
+  });
+
   it('runs the fleet alone on a record that names no gateway once the gateway fleet.json names does not answer, letting go the handover it supersedes and dropping that gateway', async () => {
     const unanswered = [
       new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'),
@@ -475,6 +503,7 @@ describe('a record a recovery relays', () => {
       const named: Authority = { get: async () => { throw failure; } };
       const b = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination(), named, gateway: { get: async () => { throw new Error('another gateway was asked'); } } });
       await enter(b);
+      audit(b.home, relayed);
       expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, superseded: 'tx-1', ownership: { generation: 9, ownerMachineId: me, frozen: false } });
       expect(b.asked).toEqual([]);
       expect(b.handover.journalState()).toEqual({ kind: 'none' });

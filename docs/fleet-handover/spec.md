@@ -231,6 +231,13 @@ gateway is permanently lost, recovery requires `svall fleet recover --force-owne
 presents the generations and risks before writing a new authority; it is never automatic, and it
 writes only once a person at a terminal outside any fleet's agents and tmux panes types the fleet id.
 
+A daemon cannot tell a person from any holder of the fleet token, so it guards what a recovery hands
+it by what the record does. A record relayed through a gateway that does not answer is taken only when
+it names another owner, letting this machine go. A record that names no gateway, to run the fleet here
+alone, is taken only while the gateway `fleet.json` names does not answer and the fleet home's
+`controller/recoveries.ndjson` holds the command's audit of exactly that record, written in the last
+ten minutes.
+
 On app or CLI launch, the controller opens the local direct connection without asking the gateway
 when the local cached owner record names this machine, carries no freeze, surrender or transaction
 but the committed one that brought the fleet here, no handover journal is open here, and the cached

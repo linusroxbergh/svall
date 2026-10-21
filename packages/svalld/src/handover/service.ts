@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   handoverError,
   type AgentAdapter, type Event, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result, type SystemInfo,
@@ -33,6 +35,22 @@ export type HandoverDeps = {
 
 // the failures in which no gateway answered, as against one that answered with a refusal
 const UNANSWERED = new Set(['disconnected', 'timeout']);
+
+// how long the audit `svall fleet recover` writes vouches for the record it then hands this daemon
+const AUDIT_MS = 10 * 60_000;
+
+/** Whether the fleet home holds the audit of `record` run alone, with no gateway, written in the last ten minutes. */
+function audited(home: string, record: OwnerRecord, now: number): boolean {
+  let text: string;
+  try { text = fs.readFileSync(path.join(home, 'controller', 'recoveries.ndjson'), 'utf8'); } catch { return false; }
+  return text.split('\n').some((line) => {
+    let a: { at?: unknown; gatewayMachineId?: unknown; after?: Partial<OwnerRecord> };
+    try { a = JSON.parse(line); } catch { return false; }
+    const at = typeof a.at === 'string' ? Date.parse(a.at) : NaN;
+    return a.gatewayMachineId === null && a.after?.fleetId === record.fleetId && a.after.generation === record.generation
+      && a.after.ownerMachineId === record.ownerMachineId && Math.abs(now - at) <= AUDIT_MS;
+  });
+}
 
 // after this the fleet has moved, and nothing on either machine may take it back
 const COMMITTED = new Set<HandoverPhase>(['commit', 'activate', 'complete']);
@@ -106,7 +124,7 @@ export class HandoverService {
    * relayed record stands in only when that gateway cannot be asked, and then only to make this machine let the fleet
    * go, since any holder of the fleet token can relay one. The gateway is renamed once its record is taken.
    * A record that names no gateway is this machine's to run alone, taken only while the gateway fleet.json names does
-   * not answer, and once taken, fleet.json names none.
+   * not answer and the fleet home holds that command's audit of it, and once taken, fleet.json names none.
    */
   async relay(p: { record: OwnerRecord; gatewayMachineId?: MachineId }): Promise<Result<'ownership.adopt'>> {
     let record = p.record;
@@ -119,6 +137,10 @@ export class HandoverService {
         // a registry with no route to the gateway leaves it as unasked as one that does not answer
         (e instanceof AuthorityFailure && (UNANSWERED.has(e.code) || e.data?.unrouted) ? undefined : `failed as no gateway out of reach does (${e instanceof Error ? e.message : String(e)})`));
       if (said) throw Object.assign(new Error(`the gateway this fleet names ${said}, so it is not known lost and this machine does not run the fleet alone`), { code: 'invalid_params' });
+    }
+    // no daemon can tell a person from a token holder, so it runs the fleet alone only on what the terminal-gated command wrote
+    if (!p.gatewayMachineId && !audited(this.deps.source.paths.home, record, Date.now())) {
+      throw Object.assign(new Error('this machine runs the fleet alone only on a record svall fleet recover audited here in the last ten minutes'), { code: 'invalid_params' });
     }
     const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;
     let answered = false;
