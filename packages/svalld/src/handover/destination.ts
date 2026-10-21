@@ -848,7 +848,8 @@ export class DestinationHandover {
    * Watches a terminal counted up at a prompt until its session starts, or, for an agent that starts none until its
    * first turn, until the folder it was `asked` to trust is trusted, the fleet leaving what it carries alone meanwhile.
    * One whose agent leaves the pane first is left dormant with that session and an error saying `then`, or, once that
-   * folder is trusted and so the agent left at some later prompt, saying to answer that one. It looks less often as it
+   * folder is trusted and so the agent left at some later prompt, saying to answer that one; one that starts a session
+   * under another id is left dormant with the session it carries. It looks less often as it
    * goes, and leaves the terminal to the fleet once the handover completes or an hour has passed.
    */
   private async watch(
@@ -870,6 +871,14 @@ export class DestinationHandover {
         const slot = s.term === 2 ? c?.second : c;
         // a later handover's rest answers for it from then on
         if (heard || slot?.restedBy !== tx || !this.open(tx) || this.clock.now() >= until) return;
+        const other = slot.agent && slot.agent.sessionId !== agent.sessionId ? slot.agent.sessionId : undefined;
+        if (other) {
+          await this.lay(s, carried, true);
+          const error = `${which} resumed ${agent.kind} session ${agent.sessionId}, but ${agent.kind} started a new session (${other}) in its place, so it is dormant again with ${agent.sessionId}; revive it to see`;
+          this.d.log.error(`handover ${tx}: ${error}`);
+          this.recordSlot(tx, { ...s, ok: false, sessionId: agent.sessionId, error });
+          return;
+        }
         const answered = !!asked && (!adapter.trusts || (!!home && adapter.trusts(home, asked)));
         if (answered && !adapter.sessionStartOnResume) return;
         let look: Look;

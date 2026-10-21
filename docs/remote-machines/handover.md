@@ -197,7 +197,7 @@ On the other machine:
 - A terminal counts as up only once it starts the session it carries. Claude Code and OpenCode report that session
   as they resume; one that starts another session, or none within a minute, is closed and stays dormant with its own.
   One waiting to trust its folder or to accept Bypass Permissions mode stays open, and its row says which answer goes
-  on. Codex reports nothing until its first turn, so it counts once its prompt shows, or else once it has held its
+  on; if it then starts another session, it is closed the same way. Codex reports nothing until its first turn, so it counts once its prompt shows, or else once it has held its
   terminal for 3 s, which its row then says.
 - A terminal that does not come up stays dormant with its session, and its card and row say why, as do
   `svall status` and `svall char list` (`resume failed: <why>`). Retry it from the row, or open it like any dormant

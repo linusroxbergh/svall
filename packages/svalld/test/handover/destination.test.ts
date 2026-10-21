@@ -1551,6 +1551,32 @@ describe('destination activate', () => {
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
+  it('lays a Claude watched at its trust prompt dormant again with its carried session once it starts a session under another id', async () => {
+    const bo = `claude --effort 'high' --resume ${SID}`;
+    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const d = daemon(s);
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    d.crew.silent.add('c_bo');
+    const NEW = '99999999-9999-4999-8999-999999999999';
+
+    const { r } = await activateBy(d);
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    // answered, it starts another session, which the fleet takes into the terminal
+    s.store.update((st) => { st.characters.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    d.crew.started('c_bo', undefined, NEW);
+    await d.clock.advance(5000);
+
+    expect(d.crew.log).toContain('kill c_bo');
+    const c = s.store.state.characters.c_bo;
+    expect(c).toMatchObject({
+      agent: { sessionId: SID }, revive: { command: bo },
+      resumeError: `bo's terminal resumed claude session ${SID}, but claude started a new session (${NEW}) in its place, so it is dormant again with ${SID}; revive it to see`,
+    });
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
+    expect(d.crew.carried('c_bo')).toBe(false);
+  });
+
   it('looks at a Claude waiting at its trust prompt less and less often, down to once a minute, and leaves it to the fleet once the handover completes', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
