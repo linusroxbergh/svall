@@ -300,7 +300,7 @@ test('Machines says when the list could not be read, and offers to read it again
   expect(sent).toEqual([{ type: 'host.list' }]);
 });
 
-test('remote machines is a fleet switch the shell writes to fleet.json, says what it shows, and stays on while the fleet names a gateway', () => {
+test('remote machines is a fleet switch svall writes to fleet.json, says what it shows and that it moves with the fleet, and is left alone while the fleet names a gateway or runs elsewhere', () => {
   store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: false });
   render(<SettingsCard />);
   show('fleet');
@@ -313,10 +313,18 @@ test('remote machines is a fleet switch the shell writes to fleet.json, says wha
   act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true }));
   expect(screen.getByTestId('set-handover').getAttribute('aria-checked')).toBe('true');
   expect(screen.getByTestId('settings-tab-machines')).toBeTruthy();
+  expect(screen.getByTestId('set-handover').closest('.row')?.textContent).toContain("kept in this fleet's fleet.json, so it moves with the fleet");
   const link = screen.getByRole('link', { name: 'Setting up a Linux machine' });
   fireEvent.click(link);
   expect(sent).toContainEqual({ type: 'openUrl', url: 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md' });
 
   act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' }));
   expect((screen.getByTestId('set-handover') as HTMLButtonElement).disabled).toBe(true);
+  // a fleet that runs on another machine is set where it runs
+  act(() => {
+    store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+    store.getState().setConnectionState({ state: 'online', owner: 'trift' });
+  });
+  expect((screen.getByTestId('set-handover') as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByTestId('set-handover').title).toBe('The fleet runs on trift, which holds its setting');
 });

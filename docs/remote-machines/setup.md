@@ -45,8 +45,9 @@ that holds it (`/Volumes/work`) must exist there first, owned by the account.
 Everything for another machine in the app waits on one setting per fleet: Settings → The fleet → **remote machines
 (experimental)**. Turned on, Settings gains a **Machines** section, the sidebar's foot a **Handover** button, and each
 character's card a **keep on this machine** switch, without reopening the app. It stays on while the fleet names a
-gateway. The switch writes `"handover": { "enabled": true }` into the fleet's `fleet.json`, keeping the other keys; set by
-hand there, it takes effect when the app opens again.
+gateway, and is set where the fleet runs. The switch runs `svall handover on` (or `off`), which writes
+`"handover": { "enabled": true }` into the fleet's `fleet.json`, keeping the other keys, so the setting moves with the
+fleet; set by hand there, it takes effect when the app opens again.
 
 The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
 

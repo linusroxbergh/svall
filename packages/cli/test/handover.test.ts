@@ -1282,6 +1282,39 @@ describe('svall handover --detach', () => {
   });
 });
 
+describe('svall handover on and off', () => {
+  const turn = async (h: Harness, word: 'on' | 'off'): Promise<void> => {
+    const cmd = handoverCommand({ target: () => ({ name: 'private', home: h.home, managed: true }), profile: () => undefined, json: () => false, deps: () => h.deps });
+    cmd.exitOverride();
+    await cmd.parseAsync([word], { from: 'user' });
+  };
+  const config = (h: Harness): unknown => JSON.parse(fs.readFileSync(path.join(h.home, 'fleet.json'), 'utf8'));
+
+  it('sets handover.enabled in fleet.json with every other key kept, and keeps it on while the fleet names a gateway', async () => {
+    const h = harness({ gateway: false });
+    const file = path.join(h.home, 'fleet.json');
+    fs.writeFileSync(file, JSON.stringify({ id: FLEET, name: 'work', handover: { excludeDefaults: false } }));
+    fs.chmodSync(file, 0o600);
+    await turn(h, 'on');
+    expect(config(h)).toEqual({ id: FLEET, name: 'work', handover: { excludeDefaults: false, enabled: true } });
+    expect(mode(file)).toBe(0o600);
+    await turn(h, 'off');
+    expect(config(h)).toEqual({ id: FLEET, name: 'work', handover: { excludeDefaults: false, enabled: false } });
+
+    const gated = harness();
+    fs.writeFileSync(path.join(gated.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: TRIFT, handover: { enabled: true } }));
+    await expect(turn(gated, 'off')).rejects.toThrow(/names a gateway/);
+    expect(config(gated)).toEqual({ id: FLEET, gatewayMachineId: TRIFT, handover: { enabled: true } });
+  });
+
+  it('refuses a fleet.json that is not a fleet config, and leaves it as it was', async () => {
+    const h = harness();
+    fs.writeFileSync(path.join(h.home, 'fleet.json'), '{ not json');
+    await expect(turn(h, 'on')).rejects.toThrow(/invalid config/);
+    expect(fs.readFileSync(path.join(h.home, 'fleet.json'), 'utf8')).toBe('{ not json');
+  });
+});
+
 describe('svall handover arguments', () => {
   const parse = async (h: Harness, ...argv: string[]): Promise<{ job?: Job; code?: number }> => {
     let job: Job | undefined;

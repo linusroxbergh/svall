@@ -127,6 +127,23 @@ final class HandoverTests: XCTestCase {
                        ["handover", "local", "--json", "--detach"])
     }
 
+    func testTheSwitchRunsSvallHandoverOnOrOffAndSaysWhyNot() throws {
+        let argv = NSTemporaryDirectory() + "svall-switch-\(UUID().uuidString)"
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: argv) }
+        let svall = try fakeHelper(prints: [], then: """
+        printf '%s\\n' "$*" >> '\(argv)'
+        case "$*" in *off*) echo 'svall: this fleet names a gateway, so handover stays on' >&2; exit 1 ;; esac
+        """)
+        var said: [String?] = []
+        for on in [true, false] {
+            let done = expectation(description: "handover \(on ? "on" : "off")")
+            let child = HandoverSwitch.turn(on, executable: svall, profile: "work") { said.append($0); done.fulfill() }
+            withExtendedLifetime(child) { wait(for: [done], timeout: 10) }
+        }
+        XCTAssertEqual(try String(contentsOfFile: argv, encoding: .utf8), "-p work handover on\n-p work handover off\n")
+        XCTAssertEqual(said, [nil, "svall: this fleet names a gateway, so handover stays on"])
+    }
+
     func testThePageAsksForAHandoverByTheFormsItMayUse() throws {
         let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
         guard case .handoverStart(let to, let choices, let check) = try decode(#"{"type":"handover.start","to":"studio","choices":{"interruptAfterMs":0,"archiveRoots":["r_0a1b"]}}"#) else {
@@ -139,6 +156,10 @@ final class HandoverTests: XCTestCase {
             return XCTFail("handover.start did not decode")
         }
         XCTAssertEqual(checking, true)
+        guard case .handoverEnable(let on) = try decode(#"{"type":"handover.enable","on":true}"#) else {
+            return XCTFail("handover.enable did not decode")
+        }
+        XCTAssertTrue(on)
         guard case .handoverChoose(let chosen) = try decode(#"{"type":"handover.choose","choices":{"terminateShells":true}}"#) else {
             return XCTFail("handover.choose did not decode")
         }

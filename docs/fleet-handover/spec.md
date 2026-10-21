@@ -782,7 +782,8 @@ Choosing a destination runs the checks alone (`svall handover <machine> --check`
 what moves and which characters stop and how, and nothing is rested until **Move**, which runs the
 checks again and goes on. Settings → Machines lists every machine in the registry with the fleets it
 is the gateway of and its last check, and runs `svall host …` on it. The fleet's **remote machines**
-switch sets `handover.enabled`; it stays on while the fleet names a gateway.
+switch runs `svall handover on|off`, which sets `handover.enabled`; it stays on while the fleet names a
+gateway.
 
 Before commit the sheet offers Abort. After commit it resumes by itself once, offers Retry if that
 activation fails, and never offers an unsafe rollback. Closing the app does not cancel the
@@ -814,6 +815,7 @@ svall handover <host> --archive <root>
 svall handover <host> --carry-unused
 svall handover <host> --detach
 svall handover attach
+svall handover on|off
 svall handover --forget
 svall fleet recover --force-owner <machine> [--gateway <machine>]
 ```

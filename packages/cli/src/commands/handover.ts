@@ -4,6 +4,7 @@ import type net from 'node:net';
 import readline from 'node:readline';
 import { Command, Option as Flag } from 'commander';
 import { FleetConfig, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
+import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { resolvePaths } from '@svall/svalld/paths';
 import { profileOf } from '@svall/svalld/profile';
 import type { Handover } from '../controller/handover.js';
@@ -582,6 +583,15 @@ function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
   return { kind: 'start', to: machine as string, choices, ...(f.check && { check: true as const }) };
 }
 
+/** Sets handover.enabled in fleet.json, the rest of its handover settings kept; a fleet that names a gateway keeps it on. */
+export function setHandoverEnabled(fleetHome: string, enabled: boolean): void {
+  const paths = resolvePaths(fleetHome);
+  const { gatewayMachineId } = readFleetConfig(paths);
+  if (!enabled && gatewayMachineId) throw new Error('this fleet names a gateway, so handover stays on; `svall host remove` that machine first');
+  const raw = JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')) as { handover?: object };
+  patchFleetConfig(paths.fleetConfig, { handover: { ...raw.handover, enabled } });
+}
+
 export function handoverCommand(o: {
   target(): Target; profile(): string | undefined; json(): boolean; deps?(): CliDeps;
   run?(job: Job, c: Ctx): Promise<Ran>;
@@ -626,5 +636,12 @@ export function handoverCommand(o: {
     });
   cmd.command('status').description('where the handover stands and what is safe, changing nothing').action(async () => { guard(); exit(await runStatus(ctx())); });
   cmd.command('attach').description('follow the handover running here, and steer it from stdin').action(async () => { guard(); exit(await runAttach(ctx())); });
+  for (const on of [true, false]) {
+    cmd.command(on ? 'on' : 'off').description(`turn ${on ? 'on' : 'off'} the app's controls for other machines: this fleet's handover.enabled`).action(() => {
+      const c = ctx();
+      setHandoverEnabled(c.fleetHome, on);
+      c.deps.stdout.write(`handover is ${on ? 'on' : 'off'} for this fleet\n`);
+    });
+  }
   return cmd;
 }

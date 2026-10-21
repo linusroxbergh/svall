@@ -17,6 +17,7 @@ final class ShellRouter {
     // `svall host list` for the Machines pane, and whether it was asked for again while it ran
     private var listing: LineChild?
     private var listAgain = false
+    private var switching: LineChild?
     // the handover helper the page follows; absent in a build with no svall beside it
     private var handover: HandoverSession?
     private let awake = KeepAwake()
@@ -329,8 +330,7 @@ final class ShellRouter {
         case .hostList:
             listMachines()
         case .handoverEnable(let on):
-            do { try SvallHome.setHandoverEnabled(on) } catch { bridge.send(.notice(text: "Remote machines could not be turned \(on ? "on" : "off"): \(error)")) }
-            sendShellInfo()
+            turnHandover(on)
         case .handoverStart(let to, let choices, let check):
             guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile, check: check ?? false) else {
                 return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices svall handover takes"))
@@ -461,6 +461,18 @@ final class ShellRouter {
             listing = nil
             bridge.send(.hostMachines(machines: [], error: "\(error)"))
         }
+    }
+
+    private func turnHandover(_ on: Bool) {
+        guard switching == nil else { return }
+        let said = { [weak self] (error: String?) in
+            guard let self else { return }
+            switching = nil
+            if let error { bridge.send(.notice(text: "Remote machines could not be turned \(on ? "on" : "off"): \(error)")) }
+            sendShellInfo()
+        }
+        guard let executable = ControllerProcess.locate() else { return said("this build has no svall beside it") }
+        switching = HandoverSwitch.turn(on, executable: executable, profile: SvallHome.profile, done: said)
     }
 
     // `svall host enable`, from the page or a terminal, can name a gateway for a fleet whose window went without a helper
