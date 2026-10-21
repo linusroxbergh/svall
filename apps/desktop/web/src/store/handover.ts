@@ -34,7 +34,7 @@ export type HandoverActions = {
   handoverFollow(to?: string, choices?: HandoverChoices): void;
   // a resume the sheet starts by itself, keeping what the run it goes on from showed
   handoverGoOn(): void;
-  // the sheet has asked where a handover the checks found open stands
+  // the sheet has asked where a handover stands
   handoverCheck(): void;
   handoverEvent(e: HandoverEvent): void;
   // the last run as the events file kept it, and the status after it: read back at once, never followed
@@ -65,7 +65,8 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   toggleHandover: (open) => set((s) => ({ handoverOpen: open ?? !s.handoverOpen })),
   handoverFollow: (to, choices) => set({ handover: followRun(to, choices) }),
   handoverGoOn: () => set((s) => (s.handover ? { handover: goOn(s.handover) } : {})),
-  handoverCheck: () => set((s) => (s.handover ? { handover: { ...s.handover, checking: true } } : {})),
+  // the status may find a live helper, whose lines then start from nothing, as a follow's do
+  handoverCheck: () => set((s) => (s.handover ? { handover: { ...followRun(s.handover.to), checking: true } } : {})),
   handoverEvent: (e) => set((s) => {
     if (!readable(e)) return {};
     const handover = applyEvent(s.handover ?? followRun(), e);

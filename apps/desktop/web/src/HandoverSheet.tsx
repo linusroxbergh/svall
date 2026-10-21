@@ -3,7 +3,7 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
-  accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf,
+  accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf,
   entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, staysInSight,
   transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
@@ -281,7 +281,6 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
   const r = run.result;
   if (r?.status === 'complete' || run.status?.standing === 'moved') return { tone: 'done' };
   if (decisionPending(run)) return { tone: 'wait' };
-  if (checking(run)) return { tone: 'stop', sub: 'Asking where that handover stands…' };
   if (r?.status === 'blocked' && !verdictOf(run)) {
     const open = r.blockers.filter((b) => choiceFor(b) && !chosen(run.choices, b)).length;
     const fix = r.blockers.filter((b) => !choiceFor(b)).length;

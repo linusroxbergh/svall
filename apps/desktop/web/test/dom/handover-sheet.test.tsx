@@ -318,7 +318,9 @@ test('a handover already open at the checks is looked up, and the sheet offers w
   act(() => store.getState().handoverExit(1));
   expect(attaches(send)).toBe(1);
   expect(screen.queryByTestId('handover-try-again')).toBeNull();
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('Asking where that handover stands…');
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Asking where the handover stands…');
+  // nothing starts while the status is on its way, which the shell would not run beside it
+  expect(screen.queryByTestId('handover-again')).toBeNull();
 
   // what the shell reads back: the run that blocked, then where the open one stands
   act(() => store.getState().handoverReplay([open,
@@ -355,12 +357,35 @@ test('a generation the gateway does not share, with nothing open, keeps its bloc
   expect(attaches(send)).toBe(1);
 });
 
-test('a status the sheet could not read leaves the blockers and the new start', () => {
+test('a status the sheet could not read says so and offers to look again, without asking again by itself', () => {
+  const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
   say(openAtChecks('transaction_open', `this fleet is already in handover ${TX} (preparing); resume or abort it first`));
-  act(() => { store.getState().handoverExit(1); store.getState().handoverExit(1, 'svall: the gateway did not answer'); });
-  expect(screen.getByTestId('handover-try-again')).toBeTruthy();
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('1 thing to fix outside the sheet first. Move to trift runs the checks again.');
+  act(() => store.getState().handoverExit(1));
+  // status printed nothing and said nothing on stderr
+  act(() => store.getState().handoverExit(1));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('The helper did not run: the helper exited with code 1');
+  expect(screen.getByTestId('handover-follow').textContent).toBe('Check again');
+  expect(attaches(send)).toBe(1);
+});
+
+test('a status that finds a live helper follows it, from its first event', () => {
+  render(<HandoverSheet />);
+  say(openAtChecks('transaction_open', `this fleet is already in handover ${TX} (transfer); resume or abort it first`));
+  act(() => store.getState().handoverExit(1));
+  say(...changed('begin', 'freeze', 'transfer'));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Transferring files and sessions…');
+  expect(screen.getByTestId('handover-section-transfer').dataset.state).toBe('active');
+  expect(screen.queryByTestId('handover-blocker-transaction_open')).toBeNull();
+  expect(screen.getByTestId('handover-abort')).toBeTruthy();
+});
+
+test('a resume the sheet started by itself that could not start offers Retry, not a new move', () => {
+  render(<HandoverSheet />);
+  act(() => store.getState().handoverReplay([committed('committed')]));
+  act(() => store.getState().handoverExit(1, 'svall: the handover helper exited before it listened'));
+  expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
+  expect(screen.queryByTestId('handover-again')).toBeNull();
 });
 
 test('where nothing is safe or the gateway has moved on, the sheet names the commands that go on from a terminal, as code to copy', () => {

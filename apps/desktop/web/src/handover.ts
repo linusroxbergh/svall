@@ -47,7 +47,7 @@ export type HandoverRun = {
   awaitingOwner: boolean;
   // the sheet resumed it by itself, since past the commit nothing else was safe
   goingOn?: boolean;
-  // the sheet asked where a handover the checks found open stands
+  // the sheet asked where the handover stands, and nothing has answered yet
   checking?: boolean;
 };
 
@@ -123,7 +123,8 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
   if (!readable(e)) return run;
   const tx = 'transactionId' in e.data && typeof e.data.transactionId === 'string' ? e.data.transactionId : undefined;
   // the controller goes on from a decision only once it is answered; a daemon's relayed row can trail the decision
-  const next: HandoverRun = { ...run, transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }) };
+  // a line after the status the sheet asked for is the run that status found
+  const next: HandoverRun = { ...run, checking: undefined, transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }) };
   switch (e.event) {
     case 'handover.preflight':
       return { ...next, preflight: { summary: e.data.summary, blockers: scrubbed(e.data.blockers), warnings: scrubbed(e.data.warnings), ...(e.data.names && { names: e.data.names }) } };
@@ -154,7 +155,7 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
 
 /** The helper process the page was watching has ended. */
 export const endFollow = (run: HandoverRun, code: number, error?: string): HandoverRun =>
-  ({ ...run, following: false, ...(error ? { error: withoutTokens(error) } : code !== 0 && !run.result && !run.status ? { error: `the helper exited with code ${code}` } : {}) });
+  ({ ...run, following: false, checking: undefined, ...(error ? { error: withoutTokens(error) } : code !== 0 && !run.result && !run.status ? { error: `the helper exited with code ${code}` } : {}) });
 
 const live = (run: HandoverRun): boolean => run.following && !run.result && !run.status;
 
@@ -181,9 +182,6 @@ export function asksStatus(run: HandoverRun | undefined): boolean {
 
 /** A blocker the status has answered, whose message names the ids and generations the sheet leaves out. */
 export const answered = (run: HandoverRun, b: Blocker): boolean => !!run.status && OPEN_ELSEWHERE.includes(b.code);
-
-/** The status the sheet asked for is on its way. */
-export const checking = (run: HandoverRun): boolean => !!run.checking && !run.status && !run.error;
 
 /** The status the sheet goes by: one that finds nothing open leaves a run the checks stopped to its blockers. */
 export const verdictOf = (run: HandoverRun): Verdict | undefined =>
@@ -228,7 +226,7 @@ export function isCommitted(run: HandoverRun): boolean {
   const r = run.result;
   if (r?.status === 'complete' || r?.status === 'detached') return true;
   if (r?.status === 'interrupted') return step(r.phase) >= step('commit') && !r.safe.includes('abort') && !commitUnknown(r);
-  return !!run.phase && step(run.phase) >= step('activate');
+  return run.goingOn || (!!run.phase && step(run.phase) >= step('activate'));
 }
 
 /**
@@ -240,7 +238,7 @@ export function destinationOf(run: HandoverRun, owner: string | undefined, gatew
   if (run.to || !gateway || (owner !== 'local' && owner !== gateway)) return run.to;
   const s = run.status?.standing;
   if (s === 'unknown' || s === 'superseded') return undefined;
-  const landed = s === 'none' ? run.result?.status === 'complete' : isCommitted(run) || !!run.goingOn;
+  const landed = s === 'none' ? run.result?.status === 'complete' : isCommitted(run);
   return landed ? owner : owner === 'local' ? gateway : 'local';
 }
 
@@ -307,11 +305,12 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
   const r = run.result;
   switch (r?.status) {
     case 'complete': return { ...none, resume: r.pending?.length ? 'Retry' : undefined, start: !r.pending?.length };
-    case 'blocked': return { ...none, tryAgain: !!run.to && !checking(run), start: true };
+    case 'blocked': return { ...none, tryAgain: !!run.to, start: true };
     case 'aborted': case 'none': return { ...none, start: true };
     case 'interrupted': return { ...none, resume: resume(r.safe), abort: r.safe.includes('abort'), follow: r.safe.length === 0 };
     case 'detached': return { ...none, follow: true };
-    default: return { ...none, start: true, follow: !!run.error };
+    // a resume the sheet started by itself that never said how it went is still the only way on
+    default: return run.goingOn ? { ...none, resume: 'Retry' } : { ...none, start: true, follow: !!run.error };
   }
 }
 
@@ -660,6 +659,7 @@ export function headline(run: HandoverRun, destination: string): string {
   }
   if (!live(run)) return '';
   if (run.aborting) return 'Stopping: the fleet goes back to where it was…';
+  if (run.checking) return 'Asking where the handover stands…';
   if (!run.phase && !run.preflight) return run.to ? 'Starting…' : 'Looking for a handover…';
   const now = run.goingOn ? `The fleet is ${destination}'s now, so the sheet resumes it there by itself…` : `${label(SECTIONS[sectionAt(run.phase ?? 'begin')].id)}…`;
   return run.retry ? `${now} asking again (attempt ${run.retry.attempt}): ${run.retry.error}` : now;
