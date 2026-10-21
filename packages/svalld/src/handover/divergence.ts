@@ -44,36 +44,42 @@ function roles(paths: Iterable<string>, gitDir: boolean): (p: string) => { role:
     const rest = outer === undefined ? undefined : outer === '' ? d : d.slice(outer.length + 1);
     if (d === '.git' || d.endsWith('/.git') || (rest !== undefined && /^(worktrees\/[^/]+|modules\/.+)$/.test(rest))) dirs.push(d);
   }
-  return (p) => {
+  const read = (p: string): { role: Role; dir?: string } => {
     if (isNoise(p)) return { role: 'volatile' };
     const inner = innermost(p);
     if (inner === undefined) return { role: 'bytes' };
     const rest = inner === '' ? p : p.slice(inner.length + 1);
     return { role: VOLATILE.test(rest) ? 'volatile' : rest === 'index' ? 'index' : REF.test(rest) ? 'ref' : 'bytes', dir: inner };
   };
+  const known = new Map<string, { role: Role; dir?: string }>();
+  return (p) => {
+    let r = known.get(p);
+    if (!r) known.set(p, r = read(p));
+    return r;
+  };
 }
 
 const under = (dir: string, p: string): string => (dir === '' ? p : `${dir}/${p}`);
 
 /**
- * Each ref of the Git directory `dir` by what it resolves to, a loose ref ahead of a packed one; undefined when one of
- * its ref files does not say what it holds.
+ * Each Git directory's refs by what they resolve to, a loose ref ahead of a packed one; null for a directory one of
+ * whose ref files does not say what it holds. A directory with no ref file here is not listed.
  */
-function resolveRefs(files: Iterable<TransferFile>, dir: string, role: ReturnType<typeof roles>): Map<string, string> | undefined {
-  const loose = new Map<string, string>();
-  const packed = new Map<string, string>();
+function resolveRefs(files: Iterable<TransferFile>, role: ReturnType<typeof roles>): Map<string, Map<string, string> | null> {
+  const dirs = new Map<string, { loose: Map<string, string>; packed: Map<string, string> } | null>();
   for (const f of files) {
     const r = role(f.path);
-    if (r.role !== 'ref' || r.dir !== dir) continue;
+    if (r.role !== 'ref') continue;
+    const dir = r.dir!;
+    let refs = dirs.get(dir);
+    if (refs === null) continue;
+    if (!refs) dirs.set(dir, refs = { loose: new Map(), packed: new Map() });
     const name = dir === '' ? f.path : f.path.slice(dir.length + 1);
-    if (f.type !== 'file') return undefined;
-    if (name === 'packed-refs') {
-      if (!f.refs) return undefined;
-      for (const [ref, value] of Object.entries(f.refs)) packed.set(ref, value);
-    } else if (f.ref === undefined) return undefined;
-    else loose.set(name, f.ref);
+    if (f.type !== 'file' || (name === 'packed-refs' ? !f.refs : f.ref === undefined)) dirs.set(dir, null);
+    else if (name === 'packed-refs') for (const [ref, value] of Object.entries(f.refs!)) refs.packed.set(ref, value);
+    else refs.loose.set(name, f.ref!);
   }
-  return new Map([...packed, ...loose]);
+  return new Map([...dirs].map(([dir, refs]) => [dir, refs && new Map([...refs.packed, ...refs.loose])]));
 }
 
 const list = (paths: string[], limit: number): PathList => ({ count: paths.length, preview: paths.sort(byCodeUnit).slice(0, limit) });
@@ -88,11 +94,12 @@ export function compareReplica(accepted: readonly (readonly TransferFile[])[], f
   const here = new Set(found.map((f) => f.path));
   const role = roles([...here, ...versions.flatMap((v) => [...v.keys()])], gitDir);
   // a Git directory every side says the value of each ref in is read ref by ref; any other, file by file
+  const mine = resolveRefs(found, role);
+  const theirs = accepted.map((files) => resolveRefs(files, role));
   const byRef = new Map<string, { here: Map<string, string>; versions: Map<string, string>[] }>();
-  for (const dir of new Set([...here, ...versions.flatMap((v) => [...v.keys()])].flatMap((p) => { const r = role(p); return r.role === 'ref' ? [r.dir!] : []; }))) {
-    const mine = resolveRefs(found, dir, role);
-    const theirs = accepted.map((files) => resolveRefs(files, dir, role));
-    if (mine && theirs.every(Boolean)) byRef.set(dir, { here: mine, versions: theirs as Map<string, string>[] });
+  for (const dir of new Set([mine, ...theirs].flatMap((m) => [...m.keys()]))) {
+    const sides = [mine, ...theirs].map((m) => (m.has(dir) ? m.get(dir)! : new Map<string, string>()));
+    if (sides.every(Boolean)) byRef.set(dir, { here: sides[0]!, versions: sides.slice(1) as Map<string, string>[] });
   }
   const skipped = (p: string): boolean => { const r = role(p); return r.role === 'volatile' || (r.role === 'ref' && byRef.has(r.dir!)); };
   const added: string[] = [];
