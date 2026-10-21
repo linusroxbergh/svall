@@ -167,7 +167,8 @@ Svall never writes an agent's own settings to answer these for you.
 
 On a Linux machine whose AppArmor keeps Codex from sandboxing the commands it runs, as Ubuntu 24.04 does until its
 profile for bwrap is installed, a Codex character asks before each command. The checks warn about it
-(`codex_sandbox`) and name the commands that install the profile.
+(`codex_sandbox`) and name the commands that install the profile, or, when `codex sandbox -- true` fails there for
+another reason, what it said.
 
 ## What restarts
 

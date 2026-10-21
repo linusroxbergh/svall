@@ -436,6 +436,11 @@ describe('what each blocker and warning is explained with', () => {
       .toMatch(/on studio/);
   });
 
+  it("covers both reasons Codex there cannot sandbox its commands, AppArmor's and any other", () => {
+    const other = blockerHint({ code: 'codex_sandbox', message: 'On studio, codex sandbox -- true fails there (bwrap: no such file): run it there to see why' }, ctx);
+    expect(other).toBe('Codex on studio cannot sandbox the commands it runs, so it asks before each one until you fix what the message names there.');
+  });
+
   it('points a kept character at its toggle', () => {
     expect(blockerHint({ code: 'character_pinned', message: 'Ada is kept on this machine', entity: { kind: 'character', id: 'c1' } }, ctx))
       .toMatch(/Keep on this machine.*Ada/);

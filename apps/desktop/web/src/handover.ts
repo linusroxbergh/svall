@@ -521,7 +521,7 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'codex_trust':
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
     case 'codex_sandbox':
-      return `Codex on ${ctx.destination} asks before each command it runs until you run the fix the message names there.`;
+      return `Codex on ${ctx.destination} cannot sandbox the commands it runs, so it asks before each one until you fix what the message names there.`;
     case 'claude_trust':
       return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I trust this folder".`;
     case 'claude_bypass':
