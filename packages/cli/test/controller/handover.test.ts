@@ -306,6 +306,24 @@ describe('preflight', () => {
     }
   });
 
+  it('blocks two roots apart here that a destination folding case would put in one folder', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      const app = r.manifest.roots.find((x) => x.id === 'r_app')!;
+      app.files = app.files.filter((f) => f.path !== 'Readme.md');
+      r.manifest.roots.push({ id: 'r_App', kind: 'context', entry: 'dir', path: at('App'), files: [file('b.txt')] });
+      return r;
+    }) as never;
+    expect((await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'path_collision')).toEqual([]);
+    w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };
+    expect((await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'path_collision')).toEqual([{
+      code: 'path_collision', entity: { kind: 'root', id: 'r_app' },
+      message: `${at('App')} and ${at('app')} differ only by case or Unicode normalization, which trift does not tell apart, so they would land in one folder there`,
+    }]);
+  });
+
   it('asks the destination nothing about roots once the source refused a manifest too large to answer with its file lists', async () => {
     for (const code of ['too_many_files', 'manifest_too_large'] as const) {
       const w = new World();

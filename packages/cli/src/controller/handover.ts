@@ -11,7 +11,7 @@ import { canonicalDigest } from '@svall/svalld/handover/hash';
 import { settle } from '@svall/svalld/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
 import { holds } from '@svall/svalld/handover/portable-path';
-import { caseCollisions } from '@svall/svalld/handover/probe';
+import { caseCollisions, rootCollisions } from '@svall/svalld/handover/probe';
 import { ARCHIVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
 import { resumeFolders } from '@svall/svalld/handover/sessions/registry';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -997,6 +997,13 @@ export class Handover {
           message: `${root.path} would hold names that differ only by case or Unicode normalization, which ${where} does not tell apart: ${shown}${clash.length > 3 ? `; and ${clash.length - 3} more` : ''}`,
         });
       }
+    }
+    for (const { a, b, inside } of rootCollisions(carried.filter((c) => folding(c.path)).map((c) => c.path))) {
+      blockers.push({
+        code: 'path_collision', entity: { kind: 'root', id: carried.find((c) => c.path === b)!.id },
+        message: inside ? `${b} would land inside ${a} on ${where}, which does not tell case or Unicode normalization apart`
+          : `${a} and ${b} differ only by case or Unicode normalization, which ${where} does not tell apart, so they would land in one folder there`,
+      });
     }
     const asks = (f: ResumeFolder) => (r.untrusted ?? []).some((u) => u.kind === f.kind && u.cwd === f.cwd);
     const warns = (f: ResumeFolder) => !!f.bypass && (r.bypassWarned ?? []).some((u) => u.kind === f.kind && u.cwd === f.cwd);
