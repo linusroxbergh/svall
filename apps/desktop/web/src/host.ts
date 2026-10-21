@@ -120,15 +120,15 @@ export const sshDestination = (value: string): boolean => SSH.test(value);
 const who = (owner: string) => (owner === 'local' ? 'this machine' : owner);
 
 export type BannerAction = 'reconnect' | 'upgrade';
-/** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. */
-export type Banner = { text: string; detail?: string; machine?: string; actions: BannerAction[] };
+/** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. `ssh`: the destination to run ssh to once. */
+export type Banner = { text: string; detail?: string; machine?: string; ssh?: string; actions: BannerAction[] };
 
 /** `machine`: the one that did not answer. */
-function errorText(c: ConnectionState, machine: string): Pick<Banner, 'text'> {
+function errorText(c: ConnectionState, machine: string): Pick<Banner, 'text' | 'ssh'> {
   const name = machine === 'local' ? 'this Mac' : machine;
   switch (c.kind) {
-    case 'auth': return { text: `${name} did not let ssh log in.` };
-    case 'host_key': return { text: `ssh does not trust ${name}'s host key.` };
+    case 'auth': return { text: `${name} did not let ssh log in.`, ssh: c.destination ?? machine };
+    case 'host_key': return { text: `ssh does not trust ${name}'s host key.`, ssh: c.destination ?? machine };
     case 'version': return { text: `${name} is on another version of Svall.` };
     case 'unreachable': return { text: `${name} is not reachable; trying again.` };
     case 'daemon_down': return { text: machine === 'local' ? 'svalld is not running on this Mac; trying again.' : `${name}'s svalld is not running; trying again.` };
@@ -149,9 +149,11 @@ export function connectionBanner(c: ConnectionState | undefined, o: { handoverEn
     case 'owner-changed': return { text: `the fleet moved to ${who(c.owner)}; reconnecting…`, actions: [] };
     case 'error': {
       const machine = c.machine ?? c.owner;
-      const { text } = errorText(c, machine);
+      const { text, ssh } = errorText(c, machine);
       const actions: BannerAction[] = [...(c.kind === 'version' && remote(machine) ? ['upgrade' as const] : []), 'reconnect'];
-      return { text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine !== 'local' ? { machine } : {}), actions };
+      return {
+        text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine !== 'local' ? { machine } : {}), ...(ssh ? { ssh } : {}), actions,
+      };
     }
   }
 }

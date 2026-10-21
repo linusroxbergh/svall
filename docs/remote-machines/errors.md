@@ -239,8 +239,8 @@ banner, or for the window to be reopened.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |
-| `auth` | ssh was refused: no key it accepts, or a password it cannot ask for. | `ssh <host>` in a terminal; add the key to the agent. |
-| `host_key` | The host key is unknown or has changed. | `ssh <host>` once and check the key. A changed key needs a look before you trust it. |
+| `auth` | ssh was refused: no key it accepts, or a password it cannot ask for. | `ssh <host>` once in Terminal; add the key to the agent; then **Reconnect**. |
+| `host_key` | The host key is unknown or has changed. | `ssh <host>` once in Terminal and check the key, then **Reconnect**. A changed key needs a look before you trust it. |
 | `unreachable` | The machine did not answer, refused the connection, or the link dropped. | Check Tailscale and the machine; it reconnects by itself. |
 | `version` | `svall` is missing there, cannot run, or speaks another protocol. | `svall host upgrade <host>`. |
 | `daemon_down` | The fleet's daemon is not running there. | `svall host doctor <host>`; on Linux, `systemctl --user status svall-svalld@<fleet>`. |

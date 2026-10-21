@@ -189,6 +189,15 @@ describe('the connection state the shell reports', () => {
       .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: ['reconnect'] });
   });
 
+  it('sends a refused login or host key to one ssh in Terminal, then Reconnect', () => {
+    expect(connectionBanner(err({ owner: 'studio', kind: 'auth', machine: 'studio', destination: 'linus@studio' }), on))
+      .toMatchObject({ text: 'studio did not let ssh log in.', ssh: 'linus@studio', actions: ['reconnect'] });
+    expect(connectionBanner(err({ owner: 'local', kind: 'host_key', machine: 'gate', destination: 'linus@gate' }), on))
+      .toMatchObject({ text: "ssh does not trust gate's host key.", ssh: 'linus@gate', machine: 'gate' });
+    // a helper that names no destination is reached by the machine's name
+    expect(connectionBanner(err({ owner: 'studio', kind: 'auth' }), on)).toMatchObject({ ssh: 'studio' });
+  });
+
   it('reaches a fleet on this Mac only once it asks for handover, and offers the Machines panel only then', () => {
     const off = { handoverEnabled: false };
     expect(connectionBanner(undefined, on)).toBeUndefined();

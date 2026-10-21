@@ -33,12 +33,13 @@ const OUTDATED = () => (window.__svallVariant === 'release'
   ? 'Svall and svalld versions differ: quit and reopen Svall'
   : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
 
-/** The banner's sentence, what it offers, and what the helper said, folded. */
+/** The banner's sentence, the one ssh to run in Terminal, what it offers, and what the helper said, folded. */
 function BannerBody({ banner }: { banner: Banner }) {
   const name = banner.machine ?? '';
   return (
     <>
       {banner.text}
+      {banner.ssh && <> Run <code data-testid="connection-ssh">ssh {banner.ssh}</code> once in Terminal, then Reconnect.</>}
       {banner.actions.map((a) => {
         switch (a) {
           case 'upgrade': return <button key={a} className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;

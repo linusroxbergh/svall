@@ -211,6 +211,11 @@ test('the corner names the machine the fleet runs on, and the fleet stays on the
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.getByTestId(`tab-${c.id}`)).toBeVisible();
 
+  // a login ssh was refused names the one ssh to run in Terminal
+  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'auth', message: 'Permission denied (publickey)', machine: 'studio', destination: 'linus@studio' });
+  await expect(page.getByTestId('connection-banner')).toContainText('studio did not let ssh log in. Run ssh linus@studio once in Terminal, then Reconnect.');
+  await expect(page.getByTestId('connection-reconnect')).toBeVisible();
+
   await receive(page, { type: 'connection.state', state: 'connecting', owner: 'studio' });
   await expect(page.getByTestId('connection-banner')).toHaveText('connecting to studio…');
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
