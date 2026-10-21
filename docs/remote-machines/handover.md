@@ -104,7 +104,7 @@ listed with what to do about it.
 | | Every running process, its pid, its tmux window and its scrollback |
 
 Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `target/`, `.next/`, `.pytest_cache/`,
-`.ruff_cache/`, `.mypy_cache/` and `node_modules/.cache/`, and `*.tsbuildinfo` files, are left out by default, and each
+`.ruff_cache/` and `.mypy_cache/`, and `*.tsbuildinfo` files, are left out by default, and each
 machine keeps its own. `handover.exclude` in `fleet.json`
 adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A folder a terminal is in moves whole, so a
 shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in

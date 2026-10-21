@@ -36,7 +36,7 @@ export type Inventory = {
 
 // caches each machine builds for itself
 export const DEFAULT_EXCLUDES = [
-  'node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo', '.pytest_cache/', '.ruff_cache/', '.mypy_cache/', 'node_modules/.cache/',
+  'node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo', '.pytest_cache/', '.ruff_cache/', '.mypy_cache/',
 ] as const;
 
 // what an OS or an editor writes beside the work on its own: carried, as a repository may track it, never a change, and never deleted
