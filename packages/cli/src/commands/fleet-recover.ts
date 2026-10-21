@@ -203,13 +203,20 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   } catch (e) {
     return refuse(`${file} is not a fleet config: ${messageOf(e)}`);
   }
-  const gatewayId = fleet.gatewayMachineId;
-  if (!gatewayId) return refuse(`${file} names no gateway: no other machine can hold this fleet, so there is nothing to recover`);
   const owner = d.registry.get(o.forceOwner);
   if (!owner) return refuse(`no machine ${o.forceOwner} in the registry${d.registry.setAside()}`, ['svall host list names every machine this controller knows']);
+  const named = o.gateway === undefined ? undefined : d.registry.get(o.gateway);
+  if (o.gateway !== undefined && !named) return refuse(`no machine ${o.gateway} in the registry${d.registry.setAside()}`, ['svall host list names every machine this controller knows']);
+  // a fleet that names no gateway takes the one --gateway names, over whatever record that machine holds
+  const none = !fleet.gatewayMachineId;
+  const gatewayId = fleet.gatewayMachineId ?? named?.id;
+  if (!gatewayId) {
+    return refuse(`${file} names no gateway, so no other machine holds this fleet`, [
+      `to make a machine from the registry its gateway, writing over any record it holds: ${svall} fleet recover --force-owner ${o.forceOwner} --gateway <machine>`,
+    ]);
+  }
   const current = d.registry.get(gatewayId);
-  const replacement = o.gateway === undefined ? undefined : d.registry.get(o.gateway);
-  if (o.gateway !== undefined && !replacement) return refuse(`no machine ${o.gateway} in the registry${d.registry.setAside()}`, ['svall host list names every machine this controller knows']);
+  const replacement = none ? undefined : named;
   if (replacement?.id === gatewayId) return refuse(`${replacement.record.name} is already this fleet's gateway; leave out --gateway`);
 
   const [held, replaced, looked] = await Promise.all([
@@ -231,7 +238,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   const replaceStep = `if ${gatewayName} is gone for good, name a machine from the registry to take its place: ${svall} fleet recover --force-owner ${o.forceOwner} --gateway <machine>`;
   const local = d.registry.localId;
   // a lost gateway no machine is to replace leaves this machine to run the fleet alone, with no gateway
-  const alone = !replacement && held.state === 'unreachable' && owner.id === local;
+  const alone = !none && !replacement && held.state === 'unreachable' && owner.id === local;
   if (replacement) {
     const name = replacement.record.name;
     if (held.state !== 'unreachable' && held.state !== 'corrupt') refusal = [`${gatewayName} is not lost, since it answered (${describeHeld(held, nameOf)}): recover through it and leave out --gateway`, []];
@@ -242,6 +249,8 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     expected = held.record;
   } else if (held.state === 'absent') {
     expected = null;
+  } else if (none) {
+    refusal = [`${gatewayName} ${describeHeld(held, nameOf)}, so no record can be written there`, []];
   } else if (alone) {
     const here = machines.find((m) => m.machineId === local);
     const running = machines.filter((m) => m.machineId !== local && m.from === 'daemon' && m.ownership?.ownerMachineId === m.machineId && !m.ownership.frozen);
@@ -352,7 +361,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
 
   const situation = replacement
     ? `${gatewayName} ${describeHeld(held, nameOf)}; ${replacement.record.name} replaces it`
-    : `${gatewayName} held: ${describeHeld(held, nameOf)}`;
+    : `${none ? 'this fleet named no gateway, and ' : ''}${gatewayName} held: ${describeHeld(held, nameOf)}`;
   const reason = `svall fleet recover --force-owner ${owner.record.name}: ${situation}`;
   let forced: OwnerRecord;
   try {
@@ -380,9 +389,9 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     actions.push(`the record is written, and this machine's audit of it could not be: ${messageOf(e)}`);
   }
   // the controller finds the fleet's gateway here whether or not this machine's daemon answers
-  if (replacement) {
-    try { patchFleetConfig(file, { gatewayMachineId: replacement.id }); } catch (e) {
-      actions.push(`${file} could not be changed to name ${replacement.record.name} the gateway (${messageOf(e)}); set its gatewayMachineId to ${replacement.id}`);
+  if (replacement || none) {
+    try { patchFleetConfig(file, { gatewayMachineId: into.id }); } catch (e) {
+      actions.push(`${file} could not be changed to name ${into.record.name} the gateway (${messageOf(e)}); set its gatewayMachineId to ${into.id}`);
     }
   }
   rememberOwner(d.fleetHome, forced, d.now());

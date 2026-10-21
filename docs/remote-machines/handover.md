@@ -295,6 +295,12 @@ The lost machine never learns of the record. If it comes back still running the 
 you stop the fleet's daemon there (`systemctl --user stop svall-svalld@<fleet>`), and its copy of the work since the
 last handover stays on its disk.
 
+To make it the gateway again, `svall fleet recover --force-owner local --gateway <name>` writes a record naming this
+Mac over whatever record it holds, names it the gateway in `fleet.json`, and tells its daemon to let the fleet go;
+`svall host enable` refuses while its record names another owner. As a last resort, on that machine move its record
+`~/.local/share/svall/gateway/fleets/<fleet id>.json` aside and run `svall uninstall --force`, then `svall host add`
+and `svall host enable` it again from this Mac.
+
 ### A gateway set up again
 
 A gateway machine that was reinstalled, or whose account was made again, has lost its record of the fleet and comes

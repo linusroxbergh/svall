@@ -359,6 +359,41 @@ describe('fleet recover --force-owner', () => {
     await untouched(w, 'not_found');
   });
 
+  it('makes a machine the gateway of a fleet that names none, writing over whatever record it holds, and asks for one without --gateway', async () => {
+    const w = world();
+    fs.writeFileSync(w.paths.fleetConfig, JSON.stringify({ id: fleetId }));
+    w.daemons.set(w.mac, { ownership: ownerAt(w.mac, 6), adopted: [] });
+    const returned: OwnerRecord = { fleetId, generation: 4, ownerMachineId: TRIFT };
+    w.hold(TRIFT, returned);
+
+    expect(await w.run({ confirm: fleetId })).toBe(false);
+    expect(w.of('recover.result')[0]).toMatchObject({
+      result: 'refused', message: expect.stringMatching(/names no gateway/), actions: [expect.stringContaining('svall fleet recover --force-owner local --gateway <machine>')],
+    });
+    expect(await w.held(TRIFT)).toEqual(returned);
+
+    expect(await w.run({ gateway: 'trift', confirm: fleetId })).toBe(true);
+    const forced: OwnerRecord = { fleetId, generation: 7, ownerMachineId: w.mac };
+    expect(w.of('recover.observed').at(-1)!.plan).toEqual({ ownerMachineId: w.mac, owner: 'mac', generation: 7, gatewayMachineId: TRIFT, gateway: 'trift' });
+    expect(await w.held(TRIFT)).toEqual(forced);
+    expect(w.audit(TRIFT)).toEqual([expect.objectContaining({ before: returned, after: forced })]);
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId, gatewayMachineId: TRIFT });
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([{ record: forced, gatewayMachineId: TRIFT }]);
+    expect(w.of('recover.result').at(-1)).toMatchObject({ result: 'recovered' });
+  });
+
+  it('refuses to make a machine that does not answer the gateway of a fleet that names none', async () => {
+    const w = world();
+    fs.writeFileSync(w.paths.fleetConfig, JSON.stringify({ id: fleetId }));
+    w.daemons.set(w.mac, { ownership: ownerAt(w.mac, 6), adopted: [] });
+    w.down.add(TRIFT);
+    expect(await w.run({ gateway: 'trift', confirm: fleetId })).toBe(false);
+    expect(w.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/^trift did not answer: .*, so no record can be written there/), actions: [] });
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId });
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([]);
+    expect(fs.existsSync(w.localAudit)).toBe(false);
+  });
+
   it('names a replacement gateway in fleet.json through a link, keeping its mode', async () => {
     const w = world();
     w.hold(TRIFT, { fleetId, generation: 2, ownerMachineId: w.mac });
