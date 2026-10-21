@@ -31,7 +31,7 @@ export const TransactionRecord = z.object({
 export type TransactionRecord = z.infer<typeof TransactionRecord>;
 
 /** The version of the ownership records a machine writes and reads. */
-export const AUTHORITY_SCHEMA_VERSION = 1;
+export const AUTHORITY_SCHEMA_VERSION = 2;
 
 /** Which machine may run a fleet, at which generation. The gateway swaps it on generation and owner. */
 export const OwnerRecord = z.object({
