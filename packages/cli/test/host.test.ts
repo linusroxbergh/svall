@@ -1264,6 +1264,17 @@ describe('host remove', () => {
     expect(out.actions.join(' ')).toContain('trift.test');
   });
 
+  it('reports a far uninstall that failed for itself with its exit and what it said, not as a machine out of reach', async () => {
+    ssh.reply(['uninstall'], { stderr: 'svall: tmux refused to stop the fleet\n', code: 1 });
+    const registry = registered('trift.test');
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('actions');
+    const failed = step('uninstall').at(-1);
+    expect(failed).toMatchObject({ status: 'fail', detail: 'svall uninstall exited 1 on trift.test: svall: tmux refused to stop the fleet' });
+    expect(failed?.action).toContain('ssh trift.test, then svall uninstall');
+    expect(registry.get('trift')).toBeDefined();
+  });
+
   const fleetAt = (name: string, o: { gateway?: string; owner?: string } = {}): string => {
     const home = path.join(work, name);
     fs.mkdirSync(home, { recursive: true });
