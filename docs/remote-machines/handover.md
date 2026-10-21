@@ -345,8 +345,9 @@ svall host remove studio --forget
 ## When the Mac is lost
 
 A fleet the Linux machine runs goes on there, and `svall` in a terminal on it works as before. A new Mac cannot take
-the fleet in this version, since `svall host add` and `svall host enable` set up only a Linux machine. A fleet the
-lost Mac ran is gone with it, past the read-only copy the Linux machine holds from the last handover.
+the fleet in this version, since `svall host add` and `svall host enable` set up only a Linux machine. For a fleet the
+lost Mac ran, `svall fleet recover --force-owner local` in a terminal on the Linux machine runs it there from the copy
+it holds from the last handover; what was done on the Mac since is gone with it.
 
 ## Known limitations
 
