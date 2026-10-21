@@ -76,11 +76,22 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
 const scrubbed = (blockers: Blocker[]): Blocker[] => blockers.map((b) => ({ ...b, message: withoutTokens(b.message) }));
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-/** The controller's words without the ids and generations it names: an ownership record as a record, a transaction as the handover. */
+const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+/**
+ * The controller's words without the ids and generations it names: the shapes it writes in whole, a transaction as the
+ * handover, and any other id as a machine.
+ */
 const plain = (text: string): string => withoutTokens(text)
-  .replace(new RegExp(`\\b${UUID} at generation \\d+(?: in handover ${UUID} \\([^)]*\\))?`, 'gi'), 'a different record of the fleet')
+  .replace(ids('\\b(holds|with) UUID at generation \\d+(?: in handover UUID \\([^)]*\\))?'), '$1 a different record of the fleet')
+  .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
+  .replace(ids(' in handover UUID'), ' in another handover')
   .replace(/ at generation \d+/g, '')
-  .replace(new RegExp(`\\b${UUID}\\b`, 'gi'), 'the handover');
+  .replace(ids('(^|; )UUID\\b'), '$1the handover')
+  .replace(ids('\\bhandover UUID\\b'), 'the handover')
+  .replace(ids('\\b(record|commit|of|abort|whether|past) UUID\\b'), '$1 the handover')
+  .replace(ids('\\bmachine UUID\\b'), 'another machine')
+  .replace(ids('\\bthe gateway UUID\\b'), 'the gateway')
+  .replace(ids('\\bUUID\\b'), 'a machine');
 
 type Fields = Record<string, unknown>;
 const isObject = (v: unknown): v is Fields => typeof v === 'object' && v !== null && !Array.isArray(v);

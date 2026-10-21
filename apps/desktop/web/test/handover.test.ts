@@ -202,6 +202,13 @@ describe('what the sheet offers', () => {
     const asked = play([...through('verify'), changed('prepare'), changed('ready'),
       { event: 'handover.retry', data: { transactionId: tx, phase: 'ready', attempt: 2, error: `the gateway would not record ${id} ready: busy` } }]);
     expect(headline(asked, 'studio')).toBe('Verifying… asking again (attempt 2): the gateway would not record the handover ready: busy');
+    // whole shapes the daemons and the gateway write, and a machine named only by its id
+    const said = (error: string) => headline(stopped('commit', error), 'studio').replace('Stopped at Committing: ', '');
+    expect(said(`the gateway would not record ${id} ready: this fleet is at generation 5, not 4`)).toBe('the gateway would not record the handover ready: this fleet has moved on');
+    expect(said(`the gateway names ${mac} as this fleet's owner at generation 5; this machine stays frozen`)).toBe("the gateway names a machine as this fleet's owner; this machine stays frozen");
+    expect(said(`ssh ada@trift reaches machine ${mac}, not the gateway c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45`)).toBe('ssh ada@trift reaches another machine, not the gateway');
+    expect(said(`${id} is committed: the fleet belongs to ${mac} at generation 4, and only its activation can go on`))
+      .toBe('the handover is committed: the fleet belongs to a machine, and only its activation can go on');
   });
 
   it('names where a relaunched handover goes from where the fleet runs now: the other end before the commit, that end after it', () => {
