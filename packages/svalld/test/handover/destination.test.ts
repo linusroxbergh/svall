@@ -1244,19 +1244,22 @@ describe('destination activate', () => {
     expect((await activate(held)).code).toBe('authority_unreachable');
 
     d.gateway.fails = new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
-    for (const record of [
-      { ...held, fleetId: FleetId.parse(crypto.randomUUID()) },
-      { ...held, ownerMachineId: elsewhere },
-      { ...held, generation: 6 },
-      { ...held, transaction: { ...tx, id: 'tx-2' } },
-      { ...held, transaction: { ...tx, phase: 'ready-to-commit' as const } },
-      { ...held, transaction: { ...tx, toMachineId: elsewhere } },
-      { ...held, transaction: { ...tx, preparedDigest: 'd'.repeat(64) } },
-      { fleetId, generation: 5, ownerMachineId: trift },
-    ]) {
+    const mismatches: [OwnerRecord, string][] = [
+      [{ ...held, fleetId: FleetId.parse(crypto.randomUUID()) }, 'the record is for fleet'],
+      [{ ...held, ownerMachineId: elsewhere }, `names ${elsewhere} as this fleet's owner`],
+      [{ ...held, generation: 6 }, 'generation 6, not 5'],
+      [{ ...held, transaction: { ...tx, id: 'tx-2' } }, 'committed handover tx-2'],
+      [{ ...held, transaction: { ...tx, phase: 'ready-to-commit' as const } }, 'has not committed it'],
+      [{ ...held, transaction: { ...tx, toMachineId: elsewhere } }, `to ${elsewhere}`],
+      [{ ...held, transaction: { ...tx, preparedDigest: 'd'.repeat(64) } }, `prepared state ${'d'.repeat(64)}`],
+      [{ fleetId, generation: 5, ownerMachineId: trift }, `no record of handover ${TX} committing`],
+    ];
+    for (const [record, why] of mismatches) {
       const r = await activate(record);
-      expect(r.code, JSON.stringify(record)).toBe('authority_unreachable');
-      expect(r.message).toContain('ssh trift exited 255');
+      expect(r.code, why).toBe('authority_unreachable');
+      expect(r.message, why).toContain('ssh trift exited 255');
+      // what the commit the controller kept says otherwise
+      expect(r.message, why).toMatch(new RegExp(`the commit the controller kept does not stand in for it: .*${why.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     }
     expect((await refusal(d.handover.activate({ transactionId: TX, generation: 5 }))).code).toBe('authority_unreachable');
 

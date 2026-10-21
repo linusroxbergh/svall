@@ -72,7 +72,7 @@ export class AuthorityFailure extends Error {
 
 /**
  * Whether asking the gateway failed with no answer at all, as against a refusal it answered: out of reach or silent,
- * a socket here that nothing listens on, or a registry with no route to it.
+ * a socket here that nothing listens on, or a registry with no route to it, which leaves it as unasked as one away.
  */
 export const unanswered = (e: unknown): boolean => (e instanceof AuthorityFailure
   ? e.code === 'disconnected' || e.code === 'timeout' || e.data?.unrouted === true

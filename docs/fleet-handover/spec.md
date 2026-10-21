@@ -712,7 +712,9 @@ The controller executes these durable steps:
    journals the gateway's committed record before it asks for activation and sends it along; the
    destination takes it only while the gateway gives no answer at all, and only when it names this
    fleet at `g + 1`, the destination as owner and as target, this transaction committed and the
-   prepared digest the destination journaled.
+   prepared digest the destination journaled. The record is unsigned: the controller, which holds the
+   fleet token, vouches for it, and a refusal of it names the field that does not match. A registry
+   with no route to the gateway counts as no answer.
 8. **Complete.** Gateway clears the transaction while retaining owner and generation. Replica
    manifests are sealed at generation `g + 1`, and the source stops its fleet, tmux server
    included, so a later handover back starts it afresh.

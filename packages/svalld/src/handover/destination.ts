@@ -718,8 +718,11 @@ export class DestinationHandover {
     try {
       record = await this.ask();
     } catch (e) {
-      if (!held || !unanswered((e as Error).cause) || this.uncommitted(j, held, false)) throw e;
-      return held;
+      if (!held || !unanswered((e as Error).cause)) throw e;
+      const refused = this.uncommitted(j, held, false);
+      if (!refused) return held;
+      // still the gateway's to answer, and the controller's record says why it could not stand in
+      throw handoverError({ code: 'authority_unreachable', message: `${(e as Error).message}; the commit the controller kept does not stand in for it: ${refused.message}` });
     }
     const refused = this.uncommitted(j, record, true);
     if (refused) throw refused;
