@@ -285,8 +285,8 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
   gateway again, at the generation this Mac holds (see [A gateway set up again](#a-gateway-set-up-again)). This
   Mac's own journal of a handover is dropped with it.
 - With this Mac's daemon not running, the command writes `owner.json` and `fleet.json` itself and ends `incomplete`
-  until the daemon starts, unless a handover journal lies there, which only the daemon lets go: start it first
-  (`svall doctor` says why it is not running).
+  until the daemon starts, unless a handover journal lies there, which only the daemon lets go, even one it cannot
+  read: start it first (`svall doctor` says why it is not running), then run the command again.
 - It refuses while another machine answers that it runs the fleet, and this Mac's daemon refuses the record while
   the gateway answers it.
 - Every other machine that answers takes the record first and lets go any handover it holds. One that holds a

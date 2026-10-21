@@ -372,6 +372,40 @@ describe('fleet recover --force-owner', () => {
     expect(held.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/journal of handover tx9 lies here, which only this machine's daemon lets go: start it/) });
     expect(JSON.parse(fs.readFileSync(held.paths.owner, 'utf8'))).toEqual({ fleetId, generation: 3, ownerMachineId: TRIFT });
     expect(fs.existsSync(held.localAudit)).toBe(false);
+
+    // a journal beside an owner.json that cannot be read, or one that cannot itself be read, is still the daemon's to let go
+    for (const journal of [fs.readFileSync(held.paths.journal, 'utf8'), '{"role":']) {
+      const unread = world();
+      unread.down.add(TRIFT);
+      fs.writeFileSync(unread.paths.owner, '{"fleetId":');
+      fs.mkdirSync(unread.paths.handoverDir, { recursive: true });
+      fs.writeFileSync(unread.paths.journal, journal);
+      expect(await unread.run({ confirm: fleetId })).toBe(false);
+      expect(unread.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/a handover journal lies at .*journal\.json, which only this machine's daemon lets go: start it/) });
+      expect(fs.readFileSync(unread.paths.owner, 'utf8')).toBe('{"fleetId":');
+      expect(fs.existsSync(unread.localAudit)).toBe(false);
+    }
+  });
+
+  it('says the recovery is incomplete, not refused, when fleet.json cannot be changed after this machine took the record', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    const ro = tmp();
+    fs.writeFileSync(path.join(ro, 'fleet.json'), fs.readFileSync(w.paths.fleetConfig));
+    fs.rmSync(w.paths.fleetConfig);
+    fs.symlinkSync(path.join(ro, 'fleet.json'), w.paths.fleetConfig);
+    fs.chmodSync(ro, 0o500);
+    try {
+      expect(await w.run({ confirm: fleetId })).toBe(false);
+    } finally {
+      fs.chmodSync(ro, 0o700);
+    }
+    expect(w.daemons.get(w.mac)!.adopted).toHaveLength(1);
+    expect(w.of('recover.result')[0]).toMatchObject({
+      result: 'incomplete', message: expect.stringMatching(/mac took the record, and .*fleet\.json could not be changed to name no gateway/),
+      actions: [expect.stringMatching(/remove its gatewayMachineId/)],
+    });
   });
 
   it('refuses to run the fleet here alone while another machine answers that it runs it', async () => {

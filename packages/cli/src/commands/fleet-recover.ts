@@ -256,8 +256,11 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     const running = machines.filter((m) => m.machineId !== local && m.from === 'daemon' && m.ownership?.ownerMachineId === m.machineId && !m.ownership.frozen);
     if (running.length) {
       refusal = [`${running.map((m) => m.name).join(' and ')} answers that it runs this fleet, so the fleet is not lost with ${gatewayName}`, [`hand the fleet to this machine, or stop it on ${running.map((m) => m.name).join(' and ')}, then run this again`]];
-    } else if (here?.from !== 'daemon' && here?.ownership?.journal) {
-      refusal = [`this machine's daemon did not answer, and a journal of handover ${here.ownership.journal.transactionId} lies here, which only this machine's daemon lets go: start it (\`${svall} doctor\` says why it is not running), then run this again`, []];
+    } else if (here?.from !== 'daemon' && fs.existsSync(resolvePaths(d.fleetHome).journal)) {
+      // a journal is the daemon's to let go even where it, or the owner.json beside it, cannot be read
+      const tx = here?.ownership?.journal?.transactionId;
+      const lies = tx ? `a journal of handover ${tx} lies here` : `a handover journal lies at ${resolvePaths(d.fleetHome).journal}`;
+      refusal = [`this machine's daemon did not answer, and ${lies}, which only this machine's daemon lets go: start it (\`${svall} doctor\` says why it is not running; it moves a journal it cannot read aside), then run this again`, []];
     }
   } else if (held.state === 'unreachable') {
     refusal = [`the gateway ${gatewayName} did not answer: ${held.message}`, [
@@ -353,7 +356,9 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
       writeDurable(resolvePaths(d.fleetHome).owner, record, { mode: 0o600 });
     }
     try { patchFleetConfig(file, { gatewayMachineId: undefined }); } catch (e) {
-      return refuse(`${file} could not be changed to name no gateway (${messageOf(e)}); remove its gatewayMachineId, then run this again`);
+      const took = running ? `${owner.record.name} took the record` : `${resolvePaths(d.fleetHome).owner} names ${owner.record.name} at generation ${generation}`;
+      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `${took}, and ${file} could not be changed to name no gateway: ${messageOf(e)}`, actions: [`remove its gatewayMachineId, then run this again`] } });
+      return false;
     }
     rememberOwner(d.fleetHome, record, d.now());
     // the handover it journaled is the one the daemon let go, and no gateway is left to resume it through
