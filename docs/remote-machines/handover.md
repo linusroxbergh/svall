@@ -126,7 +126,9 @@ A handover carries Claude Code sessions from release 2.1.251 on, Codex sessions 
 from 2.0.22 on, with no upper limit: a Claude or Codex session's files are copied byte for byte to the same place on
 the other machine, so a newer release works as long as it keeps its sessions where it did. An OpenCode session travels
 as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
-character resumes. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
+character resumes. Svall's OpenCode plugin reports the session on OpenCode's command line as it loads, so an OpenCode
+that opens a fresh session in its place still counts as up; the checks confirm the import, which leaves that session
+there to resume. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
 with Svall's hooks, as the daemon finds it. The destination's release must also be at least the source's, since an
 older one may not read what the newer wrote; a newer one only warns. A login never moves; log in on each machine.
 

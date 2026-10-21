@@ -1521,6 +1521,42 @@ describe('destination activate', () => {
     expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
   });
 
+  async function opencodeAt() {
+    const s = await scene({ opencode: true });
+    const d = daemon(s, { cli: cliRunner(s.oc.trift) });
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    d.crew.silent.add('c_eve');
+    return { s, d };
+  }
+  const dormantEve = (s: Awaited<ReturnType<typeof opencodeAt>>['s'], error: string) => {
+    expect(s.store.state.characters.c_eve).toMatchObject({ agent: { sessionId: OC }, revive: { command: `opencode -s ${OC}` }, resumeError: error });
+    expect(s.store.state.characters.c_eve.tmux).toBeUndefined();
+  };
+
+  it('fails a resumed OpenCode that starts no session within the minute, and lays it dormant with its session', async () => {
+    const { s, d } = await opencodeAt();
+    const { r, at } = await activateBy(d);
+    expect(at).toBeGreaterThanOrEqual(60_000);
+    const eve = r.characters.find((c) => c.id === 'c_eve')!;
+    expect(eve).toMatchObject({ ok: false, error: `eve's terminal resumed opencode session ${OC}, but opencode did not start that session within 60 s and may be waiting at a prompt there, so it is dormant again with that session; revive it to see` });
+    dormantEve(s, eve.error!);
+  });
+
+  it('fails a resumed OpenCode that starts a session under another id, and lays it dormant with the session it carries', async () => {
+    const { s, d } = await opencodeAt();
+    const NEW = 'ses_9f9f9f9f9f9fZzZzZzZzZzZzZz';
+    const run = d.handover.activate({ transactionId: TX, generation: 5 });
+    await waitFor(() => !!d.crew.window('c_eve'));
+    s.store.update((st) => { st.characters.c_eve.agent = { kind: 'opencode', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    d.crew.started('c_eve', undefined, NEW);
+    let done = false;
+    void run.finally(() => { done = true; });
+    for (let i = 0; i < 4 && !done; i++) await d.clock.advance(500);
+    const eve = (await run).characters.find((c) => c.id === 'c_eve')!;
+    expect(eve).toMatchObject({ ok: false, error: `eve's terminal resumed opencode session ${OC}, but opencode started a new session (${NEW}) in its place, so it is dormant again with ${OC}; revive it to see` });
+    dormantEve(s, eve.error!);
+  });
+
   it("keeps watching a Claude counted up at its trust prompt, and lays it dormant again with its carried resume and an error once it exits there", async () => {
     const bo = `claude --effort 'high' --resume ${SID}`;
     const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
