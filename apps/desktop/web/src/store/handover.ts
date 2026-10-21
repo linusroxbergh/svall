@@ -82,7 +82,7 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
     const nothingOpen = rebuilt.status?.standing === 'none' && !rebuilt.status.safe.length;
     // with nothing open the run the sheet asked about stands, which the events file lacks when the launcher refused;
     // otherwise the status found another handover, which need not go where that run did
-    const handover = asked?.stopped && nothingOpen ? { ...asked.stopped, following: false, status: rebuilt.status } : {
+    const handover = asked?.stopped && nothingOpen ? { ...asked.stopped, following: false, status: rebuilt.status, checked: true } : {
       ...rebuilt, following: false, ...(asked?.goingOn && { goingOn: true }), ...(asked && { to: undefined }),
     };
     return { handover, handoverOpen: s.handoverOpen || (!!handover.status && needsUser(handover.status)) };

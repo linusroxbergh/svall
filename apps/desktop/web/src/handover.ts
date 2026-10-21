@@ -52,6 +52,8 @@ export type HandoverRun = {
   checking?: boolean;
   // the run it asked about, which a status that finds nothing open hands back
   stopped?: HandoverRun;
+  // the status is the sheet's own look at this run, which a status found by a later look is not
+  checked?: boolean;
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -209,11 +211,11 @@ export function asksStatus(run: HandoverRun | undefined): boolean {
 /** A blocker the status has answered, whose message names the ids and generations the sheet leaves out. */
 export const answered = (run: HandoverRun, b: Blocker): boolean => !!run.status && OPEN_ELSEWHERE.includes(b.code);
 
-/** The status the sheet goes by: one that finds nothing open leaves a run that stopped with no way on to its blockers or its error. */
+/** The status the sheet goes by: one it read itself and finds nothing open leaves a run that stopped with no way on to its blockers or its error. */
 export const verdictOf = (run: HandoverRun): Verdict | undefined => {
   const r = run.result;
   const stopped = r?.status === 'blocked' || (r?.status === 'interrupted' && !r.safe.length);
-  return run.status?.standing === 'none' && !run.status.safe.length && stopped ? undefined : run.status;
+  return run.checked && run.status?.standing === 'none' && !run.status.safe.length && stopped ? undefined : run.status;
 };
 
 /**

@@ -349,6 +349,12 @@ test('a start refused with nothing safe keeps its error when the status it reads
     { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: '' } }]));
   expect(screen.getByTestId('handover-headline').textContent).toBe('No handover of this fleet is open.');
   expect(screen.queryByTestId('handover-resume')).toBeNull();
+  // nor does one that stopped with nothing safe, which a recovery since has settled
+  act(() => store.getState().handoverReplay([{ event: 'handover.result', data: { status: 'interrupted', transactionId: TX, phase: 'commit', error: 'whether the handover committed is unknown', safe: [], stop: 'commit_unknown' } },
+    { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: '' } }]));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('No handover of this fleet is open.');
+  expect(screen.queryByTestId('handover-way-out')).toBeNull();
+  expect(screen.queryByTestId('handover-follow')).toBeNull();
 });
 
 const openAtChecks = (code: 'transaction_open' | 'generation_mismatch' | 'identity_mismatch', message: string): HandoverEvent =>
