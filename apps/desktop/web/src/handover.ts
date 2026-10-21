@@ -401,7 +401,7 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   const svall = ctx.svall ?? 'svall';
   switch (b.code) {
     case 'identity_mismatch':
-      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message. A machine set up again is added and made the gateway again, as "A gateway set up again" in handover.md says.';
+      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message. A machine set up again is added and made the gateway again, as "A gateway set up again" in Moving a fleet says.';
     case 'transaction_open':
       return 'Another handover of this fleet is still open: finish it with Resume or Abort, whichever its status says is safe, before a new one.';
     case 'incompatible_adapter':

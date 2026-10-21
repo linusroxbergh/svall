@@ -373,6 +373,8 @@ describe('what each blocker and warning is explained with', () => {
     const only = ['env_file', 'credential_file', 'platform_heuristic', 'symlink_dangling', 'remote_local'];
     const missing = HandoverIssueCode.options.filter((code) => !only.includes(code) && !blockerHint({ code, message: 'it is so' }, ctx));
     expect(missing).toEqual([]);
+    // a guide is named by its sections, not by its file
+    expect(HandoverIssueCode.options.filter((code) => /\.md\b/.test(blockerHint({ code, message: 'it is so' }, ctx) ?? ''))).toEqual([]);
   });
 
   it('says on which machine to fix what only that machine can', () => {

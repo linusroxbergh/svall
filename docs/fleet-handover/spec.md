@@ -777,9 +777,9 @@ configured gateway. The sheet has six user-facing sections backed by the transac
 5. Committing
 6. Resuming characters
 
-Before commit the sheet offers Abort. After commit it offers Retry for failed activation and never
-offers an unsafe rollback. Closing the app does not cancel the transaction; reopening reconstructs
-the sheet from journals.
+Before commit the sheet offers Abort. After commit it resumes by itself once, offers Retry if that
+activation fails, and never offers an unsafe rollback. Closing the app does not cancel the
+transaction; reopening reconstructs the sheet from journals and, after the commit, resumes by itself.
 
 On successful activation the app reconnects to the new owner and keeps its locally selected
 character, open card and pane layout. Those presentation choices are device-local. Another Mac sees
