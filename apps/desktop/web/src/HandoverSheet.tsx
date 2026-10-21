@@ -267,16 +267,17 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
   );
 }
 
-function Destinations({ owner, gateway }: { owner: string; gateway?: string }) {
+function Destinations({ owner, gateway, onChose }: { owner: string; gateway?: string; onChose(): void }) {
+  const chose = (to: string) => { onChose(); start(to, {}, true); };
   return (
     <div className="host-note" data-testid="handover-destinations">
       Move this fleet to
       <div className="acts">
         <button className="btn" data-testid="handover-to-local" disabled={owner === 'local'}
-          title={owner === 'local' ? 'The fleet runs on this Mac' : 'Bring the fleet back to this Mac'} onClick={() => start('local', {}, true)}>This Mac</button>
+          title={owner === 'local' ? 'The fleet runs on this Mac' : 'Bring the fleet back to this Mac'} onClick={() => chose('local')}>This Mac</button>
         {gateway && (
           <button className="btn" data-testid="handover-to-gateway" disabled={owner === gateway}
-            title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => start(gateway, {}, true)}>{gateway}</button>
+            title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => chose(gateway)}>{gateway}</button>
         )}
       </div>
       {!gateway && (
@@ -428,7 +429,7 @@ export function HandoverSheet() {
           {shown && to && <Route run={run} ctx={ctx} />}
         </div>
         <div className="ho-body">
-          {choosing && <Destinations owner={owner} gateway={gateway} />}
+          {choosing && <Destinations owner={owner} gateway={gateway} onChose={() => setPicking(false)} />}
           {!shown && (
             <div className="host-note" data-testid="handover-intro">
               A handover moves the whole fleet: its islands, characters, repositories and agent sessions. Agents resume from

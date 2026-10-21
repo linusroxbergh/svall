@@ -631,6 +631,14 @@ test('done, the footer says where the fleet runs with a Close, the route points 
   fireEvent.click(screen.getByTestId('handover-again'));
   expect(screen.getByTestId('handover-destinations')).toBeTruthy();
   expect(screen.queryByTestId('handover-footer')).toBeNull();
+  // the machine chosen there runs its checks in sight, and offers its Move
+  fireEvent.click(screen.getByTestId('handover-to-gateway'));
+  act(() => {
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'ready' } });
+    store.getState().handoverExit(0);
+  });
+  expect(screen.queryByTestId('handover-destinations')).toBeNull();
+  expect(screen.getByTestId('handover-try-again').textContent).toBe('Move to trift');
 });
 
 test('done with a character that did not resume, the tally and its row say so, and the row offers Retry and its card', () => {
