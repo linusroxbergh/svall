@@ -527,6 +527,22 @@ describe('transfer with a scripted rsync', () => {
     expect(rsync.real()).toHaveLength(3);
   });
 
+  it('compares content in a resume, which an edit of the same size within the same second would pass by', async () => {
+    const state = tmp();
+    const entry = await root({ source: tree(tmp(), { 'a.txt': 'a' }), claimed: '/far/app' });
+    const failing = fakeRsync(() => ({ code: 23 }));
+    await transfer(options({ roles: PUSH, entries: [entry], stateDir: state, deps: { run: failing.run } }));
+    expect(failing.real()[0]).not.toContain('--checksum');
+    const resumed = fakeRsync();
+    expect((await transfer(options({ roles: PUSH, entries: [entry], stateDir: state, deps: { run: resumed.run } }))).entries).toMatchObject([{ status: 'verified', passes: 1 }]);
+    expect(resumed.real()[0]).toContain('--checksum');
+    expect(resumed.dry()[0]).toContain('--checksum');
+    // a copy verified already is compared by content before it counts as settled, so a Try again after prepare finds what differs
+    const again = fakeRsync();
+    expect((await transfer(options({ roles: PUSH, entries: [entry], stateDir: state, deps: { run: again.run } }))).entries).toMatchObject([{ status: 'verified', passes: 0 }]);
+    expect(again.dry()[0]).toContain('--checksum');
+  });
+
   it('keeps aside and lists what a later pass replaces in a copy that changed after the first, and backs up nothing in the first', async () => {
     const copy = tree(tmp(), { 'a.txt': 'a' });
     const state = tmp();

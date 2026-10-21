@@ -335,9 +335,9 @@ class Mirror {
     });
     // the first pass writes over what the claim proved there; a later one over a copy that may have changed since, so it
     // keeps aside what it replaces or deletes. rsync's quick check misses an edit of the same size within the same second;
-    // a later pass compares content
+    // a later pass compares content, as does a resume's first
     const backup = pass > 1 ? plan.backup : undefined;
-    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1, ...(backup && { backupDir: `${backup}/${this.runStamp}-pass${pass}` }) }, (l) => {
+    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1 || this.resumed, ...(backup && { backupDir: `${backup}/${this.runStamp}-pass${pass}` }) }, (l) => {
       if (l.kind === 'item') this.put({ items: this.progress.items + 1 });
       else if (l.kind === 'progress') this.put({ bytes: l.bytes, ...(l.total !== undefined && { done: l.done, total: l.total }) });
     });
@@ -370,12 +370,13 @@ class Mirror {
 
   /**
    * Asks rsync, as a dry run, what a copy would still change: by size and time in a push, whose copy the destination
-   * re-hashes against this Mac's scan before it prepares, and by checksum in a pull, whose source nothing else reads.
+   * re-hashes against this Mac's scan before it prepares, and by checksum in a pull, whose source nothing else reads,
+   * and in a resume, which may follow a prepare that found the copy differs.
    */
   private async compare(): Promise<{ kind: 'ok' } | { kind: 'unstable'; names: string[] } | Stop> {
     const plan = this.plan as Plan;
     const names: string[] = [];
-    const r = await this.rsync({ ...plan.job, dryRun: true, checksum: !plan.push }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change) && !isNoise(l.name.replace(/\/$/, ''))) names.push(l.name); });
+    const r = await this.rsync({ ...plan.job, dryRun: true, checksum: !plan.push || this.resumed }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change) && !isNoise(l.name.replace(/\/$/, ''))) names.push(l.name); });
     const step = await this.settle(r);
     if (step.kind === 'stop') return step;
     return step.kind === 'vanished' || names.length ? { kind: 'unstable', names } : { kind: 'ok' };

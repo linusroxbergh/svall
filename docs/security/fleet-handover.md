@@ -315,7 +315,8 @@ of the manifest and of what landed, not read off the wire.
   each root that holds or lies in a carried Git directory. The seal is what landed, with only what the import writes
   taken from that last read: each carried graph's `config`, and the worktree registrations it removes. rsync's
   compare reads both sides by checksum in a pull; in a push it compares sizes and times, since prepare re-hashes the
-  copy against the source's read. Each of the destination's proofs guards a different moment (before any write, before
+  copy against the source's read, except in a resume, whose compares and first pass go by checksum so a retry after
+  prepare finds a file of the same size and second that differs. Each of the destination's proofs guards a different moment (before any write, before
   `--delete`, after the copy, after the import), so none is reused: a replica can change between preflight and the
   claim. Files are hashed eight at a time.
 
