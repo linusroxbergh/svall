@@ -127,6 +127,8 @@ test('stopped at the checks, every blocker names what it is about in words and h
   expect(asked.querySelector('.host-said')?.firstChild?.textContent).toBe('codex-r is waiting on an answer');
   expect(asked.querySelector('.ho-quote')?.textContent).toBe('Allow Codex to run `rm -rf dist`?');
   expect(asked.querySelector('[data-testid="handover-open-card"]')?.textContent).toBe('Open c1');
+  // each blocker's code, small, to look up in errors.md
+  expect(asked.querySelector('.ho-code')?.textContent).toBe('agent_blocked');
   const stuck = screen.getByTestId('handover-blocker-path_unsupported');
   expect(stuck.querySelector('em')?.textContent).toContain('cd that terminal to a folder that travels');
   expect(stuck.querySelector('[data-testid="handover-open-card"]')?.textContent).toBe('Open c2');

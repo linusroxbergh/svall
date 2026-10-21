@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Blocker, HandoverPhase, MachineId, SafeAction, Standing } from '@svall/protocol';
+import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing } from '@svall/protocol';
 import {
   actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
   goOn, rowText, sectionStates, shortPath, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
@@ -346,6 +346,23 @@ describe('what each blocker and warning is explained with', () => {
     expect(folder).not.toMatch(/terminal/);
     expect(folder).toMatch(/handover\.exclude.*writable on studio/);
     expect(blockerHint({ code: 'path_unsupported', message: 'the destination keeps this fleet\'s docs at another path' }, ctx)).toBe(folder);
+  });
+
+  it('gives every code that blocks a line on what to do', () => {
+    const only = ['env_file', 'credential_file', 'platform_heuristic', 'symlink_dangling', 'remote_local'];
+    const missing = HandoverIssueCode.options.filter((code) => !only.includes(code) && !blockerHint({ code, message: 'it is so' }, ctx));
+    expect(missing).toEqual([]);
+  });
+
+  it('says on which machine to fix what only that machine can', () => {
+    expect(blockerHint({ code: 'ssh_interactive', message: 'ssh to studio would ask for a passphrase' }, ctx)).toMatch(/`ssh studio` once in Terminal/);
+    expect(blockerHint({ code: 'ssh_interactive', message: 'ssh would ask' }, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/`ssh studio`/);
+    expect(blockerHint({ code: 'parent_missing', message: '/opt/w is missing on the destination' }, ctx)).toMatch(/on studio/);
+    expect(blockerHint({ code: 'rsync_unsupported', message: 'studio has openrsync' }, ctx)).toMatch(/On studio, install rsync 3\.2\.3/);
+    const link = (message: string) => blockerHint({ code: 'path_symlinked', message, entity: { kind: 'root', id: 'r_a' } }, ctx);
+    expect(link('/w/app leads to /v/app through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use /v/app instead')).toMatch(/real path/);
+    expect(link('/w/app leads to /d/app on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first'))
+      .toMatch(/on studio/);
   });
 
   it('points a kept character at its toggle', () => {

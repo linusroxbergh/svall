@@ -6,7 +6,8 @@ page lacks or this page names one the code no longer has.
 
 Where codes show up:
 
-- **The handover sheet** shows the message the machine wrote and, for many codes, a line on what to do.
+- **The handover sheet** shows the message the machine wrote with its code beside it and, for every code that blocks, a
+  line on what to do.
 - **`svall handover`** prints a blocker as `✗ <who>: <message> (<code>)` and a warning with `!`. With `--json`, each
   blocker or warning carries `code`, `message` and, when it is about one thing, `entity` (`character`, `root`,
   `session` or `git`, with its id).

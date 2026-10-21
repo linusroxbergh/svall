@@ -371,7 +371,48 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
+  // the Linux machine, by the name ssh and svall host know it by
+  const linux = ctx.pull ? ctx.source : ctx.destination;
+  const host = machineName(linux) ? linux : '<machine>';
   switch (b.code) {
+    case 'identity_mismatch':
+      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message. A machine set up again is added and made the gateway again, as "A gateway set up again" in handover.md says.';
+    case 'transaction_open':
+      return 'Another handover of this fleet is still open: finish it with Resume or Abort, whichever its status says is safe, before a new one.';
+    case 'incompatible_adapter':
+      return "Update the agent CLI on the machine the message names; for a file in a session, move it out of that session's folder.";
+    case 'home_mismatch':
+      return `Both machines need the same home path: make an account on ${linux} whose home is this Mac's, then add the machine again at that account.`;
+    case 'parent_missing':
+      return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
+    case 'worktree_unresolved':
+      return 'Put the folder back or close the character; `git status` in it says what Git sees.';
+    case 'worktree_unused':
+      return 'Commit or stash its work on a branch, unlock it, or `git worktree remove` it.';
+    case 'destination_no_space':
+      return `Free space on ${ctx.destination}, or leave build output out with handover.exclude in fleet.json.`;
+    case 'path_collision':
+      return `Rename one of the files on ${ctx.source}, or move the file in the way on ${ctx.destination}.`;
+    case 'path_symlinked':
+      return blockerSide(b) === 'destination'
+        ? `Remove the link on ${ctx.destination}, or rename the folder there to the spelling ${ctx.source} uses; then try again.`
+        : "Use the real path the message names: cd there in the character's terminal, or change the context item or home.cwd that names the link.";
+    case 'mission_control_shared':
+      return 'Give one of the fleets a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
+    case 'transcript_missing':
+      return 'An agent that never reported a transcript has no working hooks: run `svall doctor`. To move without that conversation, exit the agent and try again.';
+    case 'ssh_interactive':
+      return `Run \`ssh ${host}\` once in Terminal and answer what it asks, and keep a key's passphrase in the agent with \`ssh-add --apple-use-keychain\`; then try again.`;
+    case 'platform_unsupported':
+      return "If the repository runs there, add the platform to its .svall/handover.json; otherwise close the characters working in it.";
+    case 'rsync_unsupported':
+      return `On ${linux}, install rsync 3.2.3 or newer (\`sudo apt install rsync\`); on this Mac, \`svall doctor\` checks the one Svall brings.`;
+    case 'git_mismatch':
+      return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
+    case 'git_extension':
+      return `Update or install git on ${ctx.destination}.`;
+    case 'manifest_too_large': case 'too_many_files':
+      return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {
       const owner = !ctx.pull ? 'local' : machineName(ctx.source) ? ctx.source : '<machine>';
       return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again; \`svall handover status\` says which. `
