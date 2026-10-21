@@ -27,6 +27,12 @@ final class RemoteConnectionTests: XCTestCase {
         if transcript.count >= wantedCount { wanted?.fulfill() }
     }
 
+    private func pause(_ seconds: TimeInterval) {
+        let done = expectation(description: "\(seconds) s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { done.fulfill() }
+        wait(for: [done], timeout: seconds + 2)
+    }
+
     private func waitForTranscript(of count: Int) {
         wantedCount = count
         let done = expectation(description: "\(count) messages")
@@ -124,6 +130,20 @@ final class RemoteConnectionTests: XCTestCase {
                                                      "state online studio - -",
                                                      "surfaces reattach"])
         XCTAssertEqual(remote.route, .remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock")))
+        remote.stop()
+    }
+
+    func testAWindowThatFellBackToThisMacKeepsItsStateThroughTheHelpersRetries() throws {
+        let retries = #"sleep 2; printf '%s\n' '{"type":"error","kind":"unreachable","message":"ssh closed"}' '{"type":"connecting","owner":"studio"}'; exec cat > /dev/null"#
+        let helper = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#], then: retries), arguments: [])
+        let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"),
+                                answerWithin: 1, cachedHere: { true })
+        remote.start()
+        waitForTranscript(of: 3)
+        pause(2)
+        XCTAssertEqual(Array(transcript.suffix(2)), ["state online local - -", "connection 127.0.0.1:8123:t0ken"])
+        XCTAssertEqual(remote.state?.state, "online")
+        XCTAssertEqual(remote.route, .local)
         remote.stop()
     }
 

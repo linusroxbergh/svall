@@ -248,8 +248,8 @@ wait until the window is reopened.
 A window opens a fleet with no gateway in `fleet.json` on this Mac at once. For one with a gateway, it waits up to 10
 seconds for the connection helper to say where the fleet is; a helper that has not answered by then, as one stuck on
 ssh, leaves the window on this Mac when the route `svall` last cached names this Mac at the generation its daemon
-holds, and otherwise shows `other`: "the connection helper has not answered in 10 s". The window still follows the
-helper once it answers.
+holds, and otherwise shows `other`: "the connection helper has not answered in 10 s". A window left on this Mac shows
+none of the helper's retries, and moves, terminals and all, once the helper names where the fleet is.
 
 ## Host commands
 

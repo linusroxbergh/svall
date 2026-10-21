@@ -26,6 +26,8 @@ final class RemoteConnection {
     private var owner = "local"
     private var rebuildWhenOnline = false
     private var saidOnline = false
+    // the window went to this Mac's daemon while the helper still runs, which only the helper's next route overrides
+    private var fellBack = false
 
     // what the helper said online with; only a remote owner's forward is kept from it
     private var online: SvallConnection?
@@ -59,9 +61,10 @@ final class RemoteConnection {
         guard let helper, !localOnly() else { return fallBack() }
         route = .pending
         saidOnline = false
+        fellBack = false
         helper.onEvent = { [weak self] event in self?.handle(event) }
         helper.onExit = { [weak self] status in
-            guard let self else { return }
+            guard let self, !fellBack else { return }
             publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper stopped (exit \(status))"))
             fallBackIfLocalOnly()
         }
@@ -130,6 +133,7 @@ final class RemoteConnection {
     /// A build with no helper beside it keeps the local-only experience it had before.
     private func fallBack() {
         route = .local
+        fellBack = true
         onConnection(connection)
     }
 
@@ -165,11 +169,13 @@ final class RemoteConnection {
     private func handle(_ event: ControllerEvent) {
         switch event {
         case .connecting(let owner):
+            guard !fellBack else { return }
             self.owner = owner
             publish(State(state: "connecting", owner: owner, kind: nil, message: nil))
         case .online(let connection, let remote):
             let before = route
             saidOnline = true
+            fellBack = false
             owner = remote?.name ?? "local"
             route = remote.map { .remote($0) } ?? .local
             online = connection
@@ -180,10 +186,12 @@ final class RemoteConnection {
             if rebuildWhenOnline || (before != .pending && before != route) { onSurfaces() }
             rebuildWhenOnline = true
         case .error(let kind, let message):
+            guard !fellBack else { return }
             publish(State(state: "error", owner: owner, kind: kind, message: message))
             fallBackIfLocalOnly()
         case .ownerChanged(let owner):
             self.owner = owner
+            fellBack = false
             online = nil
             route = .pending
             onSurfaces()
