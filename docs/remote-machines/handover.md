@@ -124,7 +124,8 @@ from 2.0.22 on, with no upper limit: a Claude or Codex session's files are copie
 the other machine, so a newer release works as long as it keeps its sessions where it did. An OpenCode session travels
 as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
 character resumes. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
-with Svall's hooks, as the daemon finds it. A login never moves; log in on each machine.
+with Svall's hooks, as the daemon finds it. The destination's release must also be at least the source's, since an
+older one may not read what the newer wrote; a newer one only warns. A login never moves; log in on each machine.
 
 When a new Claude Code or Codex release comes out:
 

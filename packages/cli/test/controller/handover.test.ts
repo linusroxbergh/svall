@@ -255,7 +255,7 @@ describe('preflight', () => {
     ]));
     expect(r.blockers.find((b) => b.code === 'path_collision')!.message).toMatch(/README\.md.*Readme\.md|Readme\.md.*README\.md/);
     expect(codes(r.warnings)).toEqual(expect.arrayContaining([['codex_trust', 'c_bo'], ['config_difference', undefined]]));
-    expect(r.warnings.find((x) => x.code === 'config_difference')!.message).toMatch(/2\.1\.280.*2\.1\.290/);
+    expect(r.warnings.find((x) => x.code === 'config_difference')!.message).toMatch(/^claude on trift runs 2\.1\.290, newer than 2\.1\.280 on mac; /);
     // the source is told where the destination keeps its fleet
     expect(w.sent[0].destination.fleetHome).toBe(FLEET_HOME);
     expect(w.store.j).toBeUndefined();
@@ -275,7 +275,14 @@ describe('preflight', () => {
     w.infos[mac] = { agentAdapters: [...info(mac).agentAdapters, opencode('2.0.22')] };
     w.infos[trift] = { agentAdapters: [...info(trift).agentAdapters, opencode('2.0.30')] };
     const r = await controller(w).preflight(trift, {});
-    expect(r.warnings.filter((x) => x.code === 'config_difference').map((x) => x.message)).toEqual([expect.stringMatching(/^opencode 2\.0\.22 runs on .* and 2\.0\.30 on /)]);
+    expect(r.warnings.filter((x) => x.code === 'config_difference').map((x) => x.message)).toEqual([expect.stringMatching(/^opencode on trift runs 2\.0\.30, newer than 2\.0\.22 on mac; /)]);
+  });
+
+  it('leaves a destination CLI older than the source\'s to the source\'s blocker, warning of nothing', async () => {
+    const w = new World();
+    w.infos[trift] = { agentAdapters: [...info(trift).agentAdapters.map((a) => (a.kind === 'claude' ? { ...a, version: '2.1.270' } : a))] };
+    const r = await controller(w).preflight(trift, {});
+    expect(r.warnings.filter((x) => x.code === 'config_difference')).toEqual([]);
   });
 
   it('names a few of a root\'s names that differ only by case, each with the names it clashes with, and counts the rest, however many there are', async () => {

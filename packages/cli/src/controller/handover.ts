@@ -5,6 +5,7 @@ import {
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
   type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
+import { parseVersion, versionOk } from '@svall/svalld/agents';
 import { boundary } from '@svall/svalld/handover/failpoints';
 import { graphsHere } from '@svall/svalld/handover/git-import';
 import { canonicalDigest } from '@svall/svalld/handover/hash';
@@ -145,15 +146,16 @@ const transient = (e: unknown): boolean => {
   return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved || e instanceof NoRoute);
 };
 
-/** What differs between the machines in a way the fleet feels: an agent CLI at another release. */
+/** What differs between the machines in a way the fleet feels: an agent CLI at a newer release on the destination; an older one is the source's blocker. */
 function differences(source: Side, a: SystemInfo, destination: Side, b: SystemInfo, m: TransferManifestV1): Warning[] {
   const kinds = new Set(Object.values(m.snapshot.characters).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]));
   return a.agentAdapters.flatMap((x): Warning[] => {
     const y = b.agentAdapters.find((z) => z.kind === x.kind);
-    if (!kinds.has(x.kind) || !x.version || !y?.version || x.version === y.version) return [];
+    const mine = x.version && parseVersion(x.version);
+    if (!kinds.has(x.kind) || !mine || !y?.version || x.version === y.version || !versionOk({ minVersion: mine }, y.version)) return [];
     return [{
       code: 'config_difference',
-      message: `${x.kind} ${x.version} runs on ${source.route.name} and ${y.version} on ${destination.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
+      message: `${x.kind} on ${destination.route.name} runs ${y.version}, newer than ${x.version} on ${source.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
     }];
   });
 }

@@ -543,9 +543,9 @@ user's code, and a worktree there travels as any other worktree of the repositor
 main checkout with it. It lands at the same path, and the destination's OpenCode finds it through
 Git once the Git import has registered it.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
-afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
-on the two machines; the warning names the settings, skills and MCP servers each machine keeps,
-which are not compared. Repository and project-local instructions travel with their filesystem
+afresh, blocks (`incompatible_adapter`) when an agent CLI the fleet runs is older on the destination
+than on the source, and warns (`config_difference`) when it is newer there; the warning names the
+settings, skills and MCP servers each machine keeps, which are not compared. Repository and project-local instructions travel with their filesystem
 roots.
 
 ## Terminal records

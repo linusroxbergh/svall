@@ -7,7 +7,7 @@ import {
   type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
-import { AGENTS, versionOk } from '../../agents.js';
+import { AGENTS, parseVersion, versionOk } from '../../agents.js';
 import { codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
@@ -238,8 +238,9 @@ export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => 
 
 /**
  * What stops the agents the fleet runs from resuming on the destination: a CLI that is not there, a release on
- * either machine older than its adapter's minimum or the two read by different adapters, a destination not logged
- * in, or one without Svall's hooks, whose SessionStart is how a resumed agent reports back.
+ * either machine older than its adapter's minimum or the two read by different adapters, a destination release older
+ * than the source's, a destination not logged in, or one without Svall's hooks, whose SessionStart is how a resumed
+ * agent reports back.
  */
 export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[] }): Blocker[] {
   const blockers: Blocker[] = [];
@@ -255,6 +256,10 @@ export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly
       continue;
     }
     if (a && b && a !== b) blockers.push({ code: 'incompatible_adapter', message: `${kind} sessions are read by adapter ${a.adapter} here and ${b.adapter} on the destination` });
+    const mine = here?.version && parseVersion(here.version);
+    if (mine && !versionOk({ minVersion: mine }, there.version)) {
+      blockers.push({ code: 'incompatible_adapter', message: `the destination's ${kind} ${there.version} is older than this machine's ${here!.version}, which writes sessions it may not read; update ${kind} on the destination` });
+    }
     if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });
     if (!there.hooks) {
       blockers.push({
