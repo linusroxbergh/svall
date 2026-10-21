@@ -104,12 +104,21 @@ export function filterRules(excludes: readonly string[], kind?: TransferRoot['ki
   return [...keep.map((k) => `- /${k}/`), ...kept, ...excludes.map((x) => `- ${x}`)].map((line) => `${line}\n`).join('');
 }
 
+/**
+ * The object store of each Git directory under a root whose worktrees the destination keeps: an index there may stage
+ * a blob no ref reaches, which only that store holds.
+ */
+export const keptObjectStores = (keep: readonly string[]): string[] =>
+  [...new Set(keep.flatMap((k) => { const m = /^(?:(.+)\/)?worktrees\/[^/]+$/.exec(k); return m ? [m[1] ? `${m[1]}/objects` : 'objects'] : []; }))];
+
 /** One rsync run: a copy, or the checksum comparison that verifies one. */
 export type RsyncJob = {
   rsh: string;
   source: string;
   target: string;
   filterFile?: string;
+  // folders under the target whose files --delete leaves, as an extra object costs nothing and a missing one breaks an index
+  protect?: readonly string[];
   // a NUL-separated list of the only paths under the source to copy
   filesFrom?: string;
   delete: boolean;
@@ -128,6 +137,8 @@ export function rsyncArgv(job: RsyncJob): string[] {
     ...(job.dryRun ? ['--dry-run', '--checksum'] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2']),
     ...(job.delete ? ['--delete'] : []),
     ...(job.mkpath ? ['--mkpath'] : []),
+    // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`
+    ...(job.protect ?? []).map((p) => `--filter=P /${p}/**`),
     ...(job.filterFile ? [`--exclude-from=${job.filterFile}`] : []),
     ...(job.filesFrom ? ['--from0', `--files-from=${job.filesFrom}`] : []),
     '-e', job.rsh,

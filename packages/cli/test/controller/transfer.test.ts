@@ -659,6 +659,26 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(fs.readFileSync(path.join(claimed, '.git/worktrees/stay/index'), 'utf8')).toBe('idx');
   });
 
+  it('keeps the objects a kept worktree may stage from, where the source packed them away, and verifies', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', '.git/HEAD': 'ref: refs/heads/main\n', '.git/objects/pack/new.pack': 'packed' });
+    const claimed = tree(path.join(tmp(), 'app'), {
+      '.git/HEAD': 'ref: refs/heads/main\n', '.git/objects/ab/cdef': 'only the kept index stages this', '.git/objects/pack/old.pack': 'old',
+      '.git/worktrees/stay/HEAD': 'ref: refs/heads/stay\n', 'stale.txt': 'gone from the source',
+    });
+    const entry = await root({ source: src, claimed });
+    const r = await transfer({ transactionId: 'tx-o', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [{ ...entry, claim: { ...entry.claim, keep: ['.git/worktrees/stay'] } }] });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    expect(fs.readFileSync(path.join(claimed, '.git/objects/ab/cdef'), 'utf8')).toBe('only the kept index stages this');
+    expect(fs.existsSync(path.join(claimed, '.git/objects/pack/old.pack'))).toBe(true);
+    expect(fs.existsSync(path.join(claimed, 'stale.txt'))).toBe(false);
+
+    // with no worktree kept there, the copy mirrors the object store like any folder
+    const plain = tree(path.join(tmp(), 'app'), { '.git/HEAD': 'ref: refs/heads/main\n', '.git/objects/ab/cdef': 'unused' });
+    const again = await transfer({ transactionId: 'tx-p', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed: plain })] });
+    expect(again.entries).toMatchObject([{ id: 'r_app', status: 'verified' }]);
+    expect(fs.existsSync(path.join(plain, '.git/objects/ab'))).toBe(false);
+  });
+
   it('carries a Git directory on its own whole, where an exclude names one of Git\'s entries', async () => {
     const gitdir = tree(tmp(), { HEAD: 'ref: refs/heads/main\n', 'logs/HEAD': 'log', 'objects/ab/cd': 'o', 'build/out.o': 'built' });
     const excludes = [...EXCLUDES, 'logs/'];

@@ -10,7 +10,7 @@ import { kept, relativeProblem, type ReplicaCheck } from '@svall/svalld/handover
 import { redact, type RunResult } from './process.js';
 import { ProgressJournal, transactionDir, type EntryProgress } from './progress.js';
 import {
-  exitKind, expands, filterRules, linkModeOnly, MIN_RSYNC, parseLine, remoteShell, remoteSpec, rsyncArgv, rsyncVersion, runRsync,
+  exitKind, expands, filterRules, keptObjectStores, linkModeOnly, MIN_RSYNC, parseLine, remoteShell, remoteSpec, rsyncArgv, rsyncVersion, runRsync,
   type RsyncJob, type RsyncLine, type RsyncResult, type RunRsync,
 } from './rsync.js';
 
@@ -282,8 +282,9 @@ class Mirror {
       keep = entry.claim.keep ?? [];
       rootKind = entry.rootKind;
       expected = entry.files.filter((f) => !kept(keep)(f.path));
+      const protect = keptObjectStores(keep);
       job = dir
-        ? { delete: true, mkpath: false, filterFile: this.journal.writeFilter(entry.id, filterRules(excludes, rootKind, keep)) }
+        ? { delete: true, mkpath: false, filterFile: this.journal.writeFilter(entry.id, filterRules(excludes, rootKind, keep)), ...(protect.length && { protect }) }
         : { delete: false, mkpath: false };
     } else {
       // a name that climbs out of its home is refused before any path is built from it
