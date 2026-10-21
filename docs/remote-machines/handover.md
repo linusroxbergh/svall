@@ -298,8 +298,9 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
   while this Mac keeps a journal of a handover, or the lost machine owns the fleet.
 
 The lost machine never learns of the record. If it comes back still running the fleet, both machines run it until
-you stop the fleet's daemon there (`systemctl --user stop svall-svalld@<fleet>`), and its copy of the work since the
-last handover stays on its disk.
+you stop the fleet's daemon there for good (`systemctl --user disable --now svall-svalld@<fleet>`, since a plain
+stop starts again at the next boot, or `svall uninstall --force`), and its copy of the work since the last handover
+stays on its disk.
 
 To make it the gateway again, `svall fleet recover --force-owner local --gateway <name>` writes a record naming this
 Mac over whatever record it holds, names it the gateway in `fleet.json`, and tells its daemon to let the fleet go;
