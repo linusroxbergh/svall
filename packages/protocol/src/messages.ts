@@ -284,9 +284,10 @@ export const methods = {
   'term.attach': { params: Id.extend({ term: Term }), result: z.object({ socket: z.string(), session: z.string() }) },
   'system.info': { params: z.object({}), result: SystemInfo },
   'ownership.get': { params: z.object({}), result: OwnershipInfo },
-  // token-only: the gateway's record as `svall fleet recover` relays it after a forced write, and the gateway that holds it now
+  // token-only: the gateway's record as `svall fleet recover` relays it after a forced write, and the gateway that holds it now,
+  // or none when the recovery leaves this machine to run the fleet alone
   'ownership.adopt': {
-    params: z.object({ record: OwnerRecord, gatewayMachineId: MachineId }),
+    params: z.object({ record: OwnerRecord, gatewayMachineId: MachineId.optional() }),
     result: z.object({ adopted: z.boolean(), superseded: TransactionId.optional(), ownership: OwnershipInfo }),
   },
   // read-only: it builds the manifest and reports what would stop the move, before any terminal is touched

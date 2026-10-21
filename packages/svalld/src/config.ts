@@ -251,8 +251,8 @@ export function namedGateway(paths: Paths): MachineId | undefined {
   return readFleetConfig(paths).gatewayMachineId;
 }
 
-/** Names `id` this fleet's gateway in fleet.json and in the running config, which others hold by reference. */
-export function setGateway(paths: Paths, config: Config, id: MachineId): void {
+/** Names `id` this fleet's gateway, or with none no gateway, in fleet.json and in the running config, which others hold by reference. */
+export function setGateway(paths: Paths, config: Config, id: MachineId | undefined): void {
   if (config.gatewayMachineId === id) return;
   patchFleetConfig(paths.fleetConfig, { gatewayMachineId: id });
   config.gatewayMachineId = id;

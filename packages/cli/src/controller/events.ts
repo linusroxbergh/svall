@@ -19,6 +19,7 @@ export function entryEvent(transactionId: string, p: EntryProgress, archivedTo?:
     data: {
       transactionId, kind: p.kind === 'root' ? 'root' : 'session', id: p.id, phase,
       done: p.done, total: p.total, bytes: p.bytes, totalBytes: p.totalBytes, ...(p.error && { error: p.error }), ...(archivedTo && { archivedTo }),
+      ...(p.state === 'verified' && { verified: true }),
     },
   };
 }

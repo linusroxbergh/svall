@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import { FleetConfig, type FleetId, type MachineId, type MethodName, type OwnerRecord, type OwnershipInfo, type Params, type Result } from '@svall/protocol';
 import { patchFleetConfig } from '@svall/svalld/config';
 import type { OwnerAnswer } from '@svall/svalld/gateway/client';
-import { appendDurable } from '@svall/svalld/handover/durable';
+import { appendDurable, writeDurable } from '@svall/svalld/handover/durable';
 import { HandoverJournal, handoverGeneration } from '@svall/svalld/handover/journal';
 import { OwnerCache } from '@svall/svalld/ownership/state';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -64,14 +64,14 @@ export type Observed = {
   controller?: { transactionId?: string; generation: number; phase: string; source: string; destination: string };
   route?: CachedRoute;
   shown: Shown[];
-  /** the record to be written, when there is a gateway to write it at */
-  plan?: { ownerMachineId: MachineId; owner: string; generation: number; gatewayMachineId: MachineId; gateway: string };
+  /** the record to be written: at a gateway, or with none, here alone */
+  plan?: { ownerMachineId: MachineId; owner: string; generation: number } & ({ gatewayMachineId: MachineId; gateway: string } | { standalone: true });
   risks: string[];
 };
 
 export type RecoverEvent =
   | { event: 'recover.observed'; data: Observed }
-  | { event: 'recover.forced'; data: { gatewayMachineId: MachineId; record: OwnerRecord } }
+  | { event: 'recover.forced'; data: { gatewayMachineId?: MachineId; record: OwnerRecord } }
   | { event: 'recover.adopted'; data: { machineId: MachineId; name: string; adopted?: boolean; superseded?: string; ownership?: OwnershipInfo; error?: string } }
   | { event: 'recover.result'; data: { result: 'recovered' | 'incomplete' | 'refused'; message: string; actions: string[] } };
 
@@ -83,7 +83,10 @@ async function readGateway(d: RecoverDeps, entry: MachineEntry, fleetId: FleetId
   const { code, message } = answer.error;
   if (code === 'not_found') return { state: 'absent' };
   // the machine answered, and only its authority did not: that gateway is down, not lost
-  if (code === 'disconnected' || code === 'timeout') return { state: 'refused', message: `its machine answered, and its authority did not: ${message}` };
+  if (code === 'disconnected' || code === 'timeout') {
+    const name = entry.record.name;
+    return { state: 'refused', message: `its machine answered, and its authority did not: ${message}; on ${name}, \`systemctl --user start svall-gateway\` starts it, and \`svall host doctor ${name}\` says why it stopped` };
+  }
   return { state: code === 'authority_corrupt' ? 'corrupt' : 'refused', message };
 }
 
@@ -147,6 +150,19 @@ function generations(gateways: { name: string; held?: Held }[], machines: Machin
   return out;
 }
 
+/** What a machine that becomes the owner loses of a handover it prepared and never ran, which the record lets go. */
+const unrun = (machines: MachineView[], owner: MachineId): string[] => machines.flatMap((m) => {
+  const j = m.ownership?.journal;
+  if (m.machineId !== owner || j?.role !== 'destination' || (j.phase !== 'prepare' && j.phase !== 'commit')) return [];
+  return [`${m.name} prepared handover ${j.transactionId} and has not run it: this record drops what it prepared, so ${m.name} runs the fleet as it held it before that handover, without what the handover carried.`];
+});
+
+const aloneRisks = (o: { owner: string; lost: string }): string[] => [
+  `${o.lost} is not reached here and never learns of this record: if it comes back still running this fleet, both machines run it until it is stopped there.`,
+  `Work done since the last handover on a machine that loses the fleet stays on that machine's disk only; none of it is carried to ${o.owner}.`,
+  'No machine is this fleet\'s gateway from here on: nothing can hand it over until `svall host enable <host> --fleet <fleet>` names one.',
+];
+
 const risks = (o: { owner: string; gateway: string; lost?: string }): string[] => [
   `${o.lost ? `This machine asks ${o.gateway} who owns this fleet when its daemon next starts` : `This machine and ${o.gateway} ask ${o.gateway} who owns this fleet when their daemons next start`}; any other machine not reached here never asks on its own, and one that still runs this fleet goes on running it until this command is run again once it answers.`,
   `Work done since the last handover on a machine that loses the fleet stays on that machine's disk only; none of it is carried to ${o.owner}.`,
@@ -171,7 +187,8 @@ function describeHeld(h: Held, name: (id: MachineId) => string): string {
 /**
  * `svall fleet recover --force-owner`: shows what every party holds of the fleet, then, confirmed by the fleet id,
  * writes a record naming the chosen owner at the gateway above every generation shown, audits it on both sides,
- * and hands it to every machine that answers. A gateway that is gone for good can be replaced by one that holds none.
+ * and hands it to every machine that answers. A gateway that is gone for good can be replaced by one that holds none, or
+ * with none to take its place, leave this machine to run the fleet alone with no gateway.
  */
 export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<boolean> {
   const refuse = (message: string, actions: string[] = []): false => {
@@ -186,13 +203,20 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   } catch (e) {
     return refuse(`${file} is not a fleet config: ${messageOf(e)}`);
   }
-  const gatewayId = fleet.gatewayMachineId;
-  if (!gatewayId) return refuse(`${file} names no gateway: no other machine can hold this fleet, so there is nothing to recover`);
   const owner = d.registry.get(o.forceOwner);
   if (!owner) return refuse(`no machine ${o.forceOwner} in the registry${d.registry.setAside()}`, ['svall host list names every machine this controller knows']);
+  const named = o.gateway === undefined ? undefined : d.registry.get(o.gateway);
+  if (o.gateway !== undefined && !named) return refuse(`no machine ${o.gateway} in the registry${d.registry.setAside()}`, ['svall host list names every machine this controller knows']);
+  // a fleet that names no gateway takes the one --gateway names, over whatever record that machine holds
+  const none = !fleet.gatewayMachineId;
+  const gatewayId = fleet.gatewayMachineId ?? named?.id;
+  if (!gatewayId) {
+    return refuse(`${file} names no gateway, so no other machine holds this fleet`, [
+      `to make a machine from the registry its gateway, writing over any record it holds: ${svall} fleet recover --force-owner ${o.forceOwner} --gateway <machine>`,
+    ]);
+  }
   const current = d.registry.get(gatewayId);
-  const replacement = o.gateway === undefined ? undefined : d.registry.get(o.gateway);
-  if (o.gateway !== undefined && !replacement) return refuse(`no machine ${o.gateway} in the registry${d.registry.setAside()}`, ['svall host list names every machine this controller knows']);
+  const replacement = none ? undefined : named;
   if (replacement?.id === gatewayId) return refuse(`${replacement.record.name} is already this fleet's gateway; leave out --gateway`);
 
   const [held, replaced, looked] = await Promise.all([
@@ -212,6 +236,9 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   let expected: OwnerRecord | null | undefined;
   let refusal: [string, string[]] = ['', []];
   const replaceStep = `if ${gatewayName} is gone for good, name a machine from the registry to take its place: ${svall} fleet recover --force-owner ${o.forceOwner} --gateway <machine>`;
+  const local = d.registry.localId;
+  // a lost gateway no machine is to replace leaves this machine to run the fleet alone, with no gateway
+  const alone = !none && !replacement && held.state === 'unreachable' && owner.id === local;
   if (replacement) {
     const name = replacement.record.name;
     if (held.state !== 'unreachable' && held.state !== 'corrupt') refusal = [`${gatewayName} is not lost, since it answered (${describeHeld(held, nameOf)}): recover through it and leave out --gateway`, []];
@@ -222,17 +249,32 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     expected = held.record;
   } else if (held.state === 'absent') {
     expected = null;
+  } else if (none) {
+    refusal = [`${gatewayName} ${describeHeld(held, nameOf)}, so no record can be written there`, []];
+  } else if (alone) {
+    const here = machines.find((m) => m.machineId === local);
+    const running = machines.filter((m) => m.machineId !== local && m.from === 'daemon' && m.ownership?.ownerMachineId === m.machineId && !m.ownership.frozen);
+    if (running.length) {
+      refusal = [`${running.map((m) => m.name).join(' and ')} answers that it runs this fleet, so the fleet is not lost with ${gatewayName}`, [`hand the fleet to this machine, or stop it on ${running.map((m) => m.name).join(' and ')}, then run this again`]];
+    } else if (here?.from !== 'daemon' && fs.existsSync(resolvePaths(d.fleetHome).journal)) {
+      // a journal is the daemon's to let go even where it, or the owner.json beside it, cannot be read
+      const tx = here?.ownership?.journal?.transactionId;
+      const lies = tx ? `a journal of handover ${tx} lies here` : `a handover journal lies at ${resolvePaths(d.fleetHome).journal}`;
+      refusal = [`this machine's daemon did not answer, and ${lies}, which only this machine's daemon lets go: start it (\`${svall} doctor\` says why it is not running; it moves a journal it cannot read aside), then run this again`, []];
+    }
   } else if (held.state === 'unreachable') {
-    refusal = [`the gateway ${gatewayName} did not answer: ${held.message}`, [replaceStep]];
+    refusal = [`the gateway ${gatewayName} did not answer: ${held.message}`, [
+      replaceStep, `if no machine is to take its place, \`${svall} fleet recover --force-owner local\` runs this fleet on this machine alone, with no gateway`,
+    ]];
   } else if (held.state === 'corrupt') {
     refusal = [`the gateway ${gatewayName} cannot read its record of this fleet: ${held.message}`, [`put a readable record back on ${gatewayName}, then run this again`, replaceStep]];
   } else {
     refusal = [`the gateway ${gatewayName} refused: ${held.message}`, []];
   }
   const into = replacement ?? current;
-  const plan = expected !== undefined && into
-    ? { ownerMachineId: owner.id, owner: owner.record.name, generation, gatewayMachineId: into.id, gateway: into.record.name }
-    : undefined;
+  const plan: Observed['plan'] = alone ? (refusal[0] ? undefined : { ownerMachineId: owner.id, owner: owner.record.name, generation, standalone: true })
+    : expected !== undefined && into ? { ownerMachineId: owner.id, owner: owner.record.name, generation, gatewayMachineId: into.id, gateway: into.record.name }
+      : undefined;
 
   d.emit({
     event: 'recover.observed',
@@ -245,18 +287,109 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
       ...(route && { route }),
       shown,
       ...(plan && { plan }),
-      risks: plan ? risks({ owner: plan.owner, gateway: plan.gateway, ...(replacement && { lost: gatewayName }) }) : [],
+      risks: !plan ? [] : [
+        ...('standalone' in plan ? aloneRisks({ owner: plan.owner, lost: gatewayName }) : risks({ owner: plan.owner, gateway: plan.gateway, ...(replacement && { lost: gatewayName }) })),
+        ...unrun(machines, owner.id),
+      ],
     },
   });
-  if (!plan || !into || expected === undefined) return refuse(...refusal);
+  if (!plan) return refuse(...refusal);
 
   const typed = o.confirm ?? (d.interactive ? await d.ask('Type the fleet id to write this record: ') : undefined);
   if (typed === undefined) return refuse('nothing was written: a run with no terminal to ask in names the fleet with --confirm <fleet id>');
   if (typed !== fleet.id) return refuse('nothing was written: that is not this fleet\'s id');
 
+  const tell = async (m: MachineView, params: Params<'ownership.adopt'>): Promise<{ ownership?: OwnershipInfo; adopted?: boolean; error?: string }> => {
+    try {
+      const daemon = await d.daemon(d.registry.get(m.machineId)!);
+      try {
+        const r = await daemon.call('ownership.adopt', params);
+        d.emit({ event: 'recover.adopted', data: { machineId: m.machineId, name: m.name, adopted: r.adopted, ...(r.superseded && { superseded: r.superseded }), ownership: r.ownership } });
+        return r;
+      } finally {
+        daemon.close();
+      }
+    } catch (e) {
+      d.emit({ event: 'recover.adopted', data: { machineId: m.machineId, name: m.name, error: messageOf(e) } });
+      return { error: messageOf(e) };
+    }
+  };
+
+  if ('standalone' in plan) {
+    const record: OwnerRecord = { fleetId: fleet.id, generation, ownerMachineId: owner.id };
+    const reason = `svall fleet recover --force-owner ${owner.record.name}: the gateway ${gatewayName} did not answer (${'message' in held ? held.message : held.state}), and no machine takes its place`;
+    try {
+      appendDurable(path.join(d.fleetHome, 'controller', 'recoveries.ndjson'), {
+        at: d.now().toISOString(), fleetId: fleet.id, gatewayMachineId: null, lostGatewayMachineId: gatewayId, before: null, after: record,
+        requestingMachineId: local, reason, shown,
+      });
+    } catch (e) {
+      return refuse(`nothing was written: this machine's audit of the recovery could not be written (${messageOf(e)})`);
+    }
+    // every other machine that answers takes the record through the lost gateway, which cannot say otherwise, and lets
+    // go the handover it holds before this one runs the fleet; one holding a handover that could not be told stops it here,
+    // as does one whose relay reached the gateway and took the gateway's own record
+    const unheld: string[] = [];
+    const retell = new Set<string>();
+    for (const m of machines.filter((x) => x.machineId !== local && x.from === 'daemon')) {
+      const r = await tell(m, { record, gatewayMachineId: gatewayId });
+      const now = r.ownership;
+      if (now && now.ownerMachineId === owner.id && now.generation === generation) continue;
+      if (r.adopted && now) {
+        unheld.push(`${m.name} reached the gateway ${gatewayName}, which answered that ${nameOf(now.ownerMachineId)} owns this fleet at generation ${now.generation}: ${gatewayName} is not lost`);
+        retell.add(`recover through ${gatewayName} from a machine that reaches it, or mend this machine's route to it, then run this again`);
+        continue;
+      }
+      const j = (now ?? m.ownership)?.journal;
+      if (!j) continue;
+      unheld.push(`${m.name} holds handover ${j.transactionId} and did not take this record: ${r.error ?? 'it took nothing'}`);
+      retell.add(`${m.name} holds handover ${j.transactionId}: once its daemon answers, run \`${svall} fleet recover --force-owner ${o.forceOwner}\` again`);
+    }
+    if (unheld.length) {
+      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `${unheld.join('; ')}, so ${owner.record.name} was not told to run this fleet alone`, actions: [...retell] } });
+      return false;
+    }
+    // the daemon lets go whatever handover its journal holds, runs the fleet and drops the gateway; one not running
+    // reads owner.json when it starts, there being no journal here for it to let go
+    const here = machines.find((m) => m.machineId === local)!;
+    const running = here.from === 'daemon';
+    if (running) {
+      const r = await tell(here, { record });
+      if (!r.adopted) {
+        const message = `this machine's audit names the record, and ${owner.record.name}'s daemon did not take it: ${r.error ?? 'it took nothing'}`;
+        d.emit({ event: 'recover.result', data: { result: 'incomplete', message, actions: ['run this again'] } });
+        return false;
+      }
+    } else {
+      writeDurable(resolvePaths(d.fleetHome).owner, record, { mode: 0o600 });
+    }
+    try { patchFleetConfig(file, { gatewayMachineId: undefined }); } catch (e) {
+      const took = running ? `${owner.record.name} took the record` : `${resolvePaths(d.fleetHome).owner} names ${owner.record.name} at generation ${generation}`;
+      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `${took}, and ${file} could not be changed to name no gateway: ${messageOf(e)}`, actions: [`remove its gatewayMachineId, then run this again`] } });
+      return false;
+    }
+    rememberOwner(d.fleetHome, record, d.now());
+    // the handover it journaled is the one the daemon let go, and no gateway is left to resume it through
+    if (c) fileStore(path.join(d.fleetHome, 'controller')).clear(c.transactionId);
+    d.emit({ event: 'recover.forced', data: { record } });
+    const actions = [
+      `${gatewayName} may still run this fleet if it comes back, and it never learns of this record: stop this fleet's daemon there before it runs again`,
+      `\`svall host remove ${gatewayName} --forget\` drops ${gatewayName} from this machine's registry once it is gone for good`,
+      ...machines.filter((m) => m.machineId !== local && m.machineId !== gatewayId && m.from !== 'daemon').map((m) => `${m.name} still names ${gatewayName} as this fleet's gateway and is not told of this record`),
+      `\`svall host enable <host> --fleet <fleet>\` makes a machine this fleet's gateway again, and handovers work as before`,
+    ];
+    if (!running) {
+      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `the record is written here, and ${owner.record.name}'s daemon has not taken it: it runs the fleet from it when it next starts`, actions } });
+      return false;
+    }
+    d.emit({ event: 'recover.result', data: { result: 'recovered', message: `${owner.record.name} runs this fleet alone at generation ${generation}, with no gateway`, actions } });
+    return true;
+  }
+  if (!into || expected === undefined) return refuse(...refusal);
+
   const situation = replacement
     ? `${gatewayName} ${describeHeld(held, nameOf)}; ${replacement.record.name} replaces it`
-    : `${gatewayName} held: ${describeHeld(held, nameOf)}`;
+    : `${none ? 'this fleet named no gateway, and ' : ''}${gatewayName} held: ${describeHeld(held, nameOf)}`;
   const reason = `svall fleet recover --force-owner ${owner.record.name}: ${situation}`;
   let forced: OwnerRecord;
   try {
@@ -284,34 +417,19 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     actions.push(`the record is written, and this machine's audit of it could not be: ${messageOf(e)}`);
   }
   // the controller finds the fleet's gateway here whether or not this machine's daemon answers
-  if (replacement) {
-    try { patchFleetConfig(file, { gatewayMachineId: replacement.id }); } catch (e) {
-      actions.push(`${file} could not be changed to name ${replacement.record.name} the gateway (${messageOf(e)}); set its gatewayMachineId to ${replacement.id}`);
+  if (replacement || none) {
+    try { patchFleetConfig(file, { gatewayMachineId: into.id }); } catch (e) {
+      actions.push(`${file} could not be changed to name ${into.record.name} the gateway (${messageOf(e)}); set its gatewayMachineId to ${into.id}`);
     }
   }
   rememberOwner(d.fleetHome, forced, d.now());
 
-  const tell = async (m: MachineView): Promise<{ ownership?: OwnershipInfo; adopted?: boolean; error?: string }> => {
-    try {
-      const daemon = await d.daemon(d.registry.get(m.machineId)!);
-      try {
-        const r = await daemon.call('ownership.adopt', { record: forced, gatewayMachineId: into.id });
-        d.emit({ event: 'recover.adopted', data: { machineId: m.machineId, name: m.name, adopted: r.adopted, ...(r.superseded && { superseded: r.superseded }), ownership: r.ownership } });
-        return r;
-      } finally {
-        daemon.close();
-      }
-    } catch (e) {
-      d.emit({ event: 'recover.adopted', data: { machineId: m.machineId, name: m.name, error: messageOf(e) } });
-      return { error: messageOf(e) };
-    }
-  };
   const behind = machines.filter((m) => m.from !== 'daemon');
   const reached = machines.filter((m) => m.from === 'daemon');
   // the machines the record does not name let go first, so the one it names never starts beside them
   const stillRunning: string[] = [];
   for (const m of reached.filter((x) => x.machineId !== owner.id)) {
-    const r = await tell(m);
+    const r = await tell(m, { record: forced, gatewayMachineId: into.id });
     if (r.adopted) continue;
     behind.push(m);
     const now = r.ownership ?? m.ownership;
@@ -323,7 +441,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     notTaken = `${stillRunning.join(' and ')} ran this fleet and could not be told, so ${owner.record.name} was not told to run it`;
     behind.push(chosen);
   } else if (chosen) {
-    const r = await tell(chosen);
+    const r = await tell(chosen, { record: forced, gatewayMachineId: into.id });
     notTaken = r.adopted ? undefined : r.error ?? 'it took nothing';
     if (notTaken) behind.push(chosen);
   }
@@ -380,14 +498,16 @@ export function render(e: RecoverEvent, name: (id: MachineId) => string): string
         `generations seen: ${o.shown.map((s) => `${s.source} ${s.generation}`).join(', ') || 'none'}`,
         ...(o.plan ? [
           '',
-          `This writes a new authority on ${o.plan.gateway}: ${o.plan.owner} owns this fleet at generation ${o.plan.generation}.`,
+          'standalone' in o.plan
+            ? `This writes this machine's own record, with no gateway: ${o.plan.owner} owns this fleet at generation ${o.plan.generation}, and ${o.gateway.name} is this fleet's gateway no more.`
+            : `This writes a new authority on ${o.plan.gateway}: ${o.plan.owner} owns this fleet at generation ${o.plan.generation}.`,
           'risks:',
           ...o.risks.map((r) => `  - ${r}`),
         ] : []),
       ].join('\n');
     }
     case 'recover.forced':
-      return `written on ${name(e.data.gatewayMachineId)}: ${name(e.data.record.ownerMachineId)} owns this fleet at generation ${e.data.record.generation}`;
+      return `written ${e.data.gatewayMachineId ? `on ${name(e.data.gatewayMachineId)}` : 'here, with no gateway'}: ${name(e.data.record.ownerMachineId)} owns this fleet at generation ${e.data.record.generation}`;
     case 'recover.adopted': {
       const a = e.data;
       if (a.error) return `  ${a.name}: not told (${a.error})`;

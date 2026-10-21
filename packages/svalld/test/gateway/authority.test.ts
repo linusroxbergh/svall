@@ -96,6 +96,13 @@ describe('transitions', () => {
     expect(ok(at(undefined, 'owner.create', createParams))).toEqual({ fleetId: FLEET, generation: 0, ownerMachineId: MAC });
   });
 
+  it('creates the record at the generation the owner already holds, and takes the same create again', () => {
+    const created = ok(at(undefined, 'owner.create', { ...createParams, generation: 6 }));
+    expect(created).toEqual({ fleetId: FLEET, generation: 6, ownerMachineId: MAC });
+    expect(ok(at(created, 'owner.create', { ...createParams, generation: 6 }))).toEqual(created);
+    expect(code(at(created, 'owner.create', createParams))).toBe('already_exists');
+  });
+
   it('opens a handover from the current owner', () => {
     expect(ok(at(owned, 'owner.begin', beginParams))).toEqual({
       ...owned,

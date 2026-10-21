@@ -53,7 +53,7 @@ const destination = (over: Partial<DestinationJournal> = {}): DestinationJournal
   phase: 'commit', manifestDigest: digest, updatedAt: 11, ...over,
 });
 
-function boot(opts: { record?: object; journal?: unknown; home?: string; gateway?: Authority } = {}) {
+function boot(opts: { record?: object; journal?: unknown; home?: string; gateway?: Authority; named?: Authority } = {}) {
   const home = opts.home ?? makeHome();
   const paths = resolvePaths(home);
   if (opts.record) fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, ...opts.record }));
@@ -68,8 +68,10 @@ function boot(opts: { record?: object; journal?: unknown; home?: string; gateway
     resumeInterrupted: async () => { log.push('resume'); },
   };
   const asked: MachineId[] = [];
+  const sides = idleSides(paths, { config });
   const handover = new HandoverService({
-    ownership, journal: openJournal(paths), fleet, setGateway: (id) => { log.push(`gateway ${id}`); }, ...idleSides(paths, { config }),
+    ownership, journal: openJournal(paths), fleet, setGateway: (id) => { log.push(`gateway ${id ?? 'none'}`); }, ...sides,
+    ...(opts.named && { source: { ...sides.source, authority: () => opts.named } }),
     ...(opts.gateway && { authorityFor: (id: MachineId) => { asked.push(id); return opts.gateway!; } }),
   });
   return { home, paths, ownership, handover, log, asked };
@@ -447,6 +449,49 @@ describe('a record a recovery relays', () => {
       expect(await b.handover.relay({ record: relayed, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
       expect(b.log).toEqual(['activate', 'reconcile', 'resume', `gateway ${third}`]);
     }
+  });
+
+  it('runs the fleet alone on a record that names no gateway once the gateway fleet.json names does not answer, letting go the handover it supersedes and dropping that gateway', async () => {
+    const unanswered = [
+      new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'),
+      new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'),
+      // a registry with no route to the gateway leaves it as unasked as one that does not answer
+      new AuthorityFailure('invalid_request', 'machines.json names no ssh route to the gateway', { unrouted: true }),
+    ];
+    for (const failure of unanswered) {
+      const named: Authority = { get: async () => { throw failure; } };
+      const b = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination(), named, gateway: { get: async () => { throw new Error('another gateway was asked'); } } });
+      await enter(b);
+      expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, superseded: 'tx-1', ownership: { generation: 9, ownerMachineId: me, frozen: false } });
+      expect(b.asked).toEqual([]);
+      expect(b.handover.journalState()).toEqual({ kind: 'none' });
+      expect(b.ownership.writable()).toBe(true);
+      expect(b.log).toEqual(['activate', 'reconcile', 'resume', 'gateway none']);
+    }
+  });
+
+  it('refuses to run the fleet alone while the gateway fleet.json names answers, with a record or a refusal, and changes nothing', async () => {
+    const answers: Authority[] = [
+      { get: async () => ({ fleetId, generation: 4, ownerMachineId: other }) },
+      { get: async () => { throw new AuthorityFailure('authority_corrupt', 'the record of this fleet cannot be read'); } },
+      { get: async () => { throw new AuthorityFailure('invalid_request', 'ssh trift answered with what is no authority\'s frame'); } },
+      { get: async () => { throw new Error('spawn ssh ENOENT'); } },
+    ];
+    for (const named of answers) {
+      const b = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination(), named });
+      await enter(b);
+      await expect(b.handover.relay({ record: relayed })).rejects.toMatchObject({ code: 'invalid_params', message: expect.stringMatching(/the gateway this fleet names/) });
+      expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
+      expect(b.handover.journalState()).toMatchObject({ kind: 'open' });
+      expect(b.log).toEqual([]);
+    }
+  });
+
+  it('refuses a record that names no gateway and another machine as the owner, and changes nothing', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: other } });
+    await expect(b.handover.relay({ record: { ...relayed, ownerMachineId: other } })).rejects.toMatchObject({ code: 'invalid_params' });
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
+    expect(b.log).toEqual([]);
   });
 
   it('refuses a relayed record the gateway says it does not hold, and changes nothing', async () => {

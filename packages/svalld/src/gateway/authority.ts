@@ -27,7 +27,8 @@ export function socketTooLong(socket: string, platform: NodeJS.Platform = proces
 /** The compare-and-swap operations, and what each one has to carry to be considered. */
 export const OWNER_PARAMS = {
   'owner.get': z.object({ fleetId: FleetId }),
-  'owner.create': z.object({ fleetId: FleetId, initialOwnerMachineId: MachineId }),
+  // a fleet that ran before it had a gateway starts its record at the generation its owner holds
+  'owner.create': z.object({ fleetId: FleetId, initialOwnerMachineId: MachineId, generation: Generation.optional() }),
   'owner.begin': z.object({ fleetId: FleetId, expectedGeneration: Generation, fromMachineId: MachineId, toMachineId: MachineId }),
   // the freeze and the digest are the proof ready is granted on: the source is fenced, and the
   // destination has written the state it would activate
@@ -102,8 +103,9 @@ export function transition(
   if (op === 'owner.force') return force(record, params as OwnerParamsOf<'owner.force'>);
   if (op === 'owner.create') {
     const p = params as OwnerParamsOf<'owner.create'>;
-    if (!record) return { record: { fleetId: p.fleetId, generation: 0, ownerMachineId: p.initialOwnerMachineId } };
-    if (record.generation === 0 && record.ownerMachineId === p.initialOwnerMachineId) return { record };
+    const generation = p.generation ?? 0;
+    if (!record) return { record: { fleetId: p.fleetId, generation, ownerMachineId: p.initialOwnerMachineId } };
+    if (record.generation === generation && record.ownerMachineId === p.initialOwnerMachineId) return { record };
     return fail('already_exists', `this fleet is held by ${record.ownerMachineId} at generation ${record.generation}`,
       { ownerMachineId: record.ownerMachineId, generation: record.generation });
   }

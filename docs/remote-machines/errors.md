@@ -6,7 +6,8 @@ page lacks or this page names one the code no longer has.
 
 Where codes show up:
 
-- **The handover sheet** shows the message the machine wrote and, for many codes, a line on what to do.
+- **The handover sheet** shows the message the machine wrote with its code beside it and, for every code that blocks, a
+  line on what to do.
 - **`svall handover`** prints a blocker as `✗ <who>: <message> (<code>)` and a warning with `!`. With `--json`, each
   blocker or warning carries `code`, `message` and, when it is about one thing, `entity` (`character`, `root`,
   `session` or `git`, with its id).
@@ -36,10 +37,10 @@ What `handover.changed` and `status` report, in order.
 | `begin` | Checks | The gateway opens the handover at the fleet's generation. | Resume or Abort. |
 | `freeze` | Resting characters | The source fences every change, rests its terminals and writes the manifest. | Resume or Abort. |
 | `transfer` | Transferring files and sessions | The destination claims each folder, then rsync copies folders and sessions. | Resume or Abort; a resume copies only what changed. |
-| `verify` | Verifying and committing | The copy is checked against the source. | Resume or Abort. |
-| `prepare` | Verifying and committing | The destination proves what landed, imports Git, places the sessions and writes the state it would run. | Resume or Abort. |
-| `ready` | Verifying and committing | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
-| `commit` | Verifying and committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
+| `verify` | Verifying | The copy is checked against the source. | Resume or Abort. |
+| `prepare` | Verifying | The destination proves what landed, imports Git, places the sessions, flushes what landed to disk and writes the state it would run. | Resume or Abort. |
+| `ready` | Verifying | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
+| `commit` | Committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
 | `activate` | Resuming characters | The destination runs the fleet and resumes the terminals the handover rested. | Resume (Retry). |
 | `complete` | Resuming characters | Both machines and the gateway close the handover. | Resume finishes what is left. |
 | `aborted` | the section it stopped in | An abort is letting go on both machines. The source takes its fleet back first, and a machine that cannot be reached lets go at the next Abort. | Abort again finishes it. |
@@ -59,13 +60,15 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine or the gateway answered with another machine id, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: `svall host enable <host> --fleet <fleet>`. Another fleet on the destination: the same command gives it a copy of this one. A machine set up again, with a new machine id: [A gateway set up again](handover.md#a-gateway-set-up-again). Run handovers from the Mac. |
+| `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine or the gateway answered with another machine id, the gateway holds no record of this fleet, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin from a machine that does not own the fleet, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: `svall host enable <host> --fleet <fleet>`. Another fleet on the destination: the same command gives it a copy of this one. A machine set up again, with a new machine id, or a gateway with no record of the fleet: [A gateway set up again](handover.md#a-gateway-set-up-again). Run handovers from the Mac. |
 | `generation_mismatch` | blocks | The source's copy of the ownership record and the gateway's name different generations: another handover or a recovery moved the fleet since the source last heard, or the gateway's record was made again. | `svall handover status`. With nothing open and the gateway ahead, restart the source's daemon: on start it takes a record with a higher generation, never a lower one. A gateway behind the source, as one [set up again](handover.md#a-gateway-set-up-again) is, needs `svall fleet recover --force-owner <machine>` naming the machine that runs the fleet (`local` for this Mac), which writes a record above both. |
-| `transaction_open` | blocks | A handover of this fleet is already open: at the gateway, as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `svall handover status`, then `svall handover --resume` or `--abort`, whichever it says is safe. |
+| `transaction_open` | blocks | A handover of this fleet is already open: at the gateway (also when Begin finds another handover there, or this one past preparing), as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `svall handover status`, then `svall handover --resume` or `--abort`, whichever it says is safe. The sheet reads that status itself for this blocker, `generation_mismatch` and `identity_mismatch`, and when its status finds one open, offers Resume, Abort or Forget in place of a new start. |
 | `incompatible_release` | blocks | The two machines run different Svall releases. A handover needs the same release on both. | `svall host upgrade <host>` installs this Mac's release there. If the host is newer, update Svall on the Mac first. |
 | `incompatible_protocol` | blocks | The two machines speak different RPC protocols, or the gateway keeps its ownership records under another authority schema than this Mac's release. | As for `incompatible_release`, on the machine the message names. |
 | `incompatible_schema` | blocks | The two machines read different fleet state or transfer manifest versions. | As for `incompatible_release`. |
-| `ssh_interactive` | blocks | ssh would have to ask something (a new host key, a password, a key passphrase), and a handover asks nothing. Also raised when the source's daemon cannot ask its gateway without a prompt. | Run `ssh <destination>` once in a terminal and answer it. Keep a key with a passphrase in the agent (`ssh-add --apple-use-keychain` on a Mac). Then try again. |
+| `ssh_interactive` | blocks | ssh would have to ask something (a new host key, a password, a key passphrase), and a handover asks nothing. Also raised when the source's daemon's ssh to its gateway would have to ask, refused every key it offered, or waits for a Tailscale SSH check. | Run `ssh <destination>` once in a terminal and answer it, or for the gateway, `ssh <gateway>` on the source machine. Keep a key with a passphrase in the agent (`ssh-add --apple-use-keychain` on a Mac), or install one there with `ssh-copy-id <gateway>`. For a Tailscale check, approve it in the browser. Then try again. |
+| `authority_unreachable` | blocks | The source's daemon could not ask the gateway who owns the fleet, as Freeze must: its ssh or socket did not answer, its registry names no ssh route to the gateway, or the gateway failed while it began the handover. | `svall host doctor <gateway>` (**Check** in the app); on the gateway, `systemctl --user status svall-gateway`. With no route, `svall host add <gateway> --ssh <destination>`. Then try again. |
+| `authority_corrupt` | blocks | The gateway cannot read its record of this fleet (see [`authority_corrupt`](#gateway-answers) under Gateway answers). Nothing can begin until it can. | Put a readable record back on the gateway (the `.broken` copy if it is valid JSON), or replace the gateway with `svall fleet recover --force-owner <machine> --gateway <other machine>` ([When the gateway is lost](handover.md#when-the-gateway-is-lost)). |
 
 ### Agents
 
@@ -176,16 +179,35 @@ What the gateway's ownership authority answers. They appear in handover messages
 ## How a run ends
 
 The `handover.result` line, and what `svall handover` prints last. The command exits 0 when it did what it was asked
-(a start or `--resume` that completed, an `--abort` that aborted) and 1 otherwise.
+(a start or `--resume` that completed, an `--abort` that aborted) and 1 otherwise. `--detach` exits 0 once the helper
+listens, or as the run did if it ended first. `attach` exits 0 once the run it follows ends, whatever its result.
+`status` exits 0 whenever it could say where the handover stands, `unknown` included. `--forget` exits 0 only when it
+dropped the journal.
 
 | Status | What it means | What to do |
 | --- | --- | --- |
-| `complete` | The fleet runs on the destination at the next generation. A character that failed to resume stays dormant with its transcript and error. `pending` names the source or the gateway when it has not yet heard that the handover finished. | Retry a failed character from its row (or revive it). With `pending`, `svall handover --resume` finishes it. |
+| `complete` | The fleet runs on the destination at the next generation. A character that failed to resume stays dormant with its transcript and error. `pending` names the source or the gateway when it has not yet heard that the handover finished. | Retry a failed character from its row (or revive it). With `pending`, `svall handover --resume` finishes it; a source the machine that ran it has no route to, as the Linux machine has none to the Mac, finishes from its own `svall handover --resume`. |
 | `none` | There was no handover to resume or abort. | Nothing. |
 | `blocked` | Nothing committed, and the fleet stays where it was. The blockers are listed. | Settle them and start again; flags such as `--interrupt-after`, `--terminate-shells` and `--archive` answer the choices a person would make. |
 | `aborted` | Nothing committed, and the fleet runs on the source again with the terminals the handover stopped reopened. | Start again when ready. |
-| `interrupted` | The run stopped part way. `safe` lists what may follow: `resume`, `abort`, both, or neither when only the gateway can say whether the commit landed. | Do what `safe` says, or `svall handover status` once the gateway answers. |
+| `interrupted` | The run stopped part way. `safe` lists what may follow: `resume`, `abort` or both; when it lists neither, `stop` says why (below). Where `error` says it plainly, `detail` keeps what the journals said. | Do what `safe` says, or what the `stop` row says. |
 | `detached` | You cancelled after the commit: the move goes on without anyone watching. | `svall handover attach` follows it; `svall handover status` says where it stands. |
+
+## Why nothing is safe
+
+The `stop` of an `interrupted` run whose `safe` is empty.
+
+| Stop | What it means | What to do |
+| --- | --- | --- |
+| `commit_unknown` | The commit was sent and no answer settled whether it landed. The source stays frozen. | `svall handover status` once the gateway answers; it then offers resume or abort. |
+| `gateway_unknown` | The gateway could not be asked, so whether the handover committed is unknown. | Check the link to the gateway (`svall host doctor <gateway>`), then `svall handover status`. |
+| `journal_lost` | After the commit, the destination's handover journal could not be read, so whether it activated is unknown. `detail` names the file it was moved to. | On the destination, put the file back and restart the fleet's daemon, then `svall handover --resume`; or `svall fleet recover --force-owner <machine>`. |
+| `superseded` | The gateway has moved the fleet on past this handover, through another handover or a recovery. | `svall handover --forget`. |
+| `elsewhere` | The handover is between two other machines, or names one this machine has no route to. | `--resume` or `--abort` on the machine the error names. |
+| `running` | Another run of a handover of this fleet holds this machine. | `svall handover attach` follows it. |
+| `not_begun` | The checks failed before Begin, such as a machine or the gateway that did not answer, so nothing is open. | Fix what the error names, then start again. |
+| `invalid` | The command could not run as asked: its arguments, a fleet that names no gateway, or a machine not in the registry. | Fix what the error names and run it again. |
+| `unexpected` | Something no step expects failed. | `svall handover status` says where it stands. |
 
 ## What `svall handover status` says
 
@@ -198,11 +220,11 @@ handover helper is running on this Mac, it names its pid instead; `svall handove
 | --- | --- | --- |
 | `none` | No handover of this fleet is open anywhere. A controller journal whose Begin the gateway never took offers `--abort` to clear it. | nothing, or abort |
 | `open` | A handover is open and has not committed. | resume or abort |
-| `committed` | The gateway has committed; the fleet belongs to the destination and only its activation goes on. | resume |
-| `moved` | The gateway closed the handover after the commit; what is left (the source's or the destination's close) only needs finishing. | resume |
+| `committed` | The gateway has committed; the fleet belongs to the destination and only its activation goes on. With the destination's journal unreadable, nothing is safe: the reason names the file it was moved to and the ways out. | resume, or nothing |
+| `moved` | The gateway closed the handover after the commit; what is left (the source's or the destination's close) only needs finishing. With the destination's journal unreadable, as for `committed`. | resume, or nothing |
 | `returned` | The gateway no longer holds the handover and the source owns the fleet at its generation; an abort only needs finishing. | abort |
 | `superseded` | The gateway has moved on past the handover this Mac's journal names, through another handover or a recovery. | `svall handover --forget` |
-| `unknown` | The gateway cannot say whether the handover committed, or the destination's journal could not be read. Nothing is safe until the gateway answers or someone looks at that machine. | nothing |
+| `unknown` | The gateway cannot say whether the handover committed, or could not be asked and no journal here names a handover. Nothing is safe until it answers: `svall host doctor <gateway>` says why it does not, and for one gone for good, [When the gateway is lost](handover.md#when-the-gateway-is-lost). | nothing |
 
 ### Action
 
@@ -223,7 +245,7 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 | --- | --- |
 | `handover.preflight` | The checks: what the manifest holds, the blockers, the warnings and the names of the characters, folders and sessions. |
 | `handover.changed` | The step the controller has moved to. |
-| `handover.entity` | One character, folder or session row: its progress, a notice, its error, or for an archived folder where the old copy is kept (`archivedTo`). |
+| `handover.entity` | One character, folder or session row: its progress, a notice, its error, for an archived folder where the old copy is kept (`archivedTo`), and for a folder or session the destination has verified, `verified`. |
 | `handover.blocked` | A decision that waits for an answer, with the choices the run holds so far, which an answer builds on. |
 | `handover.retry` | A call that did not answer and is being asked again. |
 | `handover.result` | The last line: how the run ended. |
@@ -234,14 +256,15 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 
 The app and `svall` reach a fleet on another machine through ssh. When that fails, the error names one of these, and
 the banner says it in one sentence naming the machine, with what it said under **Details**. Only `unreachable` and
-`daemon_down` are retried by themselves, backing off to every 16 seconds; the others wait for **Reconnect** in the
-banner, or for the window to be reopened. The banner offers **Check** (`svall host doctor`) for a machine whose daemon
-is down or that failed for another reason, and says so too when the far daemon has not answered a minute after its
-route opened. When the gateway or the app's connection helper did not answer and the gateway has never named an owner
-to this Mac, the banner offers **Open this Mac's copy, read-only**, while this Mac's daemon runs; that daemon takes a
-change only while its own record says this Mac owns the fleet, and **Reconnect** keeps the copy open until the fleet
-is found. When the app's own connection helper stops, cannot start or has not answered, the banner says it has not said
-where the fleet runs, with **Reconnect**.
+`daemon_down` are retried by themselves: the app backs off to every 16 seconds for as long as the window is open, and
+a `svall` command tries five times, waiting up to 8 seconds between tries. The others wait for **Reconnect** in the
+banner, for the window to be reopened or for the command to run again. The banner offers **Check**
+(`svall host doctor`) for a machine whose daemon is down or that failed for another reason, and says so too when the
+far daemon has not answered a minute after its route opened. When the gateway or the app's connection helper did not
+answer and the gateway has never named an owner to this Mac, the banner offers **Open this Mac's copy, read-only**,
+while this Mac's daemon runs; that daemon takes a change only while its own record says this Mac owns the fleet, and
+**Reconnect** keeps the copy open until the fleet is found. When the app's own connection helper stops, cannot start or
+has not answered, the banner says it has not said where the fleet runs, with **Reconnect**.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |
@@ -280,7 +303,7 @@ handover**) or a list of what is still to do, and exits 1 unless nothing is left
 | Step | Command | What it checks or does | When it fails |
 | --- | --- | --- | --- |
 | `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter) and the ssh destination. | Pick another name, or `svall host remove` the machine that holds it. |
-| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet, and a fleet with no gateway has an `owner.json` naming this Mac: a daemon that could not read `~/.config/svall` runs as the machine its `owner.json` names. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes this machine the gateway; then enable again. For an `owner.json` naming another machine, quit Svall and open it on the fleet again, so its daemon starts as this Mac; then enable again. |
+| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet, and a fleet with no gateway has an `owner.json` naming this Mac: a daemon that could not read `~/.config/svall` runs as the machine its `owner.json` names. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes that machine the gateway, or `svall fleet recover --force-owner local` leaves the fleet with none; then enable again. For an `owner.json` naming another machine, quit Svall and open it on the fleet again, so its daemon starts as this Mac; then enable again. |
 | `ssh` | add | An interactive ssh, so you can accept the host key and log in. A failure names ssh's exit and the last of what it said. | `ssh <destination>` once in Terminal and complete it, then add the machine again. |
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps, which asks nothing: Svall needs a key ssh can use without asking, and a password gets only past the `ssh` step. For an upgrade, with or without `--rollback`, and an add of a name already in the registry, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A refused login: install a key with `ssh-copy-id <destination>` and keep its passphrase in the agent (`ssh-add --apple-use-keychain`), then add the machine again. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |
 | `os` | add | Linux on x86-64 or arm64, running Ubuntu. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
@@ -344,8 +367,9 @@ and adds what only this Mac can check. A check that fails makes the command exit
 ## Disaster recovery
 
 `svall fleet recover --force-owner <machine>` writes a new ownership record at the gateway when the ordinary ways
-cannot: see [Recovering a fleet](handover.md#when-the-gateway-is-lost). It first shows what the gateway and every
-machine hold.
+cannot, or with the only gateway gone, this Mac's own record with no gateway: see
+[When the gateway is lost](handover.md#when-the-gateway-is-lost). It first shows what the gateway and every machine
+hold.
 
 ### What the gateway holds
 
@@ -354,13 +378,13 @@ machine hold.
 | `record` | The gateway answered with its record: who owns the fleet, at which generation, and any open handover. |
 | `absent` | The gateway holds no record of this fleet. |
 | `corrupt` | The gateway cannot read its record (see `authority_corrupt`). |
-| `refused` | The machine answered and its authority refused or did not answer. |
-| `unreachable` | The gateway could not be reached at all. |
+| `refused` | The machine answered and its authority refused or did not answer. One that did not answer is down, not lost: `systemctl --user start svall-gateway` there starts it. |
+| `unreachable` | The gateway could not be reached at all. `--force-owner local` then runs the fleet on this Mac alone, with no gateway; `--gateway <machine>` names another machine to take its place. |
 
 ### Results
 
 | Result | What it means | What to do |
 | --- | --- | --- |
-| `recovered` | The record is written and the machine you named took it: it owns the fleet at the new generation. | Follow any `next` lines for machines that were not reached. |
-| `incomplete` | The record is written, and the machine you named has not taken it yet. | Follow the `next` lines: stop the fleet where it still runs, then run the command again. |
-| `refused` | Nothing was written. | Follow the message: a gateway that answered is not lost, a replacement gateway must hold no record, and the fleet id must be typed to confirm. |
+| `recovered` | The record is written and the machine you named took it: it owns the fleet at the new generation, or with no gateway, runs it alone. | Follow any `next` lines for machines that were not reached. |
+| `incomplete` | The record is written, and the machine you named has not taken it yet. Run alone with this Mac's daemon down, `owner.json` and `fleet.json` are written and the daemon takes them when it starts; with another machine holding a handover that did not take the record, this Mac is not yet told; with `fleet.json` that could not be changed to name no gateway, this Mac runs the record and `fleet.json` still names the lost gateway. | Follow the `next` lines: stop the fleet where it still runs, or start this Mac's daemon, then run the command again where it says so. |
+| `refused` | Nothing was written. | Follow the message: a gateway that answered is not lost, a replacement gateway must hold no record, a machine that answers that it runs the fleet is not lost either, a handover journal on this Mac waits for its daemon, a fleet that names no gateway needs `--gateway <machine>`, one that answers, and the fleet id must be typed to confirm. |

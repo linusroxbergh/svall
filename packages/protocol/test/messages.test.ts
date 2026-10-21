@@ -155,6 +155,7 @@ describe('protocol version', () => {
     const u = { cpu: 1, mem: 2, procs: 3 };
     expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: {} }).success).toBe(false);
     expect(methods['load.get'].result.parse({ at: 1, cores: 8, total: u, app: u, chars: {} }).cores).toBe(8);
+    for (const code of ['authority_unreachable', 'authority_corrupt']) expect(Blocker.parse({ code, message: 'm' }).code).toBe(code);
   });
 
   it('was 22 with the load reading', () => {

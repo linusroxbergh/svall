@@ -64,6 +64,11 @@ const cases: Case[] = [
     want: { standing: 'unknown', action: 'none', safe: [] },
   },
   {
+    name: 'no word from the gateway and no journal anywhere leaves it unknown whether a handover is open, not none',
+    o: { gateway: { ok: false, error: 'ssh: connect to host trift: timed out' }, source: { ok: true, value: { status: {}, ownership: { fleetId, generation: 4, ownerMachineId: mac, frozen: false } } } },
+    want: { standing: 'unknown', action: 'none', safe: [], reason: expect.stringMatching(/^the gateway could not be asked \(ssh: connect to host trift: timed out\).*`svall host doctor <gateway>` says why.*gone for good, `svall fleet recover --force-owner local`/) },
+  },
+  {
     name: 'a Begin whose answer was lost is the gateway\'s preparing handover between the same machines',
     o: { controller: journal({ transactionId: undefined, phase: 'begin' }), gateway: { ok: true, value: at(4, mac, tx('preparing', 'tx-9')) } },
     want: { standing: 'open', action: 'continue', transactionId: 'tx-9' },
@@ -115,6 +120,25 @@ const cases: Case[] = [
 describe('assess', () => {
   it.each(cases)('$name', ({ o, want }) => {
     expect(assess(o)).toMatchObject(want);
+  });
+
+  it('names the file a quarantined journal was moved to and the ways out, on either machine', () => {
+    const broken = '/home/ada/.svall/handover/journal.json.broken-1';
+    const lost = assess({
+      controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) },
+      destination: { ok: true, value: { status: { quarantined: broken } } },
+    });
+    expect(lost).toMatchObject({ standing: 'committed', action: 'none', safe: [] });
+    expect(lost.reason).toContain(`moved to ${broken}`);
+    expect(lost.reason).toContain('put it back at /home/ada/.svall/handover/journal.json');
+    expect(lost.reason).toContain('svall fleet recover --force-owner <machine>');
+    expect(lost.reason).not.toMatch(/someone looks/);
+    const source = assess({
+      controller: journal(), gateway: { ok: true, value: at(4, mac, tx('preparing')) },
+      source: { ok: true, value: { status: { quarantined: '/Users/ada/.svall/handover/journal.json.broken-2' }, ownership: { fleetId, generation: 4, ownerMachineId: mac, frozen: true } } },
+    });
+    expect(source).toMatchObject({ standing: 'open', safe: ['resume', 'abort'] });
+    expect(source.reason).toMatch(/moved to \/Users\/ada\/\.svall\/handover\/journal\.json\.broken-2.*abort takes the fleet back to .* and reopens the terminals the handover rested there/);
   });
 
   it('never offers an abort once the gateway has moved the fleet', () => {

@@ -1,23 +1,26 @@
 import {
   HANDOVER_PHASES,
-  type Blocker, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type Verdict, type Warning,
+  type Blocker, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type StopReason, type Verdict,
+  type Warning,
 } from '@svall/protocol';
 import { machineName, withoutTokens } from './host.js';
 
 // what `svall handover --json` prints
 export type { CharacterResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@svall/protocol';
 
-export type SectionId = 'checks' | 'rest' | 'transfer' | 'commit' | 'resume';
+export type SectionId = 'checks' | 'rest' | 'transfer' | 'verify' | 'commit' | 'resume';
+// Abort is possible up to the commit, which has a section of its own
 export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }[] = [
   { id: 'checks', label: 'Checks', phases: ['begin'] },
   { id: 'rest', label: 'Resting characters', phases: ['freeze'] },
   { id: 'transfer', label: 'Transferring files and sessions', phases: ['transfer'] },
-  { id: 'commit', label: 'Verifying and committing', phases: ['verify', 'prepare', 'ready', 'commit'] },
+  { id: 'verify', label: 'Verifying', phases: ['verify', 'prepare', 'ready'] },
+  { id: 'commit', label: 'Committing', phases: ['commit'] },
   { id: 'resume', label: 'Resuming characters', phases: ['activate', 'complete'] },
 ];
 export type SectionState = 'pending' | 'active' | 'waiting' | 'done' | 'stopped';
 
-type Progress = { done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string };
+type Progress = { done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string; verified?: boolean };
 export type Row = Progress & { section: SectionId; kind: HandoverEntityKind; id: string; phase: HandoverPhase };
 
 /** One handover as the sheet follows it: what the helper has said so far, and what the user chose. */
@@ -43,6 +46,14 @@ export type HandoverRun = {
   cancelled?: boolean;
   // the fleet has moved and the page has not yet loaded it from its new owner
   awaitingOwner: boolean;
+  // the sheet resumed it by itself, since past the commit nothing else was safe
+  goingOn?: boolean;
+  // the sheet asked where the handover stands, and nothing has answered yet
+  checking?: boolean;
+  // the run it asked about, which a status that finds nothing open hands back
+  stopped?: HandoverRun;
+  // the status is the sheet's own look at this run, which a status found by a later look is not
+  checked?: boolean;
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -59,11 +70,32 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
   const row: Row = {
     section, kind: e.kind, id: e.id, phase: e.phase, done: e.done, total: e.total, bytes: e.bytes, totalBytes: e.totalBytes,
     ...(e.error && { error: withoutTokens(e.error) }), ...(e.notice && { notice: withoutTokens(e.notice) }), ...(e.archivedTo && { archivedTo: e.archivedTo }),
+    ...(e.verified && { verified: true }),
   };
   return at < 0 ? [...rows, row] : rows.map((r, i) => (i === at ? row : r));
 }
 
 const scrubbed = (blockers: Blocker[]): Blocker[] => blockers.map((b) => ({ ...b, message: withoutTokens(b.message) }));
+
+// an id inside a path names a file or a folder, and stays
+const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
+const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+/**
+ * The controller's words without the ids and generations it names: the shapes it writes in whole, a transaction as the
+ * handover, and any other id as a machine.
+ */
+const plain = (text: string): string => withoutTokens(text)
+  .replace(ids('\\b(holds|with) UUID at generation \\d+(?: in handover UUID \\([^)]*\\))?'), '$1 a different record of the fleet')
+  .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
+  .replace(ids(' in handover UUID'), ' in another handover')
+  .replace(/ at generation \d+/g, '')
+  .replace(ids('(^|; )UUID\\b'), '$1the handover')
+  .replace(ids(': UUID is committed'), ': the handover is committed')
+  .replace(ids('\\bhandover UUID\\b'), 'the handover')
+  .replace(ids('\\b(record|commit|of|abort|whether|past) UUID\\b'), '$1 the handover')
+  .replace(ids('\\bmachine UUID\\b'), 'another machine')
+  .replace(ids('\\bthe gateway UUID\\b'), 'the gateway')
+  .replace(ids('\\bUUID\\b'), 'a machine');
 
 type Fields = Record<string, unknown>;
 const isObject = (v: unknown): v is Fields => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -83,7 +115,7 @@ function isOutcome(d: Fields): boolean {
     case 'none': return isString(d.reason);
     case 'blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue);
     case 'aborted': return isPhase(d.phase);
-    case 'interrupted': return isPhase(d.phase) && isString(d.error) && isSafe(d.safe);
+    case 'interrupted': return isPhase(d.phase) && isString(d.error) && isSafe(d.safe) && optional(d.stop, isString) && optional(d.detail, isString);
     case 'detached': return isString(d.transactionId);
     default: return false;
   }
@@ -101,7 +133,7 @@ export function readable(e: unknown): e is HandoverEvent {
     case 'handover.changed': return isPhase(d.phase) && optional(d.transactionId, isString);
     case 'handover.entity':
       return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
-        && optional(d.error, isString) && optional(d.notice, isString) && optional(d.archivedTo, isString);
+        && optional(d.error, isString) && optional(d.notice, isString) && optional(d.archivedTo, isString) && optional(d.verified, (v) => typeof v === 'boolean');
     case 'handover.blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue) && optional(d.choices, isObject);
     case 'handover.retry': return isPhase(d.phase) && isNumber(d.attempt) && isString(d.error);
     case 'handover.result': return isOutcome(d);
@@ -116,7 +148,10 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
   if (!readable(e)) return run;
   const tx = 'transactionId' in e.data && typeof e.data.transactionId === 'string' ? e.data.transactionId : undefined;
   // the controller goes on from a decision only once it is answered; a daemon's relayed row can trail the decision
-  const next: HandoverRun = { ...run, transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }) };
+  // a line after the status the sheet asked for is the run that status found, which need not go where the start did
+  const next: HandoverRun = {
+    ...run, checking: undefined, ...(run.checking && { to: undefined, stopped: undefined }), transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }),
+  };
   switch (e.event) {
     case 'handover.preflight':
       return { ...next, preflight: { summary: e.data.summary, blockers: scrubbed(e.data.blockers), warnings: scrubbed(e.data.warnings), ...(e.data.names && { names: e.data.names }) } };
@@ -132,9 +167,9 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
       // an answer starts from the choices the run holds, which a sheet relaunched after the start never saw
       return { ...next, decision: { phase: e.data.phase, blockers: scrubbed(e.data.blockers) }, ...(e.data.choices && { choices: e.data.choices }) };
     case 'handover.retry':
-      return { ...next, retry: { ...e.data, error: withoutTokens(e.data.error) } };
+      return { ...next, retry: { ...e.data, error: plain(e.data.error) } };
     case 'handover.result': {
-      const data = e.data.status === 'interrupted' ? { ...e.data, error: withoutTokens(e.data.error) }
+      const data = e.data.status === 'interrupted' ? { ...e.data, error: plain(e.data.error), ...(e.data.detail && { detail: withoutTokens(e.data.detail) }) }
         : e.data.status === 'blocked' ? { ...e.data, blockers: scrubbed(e.data.blockers) } : e.data;
       return { ...next, result: data, decision: undefined, retry: undefined, awaitingOwner: data.status === 'complete' };
     }
@@ -147,7 +182,7 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
 
 /** The helper process the page was watching has ended. */
 export const endFollow = (run: HandoverRun, code: number, error?: string): HandoverRun =>
-  ({ ...run, following: false, ...(error ? { error: withoutTokens(error) } : code !== 0 && !run.result && !run.status ? { error: `the helper exited with code ${code}` } : {}) });
+  ({ ...run, following: false, checking: undefined, ...(error ? { error: withoutTokens(error) } : code !== 0 && !run.result && !run.status ? { error: `the helper exited with code ${code}` } : {}) });
 
 const live = (run: HandoverRun): boolean => run.following && !run.result && !run.status;
 
@@ -156,16 +191,109 @@ export const decisionPending = (run: HandoverRun | undefined): boolean => !!run 
 /** A standing the user has something to do about: a step that may follow, or a journal only Forget clears. */
 export const needsUser = (v: Verdict): boolean => v.safe.length > 0 || v.standing === 'superseded';
 
-/** A run that stopped sending its commit without hearing whether the gateway took it: only the gateway can say, and nothing is safe until it does. */
-const commitUnknown = (r: Outcome | undefined): boolean => r?.status === 'interrupted' && r.phase === 'commit' && r.safe.length === 0;
+/** Why a run that stopped offers nothing safe, when it says. */
+const stopOf = (r: Outcome | undefined): StopReason | undefined => (r?.status === 'interrupted' && !r.safe.length ? r.stop : undefined);
+
+// stops where the status says more than the run did: whose handover is open, or the run that holds this machine
+const STATUS_SAYS: (StopReason | undefined)[] = [undefined, 'superseded', 'running', 'unexpected'];
+
+// blockers that mean another handover of this fleet may be open, which only `handover status` can say what to do about
+const OPEN_ELSEWHERE: string[] = ['transaction_open', 'generation_mismatch', 'identity_mismatch'];
+
+/**
+ * A run whose status the sheet then reads: the checks stopped it for a handover that may already be open, or a resume or
+ * abort found nothing safe, which its error says in the controller's ids.
+ */
+export function asksStatus(run: HandoverRun | undefined): boolean {
+  if (!run || run.following || run.status || run.checking) return false;
+  const r = run.result;
+  return r?.status === 'blocked' ? r.blockers.some((b) => OPEN_ELSEWHERE.includes(b.code)) : r?.status === 'interrupted' && !r.safe.length && STATUS_SAYS.includes(r.stop);
+}
+
+/** A blocker the status has answered, whose message names the ids and generations the sheet leaves out. */
+export const answered = (run: HandoverRun, b: Blocker): boolean => !!run.status && OPEN_ELSEWHERE.includes(b.code);
+
+/** The status the sheet goes by: one it read itself and finds nothing open leaves a run that stopped with no way on to its blockers or its error. */
+export const verdictOf = (run: HandoverRun): Verdict | undefined => {
+  const r = run.result;
+  const stopped = r?.status === 'blocked' || (r?.status === 'interrupted' && !r.safe.length);
+  return run.checked && run.status?.standing === 'none' && !run.status.safe.length && stopped ? undefined : run.status;
+};
+
+/**
+ * Past the commit, a status or a stopped run that leaves only resuming, which the sheet then does without asking, once
+ * per run it rebuilds or follows.
+ */
+export function goesOnByItself(run: HandoverRun | undefined): boolean {
+  if (!run || run.following || run.goingOn) return false;
+  const only = (safe: SafeAction[]) => safe.length === 1 && safe[0] === 'resume';
+  const s = run.status;
+  if (s) return (s.standing === 'committed' || s.standing === 'moved') && only(s.safe);
+  return run.result?.status === 'interrupted' && only(run.result.safe) && isCommitted(run);
+}
+
+/** The run a resume the sheet started by itself follows: what it goes on from, at the furthest step reached. */
+export function goOn(run: HandoverRun): HandoverRun {
+  const at = run.status?.phase ?? (run.result && 'phase' in run.result ? run.result.phase : undefined);
+  const phase = at && (!run.phase || step(at) > step(run.phase)) ? at : run.phase;
+  return { ...run, following: true, goingOn: true, phase, status: undefined, result: undefined, error: undefined, decision: undefined, retry: undefined, cancelled: undefined, aborting: undefined };
+}
+
+/** `svall` as typed for a window's fleet: with `-p <profile>` when the shell names one, as its own calls are. */
+export const svallFor = (profile: string | undefined): string => (profile ? `svall -p ${profile}` : 'svall');
+
+/** A status past the commit with nothing safe: the destination's journal of it could not be read. */
+const lostJournal = (s: Verdict | undefined): boolean => !!s && (s.standing === 'committed' || s.standing === 'moved') && !s.safe.length;
+
+/** The way on from a terminal where the sheet has none, as handover.md and errors.md give it; commands stand between backticks. */
+export function wayOut(run: HandoverRun, ctx: Pick<HintContext, 'destination' | 'svall' | 'gateway'>): string | undefined {
+  const svall = ctx.svall ?? 'svall';
+  const s = verdictOf(run);
+  const stop = s ? undefined : stopOf(run.result);
+  if (s?.standing === 'superseded' || stop === 'superseded') {
+    return `\`${svall} handover status\` says where the fleet stands now. Forget is enough when another handover or a recovery moved it on; `
+      + `if the gateway was set up again, \`${svall} fleet recover --force-owner local\` then makes this Mac the fleet's owner.`;
+  }
+  if (s?.standing === 'unknown' || stop === 'commit_unknown' || stop === 'gateway_unknown') {
+    const gateway = ctx.gateway && machineName(ctx.gateway) ? ctx.gateway : '<gateway>';
+    return `Once the gateway answers, \`${svall} handover status\` says what is safe; \`${svall} host doctor ${gateway}\` checks the link to it meanwhile. `
+      + `If it is gone for good, \`${svall} fleet recover --force-owner local\` runs the fleet on this Mac alone, or \`${svall} fleet recover --force-owner local --gateway <machine>\` `
+      + 'with another machine as its gateway.';
+  }
+  if (lostJournal(s) || stop === 'journal_lost') {
+    return `On ${ctx.destination}, put the handover record back where the details say and restart the fleet's daemon there, then Check again; `
+      + `or \`${svall} fleet recover --force-owner <machine>\` runs the fleet on the machine you name, from the state it holds.`;
+  }
+  return undefined;
+}
+
+/** What the journals said where the sheet says it plainly: a stopped run's detail, or the reason of a status whose journal was lost. */
+export function detailOf(run: HandoverRun): string | undefined {
+  const s = verdictOf(run);
+  if (run.result?.status === 'interrupted' && run.result.detail) return run.result.detail;
+  return lostJournal(s) ? s!.reason : undefined;
+}
 
 /** Past the commit: the fleet is the destination's, and only going on is left. */
 export function isCommitted(run: HandoverRun): boolean {
   if (run.status) return run.status.standing === 'committed' || run.status.standing === 'moved';
   const r = run.result;
   if (r?.status === 'complete' || r?.status === 'detached') return true;
-  if (r?.status === 'interrupted') return step(r.phase) >= step('commit') && !r.safe.includes('abort') && !commitUnknown(r);
-  return !!run.phase && step(run.phase) >= step('activate');
+  if (r?.status === 'interrupted') return r.stop && !r.safe.length ? r.stop === 'journal_lost' : step(r.phase) >= step('commit') && r.safe.includes('resume') && !r.safe.includes('abort');
+  return run.goingOn || (!!run.phase && step(run.phase) >= step('activate'));
+}
+
+/**
+ * Where a handover goes: `local` or the gateway's name. A sheet relaunched after the start rebuilds a run that never
+ * said, and a handover runs only between this Mac and its gateway, so `owner`, where the fleet runs now, names it:
+ * the other end before the commit, that end after it.
+ */
+export function destinationOf(run: HandoverRun, owner: string | undefined, gateway: string | undefined): string | undefined {
+  if (run.to || !gateway || (owner !== 'local' && owner !== gateway)) return run.to;
+  const s = run.status?.standing;
+  if (s === 'unknown' || s === 'superseded') return undefined;
+  const landed = s === 'none' ? run.result?.status === 'complete' : isCommitted(run);
+  return landed ? owner : owner === 'local' ? gateway : 'local';
 }
 
 /** Where the sheet stands, section by section. */
@@ -221,7 +349,7 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
   }
   if (run.following) return none;
   const resume = (safe: SafeAction[]) => (safe.includes('resume') ? (isCommitted(run) ? 'Retry' as const : 'Resume' as const) : undefined);
-  const s = run.status;
+  const s = verdictOf(run);
   if (s) {
     return {
       ...none, resume: resume(s.safe), abort: s.safe.includes('abort'), forget: s.standing === 'superseded',
@@ -235,7 +363,8 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
     case 'aborted': case 'none': return { ...none, start: true };
     case 'interrupted': return { ...none, resume: resume(r.safe), abort: r.safe.includes('abort'), follow: r.safe.length === 0 };
     case 'detached': return { ...none, follow: true };
-    default: return { ...none, start: true, follow: !!run.error };
+    // a resume the sheet started by itself that never said how it went is still the only way on
+    default: return run.goingOn ? { ...none, resume: 'Retry' } : { ...none, start: true, follow: !!run.error };
   }
 }
 
@@ -306,7 +435,9 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
 
 export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry', carry: 'Carry the folder whole' };
 
-export type HintContext = { destination: string; source: string; pull: boolean; name(id: string): string };
+// home: the account's home, which is the same path on both machines, when the page knows it; svall: the command for this window's fleet;
+// gateway: the fleet's gateway by its registry name
+export type HintContext = { destination: string; source: string; pull: boolean; home?: string; svall?: string; gateway?: string; name(id: string): string };
 
 // a session OpenCode's database went on with; a divergence of files, whatever the agent, ends with the files
 const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Za-z]{14}) past the copy coming in$/;
@@ -314,7 +445,53 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
+  // the Linux machine, by the name svall host knows it by
+  const linux = ctx.pull ? ctx.source : ctx.destination;
+  const svall = ctx.svall ?? 'svall';
   switch (b.code) {
+    case 'identity_mismatch':
+      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message. A machine set up again is added and made the gateway again, as "A gateway set up again" in Moving a fleet says.';
+    case 'transaction_open':
+      return 'Another handover of this fleet is still open: finish it with Resume or Abort, whichever its status says is safe, before a new one.';
+    case 'incompatible_adapter':
+      return "Update the agent CLI on the machine the message names; for a file in a session, move it out of that session's folder.";
+    case 'home_mismatch':
+      return `Both machines need the same home path: make an account on ${linux} whose home is this Mac's, then add the machine again at that account.`;
+    case 'parent_missing':
+      return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
+    case 'worktree_unresolved':
+      return 'Put the folder back or close the character; `git status` in it says what Git sees.';
+    case 'worktree_unused':
+      return 'Commit or stash its work on a branch, unlock it, or `git worktree remove` it.';
+    case 'destination_no_space':
+      return `Free space on ${ctx.destination}, or leave build output out with handover.exclude in fleet.json.`;
+    case 'path_collision':
+      return `Rename one of the files on ${ctx.source}, or move the file in the way on ${ctx.destination}.`;
+    case 'path_symlinked':
+      return blockerSide(b) === 'destination'
+        ? `Remove the link on ${ctx.destination}, or rename the folder there to the spelling ${ctx.source} uses; then try again.`
+        : "Use the real path the message names: cd there in the character's terminal, or change the context item or home.cwd that names the link.";
+    case 'mission_control_shared':
+      return 'Give one of the fleets a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
+    case 'transcript_missing':
+      return `An agent that never reported a transcript has no working hooks: run \`${svall} doctor\`. To move without that conversation, exit the agent and try again.`;
+    case 'ssh_interactive':
+      return `Run ssh once in Terminal to the destination ${linux} was added with and answer what it asks, and keep a key's passphrase in the agent with \`ssh-add --apple-use-keychain\`; then try again.`;
+    case 'platform_unsupported':
+      return "If the repository runs there, add the platform to its .svall/handover.json; otherwise close the characters working in it.";
+    case 'rsync_unsupported':
+      return `On ${linux}, install rsync 3.2.3 or newer (\`sudo apt install rsync\`); on this Mac, \`${svall} doctor\` checks the one Svall brings.`;
+    case 'git_mismatch':
+      return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
+    case 'git_extension':
+      return `Update or install git on ${ctx.destination}.`;
+    case 'manifest_too_large': case 'too_many_files':
+      return 'Leave generated folders out with handover.exclude in fleet.json.';
+    case 'generation_mismatch': {
+      const owner = !ctx.pull ? 'local' : machineName(ctx.source) ? ctx.source : '<machine>';
+      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again; \`${svall} handover status\` says which. `
+        + `With nothing open, restart Svall's daemon on ${ctx.source}, which takes the gateway's newer record; a gateway set up again needs \`${svall} fleet recover --force-owner ${owner}\`.`;
+    }
     case 'agent_working':
       return `Continue waiting lets it finish its turn. Interrupt and carry stops every agent still at work with Escape; each resumes from its transcript on ${ctx.destination}.`;
     case 'agent_blocked':
@@ -351,6 +528,10 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       const linux = ctx.pull ? ctx.source : ctx.destination;
       return `Both machines need the same Svall release: Upgrade ${linux} under Settings → Machines. If it runs a newer release than this Mac, update this Mac first.`;
     }
+    case 'authority_unreachable':
+      return `The fleet's gateway could not say who owns this fleet: Check ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} under Settings → Machines, then try again.`;
+    case 'authority_corrupt':
+      return `The gateway on ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} cannot read its record of this fleet: put a readable record back there, or run svall fleet recover in a terminal.`;
     case 'agent_cli_missing':
       return "Install it on the machine the message names, where Svall's daemon finds it, then try again.";
     case 'agent_logged_out':
@@ -358,7 +539,9 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'agent_hooks_missing':
       return `Run svall setup on ${ctx.destination}, then try again.`;
     case 'path_unsupported':
-      return 'Move what it names, or cd that terminal to a folder that travels, or close the character; then try again.';
+      return b.entity?.kind === 'character'
+        ? 'Move what it names, or cd that terminal to a folder that travels, or close the character; then try again.'
+        : `Follow the message: move what it names out of the folder that carries it, fix handover.exclude in fleet.json, or make the folder writable on ${ctx.destination}; then try again.`;
     default:
       return undefined;
   }
@@ -371,8 +554,28 @@ export function upgradeAsked(b: Blocker, ctx: HintContext): string | undefined {
   return machineName(linux) ? linux : undefined;
 }
 
-/** A path as the user says it: the account's home as `~`. */
-export const shortPath = (p: string): string => p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~');
+/** A path as the user says it: the account's home, when known, as `~`. */
+export const shortPath = (p: string, home?: string): string => (home && (p === home || p.startsWith(`${home}/`)) ? `~${p.slice(home.length)}` : p);
+
+/** The account's home a fleet home lies in, such as `/Users/ada` for `/Users/ada/.svall`. */
+export const accountHome = (fleetHome: string | undefined): string | undefined => (fleetHome ? /^\/(?:Users|home)\/[^/]+(?=\/|$)/.exec(fleetHome)?.[0] : undefined);
+
+/** Which machine the folder a blocker names is on, when its code, its message or the step that found it (`phase`) says. */
+export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'destination' | undefined {
+  switch (b.code) {
+    case 'external_writer': return /^the source /.test(b.message) ? 'source' : 'destination';
+    case 'path_symlinked': return /lands at the path it has on the source/.test(b.message) ? 'destination' : 'source';
+    // the checks and the freeze read the source's folders; the destination checks its own once they have landed
+    case 'path_unsupported': return phase === 'begin' || phase === 'freeze' ? 'source' : undefined;
+    case 'worktree_unresolved': case 'worktree_unused': case 'repository_unused': case 'platform_unsupported': case 'mission_control_shared': return 'source';
+    case 'destination_occupied': case 'destination_diverged': case 'parent_missing': case 'git_mismatch': case 'git_extension': case 'path_collision': return 'destination';
+    default: return undefined;
+  }
+}
+
+// warnings about what the user meets on the destination, which stay in sight while the rest fold away
+const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'config_difference'];
+export const staysInSight = (w: Warning): boolean => AFTER_MOVE.includes(w.code);
 
 /** The full path a blocker or row is about, when it is about a folder: a root's, or the one a Git message leads with. */
 export function entityPath(e: Blocker['entity'], names?: Names, message?: string): string | undefined {
@@ -383,12 +586,12 @@ export function entityPath(e: Blocker['entity'], names?: Names, message?: string
 }
 
 /** Who or what an entity is for the user: a character's name, a folder by its short path, whose a session is; an id only when nothing names it. */
-export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names, message?: string): string | undefined {
+export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names, message?: string, home?: string): string | undefined {
   if (!e) return undefined;
   if (e.kind === 'character') return name(e.id);
   if (e.kind === 'session') return names?.sessions?.[e.id] ? `${names.sessions[e.id]}'s session` : `session ${e.id}`;
   const path = entityPath(e, names, message);
-  if (path) return shortPath(path);
+  if (path) return shortPath(path, home);
   return e.kind === 'root' ? `folder ${e.id}` : 'repository';
 }
 
@@ -406,7 +609,7 @@ export function planOf(choice: Choice, b: Blocker, ctx: HintContext, names?: Nam
   switch (choice) {
     case 'interrupt': return `${who} will be stopped with Escape and resume from its transcript on ${ctx.destination}.`;
     case 'terminate': return `What runs in ${who}'s terminal will be ended; the shell reopens in its folder on ${ctx.destination}.`;
-    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message) ?? 'that folder'} on ${ctx.destination} will be set aside first, to a timestamped folder beside it.`;
+    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? 'that folder'} on ${ctx.destination} will be set aside first, to a timestamped folder beside it.`;
     case 'carry': return `${who}'s folder will be carried whole, with the repositories in it.`;
   }
 }
@@ -427,16 +630,18 @@ export function fraction(row: Progress): number | undefined {
   return undefined;
 }
 
-/** Every transfer row as one: bytes sent against bytes to send, a verified row counting as whole. */
+/** A transfer row the destination has verified; one still being checked has its phase, and often every byte. */
+export const verified = (row: Row): boolean => row.section === 'transfer' && !!row.verified && !row.error;
+
+/** Every transfer row as one: bytes sent against bytes to send, and how many rows are verified. */
 export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number; done: number; total: number } {
   const t = { bytes: 0, totalBytes: 0, done: 0, total: 0 };
   for (const r of rows) {
     if (r.section !== 'transfer') continue;
     t.total++;
-    const whole = r.phase === 'verify' && !r.error;
-    if (whole || fraction(r) === 1) t.done++;
+    if (verified(r)) t.done++;
     t.totalBytes += r.totalBytes ?? 0;
-    t.bytes += whole ? r.totalBytes ?? 0 : Math.min(r.bytes ?? 0, r.totalBytes ?? r.bytes ?? 0);
+    t.bytes += Math.min(r.bytes ?? 0, r.totalBytes ?? r.bytes ?? 0);
   }
   return t;
 }
@@ -464,10 +669,44 @@ function progressText(row: Row): string {
 
 const label = (id: SectionId) => SECTIONS.find((s) => s.id === id)!.label;
 
+const notKnown = (destination: string, why: string) => `Whether the fleet moved to ${destination} is not known yet: ${why}.`;
+const NOT_ASKED = 'The gateway could not be asked, so whether a handover of this fleet is open is not known.';
+const SUPERSEDED = "The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.";
+const lostLine = (destination: string) =>
+  `The fleet moved to ${destination}, but ${destination}'s record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.`;
+
+/** Why a run that stopped has nothing safe, where its stop says more than its error. */
+function stopLine(r: Extract<Outcome, { status: 'interrupted' }>, destination: string): string | undefined {
+  switch (stopOf(r)) {
+    case 'commit_unknown': return notKnown(destination, 'the gateway has not answered');
+    case 'gateway_unknown': return r.transactionId ? notKnown(destination, 'the gateway could not be asked') : NOT_ASKED;
+    case 'journal_lost': return lostLine(destination);
+    case 'superseded': return SUPERSEDED;
+    default: return undefined;
+  }
+}
+
+/** Where a status leaves the handover, from its standing, safe actions and phase; its reason names ids and generations. */
+function standingLine(s: Verdict, destination: string): string {
+  switch (s.standing) {
+    case 'open':
+      return `${s.phase === 'aborted' ? 'An abort stopped part way' : `Stopped at ${label(SECTIONS[sectionAt(s.phase ?? 'begin')].id)}`}, before the commit: the fleet has not moved.`;
+    case 'committed': case 'moved':
+      if (!s.safe.length) return lostLine(destination);
+      return s.standing === 'committed'
+        ? `The fleet is ${destination}'s now, and stopped before its characters resumed there.`
+        : `The fleet runs on ${destination} now; what the handover left open there is still to finish.`;
+    case 'returned': return 'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.';
+    case 'superseded': return SUPERSEDED;
+    case 'unknown': return s.transactionId ? notKnown(destination, 'the gateway has not answered') : NOT_ASKED;
+    case 'none': return s.safe.includes('abort') ? 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.' : 'No handover of this fleet is open.';
+  }
+}
+
 /** The sheet's one line on where the handover stands. `destination` is the machine it goes to, by name. */
 export function headline(run: HandoverRun, destination: string): string {
-  const s = run.status;
-  if (s) return s.reason;
+  const s = verdictOf(run);
+  if (s) return standingLine(s, destination);
   const r = run.result;
   switch (r?.status) {
     case 'complete': {
@@ -484,12 +723,11 @@ export function headline(run: HandoverRun, destination: string): string {
       return `${n} ${n === 1 ? 'thing' : 'things'} to settle before the fleet moves to ${destination}. Nothing has moved.`;
     }
     case 'interrupted':
-      if (commitUnknown(r)) return `Whether the fleet moved to ${destination} is not known yet: ${r.error}. Check again asks the gateway.`;
-      return isCommitted(run)
+      return stopLine(r, destination) ?? (isCommitted(run)
         ? `The fleet is ${destination}'s now, and it stopped while resuming: ${r.error}`
-        : `Stopped at ${label(SECTIONS[sectionAt(r.phase === 'aborted' ? run.phase ?? 'begin' : r.phase)].id)}: ${r.error}`;
+        : `Stopped at ${label(SECTIONS[sectionAt(r.phase === 'aborted' ? run.phase ?? 'begin' : r.phase)].id)}: ${r.error}`);
     case 'detached': return `The fleet is moving to ${destination} without this window watching.`;
-    case 'none': return r.reason;
+    case 'none': return 'There was no handover of this fleet to resume or abort.';
   }
   if (run.error) return `The helper did not run: ${run.error}`;
   if (decisionPending(run)) {
@@ -498,8 +736,9 @@ export function headline(run: HandoverRun, destination: string): string {
   }
   if (!live(run)) return '';
   if (run.aborting) return 'Stopping: the fleet goes back to where it was…';
+  if (run.checking) return 'Asking where the handover stands…';
   if (!run.phase && !run.preflight) return run.to ? 'Starting…' : 'Looking for a handover…';
-  const now = `${label(SECTIONS[sectionAt(run.phase ?? 'begin')].id)}…`;
+  const now = run.goingOn ? `The fleet is ${destination}'s now, so the sheet resumes it there by itself…` : `${label(SECTIONS[sectionAt(run.phase ?? 'begin')].id)}…`;
   return run.retry ? `${now} asking again (attempt ${run.retry.attempt}): ${run.retry.error}` : now;
 }
 

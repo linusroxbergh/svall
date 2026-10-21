@@ -9,7 +9,8 @@ import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { manifestDigest, spaceNeed, type ScanFs } from '@svall/svalld/handover/manifest';
 import { replicaRoots } from '@svall/svalld/handover/replicas';
 import { resolvePaths } from '@svall/svalld/paths';
-import { Handover, Refused } from '../../src/controller/handover.js';
+import { entryEvent } from '../../src/controller/events.js';
+import { Handover, NoRoute, Refused } from '../../src/controller/handover.js';
 import { authorityOp, connectHandover, gatewayOf, Masters, reconnecting } from '../../src/controller/reach.js';
 import { remoteOwner } from '../../src/controller/authority.js';
 import { fileStore, type FrozenManifest } from '../../src/controller/recovery.js';
@@ -44,12 +45,19 @@ describe('the controller transaction', () => {
     expect(phases(w)).toEqual(['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete']);
     // rows for the sheet: each root and session file as it lands, each character as it comes up
     const entity = (id: string) => w.events.find((e) => e.event === 'handover.entity' && e.data.id === id);
-    expect(entity('r_app')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64 } });
+    expect(entity('r_app')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64, verified: true } });
     expect(entity('s0')).toMatchObject({ data: { kind: 'session', phase: 'verify' } });
     expect(entity('c_bo')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', error: expect.stringContaining('SessionStart') } });
     expect(w.events[0]).toMatchObject({ event: 'handover.preflight', data: { blockers: [], summary: { roots: 2 } } });
     expect(settledOn(w)).toBe('destination');
     expect(w.events.at(-1)).toEqual({ event: 'handover.result', data: out });
+  });
+
+  it('marks a transfer row verified only once its copy is, as a row still being checked has its phase and every byte too', () => {
+    const row = (state: 'verifying' | 'verified') =>
+      entryEvent('tx-1', { id: 'r_app', kind: 'root', state, pass: 1, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, updatedAt: 0 });
+    expect(row('verifying')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64 } });
+    expect(row('verified').data).toMatchObject({ phase: 'verify', verified: true });
   });
 
   it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {
@@ -65,6 +73,14 @@ describe('the controller transaction', () => {
     expect(out).toMatchObject({ status: 'complete', characters: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] });
     const row = w.events.find((e) => e.event === 'handover.entity' && e.data.id === 'c_bo');
     expect(row).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', notice } });
+  });
+
+  it('stops before Begin with nothing open when its checks could not reach the gateway', async () => {
+    const w = new World();
+    w.down.add('gateway');
+    const out = await controller(w).start(trift, {});
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'begin', safe: [], stop: 'not_begun', error: expect.stringContaining('connection refused') });
+    expect(w.store.j).toBeUndefined();
   });
 
   it('writes each root only where its claim says, under the excludes and Git keep rules it was proven with, and each session into its stage as one entry', async () => {
@@ -394,6 +410,30 @@ describe('preflight', () => {
       const out = await controller(w).start(trift, {});
       expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [expect.objectContaining({ code: 'transaction_open', message: expect.stringContaining(said) })] });
       expect(w.ops).not.toContain('mac:handover.preflight');
+    }
+  });
+
+  it('blocks a Begin the gateway refuses with the code that says why, transaction_open only for a handover it holds open', async () => {
+    const cases: [string, string, RegExp][] = [
+      ['authority_corrupt', 'authority_corrupt', /unreadable.*svall fleet recover/],
+      ['not_found', 'identity_mismatch', /holds no record.*svall host enable/],
+      ['internal', 'authority_unreachable', /failed/],
+      ['invalid_phase', 'transaction_open', /is ready-to-commit/],
+      ['transaction_mismatch', 'transaction_open', /already in handover/],
+      ['generation_mismatch', 'generation_mismatch', /generation/],
+      ['not_owner', 'identity_mismatch', /owned by/],
+    ];
+    const said: Record<string, string> = {
+      authority_corrupt: `the record for fleet ${fleetId} is unreadable`, not_found: `the gateway holds no record for fleet ${fleetId}`, internal: 'the gateway failed: EIO',
+      invalid_phase: 'tx-0 is ready-to-commit, not preparing', transaction_mismatch: 'this fleet is already in handover tx-0',
+      generation_mismatch: 'this fleet is at generation 5, not 4', not_owner: `this fleet is owned by ${trift}, not ${mac}`,
+    };
+    for (const [refused, code, says] of cases) {
+      const w = new World();
+      w.gateway.begin = () => w.call('gateway', 'begin', () => { throw new Refused(refused, said[refused]); });
+      const out = await controller(w).start(trift, {});
+      expect(out, refused).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code, message: expect.stringMatching(says) }] });
+      expect(settledOn(w)).toBe('source');
     }
   });
 
@@ -1026,7 +1066,7 @@ describe('resuming after the destination prepared', () => {
     const ops = w.ops.length;
     for (const run of [(c: Handover) => c.resume(), (c: Handover) => c.abort()]) {
       const out = await run(controller(w, elsewhere));
-      expect(out).toMatchObject({ status: 'interrupted', safe: [], error: expect.stringMatching(/neither the source mac nor the destination trift.*on mac or trift/) });
+      expect(out).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(/neither the source mac nor the destination trift.*on mac or trift/) });
     }
     expect(w.transfers).toEqual([]);
     expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
@@ -1288,7 +1328,7 @@ describe('an unknown commit', () => {
     const commit = w.gateway.commit;
     w.gateway.commit = async (p) => { await commit(p); w.down.add('gateway'); throw new Error('ssh: the connection to trift closed'); };
     const out = await controller(w).start(trift, {});
-    expect(out).toMatchObject({ status: 'interrupted', phase: 'commit', safe: [] });
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'commit', safe: [], stop: 'commit_unknown' });
     expect(w.ops).not.toContain('mac:handover.abort');
     expect(w.source.frozen).toBe(true);
     w.gateway.commit = commit;
@@ -1433,6 +1473,47 @@ describe('a far machine that is down', () => {
     expect(settledOn(w)).toBe('source');
   });
 
+  // the controller on trift, whose registry holds no route to the Mac that started the handover
+  const unrouted = (w: World) => {
+    const none = () => new NoRoute(mac, `machine ${mac} is not in this machine's registry, so this controller cannot reach it`);
+    return {
+      local: trift,
+      side: async (id: MachineId) => { if (id === mac) throw none(); return w.side(id); },
+      route: (id: MachineId) => { if (id === mac) throw none(); return w.side(id).route; },
+    };
+  };
+
+  it('on the destination with no route to the source, finishes a committed handover there and leaves the source its own side to finish', async () => {
+    for (const at of ['gateway:commit', 'trift:handover.activate', 'trift:handover.complete'] as const) {
+      const w = await lostAt(at);
+      const ops = w.ops.length;
+      const out = await controller(w, unrouted(w)).resume();
+      expect(out, at).toMatchObject({ status: 'complete', transactionId: 'tx-1', pending: ['source'], error: expect.stringContaining('svall handover --resume on the machine the fleet came from finishes its side') });
+      expect(out.status === 'complete' && out.error, at).not.toMatch(/svall host add|--resume on [0-9a-f]{8}-/);
+      expect(w.destination.activated, at).toBe(true);
+      expect(w.ops.slice(ops).filter((op) => op.startsWith('mac:')), at).toEqual([]);
+      expect(w.record, at).toEqual({ fleetId, generation: G + 1, ownerMachineId: trift });
+      // nothing here can reach the source, so no journal is kept for a resume here to finish it
+      expect(w.store.j, at).toBeUndefined();
+      await recover(w);
+      expect(settledOn(w), at).toBe('destination');
+    }
+  });
+
+  it('on the destination with no route to the source, sends a resume or an abort before the commit to the machine that started it, changing nothing', async () => {
+    for (const act of ['resume', 'abort'] as const) {
+      const w = await lostAt('trift:handover.prepare');
+      const ops = w.ops.length;
+      const c = controller(w, unrouted(w));
+      const out = await (act === 'resume' ? c.resume() : c.abort());
+      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
+      expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
+      expect(w.store.j, act).toBeUndefined();
+      await recover(w, act);
+      expect(settledOn(w), act).toBe(act === 'abort' ? 'source' : 'destination');
+    }
+  });
+
   it('with no journal here, after the destination completed, still finishes a committed handover while the source is down and nothing says how far it got', async () => {
     const w = await lostAt('trift:handover.complete');
     w.down.add('mac');
@@ -1461,7 +1542,11 @@ describe('resuming a handover the destination may have finished', () => {
     const w = committedWorld();
     w.destination.answers['handover.status'] = (() => ({ quarantined: '/home/ada/.svall/handover/journal.json.broken-1' })) as never;
     const out = await controller(w).resume();
-    expect(out).toMatchObject({ status: 'interrupted', safe: [], error: expect.stringContaining('journal.json.broken-1') });
+    expect(out).toMatchObject({
+      status: 'interrupted', safe: [], stop: 'journal_lost',
+      error: "trift's handover journal could not be read, so nothing is safe until it is put back or the fleet is recovered",
+      detail: expect.stringContaining('journal.json.broken-1'),
+    });
     expect(w.ops).not.toContain('gateway:complete');
     expect(w.ops).not.toContain('mac:handover.complete');
     expect(w.record.transaction?.phase).toBe('committed');
@@ -1489,6 +1574,18 @@ describe('resuming a handover the destination may have finished', () => {
     expect(w.store.j).toBeUndefined();
   });
 
+  it('says plainly that the gateway could not be asked, keeping what the journals said beside it', async () => {
+    const w = committedWorld();
+    w.down.add('gateway');
+    for (const out of [await controller(w).resume(), await controller(w).abort()]) {
+      expect(out).toMatchObject({
+        status: 'interrupted', safe: [], stop: 'gateway_unknown',
+        error: 'the gateway could not say whether this handover committed, so nothing is safe until it answers',
+        detail: expect.stringContaining('connection refused'),
+      });
+    }
+  });
+
   it('never reports an aborted handover complete once the fleet moved on without it', async () => {
     const w = committedWorld();
     w.store.j = { ...w.store.j!, phase: 'aborted' };
@@ -1498,7 +1595,8 @@ describe('resuming a handover the destination may have finished', () => {
     const c = controller(w);
     expect((await c.status()).verdict).toMatchObject({ standing: 'superseded', safe: [] });
     const out = await c.resume();
-    expect(out).toMatchObject({ status: 'interrupted', safe: [] });
+    expect(out).toMatchObject({ status: 'interrupted', safe: [], stop: 'superseded', detail: expect.stringContaining(`generation ${G + 1}`) });
+    expect(out.status === 'interrupted' && out.error).not.toMatch(/generation|[0-9a-f]{8}-[0-9a-f]{4}/);
     expect(w.ops).not.toContain('trift:handover.complete');
   });
 });

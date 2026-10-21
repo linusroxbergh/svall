@@ -416,14 +416,28 @@ describe('source preflight', () => {
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
   });
 
-  it('asks the gateway who owns the fleet, as Freeze will, and blocks when it cannot be asked without a prompt', async () => {
+  it('asks the gateway who owns the fleet, as Freeze will, and blocks with why it could not, ssh_interactive only for an ssh that would have to ask', async () => {
     const b = boot();
     const ask = async () => (await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() })).blockers;
     const asked = b.gateway.asked;
     expect(await ask()).toEqual([]);
     expect(b.gateway.asked).toBe(asked + 1);
     b.gateway.down = true;
-    expect(await ask()).toEqual([{ code: 'ssh_interactive', message: expect.stringContaining('ECONNREFUSED') }]);
+    expect(await ask()).toEqual([{ code: 'authority_unreachable', message: expect.stringContaining('ECONNREFUSED') }]);
+    b.gateway.down = false;
+    const cases: [AuthorityFailure, string, RegExp][] = [
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited 255 without an answer: Permission denied (publickey).', { prompt: 'auth', ssh: 'linus@trift' }), 'ssh_interactive', /Permission denied.*ssh-add.*ssh-copy-id linus@trift/],
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited 255 without an answer: Host key verification failed.', { prompt: 'host_key', ssh: 'linus@trift' }), 'ssh_interactive', /host key.*run ssh linus@trift once/],
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited -1 without an answer: # Tailscale SSH requires an additional check.', { prompt: 'approval', ssh: 'linus@trift' }), 'ssh_interactive', /approve it in the browser, or run ssh linus@trift once/],
+      [new AuthorityFailure('invalid_request', '/Users/linus/.config/svall/machines.json names no ssh route to the gateway 1111'), 'authority_unreachable', /no ssh route.*svall host add/],
+      [new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'), 'authority_unreachable', /did not answer owner\.get/],
+      [new AuthorityFailure('authority_corrupt', `the record for fleet ${fleetId} is unreadable`), 'authority_corrupt', /unreadable.*svall fleet recover/],
+      [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall host enable/],
+    ];
+    for (const [failure, code, says] of cases) {
+      b.gateway.refuses = failure;
+      expect(await ask(), failure.code).toEqual([{ code, message: expect.stringMatching(says) }]);
+    }
   });
 
   it('blocks with identity_mismatch when the route to its gateway now reaches another machine', async () => {
@@ -1259,6 +1273,22 @@ describe('source abort', () => {
     expect(b.world.log).toEqual(['activate', 'reconcile']);
   });
 
+  it('reopens the terminals it rested when its journal could not be read, by the handover each one names as having rested it', async () => {
+    const b = await frozen();
+    b.gateway.abort();
+    fs.writeFileSync(b.paths.journal, '{ not json');
+    const again = await b.restart();
+    expect(again.handover.status()).toEqual({ quarantined: expect.stringContaining(`${b.paths.journal}.broken-`) });
+    expect(again.ownership.writable()).toBe(false);
+
+    await again.handover.abort({ transactionId: TX, generation: 4 });
+
+    expect(b.world.log).toEqual(['ensure-server', 'revive c_ada', 'second c_ada', 'revive c_bo', 'activate', 'reconcile']);
+    // c_cy was dormant before the handover and stays so
+    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(again.ownership.writable()).toBe(true);
+  });
+
   it('refuses to take back a fleet frozen for another handover', async () => {
     const b = await frozen();
     b.gateway.abort();
@@ -1303,6 +1333,19 @@ describe('source under a forced record', () => {
     expect(fs.existsSync(b.paths.manifest(TX))).toBe(false);
     expect(ownerFile(b.paths)).toEqual(forced(me));
     expect(b.ownership.writable()).toBe(true);
+  });
+
+  it('revives what its handover rested when its journal could not be read, by the handover each terminal names, and runs the fleet', async () => {
+    const b = await frozen();
+    fs.writeFileSync(b.paths.journal, '{ not json');
+    const again = await b.restart();
+    expect(again.handover.status()).toEqual({ quarantined: expect.stringContaining(`${b.paths.journal}.broken-`) });
+    expect(await again.handover.adopt(forced(me))).toMatchObject({ adopted: true, superseded: TX, ownership: { generation: 6, ownerMachineId: me, frozen: false } });
+    expect(b.world.log).toEqual([...revived, 'activate', 'reconcile']);
+    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(again.handover.journalState()).toEqual({ kind: 'none' });
+    expect(fs.existsSync(b.paths.manifest(TX))).toBe(false);
+    expect(again.ownership.writable()).toBe(true);
   });
 
   it('lets its handover go and stays a read-only replica, reviving nothing, when the record names another machine', async () => {

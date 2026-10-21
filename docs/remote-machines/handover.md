@@ -13,15 +13,16 @@ an agent your fleet runs that is missing or not logged in there does.
 ## From the app
 
 Choose **Handover** at the foot of the sidebar, then the machine to move the fleet to: the gateway's name, or **This
-Mac** to bring it back. The sheet follows five steps:
+Mac** to bring it back. The sheet follows six steps:
 
 1. **Checks.** Nothing is touched yet. The sheet lists what would be carried, anything that blocks, and warnings.
 2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
    terminal is brought to rest, and its window closed. The Load tab still reads; its Sleep and Delete are refused.
 3. **Transferring files and sessions.** Each folder and agent session is copied, with progress.
-4. **Verifying and committing.** The copy is checked, the other machine prepares the fleet, and the gateway commits
-   it to that machine. From here there is no way back.
-5. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
+4. **Verifying.** The copy is checked, and the other machine prepares the fleet. Abort still gives it back.
+5. **Committing.** The gateway commits the fleet to that machine. From here there is no way back, and the sheet says
+   so.
+6. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
 
 When something needs your answer, the sheet waits for one. You can close it meanwhile, such as to answer an agent in
 its terminal, and open it again from **Handover**, which is marked while a decision waits:
@@ -39,7 +40,8 @@ A character marked **keep on this machine** on its card blocks the handover unti
 
 Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own, and quitting
 leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
-handover stands, with **Resume** and **Abort** before the commit, or only **Retry** after it.
+handover stands, with **Resume** and **Abort** before the commit. After it, resuming is all that is safe, so the sheet
+resumes by itself and offers **Retry** only if that stops again.
 
 While the app follows a handover, the Mac stays out of idle sleep, on battery too, unless **keep Mac awake** is off. A
 handover that goes on without the window watching is followed again.
@@ -218,7 +220,7 @@ four to say what is safe:
 | --- | --- |
 | Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet; `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
 | Resume only | After the commit. `svall handover --resume` activates the fleet on the machine it went to. The machine it came from never takes it back by itself. |
-| Nothing is safe | The gateway cannot say whether the commit landed. Wait until it is reachable and ask again. |
+| Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again; if it is gone for good, see [When the gateway is lost](#when-the-gateway-is-lost). A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
 | Forget | The gateway has moved on past this handover. `svall handover --forget` drops this Mac's journal of it. |
 
 What else to know:
@@ -226,11 +228,25 @@ What else to know:
 - **Killing the app** stops nothing, since the helper runs on. **Killing the helper** (or a foreground `svall
   handover`) leaves the handover where it stopped. The journals say where that is, the sheet rebuilds from them when
   the app opens, and `status` says what to do.
+- **Starting while a handover is open here** stops and offers only `svall handover --resume`, which goes the one safe
+  way on; `svall handover status` says whether `--abort` is safe too.
+- **The Mac sleeping** suspends the helper and drops its link. Before the commit the fleet stays frozen on the machine
+  it was leaving; after it, the fleet runs on neither machine. Once the Mac wakes, Resume or Abort, or Retry after the
+  commit, goes on. Keep the Mac awake until a handover ends.
 - **A dropped link** takes the controller from about 45 seconds to two and a half minutes to give up, depending on
   the step: each call waits up to 30 seconds and is asked up to four times, and the ssh connection is closed after 45
-  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort, or Retry after
-  the commit. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
+  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort before the
+  commit; after it, the sheet resumes by itself once, then offers Retry. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
   it then ends complete, and `svall handover --resume` finishes what they missed.
+- **A handover journal a machine cannot read** is moved aside to `handover/journal.json.broken-<time>` in its fleet
+  home, and that machine starts read-only. On the machine the fleet came from, Abort takes the fleet back and reopens
+  the terminals the handover rested. On the machine it went to, nothing is safe until you repair that file, put it
+  back at `handover/journal.json`, restart the fleet's daemon there and resume, or name the machine to run the fleet
+  with `svall fleet recover --force-owner <machine>`, which runs it from the state that machine holds. `svall
+  handover status` names the file.
+- **On the Linux machine**, `svall handover --resume` in a terminal there finishes a committed handover that moved the
+  fleet to it, though it has no route to the Mac: the Mac finishes its own side when `svall handover --resume` (or
+  Retry) runs there. Before the commit, resume and abort run only on the Mac that started the handover.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the
@@ -244,23 +260,57 @@ If the gateway machine is gone for good, or its record of the fleet cannot be re
 `svall fleet recover` writes a new ownership record, and is never part of an ordinary retry:
 
 ```sh
-svall fleet recover --force-owner local                       # this Mac is to own the fleet
-svall fleet recover --force-owner local --gateway spare       # and another registry machine replaces the lost gateway
+svall fleet recover --force-owner local                       # the gateway is gone and nothing replaces it: this Mac runs the fleet alone
+svall fleet recover --force-owner local --gateway spare       # another registry machine replaces the lost gateway
 ```
 
 1. It shows what the gateway and every machine hold, this Mac's journal and cached route, every generation it saw,
    the record it would write (at a generation above all of them) and the risks.
 2. It writes only after you type the fleet id; without a terminal, `--confirm <fleet id>` does that.
-3. It records the write in the gateway's `recoveries.ndjson` and in `controller/recoveries.ndjson` in the fleet home,
-   then tells every machine that answers: the one it names runs the fleet, and the others let go and close their
-   terminals.
+3. It records the write in `controller/recoveries.ndjson` in the fleet home, and with a gateway also in the gateway's
+   `recoveries.ndjson`, then tells every machine that answers: the one it names runs the fleet, and the others let go
+   and close their terminals.
 4. A machine it could not reach is listed under **next**. This Mac, and the gateway's own machine unless `--gateway`
    replaced it, take the record when their daemon next starts; any other has to be stopped, then the command run
    again once it answers.
 
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
-carried. `--gateway` needs a machine from the registry that holds no record of the fleet, and is refused while the
-current gateway still answers.
+carried. A machine that prepared a handover it never ran drops what it prepared, and the risks name it. `--gateway`
+needs a machine from the registry that holds no record of the fleet, and is refused while the current gateway still
+answers.
+
+### When the only gateway is gone
+
+With one Linux machine, nothing can replace it as the gateway, since a Mac is never one. When it does not answer,
+`svall fleet recover --force-owner local` runs the fleet on this Mac alone:
+
+- This Mac's daemon takes a record above every generation it saw, lets go any handover its journal holds (the
+  terminals it rested reopen, and what it prepared is dropped), and runs the fleet. `fleet.json` names no gateway
+  from then on, so no handover moves the fleet until `svall host enable <host> --fleet <fleet>` makes a machine its
+  gateway again, at the generation this Mac holds (see [A gateway set up again](#a-gateway-set-up-again)). This
+  Mac's own journal of a handover is dropped with it.
+- With this Mac's daemon not running, the command writes `owner.json` and `fleet.json` itself and ends `incomplete`
+  until the daemon starts, unless a handover journal lies there, which only the daemon lets go, even one it cannot
+  read: start it first (`svall doctor` says why it is not running), then run the command again.
+- It refuses while another machine answers that it runs the fleet, and this Mac's daemon refuses the record while
+  the gateway answers it.
+- Every other machine that answers takes the record first and lets go any handover it holds. One that holds a
+  handover and does not take it ends the command `incomplete` before this Mac runs the fleet: run it again once that
+  machine answers. One that reaches the gateway, which this Mac cannot, takes the gateway's own record instead, and
+  the command ends `incomplete` too: the gateway is not lost, so recover through it from a machine that reaches it.
+- Then `svall host remove <name> --forget` drops the lost machine from the registry. Before the recovery it refuses
+  while this Mac keeps a journal of a handover, or the lost machine owns the fleet.
+
+The lost machine never learns of the record. If it comes back still running the fleet, both machines run it until
+you stop the fleet's daemon there for good (`systemctl --user disable --now svall-svalld@<fleet>`, since a plain
+stop starts again at the next boot, or `svall uninstall --force`), and its copy of the work since the last handover
+stays on its disk.
+
+To make it the gateway again, `svall fleet recover --force-owner local --gateway <name>` writes a record naming this
+Mac over whatever record it holds, names it the gateway in `fleet.json`, and tells its daemon to let the fleet go;
+`svall host enable` refuses while its record names another owner. As a last resort, on that machine move its record
+`~/.local/share/svall/gateway/fleets/<fleet id>.json` aside and run `svall uninstall --force`, then `svall host add`
+and `svall host enable` it again from this Mac.
 
 ### A gateway set up again
 
@@ -273,8 +323,9 @@ svall host add studio --ssh ada@studio        # installs the companion; the regi
 svall host enable studio --fleet private      # a new record naming this Mac the owner, and the machine's copy
 ```
 
-The new record starts at generation 0. If the fleet has moved before, this Mac holds a later generation, which a
-daemon never gives up for a lower one, so a handover stops at Checks with `generation_mismatch`. `svall fleet recover
+The new record starts at the generation this Mac's `owner.json` holds, so the next handover begins there. Where
+another machine holds a later generation, such as one that ran the fleet since, a daemon never gives up its
+generation for a lower one, so a handover stops at Checks with `generation_mismatch`. `svall fleet recover
 --force-owner local` then writes a record above both, and this Mac takes it.
 
 An account under another user name is another ssh destination: run `svall host remove studio` first, with `--forget`
@@ -294,6 +345,13 @@ svall fleet recover --force-owner local --gateway studio2
 svall host enable studio2 --fleet private
 svall host remove studio --forget
 ```
+
+## When the Mac is lost
+
+A fleet the Linux machine runs goes on there, and `svall` in a terminal on it works as before. A new Mac cannot take
+the fleet in this version, since `svall host add` and `svall host enable` set up only a Linux machine. For a fleet the
+lost Mac ran, `svall fleet recover --force-owner local` in a terminal on the Linux machine runs it there from the copy
+it holds from the last handover; what was done on the Mac since is gone with it.
 
 ## Known limitations
 
@@ -333,9 +391,11 @@ svall host remove studio --forget
   that filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file
   is copied. Nothing checks this sooner: set the same filter up on the other machine first, such as with `git lfs
   install`.
-- **A move to this Mac can run nowhere for a while.** If the link drops right after the commit of a move to this Mac,
-  the Mac waits to confirm the commit with the gateway, which it cannot reach, so the fleet runs on neither machine.
-  Once the link is back, Retry (`svall handover --resume`) starts it here.
+- **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
+  drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
+  activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
+  Linux machine, so does `svall handover --resume` there. A move to this Mac also waits to confirm the commit with
+  the gateway, so it starts only once the link is back.
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
   The character waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,

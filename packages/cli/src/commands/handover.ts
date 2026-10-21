@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import type net from 'node:net';
 import readline from 'node:readline';
 import { Command, Option as Flag } from 'commander';
-import { FleetConfig, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type Verdict } from '@svall/protocol';
+import { FleetConfig, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { profileOf } from '@svall/svalld/profile';
 import type { Handover } from '../controller/handover.js';
@@ -50,7 +50,7 @@ const POLL_MS = 50;
 const SETTLE_MS = 150;
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-const stopped = (error: string): Outcome => ({ status: 'interrupted', phase: 'begin', error, safe: [] });
+const stopped = (error: string, stop: StopReason = 'invalid'): Outcome => ({ status: 'interrupted', phase: 'begin', error, safe: [], stop });
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 
 export function parseDuration(s: string): number {
@@ -171,7 +171,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
   try {
     server = await HelperServer.open(paths, { scrub: (line) => redact(line, tx?.secrets() ?? []) });
   } catch (e) {
-    return refuse(stopped(e instanceof Live ? await refusal(e, paths, w) : messageOf(e)));
+    return refuse(e instanceof Live ? stopped(await refusal(e, paths, w), 'running') : stopped(messageOf(e), 'unexpected'));
   }
   const record = (e: HandoverEvent): void => out.line(server.record(e));
 
@@ -268,8 +268,8 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
     view.about = { source: w.machine(verdict.fromMachineId), destination: verdict.toMachineId && w.machine(verdict.toMachineId) };
     if (verdict.standing === 'superseded') {
       return {
-        status: 'interrupted', ...(verdict.transactionId && { transactionId: verdict.transactionId }), phase: verdict.phase ?? 'begin', safe: [],
-        error: `${verdict.reason}; \`${w.svall('handover --forget')}\` drops this controller's journal of it`,
+        status: 'interrupted', ...(verdict.transactionId && { transactionId: verdict.transactionId }), phase: verdict.phase ?? 'begin', safe: [], stop: 'superseded',
+        error: `the gateway has moved this fleet on past this handover; \`${w.svall('handover --forget')}\` drops this controller's journal of it`, detail: verdict.reason,
       };
     }
     return job.kind === 'resume' ? t.handover.resume() : t.handover.abort();
@@ -287,14 +287,14 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
       },
     });
     const t = tx;
-    let outcome = await Promise.race([run(t).catch((e: unknown): Outcome => stopped(redact(messageOf(e), t.secrets()))), left]);
+    let outcome = await Promise.race([run(t).catch((e: unknown): Outcome => stopped(redact(messageOf(e), t.secrets()), 'unexpected')), left]);
     if ('status' in outcome && outcome.status === 'detached') {
       detached = outcome;
       for (const s of cancellers) server.release(s, { event: 'handover.result', data: outcome });
       cancellers.clear();
       if (signalled) goesOn();
       const finished = t.handover.finished ?? new Promise<Outcome>(() => undefined);
-      outcome = await Promise.race([finished.catch((e: unknown): Outcome => stopped(redact(messageOf(e), t.secrets()))), left]);
+      outcome = await Promise.race([finished.catch((e: unknown): Outcome => stopped(redact(messageOf(e), t.secrets()), 'unexpected')), left]);
     }
     if ('code' in outcome) {
       ran = outcome;
@@ -303,7 +303,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
       ran = { code: done(job, outcome) ? 0 : 1 };
     }
   } catch (e) {
-    record({ event: 'handover.result', data: stopped(redact(messageOf(e), tx?.secrets() ?? [])) });
+    record({ event: 'handover.result', data: stopped(redact(messageOf(e), tx?.secrets() ?? []), 'unexpected') });
     ran = { code: 1 };
   } finally {
     // once the run is over a signal leaves at once, and the exit ends the masters still open
@@ -380,7 +380,7 @@ export async function launchHelper(job: Job, c: Ctx): Promise<number> {
   const paths = helperPaths(c.fleetHome, c.deps.tmpdir);
   // a lock the child could not take is said here, where the app reads it, and not only in the child's log
   const holder = lockHolder(paths);
-  if (holder !== undefined || await answers(paths)) return refuse(stopped(await refusal(new Live(holder ?? readPid(paths)), paths, w)));
+  if (holder !== undefined || await answers(paths)) return refuse(stopped(await refusal(new Live(holder ?? readPid(paths)), paths, w), 'running'));
 
   const before = writtenAs(paths.events);
   fs.mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
@@ -390,7 +390,7 @@ export async function launchHelper(job: Job, c: Ctx): Promise<number> {
     fs.fchmodSync(log, 0o600);
     child = c.deps.launch([...c.deps.argv().filter((a) => a !== '--detach'), '--helper'], log);
   } catch (e) {
-    return refuse(stopped(`the handover helper could not be started: ${messageOf(e)}`));
+    return refuse(stopped(`the handover helper could not be started: ${messageOf(e)}`, 'unexpected'));
   } finally {
     fs.closeSync(log);
   }
@@ -402,7 +402,7 @@ export async function launchHelper(job: Job, c: Ctx): Promise<number> {
       out.line(ended.line);
       return done(job, ended.outcome) ? 0 : 1;
     }
-    return refuse(stopped(`the handover helper ${up} before it listened; ${paths.log} says why`));
+    return refuse(stopped(`the handover helper ${up} before it listened; ${paths.log} says why`, 'unexpected'));
   }
   child.unref();
   out.event({ event: 'handover.detached', data: { pid: child.pid ?? 0 } });

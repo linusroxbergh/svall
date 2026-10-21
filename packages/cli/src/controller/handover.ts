@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   Blocker, type AgentKind, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
-  type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type Verdict,
+  type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
 import { boundary } from '@svall/svalld/handover/failpoints';
 import { graphsHere } from '@svall/svalld/handover/git-import';
@@ -42,11 +42,16 @@ class Blocked extends Error {
 
 /** A step that cannot go on: an answer that does not fit what was asked, or one that never came. */
 class Stopped extends Error {
-  constructor(readonly phase: HandoverPhase, message: string, readonly safe: SafeAction[]) { super(message); }
+  constructor(readonly phase: HandoverPhase, message: string, readonly safe: SafeAction[], readonly stop?: StopReason) { super(message); }
 }
 
 /** An abort that found the gateway had moved the fleet: only going forward is left. */
 class Moved extends Error {}
+
+/** A machine this controller's registry holds no route to, which asking again never changes. */
+export class NoRoute extends Error {
+  constructor(readonly machineId: MachineId, message: string) { super(message); }
+}
 
 /** A daemon the controller calls. A `Refused` is its answer; any other error leaves the call's fate unknown. */
 export type Daemon = { call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> };
@@ -120,11 +125,24 @@ const foreign = (e: unknown): Blocker | undefined => (e instanceof FleetMismatch
 /** A companion on another protocol, or one whose svall does not run, which only an upgrade changes. */
 const incompatible = (e: unknown): Blocker | undefined => (e instanceof SshError && e.kind === 'version' ? { code: 'incompatible_protocol', message: e.message } : undefined);
 
+/** A gateway's refusal to begin, as the blocker that names why: transaction_open only for a handover it holds open. */
+function beginRefused(e: Refused): Blocker {
+  const message = `the gateway would not begin this handover: ${e.message}`;
+  switch (e.code) {
+    case 'generation_mismatch': return { code: 'generation_mismatch', message };
+    case 'not_owner': case 'invalid_request': return { code: 'identity_mismatch', message };
+    case 'not_found': return { code: 'identity_mismatch', message: `${message}; a gateway set up again needs svall host enable <gateway> --fleet <fleet>` };
+    case 'authority_corrupt': return { code: 'authority_corrupt', message: `${message}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };
+    case 'transaction_mismatch': case 'invalid_phase': case 'handover_committed': return { code: 'transaction_open', message };
+    default: return { code: 'authority_unreachable', message: `${message}; its log on the gateway machine says why` };
+  }
+}
+
 /** Worth asking again: an ssh a transport comes back from, a call whose answer never came, or a daemon that could not reach the gateway. */
 const transient = (e: unknown): boolean => {
   if (e instanceof SshError) return retryable(e);
   if (e instanceof Refused) return e.code === 'authority_unreachable';
-  return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved);
+  return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved || e instanceof NoRoute);
 };
 
 /** What differs between the machines in a way the fleet feels: an agent CLI at another release. */
@@ -288,7 +306,7 @@ export class Handover {
       let pre: Preflight;
       try { pre = await this.preflight(to, choices); } catch (e) {
         const stops = interactive(e) ?? foreign(e) ?? incompatible(e);
-        if (!stops) throw e;
+        if (!stops) return this.interrupted('begin', messageOf(e), [], 'not_begun');
         return { status: 'blocked', phase: 'begin', blockers: [stops] };
       }
       if (pre.blockers.length || !pre.manifest) return { status: 'blocked', phase: 'begin', blockers: pre.blockers };
@@ -461,8 +479,7 @@ export class Handover {
         return;
       }
       if (!(e instanceof Refused)) throw e;
-      const code = e.code === 'generation_mismatch' ? 'generation_mismatch' : e.code === 'not_owner' || e.code === 'invalid_request' ? 'identity_mismatch' : 'transaction_open';
-      throw new Blocked('begin', [{ code, message: `the gateway would not begin this handover: ${e.message}` }]);
+      throw new Blocked('begin', [beginRefused(e)]);
     }
     const tx = record.transaction;
     if (!tx || record.generation !== generation || record.ownerMachineId !== source.machineId || tx.fromMachineId !== source.machineId
@@ -680,21 +697,21 @@ export class Handover {
       let asked: unknown;
       try {
         const record = await boundary('controller.commit', () => this.d.gateway.commit({ transactionId, expectedGeneration: generation }));
-        if (!committed(record)) throw new Stopped('commit', `the gateway answered the commit with ${describe(record)}; ask it again before anything else`, []);
+        if (!committed(record)) throw new Stopped('commit', `the gateway answered the commit with ${describe(record)}; ask it again before anything else`, [], 'commit_unknown');
         break;
       } catch (e) {
         if (e instanceof Stopped) throw e;
         asked = e;
       }
       const record = await this.retrying('commit', () => this.d.gateway.get()).catch(() => undefined);
-      if (!record) throw new Stopped('commit', `whether ${transactionId} committed is unknown (${messageOf(asked)}); resume asks the gateway again`, []);
+      if (!record) throw new Stopped('commit', `whether ${transactionId} committed is unknown (${messageOf(asked)}); resume asks the gateway again`, [], 'commit_unknown');
       if (committed(record)) break;
       const tx = record.transaction;
       if (this.cancel$.signal.aborted && record.generation === generation) {
         throw new Stopped('commit', `cancelled while the commit of ${transactionId} went unanswered, and the gateway holds ${describe(record)}; abort, or resume to commit`, PRE_COMMIT);
       }
       if (asked instanceof Refused || tx?.id !== transactionId || tx.phase !== 'ready-to-commit' || n >= attempts) {
-        throw new Stopped('commit', `the gateway did not commit ${transactionId} and holds ${describe(record)}: ${messageOf(asked)}`, record.generation === generation ? PRE_COMMIT : []);
+        throw new Stopped('commit', `the gateway did not commit ${transactionId} and holds ${describe(record)}: ${messageOf(asked)}`, record.generation === generation ? PRE_COMMIT : [], 'superseded');
       }
     }
     this.committed = true;
@@ -727,12 +744,16 @@ export class Handover {
       const pending: ('source' | 'gateway')[] = [];
       const said: string[] = [];
       const landed = this.journal.landedDigest ? this.d.store.landed(transactionId, this.journal.landedDigest) : undefined;
+      // a source this controller has no route to finishes its side from its own controller
+      let unrouted = false;
       try {
         const source = await this.side(this.journal.source.machineId);
         await this.retrying('complete', () => source.daemon.call('handover.complete', { transactionId, generation, ...(landed && { landed }) }));
       } catch (e) {
+        unrouted = e instanceof NoRoute;
         pending.push('source');
-        said.push(`${this.journal.source.name}: ${messageOf(e)}`);
+        const name = this.journal.source.name;
+        said.push(`${name}: ${messageOf(e)}${unrouted ? `; svall handover --resume on ${name} finishes its side` : ''}`);
       }
       try {
         const record = await this.retrying('complete', () => this.d.gateway.complete({ transactionId, generation: generation + 1 }));
@@ -746,10 +767,10 @@ export class Handover {
         }
       }
       const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, characters };
-      // the journal stays open, so a resume finishes what is pending
-      if (pending.length) return { ...done, pending, error: this.scrub(said.join('; ')) };
+      // the journal stays open, so a resume finishes what is pending, unless that is only a source no resume here reaches
+      if (pending.length && !(unrouted && pending.length === 1)) return { ...done, pending, error: this.scrub(said.join('; ')) };
       this.d.store.clear(transactionId);
-      return done;
+      return pending.length ? { ...done, pending, error: this.scrub(said.join('; ')) } : done;
     } catch (e) {
       return this.stopped(e);
     }
@@ -767,7 +788,7 @@ export class Handover {
         if (e.code === 'generation_mismatch') {
           const record = await this.retrying('aborted', () => this.d.gateway.get());
           if (record.generation > generation && record.ownerMachineId !== this.journal.source.machineId) throw new Moved();
-          throw new Stopped('aborted', `the gateway holds ${describe(record)}, so ${transactionId} cannot be aborted from here`, []);
+          throw new Stopped('aborted', `the gateway holds ${describe(record)}, so ${transactionId} cannot be aborted from here`, [], 'superseded');
         }
         // the gateway holds another handover or none: this one can no longer commit
         if (e.code !== 'transaction_mismatch') throw new Stopped('aborted', `the gateway would not abort ${transactionId}: ${e.message}`, ['abort']);
@@ -813,30 +834,50 @@ export class Handover {
         return await this.undo(done);
       } catch (abortErr) {
         if (abortErr instanceof Moved) return this.forward(true);
-        return this.interrupted(phase, `${e.message}; the abort did not finish: ${messageOf(abortErr)}`, abortErr instanceof Stopped ? abortErr.safe : ['abort']);
+        const stop = abortErr instanceof Stopped ? abortErr.stop : undefined;
+        return this.interrupted(phase, `${e.message}; the abort did not finish: ${messageOf(abortErr)}`, abortErr instanceof Stopped ? abortErr.safe : ['abort'], stop);
       }
     }
     const safe = e instanceof Stopped ? e.safe : this.committed ? ['resume' as const] : phase === 'commit' ? [] : PRE_COMMIT;
-    return this.interrupted(e instanceof Stopped ? e.phase : phase, messageOf(e), this.committed ? safe.filter((s) => s === 'resume') : safe);
+    const stop = e instanceof Stopped ? e.stop : phase === 'commit' ? 'commit_unknown' : undefined;
+    return this.interrupted(e instanceof Stopped ? e.phase : phase, messageOf(e), this.committed ? safe.filter((s) => s === 'resume') : safe, stop);
   }
 
-  private interrupted(phase: HandoverPhase, said: string, safe: SafeAction[]): Outcome {
-    return { status: 'interrupted', ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase, error: this.scrub(said), safe };
+  /** A stop with nothing safe says why, and one no step expected says so. */
+  private interrupted(phase: HandoverPhase, said: string, safe: SafeAction[], stop?: StopReason): Outcome {
+    return {
+      status: 'interrupted', ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase, error: this.scrub(said), safe,
+      ...(safe.length === 0 && { stop: stop ?? 'unexpected' }),
+    };
   }
 
   private failed(e: unknown): Outcome {
-    return {
-      status: 'interrupted', ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase: this.j?.phase ?? 'begin',
-      error: this.scrub(messageOf(e)), safe: this.committed ? ['resume'] : [],
-    };
+    return this.interrupted(this.j?.phase ?? 'begin', messageOf(e), this.committed ? ['resume'] : []);
   }
 
   private scrub(text: string): string {
     return redact(text, this.d.secrets?.() ?? []);
   }
 
+  /** Where the journals leave nothing safe, said plainly, with what they said kept as the detail. */
   private stuck(v: Verdict): Outcome {
-    return { status: 'interrupted', ...(v.transactionId && { transactionId: v.transactionId }), phase: v.phase ?? 'begin', error: v.reason, safe: v.safe };
+    const base = { status: 'interrupted' as const, ...(v.transactionId && { transactionId: v.transactionId }), phase: v.phase ?? 'begin', safe: v.safe };
+    const reason = this.scrub(v.reason);
+    if (v.safe.length) return { ...base, error: reason };
+    const plain = (stop: StopReason, error: string): Outcome => ({ ...base, error, stop, detail: reason });
+    if (v.standing === 'unknown') {
+      return v.fromMachineId ? plain('gateway_unknown', 'the gateway could not say whether this handover committed, so nothing is safe until it answers') : { ...base, error: reason, stop: 'gateway_unknown' };
+    }
+    if (v.standing === 'committed' || v.standing === 'moved') {
+      return plain('journal_lost', `${this.nameOf(v.toMachineId)}'s handover journal could not be read, so nothing is safe until it is put back or the fleet is recovered`);
+    }
+    if (v.standing === 'superseded') return plain('superseded', "the gateway has moved this fleet on past this handover; svall handover --forget drops this controller's journal of it");
+    return { ...base, error: reason, stop: 'unexpected' };
+  }
+
+  private nameOf(id: MachineId | undefined): string {
+    if (!id) return 'the destination';
+    try { return this.d.route(id).name; } catch { return id; }
   }
 
   /** Blockers go to the user, whose new choices try the step again; without an answer, or with Cancel, the handover aborts. */
@@ -1002,9 +1043,8 @@ export class Handover {
     const now = this.clock.now();
     const [from, to] = o.controller ? [o.controller.source, o.controller.destination].map((r) => r.machineId) : [v.fromMachineId, v.toMachineId];
     if (from && to && from !== this.d.local && to !== this.d.local) {
-      const name = (id: MachineId): string => { try { return this.d.route(id).name; } catch { return id; } };
-      const [a, b] = [name(from), name(to)];
-      throw new Stopped(v.phase ?? 'begin', `this machine is neither the source ${a} nor the destination ${b} of ${v.transactionId ?? 'this handover'}, so a transfer from here would copy onto its own disk; run it on ${a} or ${b}`, []);
+      const [a, b] = [this.nameOf(from), this.nameOf(to)];
+      throw new Stopped(v.phase ?? 'begin', `this machine is neither the source ${a} nor the destination ${b} of ${v.transactionId ?? 'this handover'}, so a transfer from here would copy onto its own disk; run it on ${a} or ${b}`, [], 'elsewhere');
     }
     if (o.controller) {
       this.j = o.controller;
@@ -1012,7 +1052,15 @@ export class Handover {
       return;
     }
     if (!v.fromMachineId || !v.toMachineId || v.generation === undefined) throw new Stopped('begin', v.reason, []);
-    const [source, destination] = [this.d.route(v.fromMachineId), this.d.route(v.toMachineId)];
+    const routed = (id: MachineId, role: string): Route => {
+      try { return this.d.route(id); } catch (e) {
+        if (!(e instanceof NoRoute)) throw e;
+        // once committed, only the destination goes on, and the source finishes its own side
+        if (role === 'source' && (v.standing === 'committed' || v.standing === 'moved')) return { machineId: id, name: 'the machine the fleet came from' };
+        throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run svall handover --resume or --abort there`, [], 'elsewhere');
+      }
+    };
+    const [source, destination] = [routed(v.fromMachineId, 'source'), routed(v.toMachineId, 'destination')];
     this.j = {
       version: 1, fleetId: this.d.fleetId, ...(v.transactionId && { transactionId: v.transactionId }), generation: v.generation,
       source, destination, choices: {}, phase: v.phase ?? 'begin', startedAt: now, updatedAt: now,
