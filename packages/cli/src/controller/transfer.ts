@@ -160,7 +160,7 @@ export async function farRsync(master: Pick<Master, 'run'>): Promise<{ blocker: 
 /**
  * Mirrors each entry from its source to its destination over the ssh master, then proves the copy. A
  * pass is stable when this Mac's side reads the same as it did after the pass before (the manifest,
- * for the first) and a checksum dry run finds nothing left to change; a source that keeps changing gets
+ * for the first) and a dry run finds nothing left to change; a source that keeps changing gets
  * another pass, up to three. A lost link, a failed rsync or a cancel stops the transfer and leaves
  * everything written so far for a resume.
  */
@@ -355,11 +355,14 @@ class Mirror {
     return { files, moved: diverged(divergence), readable: divergence.unchecked.count === 0, names: named(divergence) };
   }
 
-  /** Asks rsync, as a checksum dry run, what a copy would still change. */
+  /**
+   * Asks rsync, as a dry run, what a copy would still change: by size and time in a push, whose copy the destination
+   * re-hashes against this Mac's scan before it prepares, and by checksum in a pull, whose source nothing else reads.
+   */
   private async compare(): Promise<{ kind: 'ok' } | { kind: 'unstable'; names: string[] } | Stop> {
     const plan = this.plan as Plan;
     const names: string[] = [];
-    const r = await this.rsync({ ...plan.job, dryRun: true }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change) && !isNoise(l.name.replace(/\/$/, ''))) names.push(l.name); });
+    const r = await this.rsync({ ...plan.job, dryRun: true, checksum: !plan.push }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change) && !isNoise(l.name.replace(/\/$/, ''))) names.push(l.name); });
     const step = await this.settle(r);
     if (step.kind === 'stop') return step;
     return step.kind === 'vanished' || names.length ? { kind: 'unstable', names } : { kind: 'ok' };

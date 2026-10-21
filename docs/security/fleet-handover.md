@@ -308,14 +308,16 @@ of the manifest and of what landed, not read off the wire.
   each, two while a root is receiving), the memory of the daemons and the controller, and the time. The event stream
   and rsync's memory do not: every handover wrote 34 to 44 events, 6.1 to 8.1 kB, no line over 842 bytes, and no
   rsync went past 7.7 MiB.
-- **Each side reads every carried file several times.** The source walks the names at preflight and at freeze, then
-  hashes each file at both, and again in the controller's verify when the controller runs there. The destination
+- **Each side reads every carried file several times.** The source walks the names at preflight and at freeze, hashes
+  each file at preflight, and at freeze again only each file whose size, mtime, ctime or inode changed since, then
+  again in the controller's verify when the controller runs there. The destination
   hashes a replica at preflight, again at the claim, then what landed at prepare, and once more after the Git import
   each root that holds or lies in a carried Git directory. The seal is what landed, with only what the import writes
   taken from that last read: each carried graph's `config`, and the worktree registrations it removes. rsync's
-  checksum compare reads both sides. Each proof guards a different moment (before any write, before `--delete`, after
-  the copy, after the import), so none is reused: a replica can change between preflight and the claim. Files are
-  hashed eight at a time.
+  compare reads both sides by checksum in a pull; in a push it compares sizes and times, since prepare re-hashes the
+  copy against the source's read. Each of the destination's proofs guards a different moment (before any write, before
+  `--delete`, after the copy, after the import), so none is reused: a replica can change between preflight and the
+  claim. Files are hashed eight at a time.
 
 ### Bounds
 
@@ -374,7 +376,7 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   machine owns the fleet, or its daemon which port it listens on. Daemon fencing and the gateway's generations do not
   depend on that check.
 - **Folders are not listed in the manifest.** rsync carries them, empty ones and their modes included (`-rlpt`), and
-  its checksum compare itemizes a folder's mode as it does a file's, so a copy that differs there does not verify
+  its compare itemizes a folder's mode as it does a file's, so a copy that differs there does not verify
   (`transfer.test.ts` "carries empty folders and each folder's mode…"). A folder made or re-moded on the destination
   while it did not own the fleet is not a divergence: `--delete` removes an empty one and the copy resets a mode.
   Neither holds work.

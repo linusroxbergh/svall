@@ -173,6 +173,16 @@ describe('transfer with a scripted rsync', () => {
     expect(fs.readFileSync(filter, 'utf8')).toBe(filterRules(excludes, 'gitdir'));
   });
 
+  it('compares a push by size and time, which the destination re-hashes at prepare, and a pull by checksum, which nothing re-hashes', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    const push = fakeRsync();
+    await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: push.run } }));
+    expect(push.dry()[0]).not.toContain('--checksum');
+    const pull = fakeRsync();
+    await transfer(options({ roles: PULL, entries: [await root({ source: '/far/app', claimed: src, scanned: src })], stateDir: tmp(), deps: { run: pull.run } }));
+    expect(pull.dry()[0]).toContain('--checksum');
+  });
+
   it('pulls into the claimed local copy, and reads that copy against the manifest', async () => {
     const copy = tree(tmp(), { 'a.txt': 'a' });
     const state = tmp();

@@ -119,6 +119,7 @@ describe('rsyncArgv', () => {
     expect(dry).not.toContain('--info=progress2');
     expect(rsyncArgv({ ...job, checksum: true })).toEqual(expect.arrayContaining(['--checksum', '--info=progress2']));
     expect(real).not.toContain('--checksum');
+    expect(rsyncArgv({ ...job, dryRun: true, checksum: false })).not.toContain('--checksum');
   });
 
   it('keeps what a copy replaces or deletes in the backup folder it names, and nothing on a dry run', () => {

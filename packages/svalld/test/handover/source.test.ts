@@ -768,6 +768,20 @@ describe('source freeze', () => {
     expect((await refusal(alone.handover.freeze(alone.freezeParams()))).code).toBe('transaction_mismatch');
   });
 
+  it('reads at freeze only the root files whose stat changed since its preflight read them', async () => {
+    const b = boot();
+    fs.writeFileSync(path.join(b.work, 'ada/big.bin'), 'x'.repeat(4096));
+    await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
+    fs.writeFileSync(path.join(b.work, 'bo/index.ts'), 'export const changed = 1;\n');
+    const reads: string[] = [];
+    b.deps.scanFs = { ...realScanFs, read: (p) => { reads.push(p); return realScanFs.read(p); } };
+    b.gateway.begin();
+    const { manifest } = await b.handover.freeze(b.freezeParams());
+    expect(reads.filter((p) => p.startsWith(path.join(b.work, 'ada')) || p.startsWith(path.join(b.work, 'bo')))).toEqual([path.join(b.work, 'bo/index.ts')]);
+    const big = manifest.roots.flatMap((r) => r.files).find((f) => f.path === 'big.bin');
+    expect(big).toMatchObject({ size: 4096, sha256: crypto.createHash('sha256').update('x'.repeat(4096)).digest('hex') });
+  });
+
   it('fences the fleet, rests its terminals and has the surrender and journal on disk before it answers the manifest it kept', async () => {
     const b = boot();
     b.gateway.begin();

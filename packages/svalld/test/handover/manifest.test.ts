@@ -245,6 +245,32 @@ describe('buildManifest', () => {
     expect(scan!.files.every((f, i) => f.type === 'file' && f.sha256 === sha(`file ${i}\n`))).toBe(true);
   });
 
+  it('takes the hash an earlier read left for a file whose stat says it is unchanged, and reads every other again', async () => {
+    const dir = tmp();
+    for (const name of ['same', 'edited', 'grown', 'replaced']) fs.writeFileSync(path.join(dir, name), `${name}\n`);
+    const reads: string[] = [];
+    const counting: ScanFs = { ...realScanFs, read: (p) => { reads.push(path.basename(p)); return realScanFs.read(p); } };
+    const first = await scanPath(dir, () => false, counting);
+    expect(reads.sort()).toEqual(['edited', 'grown', 'replaced', 'same']);
+    expect([...first!.hashes.values()].map((h) => h.sha256).sort()).toEqual(['edited', 'grown', 'replaced', 'same'].map((n) => sha(`${n}\n`)).sort());
+
+    // the same size and mtime with new content, a new size, and a new file under the old name
+    const edited = path.join(dir, 'edited');
+    const { mtime } = fs.statSync(edited);
+    fs.writeFileSync(edited, 'EDITED\n');
+    fs.utimesSync(edited, mtime, mtime);
+    fs.appendFileSync(path.join(dir, 'grown'), 'more\n');
+    fs.rmSync(path.join(dir, 'replaced'));
+    fs.writeFileSync(path.join(dir, 'replaced'), 'replaced\n');
+    reads.length = 0;
+    const again = await scanPath(dir, () => false, counting, true, true, first!.hashes);
+    expect(reads.sort()).toEqual(['edited', 'grown', 'replaced']);
+    expect(again!.files.find((f) => f.path === 'edited')).toMatchObject({ sha256: sha('EDITED\n') });
+    expect(again!.files).toEqual((await scanPath(dir, () => false))!.files);
+    // what the second read took is all it hands on, so a file gone since is forgotten
+    expect(again!.hashes.size).toBe(4);
+  });
+
   it('reads a session file a chunk at a time, and keeps none of its chunks once read', async () => {
     const s = seed();
     // a reader that refills one buffer for each chunk: a scan that held a chunk would see it change under it

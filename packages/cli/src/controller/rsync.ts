@@ -126,7 +126,7 @@ export type RsyncJob = {
   delete: boolean;
   mkpath: boolean;
   dryRun: boolean;
-  // a copy that compares content rather than size and whole-second mtime
+  // a copy, or a dry run unless false, that compares content rather than size and whole-second mtime
   checksum?: boolean;
 };
 
@@ -136,7 +136,7 @@ const BASE = ['-rlpt', '--no-specials', '--no-devices', '-s', '-8', '--itemize-c
 export function rsyncArgv(job: RsyncJob): string[] {
   return [
     ...BASE,
-    ...(job.dryRun ? ['--dry-run', '--checksum'] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2', ...(job.backupDir ? ['--backup', `--backup-dir=${job.backupDir}`] : [])]),
+    ...(job.dryRun ? ['--dry-run', ...(job.checksum === false ? [] : ['--checksum'])] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2', ...(job.backupDir ? ['--backup', `--backup-dir=${job.backupDir}`] : [])]),
     ...(job.delete ? ['--delete'] : []),
     ...(job.mkpath ? ['--mkpath'] : []),
     // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`
