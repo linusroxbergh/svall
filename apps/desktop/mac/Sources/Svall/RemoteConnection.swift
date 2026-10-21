@@ -168,15 +168,16 @@ final class RemoteConnection {
             self.owner = owner
             publish(State(state: "connecting", owner: owner, kind: nil, message: nil))
         case .online(let connection, let remote):
+            let before = route
             saidOnline = true
             owner = remote?.name ?? "local"
             route = remote.map { .remote($0) } ?? .local
             online = connection
             onConnection(connection)
             publish(State(state: "online", owner: owner, kind: nil, message: nil))
-            // the route behind the old surfaces is gone, and anything the page asked for while it was
-            // unknown was only remembered, so both are attached over the new one
-            if rebuildWhenOnline { onSurfaces() }
+            // the route behind the old surfaces is gone, as is the one the window fell back to if the helper names
+            // another, and anything the page asked for while it was unknown was only remembered, so all are attached over the new one
+            if rebuildWhenOnline || (before != .pending && before != route) { onSurfaces() }
             rebuildWhenOnline = true
         case .error(let kind, let message):
             publish(State(state: "error", owner: owner, kind: kind, message: message))
