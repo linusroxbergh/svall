@@ -6,7 +6,7 @@ import { AgentKind, ApiError, type AgentStatus } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
-import { contextOf, stateOf } from '../render.js';
+import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
 import { int, point } from './parse.js';
 import { charId, islandId, NoMatch } from './resolve.js';
@@ -30,11 +30,11 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
   cmd.command('list').description("list every robot, or one island's").option('--island <id>').action((o: { island?: string }) => withFleet(connect, async (_c, state) => {
     const island = o.island ? islandId(state, o.island) : undefined;
     const chars = Object.values(state.characters).filter((ch) => !island || ch.islandId === island);
-    printResult(chars, json(), () => table(chars.map((ch) => ({
+    printResult(chars, json(), () => [table(chars.map((ch) => ({
       id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.keepHere ? `${ch.name} (kept here)` : ch.name, state: stateOf(ch),
       ctx: contextOf(ch), branch: ch.repo?.branch ?? '', cwd: ch.cwd,
       cell: `${ch.cell.x},${ch.cell.y}`,
-    }))));
+    }))), ...chars.flatMap(resumeFailures)].join('\n'));
   }));
 
   cmd.command('new').description('make a robot: a terminal on an island')

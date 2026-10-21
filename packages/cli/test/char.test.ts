@@ -1,7 +1,9 @@
+import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Character } from '@svall/protocol';
 import type { Client } from '../src/client.js';
 import { agentFor, charCommands, termOf } from '../src/commands/char.js';
+import { statusCommand } from '../src/commands/status.js';
 import { contextOf, stateOf } from '../src/render.js';
 
 const base: Character = {
@@ -150,5 +152,38 @@ describe('Keep on this machine', () => {
     expect(list).not.toMatch(/bo \(kept here\)/);
     expect(await svall(d.connect, 'show', 'ada')).toMatch(/^ada is kept on this machine, so a handover is blocked until that is cleared\n/);
     expect(await svall(d.connect, 'show', 'bo')).toBe('the brief\n');
+  });
+});
+
+describe('a resume that failed', () => {
+  const error = "ada's terminal resumed claude session s, but claude exited back to its shell, so it is dormant again with that session; revive it to see";
+  const dormant = { tmux: undefined, revive: { command: 'claude --resume s' } };
+  const ada: Character = { ...base, id: 'c_ada', name: 'ada', agent: agent('idle'), ...dormant, resumeError: error };
+  const bo: Character = { ...base, id: 'c_bo', name: 'bo', second: { cwd: '/r', unread: false, agent: agent('idle'), revive: { command: 'claude --resume s' }, resumeError: 'gone' } };
+  // a terminal open again keeps no failure worth naming
+  const cy: Character = { ...base, id: 'c_cy', name: 'cy', resumeError: 'stale' };
+  const client = {
+    via: 'trift',
+    call: async (method: string) => (method === 'state.get' ? { characters: { c_ada: ada, c_bo: bo, c_cy: cy }, islands: { i_1: { id: 'i_1', name: 'home' } } } : {}),
+    close: () => undefined,
+  } as unknown as Client;
+
+  async function print(command: Command, ...argv: string[]): Promise<string> {
+    const out: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out.push(String(s)); return true; });
+    try {
+      await command.parseAsync(argv, { from: 'user' });
+    } finally {
+      spy.mockRestore();
+    }
+    return out.join('');
+  }
+
+  it('is named under svall status and char list, for each dormant terminal that holds one', async () => {
+    const lines = [`ada: resume failed: ${error}`, 'bo (second terminal): resume failed: gone'];
+    for (const out of [await print(statusCommand(async () => client, () => false, () => '/h')), await print(charCommands(async () => client, () => false), 'list')]) {
+      expect(out.trimEnd().split('\n').slice(-2)).toEqual(lines);
+      expect(out).not.toMatch(/stale/);
+    }
   });
 });

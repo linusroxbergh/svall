@@ -4,7 +4,7 @@ import { ellipsis } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import type { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { contextOf, stateOf } from '../render.js';
+import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
 
 export function statusCommand(connect: () => Promise<Client>, json: () => boolean, home: () => string): Command {
@@ -24,6 +24,7 @@ export function statusCommand(connect: () => Promise<Client>, json: () => boolea
         character: ch.id, name: ch.name, island: state.islands[ch.islandId]?.name ?? ch.islandId, state: stateOf(ch),
         ctx: contextOf(ch), cwd: ch.cwd, note: ellipsis(ch.note, 40),
       }))),
+      ...chars.flatMap(resumeFailures),
     ].join('\n'));
   }));
 }

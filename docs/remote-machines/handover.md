@@ -190,8 +190,9 @@ On the other machine:
   One waiting to trust its folder or to accept Bypass Permissions mode stays open, and its row says which answer goes
   on. Codex reports nothing until its first turn, so it counts once its prompt shows, or else once it has held its
   terminal for 3 s, which its row then says.
-- A terminal that does not come up stays dormant with its session, and its card and row say why. Retry it from the
-  row, or open it like any dormant character.
+- A terminal that does not come up stays dormant with its session, and its card and row say why, as do
+  `svall status` and `svall char list` (`resume failed: <why>`). Retry it from the row, or open it like any dormant
+  character.
 - Servers, builds and watchers do not restart: start them again. Ports are not forwarded to the Mac in this version.
 
 ## Working on the other machine
