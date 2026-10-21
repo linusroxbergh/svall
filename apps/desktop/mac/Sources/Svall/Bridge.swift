@@ -115,7 +115,7 @@ enum ToShell: Decodable {
 /// Messages to the webview. Mirrors FromShell in bridge.ts.
 enum FromShell {
     case connection(SvallConnection?)
-    case connectionState(state: String, owner: String, kind: String?, message: String?)
+    case connectionState(RemoteConnection.State)
     case notice(text: String)
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
@@ -152,10 +152,12 @@ enum FromShell {
     var json: [String: Any] {
         switch self {
         case .connection(let c): return ["type": "connection", "host": c?.host ?? "", "port": c?.port ?? 0, "token": c?.token ?? ""]
-        case .connectionState(let state, let owner, let kind, let message):
-            var json: [String: Any] = ["type": "connection.state", "state": state, "owner": owner]
-            if let kind { json["kind"] = kind }
-            if let message { json["message"] = message }
+        case .connectionState(let s):
+            var json: [String: Any] = ["type": "connection.state", "state": s.state, "owner": s.owner]
+            if let kind = s.kind { json["kind"] = kind }
+            if let message = s.message { json["message"] = message }
+            if let machine = s.machine { json["machine"] = machine }
+            if let destination = s.destination { json["destination"] = destination }
             return json
         case .notice(let text): return ["type": "notice", "text": text]
         case .hostStep(let op, let step):

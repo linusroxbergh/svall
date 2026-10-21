@@ -19,12 +19,15 @@ export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string };
 
-// where the fleet this window shows is running, as the shell's connect helper reports it
+// where the fleet this window shows is running, as the shell's connect helper reports it;
+// machine: the one that did not answer (`local` for this Mac's daemon), destination: the ssh that reaches it
 export type ConnectionState = {
   state: 'connecting' | 'online' | 'error' | 'owner-changed';
   owner: string;
   kind?: string;
   message?: string;
+  machine?: string;
+  destination?: string;
 };
 
 export type ToShell =

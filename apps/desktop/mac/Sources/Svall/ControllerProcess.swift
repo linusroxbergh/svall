@@ -47,13 +47,14 @@ struct RemoteRoute: Equatable {
 enum ControllerEvent: Equatable {
     case connecting(owner: String)
     case online(connection: SvallConnection, remote: RemoteRoute?)
-    case error(kind: String, message: String)
+    /// `machine`: the one that did not answer, `local` for this Mac's daemon; `destination`: the ssh that reaches it
+    case error(kind: String, message: String, machine: String?, destination: String?)
     case ownerChanged(owner: String)
 
     private struct Line: Decodable {
         struct Remote: Decodable { let name: String, destination: String, controlSocket: String }
         let type: String
-        let owner: String?, host: String?, port: Int?, token: String?, kind: String?, message: String?
+        let owner: String?, host: String?, port: Int?, token: String?, kind: String?, message: String?, machine: String?, destination: String?
         let remote: Remote?
     }
 
@@ -68,7 +69,7 @@ enum ControllerEvent: Equatable {
                            remote: line.remote.map { RemoteRoute(name: $0.name, destination: $0.destination, controlSocket: $0.controlSocket) })
         case "error":
             guard let kind = line.kind, let message = line.message else { return nil }
-            return .error(kind: kind, message: message)
+            return .error(kind: kind, message: message, machine: line.machine, destination: line.destination)
         case "owner-changed":
             return line.owner.map { .ownerChanged(owner: $0) }
         default:

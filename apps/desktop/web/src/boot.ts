@@ -108,7 +108,7 @@ function createApp(): AppContext {
       if (m.type === 'handover.event') { store.getState().handoverEvent(m.event); return; }
       if (m.type === 'handover.replay') { store.getState().handoverReplay(m.events); return; }
       if (m.type === 'handover.exit') { store.getState().handoverExit(m.code, m.error); return; }
-      if (m.type === 'connection.state') { store.getState().setConnectionState({ state: m.state, owner: m.owner, kind: m.kind, message: m.message }); return; }
+      if (m.type === 'connection.state') { store.getState().setConnectionState({ state: m.state, owner: m.owner, kind: m.kind, message: m.message, machine: m.machine, destination: m.destination }); return; }
       // something only the machine the fleet runs on can do, which this Mac cannot
       if (m.type === 'notice') { store.getState().showToast(m.text); return; }
       if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }

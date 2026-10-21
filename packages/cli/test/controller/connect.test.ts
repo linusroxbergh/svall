@@ -133,6 +133,7 @@ describe('svall connect', { timeout: 20_000 }, () => {
       stopOnOnline(e, stop);
     });
     expect(await run.code).toBe(0);
+    expect(run.events.find((e) => e.type === 'error')).toMatchObject({ kind: 'daemon_down', machine: 'local' });
     expect(types(run.events)).toEqual(['connecting', 'error', 'connecting', 'online']);
     expect(run.events[1]).toMatchObject({ kind: 'daemon_down' });
   });
@@ -400,7 +401,8 @@ describe('svall connect', { timeout: 20_000 }, () => {
     // nothing more arrives: a key that was refused is not a transport that comes back
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(types(run.events)).toEqual(['connecting', 'connecting', 'error']);
-    expect(run.events[2]).toMatchObject({ kind: 'auth' });
+    // the error names the machine that refused, and the ssh that reaches it
+    expect(run.events[2]).toMatchObject({ kind: 'auth', machine: 'denied', destination: 'denied.test' });
     run.stop();
     expect(await run.code).toBe(0);
   });
@@ -413,7 +415,7 @@ describe('svall connect', { timeout: 20_000 }, () => {
     // a retry would only knock on the gateway again with the key it refused
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(types(run.events)).toEqual(['connecting', 'error']);
-    expect(run.events[1]).toMatchObject({ kind: 'auth' });
+    expect(run.events[1]).toMatchObject({ kind: 'auth', machine: 'gate', destination: 'denied.test' });
     run.stop();
     expect(await run.code).toBe(0);
   });
@@ -428,7 +430,8 @@ describe('svall connect', { timeout: 20_000 }, () => {
     });
     expect(await run.code).toBe(0);
     expect(types(run.events)).toEqual(['connecting', 'error', 'connecting', 'online']);
-    expect(run.events[1]).toMatchObject({ kind: 'daemon_down' });
+    // what stopped it is the machine the gateway last named, whose daemon is down
+    expect(run.events[1]).toMatchObject({ kind: 'daemon_down', machine: 'trift', destination: 'trift.test' });
     expect(run.events[3]).toMatchObject({ remote: { name: 'trift' } });
     expect(gatewayKnocks()).toBe(1);
     expect(run.logs).toHaveLength(1);
@@ -447,7 +450,7 @@ describe('svall connect', { timeout: 20_000 }, () => {
     await waitFor(() => run.events.some((e) => e.type === 'error'), 15_000);
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(types(run.events)).toEqual(['connecting', 'online', 'error']);
-    expect(run.events[2]).toMatchObject({ kind: 'auth' });
+    expect(run.events[2]).toMatchObject({ kind: 'auth', machine: 'gate' });
     expect((run.events[2] as Extract<ConnectEvent, { type: 'error' }>).message).toContain('generation 5');
     expect(gatewayKnocks()).toBe(1);
     // the forward onto a machine that no longer owns the fleet is let go
@@ -462,7 +465,7 @@ describe('svall connect', { timeout: 20_000 }, () => {
     const run = start((e, stop) => { if (e.type === 'connecting') stop(); });
     expect(await run.code).toBe(0);
     expect(run.events[0]).toEqual({ type: 'connecting', owner: 'local' });
-    expect(run.events[1]).toMatchObject({ type: 'error', kind: 'unreachable' });
+    expect(run.events[1]).toMatchObject({ type: 'error', kind: 'unreachable', machine: 'gate', destination: 'refused.test' });
   });
 
   it('keeps the remote token off everything but the online line', async () => {

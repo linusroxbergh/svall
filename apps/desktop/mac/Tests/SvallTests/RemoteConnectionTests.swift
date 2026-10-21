@@ -450,6 +450,17 @@ final class RemoteConnectionTests: XCTestCase {
         remote.stop()
     }
 
+    func testTheMachineThatDidNotAnswerIsPassedOn() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#,
+                                             #"{"type":"error","kind":"auth","message":"Permission denied","machine":"gate","destination":"linus@gate"}"#])
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []))
+        remote.start()
+        waitForTranscript(of: 2)
+        XCTAssertEqual(remote.state?.machine, "gate")
+        XCTAssertEqual(remote.state?.destination, "linus@gate")
+        remote.stop()
+    }
+
     func testStoppingClosesTheHelper() throws {
         let child = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#]), arguments: [])
         let remote = connection(helper: child)

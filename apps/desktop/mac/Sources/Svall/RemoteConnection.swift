@@ -14,6 +14,8 @@ final class RemoteConnection {
     struct State {
         let state: String, owner: String
         let kind: String?, message: String?
+        // the machine that did not answer, and the ssh that reaches it
+        var machine: String?, destination: String?
     }
 
     private var helper: ControllerProcess?
@@ -194,8 +196,8 @@ final class RemoteConnection {
             if rebuildWhenOnline || (attachedOver != .pending && attachedOver != route) { onSurfaces() }
             attachedOver = route
             rebuildWhenOnline = true
-        case .error(let kind, let message):
-            let said = State(state: "error", owner: owner, kind: kind, message: message)
+        case .error(let kind, let message, let machine, let destination):
+            let said = State(state: "error", owner: owner, kind: kind, message: message, machine: machine, destination: destination)
             guard !fellBack else { unshown = said; return }
             publish(said)
             fallBackIfLocalOnly()

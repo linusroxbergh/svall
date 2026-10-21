@@ -22,7 +22,12 @@ final class ControllerEventTests: XCTestCase {
 
     func testErrorCarriesKindAndMessage() {
         let line = #"{"type":"error","kind":"unreachable","message":"no route to studio"}"#
-        XCTAssertEqual(ControllerEvent.decode(line), .error(kind: "unreachable", message: "no route to studio"))
+        XCTAssertEqual(ControllerEvent.decode(line), .error(kind: "unreachable", message: "no route to studio", machine: nil, destination: nil))
+    }
+
+    func testErrorNamesTheMachineThatDidNotAnswerAndItsSsh() {
+        let line = #"{"type":"error","kind":"auth","message":"Permission denied","machine":"gate","destination":"linus@gate"}"#
+        XCTAssertEqual(ControllerEvent.decode(line), .error(kind: "auth", message: "Permission denied", machine: "gate", destination: "linus@gate"))
     }
 
     func testOwnerChangedCarriesTheNewOwner() {

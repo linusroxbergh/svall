@@ -75,7 +75,7 @@ final class ShellRouter {
         remote.onState = { [weak self] state in
             self?.webView.window?.title = RemoteConnection.windowTitle(base: SvallHome.displayName, owner: state.owner)
             guard self?.listening == true else { return }
-            self?.bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
+            self?.bridge.send(.connectionState(state))
         }
         remote.onSurfaces = { [weak self] in self?.surfaces.rebuild() }
         surfaces.route = { [weak self] in self?.remote.route ?? .local }
@@ -218,9 +218,7 @@ final class ShellRouter {
             followGateway()
             sendShellInfo()
             bridge.send(.connection(remote.connection))
-            if let state = remote.state {
-                bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
-            }
+            if let state = remote.state { bridge.send(.connectionState(state)) }
             sendAppActive()
             notifier.refreshPermission()
             bridge.send(.updateAvailable(Updates.shared.waiting))
