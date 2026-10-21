@@ -129,14 +129,20 @@ describe('the OpenCode plugin', () => {
   });
 
   it('still reports turns and gives the brief when OpenCode refuses to take worktree_create away', async () => {
-    for (const transform of [async () => { throw new Error('no such tool'); }, () => { throw new TypeError('transform is not a function'); }]) {
+    for (const [transform, why] of [[async () => { throw new Error('no such tool'); }, 'no such tool'], [() => { throw new TypeError('transform is not a function'); }, 'transform is not a function']] as const) {
       got = [];
       const f = fakeContext();
       f.ctx.tool.transform = vi.fn(transform);
-      const { hooks: h } = await load(f);
-      await prompt(h, SID, 'go');
-      await waitFor(() => names().includes('UserPromptSubmit'));
-      expect(await system(h, SID)).toEqual(['BRIEF']);
+      const said = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        const { hooks: h } = await load(f);
+        expect(said.mock.calls.map(([line]) => line)).toEqual([`svall: OpenCode kept opencode_worktree_create for this character's agent: ${why}\n`]);
+        await prompt(h, SID, 'go');
+        await waitFor(() => names().includes('UserPromptSubmit'));
+        expect(await system(h, SID)).toEqual(['BRIEF']);
+      } finally {
+        said.mockRestore();
+      }
     }
   });
 
