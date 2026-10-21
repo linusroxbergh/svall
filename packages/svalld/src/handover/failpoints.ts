@@ -38,6 +38,8 @@ export const FAILPOINTS = {
   'destination.claim.seal': 'destination',
   'destination.claim.root': 'destination',
   'destination.claim.archive': 'destination',
+  'destination.archive.moveout': 'destination',
+  'destination.archive.aside': 'destination',
   'destination.verify.journal': 'destination',
   'destination.verify.landed': 'destination',
   'destination.verify.record': 'destination',

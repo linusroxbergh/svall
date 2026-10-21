@@ -5,6 +5,7 @@ import { FleetId, Generation, Sha256, TransactionId, TransferFile, type Blocker,
 import type { Paths } from '../paths.js';
 import { createDurable, realStages, syncDir, writeDurable, type DurableStages } from './durable.js';
 import { diverged, divergenceBlocker, proveReplica, type Divergence } from './divergence.js';
+import { boundary } from './failpoints.js';
 import { byCodeUnit, canonicalDigest } from './hash.js';
 import { CONTROL, rootMatcher, type MachineLocal } from './inventory.js';
 import { scanPath, type ScanFs } from './manifest.js';
@@ -282,13 +283,13 @@ export class ReplicaStore {
     for (let n = 1; n <= 100; n++) {
       const to = `${at}.archived-${stamp}${n > 1 ? `-${n}` : ''}`;
       if (few) {
-        if (!this.moveOut(at, to, few.moved)) continue;
+        if (!boundary('destination.archive.moveout', () => this.moveOut(at, to, few.moved))) continue;
         if (few.removed.length && !few.moved.includes('README.archived.txt')) {
           this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${at}, which held the files here as they are. It had deleted these, which the handover's copy brings back:\n${few.removed.map((p) => `- ${p}\n`).join('')}`);
         }
         this.put(at, few.bytes, few.record);
       } else {
-        if (!this.moveAside(at, to, st.isDirectory())) continue;
+        if (!boundary('destination.archive.aside', () => this.moveAside(at, to, st.isDirectory()))) continue;
         const held = this.read(at);
         if (held.bytes) this.put(at, held.bytes, undefined);
       }

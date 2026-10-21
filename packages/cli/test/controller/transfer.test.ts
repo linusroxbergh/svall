@@ -916,6 +916,29 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/sub`), 'utf8')).toBe('a file of mine');
   });
 
+  it('keeps what a pass kept aside when its listing fails, stops rather than verify, and the resume names it', async () => {
+    const src = tree(tmp(), { 'notes.md': 'v0' });
+    const claimed = tmp();
+    const stateDir = tmp();
+    const entry = await root({ source: src, claimed });
+    let copies = 0;
+    const run: RunRsync = async (exe, argv, o) => {
+      // the link drops as the second pass's kept files are listed
+      if (argv.includes('--list-only')) return { code: 12, signal: null, stderr: 'rsync: connection unexpectedly closed' };
+      const r = await runRsync(exe, argv, o);
+      if (!argv.includes('--dry-run') && ++copies === 1) fs.writeFileSync(path.join(claimed, 'notes.md'), 'my edit');
+      return r;
+    };
+    const keptAt = `${claimed}.overwritten-tx-l`;
+    temps.push(keptAt);
+    const failed = await transfer({ transactionId: 'tx-l', roles: PUSH, master, rsync: RSYNC, stateDir, entries: [entry], deps: { run, now: () => NOW } });
+    expect(failed.entries).toMatchObject([{ id: 'r_app', status: 'failed', error: expect.stringContaining('connection unexpectedly closed') }]);
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/notes.md`), 'utf8')).toBe('my edit');
+    const resumed = await transfer({ transactionId: 'tx-l', roles: PUSH, master, rsync: RSYNC, stateDir, entries: [entry], deps: { now: () => NOW + 60_000 } });
+    expect(resumed.entries).toMatchObject([{ id: 'r_app', status: 'verified', overwritten: { keptAt, paths: [`${RUN}-pass2/notes.md`] } }]);
+    expect(fs.readFileSync(path.join(claimed, 'notes.md'), 'utf8')).toBe('v0');
+  });
+
   it('lists what a run that ended mid-pass kept, on the resume', async () => {
     const src = tree(tmp(), { 'a.txt': 'a' });
     const claimed = tmp();

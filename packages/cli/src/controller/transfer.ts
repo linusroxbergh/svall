@@ -342,21 +342,25 @@ class Mirror {
       else if (l.kind === 'progress') this.put({ bytes: l.bytes, ...(l.total !== undefined && { done: l.done, total: l.total }) });
     });
     // what is kept is read where it lies, whatever this pass's rsync said; a resume also reads what a run that ended mid-pass kept
-    if (plan.backup && (backup || this.resumed) && !this.o.signal?.aborted) await this.keptAside(plan.backup, plan.push);
+    const listed = plan.backup && (backup || this.resumed) && !this.o.signal?.aborted ? await this.keptAside(plan.backup, plan.push) : undefined;
     this.put({ exitCode: r.code, signal: r.signal });
-    return this.settle(r);
+    // a pass whose kept files could not be listed ends as a failed one, so the copy verifies only once a resume lists them
+    return this.settle(r.code === 0 && listed && listed.code !== 0 ? listed : r);
   }
 
   /** Records every file and link kept in `keptAt` by any run, as listed there; a listing that fails leaves the record as it was. */
-  private async keptAside(keptAt: string, far: boolean): Promise<void> {
+  private async keptAside(keptAt: string, far: boolean): Promise<RsyncResult> {
     const lines: string[] = [];
-    let code: number | null = null;
+    let r: RsyncResult;
     try {
-      ({ code } = await this.d.run(this.o.rsync, listArgv(this.rsh, far ? remoteSpec(keptAt) : keptAt), { signal: this.o.signal, onLine: (l) => lines.push(l) }));
-    } catch { /* an rsync that cannot start lists nothing */ }
-    if (code !== 0) return;
+      r = await this.d.run(this.o.rsync, listArgv(this.rsh, far ? remoteSpec(keptAt) : keptAt), { signal: this.o.signal, onLine: (l) => lines.push(l) });
+    } catch (err) {
+      return { code: null, signal: null, stderr: (err as Error).message };
+    }
+    if (r.code !== 0) return r;
     const paths = listedFiles(lines, path.basename(keptAt)).sort(byCodeUnit);
     this.put({ overwritten: paths.length ? { keptAt, paths } : undefined });
+    return r;
   }
 
   /** Reads this Mac's side under the claim's excludes, and how it differs from `previous`. */
