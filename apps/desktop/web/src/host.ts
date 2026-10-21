@@ -76,8 +76,8 @@ export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', remove: 'Remove', enable: "Make it this fleet's gateway",
 };
 
-/** How a finished run ends: what it did, and what is left. */
-export type RunOutcome = { text: string; list?: string[] };
+/** How a finished run ends: what it did, what is left, and the one step the panel offers next. */
+export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' };
 
 /** `gateway`: the machine this fleet names as its gateway, before which nothing is ready for handover. */
 export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome {
@@ -85,6 +85,7 @@ export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome
   const actions = runActions(run);
   const list = actions.length ? { list: actions } : {};
   const theGateway = gateway === name;
+  const onward = theGateway ? { next: 'handover' as const } : { next: 'gateway' as const };
   if (run.op === 'doctor' && run.code === 0 && run.steps.length > 0 && run.steps.every((s) => s.status === 'ok' || s.status === 'skip')) {
     return { text: 'ready for handover' };
   }
@@ -92,14 +93,14 @@ export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list };
   // an add is done once its machine is in the registry, whatever it left to do; a stopped one never got there
   if (run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok')) {
-    return { text: `${name} is added${actions.length ? '; still to do:' : theGateway ? ': ready for handover' : ''}`, ...list };
+    return { text: `${name} is added${actions.length ? '; still to do:' : theGateway ? ': ready for handover' : ''}`, ...list, ...onward };
   }
   if (run.code !== 0) return { text: actions.length ? 'still to do:' : `${OP_TITLE[run.op]} ended with exit ${run.code}`, ...list };
   const done: Partial<Record<HostOp, string>> = {
     upgrade: `${name} is upgraded`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}`,
     enable: `${name} is this fleet's gateway: ready for handover`,
   };
-  return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, ...list };
+  return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, ...list, ...(run.op === 'enable' ? { next: 'handover' as const } : {}) };
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;

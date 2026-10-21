@@ -56,15 +56,16 @@ describe('the end of a run', () => {
   const ended = (op: 'add' | 'doctor' | 'upgrade' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
     endRun(steps.reduce(applyStep, beginRun(op, { name: 'box', ...args })), code);
 
-  it('says an add that finished clean added the machine', () => {
+  it('says an add that finished clean added the machine, and offers to make it the gateway until it is one', () => {
     const add = ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]);
-    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added' });
-    expect(outcomeOf(add, 'box')).toEqual({ text: 'box is added: ready for handover' });
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added', next: 'gateway' });
+    expect(outcomeOf(add, 'studio')).toEqual({ text: 'box is added', next: 'gateway' });
+    expect(outcomeOf(add, 'box')).toEqual({ text: 'box is added: ready for handover', next: 'handover' });
   });
 
-  it('lists what an add left to do', () => {
+  it('lists what an add left to do, and still offers the gateway', () => {
     const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]);
-    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added; still to do:', list: ['log in'] });
+    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added; still to do:', list: ['log in'], next: 'gateway' });
     // one stopped part way never reached the registry
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]), undefined)).toEqual({ text: 'Add machine ended with exit 143' });
   });
@@ -80,9 +81,9 @@ describe('the end of a run', () => {
     expect(outcomeOf(ended('remove', 1, []), undefined)).toEqual({ text: 'Remove ended with exit 1' });
   });
 
-  it('says what an upgrade, a new gateway and a removal did', () => {
+  it('says what an upgrade, a new gateway and a removal did, and offers the handover once there is a gateway', () => {
     expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is upgraded' });
-    expect(outcomeOf(ended('enable', 0, [step('fleet', 'ok')]), 'box')).toEqual({ text: "box is this fleet's gateway: ready for handover" });
+    expect(outcomeOf(ended('enable', 0, [step('fleet', 'ok')]), 'box')).toEqual({ text: "box is this fleet's gateway: ready for handover", next: 'handover' });
     expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]), undefined)).toEqual({ text: 'box is removed' });
     expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }), undefined)).toEqual({ text: 'box is forgotten' });
   });

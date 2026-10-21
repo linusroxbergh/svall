@@ -79,13 +79,16 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await expect(page.getByTestId('host-step-master')).toContainText('Connection');
   await expect(page.getByTestId('host-outcome')).toContainText('Add machine stopped at Final check: ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-outcome')).toContainText('svall doctor');
+  await expect(page.getByTestId('host-next-gateway')).toHaveCount(0);
 
-  // an add that went through is added
+  // an add that went through is added, and the panel offers the gateway it still needs
   await page.getByTestId('host-add').click();
   await receive(page, { type: 'host.step', op: 'add', event: { step: 'registry', status: 'ok', detail: "studio is in this Mac's list of machines" } });
   await receive(page, { type: 'host.done', op: 'add', code: 0 });
   await expect(page.getByTestId('host-outcome')).toContainText('studio is added');
   await expect(page.getByTestId('host-outcome')).not.toContainText('ready for handover');
+  await page.getByTestId('host-next-gateway').click();
+  expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
 });
 
 test('a check says ready for handover when nothing failed or is left to do; an upgrade never does', async ({ page, svall }) => {
@@ -116,6 +119,12 @@ test('a check says ready for handover when nothing failed or is left to do; an u
   await expect(page.getByTestId('host-enable')).toHaveText("Make it this fleet's gateway");
   await page.getByTestId('host-enable').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  await receive(page, { type: 'host.done', op: 'enable', code: 0 });
+  await receive(page, { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' });
+  await expect(page.getByTestId('host-outcome')).toContainText("studio is this fleet's gateway: ready for handover");
+  await page.getByTestId('host-next-handover').click();
+  await expect(page.getByTestId('host-setup')).toHaveCount(0);
+  await expect(page.getByTestId('handover-sheet')).toBeVisible();
 });
 
 test('a machine is only removed or forgotten once the page has asked', async ({ page, svall }) => {

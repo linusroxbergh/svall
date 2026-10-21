@@ -15,10 +15,22 @@ function Outcome({ run }: { run: HostRun }) {
   const gateway = useApp((s) => s.shell?.gateway);
   if (run.running) return <div className="host-note" data-testid="host-running">{OP_TITLE[run.op]}: running…</div>;
   const o = outcomeOf(run, gateway);
+  const name = run.args.name;
   return (
     <div className="host-note" data-testid="host-outcome">
       {o.text}
       {o.list && <ul>{o.list.map((a) => <li key={a}>{a}</li>)}</ul>}
+      {o.next && (
+        <div className="acts">
+          {o.next === 'gateway' && (
+            <button className="btn" data-testid="host-next-gateway" onClick={() => start('enable', { name })}>{OP_TITLE.enable}</button>
+          )}
+          {o.next === 'handover' && (
+            <button className="btn" data-testid="host-next-handover"
+              onClick={() => { app.store.getState().toggleHost(false); app.store.getState().toggleHandover(true); }}>Open Handover</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
