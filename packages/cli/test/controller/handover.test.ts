@@ -1488,8 +1488,8 @@ describe('a far machine that is down', () => {
       const w = await lostAt(at);
       const ops = w.ops.length;
       const out = await controller(w, unrouted(w)).resume();
-      expect(out, at).toMatchObject({ status: 'complete', transactionId: 'tx-1', pending: ['source'], error: expect.stringContaining(`svall handover --resume on ${mac} finishes its side`) });
-      expect(out.status === 'complete' && out.error, at).not.toMatch(/svall host add/);
+      expect(out, at).toMatchObject({ status: 'complete', transactionId: 'tx-1', pending: ['source'], error: expect.stringContaining('svall handover --resume on the machine the fleet came from finishes its side') });
+      expect(out.status === 'complete' && out.error, at).not.toMatch(/svall host add|--resume on [0-9a-f]{8}-/);
       expect(w.destination.activated, at).toBe(true);
       expect(w.ops.slice(ops).filter((op) => op.startsWith('mac:')), at).toEqual([]);
       expect(w.record, at).toEqual({ fleetId, generation: G + 1, ownerMachineId: trift });

@@ -1056,7 +1056,7 @@ export class Handover {
       try { return this.d.route(id); } catch (e) {
         if (!(e instanceof NoRoute)) throw e;
         // once committed, only the destination goes on, and the source finishes its own side
-        if (role === 'source' && (v.standing === 'committed' || v.standing === 'moved')) return { machineId: id, name: id };
+        if (role === 'source' && (v.standing === 'committed' || v.standing === 'moved')) return { machineId: id, name: 'the machine the fleet came from' };
         throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run svall handover --resume or --abort there`, [], 'elsewhere');
       }
     };
