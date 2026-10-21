@@ -181,7 +181,9 @@ On the other machine:
 - Each agent terminal the handover rested resumes as a new process in its folder, with `claude --resume <id>`,
   `codex resume <id>` or `opencode --standalone -s <id>` and the launch flags it had, such as its model or permission
   mode. Codex's `-p`/`--profile` and `--local-provider` are dropped, because they name configuration on the machine
-  it came from. It has its whole conversation; an interrupted turn does not go on by itself, so tell it to continue.
+  it came from. It has its whole conversation. An agent the handover interrupted or terminated in a character's main
+  terminal resumes with a note that its turn was cut short and that what it ran in the background was stopped, and
+  carries on; in a second terminal, tell it to continue.
 - A plain shell opens in its folder and prints: *Svall restarted this shell after a handover; whatever ran here
   before did not move.*
 - A character that was dormant before the handover stays dormant.
