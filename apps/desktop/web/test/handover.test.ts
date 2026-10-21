@@ -215,10 +215,10 @@ describe('what the sheet offers', () => {
 
   it('counts a stopped run as committed only once it can only go on, and says so when whether it committed is unknown', () => {
     const stopped = (phase: HandoverPhase, safe: ('resume' | 'abort')[]) =>
-      endFollow(play([...through('commit'), result({ status: 'interrupted', transactionId: tx, phase, error: 'the gateway did not answer', safe })]), 0);
+      endFollow(play([...through('commit'), result({ status: 'interrupted', transactionId: tx, phase, error: `whether ${tx} committed is unknown (timed out); resume asks the gateway again`, safe })]), 0);
     const unknown = stopped('commit', []);
     expect(isCommitted(unknown)).toBe(false);
-    expect(headline(unknown, 'studio')).toMatch(/^Whether the fleet moved to studio is not known yet: the gateway did not answer\. Check again/);
+    expect(headline(unknown, 'studio')).toBe('Whether the fleet moved to studio is not known yet: the gateway has not answered.');
     expect(actionsOf(unknown)).toMatchObject({ follow: true, resume: undefined, abort: false });
     expect(isCommitted(stopped('commit', ['resume']))).toBe(true);
     expect(isCommitted(stopped('activate', []))).toBe(true);

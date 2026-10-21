@@ -169,9 +169,18 @@ const commitUnknown = (r: Outcome | undefined): boolean => r?.status === 'interr
 // blockers that mean another handover of this fleet may be open, which only `handover status` can say what to do about
 const OPEN_ELSEWHERE: string[] = ['transaction_open', 'generation_mismatch', 'identity_mismatch'];
 
-/** A run the checks stopped for a handover that may already be open, whose status the sheet then reads. */
-export const asksStatus = (run: HandoverRun | undefined): boolean => !!run && !run.following && !run.status && !run.checking
-  && run.result?.status === 'blocked' && run.result.blockers.some((b) => OPEN_ELSEWHERE.includes(b.code));
+/**
+ * A run whose status the sheet then reads: the checks stopped it for a handover that may already be open, or a resume or
+ * abort found nothing safe, which its error says in the controller's ids.
+ */
+export function asksStatus(run: HandoverRun | undefined): boolean {
+  if (!run || run.following || run.status || run.checking) return false;
+  const r = run.result;
+  return r?.status === 'blocked' ? r.blockers.some((b) => OPEN_ELSEWHERE.includes(b.code)) : r?.status === 'interrupted' && !r.safe.length && !commitUnknown(r);
+}
+
+/** A blocker the status has answered, whose message names the ids and generations the sheet leaves out. */
+export const answered = (run: HandoverRun, b: Blocker): boolean => !!run.status && OPEN_ELSEWHERE.includes(b.code);
 
 /** The status the sheet asked for is on its way. */
 export const checking = (run: HandoverRun): boolean => !!run.checking && !run.status && !run.error;
@@ -637,7 +646,7 @@ export function headline(run: HandoverRun, destination: string): string {
       return `${n} ${n === 1 ? 'thing' : 'things'} to settle before the fleet moves to ${destination}. Nothing has moved.`;
     }
     case 'interrupted':
-      if (commitUnknown(r)) return `Whether the fleet moved to ${destination} is not known yet: ${r.error}. Check again asks the gateway.`;
+      if (commitUnknown(r)) return standingLine({ standing: 'unknown', journals: {}, safe: [], action: 'none', reason: '' }, destination);
       return isCommitted(run)
         ? `The fleet is ${destination}'s now, and it stopped while resuming: ${r.error}`
         : `Stopped at ${label(SECTIONS[sectionAt(r.phase === 'aborted' ? run.phase ?? 'begin' : r.phase)].id)}: ${r.error}`;

@@ -351,6 +351,7 @@ test('a handover the checks find already open is looked up, and the sheet offers
   await receive(page, { type: 'handover.replay', events: [open,
     { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: `${TX} is preparing and has not committed; it can go on, or be aborted back to ${MAC}` } }] });
   await expect(page.getByTestId('handover-blocker-transaction_open')).toBeVisible();
+  await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-resume')).toHaveText('Resume');
   await expect(page.getByTestId('handover-abort')).toBeVisible();
   await expect(page.getByTestId('handover-try-again')).toHaveCount(0);

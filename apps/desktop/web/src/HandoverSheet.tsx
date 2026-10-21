@@ -3,7 +3,7 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
-  accountHome, actionsOf, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf,
+  accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf,
   entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, staysInSight,
   transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
@@ -75,7 +75,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
       <span className="host-mark">{warning ? '!' : picked ? '✓' : '×'}</span>
       <span className="ho-who" title={path}>{entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? ''}</span>
       <span className="host-said">
-        {picked ? <span className="ho-plan">{planOf(choice!, b, ctx, names)}</span> : problem}
+        {picked ? <span className="ho-plan">{planOf(choice!, b, ctx, names)}</span> : !answered(run, b) && problem}
         <small className="ho-code">{b.code}</small>
         {!picked && quote && <q className="ho-quote">{quote.slice(1, -1)}</q>}
         {!picked && !choice && hint && <em>{withCode(hint)}</em>}
