@@ -254,7 +254,7 @@ function Notifications() {
     <>
       <div className="rows">
         <div className="row">
-          <span>notifications<Info id="notify">macOS banners when a character needs you or is done. Approve and Deny work from the banner.</Info></span>
+          <span>notifications<Info id="notify">macOS banners when a character needs you or is done, and when a handover waits for you, finishes or stops. Approve and Deny work from the banner.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" onClick={flip}>{shown ? 'on' : 'off'}</button></b>
         </div>
         {shown && (

@@ -48,7 +48,8 @@ handover stands, with **Resume** and **Abort** before the commit. After it, resu
 resumes by itself and offers **Retry** only if that stops again.
 
 While the app follows a handover, the Mac stays out of idle sleep, on battery too, unless **keep Mac awake** is off. A
-handover that goes on without the window watching is followed again.
+handover that goes on without the window watching is followed again. With notifications on, a handover that waits for
+you, is ready to move, finishes or stops while the app is in the background posts a banner, which opens the sheet.
 
 Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.
