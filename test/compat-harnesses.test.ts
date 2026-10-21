@@ -54,6 +54,7 @@ const opencodeFiles = (): Files => ({
   'packages/schema/src/session.ts': 'Schema.Struct({ id: ID, location: Location.Ref, revert: Revert.pipe(optional) })',
   'packages/schema/src/location.ts': 'Ref = Schema.Struct({ directory: AbsolutePath })',
   'packages/schema/src/session-message.ts': 'const Base = { id: ID, time: Schema.Struct({}) }',
+  'packages/cli/src/commands/handlers/auth/list.ts': 'if (input.format === "json") integrations.map((integration) => ({ id: integration.id, name: integration.name, connections: integration.connections }))',
 });
 
 describe('checks', () => {
@@ -103,6 +104,13 @@ describe('checks', () => {
     f['packages/schema/src/session.ts'] = 'Schema.Struct({ id: ID, location: Location.Ref })';
     f['packages/schema/src/session-transfer.ts'] = undefined;
     expect(HARNESSES.opencode.check(f).missing).toEqual(['packages/schema/src/session-transfer.ts', 'session `Imported session: ${', 'session revert: Revert']);
+  });
+
+  test('OpenCode: the JSON auth list writes for the login probe is checked', () => {
+    const f = opencodeFiles();
+    f['packages/cli/src/commands/handlers/auth/list.ts'] = f['packages/cli/src/commands/handlers/auth/list.ts']!.replace('connections: integration.connections', 'credentials: integration.connections');
+    expect(HARNESSES.opencode.check(f).missing).toEqual(['login connections: integration.connections']);
+    expect(HARNESSES.opencode.check({ ...opencodeFiles(), 'packages/cli/src/commands/handlers/auth/list.ts': undefined }).missing).toEqual(['packages/cli/src/commands/handlers/auth/list.ts']);
   });
 });
 

@@ -240,7 +240,11 @@ const SESSION_API: Record<string, string[]> = {
   'packages/schema/src/location.ts': ['directory: AbsolutePath'],
   'packages/schema/src/session-message.ts': ['id: ID'],
 };
-const OPENCODE_FILES = [...SCHEMA, ...Object.keys(PLUGIN_API), ...Object.keys(SESSION_API)];
+// the JSON `auth list --format json` writes, which the login probe counts providers in
+const LOGIN_API: Record<string, string[]> = {
+  'packages/cli/src/commands/handlers/auth/list.ts': ['input.format === "json"', 'id: integration.id', 'name: integration.name', 'connections: integration.connections'],
+};
+const OPENCODE_FILES = [...SCHEMA, ...Object.keys(PLUGIN_API), ...Object.keys(SESSION_API), ...Object.keys(LOGIN_API)];
 // the events hooks/opencode-plugin.js handles, and the payload fields it reads
 export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'session.step.started', 'session.step.ended', 'session.text.ended',
   'permission.asked', 'form.created', 'permission.replied', 'form.replied', 'form.cancelled',
@@ -276,6 +280,7 @@ const opencode: Harness = {
       ...OPENCODE_FIELDS.filter((k) => !hasKey(schema, k)).map((k) => `field ${k}`),
       ...lost(f, PLUGIN_API, 'plugin API'),
       ...lost(f, SESSION_API, 'session'),
+      ...lost(f, LOGIN_API, 'login'),
     ];
     return { missing, events };
   },
@@ -302,6 +307,6 @@ export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
     [['session', 'export', '--help'], ['--standalone']],
     [['session', 'import', '--help'], ['--standalone', '--directory']],
     [['session', 'delete', '--help'], ['--standalone']],
-    [['auth', 'list', '--help'], ['--standalone']],
+    [['auth', 'list', '--help'], ['--standalone', '--format']],
   ],
 };
