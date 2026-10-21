@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import {
@@ -59,10 +60,10 @@ export type Daemon = { call<M extends MethodName>(method: M, params: Params<M>):
 /** The gateway's compare-and-swap operations on this fleet's record, answered the same way. */
 export type Gateway = {
   get(): Promise<OwnerRecord>;
-  begin(p: { expectedGeneration: number; fromMachineId: MachineId; toMachineId: MachineId }): Promise<OwnerRecord>;
+  begin(p: { expectedGeneration: number; fromMachineId: MachineId; toMachineId: MachineId; controllerId: MachineId; nonce: string }): Promise<OwnerRecord>;
   ready(p: { transactionId: string; expectedGeneration: number; preparedDigest: string }): Promise<OwnerRecord>;
   commit(p: { transactionId: string; expectedGeneration: number }): Promise<OwnerRecord>;
-  abort(p: { transactionId: string; expectedGeneration: number }): Promise<OwnerRecord>;
+  abort(p: { transactionId: string; expectedGeneration: number } | { nonce: string }): Promise<OwnerRecord>;
   complete(p: { transactionId: string; generation: number }): Promise<OwnerRecord>;
 };
 
@@ -460,6 +461,8 @@ export class Handover {
   /** Begin: the gateway opens the transaction from the source to the destination at generation g. */
   private async begin(): Promise<void> {
     if (this.journal.transactionId) return;
+    const nonce = this.journal.nonce ?? crypto.randomUUID();
+    if (!this.journal.nonce) this.save({ nonce });
     const { source, destination, generation } = this.journal;
     let record: OwnerRecord;
     let unanswered = false;
@@ -467,7 +470,9 @@ export class Handover {
       // its answer is read even after a cancel: it names the transaction the abort has to close
       record = await this.retrying('begin', async () => {
         try {
-          return await this.cancellable(() => this.d.gateway.begin({ expectedGeneration: generation, fromMachineId: source.machineId, toMachineId: destination.machineId }), false);
+          return await this.cancellable(() => this.d.gateway.begin({
+            expectedGeneration: generation, fromMachineId: source.machineId, toMachineId: destination.machineId, controllerId: this.d.local, nonce,
+          }), false);
         } catch (e) {
           if (transient(e)) unanswered = true;
           throw e;
@@ -502,13 +507,13 @@ export class Handover {
     this.phase('begin');
   }
 
-  /** The handover the gateway holds preparing between this journal's machines at its generation, which only this Begin can have opened. */
+  /** The handover the gateway holds preparing between this journal's machines at its generation, opened by this Begin's nonce. */
   private async openedHere(): Promise<{ id: string } | undefined> {
-    const { source, destination, generation } = this.journal;
+    const { source, destination, generation, nonce } = this.journal;
     const r = await this.d.gateway.get();
     const tx = r.transaction;
     const ours = tx?.phase === 'preparing' && r.generation === generation && r.ownerMachineId === source.machineId
-      && tx.fromMachineId === source.machineId && tx.toMachineId === destination.machineId;
+      && tx.fromMachineId === source.machineId && tx.toMachineId === destination.machineId && (tx.nonce === undefined || tx.nonce === nonce);
     return ours ? tx : undefined;
   }
 
@@ -629,6 +634,7 @@ export class Handover {
       const archive = this.journal.choices.archiveRoots;
       const r = await this.retrying('transfer', () => this.cancellable(() => destination.daemon.call('handover.claim', {
         transactionId: tx, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, ...(archive?.length ? { archive } : {}), ...(landed.length && { landed }),
+        controllerId: this.d.local,
       })), this.cancel$.signal);
       const ids = r.roots.map((c) => c.id).sort();
       if (ids.length !== carried.length || ids.some((id, i) => id !== carried[i])) {
@@ -665,7 +671,7 @@ export class Handover {
 
   private prepareParams(manifest: FrozenManifest, landed: LandedRoot[]): Params<'handover.prepare'> {
     const { transactionId, generation } = this.tx;
-    return { transactionId, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, landed };
+    return { transactionId, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, landed, controllerId: this.d.local };
   }
 
   /** Prepare: the destination proves what landed, imports Git, places the sessions and writes the state it would run. */
@@ -815,8 +821,14 @@ export class Handover {
 
   /** After the gateway let go: the source takes its fleet back and reopens what it rested, and the destination drops what it prepared. */
   private async letGo(done: Outcome): Promise<Outcome> {
-    const { transactionId, generation, phase } = this.journal;
+    const { transactionId, generation, phase, nonce } = this.journal;
     if (!transactionId) {
+      // a Begin never seen answered may yet arrive: the gateway lets go what it opened, and refuses it once retired
+      if (nonce) {
+        await this.retrying('aborted', () => this.d.gateway.abort({ nonce })).catch((e: unknown) => {
+          throw e instanceof Refused ? new Stopped('aborted', `the gateway would not let go of this handover's Begin: ${e.message}`, ['abort']) : e;
+        });
+      }
       this.d.store.clear();
       return done;
     }

@@ -1174,6 +1174,25 @@ describe('cancellation', () => {
     expect(settledOn(w)).toBe('source');
   });
 
+  it('asked while a Begin that never reached the gateway waits, lets its nonce go there, so that Begin opens nothing should it arrive late', async () => {
+    const w = new World();
+    const c = controller(w);
+    const begin = w.gateway.begin;
+    let late: (() => unknown) | undefined;
+    w.gateway.begin = async (p) => {
+      w.gateway.begin = begin;
+      late = () => w.cas('owner.begin', p);
+      c.cancel();
+      throw new Error('ssh: the connection to trift closed before the request went out');
+    };
+    const out = await c.start(trift, {});
+    expect(out).toMatchObject({ status: 'aborted', phase: 'begin' });
+    expect(w.ops.slice(-3)).toEqual(['gateway:get', 'gateway:abort', 'store:clear']);
+    expect(late).toThrow('that Begin belongs to a handover already let go');
+    expect(w.record.transaction).toBeUndefined();
+    expect(settledOn(w)).toBe('source');
+  });
+
   it('asked while a Begin whose answer was lost waits, and the gateway cannot then say whether it opened it, keeps its journal for the abort', async () => {
     const w = new World();
     const c = controller(w);
@@ -1341,6 +1360,36 @@ describe('cancellation', () => {
   });
 });
 
+describe('the controller a handover answers to', () => {
+  it('sends its Begin as this machine\'s controller with one nonce, journaled before the first send and the same on every retry', async () => {
+    const w = new World();
+    const sent: { nonce?: string; controllerId?: string; journaled?: string }[] = [];
+    const begin = w.gateway.begin;
+    w.gateway.begin = async (p) => {
+      sent.push({ nonce: p.nonce, controllerId: p.controllerId, journaled: w.store.j?.nonce });
+      const r = await begin(p);
+      if (sent.length === 1) throw new Error('ssh: the connection to trift closed before the answer');
+      return r;
+    };
+    expect((await controller(w).start(trift, {})).status).toBe('complete');
+    const nonce = sent[0].nonce;
+    expect(nonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(sent).toEqual([{ nonce, controllerId: mac, journaled: nonce }, { nonce, controllerId: mac, journaled: nonce }]);
+    expect(settledOn(w)).toBe('destination');
+  });
+
+  it('names itself to the destination in each claim and prepare', async () => {
+    const w = new World();
+    const named: string[] = [];
+    for (const method of ['handover.claim', 'handover.prepare'] as const) {
+      const answer = w.destination.answers[method];
+      w.destination.answers[method] = ((p: { controllerId?: string }) => { named.push(`${method} ${p.controllerId}`); return answer(p as never); }) as never;
+    }
+    expect((await controller(w).start(trift, {})).status).toBe('complete');
+    expect(named).toEqual([`handover.claim ${mac}`, `handover.prepare ${mac}`]);
+  });
+});
+
 describe('the commit the controller holds', () => {
   it('is journaled as the gateway answered it before the destination is asked to activate, and goes with every activation, a resume\'s included', async () => {
     const probe = new World();
@@ -1455,7 +1504,7 @@ describe('a far machine that is down', () => {
     w.down.add('trift');
     const out = await controller(w, eager(w)).abort();
     expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
-    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac, retiredNonces: [expect.any(String)] });
     expect(w.source.running).toBe(true);
     expect(w.destination.journal).toBeDefined();
     expect(w.store.j).toMatchObject({ phase: 'aborted' });
@@ -1497,7 +1546,7 @@ describe('a far machine that is down', () => {
     w.down.add('trift');
     const out = await controller(w, eager(w)).abort();
     expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
-    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac, retiredNonces: [expect.any(String)] });
     expect(w.source.running).toBe(true);
     expect(w.store.j).toMatchObject({ transactionId: 'tx-1', phase: 'aborted' });
     await recover(w, 'abort');

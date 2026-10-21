@@ -828,7 +828,8 @@ export const entries = (dir: string): string[] => (fs.existsSync(dir) ? (fs.read
  * and only the terminals the handover stopped running.
  */
 export function settledOn(w: World): 'source' | 'destination' {
-  const record = w.record();
+  // the nonces of the Begins let go stay on the record
+  const { retiredNonces: _retired, ...record } = w.record();
   const where = record.generation === G ? 'source' : 'destination';
   const [owner, other] = where === 'source' ? [w.mac, w.trift] : [w.trift, w.mac];
   expect(record).toEqual({ fleetId, generation: where === 'source' ? G : G + 1, ownerMachineId: owner.id });

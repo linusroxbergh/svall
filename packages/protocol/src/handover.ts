@@ -14,7 +14,8 @@ export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 hex digest');
 
 /**
  * A handover in flight: at most one per fleet, and the gateway is the only writer. The freeze and the
- * digest arrive together, and are what a `ready-to-commit` transaction was granted on.
+ * digest arrive together, and are what a `ready-to-commit` transaction was granted on. `controllerId` is
+ * the machine whose controller drives it, and `nonce` names the Begin that opened it.
  */
 export const TransactionRecord = z.object({
   id: z.string().min(1),
@@ -24,6 +25,8 @@ export const TransactionRecord = z.object({
   startedAt: z.number(),
   sourceFrozenAt: z.number().optional(),
   preparedDigest: Sha256.optional(),
+  controllerId: MachineId.optional(),
+  nonce: z.guid().optional(),
 });
 export type TransactionRecord = z.infer<typeof TransactionRecord>;
 
@@ -36,6 +39,8 @@ export const OwnerRecord = z.object({
   generation: z.number().int().nonnegative(),
   ownerMachineId: MachineId,
   transaction: TransactionRecord.optional(),
+  // the nonces of the last Begins let go, none of which opens a handover should it arrive late
+  retiredNonces: z.array(z.guid()).optional(),
 });
 export type OwnerRecord = z.infer<typeof OwnerRecord>;
 

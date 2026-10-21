@@ -24,6 +24,8 @@ export const ControllerJournal = z.object({
   fleetId: FleetId,
   // absent until the gateway's Begin has answered
   transactionId: TransactionId.optional(),
+  // what every send of this Begin carries, journaled before the first, by which the gateway tells it apart
+  nonce: z.guid().optional(),
   // the source's generation, g; the destination takes the fleet at g + 1
   generation: Generation,
   source: Route,
@@ -121,9 +123,9 @@ function found(o: Observation, record: OwnerRecord | undefined): Found | undefin
   const tx = record?.transaction;
   if (c) {
     const [fromMachineId, toMachineId] = [c.source.machineId, c.destination.machineId];
-    // a Begin whose answer never arrived is the gateway's open preparing handover between the same machines
+    // a Begin whose answer never arrived is the gateway's open preparing handover between the same machines, with its nonce
     const begun = !c.transactionId && tx && tx.phase === 'preparing' && tx.fromMachineId === fromMachineId && tx.toMachineId === toMachineId
-      && record.generation === c.generation;
+      && record.generation === c.generation && (tx.nonce === undefined || tx.nonce === c.nonce);
     return { transactionId: c.transactionId ?? (begun ? tx.id : undefined), generation: c.generation, fromMachineId, toMachineId };
   }
   if (tx && record) {

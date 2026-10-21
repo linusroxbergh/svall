@@ -173,6 +173,9 @@ const blocked = (blockers: Blocker[]): Error => {
   return handoverError({ code: 'blocked', message: found.map((b) => b.message).join('; '), blockers: found });
 };
 const notReady = (message: string): Error => handoverError({ code: 'not_ready', message });
+const anotherController = (tx: string, drives: string, asked: string | undefined): Error => handoverError({
+  code: 'transaction_mismatch', message: `handover ${tx} is driven by the controller on ${drives}, not ${asked ? `the one on ${asked}` : 'one that names no machine'}`, expected: tx,
+});
 
 const wire = (check: ReplicaCheck): WireCheck =>
   (check.ok ? { ok: true, path: check.path, kind: check.kind } : { ok: false, path: check.path, blocker: check.blocker });
@@ -408,6 +411,7 @@ export class DestinationHandover {
         expected: id, ...(tx && { actual: tx.id }),
       });
     }
+    if (tx.controllerId && tx.controllerId !== p.controllerId) throw anotherController(id, tx.controllerId, p.controllerId);
     if (record.generation !== p.generation - 1) {
       throw handoverError({ code: 'generation_mismatch', message: `the gateway holds this fleet at generation ${record.generation}, not ${p.generation - 1}`, expected: p.generation - 1, actual: record.generation });
     }
@@ -449,6 +453,7 @@ export class DestinationHandover {
     if (held && held.manifestDigest !== p.manifestDigest) {
       throw handoverError({ code: 'transaction_mismatch', message: `this machine prepares handover ${tx} from manifest ${held.manifestDigest}, not ${p.manifestDigest}` });
     }
+    if (held?.controllerId && held.controllerId !== p.controllerId) throw anotherController(tx, held.controllerId, p.controllerId);
     if (held?.preparedDigest) {
       boundary('destination.prepare.stage', () => { for (const f of this.staged(tx)) fs.rmSync(f, { recursive: true, force: true }); });
       return { preparedDigest: held.preparedDigest };
@@ -469,6 +474,7 @@ export class DestinationHandover {
       boundary('destination.verify.journal', () => this.journal.write(DestinationJournal.parse({
         role: 'destination', transactionId: tx, generation: p.generation, fleetId: this.d.config.id,
         fromMachineId: m.fromMachineId, toMachineId: m.toMachineId, phase: 'verify', manifestDigest: p.manifestDigest, updatedAt: this.clock.now(),
+        ...(p.controllerId && { controllerId: p.controllerId }),
       })));
     }
     // a machine receiving a fleet runs nothing of it until activation

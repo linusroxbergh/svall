@@ -374,12 +374,6 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **An edit on the other machine while the copy runs is lost.** The checks compare each folder there with what was
   last carried before the copy starts; a change made there after that is overwritten. Leave the other machine's copies
   alone until the handover ends.
-- **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
-  both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
-  it once. On one Mac, the second start is refused.
-- **A late Begin can leave an open handover behind.** When the gateway receives a start only after its handover was
-  aborted, it holds a handover nobody drives. `svall handover status` shows it open, and `svall handover --abort`
-  closes it.
 - **Saved tool output can name the other machine's folder.** A Claude transcript names each full tool output it
   saved by path. They move to the same path when both machines keep Claude's files in the same folder (`~/.claude`,
   unless `CLAUDE_CONFIG_DIR` says otherwise). Where they differ, the agent sees only each output's preview; running

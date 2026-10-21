@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FleetId, MachineId, OwnerRecord } from '@svall/protocol';
 import {
-  AuthorityFailure, FleetAuthority, gatewayPaths, transition, unanswered,
+  AuthorityFailure, FleetAuthority, OWNER_PARAMS, gatewayPaths, transition, unanswered,
   type AuthorityErrorCode, type OwnerOp, type OwnerParams, type OwnerParamsOf, type Transition,
 } from '../../src/gateway/authority.js';
 
@@ -148,6 +148,72 @@ describe('replayed requests', () => {
   it('answers a commit whose reply the caller never saw', () => {
     expect(ok(at(committed, 'owner.commit', commitParams))).toEqual(committed);
     expect(ok(at(committed, 'owner.commit', { ...commitParams, expectedGeneration: 4 }))).toEqual(committed);
+  });
+});
+
+describe('the controller and the Begin a handover answers to', () => {
+  const NONCE = '5e0c0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+  const LATER = '6f1d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+  const driven = { ...beginParams, controllerId: MAC, nonce: NONCE };
+  const opened: OwnerRecord = { ...owned, transaction: { ...TX, id: 'tx-new', startedAt: 100, controllerId: MAC, nonce: NONCE } };
+  const message = (t: Transition): string => ('error' in t ? t.error.message : '');
+
+  it('records the controller and the nonce of the Begin that opens a handover', () => {
+    expect(ok(at(owned, 'owner.begin', driven))).toEqual(opened);
+  });
+
+  it('answers the same Begin again, and this controller resuming, with the handover open, and refuses another controller naming the one that drives it', () => {
+    expect(ok(at(opened, 'owner.begin', driven))).toEqual(opened);
+    expect(ok(at(opened, 'owner.begin', { ...driven, nonce: LATER }))).toEqual(opened);
+    for (const other of [{ ...driven, controllerId: TRIFT, nonce: LATER }, beginParams]) {
+      const t = at(opened, 'owner.begin', other);
+      expect(code(t)).toBe('transaction_mismatch');
+      expect(message(t)).toContain(`the controller on ${MAC}`);
+      expect('error' in t && t.error.data).toEqual({ actual: 'tx-new', controllerId: MAC });
+    }
+    // a handover opened by no controller it knows answers any Begin as it always did
+    expect(ok(at(preparing, 'owner.begin', { ...driven, controllerId: TRIFT }))).toEqual(preparing);
+  });
+
+  it('lets go by its nonce what a Begin no answer was seen to opened, keeping that nonce from opening anything again', () => {
+    const retired = { ...owned, retiredNonces: [NONCE] };
+    const byNonce = { fleetId: FLEET, nonce: NONCE };
+    expect(ok(at(opened, 'owner.abort', byNonce))).toEqual(retired);
+    expect(ok(at({ ...opened, transaction: { ...opened.transaction!, phase: 'ready-to-commit', preparedDigest: DIGEST } }, 'owner.abort', byNonce))).toEqual(retired);
+    // with none open, or another handover open, the nonce alone is retired
+    expect(ok(at(owned, 'owner.abort', byNonce))).toEqual(retired);
+    expect(ok(at(preparing, 'owner.abort', byNonce))).toEqual({ ...preparing, retiredNonces: [NONCE] });
+    // repeated, it changes nothing more
+    expect(ok(at(retired, 'owner.abort', byNonce))).toEqual(retired);
+    expect(code(at({ ...committed, transaction: { ...committed.transaction!, nonce: NONCE } }, 'owner.abort', byNonce))).toBe('handover_committed');
+
+    const late = at(retired, 'owner.begin', driven);
+    expect(code(late)).toBe('transaction_mismatch');
+    expect(message(late)).toBe('that Begin belongs to a handover already let go');
+    expect(ok(at(retired, 'owner.begin', { ...driven, nonce: LATER })).transaction).toMatchObject({ id: 'tx-new', nonce: LATER });
+  });
+
+  it('retires the nonce of the handover an abort by its id clears', () => {
+    const cleared = ok(at(opened, 'owner.abort', { ...abortParams, transactionId: 'tx-new' }));
+    expect(cleared).toEqual({ ...owned, retiredNonces: [NONCE] });
+    expect(code(at(cleared, 'owner.begin', driven))).toBe('transaction_mismatch');
+    // a handover opened with no nonce leaves none to retire
+    expect(ok(at(preparing, 'owner.abort', abortParams))).toEqual(owned);
+  });
+
+  it('keeps the last 16 nonces it retired', () => {
+    const nonces = Array.from({ length: 17 }, (_, i) => `${i.toString(16).padStart(8, '0')}-2d3e-4f50-8617-9a0b1c2d3e4f`);
+    const record = nonces.reduce<OwnerRecord>((r, nonce) => ok(at(r, 'owner.abort', { fleetId: FLEET, nonce })), owned);
+    expect(record.retiredNonces).toEqual(nonces.slice(1));
+    expect(ok(at(record, 'owner.begin', { ...driven, nonce: nonces[0] })).transaction).toMatchObject({ nonce: nonces[0] });
+  });
+
+  it('takes an abort that names its handover or the nonce of its Begin, and nothing less', () => {
+    const abort = OWNER_PARAMS['owner.abort'];
+    expect(abort.safeParse({ fleetId: FLEET, nonce: NONCE }).success).toBe(true);
+    expect(abort.safeParse(abortParams).success).toBe(true);
+    expect(abort.safeParse({ fleetId: FLEET }).success).toBe(false);
+    expect(abort.safeParse({ fleetId: FLEET, nonce: 'n-1' }).success).toBe(false);
   });
 });
 

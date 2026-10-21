@@ -671,6 +671,21 @@ describe('destination prepare', () => {
     expect(tree(s.home)).toEqual(written);
   });
 
+  it('journals the controller its first prepare came from, and refuses a prepare from any other, one asked again included', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    const first = await d.handover.prepare(params(s, { controllerId: mac }));
+    expect(journalOf(s.paths).controllerId).toBe(mac);
+    const written = tree(s.home);
+    for (const controllerId of [elsewhere, undefined]) {
+      const r = await refusal(d.handover.prepare(params(s, { controllerId, landed: [] })));
+      expect(r.code, controllerId).toBe('transaction_mismatch');
+      expect(r.message).toContain(`the controller on ${mac}`);
+    }
+    expect(tree(s.home)).toEqual(written);
+    expect(await d.handover.prepare(params(s, { controllerId: mac, landed: [] }))).toEqual(first);
+  });
+
   it('refuses a prepare meant for another machine, fleet, generation, transaction or manifest, and writes nothing', async () => {
     const s = await scene();
     const other = (m: Partial<TransferManifestV1>): Partial<Prepare> => {
@@ -2347,6 +2362,22 @@ describe('destination claim', () => {
     expect((await refusal(daemon(s).handover.claim(claimParams(s, { manifest: other, manifestDigest: manifestDigest(other) })))).code).toBe('blocked');
     expect((await refusal(daemon(s).handover.claim(claimParams(s, { generation: 4 })))).code).toBe('generation_mismatch');
     expect(tree(s.base)).toEqual(before);
+  });
+
+  it('takes a claim only from the controller the gateway says drives the handover, and from any where it names none', async () => {
+    const s = await scene({ land: false });
+    const before = tree(s.base);
+    const d = daemon(s);
+    d.gateway.record.transaction!.controllerId = mac;
+    for (const controllerId of [elsewhere, undefined]) {
+      const r = await refusal(d.handover.claim(claimParams(s, { controllerId })));
+      expect(r.code, controllerId).toBe('transaction_mismatch');
+      expect(r.message).toContain(`the controller on ${mac}`);
+    }
+    expect(tree(s.base)).toEqual(before);
+    expect((await d.handover.claim(claimParams(s, { controllerId: mac }))).roots.every((x) => x.check.ok)).toBe(true);
+    delete d.gateway.record.transaction!.controllerId;
+    expect((await d.handover.claim(claimParams(s, { controllerId: elsewhere }))).roots.every((x) => x.check.ok)).toBe(true);
   });
 
   it('refuses a claim whose roots a link on this machine leads elsewhere, before it reserves or creates anything', async () => {

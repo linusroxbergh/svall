@@ -138,7 +138,7 @@ const REACH: Record<Failpoint, Reach> = {
   'gateway.abort.write': { scenario: 'abort', times: 1 },
   'gateway.complete.write': { scenario: 'move', times: 1 },
   'gateway.commit.respond': { scenario: 'move', times: 1 },
-  'controller.journal': { scenario: 'move', times: 15 },
+  'controller.journal': { scenario: 'move', times: 16 },
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
@@ -158,7 +158,9 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
 // a move run's crash before the gateway holds its Begin or the controller has journaled one leaves nothing to resume
-const UNRESUMABLE = new Set(['gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1']);
+const UNRESUMABLE = new Set([
+  'gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1', 'controller.journal:before#2', 'controller.journal:after#2',
+]);
 
 describe('the guard on steps outside every failpoint', () => {
   const world = worlds();

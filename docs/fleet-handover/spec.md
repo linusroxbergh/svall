@@ -195,13 +195,23 @@ type OwnerRecord = {
     toMachineId: string;
     phase: 'preparing' | 'ready-to-commit' | 'committed';
     startedAt: number;
+    controllerId?: string;
+    nonce?: string;
   };
+  retiredNonces?: string[];
 };
 ```
 
 Every owner stores a cached copy beside its fleet state. The gateway changes the record only with a
 compare-and-swap over the expected generation and owner. There is at most one open transaction per
 fleet.
+
+Begin carries the controller's machine id and a nonce the controller journals before its first send.
+While a preparing transaction between the same machines is open, a Begin from the controller it names
+gets that transaction back, and one from another controller is refused, naming it. An abort retires
+the transaction's nonce, and an abort by nonce lets go what that Begin opened, or retires the nonce
+alone; the record keeps the last 16 and refuses a Begin that carries one. The destination takes claim
+and prepare only from the transaction's controller.
 
 An owner may continue at its cached generation while the gateway is temporarily unreachable only
 when it has no unresolved local handover journal. Freeze durably marks the local ownership
@@ -723,7 +733,8 @@ aborted after confirming that the authority still names the source at the expect
 resume or abort runs only on the source or the destination: rsync runs on the controller, so one
 started from a third machine stops before anything moves and names the two it can run on.
 
-Concurrent handovers are rejected by the authority compare-and-swap. A force-owner recovery is a
+Concurrent handovers are rejected by the authority compare-and-swap, and a second controller on one
+handover by the gateway at Begin and by the destination at claim and prepare. A force-owner recovery is a
 separate, deliberately alarming disaster-recovery command and never part of ordinary retry.
 
 ---
@@ -849,7 +860,7 @@ system.info            {} -> { machineId, release, protocol, stateSchema,
 ownership.get          {} -> { fleetId, generation, ownerMachineId, frozen, transaction? }
 handover.preflight     { toMachineId } -> { manifestSummary, blockers, warnings }
 handover.freeze        { transactionId, generation, choices } -> { manifest }
-handover.prepare       { transactionId, generation, snapshot, manifestDigest } -> {}
+handover.prepare       { transactionId, generation, snapshot, manifestDigest, controllerId? } -> {}
 handover.activate      { transactionId, generation, committed? } -> { characters: [...] }
 handover.abort         { transactionId, generation } -> {}
 handover.status        {} -> { transaction?, quarantined? }
@@ -861,10 +872,10 @@ or its local Unix socket:
 ```text
 owner.get       { fleetId }
 owner.create    { fleetId, initialOwnerMachineId }
-owner.begin     { fleetId, expectedGeneration, fromMachineId, toMachineId }
+owner.begin     { fleetId, expectedGeneration, fromMachineId, toMachineId, controllerId?, nonce? }
 owner.ready     { fleetId, transactionId, expectedGeneration }
 owner.commit    { fleetId, transactionId, expectedGeneration }
-owner.abort     { fleetId, transactionId, expectedGeneration }
+owner.abort     { fleetId, transactionId, expectedGeneration } | { fleetId, nonce }
 owner.complete  { fleetId, transactionId, generation }
 ```
 
