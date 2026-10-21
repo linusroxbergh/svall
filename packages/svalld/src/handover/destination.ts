@@ -68,30 +68,51 @@ export type DestinationDeps = {
 };
 
 const SYNC_MS = 5 * 60_000;
+// four times what F_FULLFSYNC takes on a file just written
+const FSYNC_MS = 5;
+
+/** The file opened to flush it: for reading, else for writing as a mode rsync kept may allow; none when it is gone or allows neither. */
+async function openToFlush(file: string): Promise<fs.promises.FileHandle | 'gone' | 'sealed'> {
+  for (const flags of [fs.constants.O_RDONLY, fs.constants.O_WRONLY]) {
+    try { return await fs.promises.open(file, flags); } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return 'gone';
+      if (code !== 'EACCES') throw e;
+    }
+  }
+  return 'sealed';
+}
 
 /**
  * Flushes the filesystems that hold `roots` to disk: `sync -f` once a filesystem on Linux. A Mac's sync names no file and
  * may return before the drive has it, so each of `files` is then flushed with Node's fsync, which is F_FULLFSYNC there.
  */
-export async function syncRoots(roots: readonly string[], files: readonly string[] = [], platform: NodeJS.Platform = process.platform): Promise<void> {
+export async function syncRoots(roots: readonly string[], files: readonly string[] = [], o: { platform?: NodeJS.Platform; log?: Logger } = {}): Promise<void> {
+  const platform = o.platform ?? process.platform;
   const byDevice = new Map<number, string>();
   for (const r of roots) { const { dev } = fs.statSync(r); if (!byDevice.has(dev)) byDevice.set(dev, r); }
   if (!byDevice.size) return;
-  const deadline = Date.now() + SYNC_MS;
+  const limit = SYNC_MS + files.length * FSYNC_MS;
+  const deadline = Date.now() + limit;
   await promisify(execFile)('sync', platform === 'linux' ? ['-f', ...byDevice.values()] : [], { timeout: SYNC_MS });
   if (platform !== 'darwin') return;
   let next = 0;
+  const sealed: string[] = [];
   const flush = async (): Promise<void> => {
     while (next < files.length) {
-      if (Date.now() > deadline) throw new Error(`flushing ${files.length} files took longer than ${SYNC_MS / 60_000} minutes`);
+      if (Date.now() > deadline) throw new Error(`flushing ${files.length} files took longer than ${Math.ceil(limit / 60_000)} minutes`);
       const file = files[next++];
       // a file the Git import removed has nothing left to flush
-      const handle = await fs.promises.open(file, 'r').catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return undefined; throw e; });
-      if (!handle) continue;
+      const handle = await openToFlush(file);
+      if (handle === 'sealed') sealed.push(file);
+      if (typeof handle === 'string') continue;
       try { await handle.sync(); } finally { await handle.close(); }
     }
   };
   await Promise.all(Array.from({ length: Math.min(8, files.length) }, flush));
+  if (sealed.length) {
+    o.log?.info(`${sealed.length} landed file${sealed.length === 1 ? '' : 's'} could not be opened to flush, so only sync scheduled ${sealed.length === 1 ? 'its' : 'their'} writes: ${sealed.slice(0, 5).join(', ')}${sealed.length > 5 ? ', …' : ''}`);
+  }
 }
 
 /**
@@ -527,7 +548,7 @@ export class DestinationHandover {
     // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
     const roots = [...at.values()];
     const files = carried.flatMap((r) => p.landed.find((x) => x.id === r.id)!.files.flatMap((f) => (f.type === 'file' ? [f.path ? path.join(at.get(r.id)!, f.path) : at.get(r.id)!] : [])));
-    await boundary('destination.prepare.sync', () => (this.d.syncRoots ?? syncRoots)(roots, files).catch((e: unknown) => {
+    await boundary('destination.prepare.sync', () => (this.d.syncRoots ?? ((r, f) => syncRoots(r, f, { log: this.d.log })))(roots, files).catch((e: unknown) => {
       throw new Error(`what landed in ${roots.join(', ')} could not be flushed to disk: ${(e as Error).message}`);
     }));
 

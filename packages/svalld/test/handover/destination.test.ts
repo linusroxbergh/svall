@@ -474,7 +474,21 @@ describe('destination prepare', () => {
     const root = replicaRoots(s.manifest)[0].path;
     const file = path.join(root, 'flushed.txt');
     fs.writeFileSync(file, 'x');
-    await expect(syncRoots([root], [file, path.join(root, 'removed.txt')], 'darwin')).resolves.toBeUndefined();
+    await expect(syncRoots([root], [file, path.join(root, 'removed.txt')], { platform: 'darwin' })).resolves.toBeUndefined();
+    // rsync -p keeps a mode the owner cannot read: one it can write is flushed through that, and one it can do neither with is named
+    const writeOnly = path.join(root, 'write-only');
+    const sealed = path.join(root, 'sealed');
+    fs.writeFileSync(writeOnly, 'x', { mode: 0o200 });
+    fs.writeFileSync(sealed, 'x', { mode: 0o000 });
+    const logged: string[] = [];
+    const log = { info: (m: string) => logged.push(m), error: (m: string) => logged.push(m) };
+    try {
+      await expect(syncRoots([root], [writeOnly, sealed, file], { platform: 'darwin', log })).resolves.toBeUndefined();
+    } finally {
+      fs.chmodSync(writeOnly, 0o600);
+      fs.chmodSync(sealed, 0o600);
+    }
+    expect(logged).toEqual([expect.stringMatching(new RegExp(`1 landed file could not be opened to flush.*${sealed}`))]);
   });
 
   it("imports an OpenCode session into this machine's OpenCode, in the folder its terminal resumes in and over the copy an earlier handover left, before it prepares anything to revive", async () => {
