@@ -7,7 +7,7 @@ import { svallExe } from '@svall/svalld/release';
 import { ApiError, Client } from '../client.js';
 import { localOwner, remoteOwner } from './authority.js';
 import { identify, remoteConnectionInfo } from './connection.js';
-import { Handover, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from './handover.js';
+import { Handover, NoRoute, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from './handover.js';
 import { redact } from './process.js';
 import { fileStore, type Route } from './recovery.js';
 import { MachineRegistry, type MachineEntry } from './registry.js';
@@ -178,7 +178,7 @@ export function connectHandover(o: {
 
   const entryOf = (id: MachineId): MachineEntry => {
     const entry = registry.get(id);
-    if (!entry) throw new Error(`machine ${id} is not in the registry; add it with \`svall host add\`${registry.setAside()}`);
+    if (!entry) throw new NoRoute(id, `machine ${id} is not in this machine's registry, so this controller cannot reach it${registry.setAside()}`);
     return entry;
   };
   const routeOf = (entry: MachineEntry): Route => ({ machineId: entry.id, name: entry.record.name, ...(entry.record.ssh && entry.id !== registry.localId && { ssh: entry.record.ssh }) });

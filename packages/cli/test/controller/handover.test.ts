@@ -9,7 +9,7 @@ import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { manifestDigest, spaceNeed, type ScanFs } from '@svall/svalld/handover/manifest';
 import { replicaRoots } from '@svall/svalld/handover/replicas';
 import { resolvePaths } from '@svall/svalld/paths';
-import { Handover, Refused } from '../../src/controller/handover.js';
+import { Handover, NoRoute, Refused } from '../../src/controller/handover.js';
 import { authorityOp, connectHandover, gatewayOf, Masters, reconnecting } from '../../src/controller/reach.js';
 import { remoteOwner } from '../../src/controller/authority.js';
 import { fileStore, type FrozenManifest } from '../../src/controller/recovery.js';
@@ -1455,6 +1455,47 @@ describe('a far machine that is down', () => {
     expect(w.store.j).toBeUndefined();
     await recover(w, 'abort');
     expect(settledOn(w)).toBe('source');
+  });
+
+  // the controller on trift, whose registry holds no route to the Mac that started the handover
+  const unrouted = (w: World) => {
+    const none = () => new NoRoute(mac, `machine ${mac} is not in this machine's registry, so this controller cannot reach it`);
+    return {
+      local: trift,
+      side: async (id: MachineId) => { if (id === mac) throw none(); return w.side(id); },
+      route: (id: MachineId) => { if (id === mac) throw none(); return w.side(id).route; },
+    };
+  };
+
+  it('on the destination with no route to the source, finishes a committed handover there and leaves the source its own side to finish', async () => {
+    for (const at of ['gateway:commit', 'trift:handover.activate', 'trift:handover.complete'] as const) {
+      const w = await lostAt(at);
+      const ops = w.ops.length;
+      const out = await controller(w, unrouted(w)).resume();
+      expect(out, at).toMatchObject({ status: 'complete', transactionId: 'tx-1', pending: ['source'], error: expect.stringContaining(`svall handover --resume on ${mac} finishes its side`) });
+      expect(out.status === 'complete' && out.error, at).not.toMatch(/svall host add/);
+      expect(w.destination.activated, at).toBe(true);
+      expect(w.ops.slice(ops).filter((op) => op.startsWith('mac:')), at).toEqual([]);
+      expect(w.record, at).toEqual({ fleetId, generation: G + 1, ownerMachineId: trift });
+      // nothing here can reach the source, so no journal is kept for a resume here to finish it
+      expect(w.store.j, at).toBeUndefined();
+      await recover(w);
+      expect(settledOn(w), at).toBe('destination');
+    }
+  });
+
+  it('on the destination with no route to the source, sends a resume or an abort before the commit to the machine that started it, changing nothing', async () => {
+    for (const act of ['resume', 'abort'] as const) {
+      const w = await lostAt('trift:handover.prepare');
+      const ops = w.ops.length;
+      const c = controller(w, unrouted(w));
+      const out = await (act === 'resume' ? c.resume() : c.abort());
+      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
+      expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
+      expect(w.store.j, act).toBeUndefined();
+      await recover(w, act);
+      expect(settledOn(w), act).toBe(act === 'abort' ? 'source' : 'destination');
+    }
   });
 
   it('with no journal here, after the destination completed, still finishes a committed handover while the source is down and nothing says how far it got', async () => {

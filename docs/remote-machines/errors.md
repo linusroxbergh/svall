@@ -182,7 +182,7 @@ The `handover.result` line, and what `svall handover` prints last. The command e
 
 | Status | What it means | What to do |
 | --- | --- | --- |
-| `complete` | The fleet runs on the destination at the next generation. A character that failed to resume stays dormant with its transcript and error. `pending` names the source or the gateway when it has not yet heard that the handover finished. | Retry a failed character from its row (or revive it). With `pending`, `svall handover --resume` finishes it. |
+| `complete` | The fleet runs on the destination at the next generation. A character that failed to resume stays dormant with its transcript and error. `pending` names the source or the gateway when it has not yet heard that the handover finished. | Retry a failed character from its row (or revive it). With `pending`, `svall handover --resume` finishes it; a source the machine that ran it has no route to, as the Linux machine has none to the Mac, finishes from its own `svall handover --resume`. |
 | `none` | There was no handover to resume or abort. | Nothing. |
 | `blocked` | Nothing committed, and the fleet stays where it was. The blockers are listed. | Settle them and start again; flags such as `--interrupt-after`, `--terminate-shells` and `--archive` answer the choices a person would make. |
 | `aborted` | Nothing committed, and the fleet runs on the source again with the terminals the handover stopped reopened. | Start again when ready. |

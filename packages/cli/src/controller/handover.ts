@@ -48,6 +48,11 @@ class Stopped extends Error {
 /** An abort that found the gateway had moved the fleet: only going forward is left. */
 class Moved extends Error {}
 
+/** A machine this controller's registry holds no route to, which asking again never changes. */
+export class NoRoute extends Error {
+  constructor(readonly machineId: MachineId, message: string) { super(message); }
+}
+
 /** A daemon the controller calls. A `Refused` is its answer; any other error leaves the call's fate unknown. */
 export type Daemon = { call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> };
 
@@ -137,7 +142,7 @@ function beginRefused(e: Refused): Blocker {
 const transient = (e: unknown): boolean => {
   if (e instanceof SshError) return retryable(e);
   if (e instanceof Refused) return e.code === 'authority_unreachable';
-  return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved);
+  return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved || e instanceof NoRoute);
 };
 
 /** What differs between the machines in a way the fleet feels: an agent CLI at another release. */
@@ -739,12 +744,16 @@ export class Handover {
       const pending: ('source' | 'gateway')[] = [];
       const said: string[] = [];
       const landed = this.journal.landedDigest ? this.d.store.landed(transactionId, this.journal.landedDigest) : undefined;
+      // a source this controller has no route to finishes its side from its own controller
+      let unrouted = false;
       try {
         const source = await this.side(this.journal.source.machineId);
         await this.retrying('complete', () => source.daemon.call('handover.complete', { transactionId, generation, ...(landed && { landed }) }));
       } catch (e) {
+        unrouted = e instanceof NoRoute;
         pending.push('source');
-        said.push(`${this.journal.source.name}: ${messageOf(e)}`);
+        const name = this.journal.source.name;
+        said.push(`${name}: ${messageOf(e)}${unrouted ? `; svall handover --resume on ${name} finishes its side` : ''}`);
       }
       try {
         const record = await this.retrying('complete', () => this.d.gateway.complete({ transactionId, generation: generation + 1 }));
@@ -758,10 +767,10 @@ export class Handover {
         }
       }
       const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, characters };
-      // the journal stays open, so a resume finishes what is pending
-      if (pending.length) return { ...done, pending, error: this.scrub(said.join('; ')) };
+      // the journal stays open, so a resume finishes what is pending, unless that is only a source no resume here reaches
+      if (pending.length && !(unrouted && pending.length === 1)) return { ...done, pending, error: this.scrub(said.join('; ')) };
       this.d.store.clear(transactionId);
-      return done;
+      return pending.length ? { ...done, pending, error: this.scrub(said.join('; ')) } : done;
     } catch (e) {
       return this.stopped(e);
     }
@@ -1024,7 +1033,15 @@ export class Handover {
       return;
     }
     if (!v.fromMachineId || !v.toMachineId || v.generation === undefined) throw new Stopped('begin', v.reason, []);
-    const [source, destination] = [this.d.route(v.fromMachineId), this.d.route(v.toMachineId)];
+    const routed = (id: MachineId, role: string): Route => {
+      try { return this.d.route(id); } catch (e) {
+        if (!(e instanceof NoRoute)) throw e;
+        // once committed, only the destination goes on, and the source finishes its own side
+        if (role === 'source' && (v.standing === 'committed' || v.standing === 'moved')) return { machineId: id, name: id };
+        throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run svall handover --resume or --abort there`, []);
+      }
+    };
+    const [source, destination] = [routed(v.fromMachineId, 'source'), routed(v.toMachineId, 'destination')];
     this.j = {
       version: 1, fleetId: this.d.fleetId, ...(v.transactionId && { transactionId: v.transactionId }), generation: v.generation,
       source, destination, choices: {}, phase: v.phase ?? 'begin', startedAt: now, updatedAt: now,
