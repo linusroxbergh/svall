@@ -23,13 +23,18 @@ export function interactiveEnv(o: { tty: boolean; platform: NodeJS.Platform; ask
   return !o.tty && o.platform === 'darwin' ? { ...o.env, SSH_ASKPASS: o.askpass, SSH_ASKPASS_REQUIRE: 'force' } : o.env;
 }
 
-/** The one ssh the user answers: a new host key, a passphrase, a password. Nothing is captured. */
-function interactiveSsh(destination: string): Promise<number> {
+/**
+ * The one ssh the user answers: a new host key, a passphrase, a password. Its prompts go to the terminal or the dialog;
+ * what it writes to stderr is passed on, and its last lines handed back for the step to name.
+ */
+export function interactiveSsh(destination: string): Promise<{ code: number; stderr: string }> {
   const env = interactiveEnv({ tty: process.stdin.isTTY === true, platform: process.platform, askpass: askpassPath(), env: process.env });
   return new Promise((resolve, reject) => {
-    const child = spawn('ssh', ['--', destination, 'true'], { stdio: 'inherit', env });
+    const child = spawn('ssh', ['--', destination, 'true'], { stdio: ['inherit', 'inherit', 'pipe'], env });
+    let said = '';
+    child.stderr.on('data', (chunk: Buffer) => { process.stderr.write(chunk); said = (said + chunk.toString()).slice(-2000); });
     child.on('error', reject);
-    child.on('close', (code) => resolve(code ?? 1));
+    child.on('close', (code) => resolve({ code: code ?? 1, stderr: said.trim().split('\n').slice(-3).join('\n').slice(-400) }));
   });
 }
 

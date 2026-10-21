@@ -42,8 +42,8 @@ export type HostDeps = {
   emit(event: StepEvent): void;
   registry: MachineRegistry;
   openMaster(destination: string): Promise<SshMaster>;
-  /** one ssh the user can answer: a new host key, a passphrase, a password */
-  interactiveSsh(destination: string): Promise<number>;
+  /** one ssh the user can answer: a new host key, a passphrase, a password; stderr: the last of what ssh said */
+  interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
   fetch: FetchLike;
   controller: { release: string; protocol: number; releaseRoot: string };
   /** this Mac's own id: the owner a fleet's first authority record names */
@@ -328,8 +328,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
     const held = await run.step('name', () => Promise.resolve(claimName(d.registry, o)));
 
     await run.step('ssh', async () => {
-      const code = await d.interactiveSsh(o.ssh);
-      if (code !== 0) throw new StepError(`ssh ${o.ssh} exited ${code}`, `ssh ${o.ssh} and complete the host key and authentication`);
+      const { code, stderr } = await d.interactiveSsh(o.ssh);
+      if (code !== 0) {
+        throw new StepError(`ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`,
+          `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then add the machine again`);
+      }
       return { value: undefined, detail: `${o.ssh} accepted an interactive login` };
     });
 

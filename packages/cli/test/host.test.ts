@@ -78,7 +78,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     emit: (e) => events.push(e),
     registry: MachineRegistry.load(path.join(work, 'config')),
     openMaster: (destination) => SshMaster.open({ destination, socketDir: ssh.socketDir }),
-    interactiveSsh: () => Promise.resolve(0),
+    interactiveSsh: () => Promise.resolve({ code: 0, stderr: '' }),
     fetch: () => Promise.reject(new Error('no download in this test')),
     controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release') },
     machineId: () => MAC,
@@ -336,9 +336,20 @@ describe('host add', () => {
     const seen: string[] = [];
     healthy();
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({
-      interactiveSsh: (destination) => { seen.push(destination); return Promise.resolve(0); },
+      interactiveSsh: (destination) => { seen.push(destination); return Promise.resolve({ code: 0, stderr: '' }); },
     }));
     expect(seen).toEqual(['trift.test']);
+  });
+
+  it('names what ssh said when the interactive login fails, and the Terminal run that settles it', async () => {
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({
+      interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Host key verification failed.' }),
+    }));
+    expect(out.result).toBe('actions');
+    expect(step('ssh').at(-1)).toEqual({
+      step: 'ssh', status: 'fail', detail: 'ssh trift.test exited 255: Host key verification failed.',
+      action: 'run ssh trift.test once in Terminal and answer its host key and login there, then add the machine again',
+    });
   });
 
   it('stops at a far home other than this Mac\'s, naming the commands that make an account whose home is this one', async () => {
