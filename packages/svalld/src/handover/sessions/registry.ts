@@ -8,7 +8,7 @@ import {
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
 import { AGENTS, parseVersion, versionOk } from '../../agents.js';
-import { codexPaths } from '../../codex/install.js';
+import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
 import { PRIVATE, profileHome } from '../../profile.js';
@@ -130,8 +130,11 @@ export function placeTranscripts(state: FleetState, sessions: readonly TransferS
   return next;
 }
 
-/** What one machine's agent CLI says about itself: its release, where it keeps its files, its login and whether Svall's hooks are in. */
-export type AgentProbe = { kind: AgentKind; version?: string; home: string; loggedIn: boolean; hooks: boolean };
+/**
+ * What one machine's agent CLI says about itself: its release, where it keeps its files, its login, whether Svall's
+ * hooks are in, and why it cannot sandbox the commands its agent runs, when it cannot.
+ */
+export type AgentProbe = { kind: AgentKind; version?: string; home: string; loggedIn: boolean; hooks: boolean; sandbox?: string };
 
 /** Runs a command to its exit, whatever the code; rejects only when it cannot start. */
 export type AgentRun = (cmd: string, args: string[]) => Promise<{ code: number; stdout: string }>;
@@ -170,7 +173,10 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   }
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));
-  return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript) };
+  // AppArmor's restriction denies bwrap a user namespace for each command unless a profile allows it
+  const confined = (await d.read(USERNS_RESTRICTED))?.trim() === '1' && (await d.run('codex', ['sandbox', '--', 'true'])).code !== 0;
+  const sandbox = confined ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}` : undefined;
+  return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
 
 /** Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. */
@@ -236,10 +242,10 @@ export function agentProber(d: ProbeDeps, ttlMs = 60_000, now: () => number = Da
   };
 }
 
-/** What `system.info` says of each installed CLI: its release, the adapter that reads its sessions (0 for none), its login and hooks. */
+/** What `system.info` says of each installed CLI: its release, the adapter that reads its sessions (0 for none), its login, hooks and sandbox. */
 export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => probes.map((p) => ({
   kind: p.kind, ...(p.version && { version: p.version }), adapter: (p.version && adapterFor(p.kind, p.version)?.adapter) || 0, home: p.home,
-  loggedIn: p.loggedIn, hooks: p.hooks,
+  loggedIn: p.loggedIn, hooks: p.hooks, ...(p.sandbox && { sandbox: p.sandbox }),
 }));
 
 /**

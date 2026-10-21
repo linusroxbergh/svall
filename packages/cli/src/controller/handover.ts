@@ -146,10 +146,14 @@ const transient = (e: unknown): boolean => {
   return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved || e instanceof NoRoute);
 };
 
-/** What differs between the machines in a way the fleet feels: an agent CLI at a newer release on the destination; an older one is the source's blocker. */
+/**
+ * What differs between the machines in a way the fleet feels: an agent CLI at a newer release on the destination (an
+ * older one is the source's blocker), or one there that cannot sandbox the commands its agent runs.
+ */
 function differences(source: Side, a: SystemInfo, destination: Side, b: SystemInfo, m: TransferManifestV1): Warning[] {
   const kinds = new Set(Object.values(m.snapshot.characters).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]));
-  return a.agentAdapters.flatMap((x): Warning[] => {
+  const confined = b.agentAdapters.flatMap((y): Warning[] => (kinds.has(y.kind) && y.sandbox ? [{ code: 'codex_sandbox', message: `On ${destination.route.name}, ${y.sandbox}` }] : []));
+  return [...confined, ...a.agentAdapters.flatMap((x): Warning[] => {
     const y = b.agentAdapters.find((z) => z.kind === x.kind);
     const mine = x.version && parseVersion(x.version);
     if (!kinds.has(x.kind) || !mine || !y?.version || x.version === y.version || !versionOk({ minVersion: mine }, y.version)) return [];
@@ -157,7 +161,7 @@ function differences(source: Side, a: SystemInfo, destination: Side, b: SystemIn
       code: 'config_difference',
       message: `${x.kind} on ${destination.route.name} runs ${y.version}, newer than ${x.version} on ${source.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
     }];
-  });
+  })];
 }
 
 /** A link a carried root holds, where its target lies, and whether what a carried root copies there holds it; undefined when none does. */

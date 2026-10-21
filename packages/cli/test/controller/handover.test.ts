@@ -278,6 +278,13 @@ describe('preflight', () => {
     expect(r.warnings.filter((x) => x.code === 'config_difference').map((x) => x.message)).toEqual([expect.stringMatching(/^opencode on trift runs 2\.0\.30, newer than 2\.0\.22 on mac; /)]);
   });
 
+  it("warns that the destination's Codex cannot sandbox its commands, naming the fix, for a fleet that runs Codex", async () => {
+    const w = new World();
+    w.infos[trift] = { agentAdapters: info(trift).agentAdapters.map((a) => (a.kind === 'codex' ? { ...a, sandbox: 'AppArmor keeps bwrap from it: sudo fix it' } : a)) };
+    const r = await controller(w).preflight(trift, {});
+    expect(r.warnings.filter((x) => x.code === 'codex_sandbox')).toEqual([{ code: 'codex_sandbox', message: 'On trift, AppArmor keeps bwrap from it: sudo fix it' }]);
+  });
+
   it('leaves a destination CLI older than the source\'s to the source\'s blocker, warning of nothing', async () => {
     const w = new World();
     w.infos[trift] = { agentAdapters: [...info(trift).agentAdapters.map((a) => (a.kind === 'claude' ? { ...a, version: '2.1.270' } : a))] };

@@ -9,7 +9,7 @@ import type { z } from 'zod';
 import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
-import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
+import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { gatewayPrefix } from '@svall/svalld/gateway/bin';
@@ -314,14 +314,11 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
 }
 
-// Codex's documented Ubuntu 24.04 fix (learn.chatgpt.com/docs/sandboxing): the profile that lets /usr/bin/bwrap make user namespaces
-const BWRAP_PROFILE = 'sudo apt install bubblewrap apparmor-profiles, sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
-
 // Codex runs each command in a bwrap user namespace, which AppArmor's restriction denies a program it has no profile for
 async function codexSandbox(d: DoctorDeps): Promise<Check> {
   const name = 'codex sandbox';
   if (!d.found.includes('codex')) return { name, status: 'skip', detail: 'not installed' };
-  if (d.read('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')?.trim() !== '1') return { name, status: 'skip', detail: 'AppArmor does not restrict user namespaces here' };
+  if (d.read(USERNS_RESTRICTED)?.trim() !== '1') return { name, status: 'skip', detail: 'AppArmor does not restrict user namespaces here' };
   try {
     await d.run('codex', ['sandbox', '--', 'true'], { path: d.agentPath });
     return { name, status: 'ok', detail: 'starts, with AppArmor restricting user namespaces' };

@@ -20,6 +20,7 @@ import { repairBrief } from '../../src/handover/sessions/repair.js';
 import { SessionError, type CliRun, type SessionFs } from '../../src/handover/sessions/types.js';
 import { mergeCodexHooks, mergeHooks, mergeStatusLine, statusWrapper } from '../../src/agent-hooks.js';
 import { codexHookCommand } from '../../src/codex/install.js';
+import { BWRAP_PROFILE, USERNS_RESTRICTED } from '../../src/codex/install.js';
 import { opencodePaths } from '../../src/opencode/install.js';
 import { resolvePaths } from '../../src/paths.js';
 import { PRIVATE, profileHome } from '../../src/profile.js';
@@ -973,6 +974,19 @@ describe('agent preflight', () => {
     expect(await probeAgent('opencode', deps(0, [], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
     expect(await probeAgent('opencode', deps(1, [openai], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
     expect(await probeAgent('opencode', { ...deps(0, [], {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
+  });
+
+  it("says when AppArmor keeps Codex from sandboxing its commands, as only Linux's restriction of user namespaces can", async () => {
+    const codexHooksAt = { '/home/t/.codex/hooks.json': codexHooks };
+    const deps = (restricted: string | undefined, sandbox: number) => ({
+      run: runner({ 'codex --version': { stdout: 'codex-cli 0.156.1\n' }, 'codex login status': { stdout: 'Logged in\n' }, 'codex sandbox -- true': { code: sandbox, stdout: '' } }),
+      read: async (f: string) => (f === USERNS_RESTRICTED ? restricted : codexHooksAt[f as keyof typeof codexHooksAt]), env: {}, homedir: '/home/t',
+    });
+    expect((await probeAgent('codex', deps('1\n', 1))).sandbox).toBe(`AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`);
+    expect(await probeAgent('codex', deps('1\n', 0))).toEqual({ kind: 'codex', version: '0.156.1', home: '/home/t/.codex', loggedIn: true, hooks: true });
+    expect((await probeAgent('codex', deps('0\n', 1))).sandbox).toBeUndefined();
+    expect((await probeAgent('codex', deps(undefined, 1))).sandbox).toBeUndefined();
+    expect(agentAdapters([{ kind: 'codex', version: '0.156.1', home: '/h', loggedIn: true, hooks: true, sandbox: 'no' }])[0].sandbox).toBe('no');
   });
 
   it('sees a CLI that is missing, logged out or without hooks', async () => {
