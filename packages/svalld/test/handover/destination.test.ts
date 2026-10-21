@@ -446,10 +446,16 @@ describe('destination prepare', () => {
   it('flushes every root that landed to disk before it journals the prepared state, and journals none while that fails', async () => {
     const s = await scene();
     const synced: string[][] = [];
+    const flushed: string[][] = [];
     let fails: Error | undefined = new Error('EIO: i/o error, syncfs');
-    const d = daemon(s, { syncRoots: async (roots) => { synced.push([...roots]); if (fails) throw fails; } });
+    const d = daemon(s, { syncRoots: async (roots, files) => { synced.push([...roots]); flushed.push([...files]); if (fails) throw fails; } });
     await expect(d.handover.prepare(params(s))).rejects.toThrow(/could not be flushed to disk: EIO/);
     expect(synced.map((r) => [...r].sort())).toEqual([replicaRoots(s.manifest).map((r) => r.path).sort()]);
+    // each file that landed, by its path here; a symlink holds no data to flush
+    const roots = new Map(replicaRoots(s.manifest).map((r) => [r.id, r.path]));
+    const files = s.landed.flatMap((l) => l.files.filter((f) => f.type === 'file').map((f) => (f.path ? path.join(roots.get(l.id)!, f.path) : roots.get(l.id)!)));
+    expect(files.length).toBeGreaterThan(0);
+    expect([...flushed[0]].sort()).toEqual(files.sort());
     expect(journalOf(s.paths)).toMatchObject({ phase: 'verify' });
     expect(journalOf(s.paths).preparedDigest).toBeUndefined();
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
@@ -464,6 +470,11 @@ describe('destination prepare', () => {
     await expect(syncRoots(replicaRoots(s.manifest).map((r) => r.path))).resolves.toBeUndefined();
     await expect(syncRoots([])).resolves.toBeUndefined();
     await expect(syncRoots([path.join(s.base, 'gone')])).rejects.toThrow(/ENOENT/);
+    // on a Mac each file is flushed through to the drive; one the Git import removed has nothing left to flush
+    const root = replicaRoots(s.manifest)[0].path;
+    const file = path.join(root, 'flushed.txt');
+    fs.writeFileSync(file, 'x');
+    await expect(syncRoots([root], [file, path.join(root, 'removed.txt')], 'darwin')).resolves.toBeUndefined();
   });
 
   it("imports an OpenCode session into this machine's OpenCode, in the folder its terminal resumes in and over the copy an earlier handover left, before it prepares anything to revive", async () => {

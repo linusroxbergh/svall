@@ -62,19 +62,36 @@ export type DestinationDeps = {
   concurrency?: number;
   /** How to run an agent CLI that reads a session into its own database. */
   cli?: CliRun;
-  /** How to flush the roots that landed to disk. */
-  syncRoots?: (roots: readonly string[]) => Promise<void>;
+  /** How to flush the roots that landed, and each file in them, to disk. */
+  syncRoots?: (roots: readonly string[], files: readonly string[]) => Promise<void>;
   log: Logger;
 };
 
 const SYNC_MS = 5 * 60_000;
 
-/** Flushes the filesystems that hold `roots` to disk: `sync -f` once a filesystem on Linux, and on a Mac, whose sync names no file, everything. */
-export async function syncRoots(roots: readonly string[], platform: NodeJS.Platform = process.platform): Promise<void> {
+/**
+ * Flushes the filesystems that hold `roots` to disk: `sync -f` once a filesystem on Linux. A Mac's sync names no file and
+ * may return before the drive has it, so each of `files` is then flushed with Node's fsync, which is F_FULLFSYNC there.
+ */
+export async function syncRoots(roots: readonly string[], files: readonly string[] = [], platform: NodeJS.Platform = process.platform): Promise<void> {
   const byDevice = new Map<number, string>();
   for (const r of roots) { const { dev } = fs.statSync(r); if (!byDevice.has(dev)) byDevice.set(dev, r); }
   if (!byDevice.size) return;
+  const deadline = Date.now() + SYNC_MS;
   await promisify(execFile)('sync', platform === 'linux' ? ['-f', ...byDevice.values()] : [], { timeout: SYNC_MS });
+  if (platform !== 'darwin') return;
+  let next = 0;
+  const flush = async (): Promise<void> => {
+    while (next < files.length) {
+      if (Date.now() > deadline) throw new Error(`flushing ${files.length} files took longer than ${SYNC_MS / 60_000} minutes`);
+      const file = files[next++];
+      // a file the Git import removed has nothing left to flush
+      const handle = await fs.promises.open(file, 'r').catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return undefined; throw e; });
+      if (!handle) continue;
+      try { await handle.sync(); } finally { await handle.close(); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, files.length) }, flush));
 }
 
 /**
@@ -509,7 +526,8 @@ export class DestinationHandover {
     if (unread.length) throw blocked(unread);
     // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
     const roots = [...at.values()];
-    await boundary('destination.prepare.sync', () => (this.d.syncRoots ?? syncRoots)(roots).catch((e: unknown) => {
+    const files = carried.flatMap((r) => p.landed.find((x) => x.id === r.id)!.files.flatMap((f) => (f.type === 'file' ? [f.path ? path.join(at.get(r.id)!, f.path) : at.get(r.id)!] : [])));
+    await boundary('destination.prepare.sync', () => (this.d.syncRoots ?? syncRoots)(roots, files).catch((e: unknown) => {
       throw new Error(`what landed in ${roots.join(', ')} could not be flushed to disk: ${(e as Error).message}`);
     }));
 
