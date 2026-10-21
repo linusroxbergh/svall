@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, connectionBanner, connectionText, endRun, groupSteps, machineName, readyForHandover,
-  runActions, sshDestination, upgradeFor, withoutTokens,
+  runActions, sshDestination, stepLabel, upgradeFor, withoutTokens,
 } from '../src/host.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
@@ -76,6 +76,14 @@ describe('the end of a run', () => {
     for (const op of ['upgrade', 'remove', 'enable'] as const) {
       expect(readyForHandover(ended(op, 0, [step('machine', 'ok')]))).toBe(false);
     }
+  });
+});
+
+describe('a step by name', () => {
+  it('reads as plain words, and a step it does not know as itself', () => {
+    expect(['master', 'identity', 'authority', 'fleet', 'registry'].map(stepLabel))
+      .toEqual(['Connection', 'Installed release', 'Ownership record', 'Fleets', 'Machine list']);
+    expect(stepLabel('weather')).toBe('weather');
   });
 });
 

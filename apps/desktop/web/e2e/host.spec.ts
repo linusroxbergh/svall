@@ -75,6 +75,8 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   // what the step said is kept, without the token it carried
   await expect(page.getByTestId('host-step-probe')).toContainText('ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-step-probe')).not.toContainText('s3cr3t');
+  // steps read as plain words
+  await expect(page.getByTestId('host-step-master')).toContainText('Connection');
   await expect(page.getByTestId('host-outcome')).toContainText('still to do');
   await expect(page.getByTestId('host-outcome')).toContainText('svall doctor');
 });

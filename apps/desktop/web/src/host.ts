@@ -62,6 +62,16 @@ export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, runnin
 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
+const STEP_LABEL: Record<string, string> = {
+  name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
+  space: 'Free space', linger: 'Lingering', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
+  service: 'Services', identity: 'Installed release', authority: 'Ownership record', fleet: 'Fleets', claude: 'Claude Code',
+  codex: 'Codex', opencode: 'OpenCode', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
+};
+
+/** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */
+export const stepLabel = (step: string): string => STEP_LABEL[step] ?? step;
+
 /** An add that finished clean, or a check with nothing failing or left to do (a skip does not apply). */
 export function readyForHandover(run: HostRun): boolean {
   if (run.running || run.code !== 0) return false;

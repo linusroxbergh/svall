@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
-import { groupSteps, machineName, readyForHandover, runActions, sshDestination, type HostRun } from './host.js';
+import { groupSteps, machineName, readyForHandover, runActions, sshDestination, stepLabel, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
@@ -43,7 +43,7 @@ function Checklist({ run }: { run: HostRun }) {
           {group.rows.map((row, at) => (
             <div key={`${row.step}-${at}`} className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
               <span className="host-mark">{MARK[row.status]}</span>
-              <span className="host-name">{row.step}</span>
+              <span className="host-name">{stepLabel(row.step)}</span>
               <span className="host-said">
                 {row.detail}
                 {row.action && <em data-testid={`host-action-${row.step}`}>{row.action}</em>}
