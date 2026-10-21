@@ -300,8 +300,10 @@ export class SourceHandover {
     if (this.freezing?.transactionId === transactionId) this.freezing.cancel.abort(aborting(transactionId));
     return this.serial(async () => {
       const held = this.open(transactionId);
-      if (!held) return;
-      if (revive) await this.revive(transactionId, held.stoppedTerminals, 'aborted');
+      // with its journal lost, what it stopped is what each slot says rested it
+      const lost = this.journal.journalState().kind === 'quarantined';
+      if (!held && !lost) return;
+      if (revive) await this.revive(transactionId, held?.stoppedTerminals ?? this.restedBy(transactionId), 'aborted');
       fs.rmSync(this.d.paths.manifest(transactionId), { force: true });
       this.journal.close();
     });

@@ -1335,6 +1335,19 @@ describe('source under a forced record', () => {
     expect(b.ownership.writable()).toBe(true);
   });
 
+  it('revives what its handover rested when its journal could not be read, by the handover each terminal names, and runs the fleet', async () => {
+    const b = await frozen();
+    fs.writeFileSync(b.paths.journal, '{ not json');
+    const again = await b.restart();
+    expect(again.handover.status()).toEqual({ quarantined: expect.stringContaining(`${b.paths.journal}.broken-`) });
+    expect(await again.handover.adopt(forced(me))).toMatchObject({ adopted: true, superseded: TX, ownership: { generation: 6, ownerMachineId: me, frozen: false } });
+    expect(b.world.log).toEqual([...revived, 'activate', 'reconcile']);
+    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(again.handover.journalState()).toEqual({ kind: 'none' });
+    expect(fs.existsSync(b.paths.manifest(TX))).toBe(false);
+    expect(again.ownership.writable()).toBe(true);
+  });
+
   it('lets its handover go and stays a read-only replica, reviving nothing, when the record names another machine', async () => {
     const b = await frozen();
     expect(await b.handover.adopt(forced(elsewhere))).toMatchObject({ adopted: true, superseded: TX });

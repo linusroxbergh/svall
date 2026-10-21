@@ -144,12 +144,16 @@ export class HandoverService {
     const tx = record.transaction;
     if (tx && (this.state.kind === 'quarantined' || (tx.phase === 'committed' && tx.toMachineId === ownership.machineId && j?.transactionId !== tx.id))) return unchanged;
     const superseded = j !== undefined && record.generation > handoverGeneration(j);
+    // a source journal that could not be read names no handover: the one this source froze for is the cached record's
+    const lost = this.state.kind === 'quarantined' && held.transaction?.fromMachineId === ownership.machineId && ownership.outranked(record)
+      ? held.transaction.id : undefined;
     if (!superseded && (j || !ownership.outranked(record))) return unchanged;
     // a crash between letting a journal go and taking the record meets the same record at the next start
     const takes = !superseded || record.generation >= held.generation || ownership.outranked(record);
     const mine = takes && record.ownerMachineId === ownership.machineId;
     if (superseded && j.role === 'destination') await this.destination.supersede(j.transactionId);
     else if (superseded) await this.source.supersede(j.transactionId, mine);
+    else if (lost) await this.source.supersede(lost, mine);
     if (!takes) return { adopted: false, ...(j && { superseded: j.transactionId }), ownership: this.ownershipInfo() };
     // read only now: an activation the supersede waited behind may have made this machine the owner
     const ran = ownership.isOwner();
@@ -162,7 +166,8 @@ export class HandoverService {
     } else if (ran) {
       await fleet?.deactivate();
     }
-    return { adopted: true, ...(superseded && { superseded: j.transactionId }), ownership: this.ownershipInfo() };
+    const gone = superseded ? j.transactionId : lost;
+    return { adopted: true, ...(gone && { superseded: gone }), ownership: this.ownershipInfo() };
   }
 
   async preflight(p: ParsedParams<'handover.preflight'>): Promise<Result<'handover.preflight'>> {
