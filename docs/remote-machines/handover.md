@@ -185,6 +185,11 @@ On the other machine:
 - A plain shell opens in its folder and prints: *Svall restarted this shell after a handover; whatever ran here
   before did not move.*
 - A character that was dormant before the handover stays dormant.
+- A terminal counts as up only once it starts the session it carries. Claude Code and OpenCode report that session
+  as they resume; one that starts another session, or none within a minute, is closed and stays dormant with its own.
+  One waiting to trust its folder or to accept Bypass Permissions mode stays open, and its row says which answer goes
+  on. Codex reports nothing until its first turn, so it counts once its prompt shows, or else once it has held its
+  terminal for 3 s, which its row then says.
 - A terminal that does not come up stays dormant with its session, and its card and row say why. Retry it from the
   row, or open it like any dormant character.
 - Servers, builds and watchers do not restart: start them again. Ports are not forwarded to the Mac in this version.
