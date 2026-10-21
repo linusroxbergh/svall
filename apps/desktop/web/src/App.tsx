@@ -10,7 +10,7 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
-import { connectionBanner, type Banner } from './host.js';
+import { connectionBanner, FAR_ANSWER_MS, type Banner } from './host.js';
 import { HostSetup, startHost } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { keyTip } from './keys.js';
@@ -74,8 +74,17 @@ export function App() {
   const toast = useApp((s) => s.toast);
   const connection = useApp((s) => s.connection);
   const handoverEnabled = useApp((s) => !!s.shell?.handoverEnabled);
+  // a far daemon whose route has opened says nothing until it answers; past a while the banner says so
+  const [silent, setSilent] = useState(false);
+  const farOnline = !loaded && connection?.state === 'online' && connection.owner !== 'local' ? connection.owner : undefined;
+  useEffect(() => {
+    setSilent(false);
+    if (!farOnline) return;
+    const t = setTimeout(() => setSilent(true), FAR_ANSWER_MS);
+    return () => clearTimeout(t);
+  }, [farOnline]);
   // the fleet the page holds stays on the screen while its machine is away; only this line changes
-  const away = connectionBanner(connection, { handoverEnabled });
+  const away = connectionBanner(connection, { handoverEnabled, silent });
   // a fleet on another machine is waited for there, so this Mac's daemon, its log and its setup say nothing about it
   const elsewhere = useApp((s) => !!s.connection && s.connection.owner !== 'local');
   const sideWidths = useApp((s) => s.sideWidths);

@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { expect, test } from './fixtures.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
+import { FAR_ANSWER_MS } from '../src/host.js';
 import { theme } from '../src/theme.js';
 
 type State = Extract<FromShell, { type: 'connection.state' }>;
@@ -106,12 +107,12 @@ test('a fleet on a machine on another version opens the machines panel on it, an
   }
 });
 
-test('a fleet on another machine that is online but not loaded yet is still starting, whatever this Mac\'s svalld', async ({ page }) => {
+test('a fleet on another machine that is online but not loaded yet is still starting, until a minute says its daemon has not answered', async ({ page }) => {
   // the forward is open, and the daemon behind it has not answered yet
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await new Promise((r) => wss.once('listening', r));
   try {
-    await fakeShell(page, {
+    const sent = await fakeShell(page, {
       port: (wss.address() as { port: number }).port, token: 't',
       info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z svalld stopped'], op: false, handoverEnabled: true, gateway: 'studio' },
       state: { type: 'connection.state', state: 'online', owner: 'studio' },
@@ -119,7 +120,13 @@ test('a fleet on another machine that is online but not loaded yet is still star
     await page.clock.install();
     await page.goto('/');
     await page.clock.fastForward(theme.connectGraceMs);
-    await expect(page.getByTestId('connect-screen')).toHaveText('Starting the fleet…');
+    const screen = page.getByTestId('connect-screen');
+    await expect(screen).toHaveText('Starting the fleet…');
+    await page.clock.fastForward(FAR_ANSWER_MS);
+    await expect(screen).toContainText("studio's svalld has not answered.");
+    await screen.getByTestId('connection-check').click();
+    expect((await sent()).filter((m) => m.type === 'host.start')).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }]);
+    await expect(page.getByTestId('host-setup')).toBeVisible();
   } finally {
     for (const c of wss.clients) c.terminate();
     await new Promise((r) => wss.close(r));

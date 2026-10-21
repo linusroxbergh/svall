@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, connectionBanner, endRun, groupSteps, machineName, outcomeOf,
+  applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, machineName, outcomeOf,
   runActions, sshDestination, stepLabel, withoutTokens,
 } from '../src/host.js';
 
@@ -196,6 +196,13 @@ describe('the connection state the shell reports', () => {
       .toMatchObject({ text: "ssh does not trust gate's host key.", ssh: 'linus@gate', machine: 'gate' });
     // a helper that names no destination is reached by the machine's name
     expect(connectionBanner(err({ owner: 'studio', kind: 'auth' }), on)).toMatchObject({ ssh: 'studio' });
+  });
+
+  it('says a far daemon that has not answered since the route opened has not, and offers a check', () => {
+    expect(FAR_ANSWER_MS).toBe(60_000);
+    expect(connectionBanner({ state: 'online', owner: 'studio' }, { ...on, silent: true }))
+      .toEqual({ text: "studio's svalld has not answered.", machine: 'studio', actions: ['check', 'reconnect'] });
+    expect(connectionBanner({ state: 'online', owner: 'local' }, { ...on, silent: true })).toBeUndefined();
   });
 
   it('reaches a fleet on this Mac only once it asks for handover, and offers the Machines panel only then', () => {

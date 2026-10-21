@@ -119,6 +119,9 @@ export const sshDestination = (value: string): boolean => SSH.test(value);
 
 const who = (owner: string) => (owner === 'local' ? 'this machine' : owner);
 
+/** How long a far daemon may stay silent after its route opened before the banner says so. */
+export const FAR_ANSWER_MS = 60_000;
+
 export type BannerAction = 'reconnect' | 'check' | 'upgrade';
 /** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. `ssh`: the destination to run ssh to once. */
 export type Banner = { text: string; detail?: string; machine?: string; ssh?: string; actions: BannerAction[] };
@@ -137,14 +140,18 @@ function errorText(c: ConnectionState, machine: string): Pick<Banner, 'text' | '
 }
 
 /**
- * What the banner says while the fleet is not answering here, and what it offers; nothing once it is online. A fleet
- * on this Mac reports its connection only once it asks for handover, which the Machines panel waits on too.
+ * What the banner says while the fleet is not answering here, and what it offers; nothing once it is online, unless
+ * the far daemon has been `silent` since. A fleet on this Mac reports its connection only once it asks for handover,
+ * which the Machines panel waits on too.
  */
-export function connectionBanner(c: ConnectionState | undefined, o: { handoverEnabled: boolean }): Banner | undefined {
+export function connectionBanner(c: ConnectionState | undefined, o: { handoverEnabled: boolean; silent?: boolean }): Banner | undefined {
   if (!c || (c.owner === 'local' && !o.handoverEnabled)) return undefined;
   const remote = (machine: string) => o.handoverEnabled && machine !== 'local';
   switch (c.state) {
-    case 'online': return undefined;
+    case 'online': {
+      if (!o.silent || c.owner === 'local') return undefined;
+      return { text: `${c.owner}'s svalld has not answered.`, machine: c.owner, actions: [...(remote(c.owner) ? ['check' as const] : []), 'reconnect'] };
+    }
     case 'connecting': return { text: `connecting to ${who(c.owner)}…`, actions: [] };
     case 'owner-changed': return { text: `the fleet moved to ${who(c.owner)}; reconnecting…`, actions: [] };
     case 'error': {
