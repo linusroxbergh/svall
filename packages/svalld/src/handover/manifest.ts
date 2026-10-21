@@ -46,6 +46,10 @@ const CREDENTIAL_FILE = /(?:^|\/)(?:\.netrc|\.git-credentials|\.config\/gh\/host
 const BLOCK = 4096;
 // the most a file named like a Git index is read whole to name it by its staged entries
 const INDEX_MAX = 256 * 1024 * 1024;
+// the most a file named like a Git ref or packed-refs is read whole to name it by the refs it holds
+const REFS_MAX = 1024 * 1024;
+const LOOSE_REF = /^(?:[0-9a-f]{40}|[0-9a-f]{64}|ref: refs\/\S+)$/;
+const PACKED_REF = /^([0-9a-f]{40}|[0-9a-f]{64}) (refs\/\S+)$/;
 // files hashed at once: a many-file tree is bound by round trips to the disk, and each read holds one chunk
 const HASHING = 8;
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
@@ -57,12 +61,30 @@ async function* tap(chunks: AsyncIterable<Buffer>, into: Buffer[] | undefined): 
   for await (const chunk of chunks) { into?.push(chunk); yield chunk; }
 }
 
+/** What a file read whole says as Git refs: the value a loose ref holds, or each ref a packed-refs file packs. */
+function gitRefs(name: string, buf: Buffer): Pick<Extract<TransferFile, { type: 'file' }>, 'ref' | 'refs'> {
+  const text = buf.toString('utf8');
+  if (name !== 'packed-refs') return LOOSE_REF.test(text.replace(/\n$/, '')) ? { ref: text.replace(/\n$/, '') } : {};
+  const refs: Record<string, string> = {};
+  for (const line of text.replace(/\n$/, '').split('\n')) {
+    // a header, and the commit a tag above peels to
+    if (line.startsWith('#') || /^\^[0-9a-f]{40,64}$/.test(line)) continue;
+    const m = PACKED_REF.exec(line);
+    if (!m) return {};
+    refs[m[2]] = m[1];
+  }
+  return { refs };
+}
+
 async function addFile(scan: Scan, relative: string, file: string, st: Stat, sfs: ScanFs): Promise<void> {
   try {
-    const whole = path.basename(file) === 'index' && st.size <= INDEX_MAX ? [] : undefined;
+    const name = path.basename(file);
+    const refFile = name === 'packed-refs' || /(^|\/)refs\//.test(relative);
+    const whole = (name === 'index' && st.size <= INDEX_MAX) || (refFile && st.size <= REFS_MAX) ? [] : undefined;
     const { sha256, size } = await hashStream(tap(sfs.read(file), whole));
-    const gitIndex = whole && gitIndexDigest(Buffer.concat(whole));
-    scan.files.push({ type: 'file', path: relative, mode: st.mode & 0o7777, size, mtimeMs: Math.trunc(st.mtimeMs), sha256, ...(gitIndex && { gitIndex }) });
+    const gitIndex = name === 'index' && whole && gitIndexDigest(Buffer.concat(whole));
+    const refs = refFile && whole ? gitRefs(name, Buffer.concat(whole)) : {};
+    scan.files.push({ type: 'file', path: relative, mode: st.mode & 0o7777, size, mtimeMs: Math.trunc(st.mtimeMs), sha256, ...(gitIndex && { gitIndex }), ...refs });
   } catch (e) {
     // a file removed since the listing is simply not there; the verify pass catches the change
     if (!gone(e)) scan.problems.push(`${relative || file}: ${reason(e)}`);

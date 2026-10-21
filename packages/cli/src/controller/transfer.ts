@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Blocker, TransferFile, TransferRoot } from '@svall/protocol';
 import { compareReplica, diverged, proveReplica, type Divergence } from '@svall/svalld/handover/divergence';
 import { boundary } from '@svall/svalld/handover/failpoints';
-import { CONTROL } from '@svall/svalld/handover/inventory';
+import { CONTROL, isNoise } from '@svall/svalld/handover/inventory';
 import { realScanFs, scanPath, type ScanFs } from '@svall/svalld/handover/manifest';
 import { kept, relativeProblem, type ReplicaCheck } from '@svall/svalld/handover/replicas';
 import { redact, type RunResult } from './process.js';
@@ -341,7 +341,7 @@ class Mirror {
   private async compare(): Promise<{ kind: 'ok' } | { kind: 'unstable'; names: string[] } | Stop> {
     const plan = this.plan as Plan;
     const names: string[] = [];
-    const r = await this.rsync({ ...plan.job, dryRun: true }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change)) names.push(l.name); });
+    const r = await this.rsync({ ...plan.job, dryRun: true }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change) && !isNoise(l.name.replace(/\/$/, ''))) names.push(l.name); });
     const step = await this.settle(r);
     if (step.kind === 'stop') return step;
     return step.kind === 'vanished' || names.length ? { kind: 'unstable', names } : { kind: 'ok' };

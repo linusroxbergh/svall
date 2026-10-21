@@ -461,7 +461,7 @@ describe('transfer with a scripted rsync', () => {
   it('verifies once a passing writer settles, and counts a vanished file as a changing source', async () => {
     const src = tree(tmp(), { 'a.txt': 'a' });
     const state = tmp();
-    const swap = path.join(src, '.a.txt.swp');
+    const swap = path.join(src, '.a.txt.tmp');
     const rsync = fakeRsync((argv, n) => {
       if (argv.includes('--dry-run')) return {};
       if (n.real === 1) { fs.writeFileSync(swap, 'swap'); return {}; }
@@ -478,6 +478,16 @@ describe('transfer with a scripted rsync', () => {
     const rsync = fakeRsync((argv) => (argv.includes('--dry-run') ? { lines: ['.L...p..... link -> a.txt'] } : {}));
     const r = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: rsync.run } }));
     expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+  });
+
+  it('verifies a copy whose compare differs only in OS or editor noise, and still counts a file named like none', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', '.DS_Store': 'finder' });
+    const noisy = fakeRsync((argv) => (argv.includes('--dry-run') ? { lines: ['>fcst...... .DS_Store', '>f+++++++++ sub/._a.txt', '*deleting   .idea/workspace.xml'] } : {}));
+    const r = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: noisy.run } }));
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    const real = fakeRsync((argv) => (argv.includes('--dry-run') ? { lines: ['>fcst...... .DS_Store.txt'] } : {}));
+    const blocked = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: real.run } }));
+    expect(blocked.blockers).toEqual([expect.objectContaining({ code: 'external_writer' })]);
   });
 
   it('still counts a link whose target or times the compare itemizes as changed', async () => {

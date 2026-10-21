@@ -433,9 +433,16 @@ build/
 target/
 .next/
 *.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/.cache/
 ```
 
-Excluded platform caches stay destination-local and are never used in source verification.
+Excluded platform caches stay destination-local and are never used in source verification. Files an
+OS or editor writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log`, `*.swp`)
+transfer, since a repository may track them, but no comparison counts them as a change; a Git
+directory's refs are compared by what they resolve to, so packing them is no change either.
 
 ## Git repository graphs
 

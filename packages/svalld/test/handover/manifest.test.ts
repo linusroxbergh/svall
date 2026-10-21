@@ -317,6 +317,29 @@ describe('a Git repository', () => {
   });
 });
 
+describe('a Git ref', () => {
+  it('is listed with the value it holds, a packed-refs file with each ref it packs, and nothing else is', async () => {
+    const [c, d] = ['c'.repeat(40), 'd'.repeat(64)];
+    const root = tmp();
+    const files: Record<string, string> = {
+      '.git/refs/heads/main': `${c}\n`, '.git/refs/heads/topic': `${d}\n`, '.git/refs/remotes/origin/HEAD': 'ref: refs/remotes/origin/main\n',
+      '.git/packed-refs': `# pack-refs with: peeled fully-peeled sorted\n${c} refs/heads/old\n${d} refs/tags/v1\n^${c}\n`,
+      'notes/refs/a.md': `${c}\n`.repeat(2), 'other/packed-refs': 'not a packed-refs file\n',
+    };
+    for (const [rel, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), text);
+    }
+    const scanned = Object.fromEntries((await scanPath(root, () => false))!.files.map((f) => [f.path, f]));
+    expect(scanned['.git/refs/heads/main']).toMatchObject({ ref: c });
+    expect(scanned['.git/refs/heads/topic']).toMatchObject({ ref: d });
+    expect(scanned['.git/refs/remotes/origin/HEAD']).toMatchObject({ ref: 'ref: refs/remotes/origin/main' });
+    expect(scanned['.git/packed-refs']).toMatchObject({ refs: { 'refs/heads/old': c, 'refs/tags/v1': d } });
+    expect(scanned['notes/refs/a.md']).not.toHaveProperty('ref');
+    expect(scanned['other/packed-refs']).not.toHaveProperty('refs');
+  });
+});
+
 describe('the discovered Git graphs', () => {
   const checkout = (p: string, gitDir: string): GitCheckout =>
     ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), characters: [] });

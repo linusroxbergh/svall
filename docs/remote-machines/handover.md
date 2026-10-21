@@ -100,8 +100,9 @@ listed with what to do about it.
 | `.env` files inside the folders that move | The fleet's own `.env`, unless `handover.transferFleetEnv` is on in `fleet.json` |
 | | Every running process, its pid, its tmux window and its scrollback |
 
-Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `target/` and `.next/`, and
-`*.tsbuildinfo` files, are left out by default, and each machine keeps its own. `handover.exclude` in `fleet.json`
+Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `target/`, `.next/`, `.pytest_cache/`,
+`.ruff_cache/`, `.mypy_cache/` and `node_modules/.cache/`, and `*.tsbuildinfo` files, are left out by default, and each
+machine keeps its own. `handover.exclude` in `fleet.json`
 adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A folder a terminal is in moves whole, so a
 shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in
 until you choose Carry the folder whole (`--carry-unused`), move the terminal, or leave them out.
@@ -111,7 +112,9 @@ either. A repository's `origin` that names a path on the Mac travels as it is, a
 
 A folder the fleet left on a machine stays there as a replica of what was last carried. Moving back copies only what
 changed. If something on that replica changed while the machine did not own the fleet, the checks before the copy stop
-the handover rather than overwrite it: copy the changes back by hand, or archive the replica. A change made there once
+the handover rather than overwrite it: copy the changes back by hand, or archive the replica. What an OS or editor
+writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log` and `*.swp` files) never counts as a
+change, though it moves like any file, and neither does Git packing a repository's refs. A change made there once
 the copy has started is overwritten.
 
 A repository can say where it runs with `.svall/handover.json`, such as `{ "platforms": ["darwin"] }`, which

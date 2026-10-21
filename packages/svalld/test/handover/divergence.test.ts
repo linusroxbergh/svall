@@ -54,6 +54,14 @@ describe('compareReplica', () => {
     expect(edited.added.count + edited.removed.count).toBe(0);
   });
 
+  it('reads OS and editor noise as no change wherever it lies, and a file only named like it as one', () => {
+    const baseline = [file('a'), file('.DS_Store'), file('src/.idea/workspace.xml'), file('src/x.swp')];
+    const noise = [file('a'), file('.DS_Store', 'b'), file('src/._a'), file('.vscode/build.log'), file('src/.main.c.swp'), file('.idea/workspace.xml', 'c')];
+    expect(diverged(compareReplica([baseline], noise))).toBe(false);
+    const d = compareReplica([baseline], [...noise, file('src/.idea/other.xml'), file('.vscode/settings.json'), file('.vscode/logs/x.log')]);
+    expect(d.added.preview).toEqual(['.vscode/logs/x.log', '.vscode/settings.json', 'src/.idea/other.xml']);
+  });
+
   it('counts what could not be read as divergence', () => {
     const d = compareReplica([[]], [], ['locked: EACCES']);
     expect(diverged(d)).toBe(true);
@@ -106,6 +114,24 @@ describe('compareReplica on Git state', () => {
     const d = compareReplica([bare], committed, [], 10, true);
     expect(d.changed.preview).toEqual(['worktrees/wt/HEAD']);
     expect(d.added.preview).toEqual(['refs/stash']);
+  });
+
+  it('reads refs by what they resolve to, so packing them is no change, and a moved, new or deleted ref still is one', () => {
+    const [c, d] = ['c'.repeat(40), 'd'.repeat(40)];
+    const ref = (p: string, value: string): TransferFile => ({ ...file(p, value[0]), ref: value });
+    const packed = (p: string, refs: Record<string, string>): TransferFile => ({ ...file(p, Object.keys(refs).length.toString(16)), refs });
+    const loose = [file('.git/HEAD'), ref('.git/refs/heads/main', c), ref('.git/refs/tags/v1', d), packed('.git/packed-refs', { 'refs/heads/old': c })];
+    const packedAll = [file('.git/HEAD'), packed('.git/packed-refs', { 'refs/heads/main': c, 'refs/tags/v1': d, 'refs/heads/old': c })];
+    expect(diverged(compareReplica([loose], packedAll))).toBe(false);
+    expect(diverged(compareReplica([packedAll], loose))).toBe(false);
+    const moved = compareReplica([loose], [file('.git/HEAD'), packed('.git/packed-refs', { 'refs/heads/main': d, 'refs/tags/v1': d }), ref('.git/refs/heads/new', c)]);
+    expect(moved.changed.preview).toEqual(['.git/refs/heads/main']);
+    expect(moved.removed.preview).toEqual(['.git/refs/heads/old']);
+    expect(moved.added.preview).toEqual(['.git/refs/heads/new']);
+    // a ref file either side does not name its value in is compared by its bytes, as is every ref of its Git directory
+    const unread = compareReplica([loose], [...packedAll, file('.git/refs/heads/main', 'c')]);
+    expect(unread.changed.preview).toEqual(['.git/packed-refs']);
+    expect(unread.removed.preview).toEqual(['.git/refs/tags/v1']);
   });
 
   it('compares an index by its bytes when either side does not name its staged entries', () => {

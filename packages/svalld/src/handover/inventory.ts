@@ -35,7 +35,12 @@ export type Inventory = {
 };
 
 // caches each machine builds for itself
-export const DEFAULT_EXCLUDES = ['node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo'] as const;
+export const DEFAULT_EXCLUDES = [
+  'node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo', '.pytest_cache/', '.ruff_cache/', '.mypy_cache/', 'node_modules/.cache/',
+] as const;
+
+// what an OS or an editor writes beside the work on its own: carried, as a repository may track it, and never a change
+const NOISE = ['.DS_Store', '._*', '.idea/workspace.xml', '.vscode/*.log', '*.swp'];
 
 // v1 carries no path holding one: rsync's file lists and itemized output are read a line at a time
 export const CONTROL = /[\x00-\x1f\x7f]/;
@@ -111,6 +116,10 @@ export function excludeMatcher(patterns: readonly string[], kept?: ReadonlySet<s
   return (relative, dir) => !inGit(relative) && !kept?.has(relative.split('/')[0]) && rules.some((r) =>
     (dir || !r.dirOnly) && r.re.test(r.whole ? relative : relative.slice(relative.lastIndexOf('/') + 1)));
 }
+
+const noise = excludeMatcher(NOISE);
+/** Whether a path under a root is OS or editor noise, which no comparison counts as a change. */
+export const isNoise = (relative: string): boolean => excludedPath(relative, noise);
 
 type Kind = TransferRoot['kind'];
 // the kind a path takes when fields of more than one kind name it

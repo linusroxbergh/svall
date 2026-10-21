@@ -124,6 +124,8 @@ export const NOT_PATHS: readonly string[] = [
   'TransferManifestV1.sessions[].characterId', 'TransferManifestV1.sessions[].sessionId',
   'TransferManifestV1.sessions[].files[].path', 'TransferManifestV1.sessions[].files[].sha256',
   'TransferManifestV1.roots[].files[].gitIndex', 'TransferManifestV1.sessions[].files[].gitIndex',
+  'TransferManifestV1.roots[].files[].ref', 'TransferManifestV1.sessions[].files[].ref',
+  'TransferManifestV1.roots[].files[].refs.*', 'TransferManifestV1.sessions[].files[].refs.*',
   'TransferManifestV1.git[].id', 'TransferManifestV1.git[].stash[]', 'TransferManifestV1.git[].tips[]',
   'TransferManifestV1.git[].main.head', 'TransferManifestV1.git[].main.branch', 'TransferManifestV1.git[].main.locked',
   'TransferManifestV1.git[].main.status[]', 'TransferManifestV1.git[].main.index', 'TransferManifestV1.git[].main.characters[]',
