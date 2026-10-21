@@ -19,6 +19,7 @@ import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
 import type { Authority } from './handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
+import { lingerState, realRun } from './linux/service.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, copiedRemedy, machineIdentity, machineIdFailure, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
@@ -208,6 +209,7 @@ async function start(opts: Options): Promise<Daemon> {
   };
   const handover = new HandoverService({
     ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps()), fleet, setGateway: (id) => setGateway(paths, config, id),
+    ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
     authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
     source: {
       paths, store, fleet, tmux, viewers: terminals, log,

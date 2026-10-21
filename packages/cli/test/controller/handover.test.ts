@@ -278,6 +278,35 @@ describe('preflight', () => {
     expect(r.warnings.filter((x) => x.code === 'config_difference').map((x) => x.message)).toEqual([expect.stringMatching(/^opencode 2\.0\.22 runs on .* and 2\.0\.30 on /)]);
   });
 
+  it('blocks a Linux destination whose account does not linger, naming the machine and what to run there', async () => {
+    const w = new World();
+    const lingering = async () => (await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'linger_off');
+    w.infos[trift] = { linger: { user: 'ada', on: false } };
+    expect(await lingering()).toEqual([{
+      code: 'linger_off',
+      message: 'lingering is off for ada on trift, so the fleet with its gateway stops there when you log out and stays down after a restart until you log in; ssh trift, then loginctl enable-linger ada',
+    }]);
+    w.infos[trift] = { linger: { user: 'ada', on: true } };
+    expect(await lingering()).toEqual([]);
+  });
+
+  it('blocks a move to the Mac while the Linux source, the fleet\'s gateway, does not linger, and asks nothing of the Mac', async () => {
+    const lingering = async (gateway: MachineId) => {
+      const w = new World({ pull: true });
+      w.infos[trift] = { linger: { user: 'ada', on: false } };
+      const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+      w.source.answers['handover.preflight'] = ((p: unknown) => {
+        const r = preflight(p);
+        r.manifest.fleet.gatewayMachineId = gateway;
+        return r;
+      }) as never;
+      return (await controller(w).preflight(mac, {})).blockers.filter((b) => b.code === 'linger_off').map((b) => b.message);
+    };
+    expect(await lingering(trift)).toEqual([expect.stringMatching(/^lingering is off for ada on trift, so the fleet's gateway stops there .*; ssh trift, then loginctl enable-linger ada$/)]);
+    // a source that is not the gateway runs nothing of the fleet once it has moved
+    expect(await lingering(mac)).toEqual([]);
+  });
+
   it('names a few of a root\'s names that differ only by case, each with the names it clashes with, and counts the rest, however many there are', async () => {
     const w = new World();
     w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };

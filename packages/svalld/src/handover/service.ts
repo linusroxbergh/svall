@@ -1,6 +1,6 @@
 import {
   handoverError,
-  type AgentAdapter, type Event, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result,
+  type AgentAdapter, type Event, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result, type SystemInfo,
 } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import { AuthorityFailure } from '../gateway/authority.js';
@@ -17,6 +17,8 @@ export type HandoverDeps = {
   journal: JournalFile;
   /** This machine's agent CLIs as they last answered, or asked afresh; none when not given. */
   agents?: AgentProber;
+  /** Whether this machine's account lingers, asked of loginctl on Linux; none on a Mac. */
+  linger?(): Promise<NonNullable<SystemInfo['linger']>>;
   /** What the source phases run on. */
   source: SourceDeps;
   /** What the destination phases run on. */
@@ -63,6 +65,11 @@ export class HandoverService {
   /** What `system.info` says of this machine's agent CLIs, asked afresh: preflight and freeze read logins from it. */
   async agentAdapters(): Promise<AgentAdapter[]> {
     return agentAdapters(await this.agents(true));
+  }
+
+  /** What `system.info` says of this machine's lingering: nothing where it cannot be read. */
+  async linger(): Promise<SystemInfo['linger']> {
+    return this.deps.linger?.().catch(() => undefined);
   }
 
   /** The journal as this daemon read it, which is what decides how the daemon starts. */

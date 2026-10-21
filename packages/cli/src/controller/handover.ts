@@ -158,6 +158,16 @@ function differences(source: Side, a: SystemInfo, destination: Side, b: SystemIn
   });
 }
 
+/** A Linux machine that will run `what` of the fleet, whose account stops its services at logout and starts them again only at a login. */
+function lingerOff(side: Side, info: SystemInfo, what: string): Blocker[] {
+  if (info.linger?.on !== false) return [];
+  const run = `loginctl enable-linger ${info.linger.user}`;
+  return [{
+    code: 'linger_off',
+    message: `lingering is off for ${info.linger.user} on ${side.route.name}, so ${what} stops there when you log out and stays down after a restart until you log in; ${side.route.ssh ? `ssh ${side.route.ssh}, then ${run}` : `run ${run}`}`,
+  }];
+}
+
 /** A link a carried root holds, where its target lies, and whether what a carried root copies there holds it; undefined when none does. */
 type CarriedLink = { root: TransferRoot; path: string; at: string; carried?: boolean };
 
@@ -291,7 +301,9 @@ export class Handover {
     // a manifest answered without its file lists would have the destination judge every root as empty
     const stripped = pre.blockers.some((x) => x.code === 'too_many_files' || x.code === 'manifest_too_large');
     const there = stripped ? { blockers: [], warnings: [] } : await this.destinationChecks(source, destination, pre.manifest, choices);
-    blockers.push(...pre.blockers, ...there.blockers);
+    const gateway = pre.manifest.fleet.gatewayMachineId;
+    blockers.push(...pre.blockers, ...there.blockers, ...lingerOff(destination, b, gateway === to ? 'the fleet with its gateway' : 'the fleet'));
+    if (gateway === from) blockers.push(...lingerOff(source, a, "the fleet's gateway"));
     const warnings = [...pre.warnings, ...there.warnings, ...differences(source, a, destination, b, pre.manifest)];
     const out = { generation: record.generation, summary: pre.manifestSummary, blockers: settle(blockers), warnings: settle(warnings), manifest: pre.manifest };
     this.observer.send({ event: 'handover.preflight', data: { summary: out.summary, blockers: out.blockers, warnings: out.warnings, names: namesOf(pre.manifest) } });

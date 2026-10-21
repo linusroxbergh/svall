@@ -8,7 +8,7 @@ not resume waiting to be retried. It never leaves both running.
 
 Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and run `svall host doctor <name>`
 (**Check** in the app): no check should fail (✗). A warning (!) about `tmux`, `gh` or `path` does not stop a handover;
-an agent your fleet runs that is missing or not logged in there does.
+an agent your fleet runs that is missing or not logged in there does, and so does `linger` off.
 
 ## From the app
 

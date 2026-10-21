@@ -589,6 +589,9 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - release, protocol, state or transfer schema, the gateway's authority schema or agent adapters are
   incompatible;
 - a required agent CLI is absent, logged out or missing hooks;
+- the destination, or the source while it is the fleet's gateway, is a Linux machine whose account
+  does not linger (`linger_off`), so the fleet or its gateway would stop at logout and stay down
+  after a restart until a login;
 - the destination's home path differs from the source's, or a transfer root's parent is missing
   there;
 - a character is marked **Keep on this machine**;

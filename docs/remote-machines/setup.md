@@ -87,7 +87,8 @@ and never copies a login, so these are yours:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
-- Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out.
+- Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out, and a
+  handover to the machine stops at its checks until it is on.
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
   `opencode auth login`.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust

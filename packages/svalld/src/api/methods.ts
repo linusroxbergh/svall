@@ -113,10 +113,11 @@ export const handlers: Handlers = {
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
   'system.info': async (_p, { ownership, handover }) => {
     const git = await gitVersion();
+    const linger = await handover.linger();
     return {
       machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
       transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
-      heapLimit: v8.getHeapStatistics().heap_size_limit,
+      heapLimit: v8.getHeapStatistics().heap_size_limit, ...(linger && { linger }),
     };
   },
   'ownership.get': (_p, { handover }) => handover.ownershipInfo(),

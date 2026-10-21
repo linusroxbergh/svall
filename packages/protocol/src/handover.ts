@@ -137,7 +137,7 @@ export const HandoverIssueCode = z.enum([
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
-  'too_many_files', 'repository_unused',
+  'too_many_files', 'repository_unused', 'linger_off',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
 
@@ -373,6 +373,8 @@ export const SystemInfo = z.object({
   git: z.string().optional(),
   // the daemon's V8 heap_size_limit in bytes, which bounds the files a handover may carry
   heapLimit: z.number().int().positive().optional(),
+  // whether a Linux account's services run while no one is logged in; absent on a Mac, or where loginctl cannot say
+  linger: z.object({ user: z.string(), on: z.boolean() }).optional(),
 });
 export type SystemInfo = z.infer<typeof SystemInfo>;
 
