@@ -138,6 +138,15 @@ describe('the handover a sheet follows', () => {
     expect(transferPace(play([...through('transfer'), root(10_000_000), root(40_000_000)]))).toBeUndefined();
   });
 
+  it('paces a transfer the page attached to part way from the bytes sent after the lines it replayed', () => {
+    const root = (bytes: number) => entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes, totalBytes: 10_000_000_000 });
+    let run = play(through('transfer'));
+    // what attach replays arrives at once
+    for (const [bytes, at] of [[1_000_000_000, 0], [4_000_000_000, 3], [6_000_000_000, 5]]) run = applyEvent(run, root(bytes), { now: 50_000 + at });
+    run = applyEvent(run, root(6_100_000_000), { now: 60_005 });
+    expect(transferPace(run)?.rate).toBe(10_000_000);
+  });
+
   it('says where a handover stands on a terminal it rested', () => {
     expect(restingLine(play(through('freeze')))).toBe('Resting for the handover: Resting characters…');
     const moving = play([...through('transfer'), entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes: 25, totalBytes: 100 })]);

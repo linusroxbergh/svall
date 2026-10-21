@@ -54,8 +54,8 @@ export type HandoverRun = {
   stopped?: HandoverRun;
   // the status is the sheet's own look at this run, which a status found by a later look is not
   checked?: boolean;
-  // the transfer's bytes when this page first and last counted them, by its clock; a run read back has none
-  pace?: { from: { at: number; bytes: number }; last: { at: number; bytes: number } };
+  // the transfer's bytes when this page started and last counted them, by its clock, and when it first did; a run read back has none
+  pace?: { since: number; from: { at: number; bytes: number }; last: { at: number; bytes: number } };
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -168,7 +168,9 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent, o: { now?: number
       const rows = withEntity(next.rows, e.data);
       if (o.now === undefined || sectionOf(e.data.kind, e.data.phase) !== 'transfer') return { ...next, rows };
       const sample = { at: o.now, bytes: transferTotals(rows).bytes };
-      return { ...next, rows, pace: { from: next.pace?.from ?? sample, last: sample } };
+      // what an attach replays arrives in one burst, so the count starts once the first second is over
+      const since = next.pace?.since ?? o.now;
+      return { ...next, rows, pace: { since, from: o.now - since < PACE_SETTLE_MS ? sample : next.pace!.from, last: sample } };
     }
     case 'handover.blocked':
       // an answer starts from the choices the run holds, which a sheet relaunched after the start never saw
@@ -675,6 +677,8 @@ export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number
   }
   return t;
 }
+
+const PACE_SETTLE_MS = 1000;
 
 const leftText = (ms: number): string => {
   const min = Math.round(ms / 60_000);
