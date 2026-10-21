@@ -10,8 +10,9 @@ import type { Authority } from './source.js';
 /** How long a starting daemon waits for its gateway before it starts on the record it holds. */
 const GATEWAY_START_MS = 10_000;
 const GATEWAY_RETRY_MS = 250;
-/** How often a running daemon asks its gateway again. */
-const GATEWAY_EVERY_MS = 60_000;
+/** How often a running daemon asks its gateway again, and how often it looks whether the machine slept meanwhile. */
+const GATEWAY_EVERY_MS = 5 * 60_000;
+const GATEWAY_TICK_MS = 15_000;
 
 // only the gateway on this machine is asked over a socket: one missing or not listening is that gateway still starting,
 // as systemd starts its unit beside the daemon's at boot
@@ -109,7 +110,7 @@ export async function adoptAtStart(o: {
 }
 
 /**
- * While the daemon runs, asks the gateway again every minute, and at its first look after the machine wakes: a timer
+ * While the daemon runs, asks the gateway again every five minutes, and at its first look after the machine wakes: a timer
  * stands still while the machine sleeps, and the wall clock does not. Only a record that names another owner is taken:
  * one naming `machineId` waits for a start or the recovery that wrote it, which tells the machines it takes the fleet
  * from first. Returns what stops it.
@@ -127,7 +128,7 @@ export function watchGateway(o: {
     try {
       record = await o.authority()?.get(o.fleetId);
     } catch (e) {
-      if (!failing) o.log.info(`the gateway did not say who owns this fleet (${(e as Error).message}); this machine keeps the record it holds and asks again every minute`);
+      if (!failing) o.log.info(`the gateway did not say who owns this fleet (${(e as Error).message}); this machine keeps the record it holds and asks again every five minutes`);
       failing = true;
       return;
     }
@@ -136,12 +137,18 @@ export function watchGateway(o: {
     failing = false;
     if (record.ownerMachineId !== o.machineId) await take(o, record, false);
   };
+  const tick = Math.min(GATEWAY_TICK_MS, every / 4);
+  let looked = Date.now();
   const timer = setInterval(() => {
-    if (asking || Date.now() - last < every) return;
+    const now = Date.now();
+    // a look that comes late comes after a sleep
+    const woke = now - looked > 2 * tick;
+    looked = now;
+    if (asking || (!woke && now - last < every)) return;
     asking = true;
-    last = Date.now();
+    last = now;
     void ask().finally(() => { asking = false; });
-  }, every / 4);
+  }, tick);
   timer.unref();
   return () => { stopped = true; clearInterval(timer); };
 }

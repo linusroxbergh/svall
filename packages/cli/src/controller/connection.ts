@@ -303,7 +303,7 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   if (!gateway) throw new SshError('other', `${resolvePaths(fleetHome).fleetConfig} names gateway ${gatewayId}, which is not a machine in the registry${d.registry.setAside()}`);
 
   const cached = { fleetId: config.id, profile: o.profile };
-  // the daemon asks the gateway every minute and lets the fleet go on a record naming another owner, which keeps owner.json
+  // the daemon asks the gateway every five minutes and lets the fleet go on a record naming another owner, which keeps owner.json
   // honest; only a caller that resolves again and again refreshes the route behind it, as a one-shot command would wait on that ssh
   if (heldHere(fleetHome, d.registry.localId)) {
     if (o.memo) refreshRoute(fleetHome, config.id, gateway, d, o.memo);

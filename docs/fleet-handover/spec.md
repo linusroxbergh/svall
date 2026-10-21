@@ -223,8 +223,9 @@ other machine can commit without both the gateway and a durable source freeze.
 
 On daemon start, a reachable gateway record wins when its generation is above the daemon's cached
 one, or equal and naming another owner while no handover journal is open there. A running daemon
-asks again every minute and soon after its machine wakes, and takes such a record only when it names
-another owner: the one naming it waits for its next start or the recovery that wrote it. A lower generation
+asks again every five minutes and soon after its machine wakes, over one ssh connection to the gateway
+it keeps between asks, and takes such a record only when it names another owner: the one naming it
+waits for its next start or the recovery that wrote it. A lower generation
 is ignored, so a stale gateway never rolls ownership back. A fleet whose `fleet.json` names a
 gateway and that has no cached record owns nothing until the gateway names its owner. If the
 gateway is permanently lost, recovery requires `svall fleet recover --force-owner <machine>` and

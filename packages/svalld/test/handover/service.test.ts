@@ -627,6 +627,8 @@ describe('a start with a gateway', () => {
 describe('a gateway asked while the daemon runs', () => {
   afterEach(() => { vi.useRealTimers(); });
   const MINUTE = 60_000;
+  // how often a running daemon asks
+  const EVERY = 5 * MINUTE;
   const record = (generation: number, ownerMachineId: MachineId) => ({ fleetId, generation, ownerMachineId });
 
   // looks for a minute's passing every quarter of one, by the wall clock
@@ -639,10 +641,10 @@ describe('a gateway asked while the daemon runs', () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     let held = record(4, me);
     const stop = watch(b, async () => held);
-    await vi.advanceTimersByTimeAsync(MINUTE);
+    await vi.advanceTimersByTimeAsync(EVERY);
     expect(b.ownership.writable()).toBe(true);
     held = record(5, other);
-    await vi.advanceTimersByTimeAsync(MINUTE);
+    await vi.advanceTimersByTimeAsync(EVERY);
     stop();
     expect(b.ownership.record()).toMatchObject({ generation: 5, ownerMachineId: other });
     expect(b.ownership.writable()).toBe(false);
@@ -653,7 +655,7 @@ describe('a gateway asked while the daemon runs', () => {
   it('changes nothing on a record that does not outrank the one held, and leaves an open handover to its journal', async () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     const stop = watch(b, async () => record(3, other));
-    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    await vi.advanceTimersByTimeAsync(2 * EVERY);
     stop();
     expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: me });
     expect(b.ownership.writable()).toBe(true);
@@ -662,7 +664,7 @@ describe('a gateway asked while the daemon runs', () => {
     const src = boot({ record: { generation: 4, ownerMachineId: me }, journal: source() });
     await enter(src);
     const stopped = watch(src, async () => record(5, other));
-    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    await vi.advanceTimersByTimeAsync(2 * EVERY);
     stopped();
     expect(src.handover.journalState().kind).toBe('open');
     expect(src.ownership.isFrozen()).toBe(true);
@@ -672,24 +674,26 @@ describe('a gateway asked while the daemon runs', () => {
   it('leaves a record naming this machine to the next start, so a machine still running the fleet is not run beside', async () => {
     const b = boot({ record: { generation: 4, ownerMachineId: other } });
     const stop = watch(b, async () => record(5, me));
-    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    await vi.advanceTimersByTimeAsync(2 * EVERY);
     stop();
     expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
     expect(b.ownership.writable()).toBe(false);
     expect(b.log).toEqual([]);
   });
 
-  it('asks every minute and at its first look after a sleep, never twice at once, and not once stopped', async () => {
+  it('asks every five minutes and at its first look after a sleep, never twice at once, and not once stopped', async () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     let calls = 0;
     const stop = watch(b, async () => { calls++; return record(4, me); });
-    await vi.advanceTimersByTimeAsync(45_000);
+    await vi.advanceTimersByTimeAsync(5 * MINUTE - 15_000);
     expect(calls).toBe(0);
     await vi.advanceTimersByTimeAsync(15_000);
     expect(calls).toBe(1);
-    // a sleep stops the timers and not the wall clock
-    vi.setSystemTime(Date.now() + 30 * MINUTE);
+    // a sleep stops the timers and not the wall clock, however short it was
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
     await vi.advanceTimersByTimeAsync(15_000);
+    expect(calls).toBe(2);
+    await vi.advanceTimersByTimeAsync(4 * MINUTE);
     expect(calls).toBe(2);
     stop();
     await vi.advanceTimersByTimeAsync(5 * MINUTE);
@@ -720,11 +724,11 @@ describe('a gateway asked while the daemon runs', () => {
       return record(4, me);
     };
     const stop = watch(b, get, { info: (l) => lines.push(l), error: (l) => lines.push(`error: ${l}`) });
-    await vi.advanceTimersByTimeAsync(6 * MINUTE);
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
     stop();
     expect(calls).toBe(6);
     expect(lines).toEqual([
-      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); this machine keeps the record it holds and asks again every minute',
+      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); this machine keeps the record it holds and asks again every five minutes',
       'the gateway answers again',
       expect.stringMatching(/^error: the gateway's record at generation 9 could not be taken: the record is for fleet /),
     ]);

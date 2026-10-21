@@ -274,7 +274,7 @@ svall fleet recover --force-owner local --gateway spare       # another registry
    it is told of, and never takes one that makes it the owner.
 4. A machine it could not reach, or the one it names that could not reach the gateway, is listed under **next**.
    This Mac, and the gateway's own machine unless `--gateway` replaced it, take the record when their daemon next
-   starts, and while it runs let the fleet go within a minute of a record naming another machine; any other has to be
+   starts, and while it runs let the fleet go within five minutes of a record naming another machine; any other has to be
    stopped, then the command run again once it answers.
 
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
