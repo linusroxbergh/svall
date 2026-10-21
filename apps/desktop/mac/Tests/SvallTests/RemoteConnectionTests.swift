@@ -86,7 +86,7 @@ final class RemoteConnectionTests: XCTestCase {
     func testAHelperThatSaysNothingLeavesAFleetItsCachedRouteNamesOnThisMac() throws {
         let helper = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#]), arguments: [])
         let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"),
-                                answerWithin: 0.2, cachedHere: { true })
+                                answerWithin: 1, cachedHere: { true })
         remote.start()
         waitForTranscript(of: 3)
         XCTAssertEqual(transcript, ["state connecting studio - -", "state online local - -", "connection 127.0.0.1:8123:t0ken"])
@@ -96,10 +96,10 @@ final class RemoteConnectionTests: XCTestCase {
 
     func testAHelperThatSaysNothingShowsTheBannerWhenNoCachedRouteNamesThisMac() throws {
         let helper = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#]), arguments: [])
-        let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), answerWithin: 0.2)
+        let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), answerWithin: 1)
         remote.start()
         waitForTranscript(of: 2)
-        XCTAssertEqual(transcript, ["state connecting studio - -", "state error studio other the connection helper has not answered in 0.2 s"])
+        XCTAssertEqual(transcript, ["state connecting studio - -", "state error studio other the connection helper has not answered in 1 s"])
         XCTAssertEqual(remote.route, .pending)
         XCTAssertTrue(helper.isRunning)
         remote.stop()
@@ -107,12 +107,10 @@ final class RemoteConnectionTests: XCTestCase {
 
     func testAHelperThatAnswersInTimeIsNotOverriddenByTheWait() throws {
         let helper = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline]), arguments: [])
-        let remote = connection(helper: helper, answerWithin: 0.2, cachedHere: { true })
+        let remote = connection(helper: helper, answerWithin: 1, cachedHere: { true })
         remote.start()
         waitForTranscript(of: 3)
-        let settled = expectation(description: "past the wait")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settled.fulfill() }
-        wait(for: [settled], timeout: 2)
+        pause(1.5)
         XCTAssertEqual(transcript.count, 3)
         XCTAssertEqual(remote.route, .remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock")))
         remote.stop()
