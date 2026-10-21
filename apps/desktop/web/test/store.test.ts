@@ -732,6 +732,10 @@ describe('the machine that owns the fleet', () => {
     store.getState().hostStep('add', { step: 'ssh', status: 'ok', detail: 'u@h accepted an interactive login' });
     store.getState().hostStep('doctor', { step: 'machine', status: 'ok' });
     expect(store.getState().host?.steps.map((s) => s.step)).toEqual(['ssh']);
+    // a machine in the Machines list is named by its name
+    store.getState().setMachines([{ name: 'studio', id: '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', platform: 'linux-x64', gateway: false, fleets: [] }]);
+    store.getState().hostStep('add', { step: 'master', status: 'fail', detail: 'u@h now reaches machine 5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f, not box' });
+    expect(store.getState().host?.steps[1].detail).toBe('u@h now reaches studio, not box');
     store.getState().hostDone('add', 0);
     expect(store.getState().host?.running).toBe(false);
     expect(store.getState().host?.code).toBe(0);

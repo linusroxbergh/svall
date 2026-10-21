@@ -53,6 +53,22 @@ describe('host run', () => {
     expect(run.steps[0].action).toBe('point trift.test back at trift');
   });
 
+  it('names a machine this Mac knows by its name, and leaves out the ids of fleets and handovers and the generations', () => {
+    const [studio, other, fleet, theirs, tx] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '1a1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
+    const names = { [studio]: 'studio' };
+    const said = (detail: string) => applyStep(beginRun('enable', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
+    expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
+    expect(said(`trift answered with machineId ${other}, not ${studio}`)).toBe('trift answered as another machine');
+    expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
+    expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`))
+      .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`);
+    expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4 in handover ${tx}`))
+      .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it in another handover");
+    expect(said(`trift cannot take a copy of this fleet: ${tx} is committed; this fleet belongs to ${other} at generation 5`))
+      .toBe('trift cannot take a copy of this fleet: the handover is committed; this fleet belongs to another machine');
+    expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
+  });
+
   it('masks a token wherever it is labelled, and leaves the rest of the line alone', () => {
     expect(withoutTokens('machine 3f2a-9c: {"token":"abc123"} ok')).toBe('machine 3f2a-9c: {"token":"…"} ok');
     expect(withoutTokens('no secret here')).toBe('no secret here');
@@ -68,7 +84,7 @@ describe('host run', () => {
 
 describe('the end of a run', () => {
   const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
-    endRun(steps.reduce(applyStep, beginRun(op, { name: 'box', ...args })), code);
+    endRun(steps.reduce((run, s) => applyStep(run, s), beginRun(op, { name: 'box', ...args })), code);
 
   it('says an add that finished clean added the machine, and offers to make it the gateway until it is one', () => {
     const add = ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]);

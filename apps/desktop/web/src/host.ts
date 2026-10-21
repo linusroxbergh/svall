@@ -8,12 +8,33 @@ export function withoutTokens(text: string): string {
   return text.replace(TOKEN, '$1…').replace(TOKEN_FLAG, '$1…');
 }
 
-// a machine's id says nothing to a person; one inside a path names a file, and stays
-const ID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
-const withoutIds = (text: string): string => text
-  .replace(new RegExp(` \\(${ID}\\)`, 'gi'), '')
-  .replace(new RegExp(`\\b(machine )?${ID}`, 'gi'), 'another machine');
-const plainStep = (text: string): string => withoutIds(withoutTokens(text));
+/** The machines this Mac knows: each one's name by its id. */
+export type MachineNames = Record<string, string>;
+
+// an id says nothing to a person; one inside a path names a file, and stays
+const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
+const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+
+/** A step's words with a machine this Mac knows by its name, any other as another machine, and no other id or generation. */
+function withoutIds(text: string, names: MachineNames): string {
+  const machine = (id: string) => names[id] ?? 'another machine';
+  return text
+    .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
+    .replace(/ at generation \d+/g, '')
+    .replace(ids(' \\(UUID\\)'), '')
+    .replace(ids('\\banswered with fleetId UUID, not UUID'), 'answered for another fleet')
+    .replace(ids('\\banswered with machineId (UUID), not UUID'), (_, id: string) => `answered as ${machine(id)}`)
+    .replace(ids('\\b(?:the )?fleet UUID'), 'the fleet')
+    .replace(ids(' in handover UUID'), ' in another handover')
+    .replace(ids('UUID is committed'), 'the handover is committed')
+    .replace(ids('\\bmachine (UUID)'), (_, id: string) => machine(id))
+    .replace(ids('\\b(names|belongs to) (UUID)'), (_, said: string, id: string) => `${said} ${machine(id)}`)
+    .replace(ids('(UUID) holds'), (_, id: string) => `${machine(id)} holds`)
+    // an id said anywhere else is a known machine's name, or nothing
+    .replace(ids('\\s?(UUID)'), (all: string, id: string) => (names[id] ? all.replace(id, names[id]) : ''));
+}
+
+const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
 
 /** The phases the checklist shows, and the steps `svall host …` emits inside each. */
 const PHASES = [
@@ -54,11 +75,11 @@ export type HostRun = { op: HostOp; args: HostArgs; steps: HostStep[]; running: 
 export const beginRun = (op: HostOp, args: HostArgs): HostRun => ({ op, args, steps: [], running: true });
 
 /** A step is announced before it runs and named again when it ends: the row is the same row. */
-export function applyStep(run: HostRun, event: HostStep): HostRun {
+export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {}): HostRun {
   const row: HostStep = {
     step: event.step, status: event.status,
-    ...(event.detail ? { detail: plainStep(event.detail) } : {}),
-    ...(event.action ? { action: plainStep(event.action) } : {}),
+    ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
+    ...(event.action ? { action: plainStep(event.action, names) } : {}),
   };
   if (event.status === 'start' && run.steps.some((s) => s.step === event.step)) return run;
   const at = run.steps.findIndex((s) => s.step === event.step && s.status === 'start');

@@ -66,7 +66,7 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
-  hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event) } : {})),
+  hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, Object.fromEntries((s.machines ?? []).map((m) => [m.id, m.name]))) } : {})),
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
   setMachines: (machines, machinesError) => set({ machines, machinesError }),
