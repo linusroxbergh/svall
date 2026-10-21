@@ -11,21 +11,21 @@ this pass covers what only the app and real machines show. What each step should
 - An Ubuntu 24.04 machine on your tailnet with a throwaway account whose home is your Mac home's path
   ([how](../../../docs/remote-machines/setup.md#the-same-home-path)), reachable with `ssh <account>@<machine>`.
 - Claude Code, Codex and OpenCode (2.0.22 or newer) installed and logged in on both machines.
-- A test fleet, so your own stays untouched: `svall smoke` offers to create one named `smoke`. Set
-  `"handover": { "enabled": true }` in `~/.svall-smoke/fleet.json`, then quit and reopen its window with
-  `svall smoke`. Every `svall` command below takes `-p smoke`.
+- A test fleet, so your own stays untouched: `svall smoke` offers to create one named `smoke`. In its window, turn on
+  Settings → The fleet → **remote machines (experimental)**: Machines and Handover appear without a relaunch. Every
+  `svall` command below takes `-p smoke`.
 
 ## 1. Provisioning
 
-1. Settings → Machines → **Set up**. Name the machine `studio` and give its ssh destination. Choose **Add machine**.
-   - Each step appears as it finishes, grouped Connect, Prerequisites, Companion, Service, Agent logins, Final probe
-     and Registry. A new host key is asked in a dialog.
+1. Settings → Machines → **Add machine**. Name the machine `studio` and give its ssh destination. Choose **Add machine**.
+   - Each step appears as it finishes, grouped Connection, What the machine needs, Svall on the machine, Services,
+     Agent logins, Trying it out and This Mac's list of machines. A new host key is asked in a dialog.
    - A fresh account ends with **still to do**: lingering, and any agent not logged in.
-2. Do what it lists over ssh, then choose **Check**: no row is marked ×. On Ubuntu 24.04 `tmux` is marked ! (it ships
-   3.4), and so may `gh` and `path` be; none of them stops a handover. It ends with **Check: done**, or with **ready
-   for handover** when nothing is marked ! either.
-3. Choose **Make it this fleet's gateway**. Its `machine`, `authority` and `fleet` steps are ok, and `svall host list`
-   shows `studio` as a gateway.
+2. Do what it lists over ssh, then choose **Check** on `studio`'s row: no row is marked ×. On Ubuntu 24.04 `tmux` is
+   marked ! (it ships 3.4), and so may `gh` and `path` be; none of them stops a handover. It ends with **ready to be
+   this fleet's gateway** and the number of warnings.
+3. Choose **Make it this fleet's gateway**. Its Machine, Ownership record and Fleets steps are ok, and Settings →
+   Machines shows `studio` as the gateway for `smoke`, with the release and result of its last check.
 4. Choose **Add machine** again with the same name: every step runs again and nothing changes.
 
 ## 2. The fleet
@@ -47,7 +47,10 @@ Select the Claude character and open its side card.
 ## 3. Mac to Linux
 
 1. **Handover** at the foot of the sidebar → **studio**.
-   - Checks lists the folders, files and sessions, and warns about each folder Claude or Codex will ask to trust.
+   - The checks run alone: the sheet lists the folders, files and size, which characters stop and how, and warns about
+     each folder Claude or Codex will ask to trust. Nothing is rested until **Move to studio**; choose it.
+   - A rested terminal says the step the handover is at; clicking it opens the sheet. The transfer row shows a rate
+     and the time left.
    - Resting characters, then Transferring files and sessions with progress per folder and session, then Verifying and
      committing, then Resuming characters with a row per character.
 2. When it completes:
