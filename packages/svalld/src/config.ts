@@ -224,10 +224,10 @@ export const patchFleetConfig = (file: string, patch: Raw): void => patchConfigF
 
 export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> };
 
-/** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be. */
-export function saveConfig(paths: Paths, patch: ConfigPatch): void {
+/** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be; `say` as for `initConfig`. */
+export function saveConfig(paths: Paths, patch: ConfigPatch, say?: (line: string) => void): void {
   fs.mkdirSync(paths.home, { recursive: true });
-  initConfig(paths);
+  initConfig(paths, {}, say);
   const { integrations, mobile, ...fleet } = patch;
   if (Object.keys(fleet).length) patchFleetConfig(paths.fleetConfig, fleet);
   // integrations are saved as agentsOff, which replaces an integrations list
@@ -237,8 +237,8 @@ export function saveConfig(paths: Paths, patch: ConfigPatch): void {
 }
 
 /** Sets mainAgent in fleet.json, split out first if need be. */
-export function saveMainAgent(paths: Paths, agent: AgentKind): void {
-  saveConfig(paths, { mainAgent: agent });
+export function saveMainAgent(paths: Paths, agent: AgentKind, say?: (line: string) => void): void {
+  saveConfig(paths, { mainAgent: agent }, say);
 }
 
 /** fleet.json as it stands now; an InvalidConfig says what in it is wrong. */

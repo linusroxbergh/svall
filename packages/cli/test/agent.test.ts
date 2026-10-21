@@ -31,6 +31,20 @@ describe('setMainAgentCli', () => {
     expect(await setMainAgentCli(d, 'codex')).toBe('Main agent: Codex; svalld uses it from its next start');
     expect(saved()).toBe('codex');
   });
+  it('says on stderr where it moved a config.json found beside fleet.json as it saves', async () => {
+    const { d, saved } = deps();
+    fs.writeFileSync(d.paths.fleetConfig, JSON.stringify({ id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }));
+    fs.writeFileSync(d.paths.legacyConfig, '{}');
+    const said = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      await setMainAgentCli(d, 'codex');
+      expect(said.mock.calls.map(([l]) => String(l))).toEqual([expect.stringMatching(new RegExp(`^${d.paths.legacyConfig} moved to .*unread-\\d+ unread: .*\\n$`))]);
+    } finally {
+      said.mockRestore();
+    }
+    expect(saved()).toBe('codex');
+  });
+
   it('refuses a CLI that is not installed when no svalld answers', async () => {
     const { d, saved } = deps({ found: ['claude'] });
     await expect(setMainAgentCli(d, 'codex')).rejects.toThrow('codex is not on PATH; install Codex first');
