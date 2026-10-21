@@ -5,7 +5,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import type { HandoverEvent } from '../../src/handover.js';
 import { setAppStore } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { chr, fleet } from '../fixtures.js';
 
 const bridge = { present: true, send: () => {}, onMessage: () => () => {} };
 let store: AppStore;
@@ -47,6 +47,38 @@ test('a decision that opens the sheet, or arrives while it is up, puts the focus
   act(() => screen.getByTestId('handover-close').focus());
   act(() => store.getState().handoverEvent(blocked));
   expect(document.activeElement).toBe(screen.getByTestId('handover-go'));
+});
+
+test('a destination runs the checks alone and shows what moves and who stops before anything freezes; Move starts the handover', () => {
+  const send = vi.spyOn(bridge, 'send');
+  const agent = (status: 'idle' | 'working') => ({ kind: 'claude' as const, sessionId: 's', status, lastActivityAt: 0 });
+  store.getState().setFleet({ ...fleet(), characters: {
+    c1: chr('c1', 'i_b', { x: 1, y: 1 }, { name: 'ada', agent: agent('idle') }),
+    c2: chr('c2', 'i_b', { x: 2, y: 1 }, { name: 'bo', agent: agent('working') }),
+    c3: chr('c3', 'i_a', { x: 1, y: 1 }, { name: 'cy' }),
+  } });
+  store.setState({ handover: undefined });
+  render(<HandoverSheet />);
+  act(() => store.getState().toggleHandover(true));
+  fireEvent.click(screen.getByTestId('handover-to-gateway'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift', check: true });
+  act(() => {
+    store.getState().handoverEvent({ event: 'handover.preflight', data: { summary: { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 }, blockers: [], warnings: [] } });
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'ready' } });
+    store.getState().handoverExit(0);
+  });
+  expect(screen.getByTestId('handover-summary').textContent).toBe('2 folders, 120 files, 42.0 MB, 1 session');
+  expect(screen.getByTestId('handover-rest-resume').textContent).toBe('ada stops now and resumes from its transcript on trift.');
+  expect(screen.getByTestId('handover-rest-wait').textContent).toContain('bo is working: the handover waits up to three minutes');
+  expect(screen.getByTestId('handover-rest-shell').textContent).toContain('cy closes; the shell reopens in its folder on trift');
+  expect(screen.getByTestId('handover-section-rest').getAttribute('data-state')).toBe('pending');
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Nothing stops the move to trift, and nothing has moved yet.');
+
+  fireEvent.click(screen.getByTestId('handover-try-again'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift' });
+  // once the move has begun, the characters' own rows take the place of the plan
+  act(() => store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } }));
+  expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
 });
 
 test('a release blocker opens the machines panel on the Linux machine, in place of the sheet', () => {

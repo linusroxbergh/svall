@@ -530,6 +530,7 @@ describe('two controllers on one machine', () => {
     return {
       handover: {
         start: (to, choices) => run(() => c.start(to, choices)),
+        check: (to, choices) => run(() => c.check(to, choices)),
         resume: () => run(() => c.resume()),
         abort: () => run(() => c.abort()),
         status: () => run(() => c.status()),

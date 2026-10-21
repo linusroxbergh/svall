@@ -1,6 +1,6 @@
 import {
   HANDOVER_PHASES,
-  type Blocker, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type StopReason, type Verdict,
+  type Blocker, type Character, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type StopReason, type Verdict,
   type Warning,
 } from '@svall/protocol';
 import { machineName, withoutTokens } from './host.js';
@@ -117,6 +117,7 @@ function isOutcome(d: Fields): boolean {
     case 'aborted': return isPhase(d.phase);
     case 'interrupted': return isPhase(d.phase) && isString(d.error) && isSafe(d.safe) && optional(d.stop, isString) && optional(d.detail, isString);
     case 'detached': return isString(d.transactionId);
+    case 'ready': return true;
     default: return false;
   }
 }
@@ -305,7 +306,8 @@ export function sectionStates(run: HandoverRun): { id: SectionId; label: string;
   const here: SectionState = decisionPending(run) || r?.status === 'blocked' ? 'waiting' : live(run) ? 'active' : 'stopped';
   return SECTIONS.map((s, i) => ({
     id: s.id, label: s.label,
-    state: finished || i < at ? 'done' : i === at ? (r?.status === 'detached' ? 'active' : here) : 'pending',
+    // a check that found nothing in the way has done Checks, and begun nothing after it
+    state: finished || i < at || (i === at && r?.status === 'ready') ? 'done' : i === at ? (r?.status === 'detached' ? 'active' : here) : 'pending',
   }));
 }
 
@@ -359,7 +361,7 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
   const r = run.result;
   switch (r?.status) {
     case 'complete': return { ...none, resume: r.pending?.length ? 'Retry' : undefined, start: !r.pending?.length };
-    case 'blocked': return { ...none, tryAgain: !!run.to, start: true };
+    case 'blocked': case 'ready': return { ...none, tryAgain: !!run.to, start: true };
     case 'aborted': case 'none': return { ...none, start: true };
     case 'interrupted': return { ...none, resume: resume(r.safe), abort: r.safe.includes('abort'), follow: r.safe.length === 0 };
     case 'detached': return { ...none, follow: true };
@@ -383,6 +385,28 @@ export function holdsTerminals(run: HandoverRun | undefined): boolean {
   // a freeze that could not rest has given the fleet back while the user decides
   if (run.decision?.phase === 'freeze') return false;
   return !!run.phase && step(run.phase) >= step('freeze');
+}
+
+/** What the rest does with a character's main terminal, as handover.md's What restarts gives it. */
+export type RestHow = 'resume' | 'wait' | 'answer' | 'background' | 'shell' | 'dormant';
+export type RestGroup = { how: RestHow; names: string[] };
+
+const REST_ORDER: RestHow[] = ['resume', 'wait', 'answer', 'background', 'shell', 'dormant'];
+
+function restOf(c: Character): RestHow {
+  if (!c.tmux) return 'dormant';
+  const a = c.agent;
+  if (!a) return 'shell';
+  if (a.status === 'blocked') return 'answer';
+  if (a.status === 'working') return 'wait';
+  return a.background ? 'background' : 'resume';
+}
+
+/** Who stops for a handover and how, by name: the groups that have anyone in them, in the order the sheet lists them. */
+export function restPlan(characters: Record<string, Character>): RestGroup[] {
+  const by = new Map<RestHow, string[]>();
+  for (const c of Object.values(characters)) by.set(restOf(c), [...(by.get(restOf(c)) ?? []), c.name]);
+  return REST_ORDER.flatMap((how) => (by.has(how) ? [{ how, names: by.get(how)! }] : []));
 }
 
 export type Choice = 'interrupt' | 'terminate' | 'archive' | 'carry';
@@ -727,6 +751,7 @@ export function headline(run: HandoverRun, destination: string): string {
         ? `The fleet is ${destination}'s now, and it stopped while resuming: ${r.error}`
         : `Stopped at ${label(SECTIONS[sectionAt(r.phase === 'aborted' ? run.phase ?? 'begin' : r.phase)].id)}: ${r.error}`);
     case 'detached': return `The fleet is moving to ${destination} without this window watching.`;
+    case 'ready': return `Nothing stops the move to ${destination}, and nothing has moved yet.`;
     case 'none': return 'There was no handover of this fleet to resume or abort.';
   }
   if (run.error) return `The helper did not run: ${run.error}`;

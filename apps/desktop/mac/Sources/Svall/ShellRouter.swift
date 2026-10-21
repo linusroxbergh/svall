@@ -323,8 +323,8 @@ final class ShellRouter {
             startHost(op: op, args: args)
         case .hostCancel:
             hostRun?.cancel()
-        case .handoverStart(let to, let choices):
-            guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile) else {
+        case .handoverStart(let to, let choices, let check):
+            guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile, check: check ?? false) else {
                 return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices svall handover takes"))
             }
             followHandover { try $0.launch(argv) }

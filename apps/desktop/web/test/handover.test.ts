@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
   actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  blockerSide, goOn, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, restPlan, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
+import { chr } from './fixtures.js';
 
 const tx = 'tx-1';
 const summary = { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 };
@@ -287,6 +288,14 @@ describe('what the sheet offers', () => {
     expect(actionsOf(blocked)).toMatchObject({ tryAgain: true, cancel: false });
   });
 
+  it('ends a check that found nothing in the way at Checks, offering the move and saying nothing has moved', () => {
+    const ready = endFollow(play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } }, result({ status: 'ready' })]), 0);
+    expect(sectionStates(ready).map((s) => s.state)).toEqual(['done', 'pending', 'pending', 'pending', 'pending', 'pending']);
+    expect(actionsOf(ready)).toMatchObject({ tryAgain: true, start: true, cancel: false, abort: false });
+    expect(headline(ready, 'studio')).toBe('Nothing stops the move to studio, and nothing has moved yet.');
+    expect(holdsTerminals(ready)).toBe(false);
+  });
+
   it('never speaks of going back once the fleet has moved', () => {
     const rollback = /abort|roll ?back|undo|revert|cancel/i;
     const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, characters: [{ id: 'c1', ok: true }, { id: 'c2', ok: false, error: 'exited 1' }], pending: ['source'] })]);
@@ -295,6 +304,26 @@ describe('what the sheet offers', () => {
     const stuck = play([...through('activate'), result({ status: 'interrupted', transactionId: tx, phase: 'activate', error: 'studio did not answer', safe: ['resume'] })]);
     expect(headline(stuck, 'studio')).not.toMatch(rollback);
     expect(headline(play([...through('activate'), result({ status: 'detached', transactionId: tx })]), 'studio')).not.toMatch(rollback);
+  });
+});
+
+describe('who stops for a handover, and how', () => {
+  const agent = (status: 'working' | 'idle' | 'blocked' | 'done', extra: object = {}) => ({ kind: 'claude' as const, sessionId: 's', status, lastActivityAt: 0, ...extra });
+  it('groups the characters by what their main terminal does now, in the fleet\'s order', () => {
+    const characters = {
+      a: chr('a', 'i', { x: 0, y: 0 }, { name: 'ada', agent: agent('idle') }),
+      b: chr('b', 'i', { x: 0, y: 0 }, { name: 'bo', agent: agent('working') }),
+      c: chr('c', 'i', { x: 0, y: 0 }, { name: 'cy', agent: agent('blocked') }),
+      d: chr('d', 'i', { x: 0, y: 0 }, { name: 'di', agent: agent('done', { background: true }) }),
+      e: chr('e', 'i', { x: 0, y: 0 }, { name: 'ed' }),
+      f: chr('f', 'i', { x: 0, y: 0 }, { name: 'fi', tmux: undefined, agent: agent('idle') }),
+      g: chr('g', 'i', { x: 0, y: 0 }, { name: 'gu', agent: agent('done') }),
+    };
+    expect(restPlan(characters)).toEqual([
+      { how: 'resume', names: ['ada', 'gu'] }, { how: 'wait', names: ['bo'] }, { how: 'answer', names: ['cy'] },
+      { how: 'background', names: ['di'] }, { how: 'shell', names: ['ed'] }, { how: 'dormant', names: ['fi'] },
+    ]);
+    expect(restPlan({})).toEqual([]);
   });
 });
 
@@ -554,6 +583,7 @@ describe('the helper lines the sheet reads', () => {
       reads: ['data.phase', 'data.error', 'data.safe'],
     },
     { line: { event: 'handover.result', data: { status: 'detached', transactionId: tx } }, reads: ['data.transactionId'] },
+    { line: { event: 'handover.result', data: { status: 'ready' } }, reads: ['data.status'] },
     { line: { event: 'handover.status', data: { standing: 'open', phase: 'transfer', safe: ['resume'], reason: 'handover tx-1 is under way' } }, reads: ['data.standing', 'data.safe', 'data.reason'] },
   ];
   const without = (line: Record<string, unknown>, at: string): unknown => {

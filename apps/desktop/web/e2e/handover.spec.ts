@@ -146,16 +146,27 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   await page.getByTestId('handover-tab').click();
   // before anything starts, what a handover moves, with a gateway to move to
-  await expect(page.getByTestId('handover-intro')).toContainText('Nothing moves until the checks pass');
+  await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you choose Move');
   await expect(page.getByTestId('handover-no-gateway')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-local')).toBeDisabled();
   await page.getByTestId('handover-to-gateway').click();
-  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'studio' });
-
-  await say(page, { event: 'handover.preflight', data: { summary, blockers: [], warnings: [
+  // the checks run alone first, and the sheet shows what moves and who stops before anything is rested
+  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'studio', check: true });
+  const checks: HandoverEvent = { event: 'handover.preflight', data: { summary, blockers: [], warnings: [
     { code: 'config_difference', message: 'claude 2.0.1 runs on mac and 2.0.3 on studio' },
     { code: 'codex_trust', message: 'Codex asks whether to trust its folder the first time bo resumes on studio', entity: { kind: 'character', id: b.id } },
-  ], names: { characters: { [a.id]: 'ada', [b.id]: 'bo' }, roots: { r_0a1b: '/home/ada/app' }, sessions: { s0: 'bo' } } } });
+  ], names: { characters: { [a.id]: 'ada', [b.id]: 'bo' }, roots: { r_0a1b: '/home/ada/app' }, sessions: { s0: 'bo' } } } };
+  await say(page, checks, { event: 'handover.result', data: { status: 'ready' } });
+  await receive(page, { type: 'handover.exit', code: 0 });
+  await expect(page.getByTestId('handover-summary')).toContainText('1 folder, 120 files, 40.0 MB, 1 session');
+  await expect(page.getByTestId('handover-rest-shell')).toContainText('close; each shell reopens in its folder on studio');
+  await expect(page.getByTestId('handover-rest-shell')).toContainText('ada');
+  await expect(page.getByTestId('handover-section-rest')).toHaveAttribute('data-state', 'pending');
+  expect((await sent(page)).some((m) => m.type === 'term.close')).toBe(false);
+  await page.getByTestId('handover-try-again').click();
+  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'studio' });
+
+  await say(page, checks);
   await expect(page.getByTestId('handover-summary')).toContainText('1 folder, 120 files, 40.0 MB, 1 session');
   await expect(page.getByTestId('handover-intro')).toHaveCount(0);
   await expect(page.getByTestId('handover-warning-config_difference')).toBeVisible();
@@ -413,7 +424,7 @@ test('preflight blockers name what they are about, and a new start carries the c
   await page.getByTestId('handover-tab').click();
   await expect(page.getByTestId('handover-to-gateway')).toBeDisabled();
   await page.getByTestId('handover-to-local').click();
-  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local' });
+  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', check: true });
 
   await say(page, { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
     { code: 'character_pinned', message: 'ada is kept on this machine', entity: { kind: 'character', id: a.id } },

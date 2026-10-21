@@ -13,9 +13,11 @@ an agent your fleet runs that is missing or not logged in there does.
 ## From the app
 
 Choose **Handover** at the foot of the sidebar, then the machine to move the fleet to: the gateway's name, or **This
-Mac** to bring it back. The sheet follows six steps:
+Mac** to bring it back. That runs the checks alone: the sheet lists the folders, files and size that would be
+carried, which characters stop and how each comes back, anything that blocks, and warnings. Nothing is touched until
+you choose **Move**, which runs the checks once more and goes on through six steps:
 
-1. **Checks.** Nothing is touched yet. The sheet lists what would be carried, anything that blocks, and warnings.
+1. **Checks.** Nothing is touched yet. A blocker found here stops the move before anything rests.
 2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
    terminal is brought to rest, and its window closed. The Load tab still reads; its Sleep and Delete are refused.
 3. **Transferring files and sessions.** Each folder and agent session is copied, with progress.
@@ -54,6 +56,7 @@ card and your pane layout, which belong to this Mac. The machine's name shows at
 ```sh
 svall handover studio                         # move this fleet to studio
 svall handover local                          # bring it back to this Mac
+svall handover studio --check                 # run the checks alone; nothing is rested or moved
 svall handover status                         # where a handover stands, and what is safe; changes nothing
 svall handover --resume                       # go on with an open handover
 svall handover --abort                        # take the fleet back, before the commit only

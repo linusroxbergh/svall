@@ -4,9 +4,9 @@ import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
   accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
-  entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, staysInSight,
+  entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, restPlan, resumeTally, rowText, sectionStates, staysInSight,
   svallFor, transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
-  type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
+  type HandoverRun, type HintContext, type RestHow, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
 
@@ -14,10 +14,11 @@ const MARK: Record<SectionState, string> = { pending: '·', active: '›', waiti
 
 const store = () => app.store.getState();
 
-function start(to: string, choices: HandoverChoices = {}): void {
+// `check`: the checks alone, which the sheet shows before anything is rested
+function start(to: string, choices: HandoverChoices = {}, check = false): void {
   store().handoverFollow(to, choices);
   const picked = Object.keys(choices).length > 0;
-  app.bridge.send({ type: 'handover.start', to, ...(picked && { choices }) });
+  app.bridge.send({ type: 'handover.start', to, ...(picked && { choices }), ...(check && { check }) });
 }
 
 // a resume or an abort starts a helper of its own, which the shell then follows as it did the first
@@ -138,6 +139,27 @@ function EntityRow({ row, ctx, run }: { row: Row; ctx: HintContext; run: Handove
   );
 }
 
+const REST_TEXT: Record<RestHow, (one: boolean, to: string) => string> = {
+  resume: (one, to) => (one ? `stops now and resumes from its transcript on ${to}.` : `stop now and resume from their transcripts on ${to}.`),
+  wait: (one) => `${one ? 'is' : 'are'} working: the handover waits up to three minutes for ${one ? 'its turn' : 'each turn'} to end, then asks you.`,
+  answer: (one) => `${one ? 'waits on an answer' : 'wait on answers'}: answer first, or interrupt when the handover asks.`,
+  background: (one) => `left ${one ? 'a command' : 'commands'} running in the background: the handover waits for ${one ? 'it' : 'them'} to end, or you terminate ${one ? 'it' : 'them'}.`,
+  shell: (one, to) => (one ? `closes; the shell reopens in its folder on ${to}, and a command still running there does not move.`
+    : `close; each shell reopens in its folder on ${to}, and a command still running there does not move.`),
+  dormant: (one) => (one ? 'is dormant and stays so.' : 'are dormant and stay so.'),
+};
+
+/** Before anything is rested: who stops for the move, and how each comes back on the other machine. */
+function RestPlan({ ctx }: { ctx: HintContext }) {
+  const characters = useApp((s) => s.fleet.characters);
+  return restPlan(characters).map(({ how, names }) => (
+    <div key={how} className="host-step" data-testid={`handover-rest-${how}`}>
+      <span className="host-mark" />
+      <span className="host-said">{names.join(', ')} {REST_TEXT[how](names.length === 1, ctx.destination)}</span>
+    </div>
+  ));
+}
+
 /** Every folder and session as one bar, with each row behind it. */
 function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run: HandoverRun; done: boolean }) {
   const t = transferTotals(rows);
@@ -191,6 +213,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
           </span>
         </div>
       )}
+      {pre && !run.phase && <RestPlan ctx={ctx} />}
       {blockers.map((b, i) => <BlockerRow key={`b${i}`} b={b} ctx={ctx} run={run} blockers={blockers} />)}
       {pre?.warnings.filter(staysInSight).map((w, i) => <BlockerRow key={`s${i}`} b={w} ctx={ctx} run={run} warning />)}
       {notes.length > 0 && (
@@ -249,10 +272,10 @@ function Destinations({ owner, gateway }: { owner: string; gateway?: string }) {
       Move this fleet to
       <div className="acts">
         <button className="btn" data-testid="handover-to-local" disabled={owner === 'local'}
-          title={owner === 'local' ? 'The fleet runs on this Mac' : 'Bring the fleet back to this Mac'} onClick={() => start('local')}>This Mac</button>
+          title={owner === 'local' ? 'The fleet runs on this Mac' : 'Bring the fleet back to this Mac'} onClick={() => start('local', {}, true)}>This Mac</button>
         {gateway && (
           <button className="btn" data-testid="handover-to-gateway" disabled={owner === gateway}
-            title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => start(gateway)}>{gateway}</button>
+            title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => start(gateway, {}, true)}>{gateway}</button>
         )}
       </div>
       {!gateway && (
@@ -287,6 +310,7 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
     const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet first` : ''].filter(Boolean);
     return { tone: 'stop', sub: parts.length ? `${parts.join('; ')}. Move to ${ctx.destination} runs the checks again.` : `Everything is settled: Move to ${ctx.destination} runs the checks again and goes on.` };
   }
+  if (r?.status === 'ready') return { tone: 'ok', sub: `Move to ${ctx.destination} runs the checks once more, then rests the characters above; until the commit, Abort gives the fleet back.` };
   const a = actionsOf(run);
   if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped${a.abort ? `; Abort gives the fleet back to ${ctx.source}` : ''}.` };
   if (a.resume === 'Retry') return { tone: 'stop', sub: `Retry finishes resuming on ${ctx.destination}; nothing goes back from here.` };
@@ -408,7 +432,7 @@ export function HandoverSheet() {
             <div className="host-note" data-testid="handover-intro">
               A handover moves the whole fleet: its islands, characters, repositories and agent sessions. Agents resume from
               their transcripts and shells reopen in their folders on the other machine; a command still running does not
-              move. Nothing moves until the checks pass.
+              move. Choosing a machine runs the checks alone, and nothing moves until you choose Move.
             </div>
           )}
           {shown && (

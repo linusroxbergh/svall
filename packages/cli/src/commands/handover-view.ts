@@ -245,6 +245,10 @@ export class View {
         return [`Stopped ${o.phase === 'begin' ? 'before it began' : `while ${HEADINGS[o.phase].toLowerCase()}`}: ${o.error}`, ...(o.detail ? [`  ${o.detail}`] : []), next(o.safe)];
       case 'detached':
         return [`Stopped watching. The fleet is committed and the move goes on; \`${svall('handover status')}\` says where it stands.`];
+      case 'ready': {
+        const to = this.about.destination;
+        return [to ? `Nothing stops a handover to ${to}; \`${svall(`handover ${to}`)}\` moves the fleet.` : 'Nothing stops the handover.'];
+      }
     }
   }
 

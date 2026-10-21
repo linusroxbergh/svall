@@ -39,7 +39,7 @@ enum ToShell: Decodable {
     case updateInstall
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
-    case handoverStart(to: String, choices: HandoverChoices?)
+    case handoverStart(to: String, choices: HandoverChoices?, check: Bool?)
     case handoverResume
     case handoverAbort
     case handoverAttach
@@ -57,7 +57,7 @@ enum ToShell: Decodable {
     case connectionRetry
     case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, reason, battery }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -94,7 +94,7 @@ enum ToShell: Decodable {
         case "update.install": self = .updateInstall
         case "host.start": self = .hostStart(op: try c.decode(HostOp.self, forKey: .op), args: try c.decode(HostArgs.self, forKey: .args))
         case "host.cancel": self = .hostCancel
-        case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices))
+        case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices), check: try c.decodeIfPresent(Bool.self, forKey: .check))
         case "handover.resume": self = .handoverResume
         case "handover.abort": self = .handoverAbort
         case "handover.attach": self = .handoverAttach

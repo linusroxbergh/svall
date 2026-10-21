@@ -34,10 +34,10 @@ enum HandoverCommand {
         profile.map { ["-p", $0] } ?? []
     }
 
-    /// `to` is `local` or the fleet's gateway by its registry name; nothing else is a destination.
-    static func start(to: String, choices: HandoverChoices?, gateway: String?, profile: String?) -> [String]? {
+    /// `to` is `local` or the fleet's gateway by its registry name; nothing else is a destination. `check` runs the checks alone.
+    static func start(to: String, choices: HandoverChoices?, gateway: String?, profile: String?, check: Bool = false) -> [String]? {
         guard to == "local" || to == gateway, to.allowed(by: machineNamePattern) else { return nil }
-        var flags: [String] = []
+        var flags: [String] = check ? ["--check"] : []
         if let ms = choices?.interruptAfterMs {
             guard ms >= 0 else { return nil }
             flags += ["--interrupt-after", "\(ms)ms"]

@@ -39,7 +39,8 @@ It must never automatically revive both sides.
 ## User story
 
 Five islands, twelve characters and four agents are active on the Mac. The user presses
-`Handover`, chooses the Linux machine `trift`, and sees a preflight report. Two agents finish their
+`Handover`, chooses the Linux machine `trift`, and sees a preflight report: what would move, and which
+characters stop and how. Nothing freezes until they choose Move. Two agents finish their
 turns. One is interrupted after the user chooses **Interrupt and carry**. A shell running a build
 blocks the move until the build finishes.
 
@@ -798,6 +799,7 @@ svall host remove <name>
 svall host enable <name> --fleet <fleet>
 
 svall handover <host|local>
+svall handover <host|local> --check
 svall handover status
 svall handover --resume
 svall handover --abort

@@ -71,8 +71,8 @@ export type ToShell =
   | { type: 'host.start'; op: HostOp; args: HostArgs }
   | { type: 'host.cancel' }
   // the shell starts, resumes or aborts a handover as a detached helper, then follows it with `handover attach`,
-  // whose stdin carries the user's answers; `to` is `local` or the gateway's name
-  | { type: 'handover.start'; to: string; choices?: HandoverChoices }
+  // whose stdin carries the user's answers; `to` is `local` or the gateway's name, and `check` runs the checks alone
+  | { type: 'handover.start'; to: string; choices?: HandoverChoices; check?: boolean }
   | { type: 'handover.resume' }
   | { type: 'handover.abort' }
   // follows a live helper, or reads back the last run and the status when none is live

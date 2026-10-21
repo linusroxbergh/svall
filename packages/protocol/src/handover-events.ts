@@ -21,7 +21,7 @@ export type StopReason = 'commit_unknown' | 'gateway_unknown' | 'journal_lost' |
  * `blocked` and `aborted`: nothing committed and the fleet is the source's again. `interrupted`: it stopped part
  * way, and `safe` says what may follow, `stop` why nothing may when nothing does, and `detail` what the journals said
  * where `error` says it plainly. `detached`: cancelled after the commit, so the move goes on unwatched.
- * `none`: there was no handover to resume or abort.
+ * `none`: there was no handover to resume or abort. `ready`: a check found nothing that stops a handover, and began nothing.
  */
 export type Outcome =
   | { status: 'complete'; transactionId: string; generation: number; characters: CharacterResult[]; pending?: ('source' | 'gateway')[]; error?: string }
@@ -29,7 +29,8 @@ export type Outcome =
   | { status: 'blocked'; transactionId?: string; phase: HandoverPhase; blockers: Blocker[] }
   | { status: 'aborted'; transactionId?: string; phase: HandoverPhase }
   | { status: 'interrupted'; transactionId?: string; phase: HandoverPhase; error: string; safe: SafeAction[]; stop?: StopReason; detail?: string }
-  | { status: 'detached'; transactionId: string };
+  | { status: 'detached'; transactionId: string }
+  | { status: 'ready' };
 
 /**
  * Where a handover stands by the gateway's word. `open`: nothing has committed. `committed`: the fleet is the

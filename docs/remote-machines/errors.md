@@ -179,7 +179,7 @@ What the gateway's ownership authority answers. They appear in handover messages
 ## How a run ends
 
 The `handover.result` line, and what `svall handover` prints last. The command exits 0 when it did what it was asked
-(a start or `--resume` that completed, an `--abort` that aborted) and 1 otherwise. `--detach` exits 0 once the helper
+(a start or `--resume` that completed, an `--abort` that aborted, a `--check` that found nothing in the way) and 1 otherwise. `--detach` exits 0 once the helper
 listens, or as the run did if it ended first. `attach` exits 0 once the run it follows ends, whatever its result.
 `status` exits 0 whenever it could say where the handover stands, `unknown` included. `--forget` exits 0 only when it
 dropped the journal.
@@ -192,6 +192,7 @@ dropped the journal.
 | `aborted` | Nothing committed, and the fleet runs on the source again with the terminals the handover stopped reopened. | Start again when ready. |
 | `interrupted` | The run stopped part way. `safe` lists what may follow: `resume`, `abort` or both; when it lists neither, `stop` says why (below). Where `error` says it plainly, `detail` keeps what the journals said. | Do what `safe` says, or what the `stop` row says. |
 | `detached` | You cancelled after the commit: the move goes on without anyone watching. | `svall handover attach` follows it; `svall handover status` says where it stands. |
+| `ready` | A `--check` found nothing that stops a handover, and began nothing. | `svall handover <machine>` moves the fleet; in the app, Move. |
 
 ## Why nothing is safe
 

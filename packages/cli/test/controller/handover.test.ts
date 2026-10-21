@@ -241,6 +241,22 @@ describe('preflight', () => {
     expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
   });
 
+  it('checks alone: reports the manifest and what stops a handover, then ends ready or blocked with nothing begun or rested', async () => {
+    const clear = new World();
+    const out = await controller(clear).check(trift, {});
+    expect(out).toEqual({ status: 'ready' });
+    expect(clear.events.map((e) => e.event)).toEqual(['handover.preflight', 'handover.result']);
+    expect(clear.events[0]).toMatchObject({ data: { blockers: [], summary: { roots: 2 } } });
+    expect(clear.ops.filter((op) => !/^(gateway:get|mac:|trift:)(system\.info|ownership\.get|handover\.(preflight|inspect|status)|get)?/.test(op))).toEqual([]);
+    expect(clear.store.j).toBeUndefined();
+    expect(clear.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+
+    const busy = new World();
+    busy.source.preflightBlockers = [{ code: 'shell_busy', message: 'ada\'s terminal is running npm run dev', entity: { kind: 'character', id: 'c_ada' } }];
+    expect(await controller(busy).check(trift, {})).toEqual({ status: 'blocked', phase: 'begin', blockers: busy.source.preflightBlockers });
+    expect(busy.ops).not.toContain('gateway:begin');
+  });
+
   it('adds the destination\'s roots and room, the destination\'s git, and what differs between the machines', async () => {
     const w = new World();
     w.destination.diverged.add('r_git');
