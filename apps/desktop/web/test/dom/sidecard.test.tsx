@@ -15,7 +15,7 @@ Element.prototype.hasPointerCapture ??= function () { return true; };
 let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
-  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'char.prompts' ? { prompts: [] } : {});
+  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'char.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {});
 });
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -63,6 +63,12 @@ test('a draft in one character\'s instructions never shows or saves on the next 
   expect(field('side-instructions').value).toBe('');
   fireEvent.blur(field('side-instructions'));
   expect(updates()).not.toContainEqual(['char.update', { id: 'c1', instructions: 'run the tests first' }]);
+});
+
+test('walking the sidebar across characters reads the docs listing once', async () => {
+  render(<Side />);
+  for (const id of ['c1', 'c2', 'c0', 'c1']) await act(async () => store.getState().select(id, true));
+  expect(calls().filter(([m]) => m === 'resources.get')).toHaveLength(1);
 });
 
 test('the star beside the name stars the character, and unstars it once starred', () => {
