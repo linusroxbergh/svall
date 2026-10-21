@@ -62,13 +62,13 @@ svall host add studio --ssh ada@studio
 
 Both run the same steps and show each as it finishes:
 
-1. **Connection.** One interactive ssh, so you can accept the host key and log in, then one control connection for the
-   rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
+1. **Reaching the machine.** One interactive ssh, so you can accept the host key and log in, then one control
+   connection for the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
 2. **What the machine needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
    Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering.
-3. **Svall on the machine.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
-   pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
-4. **Services.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
+3. **Svall on the machine.** The Linux release matching this Mac's own release, checked against the digest this
+   Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
+4. **Running Svall there.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
    Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's own

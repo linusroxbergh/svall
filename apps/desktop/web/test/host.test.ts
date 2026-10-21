@@ -155,7 +155,7 @@ describe('the attended checklist', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tmux', 'ok'), step('release', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Connection', ['ssh', 'master']],
+      ['Reaching the machine', ['ssh', 'master']],
       ['What the machine needs', ['tmux']],
       ['Svall on the machine', ['release']],
       ['Agent logins', ['claude', 'codex', 'opencode']],
@@ -165,7 +165,13 @@ describe('the attended checklist', () => {
 
   it('opens a phase again when a later step comes back to it', () => {
     expect(groupSteps([step('ssh', 'ok'), step('tmux', 'ok'), step('master', 'ok')]).map((g) => g.label))
-      .toEqual(['Connection', 'What the machine needs', 'Connection']);
+      .toEqual(['Reaching the machine', 'What the machine needs', 'Reaching the machine']);
+  });
+
+  it('calls no phase by the name of a step in it', () => {
+    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
+      'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'probe', 'rollback', 'registry'];
+    for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
@@ -183,7 +189,7 @@ describe('the attended checklist', () => {
     const steps = [step('machine', 'ok'), step('master', 'ok'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok'),
                    step('probe', 'warn'), step('rollback', 'warn')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Connection', ['machine', 'master']],
+      ['Reaching the machine', ['machine', 'master']],
       ['Svall on the machine', ['release', 'upload', 'install']],
       ['Trying it out', ['probe', 'rollback']],
     ]);
