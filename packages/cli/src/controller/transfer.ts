@@ -330,7 +330,7 @@ class Mirror {
       state: 'transferring', pass, done: 0, total: 0, bytes: 0, items: 0,
       exitCode: undefined, signal: undefined, error: undefined, verifiedKey: undefined, verifiedScan: undefined,
     });
-    // the first pass writes over what the claim just proved; a later one over a copy that may have changed since, so it
+    // the first pass writes over what the claim proved there; a later one over a copy that may have changed since, so it
     // keeps aside what it replaces or deletes. rsync's quick check misses an edit of the same size within the same second;
     // a later pass compares content
     const into = `${this.runStamp}-pass${pass}`;
