@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shq } from '@svall/svalld/text';
 import { redact, runProcess } from '../../src/controller/process.js';
-import { classifyExit, classifySsh, SshError, SshMaster } from '../../src/controller/ssh.js';
+import { classifyExit, classifySsh, SshError, SshMaster, sweepMasters } from '../../src/controller/ssh.js';
 import { waitFor } from '../../../svalld/test/helpers.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 
@@ -119,7 +119,7 @@ describe('SshMaster', () => {
     ]]);
     expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'check', '--', 'svall-remote.invalid']);
     expect(path.dirname(master.socket)).toBe(ssh.socketDir);
-    expect(path.basename(master.socket)).toMatch(/^[0-9a-f]{12}$/);
+    expect(path.basename(master.socket)).toMatch(new RegExp(`^${process.pid}-[0-9a-f]{12}$`));
     expect(fs.statSync(ssh.socketDir).mode & 0o777).toBe(0o700);
     await master.close();
   });
@@ -310,5 +310,45 @@ describe('SshMaster', () => {
     } finally {
       process.env.PATH = fake;
     }
+  });
+});
+
+describe('sweepMasters', () => {
+  let ssh: FakeSsh;
+
+  beforeEach(() => { ssh = installFakeSsh(); });
+  afterEach(() => ssh.clean());
+
+  it('ends the master of a process that is gone and removes its socket, and leaves every other socket alone', async () => {
+    const gone = spawn('true');
+    await new Promise((resolve) => { gone.on('close', resolve); });
+    const running = spawn('sleep', ['30']);
+    // the detached ssh -M the process that is gone left running
+    const orphan = spawn('sleep', ['30']);
+    const named = (pid: number | undefined): string => `${pid}-0123456789ab`;
+    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
+    // pid 1 is another user's, which a signal check is refused for
+    const kept = [named(running.pid), named(process.pid), named(1), 'handover-0123456789abcdef.sock', '0123456789ab'];
+    for (const name of [named(gone.pid), ...kept]) fs.writeFileSync(path.join(ssh.socketDir, name), '');
+    fs.writeFileSync(path.join(ssh.dir, 'state', `${named(gone.pid)}.master`), String(orphan.pid));
+
+    await sweepMasters(ssh.socketDir);
+
+    expect(ssh.calls()).toEqual([['-S', path.join(ssh.socketDir, named(gone.pid)), '-o', 'BatchMode=yes', '-O', 'exit', '--', 'svall-remote.invalid']]);
+    expect(fs.readdirSync(ssh.socketDir).sort()).toEqual(kept.sort());
+    await waitFor(() => !alive(orphan.pid as number));
+    running.kill();
+  });
+
+  it('leaves a socket directory another user could reach alone, and never throws', async () => {
+    const gone = spawn('true');
+    await new Promise((resolve) => { gone.on('close', resolve); });
+    fs.mkdirSync(ssh.socketDir, { mode: 0o755 });
+    fs.chmodSync(ssh.socketDir, 0o755);
+    const planted = path.join(ssh.socketDir, `${gone.pid}-0123456789ab`);
+    fs.writeFileSync(planted, '');
+    await expect(sweepMasters(ssh.socketDir)).resolves.toBeUndefined();
+    expect(ssh.calls()).toEqual([]);
+    expect(fs.existsSync(planted)).toBe(true);
   });
 });

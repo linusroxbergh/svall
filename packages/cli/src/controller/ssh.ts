@@ -80,9 +80,44 @@ export function ownSocketDir(dir: string): string {
 }
 
 // a control socket path has to stay under the Unix socket limit, so the destination is hashed short.
-// The pid keeps each process on a master of its own: one process letting go never ends another's
+// The pid in front keeps each process on a master of its own, and names whose master it is once that process is gone
 const socketFor = (dir: string, destination: string): string =>
-  path.join(dir, crypto.createHash('sha256').update(`${process.pid}\0${destination}`).digest('hex').slice(0, 12));
+  path.join(dir, `${process.pid}-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
+const SOCKET_NAME = /^(\d+)-[0-9a-f]{12}$/;
+
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // another user's process refuses the signal, and runs all the same
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * Ends the master on every socket in `dir` whose process is gone, and removes the socket: a process killed where no
+ * handler ran leaves its detached `ssh -M` running. A running process's sockets, and names it cannot read, are left alone.
+ */
+export async function sweepMasters(dir: string = defaultSocketDir()): Promise<void> {
+  let names: string[];
+  try {
+    names = fs.readdirSync(ownSocketDir(dir));
+  } catch {
+    return;
+  }
+  await Promise.all(names.map(async (name) => {
+    const pid = Number(SOCKET_NAME.exec(name)?.[1]);
+    if (!pid || pid === process.pid || running(pid)) return;
+    const socket = path.join(dir, name);
+    try {
+      await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
+      fs.rmSync(socket, { force: true });
+    } catch {
+      // a socket ssh could not be run for is left to the next sweep
+    }
+  }));
+}
 
 /** One master per socket path, so two callers in this process reaching the same destination share the connection. */
 const masters = new Map<string, Promise<SshMaster>>();

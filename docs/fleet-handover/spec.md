@@ -246,9 +246,11 @@ ssh -M -S <short-control-socket> -N \
   -L 127.0.0.1:<local-port>:127.0.0.1:<remote-port> <ssh-destination>
 ```
 
-The app and CLI then connect to `ws://127.0.0.1:<local-port>`. The control socket is a hash under a
-mode-0700 directory in `$TMPDIR`, keeping it below the Unix socket path limit. Commands are spawned
-with argv arrays, never interpolated through a shell.
+The app and CLI then connect to `ws://127.0.0.1:<local-port>`. The control socket is the owning
+process's pid and a hash of the destination under a mode-0700 directory in `$TMPDIR`, keeping it
+below the Unix socket path limit. The connection helper, as it starts, ends the master on every
+socket there whose process is gone and removes the socket. Commands are spawned with argv arrays,
+never interpolated through a shell.
 
 `term.attach` continues to return only `{ socket, session }`. The Mac native layer already knows
 whether the active connection is remote and builds either:
