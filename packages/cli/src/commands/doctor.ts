@@ -16,6 +16,7 @@ import { gatewayPrefix } from '@svall/svalld/gateway/bin';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
 import { agentHomesEnv, svalldUnitName, GATEWAY_UNIT, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
+import { configDir, copiedRemedy, hardwareId } from '@svall/svalld/machine';
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
@@ -61,6 +62,8 @@ export type DoctorDeps = PreflightDeps & {
   user: string;
   // the rsync this Mac hands over with, and how to get it back when it is missing
   rsync: { bundled: string; fix: string };
+  // machine.json, and the hardware id of the machine doctor runs on
+  machine: { file: string; hardwareId?: string };
 };
 const LOG_LINES = 20;
 const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
@@ -96,6 +99,17 @@ function config(t: Target, d: DoctorDeps): Check {
   } catch (e) {
     return { name: 'config', status: 'fail', detail: `${(e as Error).message}; a stopped svalld waits for it to be fixed` };
   }
+}
+
+// a machine.json copied from another machine gives this one that machine's id, so svalld runs a fleet a gateway holds read-only here
+function machine(d: DoctorDeps): Check {
+  const { file, hardwareId: actual } = d.machine;
+  let stored: string | undefined;
+  try { stored = (JSON.parse(d.read(file) ?? '{}') as { hardwareId?: string }).hardwareId; } catch { /* svalld names a file it cannot read */ }
+  if (!stored || !actual) return { name: 'machine id', status: 'skip', detail: `no hardware id to compare ${file} with` };
+  return stored === actual
+    ? { name: 'machine id', status: 'ok', detail: `${file} was made on this machine` }
+    : { name: 'machine id', status: 'warn', detail: `${file} was made on hardware ${stored}, and this machine is ${actual}: ${copiedRemedy(file)}` };
 }
 
 // the process listening on the port, on `host` alone when given, as lsof names it
@@ -371,6 +385,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     ...await preflight(d),
     await gh(d),
     config(t, d),
+    machine(d),
     await svalld(t, d),
     await hookReceiver(t, d),
     ...(linux
@@ -457,6 +472,7 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
         bundled: bundledRsync(),
         fix: isRelease() ? 'reinstall Svall; its release carries one in bin/' : 'build it with node scripts/build-controller.mjs',
       },
+      machine: { file: path.join(configDir(), 'machine.json'), hardwareId: hardwareId() },
     }) };
     printResult(report, json(), () => reportLines(report, useColor()).join('\n'));
     if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;

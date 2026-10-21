@@ -145,7 +145,7 @@ What a machine's daemon answers when it will not do a call. A run shows them in 
 
 | Code | What it means | What to do |
 | --- | --- | --- |
-| `not_owner` | This machine does not own the fleet; it keeps a read-only copy. | `svall` sends commands to the owner by itself (`--host` picks a machine). If this machine should own it, `svall handover status`. |
+| `not_owner` | This machine does not own the fleet; it keeps a read-only copy. A machine whose `~/.config/svall/machine.json` was made on other hardware, as a backup restore, Migration Assistant or a dotfile sync copies it, shares that machine's id: while a gateway holds the fleet its daemon starts read-only, asks the gateway nothing, and answers this to every change, handover and recovery, with a message naming the file. | `svall` sends commands to the owner by itself (`--host` picks a machine). If this machine should own it, `svall handover status`. A message naming `machine.json`: move that file aside and restart svalld, so this machine mints its own id, then `svall host add` it again from the controller. |
 | `frozen` | The fleet is frozen for a handover, so nothing may change it. | Wait for the handover, or `svall handover status` and then `--resume` or `--abort`. |
 | `handover_committed` | A handover has committed the fleet to another machine, and this machine stays fenced with a read-only copy. A machine a handover moved the fleet away from answers this rather than `not_owner`. | As for `not_owner`. While that handover is still open, `svall handover --resume` finishes it on the destination. |
 | `not_ready` | The step is not ready: the gateway still holds the handover open, the copy of a folder is not verified, or a freeze was asked again with other choices. | Usually passes on its own. Otherwise `svall handover status`. |
@@ -345,6 +345,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `shims` | both | The `svall` in `~/.local/bin` runs this build. |
 | `gh` | both | The GitHub CLI is logged in, for pull request links. |
 | `config` | both | `fleet.json` and `node.json` parse, and no `config.json.bak` is in the way of a split. It warns of a `config.json` beside `fleet.json`, which the daemon moves aside unread as it starts. |
+| `machine id` | both | `~/.config/svall/machine.json` was made on this machine's hardware (the Mac's IOPlatformUUID, Linux's `/etc/machine-id`). It warns of one copied from another machine, which gives this one that machine's id. |
 | `svalld` | both | The fleet's daemon runs and answers. |
 | `hook receiver` | both | The daemon's hook socket answers. |
 | `hooks` | both | Claude Code's settings hold Svall's hooks. |

@@ -111,6 +111,12 @@ FleetId   = UUID
 Names such as `trift` and `local` are presentation and routing aliases. Ownership records contain
 only ids. Renaming a host cannot change ownership.
 
+`machine.json` also records the hardware it was made on: the Mac's IOPlatformUUID, or Linux's
+`/etc/machine-id`. A copy on other hardware, as a backup restore or Migration Assistant makes, shares
+another machine's id. Its daemon then runs no fleet a gateway holds: it starts read-only, asks the
+gateway nothing and refuses every handover and recovery call until the file is moved aside and a new
+id minted. While no fleet on the machine names a gateway, the daemon binds the file to its hardware.
+
 The controller's machine registry lives at `~/.config/svall/machines.json` and contains no
 fleet API tokens:
 

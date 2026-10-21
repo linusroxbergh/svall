@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hookCommand, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/agent-hooks';
 import { codexHookCommand } from '@svall/svalld/codex/install';
+import { copiedRemedy } from '@svall/svalld/machine';
 import { svalldUnit, unitEnv } from '@svall/svalld/linux/setup';
 import { LAUNCHD_LABEL } from '@svall/svalld/profile';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
@@ -45,6 +46,7 @@ function fake(o: {
   platform?: NodeJS.Platform;
   agentPath?: string;
   handover?: boolean;
+  hardwareId?: string;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -65,6 +67,7 @@ function fake(o: {
     '/opt/homebrew/opt/node/bin/node': '',
     ...Object.fromEntries(DAEMON.map((p) => [p, ''])),
     '/u/.svall/svalld.log': Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n') + '\n',
+    [MACHINE]: JSON.stringify({ id: '9b4d0c1e-2f3a-4b5c-8d6e-7f8091a2b3c4', hardwareId: 'HW-1' }),
     ...o.files,
   };
   const files: Record<string, string> = Object.fromEntries(Object.entries(mergedFiles).filter(([, v]) => v !== undefined) as [string, string][]);
@@ -104,11 +107,13 @@ function fake(o: {
     handover: o.handover ?? true,
     user: 'linus',
     rsync: { bundled: RSYNC, fix: 'build it with node scripts/build-controller.mjs' },
+    machine: { file: MACHINE, hardwareId: o.hardwareId ?? 'HW-1' },
   };
   return { deps, calls, envs };
 }
 
 const CODEX = { dir: '/u/.codex', config: '/u/.codex/config.toml', hooks: '/u/.codex/hooks.json' };
+const MACHINE = '/u/.config/svall/machine.json';
 const RSYNC = '/u/svall/vendor/rsync/3.4.4-arm64/rsync';
 const OPENCODE = { dir: '/u/.config/opencode', plugin: '/u/.config/opencode/plugins/svall.js', data: '/u/.local/share/opencode' };
 const PLUGIN_SOURCE = path.resolve(import.meta.dirname, '../../svalld/hooks/opencode-plugin.js');
@@ -136,6 +141,17 @@ describe('doctor', () => {
     expect(grouped(r.checks).flatMap((g) => g.checks)).toHaveLength(r.checks.length);
     expect(r.config).toEqual({ fleet: '/u/.svall/fleet.json', node: '/u/.svall/node.json' });
     expect(reportLines(r)).toContain('config /u/.svall/fleet.json and /u/.svall/node.json');
+  });
+
+  it('warns of a machine.json made on other hardware, with how this machine gets an id of its own', async () => {
+    expect(byName(await doctor(priv, fake().deps))['machine id']).toEqual({ name: 'machine id', status: 'ok', detail: `${MACHINE} was made on this machine` });
+    expect(byName(await doctor(priv, fake({ hardwareId: 'HW-2' }).deps))['machine id']).toEqual({
+      name: 'machine id', status: 'warn', detail: `${MACHINE} was made on hardware HW-1, and this machine is HW-2: ${copiedRemedy(MACHINE)}`,
+    });
+    // a file svalld has not bound to its hardware yet, or not made yet, has nothing to compare
+    for (const text of ['{"id":"9b4d0c1e-2f3a-4b5c-8d6e-7f8091a2b3c4"}', undefined]) {
+      expect(byName(await doctor(priv, fake({ files: { [MACHINE]: text } }).deps))['machine id']).toMatchObject({ status: 'skip' });
+    }
   });
 
   it('warns about shims setup would write differently now, and a plist that is missing or runs another build', async () => {
