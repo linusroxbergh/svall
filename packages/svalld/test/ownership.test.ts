@@ -482,6 +482,26 @@ runIf('a daemon starting with a gateway', () => {
     }
   });
 
+  it('lets the fleet go while it runs once the gateway names another machine at a higher generation', async () => {
+    const here = machineId();
+    const home = gated(here);
+    let held: OwnerRecord = { fleetId, generation: 2, ownerMachineId: here };
+    const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => held }, gatewayEveryMs: 100 });
+    const client = await TestClient.connect(d.port, d.token);
+    const paths = resolvePaths(home);
+    try {
+      expect(await client.call('island.create', { name: 'yes' })).toMatchObject({ result: { name: 'yes' } });
+      held = { fleetId, generation: 3, ownerMachineId: other };
+      await waitFor(async () => ((await client.call('ownership.get')) as { result: { generation: number } }).result.generation === 3);
+      expect(await client.call('island.create', { name: 'no' })).toMatchObject({ error: { code: 'not_owner' } });
+      // a fleet another machine now runs keeps no terminal here
+      await waitFor(() => new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows').then(() => false, () => true));
+    } finally {
+      client.ws.close();
+      await d.stop();
+    }
+  });
+
   it('starts on the record it holds when the gateway does not answer', async () => {
     const home = gated(machineId());
     const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => { throw new Error('connect ECONNREFUSED'); } } });

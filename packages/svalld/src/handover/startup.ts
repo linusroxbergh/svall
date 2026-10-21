@@ -1,4 +1,4 @@
-import type { FleetId, OwnerRecord } from '@svall/protocol';
+import type { FleetId, MachineId, OwnerRecord } from '@svall/protocol';
 import type { Config } from '../config.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
@@ -10,6 +10,8 @@ import type { Authority } from './source.js';
 /** How long a starting daemon waits for its gateway before it starts on the record it holds. */
 const GATEWAY_START_MS = 10_000;
 const GATEWAY_RETRY_MS = 250;
+/** How often a running daemon asks its gateway again. */
+const GATEWAY_EVERY_MS = 60_000;
 
 // only the gateway on this machine is asked over a socket: one missing or not listening is that gateway still starting,
 // as systemd starts its unit beside the daemon's at boot
@@ -103,8 +105,51 @@ export async function adoptAtStart(o: {
     waiting = false;
     clearTimeout(timer);
   }
+  await take(o, record, true);
+}
+
+/**
+ * While the daemon runs, asks the gateway again every minute, and at its first look after the machine wakes: a timer
+ * stands still while the machine sleeps, and the wall clock does not. Only a record that names another owner is taken:
+ * one naming `machineId` waits for a start or the recovery that wrote it, which tells the machines it takes the fleet
+ * from first. Returns what stops it.
+ */
+export function watchGateway(o: {
+  handover: Pick<HandoverService, 'adopt'>; authority: () => Authority | undefined; fleetId: FleetId; machineId: MachineId; log: Logger; everyMs?: number;
+}): () => void {
+  const every = o.everyMs ?? GATEWAY_EVERY_MS;
+  let last = Date.now();
+  let asking = false;
+  let failing = false;
+  let stopped = false;
+  const ask = async (): Promise<void> => {
+    let record: OwnerRecord | undefined;
+    try {
+      record = await o.authority()?.get(o.fleetId);
+    } catch (e) {
+      if (!failing) o.log.info(`the gateway did not say who owns this fleet (${(e as Error).message}); this machine keeps the record it holds and asks again every minute`);
+      failing = true;
+      return;
+    }
+    if (!record || stopped) return;
+    if (failing) o.log.info('the gateway answers again');
+    failing = false;
+    if (record.ownerMachineId !== o.machineId) await take(o, record, false);
+  };
+  const timer = setInterval(() => {
+    if (asking || Date.now() - last < every) return;
+    asking = true;
+    last = Date.now();
+    void ask().finally(() => { asking = false; });
+  }, every / 4);
+  timer.unref();
+  return () => { stopped = true; clearInterval(timer); };
+}
+
+/** Takes the gateway's record as a relay's is taken, and says so; one it cannot take is logged. */
+async function take(o: { handover: Pick<HandoverService, 'adopt'>; log: Logger }, record: OwnerRecord, starting: boolean): Promise<void> {
   try {
-    const r = await o.handover.adopt(record, true);
+    const r = await o.handover.adopt(record, starting);
     if (r.adopted) {
       o.log.info(`took the gateway's record: ${record.ownerMachineId} owns this fleet at generation ${record.generation}${r.superseded ? `, past handover ${r.superseded}` : ''}`);
     }

@@ -17,7 +17,7 @@ import { ProcessTable } from './handover/processes.js';
 import { HandoverService } from './handover/service.js';
 import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
 import type { Authority } from './handover/source.js';
-import { adoptAtStart, enterStartupMode, startupMode } from './handover/startup.js';
+import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { machineId, machineIdFailure } from './machine.js';
@@ -94,8 +94,8 @@ function lockSocket(home: string): Promise<() => void> {
   });
 }
 
-/** `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh. */
-type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority };
+/** `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh; `gatewayEveryMs`, how often a running daemon asks it again. */
+type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority; gatewayEveryMs?: number };
 
 export class OtherBuildHome extends Error {}
 
@@ -242,6 +242,8 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
+    // a record the gateway took while this daemon ran that names another owner, as a recovery that could not reach it writes, lets the fleet go here
+    teardown.push(watchGateway({ handover, authority, fleetId: config.id, machineId: me, log, everyMs: opts.gatewayEveryMs }));
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
