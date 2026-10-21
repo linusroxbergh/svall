@@ -226,8 +226,9 @@ other machine can commit without both the gateway and a durable source freeze.
 
 On daemon start, a reachable gateway record wins when its generation is above the daemon's cached
 one, or equal and naming another owner while no handover journal is open there. A running daemon
-asks again every five minutes and soon after its machine wakes, over one ssh connection to the gateway
-it keeps between asks, and takes such a record only when it names another owner: the one naming it
+asks again every five minutes and soon after its machine wakes, and after an ask that fails, 15 s later
+and then twice as long each time up to five minutes, over one ssh connection to the gateway it keeps
+between asks, and takes such a record only when it names another owner: the one naming it
 waits for its next start or the recovery that wrote it. Letting go ends the fleet's tmux server on
 that machine, so its agents stop where they are, without the rest a handover gives them. A lower generation
 is ignored, so a stale gateway never rolls ownership back. A fleet whose `fleet.json` names a

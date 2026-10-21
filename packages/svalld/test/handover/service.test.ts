@@ -712,6 +712,46 @@ describe('a gateway asked while the daemon runs', () => {
     expect(b.log).toEqual([]);
   });
 
+  it('asks again 15 s, 30 s, then a minute after asks that fail, up to five minutes apart, and every five minutes once one is answered', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    const at: number[] = [];
+    let answers = false;
+    const start = Date.now();
+    const stop = watch(b, async () => {
+      at.push((Date.now() - start) / 1000);
+      if (!answers) throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+      return record(4, me);
+    });
+    await vi.advanceTimersByTimeAsync(EVERY + 15_000 + 30_000 + 60_000 + 120_000 + 240_000 + 2 * EVERY);
+    expect(at).toEqual([300, 315, 345, 405, 525, 765, 1065, 1365]);
+    answers = true;
+    at.length = 0;
+    await vi.advanceTimersByTimeAsync(EVERY + 2 * EVERY);
+    stop();
+    expect(at).toEqual([1665, 1965, 2265]);
+  });
+
+  it('asks at once after a wake that comes while an older ask is still out, and keeps asking soon while that one fails', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    let calls = 0;
+    let answer = (_: OwnerRecord) => {};
+    let fail = (_: Error) => {};
+    const stop = watch(b, () => { calls++; return calls === 1 ? new Promise((r) => { answer = r; }) : new Promise((_, j) => { fail = j; }); });
+    await vi.advanceTimersByTimeAsync(EVERY);
+    expect(calls).toBe(1);
+    // the machine sleeps while the first ask is out, and it is answered once it wakes
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
+    await vi.advanceTimersByTimeAsync(15_000);
+    answer(record(4, me));
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(calls).toBe(2);
+    // Wi-Fi not back yet: the ask after the wake fails, and the next goes 15 s later
+    fail(new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'));
+    await vi.advanceTimersByTimeAsync(15_000);
+    stop();
+    expect(calls).toBe(3);
+  });
+
   it('says once that the gateway does not answer and once that it answers again, and asks on after a record it could not take', async () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     const lines: string[] = [];
@@ -726,9 +766,9 @@ describe('a gateway asked while the daemon runs', () => {
     const stop = watch(b, get, { info: (l) => lines.push(l), error: (l) => lines.push(`error: ${l}`) });
     await vi.advanceTimersByTimeAsync(30 * MINUTE);
     stop();
-    expect(calls).toBe(6);
+    expect(calls).toBe(8);
     expect(lines).toEqual([
-      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); this machine keeps the record it holds and asks again every five minutes',
+      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); this machine keeps the record it holds and asks again, at most five minutes apart',
       'the gateway answers again',
       expect.stringMatching(/^error: the gateway's record at generation 9 could not be taken: the record is for fleet /),
     ]);
