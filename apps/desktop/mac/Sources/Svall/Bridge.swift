@@ -54,6 +54,7 @@ enum ToShell: Decodable {
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
     case awake(reason: String?, battery: Bool?)
+    case connectionRetry
 
     private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, reason, battery }
 
@@ -107,6 +108,7 @@ enum ToShell: Decodable {
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason), battery: try c.decodeIfPresent(Bool.self, forKey: .battery))
+        case "connection.retry": self = .connectionRetry
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }

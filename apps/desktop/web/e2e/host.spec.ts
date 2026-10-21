@@ -200,10 +200,12 @@ test('the corner names the machine the fleet runs on, and the fleet stays on the
   await expect(page.getByTestId('owner-badge')).toHaveText('studio');
 
   await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed', machine: 'studio', destination: 'linus@studio' });
-  // one plain sentence, with what the helper said folded away
+  // one plain sentence, what the helper said folded away, and a fresh helper on asking
   await expect(page.getByTestId('connection-banner')).toContainText('studio is not reachable; trying again.');
   await expect(page.getByTestId('connection-detail')).toContainText('ssh closed');
   await expect(page.getByTestId('connection-detail')).not.toHaveAttribute('open');
+  await page.getByTestId('connection-reconnect').click();
+  expect((await sent(page)).at(-1)).toEqual({ type: 'connection.retry' });
   await expect(page.getByTestId('owner-badge')).toHaveAttribute('data-state', 'error');
   // the fleet the page already holds is still there, characters and all
   await expect(page.getByTestId('board')).toBeVisible();

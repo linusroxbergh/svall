@@ -119,7 +119,7 @@ export const sshDestination = (value: string): boolean => SSH.test(value);
 
 const who = (owner: string) => (owner === 'local' ? 'this machine' : owner);
 
-export type BannerAction = 'upgrade';
+export type BannerAction = 'reconnect' | 'upgrade';
 /** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. */
 export type Banner = { text: string; detail?: string; machine?: string; actions: BannerAction[] };
 
@@ -150,7 +150,7 @@ export function connectionBanner(c: ConnectionState | undefined, o: { handoverEn
     case 'error': {
       const machine = c.machine ?? c.owner;
       const { text } = errorText(c, machine);
-      const actions: BannerAction[] = c.kind === 'version' && remote(machine) ? ['upgrade'] : [];
+      const actions: BannerAction[] = [...(c.kind === 'version' && remote(machine) ? ['upgrade' as const] : []), 'reconnect'];
       return { text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine !== 'local' ? { machine } : {}), actions };
     }
   }

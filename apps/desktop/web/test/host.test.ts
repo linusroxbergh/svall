@@ -176,17 +176,17 @@ describe('the connection state the shell reports', () => {
     expect(connectionBanner({ state: 'online', owner: 'studio' }, on)).toBeUndefined();
   });
 
-  it('names the machine once in one plain sentence, and folds what it said away', () => {
+  it('names the machine once in one plain sentence, folds what it said away, and offers Reconnect on every error', () => {
     expect(connectionBanner(err({ owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' }), on)).toEqual({
-      text: 'studio is not reachable; trying again.', detail: 'ssh: connect to host studio port 22: Operation timed out', machine: 'studio', actions: [],
+      text: 'studio is not reachable; trying again.', detail: 'ssh: connect to host studio port 22: Operation timed out', machine: 'studio', actions: ['reconnect'],
     });
     expect(connectionBanner(err({ owner: 'studio', kind: 'daemon_down', machine: 'studio' }), on))
-      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: [] });
+      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: ['reconnect'] });
     expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), on))
-      .toMatchObject({ text: 'studio is on another version of Svall.', machine: 'studio', actions: ['upgrade'] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: [] });
+      .toMatchObject({ text: 'studio is on another version of Svall.', machine: 'studio', actions: ['upgrade', 'reconnect'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: ['reconnect'] });
     expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), on))
-      .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: [] });
+      .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: ['reconnect'] });
   });
 
   it('reaches a fleet on this Mac only once it asks for handover, and offers the Machines panel only then', () => {
@@ -195,7 +195,7 @@ describe('the connection state the shell reports', () => {
     expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), off)).toBeUndefined();
     expect(connectionBanner({ state: 'connecting', owner: 'local' }, off)).toBeUndefined();
     expect(connectionBanner({ state: 'connecting', owner: 'studio' }, off)).toEqual({ text: 'connecting to studio…', actions: [] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), off)).toMatchObject({ actions: [] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), off)).toMatchObject({ actions: ['reconnect'] });
   });
 
   it('never repeats a token the shell passed on', () => {

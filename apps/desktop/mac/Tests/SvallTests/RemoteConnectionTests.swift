@@ -461,6 +461,11 @@ final class RemoteConnectionTests: XCTestCase {
         remote.stop()
     }
 
+    func testThePageAsksToReconnectByName() throws {
+        let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
+        guard case .connectionRetry = try decode(#"{"type":"connection.retry"}"#) else { return XCTFail("connection.retry did not decode") }
+    }
+
     func testStoppingClosesTheHelper() throws {
         let child = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#]), arguments: [])
         let remote = connection(helper: child)

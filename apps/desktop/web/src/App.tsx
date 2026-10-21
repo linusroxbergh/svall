@@ -42,6 +42,7 @@ function BannerBody({ banner }: { banner: Banner }) {
       {banner.actions.map((a) => {
         switch (a) {
           case 'upgrade': return <button key={a} className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
+          case 'reconnect': return <button key={a} className="btn" data-testid="connection-reconnect" onClick={() => app.bridge.send({ type: 'connection.retry' })}>Reconnect</button>;
         }
       })}
       {banner.detail && <details data-testid="connection-detail"><summary>Details</summary>{banner.detail}</details>}

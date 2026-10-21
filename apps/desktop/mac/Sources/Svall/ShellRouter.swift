@@ -361,6 +361,10 @@ final class ShellRouter {
             awake.apply()
         case .awake(let reason, let battery):
             awake.hold(reason, battery: battery ?? false)
+        case .connectionRetry:
+            // a helper that gave up waits to be stopped; one still retrying starts over from the first wait
+            guard let helper = ControllerProcess.locate() else { return }
+            remote.reconnect(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
         }
     }
 

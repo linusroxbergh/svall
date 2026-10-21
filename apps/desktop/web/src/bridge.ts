@@ -91,7 +91,9 @@ export type ToShell =
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string }
   // keeps the Mac from idle-sleeping under this reason, on battery too when asked; none lets go
-  | { type: 'awake'; reason?: string; battery?: boolean };
+  | { type: 'awake'; reason?: string; battery?: boolean }
+  // a fresh connect helper, whatever the last one gave up on
+  | { type: 'connection.retry' };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
