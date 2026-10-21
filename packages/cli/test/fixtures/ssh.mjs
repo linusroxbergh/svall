@@ -26,6 +26,11 @@ const FAIL = {
   'vanish.test': '',
 };
 
+// a master that waits on a check batch mode cannot take, as Tailscale SSH in check mode does, says so and never opens
+const WAIT = {
+  'check.test': '# Tailscale SSH requires an additional check.\n# To authenticate, visit: https://login.tailscale.com/a/1a2b3c4d5e\n',
+};
+
 // ssh reads options, takes the destination, and reads options once more only when no `--` ended the
 // first pass (ssh.c `opt_terminated`); whatever is left is the remote command, verbatim
 function parse(argv) {
@@ -78,6 +83,12 @@ function master(opts) {
   const drop = () => { try { fs.rmSync(file, { force: true }); } catch { /* gone already */ } process.exit(0); };
   process.on('SIGTERM', drop);
   process.on('SIGINT', drop);
+  setInterval(() => {}, 1 << 30);
+}
+
+function wait(opts) {
+  fs.writeSync(2, WAIT[opts.destination]);
+  fs.writeFileSync(marker(opts, 'waiting'), String(process.pid));
   setInterval(() => {}, 1 << 30);
 }
 
@@ -196,7 +207,8 @@ if (argv[0] === '--proxy') {
   if (log) fs.appendFileSync(log, `${JSON.stringify(argv)}\n`);
   const opts = parse(argv);
   if (Object.hasOwn(FAIL, opts.destination ?? '') && !opts.O) die(FAIL[opts.destination]);
-  if (opts.M) master(opts);
+  if (opts.M && Object.hasOwn(WAIT, opts.destination ?? '')) wait(opts);
+  else if (opts.M) master(opts);
   else if (opts.O) control(opts);
   else remote(opts);
 }

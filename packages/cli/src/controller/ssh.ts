@@ -22,6 +22,8 @@ const PATTERNS: [RegExp, SshErrorKind][] = [
   [/permission denied|too many authentication failures|no supported authentication/i, 'auth'],
   // a close during authentication names the user or says preauth; every other close is the transport's
   [/connection closed by (authenticating|invalid) user|\[preauth\]/i, 'auth'],
+  // Tailscale SSH in check mode waits for a check in the browser, which batch mode never takes
+  [/tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i, 'auth'],
   [/host key verification failed|remote host identification has changed/i, 'host_key'],
   [/connection refused|connection timed out|operation timed out|could not resolve|name or service not known|no route to host|network is unreachable/i, 'unreachable'],
   // a master that died takes its socket with it: every command on it fails until one is opened again
@@ -162,14 +164,19 @@ export class SshMaster {
       if (await this.check()) return this;
       // a master that could not be spawned, or died without a word, is the transport's failure
       if (gone) throw this.fail(child.pid === undefined || !stderr.trim() ? 'unreachable' : classifySsh(stderr), `ssh could not reach ${this.destination}: ${stderr.trim() || 'the control master exited'}`);
-      if (Date.now() >= end) throw this.fail('unreachable', `ssh did not open a control master to ${this.destination} within ${OPEN_TIMEOUT}ms`);
+      // a master still waiting may have said what for, as one waiting on a Tailscale check does
+      if (Date.now() >= end) {
+        const kind = classifySsh(stderr);
+        throw this.fail(kind === 'other' ? 'unreachable' : kind, `ssh did not open a control master to ${this.destination} within ${OPEN_TIMEOUT}ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`);
+      }
       await sleep(POLL);
     }
   }
 
   private fail(kind: SshErrorKind, message: string): SshError {
     this.release();
-    return new SshError(kind, message);
+    // an ssh in a terminal can answer what batch mode could not: a passphrase, a password, or Tailscale's check
+    return new SshError(kind, kind === 'auth' ? `${message}; run ssh ${this.destination} once in a terminal, then try again` : message);
   }
 
   private release(): void {

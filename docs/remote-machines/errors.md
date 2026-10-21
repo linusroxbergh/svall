@@ -268,7 +268,7 @@ has not answered, the banner says it has not said where the fleet runs, with **R
 
 | Kind | What it means | What to do |
 | --- | --- | --- |
-| `auth` | ssh was refused: no key it accepts, or a password it cannot ask for. | `ssh <host>` once in Terminal; add the key to the agent; then **Reconnect**. |
+| `auth` | ssh was refused: no key it accepts, a password it cannot ask for, or a Tailscale SSH check waiting on the browser. | `ssh <host>` once in Terminal; add the key to the agent, or approve Tailscale's check; then **Reconnect**. |
 | `host_key` | The host key is unknown or has changed. | `ssh <host>` once in Terminal and check the key, then **Reconnect**. A changed key needs a look before you trust it. |
 | `unreachable` | The machine did not answer, refused the connection, or the link dropped. | Check Tailscale and the machine; it reconnects by itself. |
 | `version` | `svall` is missing there, cannot run, or speaks another protocol. | `svall host upgrade <host>`. |

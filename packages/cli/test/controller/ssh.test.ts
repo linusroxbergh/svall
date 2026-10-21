@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shq } from '@svall/svalld/text';
 import { redact, runProcess } from '../../src/controller/process.js';
 import { classifyExit, classifySsh, SshError, SshMaster } from '../../src/controller/ssh.js';
@@ -81,6 +81,11 @@ describe('classifySsh', () => {
     expect(classifySsh('Connection closed by 192.0.2.7 port 22')).toBe('unreachable');
     expect(classifySsh('Connection closed by authenticating user linus 192.0.2.7 port 22 [preauth]')).toBe('auth');
     expect(classifySsh('Connection closed by invalid user admin 192.0.2.7 port 22 [preauth]')).toBe('auth');
+  });
+
+  it('reads Tailscale SSH waiting on a check in the browser as auth', () => {
+    expect(classifySsh('# Tailscale SSH requires an additional check.\n# To authenticate, visit: https://login.tailscale.com/a/1a2b3c4d5e\n')).toBe('auth');
+    expect(classifySsh('# To authenticate, visit: https://login.tailscale.com/a/1a2b3c4d5e')).toBe('auth');
   });
 });
 
@@ -267,6 +272,27 @@ describe('SshMaster', () => {
       const err = await open(destination).catch((e: SshError) => e);
       expect(err).toBeInstanceOf(SshError);
       expect((err as SshError).kind).toBe(kind);
+    }
+  });
+
+  it('reads a master still waiting on a Tailscale check when it gives up as auth, and names ssh as the way past it', async () => {
+    // only Date is faked, so the master's own clock reaches its timeout when the test says
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const opening = open('check.test').catch((e: unknown) => e);
+      await waitFor(() => fs.readdirSync(path.join(ssh.dir, 'state')).some((f) => f.endsWith('.waiting')));
+      // a whole check after the banner was written, so its stderr has been read
+      const checks = () => ssh.calls().filter((c) => c.includes('check')).length;
+      const seen = checks();
+      await waitFor(() => checks() > seen + 1);
+      vi.setSystemTime(Date.now() + 21_000);
+      const err = await opening;
+      expect(err).toBeInstanceOf(SshError);
+      expect((err as SshError).kind).toBe('auth');
+      expect((err as SshError).message).toContain('https://login.tailscale.com/a/1a2b3c4d5e');
+      expect((err as SshError).message).toContain('run ssh check.test once in a terminal');
+    } finally {
+      vi.useRealTimers();
     }
   });
 
