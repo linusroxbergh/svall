@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { MachineId, OwnerRecord } from '@svall/protocol';
 import { writeJsonAtomic } from '@svall/svalld/atomic';
+import { OwnerCache } from '@svall/svalld/ownership/state';
 import { resolvePaths } from '@svall/svalld/paths';
 
 /** The last owner the gateway named, and the generation a daemon must still report for it to be used. */
@@ -34,6 +35,21 @@ export function cachedOwner(fleetHome: string): OwnerRecord | undefined {
     return OwnerRecord.parse(JSON.parse(fs.readFileSync(resolvePaths(fleetHome).owner, 'utf8')));
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Whether this machine's daemon holds the fleet with nothing under way: its record names `localId` and carries no
+ * freeze, surrender or transaction, and no handover journal is open here.
+ */
+export function heldHere(fleetHome: string, localId: MachineId): boolean {
+  const paths = resolvePaths(fleetHome);
+  if (fs.existsSync(paths.journal)) return false;
+  try {
+    const held = OwnerCache.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8')));
+    return held.ownerMachineId === localId && !held.frozen && !held.surrendered && !held.transaction;
+  } catch {
+    return false;
   }
 }
 

@@ -356,9 +356,76 @@ describe('resolveOwner', () => {
     fs.mkdirSync(path.join(home, 'controller'), { recursive: true });
     fs.writeFileSync(ROUTE(), JSON.stringify({ ownerMachineId: owner, generation, at: '2026-09-21T09:00:00.000Z' }));
   };
-  const daemonOwner = (owner: MachineId, generation: number): void => {
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation, ownerMachineId: owner }));
+  const daemonOwner = (owner: MachineId, generation: number, marks: object = {}): void => {
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation, ownerMachineId: owner, ...marks }));
   };
+  // a handover this machine has yet to resolve, which its own record cannot vouch past
+  const handingOver = (): void => {
+    fs.mkdirSync(path.join(home, 'handover'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'handover', 'journal.json'), '{}');
+  };
+
+  it('takes a fleet this machine\'s daemon holds, unmarked and with no handover journal, as local without asking the gateway', async () => {
+    gateway('gate.test');
+    holds(REMOTE);
+    daemonOwner(registry.localId, 7);
+    const openMaster = vi.fn(deps.openMaster);
+    expect(await resolveOwner(home, { deps: { ...deps, openMaster } })).toBe('local');
+    expect(openMaster).not.toHaveBeenCalled();
+    expect(ssh.calls()).toEqual([]);
+    expect(fs.existsSync(ROUTE())).toBe(false);
+  });
+
+  it('answers a caller that resolves again and again at once, and refreshes the cached route from the gateway behind it', async () => {
+    gateway('gate.test');
+    holds(registry.localId, 7);
+    daemonOwner(registry.localId, 7);
+    let reach!: () => void;
+    const reached = new Promise<void>((resolve) => { reach = resolve; });
+    const openMaster = vi.fn(async (destination: string) => { await reached; return deps.openMaster(destination); });
+    expect(await resolveOwner(home, { deps: { ...deps, openMaster }, memo: {} })).toBe('local');
+    expect(openMaster).toHaveBeenCalledWith('gate.test');
+    expect(fs.existsSync(ROUTE())).toBe(false);
+    reach();
+    await waitFor(() => fs.existsSync(ROUTE()));
+    expect(JSON.parse(fs.readFileSync(ROUTE(), 'utf8'))).toEqual({
+      ownerMachineId: registry.localId, generation: 7, at: '2026-09-22T09:00:00.000Z',
+    });
+  });
+
+  it('remembers a gateway that refused the refresh behind a local answer, and asks it no more', async () => {
+    gateway('denied.test');
+    daemonOwner(registry.localId, 7);
+    const refusals: unknown[] = [];
+    const memo: GatewayMemo = { onRefused: (err) => { refusals.push(err); } };
+    expect(await resolveOwner(home, { deps, memo })).toBe('local');
+    await waitFor(() => memo.refused !== undefined);
+    expect((memo.refused as SshError).kind).toBe('auth');
+    expect(await resolveOwner(home, { deps, memo })).toBe('local');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(refusals).toHaveLength(1);
+    expect(ssh.calls().filter((c) => c.includes('-M') && c.includes('denied.test'))).toHaveLength(1);
+  });
+
+  it('asks the gateway before taking a daemon record that is marked, mid-handover, unreadable or another machine\'s', async () => {
+    gateway('gate.test');
+    holds(REMOTE);
+    const tx = { id: 'tx-1', fromMachineId: registry.localId, toMachineId: REMOTE, phase: 'preparing', startedAt: 1 };
+    const cases: [string, () => void][] = [
+      ['frozen', () => daemonOwner(registry.localId, 7, { frozen: true })],
+      ['surrendered', () => daemonOwner(registry.localId, 7, { surrendered: true })],
+      ['transaction', () => daemonOwner(registry.localId, 7, { transaction: tx })],
+      ['journal', () => { daemonOwner(registry.localId, 7); handingOver(); }],
+      ['other owner', () => daemonOwner(REMOTE, 7)],
+      ['unreadable', () => fs.writeFileSync(path.join(home, 'owner.json'), '{ not a record')],
+    ];
+    for (const [name, arrange] of cases) {
+      fs.rmSync(path.join(home, 'handover'), { recursive: true, force: true });
+      arrange();
+      expect(await resolveOwner(home, { deps }), name).toMatchObject({ id: REMOTE });
+    }
+    expect(ssh.remoteCalls().filter((w) => w.includes('owner'))).toHaveLength(cases.length);
+  });
 
   it('reads a record naming this machine as the local route, and caches it', async () => {
     gateway('gate.test');
@@ -442,6 +509,7 @@ describe('resolveOwner', () => {
     gateway('refused.test');
     route(registry.localId, 7);
     daemonOwner(registry.localId, 7);
+    handingOver();
     expect(await resolveOwner(home, { deps })).toBe('local');
   });
 
@@ -449,6 +517,7 @@ describe('resolveOwner', () => {
     gateway('refused.test');
     route(registry.localId, 7);
     daemonOwner(registry.localId, 8);
+    handingOver();
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect((err as SshError).kind).toBe('unreachable');
   });
@@ -501,6 +570,7 @@ describe('resolveOwner', () => {
     gateway('denied.test');
     route(registry.localId, 7);
     daemonOwner(registry.localId, 7);
+    handingOver();
     const refusals: unknown[] = [];
     const memo: GatewayMemo = { onRefused: (err) => { refusals.push(err); } };
     expect(await resolveOwner(home, { deps, memo })).toBe('local');
@@ -514,6 +584,7 @@ describe('resolveOwner', () => {
     gateway('refused.test');
     route(registry.localId, 7);
     daemonOwner(registry.localId, 7);
+    handingOver();
     const memo: GatewayMemo = {};
     await resolveOwner(home, { deps, memo });
     await resolveOwner(home, { deps, memo });
@@ -552,6 +623,7 @@ describe('resolveOwner', () => {
     expect((err as SshError).kind).toBe('unreachable');
     route(registry.localId, 7);
     daemonOwner(registry.localId, 7);
+    handingOver();
     expect(await resolveOwner(home, { deps })).toBe('local');
   });
 
