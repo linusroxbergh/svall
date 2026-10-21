@@ -65,8 +65,8 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   toggleHandover: (open) => set((s) => ({ handoverOpen: open ?? !s.handoverOpen })),
   handoverFollow: (to, choices) => set({ handover: followRun(to, choices) }),
   handoverGoOn: () => set((s) => (s.handover ? { handover: goOn(s.handover) } : {})),
-  // the status may find a live helper, whose lines then start from nothing, as a follow's do
-  handoverCheck: () => set((s) => (s.handover ? { handover: { ...followRun(s.handover.to), checking: true } } : {})),
+  // the status may find a live helper, whose lines then start from nothing, as a follow's do; a resume the sheet started stays its own
+  handoverCheck: () => set((s) => (s.handover ? { handover: { ...followRun(s.handover.to), checking: true, ...(s.handover.goingOn && { goingOn: true }) } } : {})),
   handoverEvent: (e) => set((s) => {
     if (!readable(e)) return {};
     const handover = applyEvent(s.handover ?? followRun(), e);
@@ -77,7 +77,9 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   handoverReplay: (events) => set((s) => {
     const rebuilt = events.reduce(applyEvent, followRun(s.handover?.to));
     // a status the sheet asked for after the checks stopped a start is about another handover, which need not go where the start did
-    const handover = { ...rebuilt, following: false, ...(s.handover?.checking && verdictOf(rebuilt) && { to: undefined }) };
+    const handover = {
+      ...rebuilt, following: false, ...(s.handover?.checking && verdictOf(rebuilt) && { to: undefined }), ...(s.handover?.checking && s.handover.goingOn && { goingOn: true }),
+    };
     return { handover, handoverOpen: s.handoverOpen || (!!handover.status && needsUser(handover.status)) };
   }),
   handoverExit: (code, error) => set((s) => (s.handover ? { handover: endFollow(s.handover, code, error) } : {})),

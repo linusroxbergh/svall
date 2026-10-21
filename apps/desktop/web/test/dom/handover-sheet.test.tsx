@@ -225,6 +225,7 @@ const committed = (standing: 'committed' | 'moved'): HandoverEvent => ({ event: 
   reason: `${TX} is committed: the fleet belongs to ${TRIFT} at generation 4, and only its activation can go on`,
 } });
 const resumes = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.resume').length;
+const attaches = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.attach').length;
 
 test('a run that stopped before the commit offers Resume and Abort with what each does, and waits for one', () => {
   const send = vi.spyOn(bridge, 'send');
@@ -309,9 +310,24 @@ test('a watched run that stops past the commit, with resuming all that is safe, 
   expect(resumes(send)).toBe(1);
 });
 
+test('a resume the sheet started by itself that finds nothing safe has the status read once, and then waits for Retry', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  act(() => store.getState().handoverReplay([committed('committed')]));
+  const refused: HandoverEvent = { event: 'handover.result', data: { status: 'interrupted', transactionId: TX, phase: 'activate', error: 'the handover helper exited before it listened', safe: [] } };
+  // the shell answers each resume with the refusal and each status it is asked for with the replay, as long as the sheet asks
+  let [resumed, asked] = [0, 0];
+  for (let i = 0; i < 3; i++) {
+    if (resumes(send) > resumed) { resumed = resumes(send); act(() => { store.getState().handoverEvent(refused); store.getState().handoverExit(1); }); }
+    if (attaches(send) > asked) { asked = attaches(send); act(() => store.getState().handoverReplay([refused, committed('committed')])); }
+  }
+  expect(resumes(send)).toBe(1);
+  expect(attaches(send)).toBe(1);
+  expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
+});
+
 const openAtChecks = (code: 'transaction_open' | 'generation_mismatch' | 'identity_mismatch', message: string): HandoverEvent =>
   ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code, message }] } });
-const attaches = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.attach').length;
 
 test('a handover already open at the checks is looked up, and the sheet offers what its status says is safe in place of a new start', () => {
   const send = vi.spyOn(bridge, 'send');
