@@ -485,6 +485,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
     case 'git_extension':
       return `Update or install git on ${ctx.destination}.`;
+    case 'git_config_command':
+      return `Make sure each command is one you want run on ${ctx.destination}, or remove it with \`git config --unset <key>\` in the repository.`;
     case 'manifest_too_large': case 'too_many_files':
       return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {
