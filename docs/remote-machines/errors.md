@@ -245,6 +245,12 @@ wait until the window is reopened.
 | `daemon_down` | The fleet's daemon is not running there. | `svall host doctor <host>`; on Linux, `systemctl --user status svall-svalld@<fleet>`. |
 | `other` | Anything else, such as a machine that answers with another fleet or machine id. | Follow the message. |
 
+A window opens a fleet with no gateway in `fleet.json` on this Mac at once. For one with a gateway, it waits up to 10
+seconds for the connection helper to say where the fleet is; a helper that has not answered by then, as one stuck on
+ssh, leaves the window on this Mac when the route `svall` last cached names this Mac at the generation its daemon
+holds, and otherwise shows `other`: "the connection helper has not answered in 10 s". The window still follows the
+helper once it answers.
+
 ## Host commands
 
 `svall host add`, `upgrade` (and `upgrade --rollback`), `remove` and `enable` run their steps in order and stop at the
