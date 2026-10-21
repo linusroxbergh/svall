@@ -397,8 +397,8 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
-  Linux machine, so does `svall handover --resume` there. A move to this Mac also waits to confirm the commit with
-  the gateway, so it starts only once the link is back.
+  Linux machine, so does `svall handover --resume` there. The machine the fleet went to confirms the commit with the
+  gateway; when it cannot reach the gateway, it takes the gateway's answer to the commit that the controller kept.
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
   The character waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,

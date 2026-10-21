@@ -705,17 +705,18 @@ export class Handover {
     if (this.cancel$.signal.aborted) throw new Cancelled();
     this.phase('commit');
     const { attempts } = this.d.retry ?? RETRY;
+    let record: OwnerRecord | undefined;
     for (let n = 1; ; n++) {
       let asked: unknown;
       try {
-        const record = await boundary('controller.commit', () => this.d.gateway.commit({ transactionId, expectedGeneration: generation }));
+        record = await boundary('controller.commit', () => this.d.gateway.commit({ transactionId, expectedGeneration: generation }));
         if (!committed(record)) throw new Stopped('commit', `the gateway answered the commit with ${describe(record)}; ask it again before anything else`, [], 'commit_unknown');
         break;
       } catch (e) {
         if (e instanceof Stopped) throw e;
         asked = e;
       }
-      const record = await this.retrying('commit', () => this.d.gateway.get()).catch(() => undefined);
+      record = await this.retrying('commit', () => this.d.gateway.get()).catch(() => undefined);
       if (!record) throw new Stopped('commit', `whether ${transactionId} committed is unknown (${messageOf(asked)}); resume asks the gateway again`, [], 'commit_unknown');
       if (committed(record)) break;
       const tx = record.transaction;
@@ -727,15 +728,18 @@ export class Handover {
       }
     }
     this.committed = true;
+    // what a destination that cannot reach the gateway itself confirms the commit by
+    this.save({ committed: record });
     if (this.cancel$.signal.aborted) this.detach();
   }
 
   /** Activate: the destination confirms the commit, runs the prepared state and starts the terminals the handover rested. */
   private async activate(): Promise<CharacterResult[]> {
     const { transactionId, generation } = this.tx;
+    const { committed } = this.journal;
     const destination = await this.side(this.journal.destination.machineId);
     this.phase('activate');
-    const r = await this.retrying('activate', () => destination.daemon.call('handover.activate', { transactionId, generation: generation + 1 }));
+    const r = await this.retrying('activate', () => destination.daemon.call('handover.activate', { transactionId, generation: generation + 1, ...(committed && { committed }) }));
     for (const c of r.characters) {
       this.observer.send({ event: 'handover.entity', data: { transactionId, kind: 'character', id: c.id, phase: 'activate', ...(c.error && { error: c.error }), ...(c.notice && { notice: c.notice }) } });
     }

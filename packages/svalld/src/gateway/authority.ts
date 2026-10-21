@@ -63,6 +63,14 @@ export class AuthorityFailure extends Error {
   }
 }
 
+/**
+ * Whether asking the gateway failed with no answer at all, as against a refusal it answered: out of reach or silent,
+ * a socket here that nothing listens on, or a registry with no route to it.
+ */
+export const unanswered = (e: unknown): boolean => (e instanceof AuthorityFailure
+  ? e.code === 'disconnected' || e.code === 'timeout' || e.data?.unrouted === true
+  : (e as NodeJS.ErrnoException | undefined)?.syscall === 'connect');
+
 export type Transition = { record: OwnerRecord } | { error: AuthorityError };
 
 const fail = (code: AuthorityErrorCode, message: string, data?: Record<string, unknown>): Transition =>

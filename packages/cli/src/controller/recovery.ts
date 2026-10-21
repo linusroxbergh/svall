@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  FleetId, Generation, HandoverChoices, HandoverPhase, LandedRoot, MachineId, Sha256, TransactionId, TransferManifestV1,
-  type OwnerRecord, type OwnershipInfo, type Result, type SafeAction, type Standing, type Verdict,
+  FleetId, Generation, HandoverChoices, HandoverPhase, LandedRoot, MachineId, OwnerRecord, Sha256, TransactionId, TransferManifestV1,
+  type OwnershipInfo, type Result, type SafeAction, type Standing, type Verdict,
 } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/handover/durable';
 import { boundary } from '@svall/svalld/handover/failpoints';
@@ -34,6 +34,8 @@ export const ControllerJournal = z.object({
   manifestDigest: Sha256.optional(),
   landedDigest: Sha256.optional(),
   preparedDigest: Sha256.optional(),
+  // the gateway's record of this handover committed, which the destination takes when it cannot ask the gateway itself
+  committed: OwnerRecord.optional(),
   startedAt: z.number(),
   updatedAt: z.number(),
 });

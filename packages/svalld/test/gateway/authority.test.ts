@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FleetId, MachineId, OwnerRecord } from '@svall/protocol';
 import {
-  FleetAuthority, gatewayPaths, transition,
+  AuthorityFailure, FleetAuthority, gatewayPaths, transition, unanswered,
   type AuthorityErrorCode, type OwnerOp, type OwnerParams, type OwnerParamsOf, type Transition,
 } from '../../src/gateway/authority.js';
 
@@ -148,6 +148,18 @@ describe('replayed requests', () => {
   it('answers a commit whose reply the caller never saw', () => {
     expect(ok(at(committed, 'owner.commit', commitParams))).toEqual(committed);
     expect(ok(at(committed, 'owner.commit', { ...commitParams, expectedGeneration: 4 }))).toEqual(committed);
+  });
+});
+
+describe('a gateway that gave no answer', () => {
+  it('is one out of reach, silent, not listening on its socket here, or with no route from the registry, and never one that refused', () => {
+    const connect = Object.assign(new Error('connect ECONNREFUSED /run/gw/authority.sock'), { code: 'ECONNREFUSED', syscall: 'connect' });
+    for (const e of [new AuthorityFailure('disconnected', 'ssh exited 255'), new AuthorityFailure('timeout', 'no answer in 10000ms'), new AuthorityFailure('invalid_request', 'no ssh route', { unrouted: true }), connect]) {
+      expect(unanswered(e), e.message).toBe(true);
+    }
+    for (const e of [new AuthorityFailure('authority_corrupt', 'unreadable'), new AuthorityFailure('identity_mismatch', 'another machine'), new AuthorityFailure('invalid_request', 'bad frame'), new Error('boom'), undefined]) {
+      expect(unanswered(e), String(e)).toBe(false);
+    }
   });
 });
 

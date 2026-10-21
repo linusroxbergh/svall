@@ -14,6 +14,7 @@ import { startApi } from '../../src/api/server.js';
 import { Config, loadConfig } from '../../src/config.js';
 import { docFolders, docsDir, fleetDir, repoSlug } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
+import { AuthorityFailure } from '../../src/gateway/authority.js';
 import { armFailpoints } from '../../src/handover/failpoints.js';
 import { DestinationJournal, openJournal, type HandoverJournal } from '../../src/handover/journal.js';
 import { SealRecord, syncRoots, type DestinationDeps } from '../../src/handover/destination.js';
@@ -91,6 +92,8 @@ const mode = (file: string): string => (fs.statSync(file).mode & 0o777).toString
 /** The gateway as this daemon asks it. */
 class Gateway implements Authority {
   down = false;
+  /** what asking it fails with, when that is not a gateway that is down */
+  fails?: Error;
   /** holds the next answer back until it resolves */
   gate?: Promise<void>;
   record: OwnerRecord = { fleetId, generation: 4, ownerMachineId: mac, transaction: { id: TX, fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 1 } };
@@ -99,6 +102,7 @@ class Gateway implements Authority {
     this.gate = undefined;
     await gate;
     if (this.down) throw new Error('connect ECONNREFUSED /home/linus/.local/share/svall/gateway/authority.sock');
+    if (this.fails) throw this.fails;
     if (id !== this.record.fleetId) throw new Error(`asked about ${id}`);
     return structuredClone(this.record);
   }
@@ -1207,6 +1211,59 @@ describe('destination activate', () => {
     expect(journalOf(s.paths).phase).toBe('prepare');
     expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
     expect(d.ownership.writable()).toBe(false);
+  });
+
+  it('takes the commit the controller holds only while the gateway gives no answer, and only one that shows this handover committed here on this state', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    const before = fs.readFileSync(s.paths.state);
+    d.gateway.commit(preparedDigest);
+    const held = d.gateway.record;
+    const tx = held.transaction!;
+    const activate = (committed: OwnerRecord) => refusal(d.handover.activate({ transactionId: TX, generation: 5, committed }));
+
+    // a gateway that answers decides, a refusal included
+    d.gateway.record = { ...held, generation: 4, ownerMachineId: mac, transaction: { ...tx, phase: 'ready-to-commit' } };
+    expect((await activate(held)).code).toBe('not_ready');
+    d.gateway.record = held;
+    d.gateway.fails = new AuthorityFailure('authority_corrupt', 'the record for this fleet is unreadable');
+    expect((await activate(held)).code).toBe('authority_unreachable');
+
+    d.gateway.fails = new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+    for (const record of [
+      { ...held, fleetId: FleetId.parse(crypto.randomUUID()) },
+      { ...held, ownerMachineId: elsewhere },
+      { ...held, generation: 6 },
+      { ...held, transaction: { ...tx, id: 'tx-2' } },
+      { ...held, transaction: { ...tx, phase: 'ready-to-commit' as const } },
+      { ...held, transaction: { ...tx, toMachineId: elsewhere } },
+      { ...held, transaction: { ...tx, preparedDigest: 'd'.repeat(64) } },
+      { fleetId, generation: 5, ownerMachineId: trift },
+    ]) {
+      const r = await activate(record);
+      expect(r.code, JSON.stringify(record)).toBe('authority_unreachable');
+      expect(r.message).toContain('ssh trift exited 255');
+    }
+    expect((await refusal(d.handover.activate({ transactionId: TX, generation: 5 }))).code).toBe('authority_unreachable');
+
+    expect(fs.readFileSync(s.paths.state)).toEqual(before);
+    expect(journalOf(s.paths).phase).toBe('prepare');
+    expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
+    expect(d.ownership.writable()).toBe(false);
+  });
+
+  it('activates on the commit the controller holds when the gateway gives no answer', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    const held = d.gateway.record;
+    d.gateway.fails = new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+
+    const r = await d.handover.activate({ transactionId: TX, generation: 5, committed: held });
+
+    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(journalOf(s.paths).phase).toBe('activate');
+    expect(JSON.parse(fs.readFileSync(s.paths.owner, 'utf8'))).toMatchObject({ generation: 5, ownerMachineId: trift });
+    expect(d.ownership.writable()).toBe(true);
+    expect(d.crew.log.slice(0, 2)).toEqual(['activate', 'reconcile']);
   });
 
   it('promotes the prepared state and fleet.json, then starts every terminal a few at a time', async () => {

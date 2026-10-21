@@ -684,7 +684,11 @@ The controller executes these durable steps:
    the point of no automatic return.
 7. **Activate.** Destination confirms the committed authority record, atomically promotes the
    prepared file to `state.json`, replaces the in-memory Store, then starts terminal windows with
-   bounded concurrency and reports each result. Source records itself inactive.
+   bounded concurrency and reports each result. Source records itself inactive. The controller
+   journals the gateway's committed record before it asks for activation and sends it along; the
+   destination takes it only while the gateway gives no answer at all, and only when it names this
+   fleet at `g + 1`, the destination as owner and as target, this transaction committed and the
+   prepared digest the destination journaled.
 8. **Complete.** Gateway clears the transaction while retaining owner and generation. Replica
    manifests are sealed at generation `g + 1`, and the source stops its fleet, tmux server
    included, so a later handover back starts it afresh.
@@ -846,7 +850,7 @@ ownership.get          {} -> { fleetId, generation, ownerMachineId, frozen, tran
 handover.preflight     { toMachineId } -> { manifestSummary, blockers, warnings }
 handover.freeze        { transactionId, generation, choices } -> { manifest }
 handover.prepare       { transactionId, generation, snapshot, manifestDigest } -> {}
-handover.activate      { transactionId, generation } -> { characters: [...] }
+handover.activate      { transactionId, generation, committed? } -> { characters: [...] }
 handover.abort         { transactionId, generation } -> {}
 handover.status        {} -> { transaction?, quarantined? }
 ```

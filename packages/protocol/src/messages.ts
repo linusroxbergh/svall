@@ -337,9 +337,10 @@ export const methods = {
     }),
     result: z.object({ preparedDigest: Sha256 }),
   },
-  // `notice` is what a character that came up still waits on in its terminal
+  // `committed` is the gateway's answer that committed the handover, which the destination takes only when the gateway
+  // gives no answer of its own; `notice` is what a character that came up still waits on in its terminal
   'handover.activate': {
-    params: z.object({ transactionId: TransactionId, generation: Generation }),
+    params: z.object({ transactionId: TransactionId, generation: Generation, committed: OwnerRecord.optional() }),
     result: z.object({ characters: z.array(z.object({ id: z.string(), ok: z.boolean(), error: z.string().optional(), notice: z.string().optional() })) }),
   },
   // each side seals the roots it holds at g + 1 and closes its journal; the source seals what the transfer verified, `landed`

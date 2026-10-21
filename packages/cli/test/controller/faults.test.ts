@@ -327,6 +327,25 @@ describe('an unknown Commit', () => {
   }
 });
 
+// ---- a destination that cannot reach the gateway after the commit: it activates on the commit's answer the controller kept
+
+describe('a destination the gateway does not answer after the commit', () => {
+  const world = real.worlds();
+
+  it('activates on the commit a controller that died before asking it journaled, once a new one resumes', async () => {
+    const w = world();
+    await diesAt(w, 'trift handover.activate');
+    const journal = JSON.parse(fs.readFileSync(path.join(w.ctlDir, 'handover.json'), 'utf8')) as Record<string, unknown>;
+    expect(journal.committed).toEqual(w.record());
+    w.blind.add('trift');
+    const out = await resume(w);
+    expect(out, w.trace.join(' | ')).toMatchObject({ status: 'complete' });
+    expect(w.violations).toEqual([]);
+    w.blind.clear();
+    expect(real.settledOn(w)).toBe('destination');
+  });
+});
+
 // ---- a cancel while Begin goes unanswered: an abort closes what the gateway may have opened
 
 describe('a cancel while Begin goes unanswered', () => {
