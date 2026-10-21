@@ -3053,6 +3053,20 @@ runIf('Fleet', () => {
     expect(store.state.name).toBe('base');
   });
 
+  it('logs where it moved a config.json that appeared beside fleet.json while it ran, as it saves a setting', async () => {
+    const said: string[] = [];
+    const { fleet, home } = await boot({ agentsFound: ['claude', 'codex'], log: { info: (l) => said.push(l), error: (l) => said.push(l) } });
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }));
+    for (const save of [() => fleet.setMainAgent('codex'), () => fleet.renameFleet('base')]) {
+      said.length = 0;
+      fs.writeFileSync(p.legacyConfig, '{}');
+      save();
+      expect(said.filter((l) => l.startsWith(`${p.legacyConfig} moved to ${p.legacyConfig}.unread-`))).toHaveLength(1);
+      expect(fs.existsSync(p.legacyConfig)).toBe(false);
+    }
+  });
+
   it('takes the only agent found as the main one, and refuses one svalld cannot find', async () => {
     const { fleet, store, home } = await boot({ agentsFound: ['codex'] });
     expect(store.state.mainAgent).toBe('codex');

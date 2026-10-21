@@ -48,8 +48,12 @@ async function setup(ctx) {
   // the shared background service serves every session of the user, whatever pane started it
   if (!charId || variantOf(home) !== VARIANT || process.argv.includes('--service')) return;
   // worktree_create puts a worktree in OpenCode's data folder, away from the repository; without it the agent makes
-  // one inside the main checkout, as its brief says
-  await ctx.tool.transform((t) => t.remove('opencode_worktree_create'));
+  // one inside the main checkout, as its brief says. An OpenCode that refuses keeps the tool, and the hooks below still go on
+  try {
+    await ctx.tool.transform((t) => t.remove('opencode_worktree_create'));
+  } catch (e) {
+    process.stderr.write(`svall: OpenCode kept opencode_worktree_create for this character's agent: ${e?.message ?? e}\n`);
+  }
   const directory = ctx.location.directory;
   const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
   const logDir = path.join(home, 'transcripts', 'opencode');

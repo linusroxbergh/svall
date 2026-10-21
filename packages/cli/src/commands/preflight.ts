@@ -3,7 +3,7 @@ import os from 'node:os';
 import { promisify } from 'node:util';
 import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
 import { characterKeyEnv } from '@svall/svalld/claude';
-import { configuredMainAgent, fleetMainAgent } from '@svall/svalld/config';
+import { configuredMainAgent, fleetMainAgent, peekConfig } from '@svall/svalld/config';
 import { unitPath } from '@svall/svalld/linux/setup';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { SHIM } from '@svall/svalld/profile';
@@ -26,6 +26,8 @@ export type PreflightDeps = {
   keys: Record<string, string>;
   mainAgent?: AgentKind;
   platform: NodeJS.Platform;
+  /** whether the fleet hands over: fleet.json names a gateway or turns handover on */
+  handover: boolean;
 };
 
 const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
@@ -79,7 +81,7 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   }
   if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
   const login = await signedIn(d, kind);
-  if (!versionOk(a, version)) {
+  if ((d.handover || !a.handoverFloor) && !versionOk(a, version)) {
     const old = `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}`;
     return { name: kind, status: 'warn', detail: login === false ? `${old}; not signed in: ${a.loginHint}` : old };
   }
@@ -127,6 +129,9 @@ const unitAgentPath = (): string =>
 export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform): PreflightDeps {
   let mainAgent: AgentKind | undefined;
   try { mainAgent = fleetMainAgent(home, configuredMainAgent(resolvePaths(home))); } catch { /* doctor's config check reports it */ }
+  // a Linux machine runs Svall only to take fleets handed over
+  let handover = platform === 'linux';
+  try { const c = peekConfig(resolvePaths(home)); handover ||= !!c.gatewayMachineId || c.handover.enabled; } catch { /* doctor's config check reports it */ }
   return {
     // a login probe, the one call given the fleet's keys, must not hold up install when it hangs
     run: async (cmd, args, o) => (await execFileP(cmd, args, {
@@ -140,5 +145,6 @@ export function realPreflightDeps(home: string, platform: NodeJS.Platform = proc
     keys: characterKeyEnv(resolvePaths(home).env),
     mainAgent,
     platform,
+    handover,
   };
 }

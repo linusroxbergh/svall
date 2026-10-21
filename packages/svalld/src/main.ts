@@ -129,7 +129,7 @@ async function start(opts: Options): Promise<Daemon> {
   fs.chmodSync(paths.home, 0o700);
   rotateLog(paths.log);
   const log = opts.log ?? createLogger();
-  const config = loadConfig(paths);
+  const config = loadConfig(paths, log.info);
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
@@ -204,7 +204,7 @@ async function start(opts: Options): Promise<Daemon> {
     home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate,
     kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
     savePort: (httpsPort) => {
-      try { saveConfig(paths, { mobile: { httpsPort } }); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
+      try { saveConfig(paths, { mobile: { httpsPort } }, log.info); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
     },
   });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });

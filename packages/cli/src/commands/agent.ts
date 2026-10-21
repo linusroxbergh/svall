@@ -15,7 +15,7 @@ export async function setMainAgentCli(d: AgentDeps, agent: AgentKind): Promise<s
   // a running svalld checks the CLI against its own PATH and writes fleet.json itself
   if (await d.apply(agent)) return `Main agent: ${label(agent)}`;
   if (!d.found.includes(agent)) throw new Error(`${AGENTS[agent].bin} is not on PATH; install ${label(agent)} first`);
-  saveMainAgent(d.paths, agent);
+  saveMainAgent(d.paths, agent, (line) => process.stderr.write(`${line}\n`));
   return `Main agent: ${label(agent)}; svalld uses it from its next start`;
 }
 

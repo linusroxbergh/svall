@@ -44,6 +44,7 @@ function fake(o: {
   shimsCurrent?: boolean;
   platform?: NodeJS.Platform;
   agentPath?: string;
+  handover?: boolean;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -100,6 +101,7 @@ function fake(o: {
     shimsCurrent: o.shimsCurrent ?? true,
     daemon: DAEMON,
     platform: o.platform ?? 'darwin',
+    handover: o.handover ?? true,
     user: 'linus',
     rsync: { bundled: RSYNC, fix: 'build it with node scripts/build-controller.mjs' },
   };
@@ -304,11 +306,11 @@ describe('doctor', () => {
     }
   });
 
-  it('fails the two layouts svalld refuses to start on: a config.json beside fleet.json, and one whose backup is in the way', async () => {
+  it('warns of a config.json beside fleet.json, which svalld moves aside, and fails one whose backup is in the way', async () => {
     const at = (file: string) => `/u/.svall/${file}`;
     const fleet = '{ "id": "11111111-2222-3333-4444-555555555555" }';
     const beside = byName(await doctor(priv, fake({ files: { [at('fleet.json')]: fleet, [at('node.json')]: '{}', [at('config.json')]: '{}' } }).deps)).config;
-    expect(beside).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^\/u\/\.svall\/config\.json is not read any more: .* and delete it; a stopped svalld waits for it to be fixed$/) });
+    expect(beside).toMatchObject({ status: 'warn', detail: '/u/.svall/config.json is not read: svalld moves it aside unread as it starts; copy anything you still want from it into /u/.svall/fleet.json or /u/.svall/node.json' });
     const blocked = byName(await doctor(priv, fake({ files: { [at('config.json')]: '{}', [at('config.json.bak')]: '{}' } }).deps)).config;
     expect(blocked).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^\/u\/\.svall\/config\.json\.bak is in the way .* and start again; a stopped svalld waits for it to be fixed$/) });
   });
@@ -335,6 +337,12 @@ describe('doctor', () => {
     const out = '\tstate = running\n\truns = 4\n\tlast exit code = 0\n\tevent triggers = {\n\t\tstate = active\n\t}\n\t\tstate = active\n';
     const c = byName(await doctor(priv, fake({ commands: { [`launchctl print gui/501/${LAUNCHD_LABEL}`]: out } }).deps));
     expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
+  });
+
+  it('checks neither the bundled rsync nor Claude Code against a handover\'s floor for a fleet that never hands over', async () => {
+    const c = byName(await doctor(priv, fake({ handover: false, commands: { [`${RSYNC} --version`]: undefined as never, 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
+    expect(c.rsync).toBeUndefined();
+    expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
   });
 
   it('flags a Mac left with only the system openrsync, or an rsync too old, and names the fix', async () => {

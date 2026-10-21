@@ -12,6 +12,8 @@ type AgentAdapter = {
   // the vendor's own installer for the CLI; the desktop apps don't put the command on PATH
   installCommand: string;
   minVersion?: Version;
+  // minVersion is only what a handover needs, so a fleet that never hands over runs on older
+  handoverFloor?: true;
   // argv that reports the login; exit 1 means not logged in
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
@@ -23,7 +25,7 @@ type AgentAdapter = {
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
     // the oldest release whose sessions a handover carries, which a fixture holds
-    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251],
+    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251], handoverFloor: true,
     installCommand: 'curl -fsSL https://claude.ai/install.sh | bash',
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },

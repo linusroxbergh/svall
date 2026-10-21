@@ -10,7 +10,7 @@ import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
 import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
-import { Config, configRefusal, parseConfig, peekConfig } from '@svall/svalld/config';
+import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { gatewayPrefix } from '@svall/svalld/gateway/bin';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
@@ -77,7 +77,7 @@ async function gh(d: DoctorDeps): Promise<Check> {
 }
 
 // svalld waits, without starting, while its fleet.json or node.json does not parse, or the config.json they are
-// still to be split out of, or its config files lie in a layout it refuses
+// still to be split out of, or its config files lie in a layout it refuses; a config.json beside fleet.json it moves aside
 function config(t: Target, d: DoctorDeps): Check {
   const p = resolvePaths(t.home);
   const refused = configRefusal(p, (file) => d.exists(file));
@@ -89,6 +89,9 @@ function config(t: Target, d: DoctorDeps): Check {
   if (!found.length) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${p.fleetConfig}` };
   try {
     for (const f of found) parseConfig(f.text, f.file, f.schema);
+    if (configStray(p, (file) => d.exists(file))) {
+      return { name: 'config', status: 'warn', detail: `${p.legacyConfig} is not read: svalld moves it aside unread as it starts; copy anything you still want from it into ${p.fleetConfig} or ${p.nodeConfig}` };
+    }
     return { name: 'config', status: 'ok', detail: found.map((f) => f.file).join(' and ') };
   } catch (e) {
     return { name: 'config', status: 'fail', detail: `${(e as Error).message}; a stopped svalld waits for it to be fixed` };
@@ -366,7 +369,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await hookReceiver(t, d),
     ...(linux
       ? [await systemd(t, d), daemonEnv(t, d), await unitCheck('gateway', GATEWAY_UNIT, d, () => socketTooLong(gatewayPaths(gatewayPrefix()).socket, 'linux')?.message), await linger(d)]
-      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
+      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), ...(d.handover ? [await rsync(d)] : [])]),
     hooks(d),
     await codexCheck(d),
     ...(linux ? [await codexSandbox(d)] : []),

@@ -66,7 +66,8 @@ final class ShellRouter {
         let helper = ControllerProcess.locate().map {
             ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
         }
-        remote = RemoteConnection(helper: helper, local: { SvallHome.connection() }, localOnly: { !SvallHome.namesGateway() })
+        remote = RemoteConnection(helper: helper, local: { SvallHome.connection() }, localOnly: { !SvallHome.namesGateway() },
+                                  cachedHere: { RemoteConnection.cachedRouteIsHere(home: SvallHome.path, configDir: SvallHome.configDir) })
         remote.onConnection = { [weak self] connection in
             guard self?.listening == true else { return }
             self?.bridge.send(.connection(connection))
@@ -214,6 +215,7 @@ final class ShellRouter {
         case .connection:
             // the daemon runs while the window is open: started with it, and again if it stops on its own
             if !quitFlow.stopping { FleetDaemon.start() }
+            followGateway()
             sendShellInfo()
             bridge.send(.connection(remote.connection))
             if let state = remote.state {
@@ -407,7 +409,10 @@ final class ShellRouter {
         child.onExit = { [weak self] code in
             self?.hostRun = nil
             self?.bridge.send(.hostDone(op: op.rawValue, code: code))
-            if op.rewritesFleetConfig { self?.sendShellInfo() }
+            if op.rewritesFleetConfig {
+                self?.followGateway()
+                self?.sendShellInfo()
+            }
             // the version a helper gave up on may be the gateway's, which the upgrade has just changed
             if op == .upgrade, code == 0, args.name == SvallHome.gatewayName() {
                 self?.remote.retryIfIdle(with: ControllerProcess.locate().map {
@@ -420,6 +425,13 @@ final class ShellRouter {
             bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: "\(error)", action: nil)))
             bridge.send(.hostDone(op: op.rawValue, code: 1))
         }
+    }
+
+    // `svall host enable`, from the page or a terminal, can name a gateway for a fleet whose window went without a helper
+    private func followGateway() {
+        remote.followIfGatewayNamed(with: ControllerProcess.locate().map {
+            ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
+        })
     }
 
     // read afresh each time: the gateway and handover.enabled change when svall host rewrites fleet.json
