@@ -350,6 +350,19 @@ test('a generation the gateway does not share names the restart and the recovery
   expect(hint.textContent).toMatch(/restart Svall's daemon on This Mac/);
 });
 
+test('the sheet says when Abort stops being possible: once the commit begins, and not before', () => {
+  render(<HandoverSheet />);
+  say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer', 'verify', 'prepare', 'ready'));
+  expect(screen.getByTestId('handover-section-verify').dataset.state).toBe('active');
+  expect(screen.getByTestId('handover-abort')).toBeTruthy();
+  expect(screen.queryByTestId('handover-no-way-back')).toBeNull();
+  say(...changed('commit'));
+  expect(screen.getByTestId('handover-section-verify').dataset.state).toBe('done');
+  expect(screen.getByTestId('handover-section-commit').dataset.state).toBe('active');
+  expect(screen.queryByTestId('handover-abort')).toBeNull();
+  expect(screen.getByTestId('handover-no-way-back').textContent).toBe('From here there is no way back: the gateway gives the fleet to trift, and the move can only go on.');
+});
+
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
   preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
   { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },

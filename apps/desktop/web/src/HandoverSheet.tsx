@@ -226,6 +226,11 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
             </>
           )
           : rows.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
+      {id === 'commit' && (state === 'active' || done) && (
+        <div className="host-step" data-testid="handover-no-way-back"><span className="host-mark" /><span className="host-said ho-sub">
+          From here there is no way back: the gateway gives the fleet to {ctx.destination}, and the move can only go on.
+        </span></div>
+      )}
       {interrupt && (
         <div className="host-step"><span className="host-mark" /><span className="host-said"><span className="ho-acts">
           <button className="btn ho-choice" data-testid="handover-interrupt" title={`Stops every agent still at work with Escape; each resumes from its transcript on ${ctx.destination}`}
@@ -333,7 +338,7 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
   );
 }
 
-/** Moving the fleet to another machine: the five steps of the helper's transaction, as they arrive. */
+/** Moving the fleet to another machine: the six steps of the helper's transaction, as they arrive. */
 export function HandoverSheet() {
   const open = useApp((s) => s.handoverOpen);
   const enabled = useApp((s) => !!s.shell?.handoverEnabled);

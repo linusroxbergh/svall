@@ -768,13 +768,14 @@ characters reporting the same remote listener share one tunnel. Listener changes
 # User interface and commands
 
 `Handover` sits beside the fleet/owner badge. The destination menu contains **This Mac** and the
-configured gateway. The sheet has five user-facing sections backed by the transaction phases:
+configured gateway. The sheet has six user-facing sections backed by the transaction phases:
 
 1. Checks
 2. Resting characters
 3. Transferring files and sessions
-4. Verifying and committing
-5. Resuming characters
+4. Verifying
+5. Committing
+6. Resuming characters
 
 Before commit the sheet offers Abort. After commit it offers Retry for failed activation and never
 offers an unsafe rollback. Closing the app does not cancel the transaction; reopening reconstructs

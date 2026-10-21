@@ -37,10 +37,10 @@ What `handover.changed` and `status` report, in order.
 | `begin` | Checks | The gateway opens the handover at the fleet's generation. | Resume or Abort. |
 | `freeze` | Resting characters | The source fences every change, rests its terminals and writes the manifest. | Resume or Abort. |
 | `transfer` | Transferring files and sessions | The destination claims each folder, then rsync copies folders and sessions. | Resume or Abort; a resume copies only what changed. |
-| `verify` | Verifying and committing | The copy is checked against the source. | Resume or Abort. |
-| `prepare` | Verifying and committing | The destination proves what landed, imports Git, places the sessions and writes the state it would run. | Resume or Abort. |
-| `ready` | Verifying and committing | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
-| `commit` | Verifying and committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
+| `verify` | Verifying | The copy is checked against the source. | Resume or Abort. |
+| `prepare` | Verifying | The destination proves what landed, imports Git, places the sessions and writes the state it would run. | Resume or Abort. |
+| `ready` | Verifying | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
+| `commit` | Committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
 | `activate` | Resuming characters | The destination runs the fleet and resumes the terminals the handover rested. | Resume (Retry). |
 | `complete` | Resuming characters | Both machines and the gateway close the handover. | Resume finishes what is left. |
 | `aborted` | the section it stopped in | An abort is letting go on both machines. The source takes its fleet back first, and a machine that cannot be reached lets go at the next Abort. | Abort again finishes it. |

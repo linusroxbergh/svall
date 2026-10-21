@@ -7,12 +7,14 @@ import { machineName, withoutTokens } from './host.js';
 // what `svall handover --json` prints
 export type { CharacterResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@svall/protocol';
 
-export type SectionId = 'checks' | 'rest' | 'transfer' | 'commit' | 'resume';
+export type SectionId = 'checks' | 'rest' | 'transfer' | 'verify' | 'commit' | 'resume';
+// Abort is possible up to the commit, which has a section of its own
 export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }[] = [
   { id: 'checks', label: 'Checks', phases: ['begin'] },
   { id: 'rest', label: 'Resting characters', phases: ['freeze'] },
   { id: 'transfer', label: 'Transferring files and sessions', phases: ['transfer'] },
-  { id: 'commit', label: 'Verifying and committing', phases: ['verify', 'prepare', 'ready', 'commit'] },
+  { id: 'verify', label: 'Verifying', phases: ['verify', 'prepare', 'ready'] },
+  { id: 'commit', label: 'Committing', phases: ['commit'] },
   { id: 'resume', label: 'Resuming characters', phases: ['activate', 'complete'] },
 ];
 export type SectionState = 'pending' | 'active' | 'waiting' | 'done' | 'stopped';

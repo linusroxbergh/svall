@@ -128,7 +128,7 @@ test('with no gateway the sheet says where one is set up, and offers only This M
   await expect(page.getByTestId('handover-to-local')).toBeDisabled();
 });
 
-test('the sheet carries a move to the gateway through all five sections, then the page reaches the fleet where it landed', async ({ page, svall }) => {
+test('the sheet carries a move to the gateway through all six sections, then the page reaches the fleet where it landed', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('move') });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'bo' });
@@ -185,9 +185,13 @@ test('the sheet carries a move to the gateway through all five sections, then th
   await expect(page.getByTestId('handover-section-transfer')).toHaveAttribute('data-state', 'active');
   await expect(page.getByTestId('handover-abort')).toBeVisible();
 
-  await say(page, ...changed('verify', 'prepare', 'ready', 'commit'));
+  await say(page, ...changed('verify', 'prepare', 'ready'));
+  await expect(page.getByTestId('handover-section-verify')).toHaveAttribute('data-state', 'active');
+  await expect(page.getByTestId('handover-abort')).toBeVisible();
+  await say(page, ...changed('commit'));
   await expect(page.getByTestId('handover-section-commit')).toHaveAttribute('data-state', 'active');
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);
+  await expect(page.getByTestId('handover-no-way-back')).toBeVisible();
 
   const trust = 'codex waits at its "Trust this folder?" prompt in ada\'s terminal; answer it there';
   await say(page, ...changed('activate'), character(a.id, 'activate', { notice: trust }), character(b.id, 'activate', { error: 'bo did not start: claude exited 1' }), ...changed('complete'),

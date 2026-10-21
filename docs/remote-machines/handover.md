@@ -13,15 +13,16 @@ an agent your fleet runs that is missing or not logged in there does.
 ## From the app
 
 Choose **Handover** at the foot of the sidebar, then the machine to move the fleet to: the gateway's name, or **This
-Mac** to bring it back. The sheet follows five steps:
+Mac** to bring it back. The sheet follows six steps:
 
 1. **Checks.** Nothing is touched yet. The sheet lists what would be carried, anything that blocks, and warnings.
 2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
    terminal is brought to rest, and its window closed. The Load tab still reads; its Sleep and Delete are refused.
 3. **Transferring files and sessions.** Each folder and agent session is copied, with progress.
-4. **Verifying and committing.** The copy is checked, the other machine prepares the fleet, and the gateway commits
-   it to that machine. From here there is no way back.
-5. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
+4. **Verifying.** The copy is checked, and the other machine prepares the fleet. Abort still gives it back.
+5. **Committing.** The gateway commits the fleet to that machine. From here there is no way back, and the sheet says
+   so.
+6. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
 
 When something needs your answer, the sheet waits for one. You can close it meanwhile, such as to answer an agent in
 its terminal, and open it again from **Handover**, which is marked while a decision waits:

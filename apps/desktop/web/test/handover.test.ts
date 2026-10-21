@@ -84,11 +84,13 @@ describe('the handover a sheet follows', () => {
     expect(run.phase).toBe('verify');
   });
 
-  it('says how far each of the five sections has come', () => {
+  it('says how far each of the six sections has come, with the commit, past which nothing goes back, a section of its own', () => {
     const states = (run: HandoverRun) => sectionStates(run).map((s) => `${s.label}: ${s.state}`);
     expect(states(play(through('transfer')))).toEqual([
-      'Checks: done', 'Resting characters: done', 'Transferring files and sessions: active', 'Verifying and committing: pending', 'Resuming characters: pending',
+      'Checks: done', 'Resting characters: done', 'Transferring files and sessions: active', 'Verifying: pending', 'Committing: pending', 'Resuming characters: pending',
     ]);
+    expect(states(play([...through('verify'), changed('prepare'), changed('ready')])).slice(3, 5)).toEqual(['Verifying: active', 'Committing: pending']);
+    expect(states(play(through('commit'))).slice(3, 5)).toEqual(['Verifying: done', 'Committing: active']);
     const blocked = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [] } }]);
     expect(sectionStates(blocked)[1].state).toBe('waiting');
     const stopped = play([...through('transfer'), { event: 'handover.result', data: { status: 'interrupted', transactionId: tx, phase: 'transfer', error: 'ssh closed', safe: ['resume', 'abort'] } }]);
