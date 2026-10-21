@@ -1815,6 +1815,16 @@ describe('the last line a run prints', () => {
     expect(outcomeText({ result: 'ready', actions: [] }, 'remove', 'trift', { forget: true })).toBe('trift is forgotten');
   });
 
+  it('ends a check with ready and its warnings, or the checks that block a handover', async () => {
+    const { doctorVerdict } = await import('../src/commands/host.js');
+    const ok = { name: 'release', status: 'ok' as const, detail: '1.2.3' };
+    const warn = { name: 'tmux', status: 'warn' as const, detail: '3.4' };
+    expect(doctorVerdict([ok, warn, warn], { name: 'trift', gateway: true })).toBe('ready for handover; 2 warnings');
+    expect(doctorVerdict([ok], { name: 'trift', gateway: false })).toBe("ready to be a fleet's gateway: svall host enable trift --fleet <fleet>");
+    expect(doctorVerdict([ok, warn, { name: 'systemd', status: 'fail', detail: 'inactive' }], { name: 'trift', gateway: true }))
+      .toBe('1 check blocks a handover: systemd');
+  });
+
   it('records the step a run stopped at', async () => {
     const out = await removeHost('trift', {}, deps());
     expect(out).toMatchObject({ result: 'actions', stopped: 'machine' });

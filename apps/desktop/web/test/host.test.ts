@@ -70,15 +70,19 @@ describe('the end of a run', () => {
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]), undefined)).toEqual({ text: 'Add machine ended with exit 143' });
   });
 
-  it('says a check is ready for handover only when nothing failed or is left to do', () => {
-    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'ok'), step('codex', 'skip', { detail: 'not installed' })]), undefined)).toEqual({ text: 'ready for handover' });
-    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'ok'), step('linger', 'warn')]), undefined).text).not.toBe('ready for handover');
-  });
-
   it('names the step a run stopped at and what it said, with what is left to do', () => {
     const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })]);
     expect(outcomeOf(add, undefined)).toEqual({ text: 'Add machine stopped at Install: svall setup exited 1', list: ['log in'] });
     expect(outcomeOf(ended('remove', 1, []), undefined)).toEqual({ text: 'Remove ended with exit 1' });
+  });
+
+  it('says a check is ready and how many warnings it found, or lists the checks that block', () => {
+    const fine = ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('gh', 'warn'), step('codex', 'skip'), step('release', 'ok')]);
+    expect(outcomeOf(fine, 'box')).toEqual({ text: 'ready for handover; 2 warnings', next: 'handover' });
+    expect(outcomeOf(fine, undefined)).toEqual({ text: "ready to be this fleet's gateway; 2 warnings", next: 'gateway' });
+    expect(outcomeOf(ended('doctor', 0, [step('release', 'ok')]), 'box').text).toBe('ready for handover');
+    const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
+    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'systemd: inactive'] });
   });
 
   it('says what an upgrade, a new gateway and a removal did, and offers the handover once there is a gateway', () => {

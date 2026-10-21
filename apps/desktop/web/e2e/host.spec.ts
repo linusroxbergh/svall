@@ -91,7 +91,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
 });
 
-test('a check says ready for handover when nothing failed or is left to do; an upgrade never does', async ({ page, svall }) => {
+test('a check says ready and how many warnings, or what blocks; ready for handover waits for the gateway', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
@@ -106,9 +106,15 @@ test('a check says ready for handover when nothing failed or is left to do; an u
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'tmux', status: 'ok', detail: '3.5a' } });
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'release', status: 'ok', detail: '0.5.0, protocol 4' } });
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'codex', status: 'skip', detail: 'not installed' } });
+  await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'gh', status: 'warn', detail: 'not logged in' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0, protocol 4');
-  await expect(page.getByTestId('host-outcome')).toHaveText('ready for handover');
+  await expect(page.getByTestId('host-outcome')).toContainText("ready to be this fleet's gateway; 1 warning");
+
+  await page.getByTestId('host-doctor').click();
+  await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
+  await receive(page, { type: 'host.done', op: 'doctor', code: 1 });
+  await expect(page.getByTestId('host-outcome')).toContainText('1 check blocks a handover:systemd: svall-svalld@private.service is inactive');
 
   await page.getByTestId('host-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'studio answers on release 0.5.0' } });

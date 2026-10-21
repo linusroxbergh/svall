@@ -12,7 +12,7 @@ import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost,
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { targetFor } from '../target.js';
-import { MARK } from '../checks-view.js';
+import { MARK, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
 
 /**
@@ -59,6 +59,7 @@ const line = (e: StepEvent): string =>
   `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd();
 
 type Op = 'add' | 'upgrade' | 'rollback' | 'remove' | 'enable';
+const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 /** What a run that went through did, in the words the Machines panel uses. */
 export function doneLine(op: Op, name: string, o: { forget?: boolean } = {}): string {
@@ -77,6 +78,15 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   if (o.result === 'ready') return op === 'add' ? `${done}; svall host enable ${name} --fleet <fleet> makes it this fleet's gateway` : done;
   const head = o.stopped ? `stopped at ${o.stopped}; still to do:` : op === 'add' ? `${done}; still to do:` : 'still to do:';
   return [head, ...o.actions.map((a) => `  ${a}`)].join('\n');
+}
+
+/** The last line of a check: ready, and its warnings, or the checks that block a handover. */
+export function doctorVerdict(checks: Check[], machine: { name: string; gateway: boolean }): string {
+  const failed = checks.filter((c) => c.status === 'fail');
+  if (failed.length) return `${plural(failed.length, 'check')} block${failed.length === 1 ? 's' : ''} a handover: ${failed.map((c) => c.name).join(', ')}`;
+  const warned = checks.filter((c) => c.status === 'warn').length;
+  const ready = machine.gateway ? 'ready for handover' : `ready to be a fleet's gateway: svall host enable ${machine.name} --fleet <fleet>`;
+  return `${ready}${warned ? `; ${plural(warned, 'warning')}` : ''}`;
 }
 
 /** Either one NDJSON object per step and a final result, or the same events as doctor-style lines. */
@@ -125,7 +135,8 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .argument('<name>', 'the machine in the registry')
     .action(async (name: string) => {
       const report = await doctorHost(name, realDeps(() => { /* a diagnosis prints a table, not steps */ }, dir()));
-      printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks)].join('\n'));
+      const gateway = MachineRegistry.load(dir()).get(name)?.record.gateway ?? false;
+      printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks), doctorVerdict(report.checks, { name, gateway })].join('\n'));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
     });
 

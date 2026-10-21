@@ -79,6 +79,8 @@ export const OP_TITLE: Record<HostOp, string> = {
 /** How a finished run ends: what it did, what is left, and the one step the panel offers next. */
 export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' };
 
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
 /** `gateway`: the machine this fleet names as its gateway, before which nothing is ready for handover. */
 export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome {
   const name = run.args.name;
@@ -86,8 +88,12 @@ export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome
   const list = actions.length ? { list: actions } : {};
   const theGateway = gateway === name;
   const onward = theGateway ? { next: 'handover' as const } : { next: 'gateway' as const };
-  if (run.op === 'doctor' && run.code === 0 && run.steps.length > 0 && run.steps.every((s) => s.status === 'ok' || s.status === 'skip')) {
-    return { text: 'ready for handover' };
+  if (run.op === 'doctor') {
+    const failed = run.steps.filter((s) => s.status === 'fail');
+    if (failed.length) return { text: `${plural(failed.length, 'check')} block${failed.length === 1 ? 's' : ''} a handover:`, list: failed.map((s) => `${stepLabel(s.step)}: ${s.detail ?? 'failed'}`) };
+    const warned = run.steps.filter((s) => s.status === 'warn').length;
+    const ready = theGateway ? 'ready for handover' : "ready to be this fleet's gateway";
+    if (run.code === 0) return { text: `${ready}${warned ? `; ${plural(warned, 'warning')}` : ''}`, ...list, ...onward };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list };
