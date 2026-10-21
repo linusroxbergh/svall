@@ -26,7 +26,8 @@ const linux = (name: string): MachineRecord => ({
   name, ssh: name, platform: 'linux', arch: 'x64', home: '/home/linus', svallBase: '/home/linus/.local/share/svall', gateway: true,
 });
 
-type Daemon = { ownership: OwnershipInfo; adopted: unknown[]; fails?: string; declines?: boolean };
+// takes: the record its relay took in place of the one sent, as one whose daemon reaches the gateway does
+type Daemon = { ownership: OwnershipInfo; adopted: unknown[]; fails?: string; declines?: boolean; takes?: OwnerRecord };
 
 /** A Mac controller, trift the fleet's gateway and vault a third machine, each gateway a real authority under a temp prefix. */
 function world() {
@@ -77,7 +78,7 @@ function world() {
       if (d.fails) throw new Error(d.fails);
       d.adopted.push(params);
       const { record } = params as { record: OwnerRecord };
-      return d.declines ? { adopted: false, ownership: d.ownership } : { adopted: true, ownership: { ...record, frozen: false } };
+      return d.declines ? { adopted: false, ownership: d.ownership } : { adopted: true, ownership: { ...(d.takes ?? record), frozen: false } };
     };
     return { call: call as DaemonPort['call'], close: () => {} };
   };
@@ -349,6 +350,20 @@ describe('fleet recover --force-owner', () => {
     const [incomplete] = failing.of('recover.result');
     expect(incomplete).toMatchObject({ result: 'incomplete', message: expect.stringMatching(/vault holds handover tx1 and did not take this record: the socket closed/) });
     expect(incomplete.actions).toEqual(expect.arrayContaining([expect.stringMatching(/^vault holds handover tx1: once its daemon answers, run `svall fleet recover --force-owner local` again/)]));
+  });
+
+  it('runs nothing here alone when a machine it tells reaches the gateway and takes the gateway\'s own record', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    // the Mac cannot reach trift, and vault can: its relay takes what trift answers
+    w.daemons.set(VAULT, { ownership: ownerAt(TRIFT, 4), adopted: [], takes: { fleetId, generation: 4, ownerMachineId: TRIFT } });
+    expect(await w.run({ confirm: fleetId })).toBe(false);
+    const [result] = w.of('recover.result');
+    expect(result).toMatchObject({ result: 'incomplete', message: expect.stringMatching(/vault reached the gateway trift, which answered that trift owns this fleet at generation 4: trift is not lost, so mac was not told to run this fleet alone/) });
+    expect(result.actions).toEqual([expect.stringMatching(/recover through trift from a machine that reaches it/)]);
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([]);
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId, gatewayMachineId: TRIFT });
   });
 
   it('runs the fleet here alone with its daemon down by writing owner.json and fleet.json itself, and only while no handover journal lies here', async () => {

@@ -293,7 +293,8 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
   the gateway answers it.
 - Every other machine that answers takes the record first and lets go any handover it holds. One that holds a
   handover and does not take it ends the command `incomplete` before this Mac runs the fleet: run it again once that
-  machine answers.
+  machine answers. One that reaches the gateway, which this Mac cannot, takes the gateway's own record instead, and
+  the command ends `incomplete` too: the gateway is not lost, so recover through it from a machine that reaches it.
 - Then `svall host remove <name> --forget` drops the lost machine from the registry. Before the recovery it refuses
   while this Mac keeps a journal of a handover, or the lost machine owns the fleet.
 

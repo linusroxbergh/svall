@@ -327,18 +327,26 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
       return refuse(`nothing was written: this machine's audit of the recovery could not be written (${messageOf(e)})`);
     }
     // every other machine that answers takes the record through the lost gateway, which cannot say otherwise, and lets
-    // go the handover it holds before this one runs the fleet; one holding a handover that could not be told stops it here
+    // go the handover it holds before this one runs the fleet; one holding a handover that could not be told stops it here,
+    // as does one whose relay reached the gateway and took the gateway's own record
     const unheld: string[] = [];
-    const retell: string[] = [];
+    const retell = new Set<string>();
     for (const m of machines.filter((x) => x.machineId !== local && x.from === 'daemon')) {
       const r = await tell(m, { record, gatewayMachineId: gatewayId });
-      const j = (r.ownership ?? m.ownership)?.journal;
-      if (r.adopted || !j) continue;
+      const now = r.ownership;
+      if (now && now.ownerMachineId === owner.id && now.generation === generation) continue;
+      if (r.adopted && now) {
+        unheld.push(`${m.name} reached the gateway ${gatewayName}, which answered that ${nameOf(now.ownerMachineId)} owns this fleet at generation ${now.generation}: ${gatewayName} is not lost`);
+        retell.add(`recover through ${gatewayName} from a machine that reaches it, or mend this machine's route to it, then run this again`);
+        continue;
+      }
+      const j = (now ?? m.ownership)?.journal;
+      if (!j) continue;
       unheld.push(`${m.name} holds handover ${j.transactionId} and did not take this record: ${r.error ?? 'it took nothing'}`);
-      retell.push(`${m.name} holds handover ${j.transactionId}: once its daemon answers, run \`${svall} fleet recover --force-owner ${o.forceOwner}\` again`);
+      retell.add(`${m.name} holds handover ${j.transactionId}: once its daemon answers, run \`${svall} fleet recover --force-owner ${o.forceOwner}\` again`);
     }
     if (unheld.length) {
-      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `${unheld.join('; ')}, so ${owner.record.name} was not told to run this fleet alone`, actions: retell } });
+      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `${unheld.join('; ')}, so ${owner.record.name} was not told to run this fleet alone`, actions: [...retell] } });
       return false;
     }
     // the daemon lets go whatever handover its journal holds, runs the fleet and drops the gateway; one not running
