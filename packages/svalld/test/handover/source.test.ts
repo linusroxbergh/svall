@@ -416,14 +416,25 @@ describe('source preflight', () => {
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
   });
 
-  it('asks the gateway who owns the fleet, as Freeze will, and blocks when it cannot be asked without a prompt', async () => {
+  it('asks the gateway who owns the fleet, as Freeze will, and blocks with why it could not, ssh_interactive only for an ssh that would have to ask', async () => {
     const b = boot();
     const ask = async () => (await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() })).blockers;
     const asked = b.gateway.asked;
     expect(await ask()).toEqual([]);
     expect(b.gateway.asked).toBe(asked + 1);
     b.gateway.down = true;
-    expect(await ask()).toEqual([{ code: 'ssh_interactive', message: expect.stringContaining('ECONNREFUSED') }]);
+    expect(await ask()).toEqual([{ code: 'authority_unreachable', message: expect.stringContaining('ECONNREFUSED') }]);
+    b.gateway.down = false;
+    const cases: [AuthorityFailure, string, RegExp][] = [
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited 255 without an answer: Permission denied (publickey).', { prompt: true }), 'ssh_interactive', /Permission denied/],
+      [new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'), 'authority_unreachable', /did not answer owner\.get/],
+      [new AuthorityFailure('authority_corrupt', `the record for fleet ${fleetId} is unreadable`), 'authority_corrupt', /unreadable.*svall fleet recover/],
+      [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall host enable/],
+    ];
+    for (const [failure, code, says] of cases) {
+      b.gateway.refuses = failure;
+      expect(await ask(), failure.code).toEqual([{ code, message: expect.stringMatching(says) }]);
+    }
   });
 
   it('blocks with identity_mismatch when the route to its gateway now reaches another machine', async () => {

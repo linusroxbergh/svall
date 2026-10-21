@@ -120,6 +120,19 @@ const foreign = (e: unknown): Blocker | undefined => (e instanceof FleetMismatch
 /** A companion on another protocol, or one whose svall does not run, which only an upgrade changes. */
 const incompatible = (e: unknown): Blocker | undefined => (e instanceof SshError && e.kind === 'version' ? { code: 'incompatible_protocol', message: e.message } : undefined);
 
+/** A gateway's refusal to begin, as the blocker that names why: transaction_open only for a handover it holds open. */
+function beginRefused(e: Refused): Blocker {
+  const message = `the gateway would not begin this handover: ${e.message}`;
+  switch (e.code) {
+    case 'generation_mismatch': return { code: 'generation_mismatch', message };
+    case 'not_owner': case 'invalid_request': return { code: 'identity_mismatch', message };
+    case 'not_found': return { code: 'identity_mismatch', message: `${message}; a gateway set up again needs svall host enable <gateway> --fleet <fleet>` };
+    case 'authority_corrupt': return { code: 'authority_corrupt', message: `${message}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };
+    case 'transaction_mismatch': case 'invalid_phase': case 'handover_committed': return { code: 'transaction_open', message };
+    default: return { code: 'authority_unreachable', message: `${message}; its log on the gateway machine says why` };
+  }
+}
+
 /** Worth asking again: an ssh a transport comes back from, a call whose answer never came, or a daemon that could not reach the gateway. */
 const transient = (e: unknown): boolean => {
   if (e instanceof SshError) return retryable(e);
@@ -461,8 +474,7 @@ export class Handover {
         return;
       }
       if (!(e instanceof Refused)) throw e;
-      const code = e.code === 'generation_mismatch' ? 'generation_mismatch' : e.code === 'not_owner' || e.code === 'invalid_request' ? 'identity_mismatch' : 'transaction_open';
-      throw new Blocked('begin', [{ code, message: `the gateway would not begin this handover: ${e.message}` }]);
+      throw new Blocked('begin', [beginRefused(e)]);
     }
     const tx = record.transaction;
     if (!tx || record.generation !== generation || record.ownerMachineId !== source.machineId || tx.fromMachineId !== source.machineId

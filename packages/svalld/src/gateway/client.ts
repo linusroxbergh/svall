@@ -154,6 +154,9 @@ const Registry = z.object({ machines: z.record(z.string(), MachineRecord) });
 // the far svall names its machine before the authority answers, so a route that now leads elsewhere is refused
 const OWNER_GET = '"$1" version --json; exec "$1" gateway owner get --fleet "$2"';
 
+// what ssh in batch mode says where it would have asked for a password, a passphrase or a host key
+const PROMPT = /permission denied|too many authentication failures|no supported authentication|host key verification failed|remote host identification has changed/i;
+
 export type FleetAuthorityOptions = {
   gatewayMachineId: MachineId;
   machineId: MachineId;
@@ -193,7 +196,8 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       const answeredAs = versionMachineId(r.stdout);
       const line = lastLine(r.stdout);
       const silent = (): AuthorityFailure =>
-        new AuthorityFailure('disconnected', `ssh ${gateway.ssh} exited ${r.code} without an answer: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 200)}`);
+        new AuthorityFailure('disconnected', `ssh ${gateway.ssh} exited ${r.code} without an answer: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 200)}`,
+          r.code === 255 && PROMPT.test(r.stderr) ? { prompt: true } : undefined);
       // an ssh that answered nothing never reached a machine to tell apart
       if (answeredAs === undefined && line === undefined) throw silent();
       if (answeredAs !== o.gatewayMachineId) {

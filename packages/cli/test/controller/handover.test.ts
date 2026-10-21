@@ -397,6 +397,30 @@ describe('preflight', () => {
     }
   });
 
+  it('blocks a Begin the gateway refuses with the code that says why, transaction_open only for a handover it holds open', async () => {
+    const cases: [string, string, RegExp][] = [
+      ['authority_corrupt', 'authority_corrupt', /unreadable.*svall fleet recover/],
+      ['not_found', 'identity_mismatch', /holds no record.*svall host enable/],
+      ['internal', 'authority_unreachable', /failed/],
+      ['invalid_phase', 'transaction_open', /is ready-to-commit/],
+      ['transaction_mismatch', 'transaction_open', /already in handover/],
+      ['generation_mismatch', 'generation_mismatch', /generation/],
+      ['not_owner', 'identity_mismatch', /owned by/],
+    ];
+    const said: Record<string, string> = {
+      authority_corrupt: `the record for fleet ${fleetId} is unreadable`, not_found: `the gateway holds no record for fleet ${fleetId}`, internal: 'the gateway failed: EIO',
+      invalid_phase: 'tx-0 is ready-to-commit, not preparing', transaction_mismatch: 'this fleet is already in handover tx-0',
+      generation_mismatch: 'this fleet is at generation 5, not 4', not_owner: `this fleet is owned by ${trift}, not ${mac}`,
+    };
+    for (const [refused, code, says] of cases) {
+      const w = new World();
+      w.gateway.begin = () => w.call('gateway', 'begin', () => { throw new Refused(refused, said[refused]); });
+      const out = await controller(w).start(trift, {});
+      expect(out, refused).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code, message: expect.stringMatching(says) }] });
+      expect(settledOn(w)).toBe('source');
+    }
+  });
+
   it('warns of each carried link that will point at nothing on the destination, asking it of the targets no carried root holds', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'];

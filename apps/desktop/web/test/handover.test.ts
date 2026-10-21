@@ -319,6 +319,13 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint({ ...release, code: 'incompatible_schema' }, ctx)).toBe(blockerHint(release, ctx));
   });
 
+  it('sends a gateway that could not be asked, or cannot read its record, to the Linux machine, whichever way the fleet moves', () => {
+    for (const run of [ctx, { ...ctx, destination: 'This Mac', source: 'studio', pull: true }]) {
+      expect(blockerHint({ code: 'authority_unreachable', message: 'this machine could not ask its gateway' }, run)).toMatch(/gateway.*Check studio/);
+      expect(blockerHint({ code: 'authority_corrupt', message: 'the gateway cannot read its record' }, run)).toMatch(/studio.*readable record.*svall fleet recover/);
+    }
+  });
+
   it('names the Linux machine to upgrade by its registry name, and none it cannot name', () => {
     const release: Blocker = { code: 'incompatible_release', message: 'the destination runs release a1, this machine b2' };
     expect(upgradeAsked(release, ctx)).toBe('studio');

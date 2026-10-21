@@ -185,6 +185,21 @@ function crowded(files: number, own: number, destination: number | undefined): B
   };
 }
 
+/** Why this machine could not ask its gateway who owns the fleet, as Freeze must with no one to answer a prompt. */
+function unasked(e: unknown): Blocker {
+  const said = (e as Error).message;
+  const code = e instanceof AuthorityFailure ? e.code : undefined;
+  if (code === 'identity_mismatch') return { code, message: `this machine's route to its gateway leads elsewhere: ${said}` };
+  if (code === 'not_found') {
+    return { code: 'identity_mismatch', message: `the gateway holds no record of this fleet (${said}); a gateway set up again needs svall host enable <gateway> --fleet <fleet>` };
+  }
+  if (code === 'authority_corrupt') {
+    return { code, message: `the gateway cannot read its record of this fleet: ${said}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };
+  }
+  if (e instanceof AuthorityFailure && e.data?.prompt) return { code: 'ssh_interactive', message: `this machine's ssh to its gateway would have to ask before it could go on: ${said}` };
+  return { code: 'authority_unreachable', message: `this machine could not ask its gateway who owns this fleet: ${said}; try again once the gateway answers` };
+}
+
 const named = (m: TransferManifestV1, transactionId: string): Frozen['manifest'] => {
   if (m.transactionId !== transactionId) throw new Error(`the manifest names handover ${m.transactionId}, not ${transactionId}`);
   return { ...m, transactionId };
@@ -205,13 +220,7 @@ export class SourceHandover {
     const { blockers, inventory } = await this.check(p.toMachineId, p, state);
     // Freeze asks the gateway on its own, with no one to answer a prompt: asked here first, read-only
     const authority = this.d.authority?.();
-    if (authority) {
-      await authority.get(this.fleet().id).catch((e: unknown) => {
-        blockers.push(e instanceof AuthorityFailure && e.code === 'identity_mismatch'
-          ? { code: 'identity_mismatch', message: `this machine's route to its gateway leads elsewhere: ${e.message}` }
-          : { code: 'ssh_interactive', message: `this machine could not ask its gateway who owns this fleet, as Freeze must without a prompt: ${(e as Error).message}` });
-      });
-    }
+    if (authority) await authority.get(this.fleet().id).catch((e: unknown) => { blockers.push(unasked(e)); });
     const signal = AbortSignal.timeout(CALL_TIMEOUT_MS);
     const [live, table] = await Promise.all([this.d.tmux.listWindows(signal), this.processes(signal)]);
     const terminals = classifyTerminals(state, live, table);

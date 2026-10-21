@@ -275,7 +275,12 @@ describe('a fleet authority as its daemon reaches it', () => {
     answer = { code: 1, stdout: `${named}${JSON.stringify({ error: { code: 'not_found', message: 'no record' } })}\n`, stderr: '' };
     expect((await failure(far.get(FLEET))).code).toBe('not_found');
     answer = { code: 255, stdout: '', stderr: 'ssh: connect to host trift port 22: Connection refused' };
-    await expect(far.get(FLEET)).rejects.toThrow(/Connection refused/);
+    expect(await failure(far.get(FLEET))).toEqual(expect.objectContaining({ code: 'disconnected', message: expect.stringMatching(/Connection refused/), data: undefined }));
+    // an ssh that would have to ask before it went on says so, apart from one that reached nothing
+    for (const stderr of ['linus@trift: Permission denied (publickey).', 'Host key verification failed.']) {
+      answer = { code: 255, stdout: '', stderr };
+      expect(await failure(far.get(FLEET)), stderr).toEqual(expect.objectContaining({ code: 'disconnected', data: { prompt: true } }));
+    }
     // a frame that is no authority's answer is a refusal, never taken for silence
     answer = { code: 0, stdout: `${named}${JSON.stringify({ result: { record: { fleetId: FLEET } } })}\n`, stderr: '' };
     expect(await failure(far.get(FLEET))).toMatchObject({ code: 'invalid_request' });
