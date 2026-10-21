@@ -66,10 +66,15 @@ async function session(o: { id?: string; home: string; stage: string; files: str
 type Answer = { lines?: string[]; code?: number; stderr?: string; hang?: boolean };
 
 /** An rsync that answers from a script: `dry` for the verification compare, `real` for a copy. */
-function fakeRsync(answer: (argv: string[], n: { real: number; dry: number }) => Answer = () => ({})) {
+// a listing of what a copy kept aside answers `listing`, and lists nothing unless it says so
+function fakeRsync(answer: (argv: string[], n: { real: number; dry: number }) => Answer = () => ({}), listing: (n: { real: number; dry: number }) => string[] = () => []) {
   const calls: string[][] = [];
   const n = { real: 0, dry: 0 };
   const run: RunRsync = async (_exe, argv, o) => {
+    if (argv.includes('--list-only')) {
+      for (const line of listing(n)) o.onLine(line);
+      return { code: 0, signal: null, stderr: '' };
+    }
     calls.push(argv);
     if (argv.includes('--dry-run')) n.dry++; else n.real++;
     const a = answer(argv, n);
@@ -532,7 +537,11 @@ describe('transfer with a scripted rsync', () => {
       if (n.real > 2) return {};
       fs.writeFileSync(path.join(copy, 'a.txt'), 'a');
       fs.rmSync(path.join(copy, 'new.txt'));
-      return { lines: ['>fcst...... a.txt', '*deleting   new.txt', '*deleting   old/', 'cLc.t...... l -> a.txt', '>f+++++++++ fresh.txt', '.f..t...... b.txt'] };
+      return { lines: ['>fcst...... a.txt', '*deleting   new.txt'] };
+    }, (n) => {
+      const at = `${path.basename(copy)}.overwritten-tx-1`;
+      const line = (type: string, p: string) => `${type}rw-r--r--          4 2026/10/21 22:00:00 ${at}${p}`;
+      return n.real < 2 ? [] : [line('d', ''), line('d', `/${RUN}-pass2`), line('-', `/${RUN}-pass2/a.txt`), line('l', `/${RUN}-pass2/l`), line('-', `/${RUN}-pass2/new.txt`), line('d', `/${RUN}-pass2/old`)];
     });
     const entry = await root({ source: '/far/app', claimed: copy, scanned: copy });
     const r = await transfer(options({ roles: PULL, entries: [entry], stateDir: state, deps: { run: rsync.run, now: () => NOW } }));
@@ -870,6 +879,41 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/mine.md`), 'utf8')).toBe('mine');
   });
 
+  it('lists a file the far copy holds where the source has a folder or a link once a later pass replaced it', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', 'sub/b.txt': 'b' });
+    fs.symlinkSync('a.txt', path.join(src, 'l'));
+    const claimed = tmp();
+    let edited = false;
+    const run: RunRsync = async (exe, argv, o) => {
+      const r = await runRsync(exe, argv, o);
+      if (argv.includes('--list-only') || argv.includes('--dry-run') || edited) return r;
+      for (const p of ['sub', 'l']) fs.rmSync(path.join(claimed, p), { recursive: true });
+      fs.writeFileSync(path.join(claimed, 'sub'), 'a file of mine');
+      fs.writeFileSync(path.join(claimed, 'l'), 'another');
+      edited = true;
+      return r;
+    };
+    const r = await transfer({ transactionId: 'tx-f', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run, now: () => NOW } });
+    const keptAt = `${claimed}.overwritten-tx-f`;
+    temps.push(keptAt);
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 2, overwritten: { keptAt, paths: [`${RUN}-pass2/l`, `${RUN}-pass2/sub`] } }]);
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/sub`), 'utf8')).toBe('a file of mine');
+  });
+
+  it('lists what a run that ended mid-pass kept, on the resume', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    const claimed = tmp();
+    const stateDir = tmp();
+    const entry = await root({ source: src, claimed });
+    const keptAt = `${claimed}.overwritten-tx-m`;
+    temps.push(keptAt);
+    // the earlier run's second pass kept a file and the controller went before it said so
+    new ProgressJournal('tx-m', transactionDir('tx-m', stateDir)).put({ id: 'r_app', kind: 'root', state: 'transferring', pass: 2, done: 0, total: 0, bytes: 0, totalBytes: 1, items: 0 });
+    tree(keptAt, { '20261020T000000Z-pass2/mine.md': 'mine' });
+    const r = await transfer({ transactionId: 'tx-m', roles: PUSH, master, rsync: RSYNC, stateDir, entries: [entry], deps: { now: () => NOW } });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1, overwritten: { keptAt, paths: ['20261020T000000Z-pass2/mine.md'] } }]);
+  });
+
   it('keeps what each later pass replaced apart, so a third pass never replaces what the second kept', async () => {
     const src = tree(tmp(), { 'notes.md': 'v0' });
     const claimed = tmp();
@@ -896,7 +940,7 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     let edits = 0;
     const run: RunRsync = async (exe, argv, o) => {
       const r = await runRsync(exe, argv, o);
-      if (!argv.includes('--dry-run')) fs.writeFileSync(path.join(src, 'notes.md'), `v${++edits}`);
+      if (!argv.includes('--dry-run') && !argv.includes('--list-only')) fs.writeFileSync(path.join(src, 'notes.md'), `v${++edits}`);
       return r;
     };
     const r = await transfer({ transactionId: 'tx-w', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run } });

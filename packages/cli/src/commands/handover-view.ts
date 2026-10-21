@@ -181,7 +181,9 @@ export class View {
         } else if (d.archivedTo && !this.shown.has(`archived:${d.id}`)) {
           this.shown.set(`archived:${d.id}`, d.archivedTo);
           this.print(`  ! ${who}: what was there is kept at ${d.archivedTo}`);
-        } else if (d.notice && this.shown.get(`notice:${d.id}`) !== `  ! ${who}: ${d.notice}`) {
+        }
+        // what a copy kept aside matters most on a row that failed
+        if (d.kind !== 'character' && d.notice && this.shown.get(`notice:${d.id}`) !== `  ! ${who}: ${d.notice}`) {
           this.shown.set(`notice:${d.id}`, `  ! ${who}: ${d.notice}`);
           this.print(`  ! ${who}: ${d.notice}`);
         }

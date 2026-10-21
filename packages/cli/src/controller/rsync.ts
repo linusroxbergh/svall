@@ -159,12 +159,18 @@ const ITEM = /^([<>ch.][fdLDS][.+ ?a-zA-Z]{9}) (.+)$/;
 const MESSAGE = /^\*(\S+) +(.+)$/;
 const PROGRESS = /^\s*(\d[\d,]*)\s+\d+%\s+\S+\s+\S+(?:\s+\(xfr#\d+, (?:to|ir)-chk=(\d+)\/(\d+)\))?\s*$/;
 
-/** The path a copy with a backup folder kept there for an itemized line: a file or link it replaced or deleted. */
-export function backedUp(l: { change: string; name: string }): string | undefined {
-  if (l.change === '*deleting') return l.name.endsWith('/') ? undefined : l.name;
-  if (!/^[<>c][fL]/.test(l.change) || l.change.endsWith('+++++++++')) return undefined;
-  return l.change[1] === 'L' ? l.name.split(' -> ')[0] : l.name;
-}
+/** The rsync arguments that list the tree under a folder, which lists nothing when the folder is not there. */
+export const listArgv = (rsh: string, folder: string): string[] =>
+  ['-r', '-s', '-8', '--no-human-readable', '--list-only', '--ignore-missing-args', '-e', rsh, '--', folder];
+
+// a --list-only line: type and mode, size, date, time, then the name
+const LISTED = /^([-dlpcbs])\S* +\d+ \S+ \S+ (.+)$/;
+
+/** Each file and link a listing of the folder named `name` holds, by its path in that folder. */
+export const listedFiles = (lines: readonly string[], name: string): string[] => lines.flatMap((line) => {
+  const m = LISTED.exec(line);
+  return m && (m[1] === '-' || m[1] === 'l') && m[2].startsWith(`${name}/`) ? [m[2].slice(name.length + 1)] : [];
+});
 
 /** A link whose only itemized change is its mode: a Linux link is always 0777 and cannot be chmodded, so no pass settles it. */
 export const linkModeOnly = (change: string): boolean => /^\.L[. ]{3}p[. ]{5}$/.test(change);

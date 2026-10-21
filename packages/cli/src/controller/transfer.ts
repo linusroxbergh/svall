@@ -11,7 +11,7 @@ import { kept, relativeProblem, type ReplicaCheck } from '@svall/svalld/handover
 import { redact, type RunResult } from './process.js';
 import { ProgressJournal, transactionDir, type EntryProgress } from './progress.js';
 import {
-  backedUp, exitKind, expands, filterRules, keptObjectStores, linkModeOnly, MIN_RSYNC, parseLine, remoteShell, remoteSpec, rsyncArgv, rsyncVersion, runRsync,
+  exitKind, expands, filterRules, keptObjectStores, linkModeOnly, listArgv, listedFiles, MIN_RSYNC, parseLine, remoteShell, remoteSpec, rsyncArgv, rsyncVersion, runRsync,
   type RsyncJob, type RsyncLine, type RsyncResult, type RunRsync,
 } from './rsync.js';
 
@@ -201,6 +201,8 @@ class Mirror {
   private progress: Omit<EntryProgress, 'updatedAt'>;
   private plan?: Plan;
   private shown?: { state: EntryProgress['state']; at: number };
+  // an earlier run of this transaction copied into this entry
+  private resumed: boolean;
 
   constructor(
     private entry: TransferEntry,
@@ -217,6 +219,7 @@ class Mirror {
       ...(held?.verifiedKey && held.verifiedScan ? { verifiedKey: held.verifiedKey, verifiedScan: held.verifiedScan } : {}),
       ...(held?.overwritten && { overwritten: held.overwritten }),
     };
+    this.resumed = (held?.pass ?? 0) > 0;
   }
 
   async run(): Promise<EntryOutcome> {
@@ -333,21 +336,27 @@ class Mirror {
     // the first pass writes over what the claim proved there; a later one over a copy that may have changed since, so it
     // keeps aside what it replaces or deletes. rsync's quick check misses an edit of the same size within the same second;
     // a later pass compares content
-    const into = `${this.runStamp}-pass${pass}`;
     const backup = pass > 1 ? plan.backup : undefined;
-    const replaced: string[] = [];
-    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1, ...(backup && { backupDir: `${backup}/${into}` }) }, (l) => {
-      if (l.kind === 'item') {
-        const kept = backup && backedUp(l);
-        if (kept) replaced.push(`${into}/${kept}`);
-        this.put({ items: this.progress.items + 1 });
-      } else if (l.kind === 'progress') this.put({ bytes: l.bytes, ...(l.total !== undefined && { done: l.done, total: l.total }) });
+    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1, ...(backup && { backupDir: `${backup}/${this.runStamp}-pass${pass}` }) }, (l) => {
+      if (l.kind === 'item') this.put({ items: this.progress.items + 1 });
+      else if (l.kind === 'progress') this.put({ bytes: l.bytes, ...(l.total !== undefined && { done: l.done, total: l.total }) });
     });
-    if (backup && replaced.length) {
-      this.put({ overwritten: { keptAt: backup, paths: [...new Set([...(this.progress.overwritten?.paths ?? []), ...replaced])].sort(byCodeUnit) } });
-    }
+    // what is kept is read where it lies, whatever this pass's rsync said; a resume also reads what a run that ended mid-pass kept
+    if (plan.backup && (backup || this.resumed) && !this.o.signal?.aborted) await this.keptAside(plan.backup, plan.push);
     this.put({ exitCode: r.code, signal: r.signal });
     return this.settle(r);
+  }
+
+  /** Records every file and link kept in `keptAt` by any run, as listed there; a listing that fails leaves the record as it was. */
+  private async keptAside(keptAt: string, far: boolean): Promise<void> {
+    const lines: string[] = [];
+    let code: number | null = null;
+    try {
+      ({ code } = await this.d.run(this.o.rsync, listArgv(this.rsh, far ? remoteSpec(keptAt) : keptAt), { signal: this.o.signal, onLine: (l) => lines.push(l) }));
+    } catch { /* an rsync that cannot start lists nothing */ }
+    if (code !== 0) return;
+    const paths = listedFiles(lines, path.basename(keptAt)).sort(byCodeUnit);
+    this.put({ overwritten: paths.length ? { keptAt, paths } : undefined });
   }
 
   /** Reads this Mac's side under the claim's excludes, and how it differs from `previous`. */
