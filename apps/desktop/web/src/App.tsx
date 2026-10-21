@@ -11,7 +11,7 @@ import { FleetSummary } from './FleetSummary.js';
 import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
 import { connectionBanner, type Banner } from './host.js';
-import { HostSetup } from './HostSetup.js';
+import { HostSetup, startHost } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
@@ -33,6 +33,13 @@ const OUTDATED = () => (window.__svallVariant === 'release'
   ? 'Svall and svalld versions differ: quit and reopen Svall'
   : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
 
+// a check runs at once in the Machines panel; an upgrade waits there for the user to start it
+function check(name: string): void {
+  const s = app.store.getState();
+  s.toggleHost(true, name);
+  if (!s.host?.running) startHost('doctor', { name });
+}
+
 /** The banner's sentence, the one ssh to run in Terminal, what it offers, and what the helper said, folded. */
 function BannerBody({ banner }: { banner: Banner }) {
   const name = banner.machine ?? '';
@@ -43,6 +50,7 @@ function BannerBody({ banner }: { banner: Banner }) {
       {banner.actions.map((a) => {
         switch (a) {
           case 'upgrade': return <button key={a} className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
+          case 'check': return <button key={a} className="btn" data-testid="connection-check" onClick={() => check(name)}>Check {name}</button>;
           case 'reconnect': return <button key={a} className="btn" data-testid="connection-reconnect" onClick={() => app.bridge.send({ type: 'connection.retry' })}>Reconnect</button>;
         }
       })}

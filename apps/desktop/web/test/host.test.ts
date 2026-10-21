@@ -181,10 +181,10 @@ describe('the connection state the shell reports', () => {
       text: 'studio is not reachable; trying again.', detail: 'ssh: connect to host studio port 22: Operation timed out', machine: 'studio', actions: ['reconnect'],
     });
     expect(connectionBanner(err({ owner: 'studio', kind: 'daemon_down', machine: 'studio' }), on))
-      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: ['reconnect'] });
+      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: ['check', 'reconnect'] });
     expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), on))
       .toMatchObject({ text: 'studio is on another version of Svall.', machine: 'studio', actions: ['upgrade', 'reconnect'] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: ['reconnect'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: ['check', 'reconnect'] });
     expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), on))
       .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: ['reconnect'] });
   });

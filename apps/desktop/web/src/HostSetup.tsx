@@ -6,7 +6,8 @@ import { useApp } from './hooks.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
-function start(op: HostOp, args: HostArgs): void {
+/** Runs one `svall host …` in the shell, and has the panel follow it. */
+export function startHost(op: HostOp, args: HostArgs): void {
   app.store.getState().hostStarted(op, args);
   app.bridge.send({ type: 'host.start', op, args });
 }
@@ -23,7 +24,7 @@ function Outcome({ run }: { run: HostRun }) {
       {o.next && (
         <div className="acts">
           {o.next === 'gateway' && (
-            <button className="btn" data-testid="host-next-gateway" onClick={() => start('enable', { name })}>{OP_TITLE.enable}</button>
+            <button className="btn" data-testid="host-next-gateway" onClick={() => startHost('enable', { name })}>{OP_TITLE.enable}</button>
           )}
           {o.next === 'handover' && (
             <button className="btn" data-testid="host-next-handover"
@@ -31,7 +32,7 @@ function Outcome({ run }: { run: HostRun }) {
           )}
           {o.next === 'rollback' && (
             <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
-              onClick={() => start('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
+              onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
           )}
         </div>
       )}
@@ -118,16 +119,16 @@ export function HostSetup() {
         </div>
         <div className="acts">
           <button className="btn" data-testid="host-add" disabled={running || !named || !sshDestination(ssh)}
-            onClick={() => start('add', { name, ssh })}>Add machine</button>
+            onClick={() => startHost('add', { name, ssh })}>Add machine</button>
           <button className="btn" data-testid="host-doctor" disabled={running || !named}
-            onClick={() => start('doctor', { name })}>Check</button>
+            onClick={() => startHost('doctor', { name })}>Check</button>
           <button className="btn" data-testid="host-upgrade" disabled={running || !named}
-            onClick={() => start('upgrade', { name })}>Upgrade</button>
+            onClick={() => startHost('upgrade', { name })}>Upgrade</button>
         </div>
         <div className="acts">
           <button className="btn" data-testid="host-enable" disabled={running || !named}
             title="Make this machine the gateway that keeps this fleet's ownership record; the fleet stays on this Mac"
-            onClick={() => start('enable', { name })}>{OP_TITLE.enable}</button>
+            onClick={() => startHost('enable', { name })}>{OP_TITLE.enable}</button>
           <button className="btn dan" data-testid="host-remove" disabled={running || !named}
             title="Uninstall Svall on this machine and drop its route"
             onClick={() => app.store.getState().confirmHost({ name, forget: false })}>Remove</button>
@@ -142,7 +143,7 @@ export function HostSetup() {
               : `Removing ${confirm.name} uninstalls Svall there and drops its route here. The fleets on it and their files stay on that machine.`}
             <div className="acts">
               <button className="btn dan" data-testid="host-confirm-yes"
-                onClick={() => start('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
+                onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
                 {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
               </button>
               <button className="btn" data-testid="host-confirm-no"
