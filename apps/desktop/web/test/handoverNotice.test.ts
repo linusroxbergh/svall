@@ -54,6 +54,23 @@ describe('banners for a handover while the app is in the background', () => {
     ]);
   });
 
+  it('says the checks need you when they block, and posts nothing for a stop past the commit the sheet resumes by itself', () => {
+    const w = world();
+    w.store.getState().handoverFollow('studio');
+    w.store.getState().handoverEvent(result({ status: 'blocked', phase: 'begin', blockers: [{ code: 'shell_busy', message: "ada's terminal is running npm run dev" }] }));
+    expect(w.posted().map((m) => m.type === 'notify.post' && m.title)).toEqual(['Handover checks need you']);
+
+    w.store.getState().handoverFollow('studio');
+    w.store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'activate' } });
+    const lost = result({ status: 'interrupted', transactionId: 'tx', phase: 'activate', error: 'ssh to studio closed', safe: ['resume'] });
+    w.store.getState().handoverEvent(lost);
+    expect(w.posted()).toHaveLength(1);
+    // the sheet's own resume goes on once; a stop of that one is the user's
+    w.store.getState().handoverGoOn();
+    w.store.getState().handoverEvent(lost);
+    expect(w.posted().map((m) => m.type === 'notify.post' && m.title)).toEqual(['Handover checks need you', 'Handover stopped']);
+  });
+
   it('posts nothing in front, with banners off, or for a run read back at launch', () => {
     for (const w of [world({ active: true }), world({ on: false })]) {
       w.store.getState().handoverFollow('studio');

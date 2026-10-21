@@ -1,5 +1,5 @@
 import type { Bridge } from './bridge.js';
-import { decisionPending, destinationName, destinationOf, headline, type HandoverRun } from './handover.js';
+import { decisionPending, destinationName, destinationOf, goesOnByItself, headline, type HandoverRun } from './handover.js';
 import type { AppStore } from './store/index.js';
 
 // one banner for the handover, which the next replaces
@@ -15,6 +15,9 @@ export function handoverNotice(prev: HandoverRun | undefined, next: HandoverRun 
   if (r && next.following && !prev?.result) {
     if (r.status === 'complete') return { title: 'Handover done', body };
     if (r.status === 'ready') return { title: 'Handover is ready to move', body };
+    if (r.status === 'blocked' && r.phase === 'begin') return { title: 'Handover checks need you', body };
+    // past the commit, the sheet resumes once by itself when the helper has gone
+    if (goesOnByItself({ ...next, following: false })) return undefined;
     if (r.status === 'blocked' || r.status === 'aborted' || r.status === 'interrupted') return { title: 'Handover stopped', body };
     return undefined;
   }
