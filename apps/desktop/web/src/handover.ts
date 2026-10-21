@@ -185,9 +185,12 @@ export function asksStatus(run: HandoverRun | undefined): boolean {
 /** A blocker the status has answered, whose message names the ids and generations the sheet leaves out. */
 export const answered = (run: HandoverRun, b: Blocker): boolean => !!run.status && OPEN_ELSEWHERE.includes(b.code);
 
-/** The status the sheet goes by: one that finds nothing open leaves a run the checks stopped to its blockers. */
-export const verdictOf = (run: HandoverRun): Verdict | undefined =>
-  (run.status?.standing === 'none' && !run.status.safe.length && run.result?.status === 'blocked' ? undefined : run.status);
+/** The status the sheet goes by: one that finds nothing open leaves a run that stopped with no way on to its blockers or its error. */
+export const verdictOf = (run: HandoverRun): Verdict | undefined => {
+  const r = run.result;
+  const stopped = r?.status === 'blocked' || (r?.status === 'interrupted' && !r.safe.length);
+  return run.status?.standing === 'none' && !run.status.safe.length && stopped ? undefined : run.status;
+};
 
 /**
  * Past the commit, a status or a stopped run that leaves only resuming, which the sheet then does without asking, once

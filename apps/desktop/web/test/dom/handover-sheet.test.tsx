@@ -326,6 +326,22 @@ test('a resume the sheet started by itself that finds nothing safe has the statu
   expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
 });
 
+test('a start refused with nothing safe keeps its error when the status it reads finds nothing open', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  const refused: HandoverEvent = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error: 'ssh: connect to host trift port 22: Connection refused', safe: [] } };
+  say(refused);
+  act(() => store.getState().handoverExit(1));
+  expect(attaches(send)).toBe(1);
+  act(() => store.getState().handoverReplay([refused, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } }]));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Stopped at Checks: ssh: connect to host trift port 22: Connection refused');
+  // a run that stopped with a way on, which something since has closed, offers none of it
+  act(() => store.getState().handoverReplay([{ event: 'handover.result', data: { status: 'interrupted', transactionId: TX, phase: 'transfer', error: 'ssh to trift closed', safe: ['resume', 'abort'] } },
+    { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: '' } }]));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('No handover of this fleet is open.');
+  expect(screen.queryByTestId('handover-resume')).toBeNull();
+});
+
 const openAtChecks = (code: 'transaction_open' | 'generation_mismatch' | 'identity_mismatch', message: string): HandoverEvent =>
   ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code, message }] } });
 
