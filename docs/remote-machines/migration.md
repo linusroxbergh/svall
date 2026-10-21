@@ -37,7 +37,8 @@ written, until you keep one of the two; the daemon's log and `svall doctor` both
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
   gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md). A fleet with no
   gateway starts even where `~/.config/svall` cannot be written or holds a broken `machine.json`: its daemon runs as
-  the machine its `owner.json` names, and its log says what to fix.
+  the machine its `owner.json` names, and its log says what to fix. A fleet with a gateway does not: its daemon exits
+  at each start, with the fix in its log, until it can use `~/.config/svall` again.
 
 ### Named fleets
 
