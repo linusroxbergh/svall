@@ -406,7 +406,11 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A Codex terminal a handover reopened with its session, or one you open again after a handover could not resume
   it, and quit before its first prompt** goes dormant again, its window closed, saying Codex exited before that
   session started: Codex reports a session only once it takes a turn. The session is kept; open the terminal again.
-- **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops.
+- **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops, or the
+  app's connection helper next starts and ends it.
+- **A copy of `machine.json` made before Svall tied it to the hardware goes unnoticed.** The first machine to read
+  a file that names no hardware binds it to its own, so two machines that held copies of it before then each bind
+  theirs, and both pass as that machine. Move one aside so it mints its own id.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
 - **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a
   single character or island, forward ports, keep a phone URL across machines, or move from one Linux machine to
