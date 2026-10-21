@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BrowserTab, emptyState, FleetState, HelloReply, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, Second, methods, serverWait } from '../src/index.js';
+import { BrowserTab, emptyState, FleetState, HelloReply, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, Second, methods, serverWait } from '../src/index.js';
 
 describe('serverWait', () => {
   it('extends the deadline for the calls the daemon holds open', () => {
@@ -138,8 +138,9 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 23 with the machine\'s cores in the load reading', () => {
-    expect(PROTOCOL_VERSION).toBe(23);
+  it('is 24 with the pairing link beside the phone address, and the machine\'s cores in the load reading', () => {
+    expect(PROTOCOL_VERSION).toBe(24);
+    expect(MobileStatus.parse({ serving: true, url: 'https://m/', pair: 'https://m/#p', port: 443, logins: [], phones: [] }).pair).toBe('https://m/#p');
     const u = { cpu: 1, mem: 2, procs: 3 };
     expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: {} }).success).toBe(false);
     expect(methods['load.get'].result.parse({ at: 1, cores: 8, total: u, app: u, chars: {} }).cores).toBe(8);

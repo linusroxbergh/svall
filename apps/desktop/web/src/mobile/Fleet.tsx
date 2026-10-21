@@ -122,6 +122,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
         </span>
       </header>
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in the fleet's config.json, then quit and reopen Svall.</p>}
+      {status === 'unpaired' && <p className="empty">This phone isn't paired with the fleet. Open the link from the QR code in Svall's phone panel on the Mac.</p>}
       {loaded && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
       {starred.length > 0 && (
         <section aria-label="Starred">

@@ -236,8 +236,9 @@ runIf('startDaemon', () => {
     const logged: string[] = [];
     const d = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
     const sockets: WebSocket[] = [];
+    const pass = fs.readFileSync(paths.mobilePass, 'utf8').trim();
     const open = (key?: string) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${d.port}/${key ?? ''}`, key ? { headers: { 'Tailscale-User-Login': 'me@example.com' } } : {});
+      const ws = new WebSocket(`ws://127.0.0.1:${d.port}/${key ?? ''}`, key ? { headers: { 'Tailscale-User-Login': 'me@example.com', cookie: `svall-pass=${pass}` } } : {});
       sockets.push(ws);
       return ws;
     };

@@ -89,6 +89,8 @@ async function start(opts: Options): Promise<Daemon> {
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
   const token = readOrCreateToken(paths.token);
   const key = phoneKey(paths.mobileKey, readOrCreateToken(paths.mobileKey));
+  // what a phone proves itself by, handed over in the QR code and never in a command line
+  const pass = readOrCreateToken(paths.mobilePass);
   const push = new PushStore(paths.push, log.error);
   const vapid = readOrCreateVapid(paths.vapid);
   const profile = profileOf(paths.home);
@@ -128,7 +130,7 @@ async function start(opts: Options): Promise<Daemon> {
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   const phones = new Phones();
   const mobile = mobileControl(realDeps(), {
-    home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate,
+    home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
     kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
     savePort: (httpsPort) => {
       try { saveConfig(paths.config, { mobile: { httpsPort } }); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
@@ -155,7 +157,7 @@ async function start(opts: Options): Promise<Daemon> {
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
-      origins: config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
+      origins: config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

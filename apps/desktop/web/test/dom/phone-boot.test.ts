@@ -25,7 +25,7 @@ beforeEach(() => {
   reload.mockClear();
   sessionStorage.clear();
   vi.stubGlobal('WebSocket', Socket);
-  vi.stubGlobal('location', { protocol: 'https:', host: 'fleet.ts.net', pathname: '/', reload });
+  vi.stubGlobal('location', { protocol: 'https:', host: 'fleet.ts.net', pathname: '/', hash: '', reload });
 });
 // a page from an earlier test would answer this one's events too
 afterEach(() => { for (const api of apis.splice(0)) api.stop(); vi.unstubAllGlobals(); vi.useRealTimers(); });

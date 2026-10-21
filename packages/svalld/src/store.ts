@@ -91,11 +91,12 @@ export class Store {
     this.writing = undefined;
     if (!this.dirty) return;
     // a fleet home that is gone stays gone
-    try { writeJsonAtomic(this.file, this.current, { mkdir: false }); this.dirty = false; }
+    try { writeJsonAtomic(this.file, this.current, { mkdir: false, mode: 0o600 }); this.dirty = false; }
     catch (e) { this.log(`state.json not written: ${String(e)}`); }
   }
 
+  // prompts, notes and tab urls are the user's alone
   private persist(): void {
-    writeJsonAtomic(this.file, this.current);
+    writeJsonAtomic(this.file, this.current, { mode: 0o600 });
   }
 }

@@ -331,9 +331,10 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
   daemon serves them.
 - The tailnet needs MagicDNS and HTTPS certificates turned on in Tailscale's
   admin console. The certificate puts the Mac's tailnet name in a public log.
-- Only your own tailnet login gets in, and no token reaches the phone. To let
-  others in, list their logins and yours in `mobile.logins` and restart the
-  daemon.
+- Only your own tailnet login gets in, on a phone that opened the QR code's
+  link or the copied one; no token reaches the phone. To let others in, list
+  their logins and yours in `mobile.logins` and restart the daemon. To unpair
+  every phone, delete `mobile-pass` in the fleet's folder and restart it.
 - Each fleet is its own Home Screen app on its own port: 443 for the private
   fleet, and for each other fleet the first free port from 8443 up, which the
   private fleet takes too while something else serves 443. The port is kept in
@@ -457,7 +458,11 @@ send:
   every value in the fleet's `.env`.
 - For each character in a repository, the daemon runs `gh pr view` to find its
   branch's PR.
-- `svall mobile` serves the fleet to your tailnet with `tailscale serve`.
+- `svall mobile` serves the fleet to your tailnet with `tailscale serve`. The
+  key the proxy reaches the daemon by is on that command's line, where other
+  users on the Mac can read it in `ps` while it runs, and in the serve config.
+  It opens nothing by itself: a phone also has to hold the pass from the QR
+  code, which stays in a cookie on the phone.
 - A character's browser starts on google.com, and `svall doctor` runs
   `gh auth status`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
@@ -479,7 +484,7 @@ to every site the Chrome profile is signed in to.
 - The app, the CLI and the phone talk to the daemon over one loopback
   WebSocket: a full snapshot, then JSON-patch events. The app and the CLI
   present a token; the phone comes through `tailscale serve`, which vouches for
-  its login.
+  its login, and holds the pass the QR code gave it in a cookie.
 - Agent status comes from hooks writing to the fleet's `hooks.sock`, and
   Claude Code's context use and model come from its statusline. Both do
   nothing without the `SVALL_CHAR_ID` a character sets, so `claude` run

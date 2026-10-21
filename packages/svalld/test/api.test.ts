@@ -129,7 +129,9 @@ runIf('API', () => {
     });
     expect(await open('https://evil.example')).toBe(403);
     expect(await open('http://localhost:8080')).toBe(403);
-    for (const origin of [undefined, 'svall://app', 'http://localhost:5173', 'http://127.0.0.1:5173']) expect(await open(origin)).toBe(101);
+    // the Vite dev server is Svall Dev's; the tests run as the release
+    for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) expect(await open(origin)).toBe(403);
+    for (const origin of [undefined, 'svall://app']) expect(await open(origin)).toBe(101);
   });
 
   it('names its protocol version in the handshake reply', async () => {

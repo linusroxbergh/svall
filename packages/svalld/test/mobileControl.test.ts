@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import QRCode from 'qrcode';
 import type { MobileStatus } from '@svall/protocol';
 import { mobileDist } from '../src/runtime.js';
 import { fleetTarget, freePort, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
@@ -50,7 +51,7 @@ function deps(opts: { served?: string; web?: Record<number, string>; tcp?: numbe
 }
 
 // no other fleet keeps a port, and every save works
-const NONE = { kept: () => [], savePort: () => true };
+const NONE = { kept: () => [], savePort: () => true, pass: 'p4ss' };
 const control = (d: MobileDeps, phones = new Phones()) =>
   mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: ['me@example.com'], phones, rotateKey: () => {} });
 
@@ -159,10 +160,13 @@ describe('servesOther', () => {
 });
 
 describe('mobileControl', () => {
-  it('reports the link and the port this fleet answers on', async () => {
-    const status = await control(deps({ served: TARGET })).get();
-    expect(status).toMatchObject({ serving: true, url: 'https://mac.tailnet.ts.net:8443/', port: 8443, logins: ['me@example.com'] });
-    expect(status.qr).toMatch(/^data:image\/png;base64,/);
+  // the QR code and the copied link carry the pass; the address a push names does not
+  it('reports the link and the port this fleet answers on, and the pairing link the QR code draws', async () => {
+    const control_ = control(deps({ served: TARGET }));
+    const status = await control_.get();
+    expect(status).toMatchObject({ serving: true, url: 'https://mac.tailnet.ts.net:8443/', pair: 'https://mac.tailnet.ts.net:8443/#p4ss', port: 8443, logins: ['me@example.com'] });
+    expect(status.qr).toBe(await QRCode.toDataURL('https://mac.tailnet.ts.net:8443/#p4ss', { margin: 1, width: 320 }));
+    expect(control_.served()).toBe('https://mac.tailnet.ts.net:8443/');
   });
 
   it('lets in the logins the config names, over the Mac\'s own', async () => {
@@ -223,7 +227,7 @@ describe('mobileControl', () => {
     const site = 'http://127.0.0.1:5199';
     const d = deps({ web: { 8443: theirs, 8444: site } });
     const saved: number[] = [];
-    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, kept: () => [8445], savePort: (p) => saved.push(p) > 0 });
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, pass: 'p4ss', kept: () => [8445], savePort: (p) => saved.push(p) > 0 });
     expect(await control_.set(true)).toMatchObject({ serving: true, port: 8446, url: 'https://mac.tailnet.ts.net:8446/' });
     expect(d.web).toEqual({ 8443: theirs, 8444: site, 8446: TARGET });
     expect(await control_.set(false)).toMatchObject({ serving: false, port: 8446 });
@@ -234,7 +238,7 @@ describe('mobileControl', () => {
   });
 
   it('passes over a port another fleet keeps while its link is off, and one a plain tcp forward holds', async () => {
-    const kept = mobileControl(deps(), { home: HOME, profile: 'work', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, kept: () => [8443], savePort: () => true });
+    const kept = mobileControl(deps(), { home: HOME, profile: 'work', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, pass: 'p4ss', kept: () => [8443], savePort: () => true });
     expect(await kept.set(true)).toMatchObject({ serving: true, port: 8444 });
     expect(await control(deps({ tcp: [8443] })).set(true)).toMatchObject({ serving: true, port: 8444 });
   });
@@ -243,7 +247,7 @@ describe('mobileControl', () => {
     for (const web of [{}, { 443: 'http://127.0.0.1:51000/abcdef' }] as Record<number, string>[]) {
       const d = deps({ web });
       const saved: number[] = [];
-      const control_ = mobileControl(d, { home: HOME, profile: 'private', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, kept: () => [], savePort: (p) => saved.push(p) > 0 });
+      const control_ = mobileControl(d, { home: HOME, profile: 'private', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, pass: 'p4ss', kept: () => [], savePort: (p) => saved.push(p) > 0 });
       expect(await control_.set(true)).toMatchObject({ serving: true, port: 443, url: 'https://mac.tailnet.ts.net/' });
       expect(d.web).toEqual({ 443: TARGET });
       expect(saved).toEqual([443]);
@@ -254,7 +258,7 @@ describe('mobileControl', () => {
     const site = 'http://127.0.0.1:5199';
     const d = deps({ web: { 443: site } });
     const saved: number[] = [];
-    const control_ = mobileControl(d, { home: HOME, profile: 'private', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, kept: () => [8443], savePort: (p) => saved.push(p) > 0 });
+    const control_ = mobileControl(d, { home: HOME, profile: 'private', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, pass: 'p4ss', kept: () => [8443], savePort: (p) => saved.push(p) > 0 });
     expect(await control_.set(true)).toMatchObject({ serving: true, port: 8444, url: 'https://mac.tailnet.ts.net:8444/' });
     expect(d.web).toEqual({ 443: site, 8444: TARGET });
     expect(saved).toEqual([8444]);
