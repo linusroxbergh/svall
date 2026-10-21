@@ -115,9 +115,13 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     return () => { left = true; };
   }, [id, online, attempt]);
 
-  // a window lost while the view is open waits for revive, as on the desktop
+  // a window lost while the view is open waits for revive, as on the desktop; one that comes back clears it
   const windowId = character?.tmux?.windowId;
-  useEffect(() => { if (windowId) return () => setFailed('The terminal closed.'); }, [windowId]);
+  useEffect(() => {
+    if (!windowId) return;
+    setFailed(undefined);
+    return () => setFailed('The terminal closed.');
+  }, [windowId]);
 
   // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
   const blocked = character?.agent?.status === 'blocked';

@@ -57,9 +57,10 @@ function RobotRow({ c, use, of }: { c: Character; use: LoadChar; of: number }) {
 
 /** Every robot and Svall itself by what they cost the machine, each robot with its Sleep and Delete. */
 export function LoadPanel() {
-  const load = useLoad(true);
+  const { load, error } = useLoad(true);
   const characters = useApp((s) => s.fleet.characters);
-  if (!load) return null;
+  const note = error ? <div className="use-note" data-testid="load-error">{error}</div> : null;
+  if (!load) return note;
 
   const of = load.total.cpu;
   // a robot running only its shell costs nothing worth a row
@@ -72,6 +73,7 @@ export function LoadPanel() {
 
   return (
     <>
+      {note}
       <div className="load-tot">
         <Total label="CPU" text={`${coresText(load.total.cpu)} of ${load.cores} cores`} testid="load-total-cpu" />
         <Total label="RAM" text={memText(load.total.mem)} />

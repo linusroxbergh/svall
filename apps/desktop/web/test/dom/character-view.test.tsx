@@ -291,3 +291,15 @@ test('a drag over an app on the alternate screen wheels it, and a tap reaches it
   await Promise.resolve();
   expect(input.mock.calls).toEqual([['\x1b[<65;3;3M\x1b[<65;3;3M']]);
 });
+
+test('a terminal that comes back under a new window shows it, not the closed message', async () => {
+  store.getState().setFleet(fleet());
+  store.getState().setStatus('online');
+  render(<CharacterView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  const f = fleet();
+  f.characters.c2.tmux = { windowId: '@2', paneId: '%2' };
+  act(() => store.getState().setFleet(f));
+  expect(screen.queryByText('The terminal closed.')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'revive' })).toBeNull();
+});

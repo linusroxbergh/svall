@@ -83,11 +83,12 @@ const isSections = (v: unknown): v is Sections =>
 
 // every fleet's window shares one localStorage, so a fleet keeps its keys under its home and reads
 // the unscoped key until it has written its own
+export const scopedKey = (k: string, fleet?: string): string => (fleet ? `${k}@${fleet}` : k);
 export function localAppStorage(fleet?: string): AppStorage | undefined {
   try {
     const ls = globalThis.localStorage;
     ls.getItem(FOCUS_KEY);
-    const own = (k: string) => (fleet ? `${k}@${fleet}` : k);
+    const own = (k: string) => scopedKey(k, fleet);
     const read = (k: string) => ls.getItem(own(k)) ?? ls.getItem(k);
     // a store that is full or switched off must not take the state change down with it
     const write = (k: string, v: string) => { try { ls.setItem(own(k), v); } catch { /* remembered, not required */ } };
