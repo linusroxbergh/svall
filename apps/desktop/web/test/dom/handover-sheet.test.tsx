@@ -451,13 +451,14 @@ test('where nothing is safe or the gateway has moved on, the sheet names the com
   render(<HandoverSheet />);
   const commands = () => [...screen.getByTestId('handover-way-out').querySelectorAll('code')].map((c) => c.textContent);
   say(...changed('begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit'),
-    { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'commit', error: 'the gateway did not answer', safe: [] } });
+    { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'commit', error: 'whether the handover committed is unknown', safe: [], stop: 'commit_unknown' } });
   act(() => store.getState().handoverExit(1));
-  expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local --gateway <machine>']);
-  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^Once the gateway answers, svall handover status in a terminal says what is safe\. If it is gone for good/);
+  const gone = ['svall handover status', 'svall host doctor trift', 'svall fleet recover --force-owner local', 'svall fleet recover --force-owner local --gateway <machine>'];
+  expect(commands()).toEqual(gone);
+  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^Once the gateway answers, svall handover status says what is safe;.* If it is gone for good, svall fleet recover --force-owner local runs the fleet on this Mac alone/);
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
-  expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local --gateway <machine>']);
+  expect(commands()).toEqual(gone);
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
   expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
@@ -465,6 +466,42 @@ test('where nothing is safe or the gateway has moved on, the sheet names the com
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: '' } }]));
   expect(screen.queryByTestId('handover-way-out')).toBeNull();
+});
+
+test('a stop with nothing safe names the way out for what stopped it, with what the journals said behind Details', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  const commands = (id: string) => [...screen.getByTestId(id).querySelectorAll('code')].map((c) => c.textContent);
+  const broken = '/Users/ada/.svall/handover/journal.json';
+  say(...changed('begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate'), { event: 'handover.result', data: {
+    status: 'interrupted', transactionId: TX, phase: 'activate', safe: [], stop: 'journal_lost',
+    error: "trift's handover journal could not be read, so nothing is safe until it is put back or the fleet is recovered",
+    detail: `${TX} moved this fleet to ${TRIFT}, whose handover journal could not be read and was moved to ${broken}.broken-1: on that machine, repair it and put it back at ${broken}, then restart the fleet's daemon there and resume; or \`svall fleet recover --force-owner <machine>\` names the machine to run the fleet, from the state it holds`,
+  } });
+  act(() => store.getState().handoverExit(1));
+  expect(screen.getByTestId('handover-headline').textContent).toBe("The fleet moved to trift, but trift's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.");
+  expect(screen.getByTestId('handover-detail').textContent).toContain(`${broken}.broken-1`);
+  expect(commands('handover-detail')).toEqual(['svall fleet recover --force-owner <machine>']);
+  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^On trift, put the handover record back where the details say and restart the fleet's daemon there, then Check again/);
+  expect(commands('handover-way-out')).toEqual(['svall fleet recover --force-owner <machine>']);
+  expect(screen.getByTestId('handover-follow')).toBeTruthy();
+  expect(attaches(send)).toBe(0);
+
+  // the gateway could not be asked: its link first, then the recoveries
+  act(() => store.getState().handoverFollow('trift'));
+  say(...changed('begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit'), { event: 'handover.result', data: {
+    status: 'interrupted', transactionId: TX, phase: 'commit', safe: [], stop: 'gateway_unknown', error: 'the gateway could not say whether this handover committed, so nothing is safe until it answers',
+  } });
+  act(() => store.getState().handoverExit(1));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Whether the fleet moved to trift is not known yet: the gateway could not be asked.');
+  expect(commands('handover-way-out')).toEqual(['svall handover status', 'svall host doctor trift', 'svall fleet recover --force-owner local', 'svall fleet recover --force-owner local --gateway <machine>']);
+  expect(attaches(send)).toBe(0);
+
+  // another run holds the machine: the sheet follows it
+  act(() => store.getState().handoverFollow('trift'));
+  say({ event: 'handover.result', data: { status: 'interrupted', phase: 'begin', safe: [], stop: 'running', error: 'a handover of this fleet already runs here as pid 4242' } });
+  act(() => store.getState().handoverExit(1));
+  expect(attaches(send)).toBe(1);
 });
 
 test('a generation the gateway does not share names the restart and the recovery that clear it, with the machine that runs the fleet', () => {

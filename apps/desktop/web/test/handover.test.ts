@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing } from '@svall/protocol';
+import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
-  actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
+  actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
   blockerSide, goOn, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
@@ -171,7 +171,7 @@ describe('what the sheet offers', () => {
       [said('moved', ['resume'], `the gateway has moved this fleet to ${studio} at generation 4; what ${id} left open is only to be finished`, 'activate'),
         'The fleet runs on the other machine now; what the handover left open there is still to finish.'],
       [said('committed', [], `${id} moved this fleet to ${studio}, whose handover journal could not be read and was moved to /home/ada/.svall/handover.json.broken-1; nothing is safe until someone looks at that machine`, 'activate', 'studio'),
-        "The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until someone looks at that machine."],
+        "The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered."],
       [said('returned', ['abort'], `the gateway no longer holds ${id}, and the fleet is ${mac}'s at generation 3; its abort is only to be finished`, 'freeze'),
         'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.'],
       [said('superseded', [], `the gateway holds this fleet for ${studio} at generation 5 in handover 9b1d…, past ${id}`),
@@ -180,6 +180,8 @@ describe('what the sheet offers', () => {
         'Whether the fleet moved to studio is not known yet: the gateway has not answered.'],
       [said('none', ['abort'], 'the gateway never began this handover; nothing moved'), 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.'],
       [said('none', [], 'no handover of this fleet is open anywhere'), 'No handover of this fleet is open.'],
+      [headline(play([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway could not be asked (timed out), so whether a handover of this fleet is open there is unknown' } }], followRun()), 'studio'),
+        'The gateway could not be asked, so whether a handover of this fleet is open is not known.'],
     ];
     for (const [line, want] of lines) {
       expect(line).toBe(want);
@@ -232,16 +234,30 @@ describe('what the sheet offers', () => {
     expect(needsUser(status('unknown', []).status!)).toBe(false);
   });
 
-  it('counts a stopped run as committed only once it can only go on, and says so when whether it committed is unknown', () => {
-    const stopped = (phase: HandoverPhase, safe: ('resume' | 'abort')[]) =>
-      endFollow(play([...through('commit'), result({ status: 'interrupted', transactionId: tx, phase, error: `whether ${tx} committed is unknown (timed out); resume asks the gateway again`, safe })]), 0);
-    const unknown = stopped('commit', []);
+  it('says why nothing is safe from the stop a run names, and counts only a lost journal past the commit as committed', () => {
+    const stopped = (phase: HandoverPhase, safe: SafeAction[], stop?: StopReason, error = 'it stopped') =>
+      endFollow(play([...through('commit'), result({ status: 'interrupted', transactionId: tx, phase, error, safe, ...(stop && { stop }) })]), 1);
+    const unknown = stopped('commit', [], 'commit_unknown');
     expect(isCommitted(unknown)).toBe(false);
     expect(headline(unknown, 'studio')).toBe('Whether the fleet moved to studio is not known yet: the gateway has not answered.');
     expect(actionsOf(unknown)).toMatchObject({ follow: true, resume: undefined, abort: false });
+    expect(headline(stopped('commit', [], 'gateway_unknown'), 'studio')).toBe('Whether the fleet moved to studio is not known yet: the gateway could not be asked.');
+    const lost = stopped('activate', [], 'journal_lost');
+    expect(isCommitted(lost)).toBe(true);
+    expect(headline(lost, 'studio')).toBe("The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.");
+    // a stop at the commit that is not about the commit says what it is about
+    const past = stopped('commit', [], 'superseded');
+    expect(isCommitted(past)).toBe(false);
+    expect(headline(past, 'studio')).toBe("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
+    expect(headline(stopped('begin', [], 'invalid', 'no machine spare in the registry'), 'studio')).toBe('Stopped at Checks: no machine spare in the registry');
     expect(isCommitted(stopped('commit', ['resume']))).toBe(true);
-    expect(isCommitted(stopped('activate', []))).toBe(true);
     expect(isCommitted(stopped('commit', ['resume', 'abort']))).toBe(false);
+  });
+
+  it('reads the status for a stop only the status can say more of', () => {
+    const run = (stop: StopReason) => endFollow(play([result({ status: 'interrupted', phase: 'begin', error: 'it stopped', safe: [], stop })]), 1);
+    expect((['superseded', 'running', 'elsewhere', 'unexpected'] as const).filter((s) => !asksStatus(run(s)))).toEqual([]);
+    expect((['commit_unknown', 'gateway_unknown', 'journal_lost', 'not_begun', 'invalid'] as const).filter((s) => asksStatus(run(s)))).toEqual([]);
   });
 
   it('says why what is left to finish is left once the fleet has moved', () => {

@@ -3,7 +3,7 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
-  accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf,
+  accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
   entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, staysInSight,
   svallFor, transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
@@ -297,7 +297,8 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
 function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onAgain(): void }) {
   const acts = actionsOf(run);
   const said = headline(run, ctx.destination);
-  const way = wayOut(run, ctx.svall);
+  const way = wayOut(run, ctx);
+  const detail = detailOf(run);
   const { tone, sub } = footerNote(run, ctx);
   const close = () => store().toggleHandover(false);
   let buttons: ReactNode[];
@@ -329,6 +330,7 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
       {said && <div className="ho-status" data-testid="handover-headline" aria-live="polite">{said}</div>}
       {sub && <div className="ho-sub" data-testid="handover-footnote">{sub}</div>}
       {way && <div className="ho-sub" data-testid="handover-way-out">{withCode(way)}</div>}
+      {detail && <More label="Details" testid="handover-detail">{withCode(detail)}</More>}
       {buttons.length > 0 && <div className="acts">{buttons}</div>}
       {acts.start && (
         <button className="btn ghost ho-again" data-testid="handover-again" onClick={onAgain}>Move the fleet somewhere else…</button>
@@ -382,7 +384,7 @@ export function HandoverSheet() {
   const to = run && destinationOf(run, runsOn, gateway);
   const destination = destinationName(to);
   const ctx: HintContext = {
-    destination, source: to === 'local' ? gateway ?? 'the gateway' : to ? 'This Mac' : 'the machine it came from', pull: to === 'local', home, svall,
+    destination, source: to === 'local' ? gateway ?? 'the gateway' : to ? 'This Mac' : 'the machine it came from', pull: to === 'local', home, svall, gateway,
     name: (id) => characters[id]?.name ?? run?.preflight?.names?.characters[id] ?? id,
   };
   const close = () => store().toggleHandover(false);
