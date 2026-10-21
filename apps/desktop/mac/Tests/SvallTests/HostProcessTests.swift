@@ -49,6 +49,7 @@ final class HostProcessTests: XCTestCase {
                        ["host", "add", "studio", "--ssh", "linus@studio", "--json"])
         XCTAssertEqual(argv(.doctor, HostArgs(name: "studio")), ["host", "doctor", "studio", "--json"])
         XCTAssertEqual(argv(.upgrade, HostArgs(name: "studio")), ["host", "upgrade", "studio", "--json"])
+        XCTAssertEqual(argv(.rollback, HostArgs(name: "studio")), ["host", "upgrade", "studio", "--rollback", "--json"])
         XCTAssertEqual(argv(.remove, HostArgs(name: "studio")), ["host", "remove", "studio", "--json"])
         XCTAssertEqual(argv(.remove, HostArgs(name: "studio", forget: true)),
                        ["host", "remove", "studio", "--forget", "--json"])
@@ -87,6 +88,7 @@ final class HostProcessTests: XCTestCase {
         XCTAssertNil(argv(.doctor, HostArgs(name: "studio", ssh: "linus@studio")))
         XCTAssertNil(argv(.add, HostArgs(name: "studio", ssh: "linus@studio", forget: true)))
         XCTAssertNil(argv(.upgrade, HostArgs(name: "studio", forget: true)))
+        XCTAssertNil(argv(.rollback, HostArgs(name: "studio", ssh: "linus@studio")))
     }
 
     func testThePageAsksForAnOperationByNameOrNotAtAll() throws {

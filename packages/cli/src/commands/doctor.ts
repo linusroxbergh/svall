@@ -323,8 +323,14 @@ async function codexSandbox(d: DoctorDeps): Promise<Check> {
     await d.run('codex', ['sandbox', '--', 'true'], { path: d.agentPath });
     return { name, status: 'ok', detail: 'starts, with AppArmor restricting user namespaces' };
   } catch (e) {
-    const why = (e as Error).message.trim().split('\n').at(-1);
-    return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${why}), so a Codex character asks before each one: ${BWRAP_PROFILE}` };
+    const err = e as Error & { killed?: boolean; code?: unknown };
+    // execFile's message is its own first line, then what the command wrote to stderr
+    const said = err.message.trim().split('\n').slice(1).join('\n').trim();
+    if (/bwrap:|namespace|operation not permitted/i.test(said)) {
+      return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex character asks before each one: ${BWRAP_PROFILE}` };
+    }
+    const why = err.killed ? 'it did not finish in time' : said.split('\n').at(-1) || `exit ${String(err.code)}, nothing said`;
+    return { name, status: 'warn', detail: `codex sandbox -- true failed (${why}): run codex sandbox -- true there to see why` };
   }
 }
 

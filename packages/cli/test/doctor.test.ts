@@ -467,6 +467,19 @@ describe('doctor on Linux', () => {
     expect(byName(await doctor(priv, fake({ found: ['codex'], files: restrict }).deps))['codex sandbox']).toBeUndefined();
   });
 
+  it('blames AppArmor only for bwrap\'s namespace denial, and says what else stopped the sandbox as it is', async () => {
+    const restrict = { '/proc/sys/kernel/apparmor_restrict_unprivileged_userns': '1\n' };
+    const sandbox = 'codex sandbox -- true';
+    const config = Object.assign(new Error(`Command failed: ${sandbox}\nError: unknown variant \`fast\` in config.toml\n`), { code: 1 });
+    const slow = Object.assign(new Error(`Command failed: ${sandbox}`), { killed: true, signal: 'SIGTERM' });
+    const quiet = Object.assign(new Error(`Command failed: ${sandbox}`), { code: 1 });
+    const check = async (e: Error) => byName(await doctor(priv, linux({ [sandbox]: e }, { files: restrict, found: ['codex'] }).deps))['codex sandbox'];
+    expect(await check(config)).toEqual({ name: 'codex sandbox', status: 'warn', detail: `${sandbox} failed (Error: unknown variant \`fast\` in config.toml): run codex sandbox -- true there to see why` });
+    expect(await check(slow)).toEqual({ name: 'codex sandbox', status: 'warn', detail: `${sandbox} failed (it did not finish in time): run codex sandbox -- true there to see why` });
+    expect(await check(quiet)).toEqual({ name: 'codex sandbox', status: 'warn', detail: `${sandbox} failed (exit 1, nothing said): run codex sandbox -- true there to see why` });
+    for (const c of [config, slow, quiet]) expect((await check(c)).detail).not.toContain('AppArmor');
+  });
+
   it('names the apt package when tmux or gh is missing', async () => {
     const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never, 'gh auth status': undefined as never }).deps));
     expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not found on PATH: sudo apt install tmux' });

@@ -8,7 +8,7 @@ import { AuthorityClient } from '@svall/svalld/gateway/client';
 import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { machineId } from '@svall/svalld/machine';
 import { connectionInfoCommand } from '../../src/commands/connection.js';
-import { connectFor, connectRemote, FleetMismatch, MachineMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
+import { connectFor, connectRemote, FleetMismatch, localConnectionInfo, MachineMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
 import { MachineRegistry, type MachineEntry } from '../../src/controller/registry.js';
 import { SshError, SshMaster } from '../../src/controller/ssh.js';
 import { cleanHomes, makeHome, waitFor } from '../../../svalld/test/helpers.js';
@@ -271,6 +271,14 @@ describe('svall connection-info', () => {
     await expect(run(true)).rejects.toThrow(/svalld is not running/);
   });
 
+  it('names the way to start svalld on the platform it runs on', () => {
+    const said = (platform: NodeJS.Platform) => { try { localConnectionInfo(home, platform); } catch (e) { return (e as Error).message; } return ''; };
+    expect(said('darwin')).toContain('`svall setup`');
+    expect(said('linux')).toContain(`systemctl --user status svall-svalld@${path.basename(home)}.service`);
+    expect(said('linux')).toContain('`svall host doctor <machine>` does from the Mac');
+    expect(said('linux')).not.toMatch(/svall setup|pnpm svalld/);
+  });
+
   it('carries the generation its daemon holds when the fleet has a gateway', async () => {
     const gateway = MachineId.parse('cccccccc-dddd-eeee-ffff-000000000000');
     fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: gateway }));
@@ -368,12 +376,14 @@ describe('resolveOwner', () => {
     expect(await resolveOwner(home, { deps })).toMatchObject({ id: REMOTE });
   });
 
-  it('refuses a record naming a machine the registry has never heard of', async () => {
+  it('refuses a record naming a machine the registry has never heard of, without its id', async () => {
     gateway('gate.test');
-    holds(MachineId.parse(crypto.randomUUID()));
+    const unknown = MachineId.parse(crypto.randomUUID());
+    holds(unknown);
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect((err as SshError).kind).toBe('other');
-    expect((err as SshError).message).toContain('registry');
+    expect((err as SshError).message).toContain('gate holds this fleet for a machine that is not in the registry');
+    expect((err as SshError).message).not.toContain(unknown);
   });
 
   it('takes a fleet the gateway has no record of as this machine\'s', async () => {
@@ -456,6 +466,15 @@ describe('resolveOwner', () => {
     ssh.answer(description({ port: 4711, generation: 9 }));
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect((err as SshError).kind).toBe('unreachable');
+  });
+
+  it('refuses a cached route to a machine the registry does not hold, without its id', async () => {
+    gateway('refused.test');
+    const unknown = MachineId.parse(crypto.randomUUID());
+    route(unknown, 7);
+    const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
+    expect((err as SshError).message).toContain('it last named a machine that is not in the registry');
+    expect((err as SshError).message).not.toContain(unknown);
   });
 
   it('refuses an unreachable gateway with nothing cached', async () => {

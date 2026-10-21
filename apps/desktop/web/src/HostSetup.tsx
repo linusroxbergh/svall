@@ -1,35 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
-import { groupSteps, machineName, readyForHandover, runActions, sshDestination, type HostRun } from './host.js';
+import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
-const OP_TITLE: Record<HostOp, string> = {
-  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', remove: 'Remove', enable: "Make it this fleet's gateway",
-};
-
-function start(op: HostOp, args: HostArgs): void {
+/** Runs one `svall host …` in the shell, and has the panel follow it. */
+export function startHost(op: HostOp, args: HostArgs): void {
   app.store.getState().hostStarted(op, args);
   app.bridge.send({ type: 'host.start', op, args });
 }
 
 function Outcome({ run }: { run: HostRun }) {
-  const actions = runActions(run);
+  const gateway = useApp((s) => s.shell?.gateway);
   if (run.running) return <div className="host-note" data-testid="host-running">{OP_TITLE[run.op]}: running…</div>;
-  if (readyForHandover(run)) return <div className="host-note" data-testid="host-outcome">ready for handover</div>;
-  if (actions.length > 0) {
-    return (
-      <div className="host-note" data-testid="host-outcome">
-        still to do:
-        <ul>{actions.map((a) => <li key={a}>{a}</li>)}</ul>
-      </div>
-    );
-  }
+  const o = outcomeOf(run, gateway);
+  const name = run.args.name;
   return (
     <div className="host-note" data-testid="host-outcome">
-      {OP_TITLE[run.op]}: {run.code === 0 ? 'done' : `ended with exit ${run.code}`}
+      {o.text}
+      {o.list && <ul>{o.list.map((a) => <li key={a}>{a}</li>)}</ul>}
+      {o.next && (
+        <div className="acts">
+          {o.next === 'gateway' && (
+            <button className="btn" data-testid="host-next-gateway" onClick={() => startHost('enable', { name })}>{OP_TITLE.enable}</button>
+          )}
+          {o.next === 'handover' && (
+            <button className="btn" data-testid="host-next-handover"
+              onClick={() => { app.store.getState().toggleHost(false); app.store.getState().toggleHandover(true); }}>Open Handover</button>
+          )}
+          {o.next === 'rollback' && (
+            <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
+              onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -43,7 +49,7 @@ function Checklist({ run }: { run: HostRun }) {
           {group.rows.map((row, at) => (
             <div key={`${row.step}-${at}`} className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
               <span className="host-mark">{MARK[row.status]}</span>
-              <span className="host-name">{row.step}</span>
+              <span className="host-name">{stepLabel(row.step)}</span>
               <span className="host-said">
                 {row.detail}
                 {row.action && <em data-testid={`host-action-${row.step}`}>{row.action}</em>}
@@ -113,16 +119,16 @@ export function HostSetup() {
         </div>
         <div className="acts">
           <button className="btn" data-testid="host-add" disabled={running || !named || !sshDestination(ssh)}
-            onClick={() => start('add', { name, ssh })}>Add machine</button>
+            onClick={() => startHost('add', { name, ssh })}>Add machine</button>
           <button className="btn" data-testid="host-doctor" disabled={running || !named}
-            onClick={() => start('doctor', { name })}>Check</button>
+            onClick={() => startHost('doctor', { name })}>Check</button>
           <button className="btn" data-testid="host-upgrade" disabled={running || !named}
-            onClick={() => start('upgrade', { name })}>Upgrade</button>
+            onClick={() => startHost('upgrade', { name })}>Upgrade</button>
         </div>
         <div className="acts">
           <button className="btn" data-testid="host-enable" disabled={running || !named}
             title="Make this machine the gateway that keeps this fleet's ownership record; the fleet stays on this Mac"
-            onClick={() => start('enable', { name })}>{OP_TITLE.enable}</button>
+            onClick={() => startHost('enable', { name })}>{OP_TITLE.enable}</button>
           <button className="btn dan" data-testid="host-remove" disabled={running || !named}
             title="Uninstall Svall on this machine and drop its route"
             onClick={() => app.store.getState().confirmHost({ name, forget: false })}>Remove</button>
@@ -137,7 +143,7 @@ export function HostSetup() {
               : `Removing ${confirm.name} uninstalls Svall there and drops its route here. The fleets on it and their files stay on that machine.`}
             <div className="acts">
               <button className="btn dan" data-testid="host-confirm-yes"
-                onClick={() => start('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
+                onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
                 {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
               </button>
               <button className="btn" data-testid="host-confirm-no"

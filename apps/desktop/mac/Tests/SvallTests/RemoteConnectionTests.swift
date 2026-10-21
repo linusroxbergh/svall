@@ -101,7 +101,7 @@ final class RemoteConnectionTests: XCTestCase {
         let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), answerWithin: 1)
         remote.start()
         waitForTranscript(of: 2)
-        XCTAssertEqual(transcript, ["state connecting studio - -", "state error studio other the connection helper has not answered in 1 s"])
+        XCTAssertEqual(transcript, ["state connecting studio - -", "state error studio helper the connection helper has not answered in 1 s"])
         XCTAssertEqual(remote.route, .pending)
         XCTAssertTrue(helper.isRunning)
         remote.stop()
@@ -198,7 +198,7 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertNil(remote.connection)
         XCTAssertFalse(transcript.contains { $0.hasPrefix("connection") })
         XCTAssertEqual(remote.state?.state, "error")
-        XCTAssertEqual(remote.state?.kind, "other")
+        XCTAssertEqual(remote.state?.kind, "helper")
         remote.stop()
     }
 
@@ -398,7 +398,7 @@ final class RemoteConnectionTests: XCTestCase {
         waitForTranscript(of: 2)
         XCTAssertEqual(transcript.first, "state connecting local - -")
         XCTAssertEqual(remote.state?.state, "error")
-        XCTAssertEqual(remote.state?.kind, "other")
+        XCTAssertEqual(remote.state?.kind, "helper")
         // the fleet names a gateway, so it may be on another machine
         XCTAssertEqual(remote.route, .pending)
         // the page asking again while it has no port starts no helper after it
@@ -418,7 +418,7 @@ final class RemoteConnectionTests: XCTestCase {
         gateway = false
         waitForTranscript(of: 3)
         XCTAssertEqual(transcript, ["state connecting local - -",
-                                    "state error local other the connection helper stopped (exit 3)",
+                                    "state error local helper the connection helper stopped (exit 3)",
                                     "connection 127.0.0.1:8123:t0ken"])
         XCTAssertEqual(remote.route, .local)
         XCTAssertEqual(remote.connection, SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))
@@ -448,6 +448,91 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertEqual(remote.state?.state, "error")
         XCTAssertEqual(remote.route, .remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock")))
         remote.stop()
+    }
+
+    func testTheMachineThatDidNotAnswerIsPassedOn() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#,
+                                             #"{"type":"error","kind":"auth","message":"Permission denied","machine":"gate","destination":"linus@gate"}"#])
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []))
+        remote.start()
+        waitForTranscript(of: 2)
+        XCTAssertEqual(remote.state?.machine, "gate")
+        XCTAssertEqual(remote.state?.destination, "linus@gate")
+        remote.stop()
+    }
+
+    func testTheFleetsCopyHereOpensOnlyWhenAskedWhileTheHelperCannotSayWhereItRuns() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#,
+                                             #"{"type":"error","kind":"unreachable","message":"gate did not answer","machine":"gate"}"#])
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []),
+                                local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))
+        remote.start()
+        waitForTranscript(of: 2)
+        XCTAssertEqual(remote.route, .pending)
+        XCTAssertNil(remote.openHere())
+        XCTAssertEqual(remote.route, .local)
+        XCTAssertEqual(transcript.last, "connection 127.0.0.1:8123:t0ken")
+        remote.stop()
+    }
+
+    func testThereIsNoCopyHereToOpenWithoutTheDaemonAndNothingToSayOnceTheWindowHasARoute() throws {
+        let down = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#,
+                                           #"{"type":"error","kind":"unreachable","message":"gate did not answer","machine":"gate"}"#])
+        let none = connection(helper: ControllerProcess(executable: down, arguments: []))
+        none.start()
+        waitForTranscript(of: 2)
+        XCTAssertEqual(none.openHere(), "svalld is not running on this Mac")
+        XCTAssertEqual(none.route, .pending)
+        none.stop()
+
+        transcript = []
+        let away = connection(helper: ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline]), arguments: []),
+                              local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))
+        away.start()
+        waitForTranscript(of: 3)
+        XCTAssertNil(away.openHere())
+        XCTAssertEqual(away.route, .remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock")))
+        away.stop()
+    }
+
+    func testReconnectingKeepsTheCopyHereOpenUntilTheFreshHelperSaysWhereTheFleetRuns() throws {
+        let failing = [#"{"type":"connecting","owner":"local"}"#, #"{"type":"error","kind":"unreachable","message":"gate did not answer","machine":"gate"}"#]
+        let local = SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken")
+        let remote = connection(helper: ControllerProcess(executable: try fakeHelper(prints: failing), arguments: []), local: local)
+        remote.start()
+        waitForTranscript(of: 2)
+        XCTAssertNil(remote.openHere())
+        let again = ControllerProcess(executable: try fakeHelper(prints: failing), arguments: [])
+        remote.retry(with: again)
+        XCTAssertTrue(again.isRunning)
+        XCTAssertEqual(remote.route, .local)
+        XCTAssertEqual(remote.connection, local)
+        remote.stop()
+
+        // one that never opened the copy here waits on the fresh helper, as the first did
+        transcript = []
+        let waiting = connection(helper: ControllerProcess(executable: try fakeHelper(prints: failing), arguments: []), local: local)
+        waiting.start()
+        waitForTranscript(of: 2)
+        waiting.retry(with: ControllerProcess(executable: try fakeHelper(prints: failing), arguments: []))
+        XCTAssertEqual(waiting.route, .pending)
+        waiting.stop()
+    }
+
+    func testTheCopyHereIsOfferedOnlyWhileItsDaemonRunsAndNoRouteWasCached() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("svall-copy-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: home + "/controller", withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        XCTAssertTrue(RemoteConnection.copyHere(home: home, daemon: true))
+        XCTAssertFalse(RemoteConnection.copyHere(home: home, daemon: false))
+        try #"{"ownerMachineId":"x","generation":3}"#.write(toFile: home + "/controller/route.json", atomically: true, encoding: .utf8)
+        XCTAssertFalse(RemoteConnection.copyHere(home: home, daemon: true))
+    }
+
+    func testThePageAsksToReconnectOrToOpenTheCopyHereByName() throws {
+        let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
+        guard case .connectionRetry = try decode(#"{"type":"connection.retry"}"#) else { return XCTFail("connection.retry did not decode") }
+        guard case .connectionHere = try decode(#"{"type":"connection.here"}"#) else { return XCTFail("connection.here did not decode") }
     }
 
     func testStoppingClosesTheHelper() throws {
