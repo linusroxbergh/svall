@@ -451,7 +451,8 @@ describe('svall connect', { timeout: 20_000 }, () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(types(run.events)).toEqual(['connecting', 'online', 'error']);
     expect(run.events[2]).toMatchObject({ kind: 'auth', machine: 'gate' });
-    expect((run.events[2] as Extract<ConnectEvent, { type: 'error' }>).message).toContain('generation 5');
+    expect((run.events[2] as Extract<ConnectEvent, { type: 'error' }>).message).toContain('trift, which it last named as the owner, no longer holds the fleet as it did then');
+    expect((run.events[2] as Extract<ConnectEvent, { type: 'error' }>).message).not.toMatch(/generation|cached route/);
     expect(gatewayKnocks()).toBe(1);
     // the forward onto a machine that no longer owns the fleet is let go
     expect(ssh.calls().some((c) => c.includes('-O') && c.includes('cancel'))).toBe(true);

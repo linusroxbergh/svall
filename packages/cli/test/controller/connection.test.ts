@@ -376,12 +376,14 @@ describe('resolveOwner', () => {
     expect(await resolveOwner(home, { deps })).toMatchObject({ id: REMOTE });
   });
 
-  it('refuses a record naming a machine the registry has never heard of', async () => {
+  it('refuses a record naming a machine the registry has never heard of, without its id', async () => {
     gateway('gate.test');
-    holds(MachineId.parse(crypto.randomUUID()));
+    const unknown = MachineId.parse(crypto.randomUUID());
+    holds(unknown);
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect((err as SshError).kind).toBe('other');
-    expect((err as SshError).message).toContain('registry');
+    expect((err as SshError).message).toContain('gate holds this fleet for a machine that is not in the registry');
+    expect((err as SshError).message).not.toContain(unknown);
   });
 
   it('takes a fleet the gateway has no record of as this machine\'s', async () => {
@@ -464,6 +466,15 @@ describe('resolveOwner', () => {
     ssh.answer(description({ port: 4711, generation: 9 }));
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect((err as SshError).kind).toBe('unreachable');
+  });
+
+  it('refuses a cached route to a machine the registry does not hold, without its id', async () => {
+    gateway('refused.test');
+    const unknown = MachineId.parse(crypto.randomUUID());
+    route(unknown, 7);
+    const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
+    expect((err as SshError).message).toContain('it last named a machine that is not in the registry');
+    expect((err as SshError).message).not.toContain(unknown);
   });
 
   it('refuses an unreachable gateway with nothing cached', async () => {

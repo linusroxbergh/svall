@@ -240,24 +240,23 @@ async function overSsh(fleetId: FleetId, gateway: MachineEntry, d: OwnerDeps): P
 }
 
 /**
- * The route the gateway last answered, good only while the daemon it names is still at that
- * generation: an owner that has moved on since is exactly what a stale route would route into.
+ * The owner the gateway last named, good only while the daemon there still holds the fleet at the generation it
+ * named: an owner that has moved on since is exactly what a stale route would route into.
  */
 async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile?: string }, d: OwnerDeps, gateway: MachineEntry, cause: unknown): Promise<typeof LOCAL | MachineEntry> {
   // a gateway that refused for good stays the reason wherever the route cannot stand in for it; any
   // other failure, an ssh that could not even be spawned included, is one a later attempt can get past
   const kind: SshErrorKind = cause instanceof SshError && !RETRIED.includes(cause.kind) ? cause.kind : 'unreachable';
   const why = (detail: string, k = kind, on = gateway): SshError =>
-    new OnMachine(k, `the gateway did not answer (${(cause as Error).message}), and ${detail}`, on);
+    new OnMachine(k, `the gateway ${gateway.record.name} did not answer, and ${detail}. The gateway said: ${(cause as Error).message}`, on);
   const route = readRoute(fleetHome);
-  if (!route) throw why('no route from an earlier answer was cached here');
+  if (!route) throw why('it has named no owner here before to go on');
   if (route.ownerMachineId === d.registry.localId) {
-    const held = cachedOwner(fleetHome)?.generation;
-    if (held === route.generation) return LOCAL;
-    throw why(`this machine holds generation ${held ?? 'none'}, not the cached route's ${route.generation}`);
+    if (cachedOwner(fleetHome)?.generation === route.generation) return LOCAL;
+    throw why('it last named this machine, which no longer holds the fleet as it did then');
   }
   const entry = d.registry.get(route.ownerMachineId);
-  if (!entry?.record.ssh) throw why(`the cached route names ${route.ownerMachineId}, which is no machine this controller can reach`);
+  if (!entry?.record.ssh) throw why('it last named a machine that is not in the registry');
   let generation: number | undefined;
   try {
     const master = await d.openMaster(entry.record.ssh);
@@ -268,11 +267,9 @@ async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile
     }
   } catch (err) {
     // whether another attempt can help is the cached owner's to say
-    throw why(`${entry.record.name} could not be asked about the cached route either: ${(err as Error).message}`, err instanceof SshError ? err.kind : 'unreachable', entry);
+    throw why(`${entry.record.name}, which it last named as the owner, did not answer either: ${(err as Error).message}`, err instanceof SshError ? err.kind : 'unreachable', entry);
   }
-  if (generation !== route.generation) {
-    throw why(`${entry.record.name} holds generation ${generation ?? 'none'}, not the cached route's ${route.generation}`);
-  }
+  if (generation !== route.generation) throw why(`${entry.record.name}, which it last named as the owner, no longer holds the fleet as it did then`);
   return entry;
 }
 
@@ -316,7 +313,7 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   }
   if (ownerMachineId === d.registry.localId) return LOCAL;
   const owner = d.registry.get(ownerMachineId);
-  if (!owner) throw new OnMachine('other', `${gateway.record.name} holds this fleet for ${ownerMachineId}, which is not a machine in the registry; add it with \`svall host add\`${d.registry.setAside()}`, gateway);
+  if (!owner) throw new OnMachine('other', `${gateway.record.name} holds this fleet for a machine that is not in the registry; add it with \`svall host add\`${d.registry.setAside()}`, gateway);
   return owner;
 }
 
