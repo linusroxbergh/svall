@@ -87,13 +87,22 @@ never copies a login, so these are yours:
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
 - Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out.
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
-  `opencode auth login`.
+  `opencode auth login`. OpenCode runs its free model with no login, but a handover to the machine needs it to hold a
+  model provider's login or key there, as `opencode auth list` shows.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
   them with `/hooks`.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
   `svall doctor` says to do there.
 
 Adding the same machine again runs every check again and changes nothing that is already right.
+
+### An API key in your shell
+
+A handover checks each agent's login in the Svall daemon's systemd environment, not in your shell. An agent's
+terminal starts your shell, so an API key exported only in `~/.bashrc` or `~/.profile` (such as `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY`) works for the agent while the check says it is not logged in. Put the key in
+`~/.config/environment.d/agents.conf` as well, as `NAME=value` lines, then run `systemctl --user daemon-reload` and
+`systemctl --user restart svall-svalld@private`.
 
 ### The companion release
 

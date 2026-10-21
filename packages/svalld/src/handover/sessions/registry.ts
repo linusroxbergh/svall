@@ -141,10 +141,16 @@ const json = (text: string | undefined): Record<string, unknown> | undefined => 
   try { return text === undefined ? undefined : JSON.parse(text); } catch { return undefined; }
 };
 
+// `opencode auth list --format json` lists a model provider's login or key, or an MCP server's, as an integration
+const providerListed = (text: string): boolean => {
+  const listed: unknown = json(text);
+  return Array.isArray(listed) && listed.some((i: { id?: unknown }) => typeof i.id === 'string' && !i.id.startsWith('mcp_'));
+};
+
 /**
  * Probes this machine's CLI for one agent. Claude Code names its own config folder, which is where its hooks must be;
  * the hooks are the ones setup points at the private fleet's scripts. OpenCode's sessions travel as the logs the
- * private fleet keeps of them, and its hooks are Svall's plugin.
+ * private fleet keeps of them, its login is a model provider's, and its hooks are Svall's plugin.
  */
 export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentProbe> {
   const hooksHome = profileHome(PRIVATE, d.homedir);
@@ -159,8 +165,8 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
     return { kind, version, home: dir, loggedIn: status?.loggedIn === true, hooks: !!settings && hooksInstalled(settings, hooksHome) };
   }
   if (kind === 'opencode') {
-    const login = await d.run('opencode', ['auth', 'list', '--standalone']);
-    return { kind, version, home, loggedIn: login.code === 0, hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
+    const login = await d.run('opencode', ['auth', 'list', '--standalone', '--format', 'json']);
+    return { kind, version, home, loggedIn: login.code === 0 && providerListed(login.stdout), hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
   }
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));

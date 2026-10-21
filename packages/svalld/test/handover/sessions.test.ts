@@ -957,17 +957,22 @@ describe('agent preflight', () => {
     expect(await probeAgent('codex', deps)).toEqual({ kind: 'codex', version: '0.156.1', home: '/cfg/codex', loggedIn: true, hooks: true });
   });
 
-  it("reads OpenCode's version, its login as auth list --standalone answers, and its plugin where XDG_CONFIG_HOME puts it, and places its sessions in the private fleet's logs", async () => {
+  it("reads OpenCode's version, its login as a model provider auth list --standalone names, and its plugin where XDG_CONFIG_HOME puts it, and places its sessions in the private fleet's logs", async () => {
     const env = { XDG_CONFIG_HOME: '/cfg' };
     const plugin = opencodePaths(env, '/home/t').plugin;
     const logs = path.join(profileHome(PRIVATE, '/home/t'), 'transcripts/opencode');
-    const deps = (login: number, files: Record<string, string>) => ({
-      run: runner({ 'opencode --version': { stdout: '2.0.22\n' }, 'opencode auth list --standalone': { code: login, stdout: '' } }),
+    // as OpenCode 2.0.22 to 2.1.1 print it: an MCP server's login is an integration too
+    const mcp = { id: 'mcp_27245be96d0b1111', name: 'linear', connections: [{ type: 'credential', label: 'linear' }] };
+    const openai = { id: 'openai', name: 'OpenAI', connections: [{ type: 'credential', label: 'OpenAI' }] };
+    const deps = (login: number, listed: unknown[], files: Record<string, string>) => ({
+      run: runner({ 'opencode --version': { stdout: '2.0.22\n' }, 'opencode auth list --standalone --format json': { code: login, stdout: JSON.stringify(listed) } }),
       read: async (f: string) => files[f], env, homedir: '/home/t',
     });
-    expect(await probeAgent('opencode', deps(0, { [plugin]: '// svall' }))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: true, hooks: true });
-    expect(await probeAgent('opencode', deps(1, {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
-    expect(await probeAgent('opencode', { ...deps(0, {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', deps(0, [mcp, openai], { [plugin]: '// svall' }))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: true, hooks: true });
+    expect(await probeAgent('opencode', deps(0, [mcp], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', deps(0, [], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', deps(1, [openai], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', { ...deps(0, [], {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
   });
 
   it('sees a CLI that is missing, logged out or without hooks', async () => {
