@@ -76,6 +76,11 @@ function Checklist({ run }: { run: HostRun }) {
               <span className="host-said">
                 {stepSaid(row, run.args.name)}
                 {row.action && <em data-testid={`host-action-${row.step}`}>{row.action}</em>}
+                {!row.action && row.status === 'fail' && !run.running && (
+                  <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>
+                    {run.op === 'doctor' ? 'Check again' : 'Try again'}
+                  </button>
+                )}
               </span>
             </div>
           ))}

@@ -76,7 +76,8 @@ Both run the same steps and show each as it finishes:
    closes a window there.
 7. **This Mac's list of machines.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
 
-It ends by saying the machine is added, or with a list of what is still for you to do. Once it is added, **Make it
+It ends by saying the machine is added, or with a list of what is still for you to do. In the app, a step that
+failed with nothing named to do offers **Try again** (**Check again** after a check). Once it is added, **Make it
 this fleet's gateway** (`svall host enable <name> --fleet <fleet>`) readies it for handover. Svall never runs `sudo`
 and never copies a login, so these are yours:
 

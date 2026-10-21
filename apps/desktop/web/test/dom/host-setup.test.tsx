@@ -34,3 +34,18 @@ test('opened on a machine, the panel names it once and acts on it without asking
   // one run at a time
   expect((screen.getByTestId('machine-doctor') as HTMLButtonElement).disabled).toBe(true);
 });
+test('every step that failed offers a way on: what the step said to do, or the run again', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'tmux', status: 'fail', detail: 'tmux is not installed' });
+    store.getState().hostStep('doctor', { step: 'linger', status: 'fail', detail: 'off', action: 'ssh ada@trift, then loginctl enable-linger ada' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.getByTestId('host-action-linger').textContent).toBe('ssh ada@trift, then loginctl enable-linger ada');
+  expect(screen.queryByTestId('host-again-linger')).toBeNull();
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('host-again-tmux'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
+});
