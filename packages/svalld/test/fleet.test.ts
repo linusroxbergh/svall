@@ -778,11 +778,13 @@ runIf('Fleet', () => {
     // the agent's pid and args reach the fleet through the same list the sweep reads; nothing the sleep ends is signalled
     const live = (ps: Proc[]): LiveProc[] => ps.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args }));
     const ended = { kills: 0, waits: 0, gate: Promise.resolve() };
-    const sleepBoot = () => {
+    const reading = { hold: Promise.resolve() };
+    const sleepBoot = (extra: { pollMs?: number } = {}) => {
       return boot({
-        readProcs: async () => live(procsRef.list),
+        ...extra,
+        readProcs: async () => { await reading.hold; return live(procsRef.list); },
         endOpts: { kill: () => { ended.kills++; }, wait: async () => { ended.waits++; await ended.gate; } },
-      }).then((x) => { procsRef.list = x.procs; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); return x; });
+      }).then((x) => { procsRef.list = x.procs; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); reading.hold = Promise.resolve(); return x; });
     };
     const procsRef = { list: [] as Proc[] };
     it('puts a working robot to sleep without marking it interrupted', async () => {
@@ -803,6 +805,19 @@ runIf('Fleet', () => {
       const { c } = await withAgent(b);
       const second = (await b.fleet.openSecond(c.id)).second!.tmux.windowId;
       await b.fleet.sleepCharacter(c.id);
+      expect(b.store.state.characters[c.id].second).toBeUndefined();
+      expect(await b.tmux.hasWindow(second)).toBe(false);
+    });
+
+    it('closes a second terminal opened while it read the processes', async () => {
+      const b = await sleepBoot({ pollMs: 60_000 });
+      const { c } = await withAgent(b);
+      let release!: () => void;
+      reading.hold = new Promise<void>((r) => { release = r; });
+      const sleeping = b.fleet.sleepCharacter(c.id);
+      const second = (await b.fleet.openSecond(c.id)).second!.tmux.windowId;
+      release();
+      await sleeping;
       expect(b.store.state.characters[c.id].second).toBeUndefined();
       expect(await b.tmux.hasWindow(second)).toBe(false);
     });
@@ -1089,6 +1104,71 @@ runIf('Fleet', () => {
     poll.release();
     await tick;
     expect(store.state.characters[c.id].second).toBeUndefined();
+  });
+
+  it('does not adopt the windows of a character closed during a reconcile listing', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const crew = Object.keys(store.state.characters).length;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the listing a recovery reconciles against is handed back only after the close has landed
+    const poll = holdListing(tmux);
+    const reconciling = fleet.reconcileNow();
+    await poll.listed;
+    await fleet.closeCharacter(c.id);
+    poll.release();
+    await reconciling;
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+  });
+
+  it('does not adopt the windows of a character whose close is reading the processes', async () => {
+    const reading = { hold: Promise.resolve() };
+    const { fleet, store } = await boot({ pollMs: 60_000, readProcs: async () => { await reading.hold; return []; } });
+    const crew = Object.keys(store.state.characters).length;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the close holds its windows until it has read what runs in them; a recovery reconciles meanwhile
+    let release!: () => void;
+    reading.hold = new Promise<void>((r) => { release = r; });
+    const closing = fleet.closeCharacter(c.id);
+    await waitFor(() => !store.state.characters[c.id]);
+    await fleet.reconcileNow();
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+    release();
+    await closing;
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+  });
+
+  it('keeps an agent that reported in while a poll listed its pane at a shell', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const pid = Number((await tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
+    // the last poll found the agent at a shell prompt too; this one would let it go
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    fleet['poll']['shellStreak'].set(c.id, 1);
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
+    expect(fleet['poll']['shellStreak'].has(c.id)).toBe(false);
+  });
+
+  it('keeps the revive of a character whose resume could not be started', async () => {
+    const b = await boot({ pollMs: 60_000 });
+    const { fleet, store, tmux, home } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { markDormant(d.characters[c.id]); });
+    await tmux.killWindow(c.tmux!.windowId);
+    // the prompt file the resume takes its first prompt from cannot be written
+    fs.mkdirSync(path.join(home, `${c.id}.prompt`));
+    await expect(fleet.reviveCharacter(c.id, 'go on')).rejects.toThrow('EISDIR');
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+    expect(store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
+    expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
   });
 
   it('kills the window of a revive whose character was closed meanwhile', async () => {

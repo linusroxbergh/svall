@@ -17,19 +17,19 @@ const CONFIG = JSON.stringify({
 // `opencode run` takes one prompt on stdin and has no system prompt of its own, so the system text leads it. A private
 // server takes this config from the environment, where the shared background service would not
 export function opencodeRunner(o: { model?: string; cwd: string; bin?: string; timeoutMs?: number }): RunScribe {
-  return async (system, prompt) => {
+  return async (system, prompt, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });
     const bin = o.bin ?? 'opencode';
     const { SVALL_CHAR_ID: _id, ...rest } = process.env;
     const env = { ...rest, OPENCODE_CONFIG_CONTENT: CONFIG };
     const { code, out, err } = await runChild(
       () => spawn(bin, ['run', '--standalone', '--format', 'json', '--agent', 'svall-scribe', ...(o.model ? ['-m', o.model] : [])], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
-      { label: 'opencode run', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: o.timeoutMs },
+      { label: 'opencode run', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: o.timeoutMs, signal },
     );
     const lines = jsonLines<Line>(out);
     // every run is kept as a session, which would crowd the user's own list
     const session = lines.find((l) => l.sessionID)?.sessionID;
-    if (session) execFile(bin, ['session', 'delete', '--standalone', session], { cwd: o.cwd, env }, () => {});
+    if (session) execFile(bin, ['session', 'delete', '--standalone', session], { cwd: o.cwd, env, timeout: 10_000, killSignal: 'SIGKILL' }, () => {});
     const answer = lines.filter((l) => l.type === 'text').at(-1)?.part?.text ?? '';
     const error = lines.filter((l) => l.type === 'error').at(-1)?.error;
     const cause = !answer.trim() && error ? error.message ?? error.type : undefined;

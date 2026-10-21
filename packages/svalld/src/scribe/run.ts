@@ -2,21 +2,22 @@ import type { AgentKind } from '@svall/protocol';
 import { spawnClaude } from '../claude.js';
 import { runChild, stderrCause } from './child.js';
 
-export type RunScribe = (system: string, prompt: string) => Promise<string>;
+/** Answers a pass; an aborted `signal` ends the pass's child and rejects. */
+export type RunScribe = (system: string, prompt: string, signal?: AbortSignal) => Promise<string>;
 
 /** A runner that takes each pass's CLI from `agent()`, so a new main agent applies from the next pass. */
 export const perPass = (runners: Record<AgentKind, RunScribe>, agent: () => AgentKind): RunScribe =>
-  (system, prompt) => runners[agent()](system, prompt);
+  (system, prompt, signal) => runners[agent()](system, prompt, signal);
 
 export function claudeRunner(o: { model: string; cwd: string; envFile: string; timeoutMs?: number }): RunScribe {
-  return async (system, prompt) => {
+  return async (system, prompt, signal) => {
     const { code, out, err } = await runChild(
       () => spawnClaude({
         args: ['-p', '--model', o.model, '--output-format', 'json', '--system-prompt', system],
         cwd: o.cwd,
         envFile: o.envFile,
       }),
-      { label: 'claude -p', stdin: prompt, timeoutMs: o.timeoutMs },
+      { label: 'claude -p', stdin: prompt, timeoutMs: o.timeoutMs, signal },
     );
     let r: { is_error?: boolean; result?: unknown } | undefined;
     try { r = JSON.parse(out); } catch {}

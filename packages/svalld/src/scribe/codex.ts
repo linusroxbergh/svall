@@ -25,7 +25,7 @@ function failure(events: string): string | undefined {
 // model codex picks its own default. cwd is an empty folder, so no project instructions load. A pass runs
 // at low reasoning effort.
 export function codexRunner(o: { model?: string; cwd: string; bin?: string; timeoutMs?: number }): RunScribe {
-  return async (system, prompt) => {
+  return async (system, prompt, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-scribe-'));
     const last = path.join(dir, 'last.txt');
@@ -35,7 +35,7 @@ export function codexRunner(o: { model?: string; cwd: string; bin?: string; time
       const { code, out, err } = await runChild(
         () => spawn(o.bin ?? 'codex', ['exec', '--json', ...(o.model ? ['-m', o.model] : []), '-c', 'model_reasoning_effort="low"', ...ISOLATION, '-o', last, '-'],
           { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
-        { label: 'codex exec', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: o.timeoutMs },
+        { label: 'codex exec', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: o.timeoutMs, signal },
       );
       let answer = '';
       try { answer = fs.readFileSync(last, 'utf8'); } catch { /* a failed run writes none */ }

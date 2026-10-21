@@ -65,6 +65,8 @@ export class Fleet extends EventEmitter<Events> {
   // the windows of agents ended for idleness or put to sleep, until tmux has closed them, the agent has exited and a
   // sleep has ended what it started
   private ending = new Map<string, Promise<void>>();
+  // the window names of characters being closed, which a listing meanwhile must not adopt
+  private closing = new Set<string>();
   // when the user last looked at each character's main terminal
   private seen = new Map<string, number>();
   private openingSecond = new Map<string, Promise<Character>>();
@@ -113,9 +115,10 @@ export class Fleet extends EventEmitter<Events> {
     this.poll.schedule();
   }
 
-  /** Stops polling, held prompts and the control client; resolves once a poll under way has finished and the fleet is on disk. */
+  /** Stops polling, the scribe, held prompts and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
+    this.scribe.stop();
     this.prompts.stop();
     await this.link.stop();
     await this.poll.stop();
@@ -180,10 +183,10 @@ export class Fleet extends EventEmitter<Events> {
     this.link.continuePane(id);
   }
 
-  // the windows tmux has, less those still closing for idleness or a sleep, which are not to be taken back
+  // the windows tmux has, less those still closing for idleness, a sleep or a close, which are not to be taken back
   private async listWindows(): Promise<LiveWindow[]> {
     const ending = new Set(this.ending.keys());
-    return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
+    return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name) && !this.closing.has(w.name));
   }
 
   /** Each character's pane pids, the Svall app's pid and svalld's own, for attributing `procs`. */
@@ -204,11 +207,11 @@ export class Fleet extends EventEmitter<Events> {
     return (this.deps.readProcs ?? (() => readProcs(fs.existsSync(hookHelper) ? hookHelper : undefined)))();
   }
 
-  // `c` is already out of the state, so its windows' panes join the scope by hand
+  // `c` is already out of the state, or closing, so its windows' panes join the scope by hand
   private async owned(c: Character, procs: LiveProc[]): Promise<LiveProc[]> {
     const scope = await this.loadScope(procs);
     const ids = new Set([c.tmux?.windowId, c.second?.tmux.windowId]);
-    scope.panes.set(c.id, (await this.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
+    scope.panes.set(c.id, (await this.deps.tmux.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
     // svalld, its tmux server and the app may carry a robot's marks but are never the robot's to end
     const keep = new Set([...scope.own, scope.appPid]);
     return (attribute(procs, scope).chars.get(c.id) ?? []).filter((p) => !keep.has(p.pid));
@@ -567,10 +570,16 @@ export class Fleet extends EventEmitter<Events> {
   async closeCharacter(id: string): Promise<void> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.char(id);
+    for (const name of [id, secondName(id)]) this.closing.add(name);
     this.deps.store.update((d) => { delete d.characters[id]; });
-    const victims = await this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; });
-    if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
-    if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    let victims: LiveProc[] = [];
+    try {
+      victims = await this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; });
+      if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
+      if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    } finally {
+      for (const name of [id, secondName(id)]) this.closing.delete(name);
+    }
     void endProcs(victims, () => this.readLive(), this.deps.endOpts).catch((e) => this.deps.log.error(`end ${id}: ${String(e)}`));
     // nothing the fleet keeps outside the state outlives the character
     this.seen.delete(id);
@@ -589,7 +598,7 @@ export class Fleet extends EventEmitter<Events> {
     const victims = await this.owned(c, procs);
     // only a pid still running its agent is waited on, and killed if it outstays the wait
     const pids = [c.agent, c.second?.agent].flatMap((a) => (a?.pid && procs.some((p) => p.pid === a.pid && runsAgent(p.args, a.kind)) ? [a.pid] : []));
-    const windows = [c.tmux.windowId, c.second?.tmux.windowId].filter((w): w is string => !!w);
+    const windows = [c.tmux.windowId];
     // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear. A close, another
     // sleep or an idle ending meanwhile leaves nothing to put to sleep
     this.deps.store.update((d) => {
@@ -598,6 +607,8 @@ export class Fleet extends EventEmitter<Events> {
       if (cur.tmux?.windowId !== c.tmux!.windowId) throw new Invalid(`${c.name} can't be put to sleep`);
       markDormant(cur, flags);
       delete cur.revive?.interrupted;
+      // a second terminal opened while the processes were read goes with the rest
+      if (cur.second) windows.push(cur.second.tmux.windowId);
       delete cur.second;
     });
     // registered with the state change, so a revive waits for the windows, the agents and what they started
@@ -650,16 +661,27 @@ export class Fleet extends EventEmitter<Events> {
     }
     const island = this.deps.store.state.islands[c.islandId];
     if (c.revive?.interrupted) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
-    const command = this.launchLine(id, withAddDirs(withoutV1Flags(c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
-    this.deps.store.update((d) => {
-      const cur = d.characters[id];
-      cur.tmux = { windowId: w.windowId, paneId: w.paneId };
-      delete cur.revive;
-      // a resumed session keeps its old agent record; its stale status must not answer the next wait,
-      // nor its old activity have it ended again as idle before it is up
-      if (cur.agent) { settle(cur.agent, 'idle'); cur.agent.lastActivityAt = Date.now(); cur.unread = false; }
-    });
-    if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
+    try {
+      const command = this.launchLine(id, withAddDirs(withoutV1Flags(c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
+      this.deps.store.update((d) => {
+        const cur = d.characters[id];
+        cur.tmux = { windowId: w.windowId, paneId: w.paneId };
+        delete cur.revive;
+        // a resumed session keeps its old agent record; its stale status must not answer the next wait,
+        // nor its old activity have it ended again as idle before it is up
+        if (cur.agent) { settle(cur.agent, 'idle'); cur.agent.lastActivityAt = Date.now(); cur.unread = false; }
+      });
+      if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
+    } catch (e) {
+      // the prompt file could not be written, or the resume never reached the pane: the window goes, or a poll would
+      // take it as the character's and drop the revive
+      this.deps.store.update((d) => {
+        const cur = d.characters[id];
+        if (cur?.tmux?.windowId === w.windowId) { delete cur.tmux; if (c.revive) cur.revive = c.revive; }
+      });
+      await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`revive ${id}: ${String(k)}`));
+      throw e;
+    }
     return this.char(id);
   }
 

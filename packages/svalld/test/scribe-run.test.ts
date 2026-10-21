@@ -64,6 +64,14 @@ describe('claudeRunner', () => {
     await expect(run('system', 'prompt')).rejects.toThrow('timed out after 2000ms');
   });
 
+  it('ends a pass that is aborted, at once', async () => {
+    process.env.FAKE_CLAUDE = 'hang';
+    const aborter = new AbortController();
+    const pending = run('system', 'prompt', aborter.signal);
+    aborter.abort();
+    await expect(pending).rejects.toThrow(/^claude -p stopped$/);
+  });
+
   // what it prints on stdout is the model's own text, from a transcript
   it('keeps what claude printed on stdout out of the error', async () => {
     process.env.FAKE_CLAUDE = 'said';
