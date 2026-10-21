@@ -678,6 +678,9 @@ export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number
   return t;
 }
 
+/** The bytes the whole transfer sends: what preflight found, until every row has said its own size. */
+export const transferBytes = (run: HandoverRun): number => Math.max(transferTotals(run.rows).totalBytes, run.preflight?.summary.bytes ?? 0);
+
 const PACE_SETTLE_MS = 1000;
 
 const leftText = (ms: number): string => {
@@ -693,7 +696,7 @@ export function transferPace(run: HandoverRun): { rate: number; leftMs: number; 
   const sent = p ? p.last.bytes - p.from.bytes : 0;
   if (!p || ms < 5000 || sent <= 0) return undefined;
   const rate = (sent / ms) * 1000;
-  const leftMs = (Math.max(0, transferTotals(run.rows).totalBytes - p.last.bytes) / rate) * 1000;
+  const leftMs = (Math.max(0, transferBytes(run) - p.last.bytes) / rate) * 1000;
   return { rate, leftMs, text: `${formatBytes(Math.round(rate))}/s, ${leftText(leftMs)}` };
 }
 
@@ -704,8 +707,8 @@ export function restingLine(run: HandoverRun | undefined): string {
   if (decisionPending(run)) return `${head}: it waits for you in Handover.`;
   const at = live(run) ? sectionStates(run).find((s) => s.state === 'active') : undefined;
   if (!at) return `${head}: Handover says where it stands.`;
-  const t = transferTotals(run.rows);
-  return `${head}: ${at.label}${at.id === 'transfer' && t.totalBytes ? `, ${Math.floor((t.bytes / t.totalBytes) * 100)}%` : ''}…`;
+  const whole = transferBytes(run);
+  return `${head}: ${at.label}${at.id === 'transfer' && whole ? `, ${Math.floor((transferTotals(run.rows).bytes / whole) * 100)}%` : ''}…`;
 }
 
 /** How the resume went for every character the freeze rested: agents resume from transcripts, shells reopen as they are opened. */

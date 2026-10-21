@@ -147,6 +147,19 @@ describe('the handover a sheet follows', () => {
     expect(transferPace(run)?.rate).toBe(10_000_000);
   });
 
+  it('counts the whole transfer from what preflight found, before every row has said its size', () => {
+    const pre: HandoverEvent = { event: 'handover.preflight', data: { summary: { ...summary, bytes: 100_000_000 }, blockers: [], warnings: [] } };
+    const a = (bytes: number) => entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes, totalBytes: 20_000_000 });
+    let run = applyEvent(play([pre, ...through('transfer')]), a(0), { now: 0 });
+    run = applyEvent(run, a(20_000_000), { now: 10_000 });
+    // the first root alone is a fifth of the whole: 80 MB left at 2 MB/s
+    expect(restingLine(run)).toBe('Resting for the handover: Transferring files and sessions, 20%…');
+    expect(transferPace(run)?.leftMs).toBe(40_000);
+    run = applyEvent(run, entity({ kind: 'root', id: 'r_b', phase: 'transfer', bytes: 30_000_000, totalBytes: 80_000_000 }), { now: 20_000 });
+    expect(restingLine(run)).toBe('Resting for the handover: Transferring files and sessions, 50%…');
+    expect(transferPace(run)?.leftMs).toBe(20_000);
+  });
+
   it('says where a handover stands on a terminal it rested', () => {
     expect(restingLine(play(through('freeze')))).toBe('Resting for the handover: Resting characters…');
     const moving = play([...through('transfer'), entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes: 25, totalBytes: 100 })]);

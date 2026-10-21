@@ -231,6 +231,11 @@ test('Show in Finder is offered only for a folder on this Mac while the fleet ru
 test('while transferring, one bar sums every folder and session, a verified folder reads whole, and the rows wait behind a disclosure', () => {
   render(<HandoverSheet />);
   say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'transfer', bytes: 500_000, totalBytes: 1_000_000 } });
+  // before the other rows say their size, the whole is what preflight found
+  expect(screen.getByTestId('handover-transfer-total').textContent).toContain('500.0 KB of 2.0 MB');
+  expect(screen.getByTestId('handover-transfer-total').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 25%');
+  say(
     // a fresh copy is checked with every byte sent; only the row the destination verified counts
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_2', phase: 'transfer', bytes: 250_000, totalBytes: 1_000_000 } },
