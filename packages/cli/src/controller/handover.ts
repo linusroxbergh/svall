@@ -1043,6 +1043,8 @@ export class Handover {
     const controller = this.d.store.read(aside);
     const gateway = await this.seen(() => this.retrying('begin', () => this.d.gateway.get()));
     const tx = gateway.ok ? gateway.value.transaction : undefined;
+    const drives = tx?.controllerId;
+    const local = { local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) } }) };
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
@@ -1058,14 +1060,14 @@ export class Handover {
     };
     if (from && to) {
       const [s, d] = await Promise.all([source(from), destination(to)]);
-      return { controller, gateway, source: s, destination: d };
+      return { ...local, controller, gateway, source: s, destination: d };
     }
     // no journal names the machines: a daemon that holds a handover says which side of it it is
     const held = await Promise.all(this.d.machines.map(async (id) => ({ id, s: await status(id) })));
     const on = (side: 'fromMachineId' | 'toMachineId') => held.find((x) => x.s.ok && x.s.value.transaction?.[side] === x.id);
     const [f, t] = [on('fromMachineId'), on('toMachineId')];
     const [s, d] = await Promise.all([f && source(f.id, f.s), t && destination(t.id, t.s)]);
-    return { controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
+    return { ...local, controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
   }
 
   /** The journal a resume or abort acts on: the controller's own, or one rebuilt from the other three. */

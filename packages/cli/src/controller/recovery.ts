@@ -108,7 +108,10 @@ export function fileStore(dir: string): ControllerStore {
 export type Seen<T> = { ok: true; value: T } | { ok: false; error: string };
 
 /** The four journals: the controller's own, the gateway's record, and what each daemon holds. */
+/** `local`: the machine this controller runs on; `names`: what the registry calls a machine the verdict may name. */
 export type Observation = {
+  local?: MachineId;
+  names?: Partial<Record<MachineId, string>>;
   controller?: ControllerJournal;
   gateway: Seen<OwnerRecord>;
   source?: Seen<{ status: Result<'handover.status'>; ownership: OwnershipInfo }>;
@@ -182,6 +185,10 @@ export function assess(o: Observation): Verdict {
     if (tx.phase === 'committed') {
       if (unread) return lost('committed');
       return verdict('committed', 'continue', ['resume'], `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`);
+    }
+    // before the commit only the controller that began it goes on, since the destination takes claim and prepare from it alone
+    if (tx.controllerId && o.local && tx.controllerId !== o.local && (o.local === f.fromMachineId || o.local === f.toMachineId)) {
+      return verdict('open', 'none', ['abort'], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${o.names?.[tx.controllerId] ?? tx.controllerId}, whose controller began it, or is aborted back to ${f.fromMachineId}`);
     }
     const said = `${tx.id} is ${tx.phase} and has not committed; it can go on, or be aborted back to ${f.fromMachineId}`;
     return verdict('open', 'continue', ['resume', 'abort'], sourceUnread

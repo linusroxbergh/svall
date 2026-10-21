@@ -692,22 +692,22 @@ describe('a controller with no journal of its own', () => {
   const world = real.worlds();
 
   for (const at of ['gateway ready', 'gateway commit'] as const) {
-    it(`on trift, is refused the prepare of a handover whose controller here died before ${at.split(' ')[1]} once the destination prepared, which a resume here takes to the destination`, async () => {
+    it(`on trift, sends back a resume of a handover whose controller here died before ${at.split(' ')[1]} once the destination prepared, which a resume here takes to the destination`, async () => {
       const w = world();
       await diesAt(w, at);
       expect(w.trift.current!.handover.journalState()).toMatchObject({ kind: 'open', journal: { phase: 'prepare', controllerId: real.MAC } });
       const out = await party(w, 'trift', 'resume').go();
-      expect(out, w.trace.join(' | ')).toMatchObject({ status: 'interrupted', error: expect.stringContaining(`the controller on ${real.MAC}`) });
+      expect(out, w.trace.join(' | ')).toMatchObject({ status: 'interrupted', safe: ['abort'], error: expect.stringContaining('whose controller began it') });
       expect(w.record().transaction).toMatchObject({ phase: at === 'gateway ready' ? 'preparing' : 'ready-to-commit' });
       expect(await settleBoth(w, [out])).toBe('destination');
     });
   }
 
-  it('on trift, is refused the claim of a handover a controller here began, which a resume here takes to the destination', async () => {
+  it('on trift, sends back a resume of a handover a controller here began, which a resume here takes to the destination', async () => {
     const w = world();
     await crashed('controller.manifest')(w);
     const out = await party(w, 'trift', 'resume').go();
-    expect(out, w.trace.join(' | ')).toMatchObject({ status: 'interrupted', error: expect.stringContaining(`the controller on ${real.MAC}`) });
+    expect(out, w.trace.join(' | ')).toMatchObject({ status: 'interrupted', safe: ['abort'], error: expect.stringContaining('whose controller began it') });
     expect(w.requests.filter((r) => r === 'link rsync')).toEqual([]);
     expect(await settleBoth(w, [out])).toBe('destination');
   });

@@ -218,7 +218,7 @@ four to say what is safe:
 
 | Status says | Do |
 | --- | --- |
-| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet; `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
+| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet, on the machine that started the handover; on the other one, status names that machine and offers only Abort. `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
 | Resume only | After the commit. `svall handover --resume` activates the fleet on the machine it went to. The machine it came from never takes it back by itself. |
 | Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again; if it is gone for good, see [When the gateway is lost](#when-the-gateway-is-lost). A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
 | Forget | The gateway has moved on past this handover. `svall handover --forget` drops this Mac's journal of it. |

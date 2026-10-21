@@ -1578,11 +1578,11 @@ describe('a far machine that is down', () => {
     expect(settledOn(w)).toBe('source');
   });
 
-  it('with no journal here, stops a resume while the source is down and nothing says how far it got, so a later abort still lets the source go', async () => {
+  it('with no journal here, stops a resume before the commit on the destination, whose controller did not begin it, so a later abort still lets the source go', async () => {
     const w = await lostAt('mac:handover.freeze');
     w.down.add('mac');
     const out = await controller(w, { ...eager(w), local: trift }).resume();
-    expect(out).toMatchObject({ status: 'interrupted', error: expect.stringContaining('the source did not say how far it got') });
+    expect(out).toMatchObject({ status: 'interrupted', safe: ['abort'], error: expect.stringContaining('it goes on from mac, whose controller began it') });
     expect(w.store.j).toBeUndefined();
     await recover(w, 'abort');
     expect(settledOn(w)).toBe('source');
@@ -1621,7 +1621,9 @@ describe('a far machine that is down', () => {
       const ops = w.ops.length;
       const c = controller(w, unrouted(w));
       const out = await (act === 'resume' ? c.resume() : c.abort());
-      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
+      expect(out, act).toMatchObject(act === 'resume'
+        ? { status: 'interrupted', safe: ['abort'], error: expect.stringContaining(`it goes on from ${mac}, whose controller began it`) }
+        : { status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
       expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
       expect(w.store.j, act).toBeUndefined();
       await recover(w, act);

@@ -45,6 +45,21 @@ const cases: Case[] = [
     want: { standing: 'open', action: 'continue', safe: ['resume', 'abort'], transactionId: TX, generation: 4, phase: 'transfer' },
   },
   {
+    name: 'an open transaction another machine\'s controller drives can only be aborted from here',
+    o: { local: mac, names: { [trift]: 'trift' }, gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: trift }) } },
+    want: { standing: 'open', action: 'none', safe: ['abort'], reason: expect.stringContaining('goes on from trift') },
+  },
+  {
+    name: 'an open transaction this machine\'s controller drives can go on or be aborted',
+    o: { local: mac, controller: journal(), gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: mac }) } },
+    want: { standing: 'open', action: 'continue', safe: ['resume', 'abort'] },
+  },
+  {
+    name: 'a committed transaction goes forward from either end, whichever controller began it',
+    o: { local: mac, controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, { ...tx('committed'), controllerId: trift }) } },
+    want: { standing: 'committed', action: 'continue', safe: ['resume'] },
+  },
+  {
     name: 'a committed transaction only goes forward, whatever the controller last wrote',
     o: { controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) } },
     want: { standing: 'committed', action: 'continue', safe: ['resume'] },

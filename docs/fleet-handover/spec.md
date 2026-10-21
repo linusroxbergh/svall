@@ -733,7 +733,9 @@ If the controller disappears, the sheet and CLI reconstruct status from the thre
 `svall handover status` says whether Abort or Resume is safe. A stale pre-commit transaction may be
 aborted after confirming that the authority still names the source at the expected generation. A
 resume or abort runs only on the source or the destination: rsync runs on the controller, so one
-started from a third machine stops before anything moves and names the two it can run on.
+started from a third machine stops before anything moves and names the two it can run on. Before the
+commit, a resume runs only on the machine whose controller began the handover, which status names;
+an abort, and a resume after the commit, run from either end.
 
 Concurrent handovers are rejected by the authority compare-and-swap, and a second controller on one
 handover by the gateway at Begin and by the destination at claim and prepare. A force-owner recovery is a
