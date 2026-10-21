@@ -96,7 +96,8 @@ export class HandoverService {
 
   /**
    * A record `svall fleet recover` relays. The gateway it names is asked here, and its answer is what is taken; the
-   * relayed record stands in only when that gateway cannot be asked. The gateway is renamed once its record is taken.
+   * relayed record stands in only when that gateway cannot be asked, and then only to make this machine let the fleet
+   * go, since any holder of the fleet token can relay one. The gateway is renamed once its record is taken.
    * A record that names no gateway is this machine's to run alone, taken only while the gateway fleet.json names does
    * not answer, and once taken, fleet.json names none.
    */
@@ -113,14 +114,19 @@ export class HandoverService {
       if (said) throw Object.assign(new Error(`the gateway this fleet names ${said}, so it is not known lost and this machine does not run the fleet alone`), { code: 'invalid_params' });
     }
     const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;
+    let answered = false;
     if (gateway) {
       try {
         record = await gateway.get(this.deps.ownership.record().fleetId);
+        answered = true;
       } catch (e) {
         if (e instanceof AuthorityFailure && !UNANSWERED.has(e.code)) {
           throw Object.assign(new Error(`the gateway ${p.gatewayMachineId} would not name this fleet's owner: ${e.message}`), { code: e.code });
         }
       }
+    }
+    if (p.gatewayMachineId && !answered && record.ownerMachineId === this.deps.ownership.machineId) {
+      throw Object.assign(new Error(`the gateway ${p.gatewayMachineId} did not answer, so this machine does not take a record that makes it the owner; run the recovery again once the gateway answers`), { code: 'invalid_params' });
     }
     const r = await this.adopt(record);
     if (r.adopted) this.deps.setGateway?.(p.gatewayMachineId);

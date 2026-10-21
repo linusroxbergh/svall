@@ -438,16 +438,29 @@ describe('a record a recovery relays', () => {
     expect(same.log).toEqual([]);
   });
 
-  it('takes the relayed record only when the gateway cannot be asked', async () => {
-    const unasked: (Authority | undefined)[] = [
-      { get: async () => { throw new AuthorityFailure('disconnected', 'machines.json names no ssh route to the gateway'); } },
-      { get: async () => { throw Object.assign(new Error('connect ENOENT /home/linus/.local/share/svall/gateway/authority.sock'), { code: 'ENOENT' }); } },
-      undefined,
-    ];
+  const unasked: (Authority | undefined)[] = [
+    { get: async () => { throw new AuthorityFailure('disconnected', 'machines.json names no ssh route to the gateway'); } },
+    { get: async () => { throw new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'); } },
+    { get: async () => { throw Object.assign(new Error('connect ENOENT /home/linus/.local/share/svall/gateway/authority.sock'), { code: 'ENOENT' }); } },
+    undefined,
+  ];
+
+  it('lets the fleet go on a relayed record naming another owner when the gateway cannot be asked', async () => {
+    for (const gateway of unasked) {
+      const b = boot({ record: { generation: 4, ownerMachineId: me }, ...(gateway && { gateway }) });
+      expect(await b.handover.relay({ record: { ...relayed, ownerMachineId: other }, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: other } });
+      expect(b.log).toEqual(['deactivate', `gateway ${third}`]);
+    }
+  });
+
+  it('refuses a relayed record naming this machine when the gateway cannot be asked, and changes nothing', async () => {
     for (const gateway of unasked) {
       const b = boot({ record: { generation: 4, ownerMachineId: other }, ...(gateway && { gateway }) });
-      expect(await b.handover.relay({ record: relayed, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
-      expect(b.log).toEqual(['activate', 'reconcile', 'resume', `gateway ${third}`]);
+      await expect(b.handover.relay({ record: relayed, gatewayMachineId: third })).rejects.toMatchObject({
+        code: 'invalid_params', message: `the gateway ${third} did not answer, so this machine does not take a record that makes it the owner; run the recovery again once the gateway answers`,
+      });
+      expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
+      expect(b.log).toEqual([]);
     }
   });
 

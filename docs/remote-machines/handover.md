@@ -270,10 +270,11 @@ svall fleet recover --force-owner local --gateway spare       # another registry
    tmux panes. Any other run shows the same and writes nothing.
 3. It records the write in `controller/recoveries.ndjson` in the fleet home, and with a gateway also in the gateway's
    `recoveries.ndjson`, then tells every machine that answers: the one it names runs the fleet, and the others let go
-   and close their terminals.
-4. A machine it could not reach is listed under **next**. This Mac, and the gateway's own machine unless `--gateway`
-   replaced it, take the record when their daemon next starts; any other has to be stopped, then the command run
-   again once it answers.
+   and close their terminals. Each asks the gateway itself; one that cannot reach it lets the fleet go on the record
+   it is told of, and never takes one that makes it the owner.
+4. A machine it could not reach, or the one it names that could not reach the gateway, is listed under **next**.
+   This Mac, and the gateway's own machine unless `--gateway` replaced it, take the record when their daemon next
+   starts; any other has to be stopped, then the command run again once it answers.
 
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
 carried. A machine that prepared a handover it never ran drops what it prepared, and the risks name it. `--gateway`
