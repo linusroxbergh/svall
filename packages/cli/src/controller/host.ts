@@ -516,6 +516,17 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; ') });
 
+const rollbackTo = (name: string): string => `svall host upgrade ${name} --rollback <release> puts back a release kept there`;
+
+/** The one master an upgrade or a rollback rides on, to the machine the registry names. */
+async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<SshMaster>> {
+  const opened = await d.openMaster(entry.record.ssh).catch((err: unknown) => {
+    throw new StepError((err as Error).message, `ssh ${entry.record.ssh} once in Terminal and see what it answers, then run this again`);
+  });
+  await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+  return { value: opened, detail: `one control master to ${entry.record.ssh}` };
+}
+
 /**
  * `svall host upgrade`: a new release installed by its own setup, as the setup of the release it replaces may not speak
  * its protocol, then a probe that puts the old one back if it does not answer.
@@ -523,11 +534,7 @@ const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } 
 export function upgradeHost(name: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
-    const master = await run.step('master', async () => {
-      const opened = await d.openMaster(entry.record.ssh);
-      await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `one control master to ${entry.record.ssh}` };
-    });
+    const master = await run.step('master', () => checkedMaster(d, entry));
     try {
       const companion = await run.step('release', () => companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch));
       const remote = remotePaths(entry.record.home, companion.version);
@@ -565,7 +572,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
         const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
           : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;
         const action = `ssh ${entry.record.ssh} and read the daemon log; ${runs}`;
-        if (out instanceof Error) throw new StepError(out.message, action);
+        if (out instanceof Error) throw new StepError(out.message, `${action}; ${rollbackTo(name)}`);
         return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${now}`, action };
       });
     } finally {
@@ -581,13 +588,9 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
 export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
-    const master = await run.step('master', async () => {
-      const opened = await d.openMaster(entry.record.ssh);
-      await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `one control master to ${entry.record.ssh}` };
-    });
+    const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
-    const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}`;
+    const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}; ${rollbackTo(name)}`;
     try {
       const now = await run.step('rollback', async () => {
         const out = await remoteRollback(master, { svallBase: base, from: await currentRelease(master, base), ...(o.to !== undefined && { to: o.to }) })

@@ -1098,7 +1098,7 @@ esac
     const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
     await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringMatching(/no other release is kept there, so it runs the new one$/) });
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringMatching(/no other release is kept there, so it runs the new one; svall host upgrade trift --rollback <release> puts back a release kept there$/) });
   });
 
   it('counts a new release whose own setup put the old one back as not answering, and says which the machine runs', async () => {
@@ -1184,6 +1184,17 @@ esac
     expect(step('probe')[0]).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
     expect(none.result).toBe('actions');
     expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
+    expect(step('rollback').at(-1)?.action).toContain('svall host upgrade trift --rollback <release>');
+  });
+
+  it('names the ssh to try in Terminal when an upgrade or a rollback cannot connect', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    for (const run of [() => upgradeHost('trift', {}, deps({ registry })), () => rollbackHost('trift', {}, deps({ registry }))]) {
+      events.length = 0;
+      expect((await run()).result).toBe('actions');
+      expect(step('master').at(-1)).toMatchObject({ status: 'fail', action: 'ssh refused.test once in Terminal and see what it answers, then run this again' });
+    }
   });
 
   it('keeps a new release whose companion doctor exits 1 over a check unrelated to the daemon', async () => {
