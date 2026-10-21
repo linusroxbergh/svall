@@ -61,20 +61,20 @@ svall host add studio --ssh ada@studio
 
 Both run the same steps and show each as it finishes:
 
-1. **Connect.** One interactive ssh, so you can accept the host key and log in, then one control connection for the
+1. **Connection.** One interactive ssh, so you can accept the host key and log in, then one control connection for the
    rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
-2. **Prerequisites.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
+2. **What the machine needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
    Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering.
-3. **Companion.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
+3. **Svall on the machine.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
-4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
+4. **Services.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
    Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's own
    `svall doctor` finds them.
-6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
+6. **Trying it out.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
-7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
+7. **This Mac's list of machines.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
 
 It ends by saying the machine is added, or with a list of what is still for you to do. Once it is added, **Make it
 this fleet's gateway** (`svall host enable <name> --fleet <fleet>`) readies it for handover. Svall never runs `sudo`

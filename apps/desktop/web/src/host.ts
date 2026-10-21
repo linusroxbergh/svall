@@ -10,21 +10,22 @@ export function withoutTokens(text: string): string {
 
 /** The phases the checklist shows, and the steps `svall host …` emits inside each. */
 const PHASES = [
-  { phase: 'connect', label: 'Connect', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'Prerequisites', steps: ['os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger'] },
-  { phase: 'companion', label: 'Companion', steps: ['release', 'upload', 'install', 'uninstall'] },
-  { phase: 'service', label: 'Service', steps: ['service', 'identity', 'authority', 'fleet'] },
+  { phase: 'connect', label: 'Connection', steps: ['name', 'machine', 'ssh', 'master'] },
+  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger'] },
+  { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'uninstall'] },
+  { phase: 'service', label: 'Services', steps: ['service', 'identity', 'authority', 'fleet'] },
   { phase: 'agents', label: 'Agent logins', steps: ['claude', 'codex', 'opencode'] },
   // an upgrade puts the release before back when its probe fails
-  { phase: 'probe', label: 'Final probe', steps: ['probe', 'rollback'] },
+  { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback'] },
   // an add writes the registry after its final probe, and a removal after its uninstall
-  { phase: 'registry', label: 'Registry', steps: ['registry'] },
+  { phase: 'registry', label: "This Mac's list of machines", steps: ['registry'] },
 ] as const;
 
 export type Phase = (typeof PHASES)[number]['phase'] | 'other';
 export type PhaseRows = { phase: Phase; label: string; rows: HostStep[] };
 
-const OTHER = { phase: 'other' as const, label: 'Setup' };
+// the checks a machine's own doctor adds
+const OTHER = { phase: 'other' as const, label: 'Checks' };
 
 const phaseOf = (step: string) => PHASES.find((p) => (p.steps as readonly string[]).includes(step)) ?? OTHER;
 
@@ -64,9 +65,12 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
-  space: 'Free space', linger: 'Lingering', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
+  space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
   service: 'Services', identity: 'Installed release', authority: 'Ownership record', fleet: 'Fleets', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
+  systemd: 'Fleet service', gateway: 'Gateway service', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
+  gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
+  'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall',
 };
 
 /** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */

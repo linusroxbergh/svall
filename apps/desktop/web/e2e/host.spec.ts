@@ -70,7 +70,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   for (const event of ADD_STEPS) await receive(page, { type: 'host.step', op: 'add', event });
   await receive(page, { type: 'host.done', op: 'add', code: 1 });
 
-  await expect(page.getByTestId('host-phase')).toHaveText(['Connect', 'Prerequisites', 'Agent logins', 'Final probe']);
+  await expect(page.getByTestId('host-phase')).toHaveText(['Connection', 'What the machine needs', 'Agent logins', 'Trying it out']);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
   await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth status and log in');
   await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');
@@ -118,7 +118,7 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 1 });
-  await expect(page.getByTestId('host-outcome')).toContainText('1 check blocks a handover:systemd: svall-svalld@private.service is inactive');
+  await expect(page.getByTestId('host-outcome')).toContainText('1 check blocks a handover:Fleet service: svall-svalld@private.service is inactive');
 
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'studio answers on release 0.5.0' } });

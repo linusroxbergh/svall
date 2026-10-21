@@ -91,7 +91,7 @@ describe('the end of a run', () => {
     expect(outcomeOf(fine, undefined)).toEqual({ text: "ready to be this fleet's gateway; 2 warnings", next: 'gateway' });
     expect(outcomeOf(ended('doctor', 0, [step('release', 'ok')]), 'box').text).toBe('ready for handover');
     const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
-    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'systemd: inactive'] });
+    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'Fleet service: inactive'] });
   });
 
   it('says what a new gateway, a removal and a rollback did, and offers the handover once there is a gateway', () => {
@@ -106,8 +106,12 @@ describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
     expect(['master', 'identity', 'authority', 'fleet', 'registry'].map(stepLabel))
       .toEqual(['Connection', 'Installed release', 'Ownership record', 'Fleets', 'Machine list']);
+    // the checks a machine's own doctor reports
+    expect(['systemd', 'gateway', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
+      .toEqual(['Fleet service', 'Gateway service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
     expect(stepLabel('weather')).toBe('weather');
   });
+
 });
 
 describe('the attended checklist', () => {
@@ -115,17 +119,17 @@ describe('the attended checklist', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tmux', 'ok'), step('release', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Connect', ['ssh', 'master']],
-      ['Prerequisites', ['tmux']],
-      ['Companion', ['release']],
+      ['Connection', ['ssh', 'master']],
+      ['What the machine needs', ['tmux']],
+      ['Svall on the machine', ['release']],
       ['Agent logins', ['claude', 'codex', 'opencode']],
-      ['Final probe', ['probe']],
+      ['Trying it out', ['probe']],
     ]);
   });
 
   it('opens a phase again when a later step comes back to it', () => {
     expect(groupSteps([step('ssh', 'ok'), step('tmux', 'ok'), step('master', 'ok')]).map((g) => g.label))
-      .toEqual(['Connect', 'Prerequisites', 'Connect']);
+      .toEqual(['Connection', 'What the machine needs', 'Connection']);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
@@ -134,23 +138,23 @@ describe('the attended checklist', () => {
     const remove = ['machine', 'fleet', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);
-      expect(labels).not.toContain('Setup');
+      expect(labels).not.toContain('Checks');
       expect(new Set(labels).size).toBe(labels.length);
     }
   });
 
-  it('puts the rollback of an upgrade whose probe failed under Final probe, after the probe', () => {
+  it('puts the rollback of an upgrade whose probe failed beside the probe, after it', () => {
     const steps = [step('machine', 'ok'), step('master', 'ok'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok'),
                    step('probe', 'warn'), step('rollback', 'warn')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Connect', ['machine', 'master']],
-      ['Companion', ['release', 'upload', 'install']],
-      ['Final probe', ['probe', 'rollback']],
+      ['Connection', ['machine', 'master']],
+      ['Svall on the machine', ['release', 'upload', 'install']],
+      ['Trying it out', ['probe', 'rollback']],
     ]);
   });
 
   it('shows a step it does not know rather than dropping it', () => {
-    expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Setup', rows: [step('weather', 'ok')] }]);
+    expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Checks', rows: [step('weather', 'ok')] }]);
   });
 });
 
