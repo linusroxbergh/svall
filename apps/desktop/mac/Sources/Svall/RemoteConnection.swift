@@ -74,14 +74,14 @@ final class RemoteConnection {
         helper.onEvent = { [weak self] event in self?.handle(event) }
         helper.onExit = { [weak self] status in
             guard let self else { return }
-            let said = State(state: "error", owner: owner, kind: "other", message: "the connection helper stopped (exit \(status))")
+            let said = State(state: "error", owner: owner, kind: "helper", message: "the connection helper stopped (exit \(status))")
             guard !fellBack else { unshown = said; return }
             publish(said)
             fallBackIfLocalOnly()
         }
         do { try helper.start() } catch {
             NSLog("svall: could not start the connection helper: %@", "\(error)")
-            publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper could not start (\(error.localizedDescription))"))
+            publish(State(state: "error", owner: owner, kind: "helper", message: "the connection helper could not start (\(error.localizedDescription))"))
             fallBackIfLocalOnly()
         }
         starts += 1
@@ -188,7 +188,7 @@ final class RemoteConnection {
             publish(State(state: "online", owner: owner, kind: nil, message: nil))
             return fallBack()
         }
-        publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper has not answered in \(String(format: "%g", answerWithin)) s"))
+        publish(State(state: "error", owner: owner, kind: "helper", message: "the connection helper has not answered in \(String(format: "%g", answerWithin)) s"))
     }
 
     /// Whether the route the controller last cached names this Mac at the generation its daemon holds, as `svall connect`

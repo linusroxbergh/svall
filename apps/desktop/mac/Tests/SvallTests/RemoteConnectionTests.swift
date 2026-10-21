@@ -101,7 +101,7 @@ final class RemoteConnectionTests: XCTestCase {
         let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), answerWithin: 1)
         remote.start()
         waitForTranscript(of: 2)
-        XCTAssertEqual(transcript, ["state connecting studio - -", "state error studio other the connection helper has not answered in 1 s"])
+        XCTAssertEqual(transcript, ["state connecting studio - -", "state error studio helper the connection helper has not answered in 1 s"])
         XCTAssertEqual(remote.route, .pending)
         XCTAssertTrue(helper.isRunning)
         remote.stop()
@@ -198,7 +198,7 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertNil(remote.connection)
         XCTAssertFalse(transcript.contains { $0.hasPrefix("connection") })
         XCTAssertEqual(remote.state?.state, "error")
-        XCTAssertEqual(remote.state?.kind, "other")
+        XCTAssertEqual(remote.state?.kind, "helper")
         remote.stop()
     }
 
@@ -398,7 +398,7 @@ final class RemoteConnectionTests: XCTestCase {
         waitForTranscript(of: 2)
         XCTAssertEqual(transcript.first, "state connecting local - -")
         XCTAssertEqual(remote.state?.state, "error")
-        XCTAssertEqual(remote.state?.kind, "other")
+        XCTAssertEqual(remote.state?.kind, "helper")
         // the fleet names a gateway, so it may be on another machine
         XCTAssertEqual(remote.route, .pending)
         // the page asking again while it has no port starts no helper after it
@@ -418,7 +418,7 @@ final class RemoteConnectionTests: XCTestCase {
         gateway = false
         waitForTranscript(of: 3)
         XCTAssertEqual(transcript, ["state connecting local - -",
-                                    "state error local other the connection helper stopped (exit 3)",
+                                    "state error local helper the connection helper stopped (exit 3)",
                                     "connection 127.0.0.1:8123:t0ken"])
         XCTAssertEqual(remote.route, .local)
         XCTAssertEqual(remote.connection, SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))

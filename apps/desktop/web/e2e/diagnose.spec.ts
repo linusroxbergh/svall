@@ -88,6 +88,21 @@ test('a fleet on this Mac whose gateway did not answer says so, and offers the c
   expect((await sent()).filter((m) => m.type === 'connection.here')).toEqual([{ type: 'connection.here' }]);
 });
 
+test('a fleet on this Mac whose connection helper has not answered says so in place of the advice for its own daemon', async ({ page }) => {
+  await fakeShell(page, {
+    port: 0, token: '',
+    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
+    state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'helper', message: 'the connection helper has not answered in 10 s' },
+  });
+  await page.clock.install();
+  await page.goto('/');
+  await page.clock.fastForward(theme.connectGraceMs);
+  const screen = page.getByTestId('connect-screen');
+  await expect(screen).toContainText('The connection helper has not said where the fleet runs.');
+  await expect(screen).not.toContainText('svalld not running');
+  await expect(screen.getByTestId('connection-reconnect')).toBeVisible();
+});
+
 test('a fleet on this Mac that asks for handover keeps the advice for its own daemon', async ({ page }) => {
   await fakeShell(page, {
     port: 0, token: '',

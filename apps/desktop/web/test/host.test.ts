@@ -208,6 +208,15 @@ describe('the connection state the shell reports', () => {
       .toMatchObject({ text: 'The gateway gate did not answer, so where the fleet runs is not known.', actions: ['check', 'reconnect'] });
   });
 
+  it('says a connection helper that stopped or has not answered has not said where the fleet runs, never that this Mac is out of reach', () => {
+    const helper = err({ owner: 'local', kind: 'helper', message: 'the connection helper has not answered in 10 s' });
+    expect(connectionBanner(helper, on)).toEqual({
+      text: 'The connection helper has not said where the fleet runs.', detail: 'the connection helper has not answered in 10 s', actions: ['reconnect'],
+    });
+    expect(connectionBanner(helper, { ...on, copyHere: true })?.actions).toEqual(['here', 'reconnect']);
+    expect(connectionBanner(err({ owner: 'studio', kind: 'helper' }), { ...on, copyHere: true })?.actions).toEqual(['reconnect']);
+  });
+
   it('says a far daemon that has not answered since the route opened has not, and offers a check', () => {
     expect(FAR_ANSWER_MS).toBe(60_000);
     expect(connectionBanner({ state: 'online', owner: 'studio' }, { ...on, silent: true }))

@@ -126,8 +126,9 @@ export type BannerAction = 'reconnect' | 'check' | 'upgrade' | 'here';
 /** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. `ssh`: the destination to run ssh to once. */
 export type Banner = { text: string; detail?: string; machine?: string; ssh?: string; actions: BannerAction[] };
 
-/** `machine`: the one that did not answer. */
-function errorText(c: ConnectionState, machine: string): Pick<Banner, 'text' | 'ssh'> {
+/** `machine`: the one that did not answer; none for a helper that failed before it reached one. */
+function errorText(c: ConnectionState, machine: string | undefined): Pick<Banner, 'text' | 'ssh'> {
+  if (machine === undefined) return { text: 'The connection helper has not said where the fleet runs.' };
   const name = machine === 'local' ? 'this Mac' : machine;
   // a machine other than the one the fleet was announced on is the gateway, asked who owns it
   const gateway = machine !== 'local' && machine !== c.owner;
@@ -158,16 +159,17 @@ export function connectionBanner(c: ConnectionState | undefined, o: { handoverEn
     case 'connecting': return { text: `connecting to ${who(c.owner)}…`, actions: [] };
     case 'owner-changed': return { text: `the fleet moved to ${who(c.owner)}; reconnecting…`, actions: [] };
     case 'error': {
-      const machine = c.machine ?? c.owner;
+      const machine = c.kind === 'helper' ? undefined : c.machine ?? c.owner;
       const { text, ssh } = errorText(c, machine);
+      const away = machine === undefined || remote(machine);
       const actions: BannerAction[] = [
-        ...(c.owner === 'local' && remote(machine) && o.copyHere ? ['here' as const] : []),
-        ...(c.kind === 'version' && remote(machine) ? ['upgrade' as const] : []),
-        ...((c.kind === 'daemon_down' || c.kind === 'other' || !c.kind) && remote(machine) ? ['check' as const] : []),
+        ...(c.owner === 'local' && away && o.copyHere ? ['here' as const] : []),
+        ...(machine && c.kind === 'version' && remote(machine) ? ['upgrade' as const] : []),
+        ...(machine && (c.kind === 'daemon_down' || c.kind === 'other' || !c.kind) && remote(machine) ? ['check' as const] : []),
         'reconnect',
       ];
       return {
-        text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine !== 'local' ? { machine } : {}), ...(ssh ? { ssh } : {}), actions,
+        text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine && machine !== 'local' ? { machine } : {}), ...(ssh ? { ssh } : {}), actions,
       };
     }
   }

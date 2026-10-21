@@ -87,9 +87,9 @@ export function App() {
   }, [farOnline]);
   // the fleet the page holds stays on the screen while its machine is away; only this line changes
   const away = connectionBanner(connection, { handoverEnabled, copyHere: copyHere && !loaded, silent });
-  // a fleet on another machine, or one whose gateway did not answer, is waited for there, so this Mac's daemon,
+  // a fleet on another machine, or one whose gateway or helper did not answer, is waited for there, so this Mac's daemon,
   // its log and its setup say nothing about it
-  const trouble = connection?.state === 'error' && !!connection.machine && connection.machine !== 'local';
+  const trouble = connection?.state === 'error' && (connection.kind === 'helper' || (!!connection.machine && connection.machine !== 'local'));
   const elsewhere = !!connection && (connection.owner !== 'local' || (!!away && trouble));
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
