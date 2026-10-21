@@ -3,7 +3,7 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
-  actionsOf, blockerHint, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, entityLabel, entityPath, formatBytes, fraction,
+  actionsOf, blockerHint, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, entityLabel, entityPath, formatBytes, fraction,
   goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
 } from './handover.js';
@@ -326,7 +326,8 @@ export function HandoverSheet() {
   const enabled = useApp((s) => !!s.shell?.handoverEnabled);
   const run = useApp((s) => s.handover);
   const gateway = useApp((s) => s.shell?.gateway);
-  const owner = useApp((s) => s.connection?.owner ?? 'local');
+  const runsOn = useApp((s) => s.connection?.owner);
+  const owner = runsOn ?? 'local';
   const characters = useApp((s) => s.fleet.characters);
   const shut = useRef<HTMLButtonElement>(null);
   // the user asked to pick a destination over a run the sheet still shows
@@ -354,9 +355,10 @@ export function HandoverSheet() {
   }, [run, enabled]);
 
   if (!open || !enabled) return null;
-  const destination = destinationName(run?.to);
+  const to = run && destinationOf(run, runsOn, gateway);
+  const destination = destinationName(to);
   const ctx: HintContext = {
-    destination, source: run?.to === 'local' ? gateway ?? 'the gateway' : 'This Mac', pull: run?.to === 'local',
+    destination, source: to === 'local' ? gateway ?? 'the gateway' : to ? 'This Mac' : 'the machine it came from', pull: to === 'local',
     name: (id) => characters[id]?.name ?? run?.preflight?.names?.characters[id] ?? id,
   };
   const close = () => store().toggleHandover(false);
@@ -372,7 +374,7 @@ export function HandoverSheet() {
             <span className="spacer" />
             <button ref={shut} className="side-x" data-testid="handover-close" title="Close" aria-label="Close" onClick={close}>×</button>
           </div>
-          {shown && run.to && <Route run={run} ctx={ctx} />}
+          {shown && to && <Route run={run} ctx={ctx} />}
         </div>
         <div className="ho-body">
           {choosing && <Destinations owner={owner} gateway={gateway} />}

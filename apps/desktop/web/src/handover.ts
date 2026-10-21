@@ -181,6 +181,19 @@ export function isCommitted(run: HandoverRun): boolean {
   return !!run.phase && step(run.phase) >= step('activate');
 }
 
+/**
+ * Where a handover goes: `local` or the gateway's name. A sheet relaunched after the start rebuilds a run that never
+ * said, and a handover runs only between this Mac and its gateway, so `owner`, where the fleet runs now, names it:
+ * the other end before the commit, that end after it.
+ */
+export function destinationOf(run: HandoverRun, owner: string | undefined, gateway: string | undefined): string | undefined {
+  if (run.to || !gateway || (owner !== 'local' && owner !== gateway)) return run.to;
+  const s = run.status?.standing;
+  if (s === 'unknown' || s === 'superseded') return undefined;
+  const landed = s === 'none' ? run.result?.status === 'complete' : isCommitted(run) || !!run.goingOn;
+  return landed ? owner : owner === 'local' ? gateway : 'local';
+}
+
 /** Where the sheet stands, section by section. */
 export function sectionStates(run: HandoverRun): { id: SectionId; label: string; state: SectionState }[] {
   const r = run.result;

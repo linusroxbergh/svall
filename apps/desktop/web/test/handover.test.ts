@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Blocker, HandoverPhase, MachineId, SafeAction, Standing } from '@svall/protocol';
 import {
-  actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  rowText, sectionStates, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
+  goOn, rowText, sectionStates, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
 const tx = 'tx-1';
@@ -171,6 +171,25 @@ describe('what the sheet offers', () => {
       expect(line).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}|generation|activation|journal/);
     }
     expect(headline(play([result({ status: 'none', reason: 'no handover of this fleet is open anywhere' })]), 'studio')).toBe('There was no handover of this fleet to resume or abort.');
+  });
+
+  it('names where a relaunched handover goes from where the fleet runs now: the other end before the commit, that end after it', () => {
+    const relaunched = (standing: Standing, safe: SafeAction[], phase: HandoverPhase) =>
+      endFollow(play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', transactionId: tx, phase, safe, reason: '' } }], followRun()), 0);
+    const open = relaunched('open', ['resume', 'abort'], 'transfer');
+    expect(destinationOf(open, 'local', 'studio')).toBe('studio');
+    expect(destinationOf(open, 'studio', 'studio')).toBe('local');
+    expect(destinationOf(relaunched('committed', ['resume'], 'activate'), 'studio', 'studio')).toBe('studio');
+    expect(destinationOf(relaunched('moved', ['resume'], 'activate'), 'local', 'studio')).toBe('local');
+    // the resume the sheet goes on with is past the commit even while its journal still says commit
+    expect(destinationOf(goOn(relaunched('committed', ['resume'], 'commit')), 'studio', 'studio')).toBe('studio');
+    // a gateway that cannot say, or a page that has not heard where the fleet runs, names nothing
+    expect(destinationOf(relaunched('unknown', [], 'commit'), 'local', 'studio')).toBeUndefined();
+    expect(destinationOf(open, undefined, 'studio')).toBeUndefined();
+    expect(destinationOf(open, 'local', undefined)).toBeUndefined();
+    expect(destinationOf(open, 'spare', 'studio')).toBeUndefined();
+    // a run started here says where it goes
+    expect(destinationOf(followRun('studio'), 'studio', 'studio')).toBe('studio');
   });
 
   it('offers Forget for a journal the gateway has moved on from, and asks the user only about what can be decided', () => {

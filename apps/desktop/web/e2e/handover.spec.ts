@@ -290,6 +290,7 @@ test('a decision waits for its answer, which goes as one choose, while the sheet
 test('a relaunch rebuilds a stopped handover, with Resume and Abort before the commit, and past it resumes by itself with Retry only after that fails', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
+  await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   // the events file of the run the app was closed during, then what the journals say now
   await readBack(page, { event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } }, ...changed('begin', 'freeze', 'transfer'),
     { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx1', phase: 'transfer', error: 'ssh to studio closed', safe: ['resume', 'abort'] } },
@@ -297,6 +298,8 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
   await expect(page.getByTestId('handover-headline')).toHaveText('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
   await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
+  await expect(page.getByTestId('handover-route')).toHaveText('This Mac→studio');
+  await expect(page.getByTestId('handover-footnote')).toHaveText('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
   await expect(page.getByTestId('handover-section-transfer')).toHaveAttribute('data-state', 'stopped');
   await expect(page.getByTestId('handover-resume')).toHaveText('Resume');
   await expect(page.getByTestId('handover-abort')).toBeVisible();
@@ -304,9 +307,12 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   expect(await lastOf(page, 'handover.abort')).toEqual({ type: 'handover.abort' });
   expect(await lastOf(page, 'handover.cancel')).toBeUndefined();
 
+  // past the commit the page reaches the fleet where it went
+  await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
   await receive(page, { type: 'handover.replay', events: [
     { event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'continue', transactionId: TX, phase: 'activate', safe: ['resume'], reason: `${TX} is committed: the fleet belongs to ${STUDIO} at generation 4, and only its activation can go on` } }] });
-  await expect(page.getByTestId('handover-headline')).toContainText('so the sheet resumes it there by itself…');
+  await expect(page.getByTestId('handover-headline')).toHaveText("The fleet is studio's now, so the sheet resumes it there by itself…");
+  await expect(page.getByTestId('handover-route').locator('[data-here]')).toHaveText('studio');
   const resumes = async () => (await sent(page)).filter((m) => m.type === 'handover.resume').length;
   await expect.poll(resumes).toBe(1);
   await expect(page.getByTestId('handover-resume')).toHaveCount(0);
