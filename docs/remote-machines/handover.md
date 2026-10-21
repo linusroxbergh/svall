@@ -400,12 +400,12 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`): half the heap
   at 8 KiB a file, such as 68,832 files when one machine has 2 GB of memory. Leave generated folders out with
   `handover.exclude`.
-- **A Git clean filter set up on one machine only is found after the copy.** A repository that uses Git LFS,
-  git-crypt, nbstripout or another clean filter, usually set up in `~/.gitconfig`, reads as changed where git lacks
-  that filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file
-  is copied. One set up in the repository's own config stops it there with `git_config_command` instead, until that
-  machine's global config sets the same. Nothing checks this sooner: set the same filter up on the other machine first, such as with `git lfs
-  install`.
+- **A Git clean filter set up in one machine's global config only is found after the copy.** A repository that uses
+  Git LFS, git-crypt, nbstripout or another clean filter set up in `~/.gitconfig` reads as changed where git lacks that
+  filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file is
+  copied: set the same filter up on the other machine first, such as with `git lfs install`. One set up in the
+  repository's own config is found at the checks instead (`git_config_command`), until the other machine's global
+  config sets the same.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
