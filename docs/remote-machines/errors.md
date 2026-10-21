@@ -307,7 +307,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | --- | --- | --- |
 | `tmux` | both | tmux is there, and 3.5 or newer for Shift+Enter. |
 | `node` | both | Node 24 or newer runs `svall`. |
-| `claude` | both | Claude Code's version and login. |
+| `claude` | both | Claude Code's login, and for a fleet that hands over its version: 2.1.251 or newer. A fleet hands over once its `fleet.json` names a gateway or turns handover on, and every fleet on Linux does. |
 | `codex` | both | Codex's version and login. |
 | `opencode` | both | OpenCode's version and login. |
 | `agents` | both | No agent CLI is installed (a failure on a Mac, a warning on Linux). |
@@ -328,7 +328,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `daemon node` | Mac | The Node the launchd agent runs is still there. |
 | `daemon path` | Mac | The launchd agent's program is there and its PATH finds the agents. |
 | `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` your login shell sets. |
-| `rsync` | Mac | The rsync the release bundles, which a handover needs. |
+| `rsync` | Mac | For a fleet that hands over, the rsync the release bundles, which a handover needs. |
 | `doctor` | host doctor | The companion's doctor answered. |
 | `release` | host doctor | The machine runs this Mac's release and protocol. |
 | `space` | host doctor | Free space in the home. |

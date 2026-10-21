@@ -44,6 +44,7 @@ function fake(o: {
   shimsCurrent?: boolean;
   platform?: NodeJS.Platform;
   agentPath?: string;
+  handover?: boolean;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -100,6 +101,7 @@ function fake(o: {
     shimsCurrent: o.shimsCurrent ?? true,
     daemon: DAEMON,
     platform: o.platform ?? 'darwin',
+    handover: o.handover ?? true,
     user: 'linus',
     rsync: { bundled: RSYNC, fix: 'build it with node scripts/build-controller.mjs' },
   };
@@ -335,6 +337,12 @@ describe('doctor', () => {
     const out = '\tstate = running\n\truns = 4\n\tlast exit code = 0\n\tevent triggers = {\n\t\tstate = active\n\t}\n\t\tstate = active\n';
     const c = byName(await doctor(priv, fake({ commands: { [`launchctl print gui/501/${LAUNCHD_LABEL}`]: out } }).deps));
     expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
+  });
+
+  it('checks neither the bundled rsync nor Claude Code against a handover\'s floor for a fleet that never hands over', async () => {
+    const c = byName(await doctor(priv, fake({ handover: false, commands: { [`${RSYNC} --version`]: undefined as never, 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
+    expect(c.rsync).toBeUndefined();
+    expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
   });
 
   it('flags a Mac left with only the system openrsync, or an rsync too old, and names the fix', async () => {
