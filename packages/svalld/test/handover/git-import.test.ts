@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -112,20 +113,33 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     expect(rebuilds(asked)).toEqual([]);
   });
 
-  it('runs no filter a landed config names, its own, one it includes or a submodule\'s, whatever the source warned of', async () => {
+  it('blocks before git runs a filter a landed config names that this machine\'s global config does not set the same, and goes on once it does', async () => {
     const l = seedHere(made);
-    const { manifest } = await handed(l);
-    const common = path.join(l.source.main, '.git');
+    const d = l.source;
     const ran = path.join(l.base, 'filter-ran');
-    const filter = (name: string) => `[filter "${name}"]\n\tclean = touch '${ran}-${name}'; cat\n\tprocess = touch '${ran}-${name}'\n\trequired = true\n`;
-    fs.writeFileSync(path.join(l.base, 'included.inc'), filter('inc'));
-    fs.appendFileSync(path.join(common, 'config'), `${filter('own')}[include]\n\tpath = ${path.join(l.base, 'included.inc')}\n`);
-    fs.writeFileSync(path.join(common, 'info/attributes'), '* filter=own\n*.txt filter=inc\n');
-    fs.appendFileSync(path.join(common, 'modules/sub/config'), filter('sub'));
-    fs.mkdirSync(path.join(common, 'modules/sub/info'), { recursive: true });
-    fs.writeFileSync(path.join(common, 'modules/sub/info/attributes'), '* filter=sub\n');
-    expect(await importGraphs(manifest)).toEqual([]);
-    expect(fs.readdirSync(l.base).filter((f) => f.startsWith('filter-ran'))).toEqual([]);
+    // a filter that rewrites what it reads, in the repository's config and its submodule's, on the source too, for files no unused worktree holds
+    const clean = `touch '${ran}'; tr a-z A-Z`;
+    for (const [at, name, file] of [[d.main, 'up', 'staged.txt'], [d.sub, 'sub', 'lib.txt']]) {
+      git(l.base, at, 'config', `filter.${name}.clean`, clean);
+      fs.writeFileSync(path.join(git(l.base, at, 'rev-parse', '--git-dir').replace(/^(?!\/)/, `${at}/`), 'info/attributes'), `${file} filter=${name}\n`);
+    }
+    // staged through the filter, as a repository that uses one stages its files
+    for (const c of [d.main, d.nested, d.sibling, d.detached, d.locked]) git(l.base, c, 'add', 'staged.txt');
+    const { manifest } = await handed(l);
+    fs.rmSync(ran, { force: true });
+    const blockers = await importGraphs(manifest);
+    expect(blockers.map((b) => b.code)).toEqual(expect.arrayContaining(['git_config_command']));
+    expect(blockers.map((b) => b.message).join('\n')).toMatch(/filter\.up\.clean[\s\S]*filter\.sub\.clean|filter\.sub\.clean[\s\S]*filter\.up\.clean/);
+    expect(fs.existsSync(ran)).toBe(false);
+
+    // with the same filters in this machine's global config, git runs them here as the source did, and reads the same status
+    const global = path.join(l.base, 'global.gitconfig');
+    for (const name of ['up', 'sub']) git(l.base, l.base, 'config', '--file', global, `filter.${name}.clean`, clean);
+    const here: GitRunner = (args, cwd) => new Promise((resolve) => execFile('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args],
+      { cwd, encoding: 'utf8', maxBuffer: 1 << 28, env: { ...process.env, GIT_CONFIG_GLOBAL: global } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
+    expect(await importGraphs(manifest, { git: here })).toEqual([]);
+    expect(fs.existsSync(ran)).toBe(true);
   });
 
   it('finds the same graph the second time', async () => {

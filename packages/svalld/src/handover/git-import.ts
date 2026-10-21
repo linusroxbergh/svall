@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
-import { configCommands, GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, said, withoutFilters, type WorktreeEntry } from './git-graph.js';
+import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, said, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 
 /** What `git init` probes of the filesystem a Git directory sits on; `precomposeUnicode` only where git probes it, on macOS. */
@@ -159,14 +159,16 @@ function described(e: WorktreeEntry): string {
  * and the stash holds the same entries.
  */
 export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git'> & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  let git = deps.git ?? handoverGit;
+  const git = deps.git ?? handoverGit;
   const entity: HandoverEntity = { kind: 'git', id: graph.id };
   const common = graph.commonDir;
   const differs: string[] = [];
   try {
-    // what landed decides what this machine turns off, whatever the source said of it
-    git = withoutFilters(git, await configCommands(common, git));
     const checkouts = [...(graph.main ? [graph.main] : []), ...graph.worktrees];
+    // read from what landed, whatever the source said of it, before any git here could run a command it names
+    const foreign = new Map<string, string[]>();
+    for (const c of await repoCommands(common, checkouts.map((x) => x.path), git)) if (!c.own) foreign.set(c.at, [...(foreign.get(c.at) ?? []), c.key]);
+    if (foreign.size) return [...foreign].map(([at, keys]) => ({ code: 'git_config_command', entity, message: `${at}: its repository's own config names commands git would run here, which this machine's global config does not set the same: ${keys.join(', ')}. Set each up the same with git config --global, or remove it from the repository's config where the fleet is and hand over again` }));
     for (const c of checkouts) {
       const dirs = parseDirs(await must(git, DIRS_ARGS, c.path));
       if (dirs.root !== c.path || dirs.commonDir !== common || dirs.gitDir !== c.gitDir) {

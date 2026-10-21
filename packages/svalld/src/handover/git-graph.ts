@@ -149,19 +149,18 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
   for (const [commonDir, slots] of [...byCommon].sort(([a], [b]) => byCodeUnit(a, b))) {
     const entity: HandoverEntity = { kind: 'git', id: graphId(commonDir) };
     try {
-      const commands = await configCommands(commonDir, git);
-      const g = withoutFilters(git, commands);
-      const read = await readGraph(commonDir, slots, g);
+      const read = await readGraph(commonDir, slots, git);
       graphs.push(read.graph);
       for (const checkout of [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees]) {
         const left = read.tracked.get(checkout.path)!.filter((p) => excludedPath(p, excluded));
         if (left.length) blockers.push({ code: 'path_unsupported', message: `${checkout.path}: ${trackedLeft(left)}`, entity });
       }
-      for (const [at, url] of await origins(read, standing, g, exists)) {
+      for (const [at, url] of await origins(read, standing, git, exists)) {
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
+      const commands = await configCommands(commonDir, git);
       if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
-      const held = await unusedWork(read.graph, g, exists);
+      const held = await unusedWork(read.graph, git, exists);
       for (const [at, message] of held) blockers.push({ code: 'worktree_unused', message: `${at}: ${message}`, entity });
       const idle = read.graph.unused.filter((u) => !held.has(u.path));
       if (idle.length) warnings.push({ code: 'worktree_unused', message: unusedMessage(read.graph.commonDir, idle), entity });
@@ -287,13 +286,40 @@ function submoduleDirs(modules: string): string[] {
   });
 }
 
-/** A runner that turns off each filter `commands` names, so git reads files as they are and runs none of them. */
-export function withoutFilters(git: GitRunner, commands: readonly string[]): GitRunner {
-  const filters = [...new Set(commands.flatMap((k) => /^filter\.(.+)\.(clean|smudge|process)$/.exec(k)?.[1] ?? []))];
-  const odd = filters.find((f) => f.includes('='));
-  if (odd !== undefined) throw new GitFailure(`the filter ${JSON.stringify(odd)} cannot be turned off from git's command line`);
-  const settings = filters.flatMap((f) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((s) => ['-c', `filter.${f}.${s}`]));
-  return settings.length ? (args, cwd) => git([...settings, ...args], cwd) : git;
+type Setting = { scope: string; key: string; value: string };
+
+/** Every setting git reads in `cwd`, or for the Git directory `gitDir`, with its scope; each include that applies there is followed. */
+async function settings(git: GitRunner, cwd: string, gitDir?: string): Promise<Setting[]> {
+  const out = await must(git, [...(gitDir ? ['--git-dir', gitDir] : []), 'config', '--show-scope', '--list', '-z'], cwd, gitDir);
+  const fields = out.split('\0');
+  const read: Setting[] = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const [key, ...value] = fields[i + 1].split('\n');
+    read.push({ scope: fields[i], key, value: value.join('\n') });
+  }
+  return read;
+}
+
+const COMMAND = new RegExp(COMMAND_KEYS);
+
+/**
+ * Each command setting a repository's own or worktree config holds for a checkout, or a submodule's Git directory under
+ * `commonDir`, read there with the includes that apply, and whether this machine's global or system config sets it the same.
+ */
+export async function repoCommands(commonDir: string, checkouts: readonly string[], git: GitRunner): Promise<{ at: string; key: string; own: boolean }[]> {
+  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((at) => ({ at, cwd: at })), ...submoduleDirs(path.join(commonDir, 'modules')).map((at) => ({ at, cwd: commonDir, gitDir: at }))];
+  const found: { at: string; key: string; own: boolean }[] = [];
+  for (const { at, cwd, gitDir } of places) {
+    const all = await settings(git, cwd, gitDir);
+    const own = new Set(all.filter((s) => s.scope === 'system' || s.scope === 'global').map((s) => `${s.key}\n${s.value}`));
+    const keys = new Map<string, boolean>();
+    for (const s of all) {
+      if ((s.scope !== 'local' && s.scope !== 'worktree') || !COMMAND.test(s.key) || (s.key === 'core.fsmonitor' && BOOLEAN.test(s.value))) continue;
+      keys.set(s.key, (keys.get(s.key) ?? true) && own.has(`${s.key}\n${s.value}`));
+    }
+    for (const [key, same] of [...keys].sort(([a], [b]) => byCodeUnit(a, b))) found.push({ at, key, own: same });
+  }
+  return found;
 }
 
 /**

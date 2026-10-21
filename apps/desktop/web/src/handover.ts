@@ -486,7 +486,7 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'git_extension':
       return `Update or install git on ${ctx.destination}.`;
     case 'git_config_command':
-      return `Make sure each command is one you want run on ${ctx.destination}, or remove it with \`git config --unset <key>\` in the repository.`;
+      return `Set each command up the same in ${ctx.destination}'s global git config (\`git config --global <key> <command>\`), or remove it with \`git config --unset <key>\` in the repository.`;
     case 'manifest_too_large': case 'too_many_files':
       return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {

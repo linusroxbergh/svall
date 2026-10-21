@@ -181,15 +181,11 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     const script = path.join(l.base, 'fsmonitor.sh');
     fs.writeFileSync(script, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o755 });
     git(l.base, s.main, 'config', 'core.fsmonitor', script);
-    git(l.base, s.main, 'config', 'filter.crypt.clean', `touch '${marker}'; cat`);
+    git(l.base, s.main, 'config', 'filter.crypt.clean', 'crypt --clean');
     git(l.base, s.main, 'config', 'filter.crypt.required', 'true');
-    fs.writeFileSync(path.join(s.main, '.git/info/attributes'), '* filter=crypt\n');
-    // a status that reads each file again, as one after a copy does
-    for (const f of ['staged.txt', 'untracked.txt']) if (fs.existsSync(path.join(s.main, f))) fs.utimesSync(path.join(s.main, f), new Date(), new Date(Date.now() + 5_000));
     git(l.base, s.main, 'config', 'core.sshCommand', 'ssh -i key');
     git(l.base, s.sub, 'config', 'core.fsmonitor', 'true');
     const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
-    expect(d.blockers).toEqual([]);
     expect(fs.existsSync(marker)).toBe(false);
     expect(d.warnings.filter((w) => w.code === 'git_config_command')).toEqual([{
       code: 'git_config_command', entity: { kind: 'git', id: d.graphs[0].id },
