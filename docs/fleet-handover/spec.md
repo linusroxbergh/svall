@@ -392,7 +392,10 @@ Connection and handover negotiate:
 
 Ordinary remote viewing may allow a documented compatible version range. A handover requires an
 exact companion release match and a supported agent-session adapter. The app offers to upgrade the
-companion before preflight; it never starts a transfer across an incompatible pair.
+companion before preflight; it never starts a transfer across an incompatible pair. While another
+machine runs one of its fleets, the Mac app holds back the first update the user asks for, which
+could leave that fleet out of reach until the machine runs the same release, and says so; asking
+again installs it.
 
 ---
 

@@ -148,7 +148,10 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | `svall host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until
-both machines run the same release, a handover stops with `incompatible_release`.
+both machines run the same release, a handover stops with `incompatible_release`. While the machine runs a fleet of
+this Mac, the first update you ask for waits and says so: an update can leave that fleet out of the Mac's reach until
+the machine runs the same release, and `host upgrade` installs only the Mac's own. Bring the fleet back with
+`svall handover local` first, or ask again to update now and then upgrade the machine.
 
 On the Linux machine itself:
 
