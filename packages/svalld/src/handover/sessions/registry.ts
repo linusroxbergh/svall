@@ -137,7 +137,7 @@ export function placeTranscripts(state: FleetState, sessions: readonly TransferS
 export type AgentProbe = { kind: AgentKind; version?: string; home: string; loggedIn: boolean; hooks: boolean; sandbox?: string };
 
 /** Runs a command to its exit, whatever the code; rejects only when it cannot start. */
-export type AgentRun = (cmd: string, args: string[]) => Promise<{ code: number; stdout: string }>;
+export type AgentRun = (cmd: string, args: string[]) => Promise<{ code: number; stdout: string; stderr?: string }>;
 export type ProbeDeps = { run: AgentRun; read(file: string): Promise<string | undefined>; env: NodeJS.ProcessEnv; homedir: string };
 
 const json = (text: string | undefined): Record<string, unknown> | undefined => {
@@ -174,17 +174,20 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));
   // AppArmor's restriction denies bwrap a user namespace for each command unless a profile allows it
-  const confined = (await d.read(USERNS_RESTRICTED))?.trim() === '1' && (await d.run('codex', ['sandbox', '--', 'true'])).code !== 0;
-  const sandbox = confined ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}` : undefined;
+  const tried = (await d.read(USERNS_RESTRICTED))?.trim() === '1' ? await d.run('codex', ['sandbox', '--', 'true']) : undefined;
+  const said = tried?.stderr?.trim() ?? '';
+  const sandbox = !tried?.code ? undefined : /bwrap:|namespace|operation not permitted/i.test(said)
+    ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`
+    : `codex sandbox -- true fails there (${said.split('\n').at(-1) || `exit ${tried.code}, nothing said`}): run it there to see why`;
   return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
 
 /** Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. */
 const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
-  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string') reject(err);
-    else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout) });
+    else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout), stderr: String(stderr) });
   });
 });
 

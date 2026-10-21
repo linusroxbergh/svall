@@ -1019,11 +1019,15 @@ describe('agent preflight', () => {
 
   it("says when AppArmor keeps Codex from sandboxing its commands, as only Linux's restriction of user namespaces can", async () => {
     const codexHooksAt = { '/home/t/.codex/hooks.json': codexHooks };
-    const deps = (restricted: string | undefined, sandbox: number) => ({
-      run: runner({ 'codex --version': { stdout: 'codex-cli 0.156.1\n' }, 'codex login status': { stdout: 'Logged in\n' }, 'codex sandbox -- true': { code: sandbox, stdout: '' } }),
+    const denied = 'bwrap: setting up uid map: Permission denied\nbwrap: No permissions to create new namespace';
+    const deps = (restricted: string | undefined, sandbox: number, stderr = denied) => ({
+      run: async (cmd: string, args: string[]) => ([cmd, ...args].join(' ') === 'codex sandbox -- true'
+        ? { code: sandbox, stdout: '', stderr } : runner({ 'codex --version': { stdout: 'codex-cli 0.156.1\n' }, 'codex login status': { stdout: 'Logged in\n' } })(cmd, args)),
       read: async (f: string) => (f === USERNS_RESTRICTED ? restricted : codexHooksAt[f as keyof typeof codexHooksAt]), env: {}, homedir: '/home/t',
     });
     expect((await probeAgent('codex', deps('1\n', 1))).sandbox).toBe(`AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`);
+    // any other failure is named as it is
+    expect((await probeAgent('codex', deps('1\n', 2, 'error: unknown subcommand'))).sandbox).toBe('codex sandbox -- true fails there (error: unknown subcommand): run it there to see why');
     expect(await probeAgent('codex', deps('1\n', 0))).toEqual({ kind: 'codex', version: '0.156.1', home: '/home/t/.codex', loggedIn: true, hooks: true });
     expect((await probeAgent('codex', deps('0\n', 1))).sandbox).toBeUndefined();
     expect((await probeAgent('codex', deps(undefined, 1))).sandbox).toBeUndefined();
