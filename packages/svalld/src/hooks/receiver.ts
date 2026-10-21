@@ -206,7 +206,7 @@ async function clearStaleSocket(sockPath: string): Promise<void> {
 
 export async function startHookReceiver(
   sockPath: string,
-  onEvent: (e: SocketEvent) => string | undefined | void,
+  onEvent: (e: SocketEvent) => string | undefined | void | Promise<string | undefined | void>,
   log: Logger,
 ): Promise<{ close(): Promise<void> }> {
   await clearStaleSocket(sockPath);
@@ -229,15 +229,20 @@ export async function startHookReceiver(
           dropping = false;
           continue;
         }
+        let hook: HookEvent | undefined;
+        // a hook waiting on its reply gets one whatever became of the event, or it waits out its safety timer
+        const answer = (reply: string | undefined | void) => {
+          if (hook && REPLIES.has(hook.name)) conn.write(JSON.stringify({ additionalContext: reply ?? '' }) + '\n');
+        };
+        const failed = (err: unknown) => { log.error(`hook line ignored: ${String(err)}`); answer(undefined); };
         try {
           const raw: unknown = JSON.parse(line);
-          const hook = normalizeHook(raw);
+          hook = normalizeHook(raw);
           const status = hook ? undefined : normalizeStatus(raw);
           if (!hook && !status) continue;
-          const reply = hook ? onEvent({ hook }) : onEvent({ status: status! });
-          if (hook && REPLIES.has(hook.name)) conn.write(JSON.stringify({ additionalContext: reply ?? '' }) + '\n');
+          Promise.resolve(hook ? onEvent({ hook }) : onEvent({ status: status! })).then(answer, failed);
         } catch (err) {
-          log.error(`hook line ignored: ${String(err)}`);
+          failed(err);
         }
       }
       // one line too long is given up on, up to and including its newline; the socket keeps reading

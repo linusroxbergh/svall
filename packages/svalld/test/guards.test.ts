@@ -68,10 +68,10 @@ describe('following a hook into another checkout', () => {
     expect(store.state.characters.c_a.cwd).toBe(two);
   });
 
-  it('ignores a hook from the second terminal', () => {
+  it('ignores a hook from the second terminal', async () => {
     const { fleet, store, one, two } = setup();
     const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd');
-    fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
     expect(follow).not.toHaveBeenCalled();
     expect(store.state.characters.c_a.cwd).toBe(one);
   });
@@ -108,7 +108,7 @@ describe('following a hook into another checkout', () => {
     const errors: string[] = [];
     const { fleet, two } = setup({ info() {}, error: (m) => errors.push(m) });
     vi.mocked(resolveRepo).mockRejectedValueOnce(new Error('git went away'));
-    fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
     await waitFor(() => errors.length > 0);
     expect(errors).toEqual([`follow c_a to ${two}: Error: git went away`]);
   });

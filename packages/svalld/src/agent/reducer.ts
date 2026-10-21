@@ -51,6 +51,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   if (e.name === 'SessionEnd') {
     // a late end from a session the character has already left must not clear the new one
     if (e.sessionId && next.agent && next.agent.sessionId !== e.sessionId) return c;
+    // nor may the end of a process that lost the slot, as a revive resuming its session while it still closes
+    if (e.pid && next.agent?.pid && next.agent.pid !== e.pid) return c;
     delete next.agent;
     return next;
   }
