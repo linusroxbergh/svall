@@ -325,6 +325,32 @@ describe('fleet recover --force-owner', () => {
     ]);
   });
 
+  it('tells every other machine that answers of the record it runs the fleet alone on, through the lost gateway, so a handover held there is let go', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    // vault was handed the fleet and committed, and never activated it
+    w.daemons.set(VAULT, { ownership: ownerAt(TRIFT, 4, { frozen: true, journal: { role: 'destination', transactionId: 'tx1', generation: 5, phase: 'commit' } }), adopted: [] });
+
+    expect(await w.run({ confirm: fleetId })).toBe(true);
+    const record: OwnerRecord = { fleetId, generation: 6, ownerMachineId: w.mac };
+    expect(w.daemons.get(VAULT)!.adopted).toEqual([{ record, gatewayMachineId: TRIFT }]);
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([{ record }]);
+    const [result] = w.of('recover.result');
+    expect(result).toMatchObject({ result: 'recovered' });
+    expect(result.actions.join(' ')).not.toMatch(/vault .*is not told/);
+
+    // one that holds a handover and could not be told leaves the recovery incomplete
+    const failing = world();
+    failing.down.add(TRIFT);
+    failing.daemons.set(failing.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    failing.daemons.set(VAULT, { ownership: ownerAt(TRIFT, 4, { frozen: true, journal: { role: 'destination', transactionId: 'tx1', generation: 5, phase: 'commit' } }), adopted: [], fails: 'the socket closed' });
+    expect(await failing.run({ confirm: fleetId })).toBe(false);
+    const [incomplete] = failing.of('recover.result');
+    expect(incomplete).toMatchObject({ result: 'incomplete', message: expect.stringMatching(/vault holds handover tx1 and did not take this record: the socket closed/) });
+    expect(incomplete.actions).toEqual(expect.arrayContaining([expect.stringMatching(/^vault holds handover tx1: once its daemon answers, run `svall fleet recover --force-owner local` again/)]));
+  });
+
   it('runs the fleet here alone with its daemon down by writing owner.json and fleet.json itself, and only while no handover journal lies here', async () => {
     const w = world();
     w.down.add(TRIFT);

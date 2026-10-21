@@ -323,6 +323,21 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     } catch (e) {
       return refuse(`nothing was written: this machine's audit of the recovery could not be written (${messageOf(e)})`);
     }
+    // every other machine that answers takes the record through the lost gateway, which cannot say otherwise, and lets
+    // go the handover it holds before this one runs the fleet; one holding a handover that could not be told stops it here
+    const unheld: string[] = [];
+    const retell: string[] = [];
+    for (const m of machines.filter((x) => x.machineId !== local && x.from === 'daemon')) {
+      const r = await tell(m, { record, gatewayMachineId: gatewayId });
+      const j = (r.ownership ?? m.ownership)?.journal;
+      if (r.adopted || !j) continue;
+      unheld.push(`${m.name} holds handover ${j.transactionId} and did not take this record: ${r.error ?? 'it took nothing'}`);
+      retell.push(`${m.name} holds handover ${j.transactionId}: once its daemon answers, run \`${svall} fleet recover --force-owner ${o.forceOwner}\` again`);
+    }
+    if (unheld.length) {
+      d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `${unheld.join('; ')}, so ${owner.record.name} was not told to run this fleet alone`, actions: retell } });
+      return false;
+    }
     // the daemon lets go whatever handover its journal holds, runs the fleet and drops the gateway; one not running
     // reads owner.json when it starts, there being no journal here for it to let go
     const here = machines.find((m) => m.machineId === local)!;
@@ -347,7 +362,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
     const actions = [
       `${gatewayName} may still run this fleet if it comes back, and it never learns of this record: stop this fleet's daemon there before it runs again`,
       `\`svall host remove ${gatewayName} --forget\` drops ${gatewayName} from this machine's registry once it is gone for good`,
-      ...machines.filter((m) => m.machineId !== local && m.machineId !== gatewayId).map((m) => `${m.name} still names ${gatewayName} as this fleet's gateway and is not told of this record`),
+      ...machines.filter((m) => m.machineId !== local && m.machineId !== gatewayId && m.from !== 'daemon').map((m) => `${m.name} still names ${gatewayName} as this fleet's gateway and is not told of this record`),
       `\`svall host enable <host> --fleet <fleet>\` makes a machine this fleet's gateway again, and handovers work as before`,
     ];
     if (!running) {

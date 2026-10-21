@@ -289,6 +289,9 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
   (`svall doctor` says why it is not running).
 - It refuses while another machine answers that it runs the fleet, and this Mac's daemon refuses the record while
   the gateway answers it.
+- Every other machine that answers takes the record first and lets go any handover it holds. One that holds a
+  handover and does not take it ends the command `incomplete` before this Mac runs the fleet: run it again once that
+  machine answers.
 - Then `svall host remove <name> --forget` drops the lost machine from the registry. Before the recovery it refuses
   while this Mac keeps a journal of a handover, or the lost machine owns the fleet.
 
