@@ -28,6 +28,10 @@ final class RemoteConnection {
     private var saidOnline = false
     // the window went to this Mac's daemon while the helper still runs, which only the helper's next route overrides
     private var fellBack = false
+    // what the helper last said while the window had fallen back, which the window does not show
+    private var unshown: State?
+    // the route the surfaces stand on: this Mac's once the window falls back, the helper's once it says online
+    private var attachedOver: ConnectionRoute = .pending
 
     // what the helper said online with; only a remote owner's forward is kept from it
     private var online: SvallConnection?
@@ -62,10 +66,13 @@ final class RemoteConnection {
         route = .pending
         saidOnline = false
         fellBack = false
+        unshown = nil
         helper.onEvent = { [weak self] event in self?.handle(event) }
         helper.onExit = { [weak self] status in
-            guard let self, !fellBack else { return }
-            publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper stopped (exit \(status))"))
+            guard let self else { return }
+            let said = State(state: "error", owner: owner, kind: "other", message: "the connection helper stopped (exit \(status))")
+            guard !fellBack else { unshown = said; return }
+            publish(said)
             fallBackIfLocalOnly()
         }
         do { try helper.start() } catch {
@@ -103,7 +110,7 @@ final class RemoteConnection {
     /// The helper retries only a transport that comes back on its own; after any other failure, another version
     /// among them, it waits to be stopped.
     var idle: Bool {
-        guard let state, state.state == "error" else { return false }
+        guard let state = fellBack ? unshown : state, state.state == "error" else { return false }
         return state.kind != "unreachable" && state.kind != "daemon_down"
     }
 
@@ -133,6 +140,7 @@ final class RemoteConnection {
     /// A build with no helper beside it keeps the local-only experience it had before.
     private func fallBack() {
         route = .local
+        attachedOver = .local
         fellBack = true
         onConnection(connection)
     }
@@ -169,13 +177,13 @@ final class RemoteConnection {
     private func handle(_ event: ControllerEvent) {
         switch event {
         case .connecting(let owner):
-            guard !fellBack else { return }
+            guard !fellBack else { unshown = State(state: "connecting", owner: owner, kind: nil, message: nil); return }
             self.owner = owner
             publish(State(state: "connecting", owner: owner, kind: nil, message: nil))
         case .online(let connection, let remote):
-            let before = route
             saidOnline = true
             fellBack = false
+            unshown = nil
             owner = remote?.name ?? "local"
             route = remote.map { .remote($0) } ?? .local
             online = connection
@@ -183,17 +191,21 @@ final class RemoteConnection {
             publish(State(state: "online", owner: owner, kind: nil, message: nil))
             // the route behind the old surfaces is gone, as is the one the window fell back to if the helper names
             // another, and anything the page asked for while it was unknown was only remembered, so all are attached over the new one
-            if rebuildWhenOnline || (before != .pending && before != route) { onSurfaces() }
+            if rebuildWhenOnline || (attachedOver != .pending && attachedOver != route) { onSurfaces() }
+            attachedOver = route
             rebuildWhenOnline = true
         case .error(let kind, let message):
-            guard !fellBack else { return }
-            publish(State(state: "error", owner: owner, kind: kind, message: message))
+            let said = State(state: "error", owner: owner, kind: kind, message: message)
+            guard !fellBack else { unshown = said; return }
+            publish(said)
             fallBackIfLocalOnly()
         case .ownerChanged(let owner):
             self.owner = owner
             fellBack = false
+            unshown = nil
             online = nil
             route = .pending
+            attachedOver = .pending
             onSurfaces()
             publish(State(state: "owner-changed", owner: owner, kind: nil, message: nil))
         }

@@ -73,7 +73,9 @@ final class RemoteConnectionTests: XCTestCase {
         gateway = true
         let next = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline]), arguments: [])
         remote.followIfGatewayNamed(with: next)
-        waitForTranscript(of: 4)
+        waitForTranscript(of: 5)
+        // the terminals stood on this Mac's daemon
+        XCTAssertEqual(transcript.last, "surfaces reattach")
         XCTAssertEqual(remote.route, .remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock")))
         // one helper already following is left to it
         let another = ControllerProcess(executable: try fakeHelper(prints: []), arguments: [])
@@ -142,6 +144,29 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertEqual(Array(transcript.suffix(2)), ["state online local - -", "connection 127.0.0.1:8123:t0ken"])
         XCTAssertEqual(remote.state?.state, "online")
         XCTAssertEqual(remote.route, .local)
+        remote.stop()
+    }
+
+    func testAFallenBackWindowsHelperThatGaveUpOnAVersionIsReplacedAfterAnUpgrade() throws {
+        let gaveUp = #"sleep 2; printf '%s\n' '{"type":"error","kind":"version","message":"studio answered with protocol 3, not 4"}'; exec cat > /dev/null"#
+        let first = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#], then: gaveUp), arguments: [])
+        let remote = connection(helper: first, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"),
+                                answerWithin: 1, cachedHere: { true })
+        remote.start()
+        waitForTranscript(of: 3)
+        XCTAssertFalse(remote.idle)
+        pause(2)
+        XCTAssertEqual(remote.state?.state, "online")
+        XCTAssertTrue(remote.idle)
+        let second = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline]), arguments: [])
+        remote.retryIfIdle(with: second)
+        XCTAssertFalse(first.isRunning)
+        waitForTranscript(of: 7)
+        // the terminals stood on this Mac's daemon, and go where the new helper says the fleet is
+        XCTAssertEqual(Array(transcript.suffix(4)), ["state connecting studio - -",
+                                                     "connection 127.0.0.1:49321:other",
+                                                     "state online studio - -",
+                                                     "surfaces reattach"])
         remote.stop()
     }
 
