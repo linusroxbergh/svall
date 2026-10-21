@@ -771,10 +771,14 @@ describe('source freeze', () => {
   it('reads at freeze only the root files whose stat changed since its preflight read them', async () => {
     const b = boot();
     fs.writeFileSync(path.join(b.work, 'ada/big.bin'), 'x'.repeat(4096));
+    // each stat as it reads once the files have sat for a while, so a hash of them is kept
+    const older = <T extends { ctimeMs?: number }>(st: T): T => Object.assign(st, { ctimeMs: (st.ctimeMs ?? 0) - 10_000 });
+    const aged = { ...realScanFs, stat: async (p: string) => older(await realScanFs.stat(p)), lstat: async (p: string) => older(await realScanFs.lstat(p)) };
+    b.deps.scanFs = aged;
     await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
     fs.writeFileSync(path.join(b.work, 'bo/index.ts'), 'export const changed = 1;\n');
     const reads: string[] = [];
-    b.deps.scanFs = { ...realScanFs, read: (p) => { reads.push(p); return realScanFs.read(p); } };
+    b.deps.scanFs = { ...aged, read: (p) => { reads.push(p); return realScanFs.read(p); } };
     b.gateway.begin();
     const { manifest } = await b.handover.freeze(b.freezeParams());
     expect(reads.filter((p) => p.startsWith(path.join(b.work, 'ada')) || p.startsWith(path.join(b.work, 'bo')))).toEqual([path.join(b.work, 'bo/index.ts')]);

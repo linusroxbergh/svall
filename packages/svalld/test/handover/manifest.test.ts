@@ -249,7 +249,12 @@ describe('buildManifest', () => {
     const dir = tmp();
     for (const name of ['same', 'edited', 'grown', 'replaced']) fs.writeFileSync(path.join(dir, name), `${name}\n`);
     const reads: string[] = [];
-    const counting: ScanFs = { ...realScanFs, read: (p) => { reads.push(path.basename(p)); return realScanFs.read(p); } };
+    // each stat as it reads once the files have sat for a while, so a hash of them is kept
+    const older = <T extends { ctimeMs?: number }>(st: T): T => Object.assign(st, { ctimeMs: (st.ctimeMs ?? 0) - 10_000 });
+    const counting: ScanFs = {
+      ...realScanFs, stat: async (p) => older(await realScanFs.stat(p)), lstat: async (p) => older(await realScanFs.lstat(p)),
+      read: (p) => { reads.push(path.basename(p)); return realScanFs.read(p); },
+    };
     const first = await scanPath(dir, () => false, counting);
     expect(reads.sort()).toEqual(['edited', 'grown', 'replaced', 'same']);
     expect([...first!.hashes.values()].map((h) => h.sha256).sort()).toEqual(['edited', 'grown', 'replaced', 'same'].map((n) => sha(`${n}\n`)).sort());
@@ -269,6 +274,14 @@ describe('buildManifest', () => {
     expect(again!.files).toEqual((await scanPath(dir, () => false))!.files);
     // what the second read took is all it hands on, so a file gone since is forgotten
     expect(again!.hashes.size).toBe(4);
+  });
+
+  it('keeps no hash of a file whose stat changed within two seconds of its read, which a write in the same tick would leave as it is', async () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'fresh'), 'fresh\n');
+    const scan = await scanPath(dir, () => false);
+    expect(scan!.files).toMatchObject([{ path: 'fresh', sha256: sha('fresh\n') }]);
+    expect(scan!.hashes.size).toBe(0);
   });
 
   it('reads a session file a chunk at a time, and keeps none of its chunks once read', async () => {

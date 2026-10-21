@@ -309,8 +309,8 @@ of the manifest and of what landed, not read off the wire.
   and rsync's memory do not: every handover wrote 34 to 44 events, 6.1 to 8.1 kB, no line over 842 bytes, and no
   rsync went past 7.7 MiB.
 - **Each side reads every carried file several times.** The source walks the names at preflight and at freeze, hashes
-  each file at preflight, and at freeze again only each file whose size, mtime, ctime or inode changed since, then
-  again in the controller's verify when the controller runs there. The destination
+  each file at preflight, and at freeze again each file whose size, mtime, ctime or inode changed since or whose
+  ctime was within 2 s of that read, as git treats a racy-clean index entry, then again in the controller's verify when the controller runs there. The destination
   hashes a replica at preflight, again at the claim, then what landed at prepare, and once more after the Git import
   each root that holds or lies in a carried Git directory. The seal is what landed, with only what the import writes
   taken from that last read: each carried graph's `config`, and the worktree registrations it removes. rsync's

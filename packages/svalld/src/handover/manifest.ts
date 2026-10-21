@@ -37,6 +37,8 @@ type Hashed = Pick<FileEntry, 'size' | 'sha256' | 'gitIndex' | 'ref' | 'refs'>;
 export type Hashes = Map<string, Hashed>;
 
 // a write moves a file's ctime, which nothing sets back, and a file put in its place has another inode
+// a write in the same tick of a coarse clock as a read leaves the stat as it was, so a stat this close to one names no hash
+const RACY_MS = 2_000;
 const stamp = (file: string, st: Stat): string | undefined =>
   (st.ctimeMs === undefined || st.ino === undefined ? undefined : `${file}\0${st.size}\0${st.mtimeMs}\0${st.ctimeMs}\0${st.ino}`);
 
@@ -97,12 +99,13 @@ async function addFile(scan: Scan, relative: string, file: string, st: Stat, sfs
     const name = path.basename(file);
     const refFile = name === 'packed-refs' || /(^|\/)refs\//.test(relative);
     const whole = (name === 'index' && st.size <= INDEX_MAX) || (refFile && st.size <= REFS_MAX) ? [] : undefined;
+    const started = Date.now();
     const { sha256, size } = await hashStream(tap(sfs.read(file), whole));
     const gitIndex = name === 'index' && whole && gitIndexDigest(Buffer.concat(whole));
     const refs = refFile && whole ? gitRefs(name, Buffer.concat(whole)) : {};
     const read = { size, sha256, ...(gitIndex && { gitIndex }), ...refs };
     scan.files.push({ type: 'file', path: relative, mode: st.mode & 0o7777, mtimeMs: Math.trunc(st.mtimeMs), ...read });
-    if (key !== undefined) scan.hashes.set(key, read);
+    if (key !== undefined && (st.ctimeMs ?? started) < started - RACY_MS) scan.hashes.set(key, read);
   } catch (e) {
     // a file removed since the listing is simply not there; the verify pass catches the change
     if (!gone(e)) scan.problems.push(`${relative || file}: ${reason(e)}`);
