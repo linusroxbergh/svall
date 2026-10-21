@@ -40,17 +40,23 @@ export function cachedOwner(fleetHome: string): OwnerRecord | undefined {
 
 /**
  * Whether this machine's daemon holds the fleet with nothing under way: its record names `localId` and carries no
- * freeze, surrender or transaction, and no handover journal is open here.
+ * freeze, surrender or transaction but the committed one that brought the fleet here, no handover journal is open here,
+ * and the gateway's last answer names no other machine at that generation or above.
  */
 export function heldHere(fleetHome: string, localId: MachineId): boolean {
   const paths = resolvePaths(fleetHome);
   if (fs.existsSync(paths.journal)) return false;
+  let held: OwnerCache;
   try {
-    const held = OwnerCache.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8')));
-    return held.ownerMachineId === localId && !held.frozen && !held.surrendered && !held.transaction;
+    held = OwnerCache.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8')));
   } catch {
     return false;
   }
+  const tx = held.transaction;
+  const route = readRoute(fleetHome);
+  return held.ownerMachineId === localId && !held.frozen && !held.surrendered
+    && (!tx || (tx.phase === 'committed' && tx.toMachineId === localId))
+    && !(route && route.ownerMachineId !== localId && route.generation >= held.generation);
 }
 
 /** Keeps the owner the gateway just named, for commands to route by while the gateway cannot answer. */

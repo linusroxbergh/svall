@@ -376,6 +376,28 @@ describe('resolveOwner', () => {
     expect(fs.existsSync(ROUTE())).toBe(false);
   });
 
+  it('takes a fleet a handover brought here as local once its journal is closed, the committed handover still on the record', async () => {
+    gateway('gate.test');
+    holds(REMOTE);
+    daemonOwner(registry.localId, 8, { transaction: { id: 'tx-1', fromMachineId: REMOTE, toMachineId: registry.localId, phase: 'committed', startedAt: 1 } });
+    expect(await resolveOwner(home, { deps })).toBe('local');
+    expect(ssh.calls()).toEqual([]);
+  });
+
+  it('asks the gateway once the cached route names another machine at the generation this machine holds or above', async () => {
+    gateway('gate.test');
+    holds(REMOTE, 8);
+    daemonOwner(registry.localId, 7);
+    fs.mkdirSync(path.dirname(ROUTE()), { recursive: true });
+    fs.writeFileSync(ROUTE(), JSON.stringify({ ownerMachineId: REMOTE, generation: 8, at: '2026-09-22T08:00:00.000Z' }));
+    expect(await resolveOwner(home, { deps })).toMatchObject({ id: REMOTE });
+    // a route from before this machine took the fleet says nothing against it
+    fs.writeFileSync(ROUTE(), JSON.stringify({ ownerMachineId: REMOTE, generation: 6, at: '2026-09-22T08:00:00.000Z' }));
+    const openMaster = vi.fn(deps.openMaster);
+    expect(await resolveOwner(home, { deps: { ...deps, openMaster } })).toBe('local');
+    expect(openMaster).not.toHaveBeenCalled();
+  });
+
   it('answers a caller that resolves again and again at once, and refreshes the cached route from the gateway behind it', async () => {
     gateway('gate.test');
     holds(registry.localId, 7);

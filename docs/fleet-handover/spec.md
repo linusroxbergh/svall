@@ -231,9 +231,10 @@ presents the generations and risks before writing a new authority; it is never a
 writes only once a person at a terminal outside any fleet's agents and tmux panes types the fleet id.
 
 On app or CLI launch, the controller opens the local direct connection without asking the gateway
-when the local cached owner record names this machine, carries no freeze, surrender or transaction,
-and no handover journal is open here; the app's connection helper then refreshes its cached route
-from the gateway in the background. Otherwise the controller asks the gateway for the current owner,
+when the local cached owner record names this machine, carries no freeze, surrender or transaction
+but the committed one that brought the fleet here, no handover journal is open here, and the cached
+route names no other machine at that generation or above; the app's connection helper then refreshes
+its cached route from the gateway in the background. Otherwise the controller asks the gateway for the current owner,
 then opens either the local direct connection or the owner's SSH route. If the gateway is
 temporarily unavailable, it may use a cached route only when that route's daemon reports the same
 cached generation.
