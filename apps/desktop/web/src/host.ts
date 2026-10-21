@@ -73,11 +73,11 @@ const STEP_LABEL: Record<string, string> = {
 export const stepLabel = (step: string): string => STEP_LABEL[step] ?? step;
 
 export const OP_TITLE: Record<HostOp, string> = {
-  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', remove: 'Remove', enable: "Make it this fleet's gateway",
+  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', enable: "Make it this fleet's gateway",
 };
 
 /** How a finished run ends: what it did, what is left, and the one step the panel offers next. */
-export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' };
+export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' | 'rollback' };
 
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
@@ -96,14 +96,16 @@ export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome
     if (run.code === 0) return { text: `${ready}${warned ? `; ${plural(warned, 'warning')}` : ''}`, ...list, ...onward };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
-  if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list };
+  // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
+  const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
+  if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list, ...rollback };
   // an add is done once its machine is in the registry, whatever it left to do; a stopped one never got there
   if (run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok')) {
     return { text: `${name} is added${actions.length ? '; still to do:' : theGateway ? ': ready for handover' : ''}`, ...list, ...onward };
   }
-  if (run.code !== 0) return { text: actions.length ? 'still to do:' : `${OP_TITLE[run.op]} ended with exit ${run.code}`, ...list };
+  if (run.code !== 0) return { text: actions.length ? 'still to do:' : `${OP_TITLE[run.op]} ended with exit ${run.code}`, ...list, ...rollback };
   const done: Partial<Record<HostOp, string>> = {
-    upgrade: `${name} is upgraded`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}`,
+    upgrade: `${name} is upgraded`, rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}`,
     enable: `${name} is this fleet's gateway: ready for handover`,
   };
   return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, ...list, ...(run.op === 'enable' ? { next: 'handover' as const } : {}) };

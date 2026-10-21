@@ -414,7 +414,7 @@ final class ShellRouter {
                 self?.sendShellInfo()
             }
             // the version a helper gave up on may be the gateway's, which the upgrade has just changed
-            if op == .upgrade, code == 0, args.name == SvallHome.gatewayName() {
+            if op == .upgrade || op == .rollback, code == 0, args.name == SvallHome.gatewayName() {
                 self?.remote.retryIfIdle(with: ControllerProcess.locate().map {
                     ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
                 })

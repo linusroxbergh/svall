@@ -120,6 +120,23 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'studio answers on release 0.5.0' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 0 });
   await expect(page.getByTestId('host-outcome')).toHaveText('studio is upgraded');
+  await expect(page.getByTestId('host-rollback')).toHaveCount(0);
+
+  // an upgrade stopped in install leaves no rollback to offer
+  await page.getByTestId('host-upgrade').click();
+  await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'install', status: 'fail', detail: 'svall setup exited 1' } });
+  await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
+  await expect(page.getByTestId('host-outcome')).toContainText('Upgrade stopped at Install');
+  await expect(page.getByTestId('host-rollback')).toHaveCount(0);
+
+  // one whose own rollback failed too offers the rollback the CLI names
+  await page.getByTestId('host-upgrade').click();
+  await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'warn', detail: 'studio did not answer' } });
+  await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'rollback', status: 'fail', detail: 'svall setup --rollback exited 1' } });
+  await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
+  await page.getByTestId('host-rollback').click();
+  expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'rollback', args: { name: 'studio' } });
+  await receive(page, { type: 'host.done', op: 'rollback', code: 0 });
 
   // the gateway is this window's own fleet, which the shell names; the page sends only the machine
   await expect(page.getByTestId('host-enable')).toHaveText("Make it this fleet's gateway");

@@ -53,7 +53,7 @@ describe('host run', () => {
 });
 
 describe('the end of a run', () => {
-  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
+  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
     endRun(steps.reduce(applyStep, beginRun(op, { name: 'box', ...args })), code);
 
   it('says an add that finished clean added the machine, and offers to make it the gateway until it is one', () => {
@@ -76,6 +76,15 @@ describe('the end of a run', () => {
     expect(outcomeOf(ended('remove', 1, []), undefined)).toEqual({ text: 'Remove ended with exit 1' });
   });
 
+  it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'fail', { detail: 'setup --rollback exited 1' })]), undefined).next).toBe('rollback');
+    // an upgrade stopped before it installed left the machine as it was, and one stopped in install has no release to go back from
+    expect(outcomeOf(ended('upgrade', 1, [step('master', 'fail', { detail: 'no' })]), undefined).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 1, [step('install', 'fail', { detail: 'no' })]), undefined).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'warn', { action: 'read the log' })]), undefined).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is upgraded' });
+  });
+
   it('says a check is ready and how many warnings it found, or lists the checks that block', () => {
     const fine = ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('gh', 'warn'), step('codex', 'skip'), step('release', 'ok')]);
     expect(outcomeOf(fine, 'box')).toEqual({ text: 'ready for handover; 2 warnings', next: 'handover' });
@@ -85,11 +94,11 @@ describe('the end of a run', () => {
     expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'systemd: inactive'] });
   });
 
-  it('says what an upgrade, a new gateway and a removal did, and offers the handover once there is a gateway', () => {
-    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is upgraded' });
+  it('says what a new gateway, a removal and a rollback did, and offers the handover once there is a gateway', () => {
     expect(outcomeOf(ended('enable', 0, [step('fleet', 'ok')]), 'box')).toEqual({ text: "box is this fleet's gateway: ready for handover", next: 'handover' });
     expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]), undefined)).toEqual({ text: 'box is removed' });
     expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }), undefined)).toEqual({ text: 'box is forgotten' });
+    expect(outcomeOf(ended('rollback', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is rolled back' });
   });
 });
 

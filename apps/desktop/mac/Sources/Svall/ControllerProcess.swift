@@ -139,7 +139,7 @@ final class ControllerProcess {
 
 /// The host operations the page may ask the shell to run, and nothing else.
 enum HostOp: String, Decodable {
-    case add, doctor, upgrade, remove, enable
+    case add, doctor, upgrade, rollback, remove, enable
 
     /// doctor prints its checks as one report when it ends; the others print a step per line as they go
     var printsReport: Bool { self == .doctor }
@@ -170,7 +170,8 @@ enum HostCommand {
     /// `fleet` is the profile of the fleet this window runs, which only enable names.
     static func arguments(op: HostOp, args: HostArgs, fleet: String?) -> [String]? {
         guard args.name.allowed(by: machineNamePattern) else { return nil }
-        var argv = ["host", op.rawValue, args.name]
+        // a rollback is the upgrade command's
+        var argv = ["host", op == .rollback ? "upgrade" : op.rawValue, args.name]
         switch op {
         case .add:
             guard let ssh = args.ssh, args.forget == nil,
@@ -184,6 +185,9 @@ enum HostCommand {
             if args.forget == true { argv.append("--forget") }
         case .doctor, .upgrade:
             guard args.ssh == nil, args.forget == nil else { return nil }
+        case .rollback:
+            guard args.ssh == nil, args.forget == nil else { return nil }
+            argv.append("--rollback")
         }
         return argv + ["--json"]
     }

@@ -29,6 +29,10 @@ function Outcome({ run }: { run: HostRun }) {
             <button className="btn" data-testid="host-next-handover"
               onClick={() => { app.store.getState().toggleHost(false); app.store.getState().toggleHandover(true); }}>Open Handover</button>
           )}
+          {o.next === 'rollback' && (
+            <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
+              onClick={() => start('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
+          )}
         </div>
       )}
     </div>
