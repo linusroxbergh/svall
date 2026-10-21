@@ -376,8 +376,11 @@ describe('what each blocker and warning is explained with', () => {
   });
 
   it('says on which machine to fix what only that machine can', () => {
-    expect(blockerHint({ code: 'ssh_interactive', message: 'ssh to studio would ask for a passphrase' }, ctx)).toMatch(/`ssh studio` once in Terminal/);
-    expect(blockerHint({ code: 'ssh_interactive', message: 'ssh would ask' }, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/`ssh studio`/);
+    // the registry's ssh destination can differ from the machine's name, so no command names one
+    const ssh = blockerHint({ code: 'ssh_interactive', message: 'ssh would have to ask before it could go on' }, ctx);
+    expect(ssh).toMatch(/ssh once in Terminal to the destination studio was added with/);
+    expect(ssh).not.toMatch(/`ssh /);
+    expect(blockerHint({ code: 'ssh_interactive', message: 'ssh would ask' }, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/destination studio was added with/);
     expect(blockerHint({ code: 'parent_missing', message: '/opt/w is missing on the destination' }, ctx)).toMatch(/on studio/);
     expect(blockerHint({ code: 'rsync_unsupported', message: 'studio has openrsync' }, ctx)).toMatch(/On studio, install rsync 3\.2\.3/);
     const link = (message: string) => blockerHint({ code: 'path_symlinked', message, entity: { kind: 'root', id: 'r_a' } }, ctx);

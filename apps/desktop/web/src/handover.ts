@@ -396,9 +396,8 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
-  // the Linux machine, by the name ssh and svall host know it by
+  // the Linux machine, by the name svall host knows it by
   const linux = ctx.pull ? ctx.source : ctx.destination;
-  const host = machineName(linux) ? linux : '<machine>';
   const svall = ctx.svall ?? 'svall';
   switch (b.code) {
     case 'identity_mismatch':
@@ -428,7 +427,7 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'transcript_missing':
       return `An agent that never reported a transcript has no working hooks: run \`${svall} doctor\`. To move without that conversation, exit the agent and try again.`;
     case 'ssh_interactive':
-      return `Run \`ssh ${host}\` once in Terminal and answer what it asks, and keep a key's passphrase in the agent with \`ssh-add --apple-use-keychain\`; then try again.`;
+      return `Run ssh once in Terminal to the destination ${linux} was added with and answer what it asks, and keep a key's passphrase in the agent with \`ssh-add --apple-use-keychain\`; then try again.`;
     case 'platform_unsupported':
       return "If the repository runs there, add the platform to its .svall/handover.json; otherwise close the characters working in it.";
     case 'rsync_unsupported':
