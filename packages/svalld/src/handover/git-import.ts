@@ -162,7 +162,9 @@ function described(e: WorktreeEntry): string {
  * and the stash holds the same entries.
  */
 export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git'> & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  const git = deps.git ?? handoverGit;
+  const run = deps.git ?? handoverGit;
+  // the copy keeps each file's size and whole-second mtime, not its inode or ctime, so git trusts its index here as the source did
+  const git: GitRunner = (args, cwd) => run(['-c', 'core.checkStat=minimal', '-c', 'core.trustctime=false', ...args], cwd);
   const entity: HandoverEntity = { kind: 'git', id: graph.id };
   const common = graph.commonDir;
   const differs: string[] = [];

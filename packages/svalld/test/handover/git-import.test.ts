@@ -34,9 +34,9 @@ describe('importGraphs', () => {
   });
 });
 
-// what a handover moves: every carried root of the manifest, from the source machine's tree parked at `from`, to the same path here
+// what a handover moves: every carried root of the manifest, from the source machine's tree parked at `from`, to the same path here, mtimes kept as rsync -t keeps them
 function transfer(l: Layout, manifest: TransferManifestV1, from: string): void {
-  for (const r of manifest.roots.filter((x) => !x.foldedInto)) fs.cpSync(parkedAt(l, from, r.path), r.path, { recursive: true, verbatimSymlinks: true });
+  for (const r of manifest.roots.filter((x) => !x.foldedInto)) fs.cpSync(parkedAt(l, from, r.path), r.path, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true });
 }
 
 /** What rsync --delete leaves of each carried root: the parked source's copy, and each kept registration as it was. */
@@ -117,14 +117,20 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     const l = seedHere(made);
     const d = l.source;
     const ran = path.join(l.base, 'filter-ran');
-    // a filter that rewrites what it reads, in the repository's config and its submodule's, on the source too, for files no unused worktree holds
+    // an index that has seen each staged file as it is, long enough ago for git to trust its stat of it
+    const checkouts = [d.main, d.nested, d.sibling, d.detached, d.locked];
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    for (const c of checkouts) {
+      fs.utimesSync(path.join(c, 'staged.txt'), hourAgo, hourAgo);
+      git(l.base, c, 'update-index', '-q', '--refresh');
+    }
+    // then a filter that rewrites what it reads, in the repository's config and its submodule's, on the source too, for files
+    // no unused worktree holds: the source reads each staged file by its stat, unfiltered, and the copy has to read it the same
     const clean = `touch '${ran}'; tr a-z A-Z`;
     for (const [at, name, file] of [[d.main, 'up', 'staged.txt'], [d.sub, 'sub', 'lib.txt']]) {
       git(l.base, at, 'config', `filter.${name}.clean`, clean);
       fs.writeFileSync(path.join(git(l.base, at, 'rev-parse', '--git-dir').replace(/^(?!\/)/, `${at}/`), 'info/attributes'), `${file} filter=${name}\n`);
     }
-    // staged through the filter, as a repository that uses one stages its files
-    for (const c of [d.main, d.nested, d.sibling, d.detached, d.locked]) git(l.base, c, 'add', 'staged.txt');
     // the usual way to push to a second GitHub account, which no handover git runs
     git(l.base, d.main, 'config', 'core.sshCommand', 'ssh -i ~/.ssh/work');
     const { manifest } = await handed(l);
@@ -135,14 +141,13 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     expect(blockers.map((b) => b.message).join('\n')).not.toContain('sshcommand');
     expect(fs.existsSync(ran)).toBe(false);
 
-    // with the same filters in this machine's global config, git runs them here as the source did, and reads the same status
+    // with the same filters in this machine's global config, git reads each checkout here as the source did
     const global = path.join(l.base, 'global.gitconfig');
     for (const name of ['up', 'sub']) git(l.base, l.base, 'config', '--file', global, `filter.${name}.clean`, clean);
     const here: GitRunner = (args, cwd) => new Promise((resolve) => execFile('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args],
       { cwd, encoding: 'utf8', maxBuffer: 1 << 28, env: { ...process.env, GIT_CONFIG_GLOBAL: global } },
       (e, stdout, stderr) => resolve({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
     expect(await importGraphs(manifest, { git: here })).toEqual([]);
-    expect(fs.existsSync(ran)).toBe(true);
   });
 
   it('finds the same graph the second time', async () => {
