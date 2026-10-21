@@ -286,7 +286,8 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
 - With this Mac's daemon not running, the command writes `owner.json` and `fleet.json` itself and ends `incomplete`
   until the daemon starts, unless a handover journal lies there, which only the daemon lets go: start it first
   (`svall doctor` says why it is not running).
-- It refuses while another machine answers that it runs the fleet.
+- It refuses while another machine answers that it runs the fleet, and this Mac's daemon refuses the record while
+  the gateway answers it.
 - Then `svall host remove <name> --forget` drops the lost machine from the registry. Before the recovery it refuses
   while this Mac keeps a journal of a handover, or the lost machine owns the fleet.
 

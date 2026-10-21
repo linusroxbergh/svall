@@ -97,12 +97,19 @@ export class HandoverService {
   /**
    * A record `svall fleet recover` relays. The gateway it names is asked here, and its answer is what is taken; the
    * relayed record stands in only when that gateway cannot be asked. The gateway is renamed once its record is taken.
-   * A record that names no gateway is this machine's to run alone, and once taken, fleet.json names none.
+   * A record that names no gateway is this machine's to run alone, taken only while the gateway fleet.json names does
+   * not answer, and once taken, fleet.json names none.
    */
   async relay(p: { record: OwnerRecord; gatewayMachineId?: MachineId }): Promise<Result<'ownership.adopt'>> {
     let record = p.record;
     if (!p.gatewayMachineId && record.ownerMachineId !== this.deps.ownership.machineId) {
       throw Object.assign(new Error(`a record that names no gateway is run by this machine alone, and this one names ${record.ownerMachineId}`), { code: 'invalid_params' });
+    }
+    const named = p.gatewayMachineId ? undefined : this.deps.source.authority?.();
+    if (named) {
+      const said = await named.get(record.fleetId).then(() => 'answered with its record', (e: unknown) =>
+        (e instanceof AuthorityFailure && UNANSWERED.has(e.code) ? undefined : `failed as no gateway out of reach does (${e instanceof Error ? e.message : String(e)})`));
+      if (said) throw Object.assign(new Error(`the gateway this fleet names ${said}, so it is not known lost and this machine does not run the fleet alone`), { code: 'invalid_params' });
     }
     const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;
     if (gateway) {
