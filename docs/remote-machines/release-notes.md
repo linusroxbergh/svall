@@ -45,7 +45,8 @@ not `handover.enabled` is on.
   Terminal 2 resumes that session; nothing reopens it by itself. Quit the agent and exit the shell to remove it.
 - The daemon keeps this Mac's id in `~/.config/svall/machine.json`. A fleet with no gateway starts even when that file
   cannot be written or read.
-- Each window runs a small `svall connect` helper that reaches the fleet wherever it runs.
+- The window of a fleet with a gateway runs a small `svall connect` helper that reaches the fleet wherever it runs; a
+  fleet with no gateway opens on this Mac without one.
 - The app download is about 100 MB: it carries the Linux companion `svall host add` installs.
 
 See [Upgrading and downgrading](migration.md) for the details and the way back.
