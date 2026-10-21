@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { TransferRoot } from '@svall/protocol';
-import { CONTROL, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES } from '@svall/svalld/handover/inventory';
+import { CONTROL, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, NOISE } from '@svall/svalld/handover/inventory';
 import { relativeProblem } from '@svall/svalld/handover/replicas';
 import { isRelease, releaseRoot } from '@svall/svalld/release';
 import { runProcess } from './process.js';
@@ -140,6 +140,7 @@ export function rsyncArgv(job: RsyncJob): string[] {
     ...(job.delete ? ['--delete'] : []),
     ...(job.mkpath ? ['--mkpath'] : []),
     // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`
+    ...(job.delete ? NOISE.map((n) => `--filter=P ${n}`) : []),
     ...(job.protect ?? []).map((p) => `--filter=P /${p}/**`),
     ...(job.filterFile ? [`--exclude-from=${job.filterFile}`] : []),
     ...(job.filesFrom ? ['--from0', `--files-from=${job.filesFrom}`] : []),

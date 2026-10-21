@@ -128,9 +128,10 @@ describe('rsyncArgv', () => {
     expect(rsyncArgv(job).some((a) => a.startsWith('--backup'))).toBe(false);
   });
 
-  it('protects each object store it names from --delete, ahead of the filter file', () => {
+  it('protects OS and editor noise and each object store it names from --delete, ahead of the filter file', () => {
     const argv = rsyncArgv({ ...job, delete: true, filterFile: '/state/r.rules', protect: ['.git/objects', 'objects'] });
     expect(argv.filter((a) => a.startsWith('--filter=') || a.startsWith('--exclude-from='))).toEqual([
+      '--filter=P .DS_Store', '--filter=P ._*', '--filter=P .idea/workspace.xml', '--filter=P .vscode/*.log',
       '--filter=P /.git/objects/**', '--filter=P /objects/**', '--exclude-from=/state/r.rules',
     ]);
     expect(rsyncArgv(job).some((a) => a.startsWith('--filter='))).toBe(false);

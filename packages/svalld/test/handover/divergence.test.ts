@@ -55,11 +55,12 @@ describe('compareReplica', () => {
   });
 
   it('reads OS and editor noise as no change wherever it lies, and a file only named like it as one', () => {
-    const baseline = [file('a'), file('.DS_Store'), file('src/.idea/workspace.xml'), file('src/x.swp')];
-    const noise = [file('a'), file('.DS_Store', 'b'), file('src/._a'), file('.vscode/build.log'), file('src/.main.c.swp'), file('.idea/workspace.xml', 'c')];
+    const baseline = [file('a'), file('.DS_Store'), file('src/.idea/workspace.xml')];
+    const noise = [file('a'), file('.DS_Store', 'b'), file('src/._a'), file('.vscode/build.log'), file('.idea/workspace.xml', 'c')];
     expect(diverged(compareReplica([baseline], noise))).toBe(false);
-    const d = compareReplica([baseline], [...noise, file('src/.idea/other.xml'), file('.vscode/settings.json'), file('.vscode/logs/x.log')]);
-    expect(d.added.preview).toEqual(['.vscode/logs/x.log', '.vscode/settings.json', 'src/.idea/other.xml']);
+    // a swap file holds an editor's unsaved edits
+    const d = compareReplica([baseline], [...noise, file('src/.idea/other.xml'), file('.vscode/settings.json'), file('.vscode/logs/x.log'), file('src/.main.c.swp')]);
+    expect(d.added.preview).toEqual(['.vscode/logs/x.log', '.vscode/settings.json', 'src/.idea/other.xml', 'src/.main.c.swp']);
   });
 
   it('counts what could not be read as divergence', () => {

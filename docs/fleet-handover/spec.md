@@ -440,8 +440,9 @@ node_modules/.cache/
 ```
 
 Excluded platform caches stay destination-local and are never used in source verification. Files an
-OS or editor writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log`, `*.swp`)
-transfer, since a repository may track them, but no comparison counts them as a change; a Git
+OS or editor writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log`)
+transfer, since a repository may track them, but no comparison counts them as a change and no copy
+deletes one the destination alone holds; a Git
 directory's refs are compared by what they resolve to, so packing them is no change either.
 
 ## Git repository graphs
@@ -980,7 +981,8 @@ honest remapped URL when its preferred local port is occupied.
 - Killing the controller before and after commit reconstructs the correct sheet on relaunch.
 - A failed destination agent login before freeze blocks; a resume failure after commit leaves one
   dormant, retryable character without reactivating the source.
-- A destination file edited while inactive is never overwritten without explicit archive approval.
+- A destination file edited while inactive is never overwritten without explicit archive approval;
+  OS and editor noise is no edit, and a copy may replace it but never deletes it.
 
 ## Release gate
 

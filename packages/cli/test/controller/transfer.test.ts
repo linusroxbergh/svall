@@ -729,6 +729,17 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(fs.existsSync(path.join(plain, '.git/objects/ab'))).toBe(false);
   });
 
+  it('never deletes OS or editor noise only the far side has, even in a folder the source dropped, and verifies', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    const claimed = tree(path.join(tmp(), 'app'), { '.DS_Store': 'finder', '.idea/workspace.xml': 'layout', 'gone/._x': 'fork', 'gone/x.txt': 'gone from the source' });
+    const r = await transfer({ transactionId: 'tx-n', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })] });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    expect(fs.readFileSync(path.join(claimed, '.DS_Store'), 'utf8')).toBe('finder');
+    expect(fs.readFileSync(path.join(claimed, '.idea/workspace.xml'), 'utf8')).toBe('layout');
+    expect(fs.readFileSync(path.join(claimed, 'gone/._x'), 'utf8')).toBe('fork');
+    expect(fs.existsSync(path.join(claimed, 'gone/x.txt'))).toBe(false);
+  });
+
   it('carries a Git directory on its own whole, where an exclude names one of Git\'s entries', async () => {
     const gitdir = tree(tmp(), { HEAD: 'ref: refs/heads/main\n', 'logs/HEAD': 'log', 'objects/ab/cd': 'o', 'build/out.o': 'built' });
     const excludes = [...EXCLUDES, 'logs/'];

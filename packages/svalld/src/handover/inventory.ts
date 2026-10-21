@@ -39,8 +39,8 @@ export const DEFAULT_EXCLUDES = [
   'node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo', '.pytest_cache/', '.ruff_cache/', '.mypy_cache/', 'node_modules/.cache/',
 ] as const;
 
-// what an OS or an editor writes beside the work on its own: carried, as a repository may track it, and never a change
-const NOISE = ['.DS_Store', '._*', '.idea/workspace.xml', '.vscode/*.log', '*.swp'];
+// what an OS or an editor writes beside the work on its own: carried, as a repository may track it, never a change, and never deleted
+export const NOISE = ['.DS_Store', '._*', '.idea/workspace.xml', '.vscode/*.log'] as const;
 
 // v1 carries no path holding one: rsync's file lists and itemized output are read a line at a time
 export const CONTROL = /[\x00-\x1f\x7f]/;
