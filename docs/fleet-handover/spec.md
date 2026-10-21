@@ -367,7 +367,9 @@ Setup finishes with either **Ready for handover** or a list of concrete remainin
 setup is idempotent. `svall host doctor trift`, `svall host upgrade trift` and
 `svall host remove trift` expose diagnosis, version upgrade/rollback and uninstall.
 `svall host upgrade trift --rollback [release]` puts the machine back on the release before, or a
-kept one it names, and probes it as an upgrade does. `svall uninstall` run on a machine refuses
+kept one it names, and probes it as an upgrade does. It refuses before anything changes while a
+fleet's `state.json` there is at a newer state schema than that release's `svall version --json`
+names, or, where it names none, newer than the oldest schema any release has read. `svall uninstall` run on a machine refuses
 while it holds a handover journal, runs a fleet for its gateway or keeps gateway records;
 `--force` passes all of it, and `--force-fleet <id>` only the gateway record of that fleet.
 `svall host remove` checks the fleets this controller knows of, then runs it with `--force-fleet`

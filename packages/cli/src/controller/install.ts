@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { OLDEST_STATE_SCHEMA_VERSION } from '@svall/protocol';
+import { isProfileName } from '@svall/svalld/profile';
 import { shq } from '@svall/svalld/text';
 import { stageArchive } from '../../../../scripts/install-release.mjs';
 import { MANIFEST, NAMESPACE, SIG, SUMS, type Verify } from '../../../../scripts/release-manifest.mjs';
@@ -215,4 +217,58 @@ export function remoteRollback(master: SshMaster, o: { svallBase: string; from: 
   const exe = path.posix.join(o.svallBase, 'releases', o.from, 'bin', 'svall');
   const to = o.to === undefined ? [] : [o.to];
   return remote(master, [shq(exe), 'setup', '--rollback', ...to.map(shq)], ['svall setup --rollback', ...to].join(' '), SETUP_TIMEOUT);
+}
+
+/** The release `svall setup --rollback` goes back to when none is named: the newest other release kept, as it picks one. */
+async function newestOther(master: SshMaster, svallBase: string, from: string): Promise<string | undefined> {
+  const releases = path.posix.join(svallBase, 'releases');
+  return (await remote(master, ['ls', '-t', shq(releases)], `ls -t ${releases}`, TAR_TIMEOUT)).split('\n').find((name) => name && name !== from);
+}
+
+// $1 the far home: each fleet's state.json there, and the version its top level names, which svalld writes indented by two
+const STATE_VERSIONS = `cd "$1" || exit 1
+for f in .svall/state.json .svall-*/state.json; do
+  [ -f "$f" ] && printf '%s %s\\n' "$f" "$(sed -n 's/^  "version": \\([0-9][0-9]*\\),\\{0,1\\}$/\\1/p' "$f" | head -1)"
+done
+exit 0`;
+
+/** The state.json of each fleet home in the far `home`, and the version it is at; one whose version cannot be read is left out. */
+async function stateVersions(master: SshMaster, home: string): Promise<{ file: string; version: number }[]> {
+  const out = await remote(master, ['sh', '-c', shq(STATE_VERSIONS), 'svall-states', shq(home)], `the fleets' state.json in ${home}`, TAR_TIMEOUT);
+  return out.split('\n').flatMap((line) => {
+    const [file = '', version = ''] = line.split(' ');
+    const dir = file.split('/')[0];
+    const fleet = dir === '.svall' || (dir.startsWith('.svall-') && isProfileName(dir.slice('.svall-'.length)));
+    return fleet && /^\d+$/.test(version) ? [{ file: path.posix.join(home, file), version: Number(version) }] : [];
+  });
+}
+
+/** The state schema a kept release reads, as its own `svall version --json` names it; undefined when it does not. */
+async function stateSchemaOf(master: SshMaster, svallBase: string, version: string): Promise<number | undefined> {
+  const r = await master.run([shq(path.posix.join(svallBase, 'releases', version, 'bin', 'svall')), 'version', '--json'], { timeoutMs: TAR_TIMEOUT });
+  try {
+    const { stateSchema } = JSON.parse(r.stdout) as { stateSchema?: unknown };
+    return typeof stateSchema === 'number' ? stateSchema : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Why going back to `to`, or without one to the newest other release kept, would leave a fleet's svalld on the far machine
+ * refusing to start: its state.json at a newer schema than that release reads. A release that does not say what it reads
+ * is held to the oldest schema any release has read. Undefined when nothing there stands in the way.
+ */
+export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<string | undefined> {
+  const states = await stateVersions(master, o.home);
+  const to = o.to ?? await newestOther(master, o.svallBase, o.from);
+  if (!states.length || to === undefined) return undefined;
+  const newest = states.reduce((a, b) => (b.version > a.version ? b : a));
+  const reads = await stateSchemaOf(master, o.svallBase, to);
+  if (reads !== undefined) {
+    return newest.version > reads ? `${newest.file} is at state schema ${newest.version}, and release ${to} reads ${reads}: its svalld would refuse to start after going back` : undefined;
+  }
+  return newest.version > OLDEST_STATE_SCHEMA_VERSION
+    ? `release ${to} does not say which state schema it reads, and ${newest.file} is at state schema ${newest.version}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back`
+    : undefined;
 }
