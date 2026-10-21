@@ -232,9 +232,10 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 
 ## Connection errors
 
-The app and `svall` reach a fleet on another machine through ssh. When that fails, the banner and the error name one of
-these. Only `unreachable` and `daemon_down` are retried by themselves, backing off to every 16 seconds; the others
-wait until the window is reopened.
+The app and `svall` reach a fleet on another machine through ssh. When that fails, the error names one of these, and
+the banner says it in one sentence naming the machine, with what it said under **Details**. Only `unreachable` and
+`daemon_down` are retried by themselves, backing off to every 16 seconds; the others wait until the window is
+reopened.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |

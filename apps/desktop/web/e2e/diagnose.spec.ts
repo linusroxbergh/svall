@@ -62,7 +62,10 @@ test('a fleet on another machine that cannot be reached says so in place of the 
   await page.clock.install();
   await page.goto('/');
   await page.clock.fastForward(theme.connectGraceMs);
-  await expect(page.getByTestId('connect-screen')).toHaveText('studio is not reachable: ssh: connect to host studio port 22: Operation timed out');
+  const screen = page.getByTestId('connect-screen');
+  await expect(screen).toContainText('studio is not reachable; trying again.');
+  await expect(screen.getByTestId('connection-detail')).toContainText('Operation timed out');
+  await expect(screen).not.toContainText('svalld not running');
 });
 
 test('a fleet on this Mac that asks for handover keeps the advice for its own daemon', async ({ page }) => {
@@ -87,7 +90,7 @@ test('a fleet on a machine on another version opens the machines panel on it, an
   });
   await page.goto('/');
   const screen = page.getByTestId('connect-screen');
-  await expect(screen).toContainText('studio is on another version: studio answered with protocol 3, not 4');
+  await expect(screen).toContainText('studio is on another version of Svall.');
   await screen.getByTestId('connection-upgrade').click();
   await expect(page.getByTestId('host-name')).toHaveValue('studio');
   const starts = async () => (await sent()).filter((m) => m.type === 'host.start');

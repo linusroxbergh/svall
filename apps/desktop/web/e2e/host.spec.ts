@@ -199,8 +199,11 @@ test('the corner names the machine the fleet runs on, and the fleet stays on the
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
   await expect(page.getByTestId('owner-badge')).toHaveText('studio');
 
-  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
-  await expect(page.getByTestId('connection-banner')).toHaveText('studio is not reachable: ssh closed');
+  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed', machine: 'studio', destination: 'linus@studio' });
+  // one plain sentence, with what the helper said folded away
+  await expect(page.getByTestId('connection-banner')).toContainText('studio is not reachable; trying again.');
+  await expect(page.getByTestId('connection-detail')).toContainText('ssh closed');
+  await expect(page.getByTestId('connection-detail')).not.toHaveAttribute('open');
   await expect(page.getByTestId('owner-badge')).toHaveAttribute('data-state', 'error');
   // the fleet the page already holds is still there, characters and all
   await expect(page.getByTestId('board')).toBeVisible();
@@ -222,7 +225,8 @@ test('a machine on another version opens the machines panel on it from the banne
   const version = { type: 'connection.state', state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' } as const;
   // the machines panel waits for the fleet to ask for handover, and so does the way to it
   await receive(page, version);
-  await expect(page.getByTestId('connection-banner')).toContainText('studio is on another version: studio answered with protocol 3, not 4');
+  await expect(page.getByTestId('connection-banner')).toContainText('studio is on another version of Svall.');
+  await expect(page.getByTestId('connection-detail')).toContainText('studio answered with protocol 3, not 4');
   await expect(page.getByTestId('connection-upgrade')).toHaveCount(0);
   await handoverOn(page);
   await page.getByTestId('connection-upgrade').click();
@@ -243,12 +247,12 @@ test('a fleet on this Mac keeps its one offline banner until it asks for handove
 
   // a fleet on another machine names it, in place of the offline banner rather than beside it
   await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
-  await expect(page.getByTestId('connection-banner')).toHaveText('studio is not reachable: ssh closed');
+  await expect(page.getByTestId('connection-banner')).toContainText('studio is not reachable; trying again.');
   await expect(page.getByTestId('offline-banner')).toHaveCount(0);
 
   await handoverOn(page);
   await receive(page, localDown);
-  await expect(page.getByTestId('connection-banner')).toHaveText('this machine is not reachable: svalld is not running');
+  await expect(page.getByTestId('connection-banner')).toContainText('svalld is not running on this Mac; trying again.');
   await expect(page.getByTestId('offline-banner')).toHaveCount(0);
 
   await svall.startDaemon();

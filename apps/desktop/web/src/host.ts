@@ -119,25 +119,39 @@ export const sshDestination = (value: string): boolean => SSH.test(value);
 
 const who = (owner: string) => (owner === 'local' ? 'this machine' : owner);
 
-/** What the banner says while the fleet is not answering here; nothing at all once it is online. */
-export function connectionText(c: ConnectionState): string | undefined {
-  const message = c.message ? withoutTokens(c.message) : undefined;
-  switch (c.state) {
-    case 'online': return undefined;
-    case 'connecting': return `connecting to ${who(c.owner)}…`;
-    case 'owner-changed': return `the fleet moved to ${who(c.owner)}; reconnecting…`;
-    case 'error': {
-      const trouble = c.kind === 'version' ? 'is on another version' : 'is not reachable';
-      return `${who(c.owner)} ${trouble}${message ? `: ${message}` : ''}`;
-    }
+export type BannerAction = 'upgrade';
+/** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. */
+export type Banner = { text: string; detail?: string; machine?: string; actions: BannerAction[] };
+
+/** `machine`: the one that did not answer. */
+function errorText(c: ConnectionState, machine: string): Pick<Banner, 'text'> {
+  const name = machine === 'local' ? 'this Mac' : machine;
+  switch (c.kind) {
+    case 'auth': return { text: `${name} did not let ssh log in.` };
+    case 'host_key': return { text: `ssh does not trust ${name}'s host key.` };
+    case 'version': return { text: `${name} is on another version of Svall.` };
+    case 'unreachable': return { text: `${name} is not reachable; trying again.` };
+    case 'daemon_down': return { text: machine === 'local' ? 'svalld is not running on this Mac; trying again.' : `${name}'s svalld is not running; trying again.` };
+    default: return { text: `${name} could not be reached.` };
   }
 }
 
-/** The machine whose release the connection refused, which its Upgrade under Settings → Machines can match; never this Mac. */
-export const upgradeFor = (c: ConnectionState | undefined): string | undefined =>
-  (c?.state === 'error' && c.kind === 'version' && c.owner !== 'local' ? c.owner : undefined);
-
-/** A fleet on this Mac reports its connection only once it asks for handover; a remote one always does. */
-export function connectionBanner(c: ConnectionState | undefined, handoverEnabled: boolean): string | undefined {
-  return c && (c.owner !== 'local' || handoverEnabled) ? connectionText(c) : undefined;
+/**
+ * What the banner says while the fleet is not answering here, and what it offers; nothing once it is online. A fleet
+ * on this Mac reports its connection only once it asks for handover, which the Machines panel waits on too.
+ */
+export function connectionBanner(c: ConnectionState | undefined, o: { handoverEnabled: boolean }): Banner | undefined {
+  if (!c || (c.owner === 'local' && !o.handoverEnabled)) return undefined;
+  const remote = (machine: string) => o.handoverEnabled && machine !== 'local';
+  switch (c.state) {
+    case 'online': return undefined;
+    case 'connecting': return { text: `connecting to ${who(c.owner)}…`, actions: [] };
+    case 'owner-changed': return { text: `the fleet moved to ${who(c.owner)}; reconnecting…`, actions: [] };
+    case 'error': {
+      const machine = c.machine ?? c.owner;
+      const { text } = errorText(c, machine);
+      const actions: BannerAction[] = c.kind === 'version' && remote(machine) ? ['upgrade'] : [];
+      return { text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine !== 'local' ? { machine } : {}), actions };
+    }
+  }
 }

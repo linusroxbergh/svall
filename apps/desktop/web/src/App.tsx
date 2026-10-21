@@ -10,7 +10,7 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
-import { connectionBanner, upgradeFor } from './host.js';
+import { connectionBanner, type Banner } from './host.js';
 import { HostSetup } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { keyTip } from './keys.js';
@@ -33,11 +33,20 @@ const OUTDATED = () => (window.__svallVariant === 'release'
   ? 'Svall and svalld versions differ: quit and reopen Svall'
   : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
 
-// the machines panel opens on the machine, and its Upgrade runs only once the user starts it
-function Upgrade() {
-  const name = useApp((s) => (s.shell?.handoverEnabled ? upgradeFor(s.connection) : undefined));
-  if (!name) return null;
-  return <button className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
+/** The banner's sentence, what it offers, and what the helper said, folded. */
+function BannerBody({ banner }: { banner: Banner }) {
+  const name = banner.machine ?? '';
+  return (
+    <>
+      {banner.text}
+      {banner.actions.map((a) => {
+        switch (a) {
+          case 'upgrade': return <button key={a} className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
+        }
+      })}
+      {banner.detail && <details data-testid="connection-detail"><summary>Details</summary>{banner.detail}</details>}
+    </>
+  );
 }
 
 export function App() {
@@ -53,8 +62,10 @@ export function App() {
   const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
+  const connection = useApp((s) => s.connection);
+  const handoverEnabled = useApp((s) => !!s.shell?.handoverEnabled);
   // the fleet the page holds stays on the screen while its machine is away; only this line changes
-  const away = useApp((s) => connectionBanner(s.connection, !!s.shell?.handoverEnabled));
+  const away = connectionBanner(connection, { handoverEnabled });
   // a fleet on another machine is waited for there, so this Mac's daemon, its log and its setup say nothing about it
   const elsewhere = useApp((s) => !!s.connection && s.connection.owner !== 'local');
   const sideWidths = useApp((s) => s.sideWidths);
@@ -72,7 +83,7 @@ export function App() {
   if (!loaded && elsewhere) {
     return (
       <>
-        <div className="connect" data-testid="connect-screen">{away ? <div>{away}<br /><Upgrade /></div> : <Starting />}</div>
+        <div className="connect" data-testid="connect-screen">{away ? <div><BannerBody banner={away} /></div> : <Starting />}</div>
         <HostSetup />
       </>
     );
@@ -98,7 +109,7 @@ export function App() {
   }
   return (
     <div className="app">
-      {away && <div className="banner" data-testid="connection-banner">{away} <Upgrade /></div>}
+      {away && <div className="banner" data-testid="connection-banner"><BannerBody banner={away} /></div>}
       {!away && status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">

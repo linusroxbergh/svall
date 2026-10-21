@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, connectionBanner, connectionText, endRun, groupSteps, machineName, outcomeOf,
-  runActions, sshDestination, stepLabel, upgradeFor, withoutTokens,
+  applyStep, beginRun, connectionBanner, endRun, groupSteps, machineName, outcomeOf,
+  runActions, sshDestination, stepLabel, withoutTokens,
 } from '../src/host.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
@@ -167,35 +167,38 @@ describe('what the page may ask for', () => {
 });
 
 describe('the connection state the shell reports', () => {
-  it('says where the fleet is and what is in the way', () => {
-    expect(connectionText({ state: 'connecting', owner: 'studio' })).toBe('connecting to studio…');
-    expect(connectionText({ state: 'owner-changed', owner: 'studio' })).toBe('the fleet moved to studio; reconnecting…');
-    expect(connectionText({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' }))
-      .toBe('studio is not reachable: ssh closed');
-    expect(connectionText({ state: 'error', owner: 'local', kind: 'version', message: 'companion 3, controller 4' }))
-      .toBe('this machine is on another version: companion 3, controller 4');
-    expect(connectionText({ state: 'online', owner: 'studio' })).toBeUndefined();
+  const on = { handoverEnabled: true };
+  const err = (o: { owner: string; kind: string; message?: string; machine?: string; destination?: string }) => ({ state: 'error' as const, message: 'what it said', ...o });
+
+  it('says where the fleet is going, with nothing to do about it', () => {
+    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, on)).toEqual({ text: 'connecting to studio…', actions: [] });
+    expect(connectionBanner({ state: 'owner-changed', owner: 'studio' }, on)).toEqual({ text: 'the fleet moved to studio; reconnecting…', actions: [] });
+    expect(connectionBanner({ state: 'online', owner: 'studio' }, on)).toBeUndefined();
   });
 
-  it('reaches a fleet on this Mac only once it asks for handover', () => {
-    const down = { state: 'error', owner: 'local', kind: 'daemon_down', message: 'svalld is not running' } as const;
-    expect(connectionBanner(undefined, true)).toBeUndefined();
-    expect(connectionBanner(down, false)).toBeUndefined();
-    expect(connectionBanner({ state: 'connecting', owner: 'local' }, false)).toBeUndefined();
-    expect(connectionBanner(down, true)).toBe('this machine is not reachable: svalld is not running');
-    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, false)).toBe('connecting to studio…');
+  it('names the machine once in one plain sentence, and folds what it said away', () => {
+    expect(connectionBanner(err({ owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' }), on)).toEqual({
+      text: 'studio is not reachable; trying again.', detail: 'ssh: connect to host studio port 22: Operation timed out', machine: 'studio', actions: [],
+    });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'daemon_down', machine: 'studio' }), on))
+      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: [] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), on))
+      .toMatchObject({ text: 'studio is on another version of Svall.', machine: 'studio', actions: ['upgrade'] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: [] });
+    expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), on))
+      .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: [] });
   });
 
-  it('offers an upgrade only for a machine whose release the connection refused', () => {
-    expect(upgradeFor({ state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' })).toBe('studio');
-    expect(upgradeFor({ state: 'error', owner: 'local', kind: 'version', message: 'companion 3, controller 4' })).toBeUndefined();
-    expect(upgradeFor({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' })).toBeUndefined();
-    expect(upgradeFor({ state: 'connecting', owner: 'studio' })).toBeUndefined();
-    expect(upgradeFor(undefined)).toBeUndefined();
+  it('reaches a fleet on this Mac only once it asks for handover, and offers the Machines panel only then', () => {
+    const off = { handoverEnabled: false };
+    expect(connectionBanner(undefined, on)).toBeUndefined();
+    expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), off)).toBeUndefined();
+    expect(connectionBanner({ state: 'connecting', owner: 'local' }, off)).toBeUndefined();
+    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, off)).toEqual({ text: 'connecting to studio…', actions: [] });
+    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), off)).toMatchObject({ actions: [] });
   });
 
   it('never repeats a token the shell passed on', () => {
-    expect(connectionText({ state: 'error', owner: 'local', kind: 'other', message: 'token=s3cr3t' }))
-      .toBe('this machine is not reachable: token=…');
+    expect(connectionBanner(err({ owner: 'studio', kind: 'other', message: 'token=s3cr3t' }), on)?.detail).toBe('token=…');
   });
 });
