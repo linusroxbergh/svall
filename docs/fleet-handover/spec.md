@@ -778,6 +778,12 @@ configured gateway. The sheet has six user-facing sections backed by the transac
 5. Committing
 6. Resuming characters
 
+Choosing a destination runs the checks alone (`svall handover <machine> --check`): the sheet shows
+what moves and which characters stop and how, and nothing is rested until **Move**, which runs the
+checks again and goes on. Settings → Machines lists every machine in the registry with the fleets it
+is the gateway of and its last check, and runs `svall host …` on it. The fleet's **remote machines**
+switch sets `handover.enabled`; it stays on while the fleet names a gateway.
+
 Before commit the sheet offers Abort. After commit it resumes by itself once, offers Retry if that
 activation fails, and never offers an unsafe rollback. Closing the app does not cancel the
 transaction; reopening reconstructs the sheet from journals and, after the commit, resumes by itself.
