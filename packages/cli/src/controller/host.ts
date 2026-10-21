@@ -348,7 +348,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
       }
       if (held) await sameMachine(opened, held).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-      return { value: opened, detail: `one control master to ${o.ssh}` };
+      return { value: opened, detail: `connected to ${o.ssh}` };
     });
 
     try {
@@ -418,7 +418,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
         }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the companion speaks protocol ${v.protocol}, not this controller's ${d.controller.protocol}`);
-        return { value: id.data, detail: `${v.release}, machine ${id.data}` };
+        return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
 
       await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report }, run);
@@ -432,7 +432,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
         d.registry.save();
-        return Promise.resolve({ value: entry, detail: `${o.name} is machine ${entry.id}` });
+        return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
     } finally {
       await master.close().catch(() => undefined);
@@ -524,7 +524,7 @@ async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<Ss
     throw new StepError((err as Error).message, `ssh ${entry.record.ssh} once in Terminal and see what it answers, then run this again`);
   });
   await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
-  return { value: opened, detail: `one control master to ${entry.record.ssh}` };
+  return { value: opened, detail: `connected to ${entry.record.ssh}` };
 }
 
 /**
@@ -737,9 +737,10 @@ async function seedAuthority(master: SshMaster, entry: Registered, fleetId: Flee
   }
   const record = frame.record;
   if (record.fleetId !== fleetId || record.ownerMachineId !== owner) {
-    throw new StepError(`${name} holds fleet ${record.fleetId} for ${record.ownerMachineId} at generation ${record.generation}, not for this machine`);
+    const holder = d.registry.get(record.ownerMachineId)?.record.name;
+    throw new StepError(`${name} records this fleet as ${holder ? `${holder}'s` : "another machine's"}, not this Mac's`);
   }
-  return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
+  return { value: undefined, detail: `${name} records this fleet as this Mac's` };
 }
 
 /** The exit code of a refusal only the user can settle: `svall fleet provision` finding a fleet home in use, or `svall uninstall` a fleet it would strand. */

@@ -152,6 +152,8 @@ describe('host add', () => {
     await d.close();
 
     expect(out.result).toBe('ready');
+    // each step names the machine, never its id
+    expect(JSON.stringify(events)).not.toContain(REMOTE);
     const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : w[0] === 'env' ? `${w[2]} ${w[3]}` : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
     expect(order.slice(0, 8)).toEqual([
       'uname -sm', 'cat /etc/os-release',
@@ -1599,6 +1601,8 @@ describe('host enable', () => {
       [SVALL, 'gateway', 'owner', 'create', '--fleet', FLEET, '--params', JSON.stringify({ initialOwnerMachineId: MAC })],
     ]);
     expect(written(home).gatewayMachineId).toBe(REMOTE);
+    expect(step('authority').at(-1)).toMatchObject({ status: 'ok', detail: "trift records this fleet as this Mac's" });
+    for (const id of [FLEET, MAC, REMOTE]) expect(JSON.stringify(events)).not.toContain(id);
   });
 
   it('names the gateway in fleet.json as it lies, through a link, keeping its own keys and mode and writing no defaults', async () => {
@@ -1654,7 +1658,7 @@ describe('host enable', () => {
     expect(written(home).gatewayMachineId).toBeUndefined();
   });
 
-  it('refuses a fleet another machine holds, naming the owner and generation, and leaves fleet.json alone', async () => {
+  it('refuses a fleet another machine holds, naming that machine, and leaves fleet.json alone', async () => {
     ssh.reply(['owner', 'get'], answers({ generation: 3, ownerMachineId: OTHER_MAC }));
     const home = fleetHome();
 
@@ -1662,8 +1666,8 @@ describe('host enable', () => {
     expect(out.result).toBe('actions');
     const failure = step('authority').at(-1);
     expect(failure).toMatchObject({ status: 'fail' });
-    expect(failure?.detail).toContain(OTHER_MAC);
-    expect(failure?.detail).toContain('generation 3');
+    // another Mac is in no registry here, and its id says nothing to the user
+    expect(failure?.detail).toBe("trift records this fleet as another machine's, not this Mac's");
     expect(step('fleet')).toEqual([]);
     expect(written(home).gatewayMachineId).toBeUndefined();
   });

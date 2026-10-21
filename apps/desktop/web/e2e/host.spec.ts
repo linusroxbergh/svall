@@ -6,7 +6,7 @@ type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
 // what `svall host add --json` prints, one object per line, with a token in the line a failure carries
 const ADD_STEPS = [
   { step: 'ssh', status: 'ok', detail: 'linus@studio accepted an interactive login' },
-  { step: 'master', status: 'ok', detail: 'one control master to linus@studio' },
+  { step: 'master', status: 'ok', detail: 'connected to linus@studio' },
   { step: 'tmux', status: 'warn', detail: 'tmux 3.4: Shift+Enter needs tmux 3.5 or newer' },
   { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth status and log in' },
   { step: 'opencode', status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh linus@studio, then install OpenCode' },
