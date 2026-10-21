@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Blocker, TransferFile, TransferRoot } from '@svall/protocol';
 import { byCodeUnit } from './hash.js';
-import { excludedPath, isNoise, rootMatcher } from './inventory.js';
+import { excludedPath, noiseReader, rootMatcher } from './inventory.js';
 import { realScanFs, scanPath, type ScanFs } from './manifest.js';
 
 /** How many paths of each kind a report names; its counts are always whole. */
@@ -44,8 +44,9 @@ function roles(paths: Iterable<string>, gitDir: boolean): (p: string) => { role:
     const rest = outer === undefined ? undefined : outer === '' ? d : d.slice(outer.length + 1);
     if (d === '.git' || d.endsWith('/.git') || (rest !== undefined && /^(worktrees\/[^/]+|modules\/.+)$/.test(rest))) dirs.push(d);
   }
+  const noisy = noiseReader();
   const read = (p: string): { role: Role; dir?: string } => {
-    if (isNoise(p)) return { role: 'volatile' };
+    if (noisy(p)) return { role: 'volatile' };
     const inner = innermost(p);
     if (inner === undefined) return { role: 'bytes' };
     const rest = inner === '' ? p : p.slice(inner.length + 1);
