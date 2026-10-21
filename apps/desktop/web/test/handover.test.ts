@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Blocker, HandoverPhase } from '@svall/protocol';
+import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
-  actionsOf, applyEvent, blockerHint, choiceFor, chosen, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  rowText, sectionStates, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
+  blockerSide, goOn, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
 const tx = 'tx-1';
@@ -46,10 +46,10 @@ describe('the handover a sheet follows', () => {
     const run = play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [], names } }]);
     const name = (id: string) => run.preflight?.names?.characters[id] ?? id;
     expect(entityLabel({ kind: 'character', id: 'c1' }, name, run.preflight?.names)).toBe('ada');
-    expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names)).toBe('~/app');
+    expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names, undefined, '/home/ada')).toBe('~/app');
     expect(entityLabel({ kind: 'session', id: 's0' }, name, run.preflight?.names)).toBe("ada's session");
     // a repository is named by the path its message leads with
-    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no character uses are not registered')).toBe('~/src/beta');
+    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no character uses are not registered', '/Users/ada')).toBe('~/src/beta');
     // without what preflight said, the id is what there is
     expect(entityLabel({ kind: 'root', id: 'r_b' }, name, run.preflight?.names)).toBe('folder r_b');
     expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, 'the destination has no git')).toBe('repository');
@@ -84,11 +84,13 @@ describe('the handover a sheet follows', () => {
     expect(run.phase).toBe('verify');
   });
 
-  it('says how far each of the five sections has come', () => {
+  it('says how far each of the six sections has come, with the commit, past which nothing goes back, a section of its own', () => {
     const states = (run: HandoverRun) => sectionStates(run).map((s) => `${s.label}: ${s.state}`);
     expect(states(play(through('transfer')))).toEqual([
-      'Checks: done', 'Resting characters: done', 'Transferring files and sessions: active', 'Verifying and committing: pending', 'Resuming characters: pending',
+      'Checks: done', 'Resting characters: done', 'Transferring files and sessions: active', 'Verifying: pending', 'Committing: pending', 'Resuming characters: pending',
     ]);
+    expect(states(play([...through('verify'), changed('prepare'), changed('ready')])).slice(3, 5)).toEqual(['Verifying: active', 'Committing: pending']);
+    expect(states(play(through('commit'))).slice(3, 5)).toEqual(['Verifying: done', 'Committing: active']);
     const blocked = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [] } }]);
     expect(sectionStates(blocked)[1].state).toBe('waiting');
     const stopped = play([...through('transfer'), { event: 'handover.result', data: { status: 'interrupted', transactionId: tx, phase: 'transfer', error: 'ssh closed', safe: ['resume', 'abort'] } }]);
@@ -103,6 +105,19 @@ describe('the handover a sheet follows', () => {
     const row = run.rows.find((r) => r.id === 'r_a')!;
     expect(row.error).toBeUndefined();
     expect(rowText(row)).toBe('12.0 MB of 40.0 MB; what was there is kept at /home/ada/a.archived-1');
+  });
+
+  it("names the fleet a command acts on by its profile, as the shell's own svall calls do", () => {
+    expect(svallFor('work')).toBe('svall -p work');
+    expect(svallFor(undefined)).toBe('svall');
+  });
+
+  it("turns only the account's own home into ~", () => {
+    expect(shortPath('/Users/ada/src/app', '/Users/ada')).toBe('~/src/app');
+    expect(shortPath('/Users/ada', '/Users/ada')).toBe('~');
+    expect(shortPath('/Users/Shared/proj', '/Users/ada')).toBe('/Users/Shared/proj');
+    expect(shortPath('/Users/adam/x', '/Users/ada')).toBe('/Users/adam/x');
+    expect(shortPath('/home/bo/app')).toBe('/home/bo/app');
   });
 
   it('shows progress in bytes', () => {
@@ -141,6 +156,87 @@ describe('what the sheet offers', () => {
     expect(actionsOf(status('moved', [], 'activate'))).toMatchObject({ resume: undefined, abort: false, start: true });
   });
 
+  it('says where a status leaves the handover in its own words, never with the ids and generations the controller names', () => {
+    const [id, mac, studio] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90', 'c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45'];
+    const said = (standing: Standing, safe: SafeAction[], reason: string, phase?: HandoverPhase, to?: string) => headline(endFollow(play([{ event: 'handover.status', data: {
+      standing, journals: {}, action: 'none', transactionId: id, fromMachineId: mac as MachineId, toMachineId: studio as MachineId, generation: 3, ...(phase && { phase }), safe, reason,
+    } }], followRun(to)), 0), destinationName(to));
+    const lines = [
+      [said('open', ['resume', 'abort'], `${id} is preparing and has not committed; it can go on, or be aborted back to ${mac}`, 'transfer', 'studio'),
+        'Stopped at Transferring files and sessions, before the commit: the fleet has not moved.'],
+      [said('open', ['resume', 'abort'], `${id} is preparing and has not committed; it can go on, or be aborted back to ${mac}`, 'aborted', 'studio'),
+        'An abort stopped part way, before the commit: the fleet has not moved.'],
+      [said('committed', ['resume'], `${id} is committed: the fleet belongs to ${studio} at generation 4, and only its activation can go on`, 'activate', 'studio'),
+        "The fleet is studio's now, and stopped before its characters resumed there."],
+      [said('moved', ['resume'], `the gateway has moved this fleet to ${studio} at generation 4; what ${id} left open is only to be finished`, 'activate'),
+        'The fleet runs on the other machine now; what the handover left open there is still to finish.'],
+      [said('committed', [], `${id} moved this fleet to ${studio}, whose handover journal could not be read and was moved to /home/ada/.svall/handover.json.broken-1; nothing is safe until someone looks at that machine`, 'activate', 'studio'),
+        "The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered."],
+      [said('returned', ['abort'], `the gateway no longer holds ${id}, and the fleet is ${mac}'s at generation 3; its abort is only to be finished`, 'freeze'),
+        'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.'],
+      [said('superseded', [], `the gateway holds this fleet for ${studio} at generation 5 in handover 9b1d…, past ${id}`),
+        "The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it."],
+      [said('unknown', [], `the gateway cannot say whether ${id} committed (ssh: connect to host studio port 22: Operation timed out); nothing is safe until it answers`, 'commit', 'studio'),
+        'Whether the fleet moved to studio is not known yet: the gateway has not answered.'],
+      [said('none', ['abort'], 'the gateway never began this handover; nothing moved'), 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.'],
+      [said('none', [], 'no handover of this fleet is open anywhere'), 'No handover of this fleet is open.'],
+      [headline(play([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway could not be asked (timed out), so whether a handover of this fleet is open there is unknown' } }], followRun()), 'studio'),
+        'The gateway could not be asked, so whether a handover of this fleet is open is not known.'],
+    ];
+    for (const [line, want] of lines) {
+      expect(line).toBe(want);
+      expect(line).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}|generation|activation|journal/);
+    }
+    expect(headline(play([result({ status: 'none', reason: 'no handover of this fleet is open anywhere' })]), 'studio')).toBe('There was no handover of this fleet to resume or abort.');
+  });
+
+  it("leaves the controller's ids and generations out of what a stopped run or a call asked again says", () => {
+    const [id, mac] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90'];
+    const holds = `${mac} at generation 4 in handover ${id} (ready-to-commit)`;
+    const stopped = (phase: HandoverPhase, error: string) =>
+      endFollow(play([...through('verify'), changed('prepare'), changed('ready'), changed('commit'), result({ status: 'interrupted', transactionId: tx, phase, error, safe: ['resume', 'abort'] })]), 1);
+    expect(headline(stopped('commit', `the gateway did not commit ${id} and holds ${holds}: timed out`), 'studio'))
+      .toBe('Stopped at Committing: the gateway did not commit the handover and holds a different record of the fleet: timed out');
+    expect(headline(stopped('begin', `the gateway answered Begin with ${mac} at generation 3, not a handover from mac to studio preparing at generation 3`), 'studio'))
+      .toBe('Stopped at Checks: the gateway answered Begin with a different record of the fleet, not a handover from mac to studio preparing');
+    const asked = play([...through('verify'), changed('prepare'), changed('ready'),
+      { event: 'handover.retry', data: { transactionId: tx, phase: 'ready', attempt: 2, error: `the gateway would not record ${id} ready: busy` } }]);
+    expect(headline(asked, 'studio')).toBe('Verifying… asking again (attempt 2): the gateway would not record the handover ready: busy');
+    // whole shapes the daemons and the gateway write, and a machine named only by its id
+    const said = (error: string) => headline(stopped('commit', error), 'studio').replace('Stopped at Committing: ', '');
+    expect(said(`the gateway would not record ${id} ready: this fleet is at generation 5, not 4`)).toBe('the gateway would not record the handover ready: this fleet has moved on');
+    expect(said(`the gateway names ${mac} as this fleet's owner at generation 5; this machine stays frozen`)).toBe("the gateway names a machine as this fleet's owner; this machine stays frozen");
+    expect(said(`ssh ada@trift reaches machine ${mac}, not the gateway c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45`)).toBe('ssh ada@trift reaches another machine, not the gateway');
+    expect(said(`${id} is committed: the fleet belongs to ${mac} at generation 4, and only its activation can go on`))
+      .toBe('the handover is committed: the fleet belongs to a machine, and only its activation can go on');
+    expect(said(`the gateway would not record ${id} ready: ${id} is committed; this fleet belongs to ${mac} at generation 5`))
+      .toBe('the gateway would not record the handover ready: the handover is committed; this fleet belongs to a machine');
+    // an id in a path names a file, which stays as it is
+    const transcript = `/Users/ada/.claude/projects/-Users-ada-app/${id}.jsonl`;
+    expect(said(`claude --resume exited 1 reading ${transcript}`)).toBe(`claude --resume exited 1 reading ${transcript}`);
+    expect(said(`/Users/ada/.claude/projects/-Users-ada-app/${id}/subagents is not a folder`)).toBe(`/Users/ada/.claude/projects/-Users-ada-app/${id}/subagents is not a folder`);
+    expect(said(`ssh ada@trift reaches machine ${mac}.`)).toBe('ssh ada@trift reaches another machine.');
+  });
+
+  it('names where a relaunched handover goes from where the fleet runs now: the other end before the commit, that end after it', () => {
+    const relaunched = (standing: Standing, safe: SafeAction[], phase: HandoverPhase) =>
+      endFollow(play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', transactionId: tx, phase, safe, reason: '' } }], followRun()), 0);
+    const open = relaunched('open', ['resume', 'abort'], 'transfer');
+    expect(destinationOf(open, 'local', 'studio')).toBe('studio');
+    expect(destinationOf(open, 'studio', 'studio')).toBe('local');
+    expect(destinationOf(relaunched('committed', ['resume'], 'activate'), 'studio', 'studio')).toBe('studio');
+    expect(destinationOf(relaunched('moved', ['resume'], 'activate'), 'local', 'studio')).toBe('local');
+    // the resume the sheet goes on with is past the commit even while its journal still says commit
+    expect(destinationOf(goOn(relaunched('committed', ['resume'], 'commit')), 'studio', 'studio')).toBe('studio');
+    // a gateway that cannot say, or a page that has not heard where the fleet runs, names nothing
+    expect(destinationOf(relaunched('unknown', [], 'commit'), 'local', 'studio')).toBeUndefined();
+    expect(destinationOf(open, undefined, 'studio')).toBeUndefined();
+    expect(destinationOf(open, 'local', undefined)).toBeUndefined();
+    expect(destinationOf(open, 'spare', 'studio')).toBeUndefined();
+    // a run started here says where it goes
+    expect(destinationOf(followRun('studio'), 'studio', 'studio')).toBe('studio');
+  });
+
   it('offers Forget for a journal the gateway has moved on from, and asks the user only about what can be decided', () => {
     const status = (standing: 'superseded' | 'open' | 'unknown', safe: ('resume' | 'abort')[]) =>
       endFollow(play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', safe, reason: standing } }], followRun()), 0);
@@ -152,16 +248,33 @@ describe('what the sheet offers', () => {
     expect(needsUser(status('unknown', []).status!)).toBe(false);
   });
 
-  it('counts a stopped run as committed only once it can only go on, and says so when whether it committed is unknown', () => {
-    const stopped = (phase: HandoverPhase, safe: ('resume' | 'abort')[]) =>
-      endFollow(play([...through('commit'), result({ status: 'interrupted', transactionId: tx, phase, error: 'the gateway did not answer', safe })]), 0);
-    const unknown = stopped('commit', []);
+  it('says why nothing is safe from the stop a run names, and counts only a lost journal past the commit as committed', () => {
+    const stopped = (phase: HandoverPhase, safe: SafeAction[], stop?: StopReason, error = 'it stopped') =>
+      endFollow(play([...through('commit'), result({ status: 'interrupted', transactionId: tx, phase, error, safe, ...(stop && { stop }) })]), 1);
+    const unknown = stopped('commit', [], 'commit_unknown');
     expect(isCommitted(unknown)).toBe(false);
-    expect(headline(unknown, 'studio')).toMatch(/^Whether the fleet moved to studio is not known yet: the gateway did not answer\. Check again/);
+    expect(headline(unknown, 'studio')).toBe('Whether the fleet moved to studio is not known yet: the gateway has not answered.');
     expect(actionsOf(unknown)).toMatchObject({ follow: true, resume: undefined, abort: false });
+    expect(headline(stopped('commit', [], 'gateway_unknown'), 'studio')).toBe('Whether the fleet moved to studio is not known yet: the gateway could not be asked.');
+    const lost = stopped('activate', [], 'journal_lost');
+    expect(isCommitted(lost)).toBe(true);
+    expect(headline(lost, 'studio')).toBe("The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.");
+    // a stop at the commit that is not about the commit says what it is about
+    const past = stopped('commit', [], 'superseded');
+    expect(isCommitted(past)).toBe(false);
+    expect(headline(past, 'studio')).toBe("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
+    expect(headline(stopped('begin', [], 'invalid', 'no machine spare in the registry'), 'studio')).toBe('Stopped at Checks: no machine spare in the registry');
     expect(isCommitted(stopped('commit', ['resume']))).toBe(true);
-    expect(isCommitted(stopped('activate', []))).toBe(true);
     expect(isCommitted(stopped('commit', ['resume', 'abort']))).toBe(false);
+  });
+
+  it('reads the status for a stop only the status can say more of', () => {
+    const run = (stop: StopReason) => endFollow(play([result({ status: 'interrupted', phase: 'begin', error: 'it stopped', safe: [], stop })]), 1);
+    expect((['superseded', 'running', 'unexpected'] as const).filter((s) => !asksStatus(run(s)))).toEqual([]);
+    // a handover between other machines is theirs to go on with, as the run's error says
+    expect((['commit_unknown', 'gateway_unknown', 'journal_lost', 'elsewhere', 'not_begun', 'invalid'] as const).filter((s) => asksStatus(run(s)))).toEqual([]);
+    const theirs = endFollow(play([result({ status: 'interrupted', phase: 'begin', error: 'this machine is neither the source studio nor the destination spare of the handover; run it on studio or spare', safe: [], stop: 'elsewhere' })]), 1);
+    expect(headline(theirs, 'studio')).toBe('Stopped at Checks: this machine is neither the source studio nor the destination spare of the handover; run it on studio or spare');
   });
 
   it('says why what is left to finish is left once the fleet has moved', () => {
@@ -278,6 +391,49 @@ describe('what each blocker and warning is explained with', () => {
     const hint = blockerHint({ code: 'agent_unsettled', message: "Ada's terminal did not come to rest after it was interrupted", entity: { kind: 'character', id: 'c1' } }, ctx);
     expect(hint).toMatch(/hook/);
     expect(hint).toMatch(/Terminate and carry/);
+  });
+
+  it('says which machine a folder blocker is about where its code, message or step does', () => {
+    const root = { kind: 'root' as const, id: 'r_a' };
+    expect(blockerSide({ code: 'platform_unsupported', message: '/w/app is marked for darwin only', entity: root })).toBe('source');
+    expect(blockerSide({ code: 'mission_control_shared', message: '~/.svall/home is also the fleet work\'s', entity: root })).toBe('source');
+    expect(blockerSide({ code: 'destination_occupied', message: '/w/app already exists', entity: root })).toBe('destination');
+    // the checks read a folder on the source; the destination's own checks come later
+    const carried: Blocker = { code: 'path_unsupported', message: '/w/app: 2 paths cannot be carried: a, b', entity: root };
+    expect(blockerSide(carried, 'begin')).toBe('source');
+    expect(blockerSide(carried, 'prepare')).toBeUndefined();
+    expect(blockerSide(carried)).toBeUndefined();
+  });
+
+  it('sends a path that cannot travel to the terminal it is in, or a folder to what the message names', () => {
+    const terminal = blockerHint({ code: 'path_unsupported', message: "Ada's terminal is in /Users/ada/.ssh, which stays on its machine", entity: { kind: 'character', id: 'c1' } }, ctx);
+    expect(terminal).toMatch(/cd that terminal/);
+    const folder = blockerHint({ code: 'path_unsupported', message: 'handover.exclude pattern "[" cannot be read by rsync', entity: { kind: 'root', id: 'r_a' } }, ctx);
+    expect(folder).not.toMatch(/terminal/);
+    expect(folder).toMatch(/handover\.exclude.*writable on studio/);
+    expect(blockerHint({ code: 'path_unsupported', message: 'the destination keeps this fleet\'s docs at another path' }, ctx)).toBe(folder);
+  });
+
+  it('gives every code that blocks a line on what to do', () => {
+    const only = ['env_file', 'credential_file', 'platform_heuristic', 'symlink_dangling', 'remote_local'];
+    const missing = HandoverIssueCode.options.filter((code) => !only.includes(code) && !blockerHint({ code, message: 'it is so' }, ctx));
+    expect(missing).toEqual([]);
+    // a guide is named by its sections, not by its file
+    expect(HandoverIssueCode.options.filter((code) => /\.md\b/.test(blockerHint({ code, message: 'it is so' }, ctx) ?? ''))).toEqual([]);
+  });
+
+  it('says on which machine to fix what only that machine can', () => {
+    // the registry's ssh destination can differ from the machine's name, so no command names one
+    const ssh = blockerHint({ code: 'ssh_interactive', message: 'ssh would have to ask before it could go on' }, ctx);
+    expect(ssh).toMatch(/ssh once in Terminal to the destination studio was added with/);
+    expect(ssh).not.toMatch(/`ssh /);
+    expect(blockerHint({ code: 'ssh_interactive', message: 'ssh would ask' }, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/destination studio was added with/);
+    expect(blockerHint({ code: 'parent_missing', message: '/opt/w is missing on the destination' }, ctx)).toMatch(/on studio/);
+    expect(blockerHint({ code: 'rsync_unsupported', message: 'studio has openrsync' }, ctx)).toMatch(/On studio, install rsync 3\.2\.3/);
+    const link = (message: string) => blockerHint({ code: 'path_symlinked', message, entity: { kind: 'root', id: 'r_a' } }, ctx);
+    expect(link('/w/app leads to /v/app through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use /v/app instead')).toMatch(/real path/);
+    expect(link('/w/app leads to /d/app on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first'))
+      .toMatch(/on studio/);
   });
 
   it('points a kept character at its toggle', () => {
@@ -416,7 +572,7 @@ describe('the helper lines the sheet reads', () => {
     const older = [changed('begin'), { event: 'handover.preflight', data: { summary } }, { event: 'handover.result', data: { status: 'interrupted', phase: 'transfer' } },
       { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }] as HandoverEvent[];
     const run = play(older);
-    expect(headline(run, 'studio')).toBe('no handover is open');
+    expect(headline(run, 'studio')).toBe('No handover of this fleet is open.');
     expect(run.preflight).toBeUndefined();
   });
 });

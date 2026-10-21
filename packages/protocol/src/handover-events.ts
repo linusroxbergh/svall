@@ -9,9 +9,18 @@ export type SafeAction = 'resume' | 'abort';
 export type CharacterResult = { id: string; ok: boolean; error?: string; notice?: string };
 
 /**
+ * Why a run that stopped part way offers nothing safe: whether its commit landed is unknown, the gateway could not be
+ * asked, the destination's journal could not be read, the gateway moved on past it, it belongs to other machines, another
+ * run of it holds this machine, its checks failed before anything began, the command could not run as asked, or
+ * something no step expects failed.
+ */
+export type StopReason = 'commit_unknown' | 'gateway_unknown' | 'journal_lost' | 'superseded' | 'elsewhere' | 'running' | 'not_begun' | 'invalid' | 'unexpected';
+
+/**
  * How a run ended. `complete`: the fleet runs on the destination, `pending` naming what a resume still finishes and `error` why.
  * `blocked` and `aborted`: nothing committed and the fleet is the source's again. `interrupted`: it stopped part
- * way, and `safe` says what may follow. `detached`: cancelled after the commit, so the move goes on unwatched.
+ * way, and `safe` says what may follow, `stop` why nothing may when nothing does, and `detail` what the journals said
+ * where `error` says it plainly. `detached`: cancelled after the commit, so the move goes on unwatched.
  * `none`: there was no handover to resume or abort.
  */
 export type Outcome =
@@ -19,7 +28,7 @@ export type Outcome =
   | { status: 'none'; reason: string }
   | { status: 'blocked'; transactionId?: string; phase: HandoverPhase; blockers: Blocker[] }
   | { status: 'aborted'; transactionId?: string; phase: HandoverPhase }
-  | { status: 'interrupted'; transactionId?: string; phase: HandoverPhase; error: string; safe: SafeAction[] }
+  | { status: 'interrupted'; transactionId?: string; phase: HandoverPhase; error: string; safe: SafeAction[]; stop?: StopReason; detail?: string }
   | { status: 'detached'; transactionId: string };
 
 /**
@@ -46,10 +55,13 @@ export type Verdict = {
   reason: string;
 };
 
-/** How far one character, root or session row has come, and why it stopped; `archivedTo`: where what a root held before went. */
+/**
+ * How far one character, root or session row has come, and why it stopped; `archivedTo`: where what a root held before went;
+ * `verified`: the destination has verified a root's or session's copy, which phase `verify` alone does not say.
+ */
 export type EntityData = {
   transactionId: string; kind: HandoverEntityKind; id: string; phase: HandoverPhase;
-  done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string;
+  done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string; verified?: boolean;
 };
 
 /** What a blocker or a row points at, for a person: each character's name, where each root lands, and whose each session row `s<i>` is. */
