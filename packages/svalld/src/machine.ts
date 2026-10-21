@@ -95,4 +95,4 @@ export function rebindMachine(hardwareId: string, dir: string = configDir()): vo
 
 /** What a machine that shares another's id does to get its own. */
 export const copiedRemedy = (file: string): string =>
-  `this machine shares another machine's id; move ${file} aside and restart svalld so this machine mints its own id, then \`svall host add\` it again from the controller`;
+  `this machine shares another machine's id; move ${file} aside and restart svalld so this machine mints its own id, then \`svall host add\` it again from the controller, or on the controller \`svall fleet recover --force-owner local\` runs the fleet here`;
