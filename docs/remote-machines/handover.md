@@ -41,6 +41,9 @@ Quitting the app or closing the sheet does not stop a handover: it runs in a hel
 leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
 handover stands, with **Resume** and **Abort** before the commit, or only **Retry** after it.
 
+While the app follows a handover, the Mac stays out of idle sleep, on battery too, unless **keep Mac awake** is off. A
+handover that goes on without the window watching is followed again.
+
 Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.
 
