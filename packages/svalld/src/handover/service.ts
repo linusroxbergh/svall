@@ -7,7 +7,7 @@ import {
 import type { Fleet } from '../fleet.js';
 import { AuthorityFailure } from '../gateway/authority.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { runGit } from '../links/git.js';
+import { handoverGit } from '../links/git.js';
 import { DestinationHandover, type DestinationDeps } from './destination.js';
 import { unreached } from './git-import.js';
 import { handoverGeneration, type HandoverJournal, type JournalFile, type JournalState } from './journal.js';
@@ -261,7 +261,7 @@ export class HandoverService {
 
   /** Which of these commits no ref of this machine's repositories reaches: a destination that keeps a worktree asks it of its source. */
   async reaches(p: ParsedParams<'handover.reaches'>): Promise<Result<'handover.reaches'>> {
-    const git = this.deps.source?.git ?? runGit;
+    const git = this.deps.source?.git ?? handoverGit;
     const unreachable: Result<'handover.reaches'>['unreached'] = [];
     for (const dir of new Set(p.commits.map((c) => c.commonDir))) {
       const asked = p.commits.filter((c) => c.commonDir === dir).map((c) => c.commit);

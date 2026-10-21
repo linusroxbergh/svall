@@ -4,13 +4,14 @@ import path from 'node:path';
 import type { Blocker, TransferFile, TransferRoot } from '@svall/protocol';
 import { compareReplica, diverged, proveReplica, type Divergence } from '@svall/svalld/handover/divergence';
 import { boundary } from '@svall/svalld/handover/failpoints';
-import { CONTROL } from '@svall/svalld/handover/inventory';
+import { byCodeUnit } from '@svall/svalld/handover/hash';
+import { CONTROL, isNoise } from '@svall/svalld/handover/inventory';
 import { realScanFs, scanPath, type ScanFs } from '@svall/svalld/handover/manifest';
 import { kept, relativeProblem, type ReplicaCheck } from '@svall/svalld/handover/replicas';
 import { redact, type RunResult } from './process.js';
 import { ProgressJournal, transactionDir, type EntryProgress } from './progress.js';
 import {
-  exitKind, expands, filterRules, linkModeOnly, MIN_RSYNC, parseLine, remoteShell, remoteSpec, rsyncArgv, rsyncVersion, runRsync,
+  exitKind, expands, filterRules, keptObjectStores, linkModeOnly, listArgv, listedFiles, MIN_RSYNC, parseLine, remoteShell, remoteSpec, rsyncArgv, rsyncVersion, runRsync,
   type RsyncJob, type RsyncLine, type RsyncResult, type RunRsync,
 } from './rsync.js';
 
@@ -64,9 +65,12 @@ export type TransferEntry = RootEntry | SessionEntry;
 
 export type Failure = { reason: 'disconnected' | 'rsync' | 'refused'; code: number | null; error: string };
 
+/** What a copy replaced or deleted after its first pass, by path under the root, and the folder beside the root it went to. */
+export type Overwritten = NonNullable<EntryProgress['overwritten']>;
+
 export type EntryOutcome =
   // `files` is what landed, which Complete seals; `passes` 0 is an earlier run's copy that still verified
-  | { id: string; status: 'verified'; passes: number; files: TransferFile[] }
+  | { id: string; status: 'verified'; passes: number; files: TransferFile[]; overwritten?: Overwritten }
   | { id: string; status: 'blocked'; blocker: Blocker }
   | ({ id: string; status: 'failed' } & Failure)
   | { id: string; status: 'cancelled' }
@@ -109,6 +113,8 @@ type Plan = {
   keep: (relative: string) => boolean;
   // a session's files, read one by one; a root is read whole
   listed?: string[];
+  // where a root's copy keeps what a pass after the first replaces or deletes in it
+  backup?: string;
 };
 
 // the source, or the copy it is written into
@@ -154,7 +160,7 @@ export async function farRsync(master: Pick<Master, 'run'>): Promise<{ blocker: 
 /**
  * Mirrors each entry from its source to its destination over the ssh master, then proves the copy. A
  * pass is stable when this Mac's side reads the same as it did after the pass before (the manifest,
- * for the first) and a checksum dry run finds nothing left to change; a source that keeps changing gets
+ * for the first) and a dry run finds nothing left to change; a source that keeps changing gets
  * another pass, up to three. A lost link, a failed rsync or a cancel stops the transfer and leaves
  * everything written so far for a resume.
  */
@@ -172,11 +178,13 @@ export async function transfer(o: TransferOptions): Promise<TransferResult> {
   const d: TransferDeps = { run: runRsync, readFile: (p) => fs.readFileSync(p, 'utf8'), now: Date.now, ...o.deps };
   const journal = new ProgressJournal(o.transactionId, transactionDir(o.transactionId, o.stateDir), d.now);
   const rsh = remoteShell(o.master.socket);
+  // names the folder each later pass of this run keeps what it replaces in, apart from another run's or pass's
+  const run = new Date(d.now()).toISOString().replace(/\.\d+Z$/, 'Z').replaceAll(':', '');
   const entries: EntryOutcome[] = [];
   let stopped = false;
   for (const entry of o.entries) {
     if (stopped) { entries.push({ id: entry.id, status: 'pending' }); continue; }
-    const outcome = await boundary('controller.rsync', () => new Mirror(entry, o, d, journal, rsh).run());
+    const outcome = await boundary('controller.rsync', () => new Mirror(entry, o, d, journal, rsh, run).run());
     entries.push(outcome);
     stopped = outcome.status === 'cancelled' || (outcome.status === 'failed' && outcome.reason !== 'refused');
   }
@@ -193,6 +201,8 @@ class Mirror {
   private progress: Omit<EntryProgress, 'updatedAt'>;
   private plan?: Plan;
   private shown?: { state: EntryProgress['state']; at: number };
+  // an earlier run of this transaction copied into this entry
+  private resumed: boolean;
 
   constructor(
     private entry: TransferEntry,
@@ -200,13 +210,16 @@ class Mirror {
     private d: TransferDeps,
     private journal: ProgressJournal,
     private rsh: string,
+    private runStamp: string,
   ) {
     const held = journal.get(entry.id);
     this.progress = {
       id: entry.id, kind: entry.kind, state: 'pending', pass: 0, done: 0, total: 0, bytes: 0, items: 0,
       totalBytes: entry.files.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0),
       ...(held?.verifiedKey && held.verifiedScan ? { verifiedKey: held.verifiedKey, verifiedScan: held.verifiedScan } : {}),
+      ...(held?.overwritten && { overwritten: held.overwritten }),
     };
+    this.resumed = (held?.pass ?? 0) > 0;
   }
 
   async run(): Promise<EntryOutcome> {
@@ -282,8 +295,9 @@ class Mirror {
       keep = entry.claim.keep ?? [];
       rootKind = entry.rootKind;
       expected = entry.files.filter((f) => !kept(keep)(f.path));
+      const protect = keptObjectStores(keep);
       job = dir
-        ? { delete: true, mkpath: false, filterFile: this.journal.writeFilter(entry.id, filterRules(excludes, rootKind, keep)) }
+        ? { delete: true, mkpath: false, filterFile: this.journal.writeFilter(entry.id, filterRules(excludes, rootKind, keep)), ...(protect.length && { protect }) }
         : { delete: false, mkpath: false };
     } else {
       // a name that climbs out of its home is refused before any path is built from it
@@ -309,6 +323,7 @@ class Mirror {
       rootKind,
       keep: kept(keep),
       ...(listed && { listed }),
+      ...(entry.kind === 'root' && { backup: `${bare(target)}.overwritten-${o.transactionId.replace(/[^A-Za-z0-9._-]/g, '_')}` }),
     };
   }
 
@@ -318,13 +333,34 @@ class Mirror {
       state: 'transferring', pass, done: 0, total: 0, bytes: 0, items: 0,
       exitCode: undefined, signal: undefined, error: undefined, verifiedKey: undefined, verifiedScan: undefined,
     });
-    // rsync's quick check misses an edit of the same size within the same second; a later pass compares content
-    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1 }, (l) => {
+    // the first pass writes over what the claim proved there; a later one over a copy that may have changed since, so it
+    // keeps aside what it replaces or deletes. rsync's quick check misses an edit of the same size within the same second;
+    // a later pass compares content, as does a resume's first
+    const backup = pass > 1 ? plan.backup : undefined;
+    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1 || this.resumed, ...(backup && { backupDir: `${backup}/${this.runStamp}-pass${pass}` }) }, (l) => {
       if (l.kind === 'item') this.put({ items: this.progress.items + 1 });
       else if (l.kind === 'progress') this.put({ bytes: l.bytes, ...(l.total !== undefined && { done: l.done, total: l.total }) });
     });
+    // what is kept is read where it lies, whatever this pass's rsync said; a resume also reads what a run that ended mid-pass kept
+    const listed = plan.backup && (backup || this.resumed) && !this.o.signal?.aborted ? await this.keptAside(plan.backup, plan.push) : undefined;
     this.put({ exitCode: r.code, signal: r.signal });
-    return this.settle(r);
+    // a pass whose kept files could not be listed ends as a failed one, so the copy verifies only once a resume lists them
+    return this.settle(r.code === 0 && listed && listed.code !== 0 ? listed : r);
+  }
+
+  /** Records every file and link kept in `keptAt` by any run, as listed there; a listing that fails leaves the record as it was. */
+  private async keptAside(keptAt: string, far: boolean): Promise<RsyncResult> {
+    const lines: string[] = [];
+    let r: RsyncResult;
+    try {
+      r = await this.d.run(this.o.rsync, listArgv(this.rsh, far ? remoteSpec(keptAt) : keptAt), { signal: this.o.signal, onLine: (l) => lines.push(l) });
+    } catch (err) {
+      return { code: null, signal: null, stderr: (err as Error).message };
+    }
+    if (r.code !== 0) return r;
+    const paths = listedFiles(lines, path.basename(keptAt)).sort(byCodeUnit);
+    this.put({ overwritten: paths.length ? { keptAt, paths } : undefined });
+    return r;
   }
 
   /** Reads this Mac's side under the claim's excludes, and how it differs from `previous`. */
@@ -336,11 +372,15 @@ class Mirror {
     return { files, moved: diverged(divergence), readable: divergence.unchecked.count === 0, names: named(divergence) };
   }
 
-  /** Asks rsync, as a checksum dry run, what a copy would still change. */
+  /**
+   * Asks rsync, as a dry run, what a copy would still change: by size and time in a push, whose copy the destination
+   * re-hashes against this Mac's scan before it prepares, and by checksum in a pull, whose source nothing else reads,
+   * and in a resume, which may follow a prepare that found the copy differs.
+   */
   private async compare(): Promise<{ kind: 'ok' } | { kind: 'unstable'; names: string[] } | Stop> {
     const plan = this.plan as Plan;
     const names: string[] = [];
-    const r = await this.rsync({ ...plan.job, dryRun: true }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change)) names.push(l.name); });
+    const r = await this.rsync({ ...plan.job, dryRun: true, checksum: !plan.push || this.resumed }, (l) => { if (l.kind === 'item' && !linkModeOnly(l.change) && !isNoise(l.name.replace(/\/$/, ''))) names.push(l.name); });
     const step = await this.settle(r);
     if (step.kind === 'stop') return step;
     return step.kind === 'vanished' || names.length ? { kind: 'unstable', names } : { kind: 'ok' };
@@ -373,7 +413,8 @@ class Mirror {
   private verified(passes: number, files: TransferFile[]): EntryOutcome {
     const plan = this.plan as Plan;
     if (this.entry.kind === 'root') this.journal.keepVerified(this.entry.id, files);
-    return this.finish({ id: this.entry.id, status: 'verified', passes, files }, { verifiedKey: plan.key, verifiedScan: scanDigest(files) });
+    const { overwritten } = this.progress;
+    return this.finish({ id: this.entry.id, status: 'verified', passes, files, ...(overwritten && { overwritten }) }, { verifiedKey: plan.key, verifiedScan: scanDigest(files) });
   }
 
   /**

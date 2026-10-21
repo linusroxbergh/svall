@@ -478,9 +478,16 @@ build/
 target/
 .next/
 *.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 ```
 
-Excluded platform caches stay destination-local and are never used in source verification.
+Excluded platform caches stay destination-local and are never used in source verification. Files an
+OS or editor writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log`)
+transfer, since a repository may track them, but no comparison counts them as a change and no copy
+deletes one the destination alone holds in a folder the source still has; a Git
+directory's refs are compared by what they resolve to, so packing them is no change either.
 
 ## Git repository graphs
 
@@ -531,17 +538,30 @@ nothing. Changes made while that machine did not own the fleet block the handove
 - cancel and recover the changes manually; or
 - explicitly archive the divergent destination root and continue.
 
-Archiving renames the root to a timestamped sibling and reports the recovery path. Handover never
+Archiving renames the root to a timestamped sibling and reports the recovery path; a root that differs
+in at most 20 files, none in a Git directory, moves only those into the sibling and keeps the rest as its replica,
+and `README.archived.txt` in the sibling names each file deleted in the replica, which the copy brings back. Each
+archived linked worktree, the root itself or one that an archived main checkout registers under it, keeps its `.git`
+file as `.git.archived` beside a `.git` reading `gitdir: /nonexistent`, so git there neither reaches the live
+registration nor finds a repository above; `README.archived.txt` names each one's branch and commit. Handover never
 silently deletes destination-only work.
 
-Rsync runs incrementally over SSH with argv-safe arguments. A partial transfer leaves an inactive,
+Rsync runs incrementally over SSH with argv-safe arguments. Rules ahead of the filter file keep `--delete`
+from removing OS or editor noise only the destination holds in a folder the source still has, as perishable
+receiver-side excludes that let a folder the source dropped go whole, and any object in the object store of a Git
+directory whose worktrees the destination keeps, as protect rules. A partial transfer leaves an inactive,
 transaction-marked replica which `--resume` can continue cheaply. The source remains authoritative
 until ownership commits.
 
 After the main pass, the controller re-scans source state and file manifests and runs a verification
 pass. App/API writes and background jobs are frozen, but external editors cannot be locked; detected
 source changes cause another pass. After three unstable passes the handover stops and asks the user
-to close the external writer. A claim asked again also accepts each root as a pass verified it, as
+to close the external writer. Every pass after a root's first runs with `--backup` into
+`<root>.overwritten-<transaction>/<run>-pass<N>/`, a sibling of the root, so what it replaces or deletes there is
+kept; after each such pass, and in each pass of a resume, the controller lists that folder, and the root's row and the
+result name its files, twenty at most and a count of the rest. A resume compares and copies by checksum from its first
+pass. The first pass writes over what the claim proved, and the claim proves every root before the first is copied, so
+a file saved in a root after the claim and before that root's first pass is lost. A claim asked again also accepts each root as a pass verified it, as
 the controller's progress journal kept it; a root that kept changing holds a copy no pass verified,
 and goes on only once archived.
 
@@ -1029,7 +1049,9 @@ honest remapped URL when its preferred local port is occupied.
 - Killing the controller before and after commit reconstructs the correct sheet on relaunch.
 - A failed destination agent login before freeze blocks; a resume failure after commit leaves one
   dormant, retryable character without reactivating the source.
-- A destination file edited while inactive is never overwritten without explicit archive approval.
+- A destination file edited while inactive is never overwritten without explicit archive approval;
+  OS and editor noise is no edit, and a copy may replace it, or remove a folder the source dropped with it, but
+  deletes it nowhere else.
 
 ## Release gate
 

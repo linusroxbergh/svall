@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { TransferRoot } from '@svall/protocol';
-import { CONTROL, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES } from '@svall/svalld/handover/inventory';
+import { CONTROL, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, NOISE } from '@svall/svalld/handover/inventory';
 import { relativeProblem } from '@svall/svalld/handover/replicas';
 import { isRelease, releaseRoot } from '@svall/svalld/release';
 import { runProcess } from './process.js';
@@ -104,18 +104,29 @@ export function filterRules(excludes: readonly string[], kind?: TransferRoot['ki
   return [...keep.map((k) => `- /${k}/`), ...kept, ...excludes.map((x) => `- ${x}`)].map((line) => `${line}\n`).join('');
 }
 
+/**
+ * The object store of each Git directory under a root whose worktrees the destination keeps: an index there may stage
+ * a blob no ref reaches, which only that store holds.
+ */
+export const keptObjectStores = (keep: readonly string[]): string[] =>
+  [...new Set(keep.flatMap((k) => { const m = /^(?:(.+)\/)?worktrees\/[^/]+$/.exec(k); return m ? [m[1] ? `${m[1]}/objects` : 'objects'] : []; }))];
+
 /** One rsync run: a copy, or the checksum comparison that verifies one. */
 export type RsyncJob = {
   rsh: string;
   source: string;
   target: string;
   filterFile?: string;
+  // folders under the target whose files --delete leaves, as an extra object costs nothing and a missing one breaks an index
+  protect?: readonly string[];
+  // where a copy moves each file it replaces or deletes, on the target's machine
+  backupDir?: string;
   // a NUL-separated list of the only paths under the source to copy
   filesFrom?: string;
   delete: boolean;
   mkpath: boolean;
   dryRun: boolean;
-  // a copy that compares content rather than size and whole-second mtime
+  // a copy, or a dry run unless false, that compares content rather than size and whole-second mtime
   checksum?: boolean;
 };
 
@@ -125,9 +136,13 @@ const BASE = ['-rlpt', '--no-specials', '--no-devices', '-s', '-8', '--itemize-c
 export function rsyncArgv(job: RsyncJob): string[] {
   return [
     ...BASE,
-    ...(job.dryRun ? ['--dry-run', '--checksum'] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2']),
+    ...(job.dryRun ? ['--dry-run', ...(job.checksum === false ? [] : ['--checksum'])] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2', ...(job.backupDir ? ['--backup', `--backup-dir=${job.backupDir}`] : [])]),
     ...(job.delete ? ['--delete'] : []),
     ...(job.mkpath ? ['--mkpath'] : []),
+    // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`; a perishable one for
+    // noise spares it in a folder that stays and lets a folder the source dropped go whole
+    ...(job.delete ? NOISE.map((n) => `--filter=-rp ${n}`) : []),
+    ...(job.protect ?? []).map((p) => `--filter=P /${p}/**`),
     ...(job.filterFile ? [`--exclude-from=${job.filterFile}`] : []),
     ...(job.filesFrom ? ['--from0', `--files-from=${job.filesFrom}`] : []),
     '-e', job.rsh,
@@ -144,6 +159,19 @@ export type RsyncLine =
 const ITEM = /^([<>ch.][fdLDS][.+ ?a-zA-Z]{9}) (.+)$/;
 const MESSAGE = /^\*(\S+) +(.+)$/;
 const PROGRESS = /^\s*(\d[\d,]*)\s+\d+%\s+\S+\s+\S+(?:\s+\(xfr#\d+, (?:to|ir)-chk=(\d+)\/(\d+)\))?\s*$/;
+
+/** The rsync arguments that list the tree under a folder, which lists nothing when the folder is not there. */
+export const listArgv = (rsh: string, folder: string): string[] =>
+  ['-r', '-s', '-8', '--no-human-readable', '--list-only', '--ignore-missing-args', '-e', rsh, '--', folder];
+
+// a --list-only line: type and mode, size, date, time, then the name
+const LISTED = /^([-dlpcbs])\S* +\d+ \S+ \S+ (.+)$/;
+
+/** Each file and link a listing of the folder named `name` holds, by its path in that folder. */
+export const listedFiles = (lines: readonly string[], name: string): string[] => lines.flatMap((line) => {
+  const m = LISTED.exec(line);
+  return m && (m[1] === '-' || m[1] === 'l') && m[2].startsWith(`${name}/`) ? [m[2].slice(name.length + 1)] : [];
+});
 
 /** A link whose only itemized change is its mode: a Linux link is always 0777 and cannot be chmodded, so no pass settles it. */
 export const linkModeOnly = (change: string): boolean => /^\.L[. ]{3}p[. ]{5}$/.test(change);

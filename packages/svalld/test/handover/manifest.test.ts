@@ -245,6 +245,45 @@ describe('buildManifest', () => {
     expect(scan!.files.every((f, i) => f.type === 'file' && f.sha256 === sha(`file ${i}\n`))).toBe(true);
   });
 
+  it('takes the hash an earlier read left for a file whose stat says it is unchanged, and reads every other again', async () => {
+    const dir = tmp();
+    for (const name of ['same', 'edited', 'grown', 'replaced']) fs.writeFileSync(path.join(dir, name), `${name}\n`);
+    const reads: string[] = [];
+    // each stat as it reads once the files have sat for a while, so a hash of them is kept
+    const older = <T extends { ctimeMs?: number }>(st: T): T => Object.assign(st, { ctimeMs: (st.ctimeMs ?? 0) - 10_000 });
+    const counting: ScanFs = {
+      ...realScanFs, stat: async (p) => older(await realScanFs.stat(p)), lstat: async (p) => older(await realScanFs.lstat(p)),
+      read: (p) => { reads.push(path.basename(p)); return realScanFs.read(p); },
+    };
+    const first = await scanPath(dir, () => false, counting);
+    expect(reads.sort()).toEqual(['edited', 'grown', 'replaced', 'same']);
+    expect([...first!.hashes.values()].map((h) => h.sha256).sort()).toEqual(['edited', 'grown', 'replaced', 'same'].map((n) => sha(`${n}\n`)).sort());
+
+    // the same size and mtime with new content, a new size, and a new file under the old name
+    const edited = path.join(dir, 'edited');
+    const { mtime } = fs.statSync(edited);
+    fs.writeFileSync(edited, 'EDITED\n');
+    fs.utimesSync(edited, mtime, mtime);
+    fs.appendFileSync(path.join(dir, 'grown'), 'more\n');
+    fs.rmSync(path.join(dir, 'replaced'));
+    fs.writeFileSync(path.join(dir, 'replaced'), 'replaced\n');
+    reads.length = 0;
+    const again = await scanPath(dir, () => false, counting, true, true, first!.hashes);
+    expect(reads.sort()).toEqual(['edited', 'grown', 'replaced']);
+    expect(again!.files.find((f) => f.path === 'edited')).toMatchObject({ sha256: sha('EDITED\n') });
+    expect(again!.files).toEqual((await scanPath(dir, () => false))!.files);
+    // what the second read took is all it hands on, so a file gone since is forgotten
+    expect(again!.hashes.size).toBe(4);
+  });
+
+  it('keeps no hash of a file whose stat changed within two seconds of its read, which a write in the same tick would leave as it is', async () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'fresh'), 'fresh\n');
+    const scan = await scanPath(dir, () => false);
+    expect(scan!.files).toMatchObject([{ path: 'fresh', sha256: sha('fresh\n') }]);
+    expect(scan!.hashes.size).toBe(0);
+  });
+
   it('reads a session file a chunk at a time, and keeps none of its chunks once read', async () => {
     const s = seed();
     // a reader that refills one buffer for each chunk: a scan that held a chunk would see it change under it
@@ -314,6 +353,29 @@ describe('a Git repository', () => {
     const copied = execFileSync('rsync', ['-a', '--dry-run', '--out-format=%n', `--exclude-from=${rules}`, `${g.repo}/`, path.join(g.base, 'dst/')], { encoding: 'utf8' })
       .split('\n').filter((l) => l && !l.endsWith('/'));
     expect(copied.sort()).toEqual(manifest.roots.find((r) => r.path === g.repo)!.files.map((f) => f.path).sort());
+  });
+});
+
+describe('a Git ref', () => {
+  it('is listed with the value it holds, a packed-refs file with each ref it packs, and nothing else is', async () => {
+    const [c, d] = ['c'.repeat(40), 'd'.repeat(64)];
+    const root = tmp();
+    const files: Record<string, string> = {
+      '.git/refs/heads/main': `${c}\n`, '.git/refs/heads/topic': `${d}\n`, '.git/refs/remotes/origin/HEAD': 'ref: refs/remotes/origin/main\n',
+      '.git/packed-refs': `# pack-refs with: peeled fully-peeled sorted\n${c} refs/heads/old\n${d} refs/tags/v1\n^${c}\n`,
+      'notes/refs/a.md': `${c}\n`.repeat(2), 'other/packed-refs': 'not a packed-refs file\n',
+    };
+    for (const [rel, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), text);
+    }
+    const scanned = Object.fromEntries((await scanPath(root, () => false))!.files.map((f) => [f.path, f]));
+    expect(scanned['.git/refs/heads/main']).toMatchObject({ ref: c });
+    expect(scanned['.git/refs/heads/topic']).toMatchObject({ ref: d });
+    expect(scanned['.git/refs/remotes/origin/HEAD']).toMatchObject({ ref: 'ref: refs/remotes/origin/main' });
+    expect(scanned['.git/packed-refs']).toMatchObject({ refs: { 'refs/heads/old': c, 'refs/tags/v1': d } });
+    expect(scanned['notes/refs/a.md']).not.toHaveProperty('ref');
+    expect(scanned['other/packed-refs']).not.toHaveProperty('refs');
   });
 });
 

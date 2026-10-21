@@ -35,13 +35,18 @@ export type Inventory = {
 };
 
 // caches each machine builds for itself
-export const DEFAULT_EXCLUDES = ['node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo'] as const;
+export const DEFAULT_EXCLUDES = [
+  'node_modules/', '.venv/', '__pycache__/', 'dist/', 'build/', 'target/', '.next/', '*.tsbuildinfo', '.pytest_cache/', '.ruff_cache/', '.mypy_cache/',
+] as const;
+
+// what an OS or an editor writes beside the work on its own: carried, as a repository may track it, never a change, and never deleted
+export const NOISE = ['.DS_Store', '._*', '.idea/workspace.xml', '.vscode/*.log'] as const;
 
 // v1 carries no path holding one: rsync's file lists and itemized output are read a line at a time
 export const CONTROL = /[\x00-\x1f\x7f]/;
 
 // Git's own records are never a cache: no exclude reaches a `.git` entry or anything under one
-const inGit = (relative: string): boolean => relative.split('/').includes('.git');
+const inGit = (relative: string): boolean => /(^|\/)\.git(\/|$)/.test(relative);
 
 /** The same promise as rsync filter rules, to go ahead of the excludes. */
 export const GIT_KEEP_RULES = ['+ .git', '+ .git/**'] as const;
@@ -110,6 +115,24 @@ export function excludeMatcher(patterns: readonly string[], kept?: ReadonlySet<s
   });
   return (relative, dir) => !inGit(relative) && !kept?.has(relative.split('/')[0]) && rules.some((r) =>
     (dir || !r.dirOnly) && r.re.test(r.whole ? relative : relative.slice(relative.lastIndexOf('/') + 1)));
+}
+
+const noise = excludeMatcher(NOISE);
+/** Whether a path under a root is OS or editor noise, which no comparison counts as a change. */
+export const isNoise = (relative: string): boolean => excludedPath(relative, noise);
+
+/** `isNoise` for the many paths of one tree, which reads each folder above them once. */
+export function noiseReader(): (relative: string) => boolean {
+  const folders = new Map<string, boolean>();
+  const folder = (dir: string): boolean => {
+    let held = folders.get(dir);
+    if (held === undefined) {
+      const up = dir.lastIndexOf('/');
+      folders.set(dir, held = (up >= 0 && folder(dir.slice(0, up))) || noise(dir, true));
+    }
+    return held;
+  };
+  return (relative) => { const up = relative.lastIndexOf('/'); return (up >= 0 && folder(relative.slice(0, up))) || noise(relative, false); };
 }
 
 type Kind = TransferRoot['kind'];

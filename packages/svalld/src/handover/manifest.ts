@@ -12,7 +12,7 @@ import { holds } from './portable-path.js';
 import { sessionAdapter } from './sessions/registry.js';
 import { SessionError, type FoundSession, type SessionAdapter } from './sessions/types.js';
 
-type Stat = Pick<fs.Stats, 'isFile' | 'isDirectory' | 'isSymbolicLink' | 'mode' | 'size' | 'mtimeMs'>;
+type Stat = Pick<fs.Stats, 'isFile' | 'isDirectory' | 'isSymbolicLink' | 'mode' | 'size' | 'mtimeMs'> & Partial<Pick<fs.Stats, 'ctimeMs' | 'ino'>>;
 
 /** The reads a scan makes, so a test can make a file vanish, refuse or turn up in any order. */
 export type ScanFs = {
@@ -31,13 +31,24 @@ export const realScanFs: ScanFs = {
   read: (p) => fs.createReadStream(p),
 };
 
+type FileEntry = Extract<TransferFile, { type: 'file' }>;
+type Hashed = Pick<FileEntry, 'size' | 'sha256' | 'gitIndex' | 'ref' | 'refs'>;
+/** What a read took of each file, by its path and the stat that says it has not changed since: one a later read can take as it is. */
+export type Hashes = Map<string, Hashed>;
+
+// a write moves a file's ctime, which nothing sets back, and a file put in its place has another inode
+// a write in the same tick of a coarse clock as a read leaves the stat as it was, so a stat this close to one names no hash
+const RACY_MS = 2_000;
+const stamp = (file: string, st: Stat): string | undefined =>
+  (st.ctimeMs === undefined || st.ino === undefined ? undefined : `${file}\0${st.size}\0${st.mtimeMs}\0${st.ctimeMs}\0${st.ino}`);
+
 /** A preflight's manifest names no transaction; a freeze's names the one it froze for. */
 export type ManifestHeader = { transactionId?: string; generation: number };
 /**
  * `listed`: the carried files and their bytes as the walk found them, read or not. `unused`: what blocks unless the
  * choices carry the Git repositories no character works in.
  */
-export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed };
+export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed; hashes: Hashes };
 type Listed = { files: number; bytes: number };
 
 const ENV_FILE = /^\.env(\..+)?$/;
@@ -46,23 +57,55 @@ const CREDENTIAL_FILE = /(?:^|\/)(?:\.netrc|\.git-credentials|\.config\/gh\/host
 const BLOCK = 4096;
 // the most a file named like a Git index is read whole to name it by its staged entries
 const INDEX_MAX = 256 * 1024 * 1024;
+// the most a file named like a Git ref or packed-refs is read whole to name it by the refs it holds
+const REFS_MAX = 1024 * 1024;
+const LOOSE_REF = /^(?:[0-9a-f]{40}|[0-9a-f]{64}|ref: refs\/\S+)$/;
+const PACKED_REF = /^([0-9a-f]{40}|[0-9a-f]{64}) (refs\/\S+)$/;
 // files hashed at once: a many-file tree is bound by round trips to the disk, and each read holds one chunk
 const HASHING = 8;
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 const reason = (e: unknown): string => (e as NodeJS.ErrnoException).code ?? String(e);
 
-type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[]; repos: string[]; listed: Listed };
+type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[]; repos: string[]; listed: Listed; hashes: Hashes };
 
 async function* tap(chunks: AsyncIterable<Buffer>, into: Buffer[] | undefined): AsyncIterable<Buffer> {
   for await (const chunk of chunks) { into?.push(chunk); yield chunk; }
 }
 
-async function addFile(scan: Scan, relative: string, file: string, st: Stat, sfs: ScanFs): Promise<void> {
+/** What a file read whole says as Git refs: the value a loose ref holds, or each ref a packed-refs file packs. */
+function gitRefs(name: string, buf: Buffer): Pick<Extract<TransferFile, { type: 'file' }>, 'ref' | 'refs'> {
+  const text = buf.toString('utf8');
+  if (name !== 'packed-refs') return LOOSE_REF.test(text.replace(/\n$/, '')) ? { ref: text.replace(/\n$/, '') } : {};
+  const refs: Record<string, string> = {};
+  for (const line of text.replace(/\n$/, '').split('\n')) {
+    // a header, and the commit a tag above peels to
+    if (line.startsWith('#') || /^\^[0-9a-f]{40,64}$/.test(line)) continue;
+    const m = PACKED_REF.exec(line);
+    if (!m) return {};
+    refs[m[2]] = m[1];
+  }
+  return { refs };
+}
+
+async function addFile(scan: Scan, relative: string, file: string, st: Stat, sfs: ScanFs, known?: ReadonlyMap<string, Hashed>): Promise<void> {
+  const key = stamp(file, st);
+  const held = key === undefined ? undefined : known?.get(key);
+  if (held) {
+    scan.files.push({ type: 'file', path: relative, mode: st.mode & 0o7777, mtimeMs: Math.trunc(st.mtimeMs), ...held });
+    scan.hashes.set(key!, held);
+    return;
+  }
   try {
-    const whole = path.basename(file) === 'index' && st.size <= INDEX_MAX ? [] : undefined;
+    const name = path.basename(file);
+    const refFile = name === 'packed-refs' || /(^|\/)refs\//.test(relative);
+    const whole = (name === 'index' && st.size <= INDEX_MAX) || (refFile && st.size <= REFS_MAX) ? [] : undefined;
+    const started = Date.now();
     const { sha256, size } = await hashStream(tap(sfs.read(file), whole));
-    const gitIndex = whole && gitIndexDigest(Buffer.concat(whole));
-    scan.files.push({ type: 'file', path: relative, mode: st.mode & 0o7777, size, mtimeMs: Math.trunc(st.mtimeMs), sha256, ...(gitIndex && { gitIndex }) });
+    const gitIndex = name === 'index' && whole && gitIndexDigest(Buffer.concat(whole));
+    const refs = refFile && whole ? gitRefs(name, Buffer.concat(whole)) : {};
+    const read = { size, sha256, ...(gitIndex && { gitIndex }), ...refs };
+    scan.files.push({ type: 'file', path: relative, mode: st.mode & 0o7777, mtimeMs: Math.trunc(st.mtimeMs), ...read });
+    if (key !== undefined && (st.ctimeMs ?? started) < started - RACY_MS) scan.hashes.set(key, read);
   } catch (e) {
     // a file removed since the listing is simply not there; the verify pass catches the change
     if (!gone(e)) scan.problems.push(`${relative || file}: ${reason(e)}`);
@@ -84,7 +127,9 @@ function pool(width: number): { add(task: () => Promise<void>): Promise<void>; d
 
 type Hashing = ReturnType<typeof pool>;
 
-async function walk(scan: Scan, base: string, relative: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs, hashing: Hashing | undefined): Promise<void> {
+async function walk(
+  scan: Scan, base: string, relative: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs, hashing: Hashing | undefined, known?: ReadonlyMap<string, Hashed>,
+): Promise<void> {
   let names: Buffer[];
   try { names = await sfs.readdir(path.join(base, relative)); } catch (e) {
     if (!gone(e)) scan.problems.push(`${relative || '.'}: ${reason(e)}`);
@@ -104,7 +149,7 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
     // a folder below the top that holds a `.git` is a repository's checkout
     if (name === '.git' && relative) scan.repos.push(relative);
     if (st.isDirectory()) {
-      if (!excluded(rel, true)) await walk(scan, base, rel, excluded, sfs, hashing);
+      if (!excluded(rel, true)) await walk(scan, base, rel, excluded, sfs, hashing, known);
     } else if (!excluded(rel, false) && st.isSymbolicLink()) {
       try {
         const target = await sfs.readlink(file);
@@ -117,8 +162,8 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
       scan.listed.files++;
       scan.listed.bytes += st.size;
       // a Git index is read whole, so only one is held at a time
-      if (hashing && name === 'index') await addFile(scan, rel, file, st, sfs);
-      else if (hashing) await hashing.add(() => addFile(scan, rel, file, st, sfs));
+      if (hashing && name === 'index') await addFile(scan, rel, file, st, sfs, known);
+      else if (hashing) await hashing.add(() => addFile(scan, rel, file, st, sfs, known));
       if (ENV_FILE.test(name)) scan.envFiles.push(rel);
       if (CREDENTIAL_FILE.test(file)) scan.credentialFiles.push(rel);
     }
@@ -132,12 +177,15 @@ const listed = (items: string[], limit: number): string => {
 };
 
 /**
- * Reads every root and session the inventory names into one manifest, hashing each file as a stream,
- * and names the result by the digest of its canonical JSON. Without `read` it walks the names alone and reads no
- * file: the manifest lists links only, and `listed` and the blockers are what a read would find from names.
+ * Reads every root and session the inventory names into one manifest, hashing each file as a stream, or taking what
+ * `known` holds for a root's file unchanged since, and names the result by the digest of its canonical JSON. Without
+ * `read` it walks the names alone and reads no file: the manifest lists links only, and `listed` and the blockers are
+ * what a read would find from names.
  */
-export async function buildManifest(inventory: Inventory, header: ManifestHeader, sfs: ScanFs = realScanFs, read = true): Promise<BuiltManifest> {
-  const { roots, blockers, warnings, unused, listed: counted } = await scanRoots(inventory, sfs, read);
+export async function buildManifest(
+  inventory: Inventory, header: ManifestHeader, sfs: ScanFs = realScanFs, read = true, known?: ReadonlyMap<string, Hashed>,
+): Promise<BuiltManifest> {
+  const { roots, blockers, warnings, unused, listed: counted, hashes } = await scanRoots(inventory, sfs, read, known);
   const sessions: TransferSession[] = [];
   for (const session of inventory.sessions) {
     const carried = await scanSession(session, sfs, read);
@@ -161,10 +209,13 @@ export async function buildManifest(inventory: Inventory, header: ManifestHeader
     sessions,
     git: inventory.git,
   });
-  return { manifest, digest: manifestDigest(manifest), blockers: settle(blockers), warnings: settle(warnings), unused: settle(unused), listed: counted };
+  return { manifest, digest: manifestDigest(manifest), blockers: settle(blockers), warnings: settle(warnings), unused: settle(unused), listed: counted, hashes };
 }
 
-async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Promise<{ roots: TransferRoot[]; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed }> {
+async function scanRoots(
+  inventory: Inventory, sfs: ScanFs, hash: boolean, known?: ReadonlyMap<string, Hashed>,
+): Promise<{ roots: TransferRoot[]; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed; hashes: Hashes }> {
+  const hashes: Hashes = new Map();
   const blockers = [...inventory.blockers];
   const warnings: Warning[] = [...inventory.warnings];
   const unused: Blocker[] = [];
@@ -172,7 +223,7 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
   const counted: Listed = { files: 0, bytes: 0 };
   for (const root of inventory.roots) {
     const entity: HandoverEntity = { kind: 'root', id: root.id };
-    const scanned = await scanPath(root.path, rootMatcher(root.kind, inventory.excludes), sfs, !root.foldedInto, hash);
+    const scanned = await scanPath(root.path, rootMatcher(root.kind, inventory.excludes), sfs, !root.foldedInto, hash, known);
     if (!scanned) {
       // a working directory or a context file that is gone has nothing to carry; a repository has to be rebuilt
       if (root.kind === 'repo' || root.kind === 'worktree' || root.kind === 'gitdir') blockers.push({ code: 'worktree_unresolved', message: `${root.path} no longer exists`, entity });
@@ -181,6 +232,7 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
     const { entry, files, problems, envFiles, credentialFiles } = scanned;
     counted.files += scanned.listed.files;
     counted.bytes += scanned.listed.bytes;
+    for (const [key, held] of scanned.hashes) hashes.set(key, held);
     if (problems.length) {
       blockers.push({ code: 'path_unsupported', message: `${root.path}: ${problems.length} ${problems.length === 1 ? 'path' : 'paths'} cannot be carried: ${listed(problems, 5)}`, entity });
     }
@@ -199,7 +251,7 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
     if (root.kind === 'cwd') unused.push(...unusedRepositories(inventory, root, scanned.repos));
     roots.push({ ...root, entry, files: files.sort((a, b) => byCodeUnit(a.path, b.path)) });
   }
-  return { roots, blockers, warnings, unused, listed: counted };
+  return { roots, blockers, warnings, unused, listed: counted, hashes };
 }
 
 /**
@@ -250,25 +302,27 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
  * a source named with a trailing slash; nothing under it is.
  */
 export async function scanPath(
-  top: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs = realScanFs, contents = true, hash = true,
+  top: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs = realScanFs, contents = true, hash = true, known?: ReadonlyMap<string, Hashed>,
 ): Promise<(Scan & { entry: TransferRoot['entry'] }) | undefined> {
   let st: Stat;
   const counted: Listed = { files: 0, bytes: 0 };
   try { st = await sfs.stat(top); } catch (e) {
     if (gone(e)) return undefined;
-    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [], repos: [], listed: counted };
+    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [], repos: [], listed: counted, hashes: new Map() };
   }
-  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [], repos: [], listed: counted };
+  const scan: Scan & { entry: TransferRoot['entry'] } = {
+    entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [], repos: [], listed: counted, hashes: new Map(),
+  };
   if (!contents) return scan;
   if (st.isDirectory()) {
     const hashing = hash ? pool(HASHING) : undefined;
-    await walk(scan, top, '', excluded, sfs, hashing);
+    await walk(scan, top, '', excluded, sfs, hashing, known);
     await hashing?.drain();
     scan.files.sort((a, b) => byCodeUnit(a.path, b.path));
   } else if (st.isFile()) {
     counted.files++;
     counted.bytes += st.size;
-    if (hash) await addFile(scan, '', top, st, sfs);
+    if (hash) await addFile(scan, '', top, st, sfs, known);
     if (CREDENTIAL_FILE.test(top)) scan.credentialFiles.push(top);
   }
   else scan.problems.push('neither a file nor a folder');
