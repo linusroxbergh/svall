@@ -201,7 +201,7 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       }
       // a registry that knows no way to the gateway asked for is a wrong question, not a gateway that is away
       const gateway = machines[o.gatewayMachineId];
-      if (!gateway?.ssh) throw new AuthorityFailure('invalid_request', `${registry} names no ssh route to the gateway ${o.gatewayMachineId}`);
+      if (!gateway?.ssh) throw new AuthorityFailure('invalid_request', `${registry} names no ssh route to the gateway ${o.gatewayMachineId}`, { unrouted: true });
       const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'svall-owner', svallExe(gateway.svallBase), fleetId].map(shq).join(' ')]);
       const answeredAs = versionMachineId(r.stdout);
       const line = lastLine(r.stdout);

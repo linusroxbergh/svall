@@ -108,7 +108,8 @@ export class HandoverService {
     const named = p.gatewayMachineId ? undefined : this.deps.source.authority?.();
     if (named) {
       const said = await named.get(record.fleetId).then(() => 'answered with its record', (e: unknown) =>
-        (e instanceof AuthorityFailure && UNANSWERED.has(e.code) ? undefined : `failed as no gateway out of reach does (${e instanceof Error ? e.message : String(e)})`));
+        // a registry with no route to the gateway leaves it as unasked as one that does not answer
+        (e instanceof AuthorityFailure && (UNANSWERED.has(e.code) || e.data?.unrouted) ? undefined : `failed as no gateway out of reach does (${e instanceof Error ? e.message : String(e)})`));
       if (said) throw Object.assign(new Error(`the gateway this fleet names ${said}, so it is not known lost and this machine does not run the fleet alone`), { code: 'invalid_params' });
     }
     const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;

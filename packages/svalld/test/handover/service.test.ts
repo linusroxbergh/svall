@@ -452,8 +452,14 @@ describe('a record a recovery relays', () => {
   });
 
   it('runs the fleet alone on a record that names no gateway once the gateway fleet.json names does not answer, letting go the handover it supersedes and dropping that gateway', async () => {
-    for (const code of ['disconnected', 'timeout'] as const) {
-      const named: Authority = { get: async () => { throw new AuthorityFailure(code, 'ssh trift exited 255 without an answer'); } };
+    const unanswered = [
+      new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'),
+      new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'),
+      // a registry with no route to the gateway leaves it as unasked as one that does not answer
+      new AuthorityFailure('invalid_request', 'machines.json names no ssh route to the gateway', { unrouted: true }),
+    ];
+    for (const failure of unanswered) {
+      const named: Authority = { get: async () => { throw failure; } };
       const b = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination(), named, gateway: { get: async () => { throw new Error('another gateway was asked'); } } });
       await enter(b);
       expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, superseded: 'tx-1', ownership: { generation: 9, ownerMachineId: me, frozen: false } });
@@ -468,6 +474,7 @@ describe('a record a recovery relays', () => {
     const answers: Authority[] = [
       { get: async () => ({ fleetId, generation: 4, ownerMachineId: other }) },
       { get: async () => { throw new AuthorityFailure('authority_corrupt', 'the record of this fleet cannot be read'); } },
+      { get: async () => { throw new AuthorityFailure('invalid_request', 'ssh trift answered with what is no authority\'s frame'); } },
       { get: async () => { throw new Error('spawn ssh ENOENT'); } },
     ];
     for (const named of answers) {

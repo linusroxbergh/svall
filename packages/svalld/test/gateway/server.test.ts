@@ -294,7 +294,7 @@ describe('a fleet authority as its daemon reaches it', () => {
     answer = { code: 0, stdout: `${named}${JSON.stringify({ result: { record: { fleetId: FLEET } } })}\n`, stderr: '' };
     expect(await failure(far.get(FLEET))).toMatchObject({ code: 'invalid_request' });
     // a registry that names no route to the gateway it is asked for is a wrong question, not a gateway away
-    expect(await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry, ssh }).get(FLEET))).toMatchObject({ code: 'invalid_request', message: expect.stringMatching(/no ssh route/) });
+    expect(await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry, ssh }).get(FLEET))).toMatchObject({ code: 'invalid_request', message: expect.stringMatching(/no ssh route/), data: { unrouted: true } });
     expect((await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry: path.join(prefix(), 'none.json'), ssh }).get(FLEET))).code).toBe('disconnected');
   });
 
