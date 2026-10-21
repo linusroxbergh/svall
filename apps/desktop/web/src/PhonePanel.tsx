@@ -36,7 +36,8 @@ export function MobilePanel() {
   useEffect(() => { loadMobileStatus(deps()); return () => window.clearTimeout(revert.current); }, []);
   const copy = () => {
     if (!status?.url) return;
-    copyText(app.bridge, status.url);
+    // the copied link pairs the phone, as the QR code does
+    copyText(app.bridge, status.pair ?? status.url);
     setCopied(true);
     window.clearTimeout(revert.current);
     revert.current = window.setTimeout(() => setCopied(false), 1500);

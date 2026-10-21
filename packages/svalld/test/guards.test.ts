@@ -174,7 +174,7 @@ describe('char.wait over a socket', () => {
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
+      host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
       workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs,
     });

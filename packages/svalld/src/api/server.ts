@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Hello, LOGIN_REFUSED, PROTOCOL_VERSION, Request, type Event, type HelloReply } from '@svall/protocol';
+import { Hello, LOGIN_REFUSED, PROTOCOL_VERSION, Request, UNPAIRED, type Event, type HelloReply } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { Logger } from '../log.js';
@@ -10,7 +10,7 @@ import type { Phones } from '../phones.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import type { ClaudePaths } from '../paths.js';
-import { mobileDist } from '../runtime.js';
+import { mobileDist, variant } from '../runtime.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
@@ -22,7 +22,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string;
-  origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; fleetName?: () => string | undefined; heartbeatMs?: number;
+  origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
 
 const MAX_PAYLOAD = 8 * 1024 * 1024;
@@ -33,11 +33,14 @@ const LOOK_MS = 10_000;
 // what a worker may do with one POST: answer the prompt a notification carried
 const RPC_METHODS = new Set(['char.answer']);
 const MAX_RPC_BODY = 64 * 1024;
-// the packaged app and the Vite dev server
-const APP_ORIGINS = new Set(['svall://app', 'http://localhost:5173', 'http://127.0.0.1:5173']);
+// the packaged app, and in a checkout the Vite dev server
+const APP_ORIGINS = new Set(['svall://app', ...(variant === 'dev' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [])]);
 // tailscale serve sets this on every request it proxies, and strips any the client sent itself
 const IDENTITY_HEADER = 'tailscale-user-login';
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+// the cookie a phone keeps the pass in, for as long as a browser keeps one
+const PASS_COOKIE = 'svall-pass';
+const PASS_MAX_AGE_S = 400 * 86_400;
 
 function tokenMatches(given: string, token: string): boolean {
   const a = crypto.createHash('sha256').update(given).digest();
@@ -54,6 +57,15 @@ export function stripKey(url: string, key: string): string | undefined {
   const want = Buffer.from(key);
   if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return undefined;
   return (end === -1 ? '/' : path.slice(end)) + (q === -1 ? '' : url.slice(q));
+}
+
+/** What the request's cookie `name` says, if it carries one. */
+export function cookieOf(req: IncomingMessage, name: string): string | undefined {
+  for (const part of (req.headers.cookie ?? '').split(';')) {
+    const at = part.indexOf('=');
+    if (at !== -1 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();
+  }
+  return undefined;
 }
 
 /**
@@ -110,6 +122,9 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   // Anything on the machine reaches the port, so a socket there says the token — unless its path opens
   // with the key only tailscaled was handed, which proves the login header came from the proxy.
   const behindKey = (req: IncomingMessage) => { const key = opts.key?.(); return key ? stripKey(req.url ?? '/', key) : undefined; };
+  // The key proves only that much: it is in the serve command's arguments, which other users on the Mac can read. A phone
+  // also holds the pass, which left the Mac in the QR code alone, in the cookie /pair set from the link's fragment
+  const paired = (req: IncomingMessage) => { const given = cookieOf(req, PASS_COOKIE); return given !== undefined && tokenMatches(given, opts.pass); };
   // a request through the key proves tailscale is up, so a refused one asks it again who owns this Mac: it may not have
   // answered when the daemon started, or the Mac may be signed in as someone else since
   let lookedAt = -Infinity;
@@ -122,30 +137,48 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const server = http.createServer((req, res) => {
     const stripped = behindKey(req);
     if (stripped) req.url = stripped;
-    if (req.method === 'POST' && req.url === '/rpc') {
+    if (req.method === 'POST' && (req.url === '/rpc' || req.url === '/pair')) {
+      const login = stripped ? phoneLogin(req) : undefined;
       // a client that drops mid-body rejects the read
-      rpc(req, res, stripped ? phoneLogin(req) : undefined).catch((e: Error) => {
-        log.error(`rpc: ${e.message}`);
+      (req.url === '/pair' ? pair(req, res, login) : rpc(req, res, login)).catch((e: Error) => {
+        log.error(`${req.url}: ${e.message}`);
         if (!res.headersSent) res.writeHead(400).end();
       });
       return;
     }
-    serveBundle(req, res, dist, opts.fleetName?.());
+    // a Home Screen app opens where the manifest says: a paired page's manifest leads back in with the pass
+    serveBundle(req, res, dist, opts.fleetName?.(), stripped && paired(req) ? `/#${opts.pass}` : undefined);
   });
 
-  // a worker answering a notification has no socket; it posts one call, vouched for the way a phone socket is
-  async function rpc(req: IncomingMessage, res: ServerResponse, login: string | undefined): Promise<void> {
-    if (!login) { res.writeHead(401).end(); return; }
-    if (!originAllowed(req, origins, true)) { res.writeHead(403).end(); return; }
+  async function body(req: IncomingMessage, res: ServerResponse): Promise<string | undefined> {
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of req as AsyncIterable<Buffer>) {
       size += chunk.length;
-      if (size > MAX_RPC_BODY) { res.writeHead(413).end(); return; }
+      if (size > MAX_RPC_BODY) { res.writeHead(413).end(); return undefined; }
       chunks.push(chunk);
     }
+    return Buffer.concat(chunks).toString('utf8');
+  }
+
+  // the page posts the pass it found in the link's fragment; the cookie it gets back is what its socket and its worker's answers carry
+  async function pair(req: IncomingMessage, res: ServerResponse, login: string | undefined): Promise<void> {
+    if (!login) { res.writeHead(401).end(); return; }
+    if (!originAllowed(req, origins, true)) { res.writeHead(403).end(); return; }
+    const given = await body(req, res);
+    if (given === undefined) return;
+    if (!tokenMatches(given, opts.pass)) { res.writeHead(403).end(); return; }
+    res.writeHead(204, { 'set-cookie': `${PASS_COOKIE}=${opts.pass}; Path=/; Max-Age=${PASS_MAX_AGE_S}; Secure; HttpOnly; SameSite=Strict` }).end();
+  }
+
+  // a worker answering a notification has no socket; it posts one call, vouched for the way a phone socket is
+  async function rpc(req: IncomingMessage, res: ServerResponse, login: string | undefined): Promise<void> {
+    if (!login || !paired(req)) { res.writeHead(401).end(); return; }
+    if (!originAllowed(req, origins, true)) { res.writeHead(403).end(); return; }
+    const text = await body(req, res);
+    if (text === undefined) return;
     let parsed: unknown;
-    try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { res.writeHead(400).end(); return; }
+    try { parsed = JSON.parse(text); } catch { res.writeHead(400).end(); return; }
     const r = Request.safeParse(parsed);
     if (!r.success || !RPC_METHODS.has(r.data.method)) { res.writeHead(400).end(); return; }
     const viewer: Viewer = { kind: 'phone', login, send: () => {}, backlog: () => 0 };
@@ -167,6 +200,11 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       const who = String(req.headers[IDENTITY_HEADER] ?? '');
       if (!refused.has(who)) { refused.add(who); log.error(`api: refused a phone socket from tailnet login ${who || '(none)'}`); }
       wss.handleUpgrade(req, socket, head, (ws: WebSocket) => { ws.on('error', () => {}); ws.close(LOGIN_REFUSED, 'tailnet login not accepted'); });
+      return;
+    }
+    // a phone the proxy vouches for but that holds no pass is told so, and asks for the QR code again
+    if (proxied && !paired(req)) {
+      wss.handleUpgrade(req, socket, head, (ws: WebSocket) => { ws.on('error', () => {}); ws.close(UNPAIRED, 'phone not paired'); });
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => connect(ws, login));
