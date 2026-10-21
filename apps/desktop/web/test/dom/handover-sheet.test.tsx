@@ -175,22 +175,26 @@ test('a decision mid-run says how many things wait on it, with the agent at work
   expect(working.querySelector('.ho-plan')?.textContent).toBe('c0 will be stopped with Escape and resume from its transcript on trift.');
 });
 
+// what the controller's status reasons look like: ids and generations the sheet never shows
+const [TX, MAC, TRIFT] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90', 'c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45'];
+
 test('a run that stopped offers Resume and Abort before the commit with what each does, and only Retry after it', () => {
   render(<HandoverSheet />);
   act(() => {
     store.getState().toggleHandover(true);
     store.getState().handoverReplay([preflight, ...changed('begin', 'freeze', 'transfer'),
       { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'transfer', error: 'ssh to trift closed', safe: ['resume', 'abort'] } },
-      { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'none', transactionId: 'tx', phase: 'transfer', safe: ['resume', 'abort'], reason: 'handover tx stopped at transfer; resume or abort it' } }]);
+      { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: `${TX} is preparing and has not committed; it can go on, or be aborted back to ${MAC}` } }]);
   });
-  expect(screen.getByTestId('handover-headline').textContent).toBe('handover tx stopped at transfer; resume or abort it');
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
   expect(screen.getByTestId('handover-footnote').textContent).toBe('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
   expect(screen.getByTestId('handover-resume').textContent).toBe('Resume');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();
-  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', transactionId: 'tx', phase: 'activate', safe: ['resume'], reason: 'trift holds tx committed; resume finishes it there' } }]));
+  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'continue', transactionId: TX, phase: 'activate', safe: ['resume'], reason: `${TX} is committed: the fleet belongs to ${TRIFT} at generation 4, and only its activation can go on` } }]));
   expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
   expect(screen.queryByTestId('handover-abort')).toBeNull();
   expect(screen.getByTestId('handover-footnote').textContent).toBe('Retry finishes resuming on trift; nothing goes back from here.');
+  expect(screen.getByTestId('handover-sheet').textContent).not.toMatch(new RegExp(`${TX}|${TRIFT}|generation|activation`));
 });
 
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [

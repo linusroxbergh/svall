@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Blocker, HandoverPhase } from '@svall/protocol';
+import type { Blocker, HandoverPhase, MachineId, SafeAction, Standing } from '@svall/protocol';
 import {
-  actionsOf, applyEvent, blockerHint, choiceFor, chosen, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
+  actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
   rowText, sectionStates, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
@@ -139,6 +139,38 @@ describe('what the sheet offers', () => {
     expect(actionsOf(status('open', ['resume', 'abort'], 'transfer'))).toMatchObject({ resume: 'Resume', abort: true });
     expect(actionsOf(status('committed', ['resume'], 'activate'))).toMatchObject({ resume: 'Retry', abort: false });
     expect(actionsOf(status('moved', [], 'activate'))).toMatchObject({ resume: undefined, abort: false, start: true });
+  });
+
+  it('says where a status leaves the handover in its own words, never with the ids and generations the controller names', () => {
+    const [id, mac, studio] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90', 'c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45'];
+    const said = (standing: Standing, safe: SafeAction[], reason: string, phase?: HandoverPhase, to?: string) => headline(endFollow(play([{ event: 'handover.status', data: {
+      standing, journals: {}, action: 'none', transactionId: id, fromMachineId: mac as MachineId, toMachineId: studio as MachineId, generation: 3, ...(phase && { phase }), safe, reason,
+    } }], followRun(to)), 0), destinationName(to));
+    const lines = [
+      [said('open', ['resume', 'abort'], `${id} is preparing and has not committed; it can go on, or be aborted back to ${mac}`, 'transfer', 'studio'),
+        'Stopped at Transferring files and sessions, before the commit: the fleet has not moved.'],
+      [said('open', ['resume', 'abort'], `${id} is preparing and has not committed; it can go on, or be aborted back to ${mac}`, 'aborted', 'studio'),
+        'An abort stopped part way, before the commit: the fleet has not moved.'],
+      [said('committed', ['resume'], `${id} is committed: the fleet belongs to ${studio} at generation 4, and only its activation can go on`, 'activate', 'studio'),
+        "The fleet is studio's now, and stopped before its characters resumed there."],
+      [said('moved', ['resume'], `the gateway has moved this fleet to ${studio} at generation 4; what ${id} left open is only to be finished`, 'activate'),
+        'The fleet runs on the other machine now; what the handover left open there is still to finish.'],
+      [said('committed', [], `${id} moved this fleet to ${studio}, whose handover journal could not be read and was moved to /home/ada/.svall/handover.json.broken-1; nothing is safe until someone looks at that machine`, 'activate', 'studio'),
+        "The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until someone looks at that machine."],
+      [said('returned', ['abort'], `the gateway no longer holds ${id}, and the fleet is ${mac}'s at generation 3; its abort is only to be finished`, 'freeze'),
+        'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.'],
+      [said('superseded', [], `the gateway holds this fleet for ${studio} at generation 5 in handover 9b1d…, past ${id}`),
+        "The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it."],
+      [said('unknown', [], `the gateway cannot say whether ${id} committed (ssh: connect to host studio port 22: Operation timed out); nothing is safe until it answers`, 'commit', 'studio'),
+        'Whether the fleet moved to studio is not known yet: the gateway has not answered.'],
+      [said('none', ['abort'], 'the gateway never began this handover; nothing moved'), 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.'],
+      [said('none', [], 'no handover of this fleet is open anywhere'), 'No handover of this fleet is open.'],
+    ];
+    for (const [line, want] of lines) {
+      expect(line).toBe(want);
+      expect(line).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}|generation|activation|journal/);
+    }
+    expect(headline(play([result({ status: 'none', reason: 'no handover of this fleet is open anywhere' })]), 'studio')).toBe('There was no handover of this fleet to resume or abort.');
   });
 
   it('offers Forget for a journal the gateway has moved on from, and asks the user only about what can be decided', () => {
@@ -416,7 +448,7 @@ describe('the helper lines the sheet reads', () => {
     const older = [changed('begin'), { event: 'handover.preflight', data: { summary } }, { event: 'handover.result', data: { status: 'interrupted', phase: 'transfer' } },
       { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }] as HandoverEvent[];
     const run = play(older);
-    expect(headline(run, 'studio')).toBe('no handover is open');
+    expect(headline(run, 'studio')).toBe('No handover of this fleet is open.');
     expect(run.preflight).toBeUndefined();
   });
 });

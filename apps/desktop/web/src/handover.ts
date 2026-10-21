@@ -464,10 +464,27 @@ function progressText(row: Row): string {
 
 const label = (id: SectionId) => SECTIONS.find((s) => s.id === id)!.label;
 
+/** Where a status leaves the handover, from its standing, safe actions and phase; its reason names ids and generations. */
+function standingLine(s: Verdict, destination: string): string {
+  switch (s.standing) {
+    case 'open':
+      return `${s.phase === 'aborted' ? 'An abort stopped part way' : `Stopped at ${label(SECTIONS[sectionAt(s.phase ?? 'begin')].id)}`}, before the commit: the fleet has not moved.`;
+    case 'committed': case 'moved':
+      if (!s.safe.length) return `The fleet moved to ${destination}, but ${destination}'s record of the handover could not be read: nothing is safe until someone looks at that machine.`;
+      return s.standing === 'committed'
+        ? `The fleet is ${destination}'s now, and stopped before its characters resumed there.`
+        : `The fleet runs on ${destination} now; what the handover left open there is still to finish.`;
+    case 'returned': return 'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.';
+    case 'superseded': return "The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.";
+    case 'unknown': return `Whether the fleet moved to ${destination} is not known yet: the gateway has not answered.`;
+    case 'none': return s.safe.includes('abort') ? 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.' : 'No handover of this fleet is open.';
+  }
+}
+
 /** The sheet's one line on where the handover stands. `destination` is the machine it goes to, by name. */
 export function headline(run: HandoverRun, destination: string): string {
   const s = run.status;
-  if (s) return s.reason;
+  if (s) return standingLine(s, destination);
   const r = run.result;
   switch (r?.status) {
     case 'complete': {
@@ -489,7 +506,7 @@ export function headline(run: HandoverRun, destination: string): string {
         ? `The fleet is ${destination}'s now, and it stopped while resuming: ${r.error}`
         : `Stopped at ${label(SECTIONS[sectionAt(r.phase === 'aborted' ? run.phase ?? 'begin' : r.phase)].id)}: ${r.error}`;
     case 'detached': return `The fleet is moving to ${destination} without this window watching.`;
-    case 'none': return r.reason;
+    case 'none': return 'There was no handover of this fleet to resume or abort.';
   }
   if (run.error) return `The helper did not run: ${run.error}`;
   if (decisionPending(run)) {

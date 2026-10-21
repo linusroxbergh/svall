@@ -40,6 +40,9 @@ const readBack = async (page: Page, ...events: HandoverEvent[]) => {
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'handover.attach')).toBe(true);
   await receive(page, { type: 'handover.replay', events });
 };
+// what the controller's status reasons look like, and what of them the sheet never shows
+const [TX, MAC, STUDIO] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90', 'c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45'];
+const RAW = new RegExp(`${TX}|${MAC}|${STUDIO}|generation|activation`);
 const nothingOpen = (page: Page) => readBack(page, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } });
 
 /** A dormant character whose resume a handover could not bring up, as the destination records it: the daemon restarts on that state. */
@@ -290,9 +293,10 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   // the events file of the run the app was closed during, then what the journals say now
   await readBack(page, { event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } }, ...changed('begin', 'freeze', 'transfer'),
     { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx1', phase: 'transfer', error: 'ssh to studio closed', safe: ['resume', 'abort'] } },
-    { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'none', transactionId: 'tx1', phase: 'transfer', safe: ['resume', 'abort'], reason: 'handover tx1 stopped at transfer; resume or abort it' } });
+    { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: `${TX} is preparing and has not committed; it can go on, or be aborted back to ${MAC}` } });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
-  await expect(page.getByTestId('handover-headline')).toHaveText('handover tx1 stopped at transfer; resume or abort it');
+  await expect(page.getByTestId('handover-headline')).toHaveText('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
+  await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-section-transfer')).toHaveAttribute('data-state', 'stopped');
   await expect(page.getByTestId('handover-resume')).toHaveText('Resume');
   await expect(page.getByTestId('handover-abort')).toBeVisible();
@@ -301,10 +305,11 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   expect(await lastOf(page, 'handover.cancel')).toBeUndefined();
 
   await receive(page, { type: 'handover.replay', events: [
-    { event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', transactionId: 'tx1', phase: 'activate', safe: ['resume'], reason: 'studio holds tx1 committed; resume finishes it there' } }] });
+    { event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'continue', transactionId: TX, phase: 'activate', safe: ['resume'], reason: `${TX} is committed: the fleet belongs to ${STUDIO} at generation 4, and only its activation can go on` } }] });
   await expect(page.getByTestId('handover-resume')).toHaveText('Retry');
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(/abort|roll ?back|undo|revert/i);
+  await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await page.getByTestId('handover-resume').click();
   expect(await lastOf(page, 'handover.resume')).toEqual({ type: 'handover.resume' });
 });
@@ -330,13 +335,16 @@ test('a launch after a finished move that once asked leaves an open terminal alo
 test('a journal the gateway has moved on from offers Forget, and a standing with nothing to decide stays shut', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
-  await readBack(page, { event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway did not answer' } });
+  await readBack(page, { event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', transactionId: TX, safe: [], reason: `the gateway cannot say whether ${TX} committed (ssh: connect to host studio port 22: Operation timed out); nothing is safe until it answers` } });
   await expect(page.getByTestId('handover-tab')).toBeVisible();
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
 
-  await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: 'tx1', safe: [], reason: 'the gateway holds another handover than tx1; forget this journal' } }] });
+  await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: {
+    standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: `the gateway holds this fleet for ${STUDIO} at generation 5 in handover 9b1d0c3e-7f2a-4d6b-8e5c-1a0f9d3b7c24, past ${TX}`,
+  } }] });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
-  await expect(page.getByTestId('handover-headline')).toHaveText('the gateway holds another handover than tx1; forget this journal');
+  await expect(page.getByTestId('handover-headline')).toHaveText("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
+  await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-resume')).toHaveCount(0);
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);
   await page.getByTestId('handover-forget').click();
