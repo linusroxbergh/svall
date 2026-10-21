@@ -169,6 +169,22 @@ export const CODEX_LOG: [file: string, kind: 'enum' | 'struct', name: string, na
   [ITEMS, 'struct', 'CommandExecutionItem', ['cwd']],
   [MODELS, 'enum', 'ResponseItem', ['function_call', 'custom_tool_call']],
 ];
+const CONFIG_TOML = 'codex-rs/config/src/config_toml.rs';
+const CONFIG_TYPES = 'codex-rs/config/src/types.rs';
+// the config.toml keys the session adapter reads to trust a folder, and the -c tui.resume_cwd=session a revive passes
+export const CODEX_CONFIG: typeof CODEX_LOG = [
+  [CONFIG_TOML, 'struct', 'ConfigToml', ['projects', 'tui']],
+  [CONFIG_TOML, 'struct', 'ProjectConfig', ['trust_level']],
+  ['codex-rs/protocol/src/config_types.rs', 'enum', 'TrustLevel', ['trusted']],
+  [CONFIG_TYPES, 'struct', 'Tui', ['resume_cwd']],
+  [CONFIG_TYPES, 'enum', 'ResumeCwdMode', ['session']],
+];
+// where the session adapter (src/handover/sessions/codex.ts) finds a rollout: sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl
+const CODEX_PATHS: Record<string, string[]> = {
+  'codex-rs/rollout/src/lib.rs': ['SESSIONS_SUBDIR: &str = "sessions"'],
+  'codex-rs/rollout/src/recorder.rs': ['push(SESSIONS_SUBDIR)', 'push(timestamp.year().to_string())', '"{:02}", u8::from(timestamp.month())', '"{:02}", timestamp.day()'],
+  'codex-rs/rollout/src/rollout_file_name.rs': ['"[year]-[month]-[day]T[hour]-[minute]-[second]"', '"rollout-{timestamp}-{}.jsonl"'],
+};
 
 const codex: Harness = {
   async latest() {
@@ -179,7 +195,7 @@ const codex: Harness = {
     const ref = `rust-v${version}`;
     const listing = await fetchOk(`https://api.github.com/repos/${CODEX}/contents/${HOOK_DIR}?ref=${ref}`);
     const names = listing && ((await listing.json()) as { name: string }[]).map((x) => x.name).join('\n');
-    const paths = [...CODEX_HOOKS.map(hookSchema), ...new Set(CODEX_LOG.map(([file]) => file))];
+    const paths = [...CODEX_HOOKS.map(hookSchema), ...new Set([...CODEX_LOG, ...CODEX_CONFIG].map(([file]) => file)), ...Object.keys(CODEX_PATHS)];
     return { [HOOK_LIST]: names, ...(await rawAll(CODEX, ref, paths)) };
   },
   check(f) {
@@ -190,12 +206,13 @@ const codex: Harness = {
       const props = Object.keys((JSON.parse(schema) as { properties?: object }).properties ?? {});
       missing.push(...[...HOOK_COMMON, ...CODEX_FIELDS[e]].filter((k) => !props.includes(k)).map((k) => `${e}.${k}`));
     }
-    for (const [file, kind, name, names] of CODEX_LOG) {
+    for (const [file, kind, name, names] of [...CODEX_LOG, ...CODEX_CONFIG]) {
       const src = f[file];
       const have = src === undefined ? undefined : kind === 'enum' ? rustEnumTags(src, name) : rustStructFields(src, name);
       if (!have) { missing.push(`${kind} ${name}`); continue; }
       missing.push(...names.filter((n) => !have.includes(n)).map((n) => `${name}.${n}`));
     }
+    missing.push(...Object.keys(CODEX_PATHS).filter((p) => f[p] === undefined), ...lost(f, CODEX_PATHS, 'session'));
     const events = (f[HOOK_LIST] ?? '').split('\n').flatMap((n) => /^(.+)\.command\.input\.schema\.json$/.exec(n)?.[1] ?? []).map(pascal);
     return { missing: f[HOOK_LIST] === undefined ? [...missing, HOOK_LIST] : missing, events };
   },

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { CLAUDE_HOOKS, CODEX_HOOKS } from '../packages/svalld/src/hooks/receiver.js';
-import { CLAUDE_FIELDS, CODEX_FIELDS, CODEX_LOG, HARNESSES, HELP, OPENCODE_EVENTS, type Files } from '../scripts/compat/harnesses.js';
+import { CLAUDE_FIELDS, CODEX_CONFIG, CODEX_FIELDS, CODEX_LOG, HARNESSES, HELP, OPENCODE_EVENTS, type Files } from '../scripts/compat/harnesses.js';
 
 const ROOT = path.join(import.meta.dirname, '..');
 
@@ -23,12 +23,16 @@ const codexFiles = (): Files => {
     const props = Object.fromEntries(['hook_event_name', 'session_id', 'transcript_path', 'cwd', ...CODEX_FIELDS[e]].map((k) => [k, {}]));
     files[`codex-rs/hooks/schema/generated/${e.replace(/(?<!^)([A-Z])/g, '-$1').toLowerCase()}.command.input.schema.json`] = JSON.stringify({ properties: props });
   }
-  for (const [file, kind, name, names] of CODEX_LOG) {
+  for (const [file, kind, name, names] of [...CODEX_LOG, ...CODEX_CONFIG]) {
     const item = kind === 'enum'
       ? `#[serde(tag = "type"${/^[a-z]/.test(names[0]) ? ', rename_all = "snake_case"' : ''})]\npub enum ${name} {\n${names.map((n) => `    ${n.replace(/(^|_)([a-z])/g, (_, __, c: string) => c.toUpperCase())}(X),`).join('\n')}\n}`
       : `pub struct ${name} {\n${names.map((n) => `    pub ${n}: X,`).join('\n')}\n}`;
     files[file] = `${files[file] ?? ''}\n${item}`;
   }
+  files['codex-rs/rollout/src/lib.rs'] = 'pub const SESSIONS_SUBDIR: &str = "sessions";';
+  files['codex-rs/rollout/src/recorder.rs'] = ['dir.push(SESSIONS_SUBDIR);', 'dir.push(timestamp.year().to_string());',
+    'dir.push(format!("{:02}", u8::from(timestamp.month())));', 'dir.push(format!("{:02}", timestamp.day()));'].join('\n');
+  files['codex-rs/rollout/src/rollout_file_name.rs'] = 'format_description!("[year]-[month]-[day]T[hour]-[minute]-[second]");\nformat!("rollout-{timestamp}-{}.jsonl", self.thread_id)';
   return files;
 };
 
@@ -73,6 +77,15 @@ describe('checks', () => {
     f['codex-rs/protocol/src/protocol.rs'] = f['codex-rs/protocol/src/protocol.rs']!.replace('TokenCount(X),', '').replace('pub total_tokens: X,', '');
     f['codex-rs/hooks/schema/generated/permission-request.command.input.schema.json'] = undefined;
     expect(HARNESSES.codex.check(f).missing).toEqual(['hook PermissionRequest', 'EventMsg.token_count', 'TokenUsage.total_tokens']);
+  });
+
+  test('Codex: where a rollout lies, the key that trusts a folder and the resume_cwd a revive passes are checked', () => {
+    const f = codexFiles();
+    f['codex-rs/config/src/types.rs'] = f['codex-rs/config/src/types.rs']!.replace('pub resume_cwd: X,', '');
+    f['codex-rs/protocol/src/config_types.rs'] = f['codex-rs/protocol/src/config_types.rs']!.replace('Trusted(X),', 'Allowed(X),');
+    f['codex-rs/rollout/src/recorder.rs'] = f['codex-rs/rollout/src/recorder.rs']!.replace('timestamp.day()', 'timestamp.ordinal()');
+    f['codex-rs/rollout/src/rollout_file_name.rs'] = undefined;
+    expect(HARNESSES.codex.check(f).missing).toEqual(['TrustLevel.trusted', 'Tui.resume_cwd', 'codex-rs/rollout/src/rollout_file_name.rs', 'session "{:02}", timestamp.day()']);
   });
 
   test('OpenCode: events, fields and plugin API are checked', () => {
