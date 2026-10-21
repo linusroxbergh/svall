@@ -1143,14 +1143,14 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const pid = Number((await tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
     // the last poll found the agent at a shell prompt too; this one would let it go
     store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
     fleet['poll']['shellStreak'].set(c.id, 1);
     const poll = holdListing(tmux);
     const tick = fleet['poll']['tick']();
     await poll.listed;
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
     poll.release();
     await tick;
     expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
