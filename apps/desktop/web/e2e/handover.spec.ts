@@ -46,7 +46,7 @@ const RAW = new RegExp(`${TX}|${MAC}|${STUDIO}|generation|activation`);
 const nothingOpen = (page: Page) => readBack(page, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } });
 
 /** A dormant character whose resume a handover could not bring up, as the destination records it: the daemon restarts on that state. */
-async function failedResume(svall: Svall, error: string): Promise<string> {
+async function failedResume(svall: Svall, error: string, more?: (c: Record<string, unknown>) => void): Promise<string> {
   const island = await svall.api.call('island.create', { name: svall.uniq('failed') });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
   execFileSync('tmux', ['-S', path.join(svall.home, 'tmux.sock'), 'kill-window', '-t', a.tmux!.windowId]);
@@ -55,6 +55,7 @@ async function failedResume(svall: Svall, error: string): Promise<string> {
   const file = path.join(svall.home, 'state.json');
   const state = JSON.parse(fs.readFileSync(file, 'utf8'));
   state.characters[a.id].resumeError = error;
+  more?.(state.characters[a.id]);
   fs.writeFileSync(file, JSON.stringify(state));
   await svall.startDaemon();
   return a.id;
@@ -77,6 +78,25 @@ test('a character a handover could not resume says why and waits for its Revive,
   await expect(page.getByTestId('side-resume-error')).toHaveCount(0);
   await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveCount(0);
   expect((await svall.api.call('state.get', {})).characters[id].resumeError).toBeUndefined();
+});
+
+test('a character a handover could not resume starts afresh from a summary of its session, which stays where it was', async ({ page, svall }) => {
+  const sid = '1fb0d1a7-29a9-4159-a932-5ffd2da8faba';
+  const id = await failedResume(svall, FAILED, (c) => {
+    c.agent = { kind: 'claude', sessionId: sid, status: 'idle', lastActivityAt: 0 };
+    c.revive = { command: `claude --resume ${sid}` };
+  });
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  await nothingOpen(page);
+  await page.getByTestId(`sb-char-${id}`).click();
+  await expect(page.getByTestId('resume-error')).toHaveText(FAILED);
+
+  await page.getByTestId('fresh').click();
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', id, { timeout: 10_000 });
+  const c = (await svall.api.call('state.get', {})).characters[id];
+  expect(c.resumeError).toBeUndefined();
+  expect(c.agent).toBeUndefined();
 });
 
 test('the map says why a handover could not resume a dormant character on its token', async ({ page, svall }) => {

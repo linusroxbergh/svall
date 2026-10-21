@@ -912,6 +912,60 @@ runIf('Fleet', () => {
     expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(RESUME_NOTE);
   });
 
+  it("starts a dormant terminal whose resume failed afresh in its folder, told what its old session held, and leaves that session's files", async () => {
+    const b = await boot();
+    const { c, transcriptPath } = await withAgent(b);
+    const fixture = path.join(import.meta.dirname, 'fixtures/handover/claude/2.1.280/projects/-Users-source-work-demo/bf480ea6-5572-4554-8016-2dc5590f5bba.jsonl');
+    fs.copyFileSync(fixture, transcriptPath);
+    await b.tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => b.store.state.characters[c.id].tmux === undefined);
+    b.store.update((d) => {
+      d.characters[c.id].revive = { command: `claude --effort 'high' --resume ${SID}`, interrupted: true };
+      d.characters[c.id].resumeError = 'the handover could not resume it';
+    });
+    const typed: string[] = [];
+    vi.spyOn(b.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+
+    const fresh = await b.fleet.startFresh(c.id);
+
+    const file = path.join(b.home, `${c.id}.prompt`);
+    expect(typed).toEqual([`claude --effort 'high' -- "$(cat '${file}'; rm -f '${file}')"`]);
+    const brief = fs.readFileSync(file, 'utf8');
+    expect(brief).toMatch(/^This is a new Claude Code session\. The earlier session /);
+    expect(brief).toContain(SID);
+    expect(brief).toContain('MARBLE-mac');
+    // the new session reports itself as any agent does; the old one's transcript stays where it was
+    expect(fresh.tmux).toBeDefined();
+    expect(fresh.agent).toBeUndefined();
+    expect(fresh.revive).toBeUndefined();
+    expect(fresh.resumeError).toBeUndefined();
+    expect(fs.readFileSync(transcriptPath)).toEqual(fs.readFileSync(fixture));
+    await expect(b.fleet.startFresh(c.id)).rejects.toThrow(Invalid);
+  });
+
+  it('starts a dormant second terminal afresh with its own prompt file', async () => {
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const OLD = 'ses_0123456789abCDEFGHIJKLMNop';
+    b.store.update((d) => {
+      d.characters[c.id].second = {
+        cwd: '/tmp', unread: false, agent: { kind: 'opencode', sessionId: OLD, status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode --auto -s ${OLD}` }, resumeError: 'gone',
+      };
+    });
+    const typed: string[] = [];
+    vi.spyOn(b.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+
+    const fresh = await b.fleet.startFresh(c.id, 2);
+
+    const file = path.join(b.home, `${c.id}-2.prompt`);
+    expect(typed).toEqual([`opencode --standalone --auto --prompt "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(fs.readFileSync(file, 'utf8')).toMatch(/^This is a new OpenCode session. The earlier session ses_0123456789abCDEFGHIJKLMNop/);
+    expect(fresh.second).toMatchObject({ tmux: expect.anything() });
+    expect(fresh.second?.agent).toBeUndefined();
+    expect(fresh.second?.resumeError).toBeUndefined();
+    expect(fresh.tmux).toBeDefined();
+  });
+
   it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet and while an open handover carries it', async () => {
     const b = await boot();
     const { c } = await withAgent(b);

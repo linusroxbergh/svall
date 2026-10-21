@@ -187,3 +187,32 @@ describe('a resume that failed', () => {
     }
   });
 });
+
+describe('char revive', () => {
+  const ada: Character = { ...base, id: 'c_ada', name: 'ada', tmux: undefined };
+  function daemon() {
+    const calls: [string, Record<string, unknown>][] = [];
+    const client = {
+      call: async (method: string, params: Record<string, unknown>) => {
+        if (method === 'state.get') return { characters: { c_ada: ada }, islands: { i_1: { id: 'i_1', name: 'home' } } };
+        calls.push([method, params]);
+        return ada;
+      },
+      close: () => undefined,
+    };
+    return { calls, connect: async () => client as unknown as Client };
+  }
+  const run = async (d: ReturnType<typeof daemon>, ...argv: string[]) => {
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try { await charCommands(d.connect, () => false).parseAsync(['revive', 'ada', ...argv], { from: 'user' }); } finally { spy.mockRestore(); }
+  };
+
+  it('resumes the session, or with --fresh starts a new one from a summary of it, in either terminal', async () => {
+    const d = daemon();
+    await run(d);
+    await run(d, '--fresh');
+    await run(d, '--fresh', '--term', '2');
+    expect(d.calls).toEqual([['char.revive', { id: 'c_ada' }], ['char.fresh', { id: 'c_ada' }], ['char.fresh', { id: 'c_ada', term: 2 }]]);
+    await expect(run(d, '--term', '2')).rejects.toThrow(/--term goes with --fresh/);
+  });
+});

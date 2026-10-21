@@ -245,6 +245,11 @@ export const saveCharacterContext = (d: ActionDeps, id: string, context: Context
 export const reviveCharacter = (d: ActionDeps, id: string): Promise<boolean> =>
   d.api.call('char.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
 
+// a new session in the terminal's folder, told what the session that could not resume held
+export const startFresh = (d: ActionDeps, id: string, second?: boolean): void => {
+  d.api.call('char.fresh', { id, ...(second && { term: 2 as const }) }).catch(toast(d));
+};
+
 // the pane waits on the terminal it asked for, so a refusal closes that pane again and says why
 export const openSecondTerminal = (d: ActionDeps, id: string): void => {
   d.api.call('char.second', { id }).catch((e: Error) => {

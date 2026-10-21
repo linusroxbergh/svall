@@ -24,6 +24,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'char.close': 'mutation',
   'char.sleep': 'mutation',
   'char.revive': 'terminal',
+  'char.fresh': 'terminal',
   'char.seen': 'mutation',
   'char.second': 'terminal',
   'char.run': 'mutation',

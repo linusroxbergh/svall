@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
-import { openSecondTerminal, reviveCharacter } from './actions.js';
+import { openSecondTerminal, reviveCharacter, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
 import { holdsTerminals } from './handover.js';
 import { useApp } from './hooks.js';
@@ -89,6 +89,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
         <div className="revive">
           {failed && <span data-testid="resume-error">{failed}</span>}
           <button data-testid="revive" onClick={() => (second ? openSecondTerminal(deps(), id) : void reviveCharacter(deps(), id))}>Revive {c.name}</button>
+          {failed && (second ? c.second : c)?.agent && <button data-testid="fresh" onClick={() => startFresh(deps(), id, second)}>Start fresh from summary</button>}
         </div>
       );
     }

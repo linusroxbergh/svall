@@ -48,6 +48,7 @@ export const handlers: Handlers = {
   'char.close': async (p, { fleet }) => { await fleet.closeCharacter(p.id); return {}; },
   'char.sleep': async (p, { fleet }) => { await fleet.sleepCharacter(p.id); return {}; },
   'char.revive': (p, { fleet }) => fleet.reviveCharacter(p.id),
+  'char.fresh': (p, { fleet }) => fleet.startFresh(p.id, p.term),
   'char.seen': (p, { fleet }) => fleet.markSeen(p.id, p.term),
   'char.second': (p, { fleet }) => fleet.openSecond(p.id),
   'char.run': async (p, { fleet }) => ({ delivery: await fleet.run(p.id, p.text, p.enter, p.term) }),

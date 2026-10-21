@@ -15,7 +15,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, exited, loseSecond, markDormant, processes, RESUME_NOTE, runsAgent, sleepFlags, startFlags, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, freshCommand, loseSecond, markDormant, processes, RESUME_NOTE, runsAgent, sleepFlags, startFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -25,6 +25,7 @@ import { AgentEvents } from './fleet/agent-events.js';
 import { ControlLink, type PaneEvents } from './fleet/control.js';
 import { Poll, resumeOf, type Resume } from './fleet/poll.js';
 import { Prompts, type WaitResult } from './fleet/prompts.js';
+import { repairBrief } from './handover/sessions/repair.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
@@ -737,20 +738,20 @@ export class Fleet extends EventEmitter<Events> {
     await Promise.all(ids.map((id) => this.reviveCharacter(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
   }
 
-  // concurrent revives would each spawn a window and orphan all but the last.
-  reviveCharacter(id: string, prompt?: string): Promise<Revived> {
+  // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place of the resume
+  reviveCharacter(id: string, prompt?: string, fresh?: string): Promise<Revived> {
     // a page still open on a character that the stop has just put to sleep would wake it again
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
-    const p = this.doRevive(id, prompt, this.writable()).finally(() => this.reviving.delete(id));
+    const p = this.doRevive(id, prompt, this.writable(), fresh).finally(() => this.reviving.delete(id));
     this.reviving.set(id, p);
     return p;
   }
 
   // `admitted`: asked while the fleet was writable, so a freeze since then stops it before it opens anything; a
   // handover's own revive runs frozen
-  private async doRevive(id: string, prompt: string | undefined, admitted: boolean): Promise<Revived> {
+  private async doRevive(id: string, prompt: string | undefined, admitted: boolean, fresh?: string): Promise<Revived> {
     // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
     if (admitted) this.deps.ownership.assertOwner('terminal');
@@ -773,15 +774,17 @@ export class Fleet extends EventEmitter<Events> {
       throw new NotFound(`no character ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
-    if (c.revive?.interrupted) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
-    const command = this.launchLine(id, withAddDirs(withoutV1Flags(c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
-    const resuming = resumeOf(this.deps.store.state.characters[id], this.carried(id), id);
+    if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
+    const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
+    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.characters[id], this.carried(id), id) : undefined;
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };
       // one a handover has yet to answer for keeps the resume command it carries, which a retry lays it dormant with again
       if (!this.carried(id)) delete cur.revive;
       delete cur.resumeError;
+      // a new session reports itself as it starts
+      if (fresh !== undefined) delete cur.agent;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait,
       // nor its old activity have it ended again as idle before it is up
       if (cur.agent) { settle(cur.agent, 'idle'); cur.agent.lastActivityAt = Date.now(); cur.unread = false; }
@@ -789,6 +792,22 @@ export class Fleet extends EventEmitter<Events> {
     if (resuming && command) this.resuming.set(id, resuming); else this.resuming.delete(id);
     if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     return this.char(id);
+  }
+
+  /**
+   * Starts a new session of a dormant terminal's agent in its folder, with the launch flags its resume carries and, as
+   * its first prompt, a summary of the session it could not resume, whose files stay where they are.
+   */
+  async startFresh(id: string, term?: 2): Promise<Character> {
+    const c = this.char(id);
+    const slot = term === 2 ? c.second : c;
+    const which = term === 2 ? `${c.name}'s second terminal` : c.name;
+    if (!slot?.agent || slot.tmux) throw new Invalid(`${which} has no dormant session to start afresh from`);
+    if (this.carried(id, term)) throw new Invalid(`${which} is still being resumed by a handover`);
+    const { kind, sessionId, transcriptPath } = slot.agent;
+    const prompt = repairBrief(kind, transcriptPath ? readTail(transcriptPath, 4 * 1024 * 1024) : '', { sessionId });
+    const command = freshCommand(slot.revive?.command ?? '', kind, sessionId);
+    return term === 2 ? this.openSecond(id, { command, prompt }) : this.reviveCharacter(id, prompt, command);
   }
 
   // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's character
@@ -809,16 +828,17 @@ export class Fleet extends EventEmitter<Events> {
     return dir;
   }
 
-  // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too.
-  openSecond(id: string): Promise<Character> {
+  // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too, or
+  // started `fresh` with that command and its prompt
+  openSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Character> {
     const inFlight = this.openingSecond.get(id);
     if (inFlight) return inFlight;
-    const p = this.doOpenSecond(id, this.writable()).finally(() => this.openingSecond.delete(id));
+    const p = this.doOpenSecond(id, this.writable(), fresh).finally(() => this.openingSecond.delete(id));
     this.openingSecond.set(id, p);
     return p;
   }
 
-  private async doOpenSecond(id: string, admitted: boolean): Promise<Character> {
+  private async doOpenSecond(id: string, admitted: boolean, fresh?: { command: string; prompt: string }): Promise<Character> {
     // a second window still closing is not one to open beside
     await this.ending.get(secondName(id));
     if (admitted) this.deps.ownership.assertOwner('terminal');
@@ -826,18 +846,20 @@ export class Fleet extends EventEmitter<Events> {
     if (c.second?.tmux) return c;
     const cwd = c.second ? this.reviveCwd(c, 2) : c.cwd;
     const island = this.deps.store.state.islands[c.islandId];
-    const command = withStandalone(withAddDirs(withoutV1Flags(c.second?.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]));
+    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? c.second?.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]);
+    const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
     const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.charEnv(id, { SVALL_TERM: '2' }));
     if (!this.deps.store.state.characters[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no character ${id}`);
     }
-    const resuming = resumeOf(this.deps.store.state.characters[id].second, this.carried(id, 2), id, 2);
+    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.characters[id].second, this.carried(id, 2), id, 2);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };
       if (!this.carried(id, 2)) delete second.revive;
       delete second.resumeError;
+      if (fresh) delete second.agent;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait.
       if (second.agent) { settle(second.agent, 'idle'); second.unread = false; }
       cur.second = second;

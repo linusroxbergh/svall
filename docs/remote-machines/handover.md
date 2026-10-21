@@ -194,7 +194,9 @@ On the other machine:
   terminal for 3 s, which its row then says.
 - A terminal that does not come up stays dormant with its session, and its card and row say why, as do
   `svall status` and `svall char list` (`resume failed: <why>`). Retry it from the row, or open it like any dormant
-  character.
+  character. When it will not resume at all, **Start fresh from summary** on its terminal (`svall char revive <id>
+  --fresh`, with `--term 2` for a second terminal) starts a new session in its folder whose first prompt summarises
+  the old one's last turns; the old session's files stay where they are.
 - Servers, builds and watchers do not restart: start them again. Ports are not forwarded to the Mac in this version.
 
 ## Working on the other machine
