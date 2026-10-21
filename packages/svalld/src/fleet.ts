@@ -15,7 +15,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, exited, markDormant, processes, RESUME_NOTE, runsAgent, sleepFlags, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, markDormant, processes, rememberFlags, RESUME_NOTE, runsAgent, sleepFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -787,7 +787,18 @@ export class Fleet extends EventEmitter<Events> {
     return this.prompts.waitFor(id, until, timeoutMs, signal, term);
   }
 
-  onSocketEvent(e: SocketEvent): Promise<string | undefined> {
-    return this.agentEvents.apply(e);
+  async onSocketEvent(e: SocketEvent): Promise<string | undefined> {
+    const reply = await this.agentEvents.apply(e);
+    // only a start the character took: one dropped as a server's or a nested run's reads nothing
+    if ('hook' in e && e.hook.name === 'SessionStart' && e.hook.pid && e.hook.term !== 2
+      && this.deps.store.state.characters[e.hook.charId]?.agent?.pid === e.hook.pid) void this.rememberFlags(e.hook.charId, e.hook.pid);
+    return reply;
+  }
+
+  // the flags a quit resumes the agent with when ps fails it, read while the process that started the session is known
+  private async rememberFlags(id: string, pid: number): Promise<void> {
+    const procs = await this.sleep.processes().catch((e) => { this.deps.log.error(`flags ${id}: ${String(e)}`); return undefined; });
+    if (!procs || this.stopped) return;
+    this.deps.store.update((d) => { const c = d.characters[id]; if (c?.agent?.pid === pid) rememberFlags(c, procs); });
   }
 }

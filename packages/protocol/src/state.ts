@@ -70,6 +70,8 @@ export const Agent = z.object({
   lastActivityAt: z.number(),
   // the agent process the session runs in; a `claude -p` nested inside it shares the character, not the process
   pid: z.number().int().optional(),
+  // the launch flags a resume repeats, as ps showed the process at its start; what a dormancy without ps resumes with
+  flags: z.array(z.string()).optional(),
 });
 export type Agent = z.infer<typeof Agent>;
 

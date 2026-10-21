@@ -33,7 +33,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
     const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -702,6 +702,18 @@ runIf('Fleet', () => {
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
   });
 
+  it('resumes an agent with the flags remembered at its start when ps fails the quit', async () => {
+    let failing = false;
+    const errors: string[] = [];
+    const b = await boot({ processes: async () => { if (failing) throw new Error('ps timed out'); return b.procs; }, log: { info() {}, error: (m) => { errors.push(m); } } });
+    const { c } = await withAgent(b, 'claude --effort xhigh --dangerously-skip-permissions');
+    await waitFor(() => !!b.store.state.characters[c.id].agent?.flags);
+    failing = true;
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --dangerously-skip-permissions --resume ${SID}` });
+    expect(errors.some((m) => m.startsWith('quit: ps failed'))).toBe(true);
+  });
+
   it('resumes an agent a quit stopped mid-turn as the fleet starts again, telling it what was lost', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
@@ -901,6 +913,17 @@ runIf('Fleet', () => {
     fs.rmSync(transcriptPath);
     await fleet['endIdleAgents']();
     expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('leaves an agent with a second terminal open', async () => {
+    const b = await boot();
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    await fleet.openSecond(c.id);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    expect(store.state.characters[c.id].second).toBeDefined();
   });
 
   it('leaves an agent with a prompt held for it', async () => {

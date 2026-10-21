@@ -184,8 +184,8 @@ export class Poll {
   // a plain `codex` on Codex's shared server is heard as the terminal that started the server, so its events are
   // dropped; any other codex is silent for its hooks' sake
   private async markSilent(silent: { id: string; pid: number }[]): Promise<void> {
-    const procs = await this.deps.processes();
-    if (this.stopped) return;
+    const procs = await this.deps.processes().catch((e) => { this.deps.log.error(`codex silent: ${String(e)}`); return undefined; });
+    if (!procs || this.stopped) return;
     this.deps.store.update((d) => {
       for (const { id, pid } of silent) {
         const c = d.characters[id];
