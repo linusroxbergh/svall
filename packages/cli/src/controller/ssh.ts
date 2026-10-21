@@ -111,8 +111,9 @@ export async function sweepMasters(dir: string = defaultSocketDir()): Promise<vo
     if (!pid || pid === process.pid || running(pid)) return;
     const socket = path.join(dir, name);
     try {
-      await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
-      fs.rmSync(socket, { force: true });
+      const r = await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
+      // a master that did not take the exit keeps its socket for the next sweep; one no master listens on goes
+      if (r.code === 0 || /control socket connect/i.test(r.stderr)) fs.rmSync(socket, { force: true });
     } catch {
       // a socket ssh could not be run for is left to the next sweep
     }

@@ -101,6 +101,10 @@ function control(opts) {
   }
   if (opts.O === 'exit') {
     stopProxy(opts);
+    // a master that will not answer, and a socket no master listens on any more
+    const held = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    if (held === 'stuck') die('mux_client_request_session: read from master failed: Broken pipe');
+    if (held === 'stale') die(`Control socket connect(${opts.S}): Connection refused`);
     if (fs.existsSync(file)) { try { process.kill(Number(fs.readFileSync(file, 'utf8')), 'SIGTERM'); } catch { /* already gone */ } }
     fs.rmSync(file, { force: true });
     return;

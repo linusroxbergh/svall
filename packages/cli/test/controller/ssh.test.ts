@@ -340,6 +340,20 @@ describe('sweepMasters', () => {
     running.kill();
   });
 
+  it('keeps the socket of a master that would not exit, and removes one no master listens on', async () => {
+    const gone = spawn('true');
+    await new Promise((resolve) => { gone.on('close', resolve); });
+    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
+    const stuck = `${gone.pid}-0123456789ab`;
+    const stale = `${gone.pid}-ba9876543210`;
+    for (const [name, held] of [[stuck, 'stuck'], [stale, 'stale']]) {
+      fs.writeFileSync(path.join(ssh.socketDir, name), '');
+      fs.writeFileSync(path.join(ssh.dir, 'state', `${name}.master`), held);
+    }
+    await sweepMasters(ssh.socketDir);
+    expect(fs.readdirSync(ssh.socketDir)).toEqual([stuck]);
+  });
+
   it('leaves a socket directory another user could reach alone, and never throws', async () => {
     const gone = spawn('true');
     await new Promise((resolve) => { gone.on('close', resolve); });
