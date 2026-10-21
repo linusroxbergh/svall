@@ -23,8 +23,8 @@ export type HandoverDeps = {
   destination: DestinationDeps;
   /** What a record naming this machine starts, and one naming another stops. */
   fleet?: Pick<Fleet, 'activate' | 'reconcileNow' | 'deactivate' | 'resumeInterrupted'>;
-  /** Names another machine this fleet's gateway, in fleet.json and in the running config. */
-  setGateway?(id: MachineId): void;
+  /** Names another machine this fleet's gateway, or none, in fleet.json and in the running config. */
+  setGateway?(id: MachineId | undefined): void;
   /** How to ask a given machine's gateway, before it is this fleet's. */
   authorityFor?(gatewayMachineId: MachineId): Authority;
 };
@@ -97,10 +97,22 @@ export class HandoverService {
   /**
    * A record `svall fleet recover` relays. The gateway it names is asked here, and its answer is what is taken; the
    * relayed record stands in only when that gateway cannot be asked. The gateway is renamed once its record is taken.
+   * A record that names no gateway is this machine's to run alone, taken only while the gateway fleet.json names does
+   * not answer, and once taken, fleet.json names none.
    */
-  async relay(p: { record: OwnerRecord; gatewayMachineId: MachineId }): Promise<Result<'ownership.adopt'>> {
+  async relay(p: { record: OwnerRecord; gatewayMachineId?: MachineId }): Promise<Result<'ownership.adopt'>> {
     let record = p.record;
-    const gateway = this.deps.authorityFor?.(p.gatewayMachineId);
+    if (!p.gatewayMachineId && record.ownerMachineId !== this.deps.ownership.machineId) {
+      throw Object.assign(new Error(`a record that names no gateway is run by this machine alone, and this one names ${record.ownerMachineId}`), { code: 'invalid_params' });
+    }
+    const named = p.gatewayMachineId ? undefined : this.deps.source.authority?.();
+    if (named) {
+      const said = await named.get(record.fleetId).then(() => 'answered with its record', (e: unknown) =>
+        // a registry with no route to the gateway leaves it as unasked as one that does not answer
+        (e instanceof AuthorityFailure && (UNANSWERED.has(e.code) || e.data?.unrouted) ? undefined : `failed as no gateway out of reach does (${e instanceof Error ? e.message : String(e)})`));
+      if (said) throw Object.assign(new Error(`the gateway this fleet names ${said}, so it is not known lost and this machine does not run the fleet alone`), { code: 'invalid_params' });
+    }
+    const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;
     if (gateway) {
       try {
         record = await gateway.get(this.deps.ownership.record().fleetId);
@@ -133,12 +145,16 @@ export class HandoverService {
     const tx = record.transaction;
     if (tx && (this.state.kind === 'quarantined' || (tx.phase === 'committed' && tx.toMachineId === ownership.machineId && j?.transactionId !== tx.id))) return unchanged;
     const superseded = j !== undefined && record.generation > handoverGeneration(j);
+    // a source journal that could not be read names no handover: the one this source froze for is the cached record's
+    const lost = this.state.kind === 'quarantined' && held.transaction?.fromMachineId === ownership.machineId && ownership.outranked(record)
+      ? held.transaction.id : undefined;
     if (!superseded && (j || !ownership.outranked(record))) return unchanged;
     // a crash between letting a journal go and taking the record meets the same record at the next start
     const takes = !superseded || record.generation >= held.generation || ownership.outranked(record);
     const mine = takes && record.ownerMachineId === ownership.machineId;
     if (superseded && j.role === 'destination') await this.destination.supersede(j.transactionId);
     else if (superseded) await this.source.supersede(j.transactionId, mine);
+    else if (lost) await this.source.supersede(lost, mine);
     if (!takes) return { adopted: false, ...(j && { superseded: j.transactionId }), ownership: this.ownershipInfo() };
     // read only now: an activation the supersede waited behind may have made this machine the owner
     const ran = ownership.isOwner();
@@ -151,7 +167,8 @@ export class HandoverService {
     } else if (ran) {
       await fleet?.deactivate();
     }
-    return { adopted: true, ...(superseded && { superseded: j.transactionId }), ownership: this.ownershipInfo() };
+    const gone = superseded ? j.transactionId : lost;
+    return { adopted: true, ...(gone && { superseded: gone }), ownership: this.ownershipInfo() };
   }
 
   async preflight(p: ParsedParams<'handover.preflight'>): Promise<Result<'handover.preflight'>> {

@@ -305,7 +305,7 @@ describe('an unknown Commit', () => {
     for (const prefer of ['resume', 'abort'] as const) {
       it(`${kind === 'lost' ? 'after' : 'before'} the gateway committed, with the gateway then out of reach, stops with nothing safe, fences the source, and ${prefer} settles it once the gateway answers`, async () => {
         const w = world();
-        expect(await unknown(w, kind, true)).toMatchObject({ status: 'interrupted', phase: 'commit', safe: [] });
+        expect(await unknown(w, kind, true)).toMatchObject({ status: 'interrupted', phase: 'commit', safe: [], stop: 'commit_unknown' });
         expect(w.moved()).toBe(kind === 'lost');
         expect(w.mac.can()).toBe(false);
         expect(w.trift.can()).toBe(false);
@@ -314,7 +314,7 @@ describe('an unknown Commit', () => {
         const before = owners();
         for (const act of [abort, resume]) {
           const again = await act(w);
-          expect(again).toMatchObject({ status: 'interrupted', safe: [] });
+          expect(again).toMatchObject({ status: 'interrupted', safe: [], stop: 'gateway_unknown' });
         }
         expect(owners()).toEqual(before);
         expect(sent(w, 'mac handover.abort')).toBe(0);
@@ -579,7 +579,7 @@ describe('two controllers on one machine', () => {
     expect(a.result()).toMatchObject({ status: 'complete' });
     expect(seconds).toHaveLength(3 * PROBED.move.labels.filter((l) => !l.startsWith('link ')).length);
     for (const s of seconds) {
-      expect(s, `${s.job} at ${s.label}`).toMatchObject({ code: 1, reached: false, result: { status: 'interrupted', error: expect.stringContaining('already running here') } });
+      expect(s, `${s.job} at ${s.label}`).toMatchObject({ code: 1, reached: false, result: { status: 'interrupted', stop: 'running', error: expect.stringContaining('already running here') } });
     }
     expect(w.violations).toEqual([]);
     expect(real.settledOn(w)).toBe('destination');

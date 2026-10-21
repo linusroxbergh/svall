@@ -152,10 +152,14 @@ export function assess(o: Observation): Verdict {
   const journals = { source: phaseOf(o.source), destination: phaseOf(o.destination) };
   // a destination whose journal could not be read cannot say whether it activated
   const unread = o.destination?.ok ? o.destination.value.status.quarantined : undefined;
+  const sourceUnread = o.source?.ok ? o.source.value.status.quarantined : undefined;
   const aborted = o.controller?.phase === 'aborted' || journals.source === 'aborted';
   const base = { ...f, phase: o.controller?.phase ?? journals.destination ?? journals.source, journals };
   const verdict = (standing: Standing, action: Verdict['action'], safe: SafeAction[], reason: string): Verdict => ({ ...base, standing, action, safe, reason });
 
+  if (!f && !o.gateway.ok) {
+    return verdict('unknown', 'none', [], `the gateway could not be asked (${o.gateway.error}), so whether a handover of this fleet is open there is unknown; \`svall host doctor <gateway>\` says why, and if it is gone for good, \`svall fleet recover --force-owner local\` runs the fleet without it`);
+  }
   if (!f) return verdict('none', 'none', [], 'no handover of this fleet is open anywhere');
   if (!record) {
     return verdict('unknown', 'none', [], `the gateway cannot say whether ${f.transactionId ?? 'the handover'} committed (${o.gateway.ok ? '' : o.gateway.error}); nothing is safe until it answers`);
@@ -169,13 +173,16 @@ export function assess(o: Observation): Verdict {
     return verdict('superseded', 'none', [], `the gateway holds this fleet for ${record.ownerMachineId} at generation ${record.generation}${tx ? ` in handover ${tx.id}` : ''}, not the handover this controller began`);
   }
   const lost = (standing: Standing): Verdict => verdict(standing, 'none', [],
-    `${f.transactionId} moved this fleet to ${f.toMachineId}, whose handover journal could not be read and was moved to ${unread}; nothing is safe until someone looks at that machine`);
+    `${f.transactionId} moved this fleet to ${f.toMachineId}, whose handover journal could not be read and was moved to ${unread}: on that machine, repair it and put it back at ${unread?.replace(/\.broken-\d+$/, '')}, then restart the fleet's daemon there and resume; or \`svall fleet recover --force-owner <machine>\` names the machine to run the fleet, from the state it holds`);
   if (tx?.id === f.transactionId) {
     if (tx.phase === 'committed') {
       if (unread) return lost('committed');
       return verdict('committed', 'continue', ['resume'], `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`);
     }
-    return verdict('open', 'continue', ['resume', 'abort'], `${tx.id} is ${tx.phase} and has not committed; it can go on, or be aborted back to ${f.fromMachineId}`);
+    const said = `${tx.id} is ${tx.phase} and has not committed; it can go on, or be aborted back to ${f.fromMachineId}`;
+    return verdict('open', 'continue', ['resume', 'abort'], sourceUnread
+      ? `${said}. ${f.fromMachineId}'s handover journal could not be read and was moved to ${sourceUnread}; an abort takes the fleet back to ${f.fromMachineId} and reopens the terminals the handover rested there`
+      : said);
   }
   if (g !== undefined && record.generation > g && record.ownerMachineId !== f.fromMachineId) {
     if (aborted) {

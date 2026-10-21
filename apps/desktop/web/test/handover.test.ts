@@ -475,6 +475,18 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint({ ...release, code: 'incompatible_schema' }, ctx)).toBe(blockerHint(release, ctx));
   });
 
+  it('sends a gateway that could not be asked, or cannot read its record, to the Linux machine, whichever way the fleet moves', () => {
+    for (const run of [ctx, { ...ctx, destination: 'This Mac', source: 'studio', pull: true }]) {
+      expect(blockerHint({ code: 'authority_unreachable', message: 'this machine could not ask its gateway' }, run)).toMatch(/gateway.*Check studio/);
+      expect(blockerHint({ code: 'authority_corrupt', message: 'the gateway cannot read its record' }, run)).toMatch(/studio.*readable record.*svall fleet recover/);
+    }
+    // a gateway that answered with a failure is not said to be silent, and one on a third machine is named
+    const third = { ...ctx, gateway: 'vault' };
+    expect(blockerHint({ code: 'authority_unreachable', message: 'the gateway would not begin this handover: internal' }, third)).toMatch(/could not say who owns this fleet: Check vault/);
+    expect(blockerHint({ code: 'authority_unreachable', message: 'x' }, third)).not.toMatch(/did not answer/);
+    expect(blockerHint({ code: 'authority_corrupt', message: 'x' }, third)).toMatch(/The gateway on vault/);
+  });
+
   it('names the Linux machine to upgrade by its registry name, and none it cannot name', () => {
     const release: Blocker = { code: 'incompatible_release', message: 'the destination runs release a1, this machine b2' };
     expect(upgradeAsked(release, ctx)).toBe('studio');

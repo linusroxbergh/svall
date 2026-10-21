@@ -44,6 +44,7 @@ export const FAILPOINTS = {
   'destination.prepare.seal': 'destination',
   'destination.prepare.delete': 'destination',
   'destination.prepare.import': 'destination',
+  'destination.prepare.sync': 'destination',
   'destination.prepare.state': 'destination',
   'destination.prepare.journal': 'destination',
   'destination.prepare.stage': 'destination',

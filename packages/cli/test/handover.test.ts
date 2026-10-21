@@ -628,7 +628,7 @@ describe('svall handover', () => {
       h.tx.verdict = { ...NONE, standing: 'superseded', transactionId: 'tx-1', phase: 'transfer', reason: 'the gateway holds this fleet for trift at generation 7, past tx-1' };
       expect(await runHandover({ kind }, h.ctx)).toEqual({ code: 1 });
       expect(h.tx.calls).toEqual([]);
-      expect(h.events().at(-1)).toMatchObject({ event: 'handover.result', data: { status: 'interrupted', safe: [], error: expect.stringContaining('svall handover --forget') } });
+      expect(h.events().at(-1)).toMatchObject({ event: 'handover.result', data: { status: 'interrupted', safe: [], stop: 'superseded', error: expect.stringContaining('svall handover --forget'), detail: expect.stringContaining('generation 7') } });
     }
   });
 
@@ -1087,6 +1087,29 @@ describe('the human reading of a session the destination went on with', () => {
   });
 });
 
+describe('the human reading of where a handover stands', () => {
+  const read = (v: Verdict): string[] => new View(() => {}, { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' }).status(v);
+
+  it('prints what the journals said beneath a stop it says plainly', () => {
+    const printed: string[] = [];
+    const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
+    const lines = view.outcome({ status: 'interrupted', phase: 'activate', error: "trift's handover journal could not be read", detail: 'moved to /x.broken-1', safe: [], stop: 'journal_lost' });
+    expect(lines).toEqual(["Stopped while resuming characters: trift's handover journal could not be read", '  moved to /x.broken-1', '`svall handover status` says where it stands.']);
+  });
+
+  it('waits on the gateway only where the gateway could not say, and on the ways out a lost journal names otherwise', () => {
+    const lost: Verdict = { standing: 'committed', transactionId: 'tx-1', journals: {}, safe: [], action: 'none', reason: 'tx-1 moved this fleet to trift, whose handover journal could not be read' };
+    expect(read(lost).at(-1)).toBe('Nothing is safe until one of the ways out above is taken.');
+    const unknown: Verdict = { standing: 'unknown', transactionId: 'tx-1', journals: {}, safe: [], action: 'none', reason: 'the gateway cannot say whether tx-1 committed' };
+    expect(read(unknown).at(-1)).toBe('Nothing is safe until the gateway answers.');
+  });
+
+  it('says the gateway could not be asked where no journal names a handover, never that none is open', () => {
+    const unasked: Verdict = { standing: 'unknown', journals: {}, safe: [], action: 'none', reason: 'the gateway could not be asked (connection refused), so whether a handover of this fleet is open there is unknown' };
+    expect(read(unasked)).toEqual(['The gateway could not be asked (connection refused), so whether a handover of this fleet is open there is unknown.']);
+  });
+});
+
 describe('the human reading of sizes', () => {
   it('counts bytes in thousands, as the sheet does', () => {
     const printed: string[] = [];
@@ -1290,7 +1313,7 @@ describe('svall handover arguments', () => {
       await cmd.parseAsync(argv, { from: 'user' });
       expect(code).toBe(1);
       expect(h.launched).toEqual([]);
-      if (json) expect(h.events()).toEqual([{ event: 'handover.result', data: { status: 'interrupted', phase: 'begin', safe: [], error: expect.stringMatching(why) } }]);
+      if (json) expect(h.events()).toEqual([{ event: 'handover.result', data: { status: 'interrupted', phase: 'begin', safe: [], stop: 'invalid', error: expect.stringMatching(why) } }]);
       else expect(h.out()).toMatch(why);
     }
   });
@@ -1460,7 +1483,7 @@ describe('svall handover through the real CLI', () => {
       const attached = await run(tsx, [main, 'handover', 'attach', '--json'], { env });
       const seen = lines(attached.stdout) as HandoverEvent[];
       expect(seen.at(-2)).toMatchObject({ event: 'handover.result', data: { status: 'interrupted', error: expect.stringContaining('refused.test') } });
-      expect(seen.at(-1)).toMatchObject({ event: 'handover.status', data: { standing: 'none' } });
+      expect(seen.at(-1)).toMatchObject({ event: 'handover.status', data: { standing: 'unknown', reason: expect.stringContaining('the gateway could not be asked') } });
     } finally {
       ssh.clean();
     }

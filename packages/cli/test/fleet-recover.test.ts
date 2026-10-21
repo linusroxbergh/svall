@@ -26,7 +26,8 @@ const linux = (name: string): MachineRecord => ({
   name, ssh: name, platform: 'linux', arch: 'x64', home: '/home/linus', svallBase: '/home/linus/.local/share/svall', gateway: true,
 });
 
-type Daemon = { ownership: OwnershipInfo; adopted: unknown[]; fails?: string; declines?: boolean };
+// takes: the record its relay took in place of the one sent, as one whose daemon reaches the gateway does
+type Daemon = { ownership: OwnershipInfo; adopted: unknown[]; fails?: string; declines?: boolean; takes?: OwnerRecord };
 
 /** A Mac controller, trift the fleet's gateway and vault a third machine, each gateway a real authority under a temp prefix. */
 function world() {
@@ -77,7 +78,7 @@ function world() {
       if (d.fails) throw new Error(d.fails);
       d.adopted.push(params);
       const { record } = params as { record: OwnerRecord };
-      return d.declines ? { adopted: false, ownership: d.ownership } : { adopted: true, ownership: { ...record, frozen: false } };
+      return d.declines ? { adopted: false, ownership: d.ownership } : { adopted: true, ownership: { ...(d.takes ?? record), frozen: false } };
     };
     return { call: call as DaemonPort['call'], close: () => {} };
   };
@@ -263,18 +264,209 @@ describe('fleet recover --force-owner', () => {
     await untouched(w, begun!);
   });
 
-  it('refuses when the gateway does not answer, and names the replacement-gateway step', async () => {
+  it('refuses another owner while the gateway does not answer, and names a replacement gateway and running the fleet here alone', async () => {
     const w = world();
     w.hold(TRIFT, { fleetId, generation: 2, ownerMachineId: w.mac });
     w.down.add(TRIFT);
     w.daemons.set(w.mac, { ownership: ownerAt(w.mac, 2), adopted: [] });
-    expect(await w.run({ confirm: fleetId })).toBe(false);
+    w.daemons.set(VAULT, { ownership: ownerAt(w.mac, 2), adopted: [] });
+    expect(await w.run({ forceOwner: 'vault', confirm: fleetId })).toBe(false);
     expect(w.of('recover.observed')[0].gateway).toMatchObject({ state: 'unreachable', message: expect.stringContaining('Operation timed out') });
     const [result] = w.of('recover.result');
     expect(result.message).toMatch(/trift did not answer/);
-    expect(result.actions).toEqual([expect.stringContaining('svall fleet recover --force-owner local --gateway <machine>')]);
+    expect(result.actions).toEqual([
+      expect.stringContaining('svall fleet recover --force-owner vault --gateway <machine>'),
+      expect.stringMatching(/svall fleet recover --force-owner local` runs this fleet on this machine alone, with no gateway/),
+    ]);
     w.down.delete(TRIFT);
     await untouched(w, { fleetId, generation: 2, ownerMachineId: w.mac });
+  });
+
+  it('runs the fleet here alone once its only gateway is lost: its daemon takes a record above every generation, fleet.json names no gateway, and the journal here is let go', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4, { journal: { role: 'destination', transactionId: 'tx1', generation: 5, phase: 'prepare' } }), adopted: [] });
+    const journal = path.join(w.fleetHome, 'controller', 'handover.json');
+    fs.mkdirSync(path.dirname(journal), { recursive: true });
+    fs.writeFileSync(journal, JSON.stringify({
+      version: 1, fleetId, transactionId: 'tx1', generation: 4, source: { machineId: TRIFT, name: 'trift', ssh: 'trift' }, destination: { machineId: w.mac, name: 'mac' },
+      choices: {}, phase: 'prepare', startedAt: 1, updatedAt: 2,
+    }));
+    writeRoute(w.fleetHome, { ownerMachineId: TRIFT, generation: 4, at: '2026-09-20T08:00:00.000Z' });
+
+    expect(await w.run({ confirm: fleetId })).toBe(true);
+
+    const [seen] = w.of('recover.observed');
+    expect(seen.plan).toEqual({ ownerMachineId: w.mac, owner: 'mac', generation: 6, standalone: true });
+    const risks = seen.risks.join(' ');
+    expect(risks).toMatch(/trift is not reached here and never learns of this record/);
+    expect(risks).toMatch(/stays on that machine's disk only/);
+    expect(risks).toMatch(/mac prepared handover tx1 and has not run it: this record drops what it prepared/);
+    expect(risks).toMatch(/No machine is this fleet's gateway from here on/);
+    const record: OwnerRecord = { fleetId, generation: 6, ownerMachineId: w.mac };
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([{ record }]);
+    expect(w.audit(TRIFT)).toEqual([]);
+    expect(fs.readFileSync(w.localAudit, 'utf8').trim().split('\n').map((l) => JSON.parse(l))).toEqual([
+      expect.objectContaining({ at: '2026-09-23T12:00:00.000Z', fleetId, gatewayMachineId: null, lostGatewayMachineId: TRIFT, after: record, requestingMachineId: w.mac, shown: seen.shown }),
+    ]);
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId });
+    expect(fs.existsSync(journal)).toBe(false);
+    expect(readRoute(w.fleetHome)).toMatchObject({ ownerMachineId: w.mac, generation: 6 });
+    expect(w.of('recover.forced')).toEqual([{ record }]);
+    const [result] = w.of('recover.result');
+    expect(result).toMatchObject({ result: 'recovered', message: 'mac runs this fleet alone at generation 6, with no gateway' });
+    const text = w.events.map((e) => render(e, (id) => w.registry.get(id)?.record.name ?? id)).join('\n');
+    expect(text).toMatch(/This writes this machine's own record, with no gateway: mac owns this fleet at generation 6, and trift is this fleet's gateway no more/);
+    expect(text).toMatch(/written here, with no gateway: mac owns this fleet at generation 6/);
+    expect(result.actions).toEqual([
+      expect.stringMatching(/^trift may still run this fleet if it comes back/),
+      expect.stringContaining('svall host remove trift --forget'),
+      'vault still names trift as this fleet\'s gateway and is not told of this record',
+      expect.stringContaining('svall host enable <host> --fleet <fleet>'),
+    ]);
+  });
+
+  it('tells every other machine that answers of the record it runs the fleet alone on, through the lost gateway, so a handover held there is let go', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    // vault was handed the fleet and committed, and never activated it
+    w.daemons.set(VAULT, { ownership: ownerAt(TRIFT, 4, { frozen: true, journal: { role: 'destination', transactionId: 'tx1', generation: 5, phase: 'commit' } }), adopted: [] });
+
+    expect(await w.run({ confirm: fleetId })).toBe(true);
+    const record: OwnerRecord = { fleetId, generation: 6, ownerMachineId: w.mac };
+    expect(w.daemons.get(VAULT)!.adopted).toEqual([{ record, gatewayMachineId: TRIFT }]);
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([{ record }]);
+    const [result] = w.of('recover.result');
+    expect(result).toMatchObject({ result: 'recovered' });
+    expect(result.actions.join(' ')).not.toMatch(/vault .*is not told/);
+
+    // one that holds a handover and could not be told leaves the recovery incomplete
+    const failing = world();
+    failing.down.add(TRIFT);
+    failing.daemons.set(failing.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    failing.daemons.set(VAULT, { ownership: ownerAt(TRIFT, 4, { frozen: true, journal: { role: 'destination', transactionId: 'tx1', generation: 5, phase: 'commit' } }), adopted: [], fails: 'the socket closed' });
+    expect(await failing.run({ confirm: fleetId })).toBe(false);
+    const [incomplete] = failing.of('recover.result');
+    expect(incomplete).toMatchObject({ result: 'incomplete', message: expect.stringMatching(/vault holds handover tx1 and did not take this record: the socket closed/) });
+    expect(incomplete.actions).toEqual(expect.arrayContaining([expect.stringMatching(/^vault holds handover tx1: once its daemon answers, run `svall fleet recover --force-owner local` again/)]));
+  });
+
+  it('runs nothing here alone when a machine it tells reaches the gateway and takes the gateway\'s own record', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    // the Mac cannot reach trift, and vault can: its relay takes what trift answers
+    w.daemons.set(VAULT, { ownership: ownerAt(TRIFT, 4), adopted: [], takes: { fleetId, generation: 4, ownerMachineId: TRIFT } });
+    expect(await w.run({ confirm: fleetId })).toBe(false);
+    const [result] = w.of('recover.result');
+    expect(result).toMatchObject({ result: 'incomplete', message: expect.stringMatching(/vault reached the gateway trift, which answered that trift owns this fleet at generation 4: trift is not lost, so mac was not told to run this fleet alone/) });
+    expect(result.actions).toEqual([expect.stringMatching(/recover through trift from a machine that reaches it/)]);
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([]);
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId, gatewayMachineId: TRIFT });
+  });
+
+  it('runs the fleet here alone with its daemon down by writing owner.json and fleet.json itself, and only while no handover journal lies here', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    fs.writeFileSync(w.paths.owner, JSON.stringify({ fleetId, generation: 3, ownerMachineId: TRIFT }));
+    expect(await w.run({ confirm: fleetId })).toBe(false);
+    expect(JSON.parse(fs.readFileSync(w.paths.owner, 'utf8'))).toEqual({ fleetId, generation: 4, ownerMachineId: w.mac });
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId });
+    const [result] = w.of('recover.result');
+    expect(result).toMatchObject({ result: 'incomplete', message: expect.stringMatching(/written here, and mac's daemon has not taken it: it runs the fleet from it when it next starts/) });
+
+    const held = world();
+    held.down.add(TRIFT);
+    fs.writeFileSync(held.paths.owner, JSON.stringify({ fleetId, generation: 3, ownerMachineId: TRIFT }));
+    fs.mkdirSync(held.paths.handoverDir, { recursive: true });
+    fs.writeFileSync(held.paths.journal, JSON.stringify({
+      role: 'destination', transactionId: 'tx9', generation: 4, fleetId, fromMachineId: TRIFT, toMachineId: held.mac, phase: 'prepare', manifestDigest: 'a'.repeat(64), updatedAt: 1,
+    }));
+    expect(await held.run({ confirm: fleetId })).toBe(false);
+    expect(held.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/journal of handover tx9 lies here, which only this machine's daemon lets go: start it/) });
+    expect(JSON.parse(fs.readFileSync(held.paths.owner, 'utf8'))).toEqual({ fleetId, generation: 3, ownerMachineId: TRIFT });
+    expect(fs.existsSync(held.localAudit)).toBe(false);
+
+    // a journal beside an owner.json that cannot be read, or one that cannot itself be read, is still the daemon's to let go
+    for (const journal of [fs.readFileSync(held.paths.journal, 'utf8'), '{"role":']) {
+      const unread = world();
+      unread.down.add(TRIFT);
+      fs.writeFileSync(unread.paths.owner, '{"fleetId":');
+      fs.mkdirSync(unread.paths.handoverDir, { recursive: true });
+      fs.writeFileSync(unread.paths.journal, journal);
+      expect(await unread.run({ confirm: fleetId })).toBe(false);
+      expect(unread.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/a handover journal lies at .*journal\.json, which only this machine's daemon lets go: start it/) });
+      expect(fs.readFileSync(unread.paths.owner, 'utf8')).toBe('{"fleetId":');
+      expect(fs.existsSync(unread.localAudit)).toBe(false);
+    }
+  });
+
+  it('says the recovery is incomplete, not refused, when fleet.json cannot be changed after this machine took the record', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(TRIFT, 4), adopted: [] });
+    const ro = tmp();
+    fs.writeFileSync(path.join(ro, 'fleet.json'), fs.readFileSync(w.paths.fleetConfig));
+    fs.rmSync(w.paths.fleetConfig);
+    fs.symlinkSync(path.join(ro, 'fleet.json'), w.paths.fleetConfig);
+    fs.chmodSync(ro, 0o500);
+    try {
+      expect(await w.run({ confirm: fleetId })).toBe(false);
+    } finally {
+      fs.chmodSync(ro, 0o700);
+    }
+    expect(w.daemons.get(w.mac)!.adopted).toHaveLength(1);
+    expect(w.of('recover.result')[0]).toMatchObject({
+      result: 'incomplete', message: expect.stringMatching(/mac took the record, and .*fleet\.json could not be changed to name no gateway/),
+      actions: [expect.stringMatching(/remove its gatewayMachineId/)],
+    });
+  });
+
+  it('refuses to run the fleet here alone while another machine answers that it runs it', async () => {
+    const w = world();
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(VAULT, 4), adopted: [] });
+    w.daemons.set(VAULT, { ownership: ownerAt(VAULT, 4), adopted: [] });
+    expect(await w.run({ confirm: fleetId })).toBe(false);
+    expect(w.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/vault answers that it runs this fleet/) });
+    expect(w.of('recover.observed')[0].plan).toBeUndefined();
+    await untouched(w, 'not_found');
+  });
+
+  it('makes a machine the gateway of a fleet that names none, writing over whatever record it holds, and asks for one without --gateway', async () => {
+    const w = world();
+    fs.writeFileSync(w.paths.fleetConfig, JSON.stringify({ id: fleetId }));
+    w.daemons.set(w.mac, { ownership: ownerAt(w.mac, 6), adopted: [] });
+    const returned: OwnerRecord = { fleetId, generation: 4, ownerMachineId: TRIFT };
+    w.hold(TRIFT, returned);
+
+    expect(await w.run({ confirm: fleetId })).toBe(false);
+    expect(w.of('recover.result')[0]).toMatchObject({
+      result: 'refused', message: expect.stringMatching(/names no gateway/), actions: [expect.stringContaining('svall fleet recover --force-owner local --gateway <machine>')],
+    });
+    expect(await w.held(TRIFT)).toEqual(returned);
+
+    expect(await w.run({ gateway: 'trift', confirm: fleetId })).toBe(true);
+    const forced: OwnerRecord = { fleetId, generation: 7, ownerMachineId: w.mac };
+    expect(w.of('recover.observed').at(-1)!.plan).toEqual({ ownerMachineId: w.mac, owner: 'mac', generation: 7, gatewayMachineId: TRIFT, gateway: 'trift' });
+    expect(await w.held(TRIFT)).toEqual(forced);
+    expect(w.audit(TRIFT)).toEqual([expect.objectContaining({ before: returned, after: forced })]);
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId, gatewayMachineId: TRIFT });
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([{ record: forced, gatewayMachineId: TRIFT }]);
+    expect(w.of('recover.result').at(-1)).toMatchObject({ result: 'recovered' });
+  });
+
+  it('refuses to make a machine that does not answer the gateway of a fleet that names none', async () => {
+    const w = world();
+    fs.writeFileSync(w.paths.fleetConfig, JSON.stringify({ id: fleetId }));
+    w.daemons.set(w.mac, { ownership: ownerAt(w.mac, 6), adopted: [] });
+    w.down.add(TRIFT);
+    expect(await w.run({ gateway: 'trift', confirm: fleetId })).toBe(false);
+    expect(w.of('recover.result')[0]).toMatchObject({ result: 'refused', message: expect.stringMatching(/^trift did not answer: .*, so no record can be written there/), actions: [] });
+    expect(JSON.parse(fs.readFileSync(w.paths.fleetConfig, 'utf8'))).toEqual({ id: fleetId });
+    expect(w.daemons.get(w.mac)!.adopted).toEqual([]);
+    expect(fs.existsSync(w.localAudit)).toBe(false);
   });
 
   it('names a replacement gateway in fleet.json through a link, keeping its mode', async () => {
@@ -346,6 +538,9 @@ describe('fleet recover --force-owner', () => {
     expect(await quiet.run({ gateway: 'vault', confirm: fleetId })).toBe(false);
     expect(quiet.of('recover.result')[0].message).toMatch(/trift is not lost/);
     expect(quiet.audit(VAULT)).toEqual([]);
+    // without a replacement, the refusal names how to start the authority again
+    expect(await quiet.run({ confirm: fleetId })).toBe(false);
+    expect(quiet.of('recover.result')[1].message).toMatch(/on trift, `systemctl --user start svall-gateway` starts it, and `svall host doctor trift` says why it stopped/);
 
     const holding = world();
     holding.hold(TRIFT, record);

@@ -16,7 +16,7 @@ import { docFolders, docsDir, fleetDir, repoSlug } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
 import { armFailpoints } from '../../src/handover/failpoints.js';
 import { DestinationJournal, openJournal, type HandoverJournal } from '../../src/handover/journal.js';
-import { SealRecord, type DestinationDeps } from '../../src/handover/destination.js';
+import { SealRecord, syncRoots, type DestinationDeps } from '../../src/handover/destination.js';
 import { discoverGit } from '../../src/handover/git-graph.js';
 import { graphsHere } from '../../src/handover/git-import.js';
 import { canonicalDigest } from '../../src/handover/hash.js';
@@ -367,7 +367,10 @@ const params = (s: Scene, over: Partial<Prepare> = {}): Prepare =>
 /** This destination's daemon, as main wires it, over the scene's home, in an account whose home is the fleet's unless `homedir` says otherwise. */
 function daemon(
   s: { paths: Paths; store: Store; probes: AgentProbe[]; manifest: Pick<TransferManifestV1, 'home'> },
-  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]>; cli?: CliRun; log?: Logger } = {},
+  o: {
+    concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]>; cli?: CliRun; log?: Logger;
+    syncRoots?: DestinationDeps['syncRoots'];
+  } = {},
 ) {
   const gateway = new Gateway();
   const clock = new Hands();
@@ -383,7 +386,7 @@ function daemon(
       source: idleSides(s.paths, { store: s.store }).source,
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
-        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), ...(o.cli && { cli: o.cli }), log: o.log ?? silentLogger,
+        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), ...(o.cli && { cli: o.cli }), ...(o.syncRoots && { syncRoots: o.syncRoots }), log: o.log ?? silentLogger,
       },
     });
     const events: Event[] = [];
@@ -438,6 +441,54 @@ describe('destination prepare', () => {
     expect(s.store.state.characters).toEqual({});
     expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
     expect(d.ownership.writable()).toBe(false);
+  });
+
+  it('flushes every root that landed to disk before it journals the prepared state, and journals none while that fails', async () => {
+    const s = await scene();
+    const synced: string[][] = [];
+    const flushed: string[][] = [];
+    let fails: Error | undefined = new Error('EIO: i/o error, syncfs');
+    const d = daemon(s, { syncRoots: async (roots, files) => { synced.push([...roots]); flushed.push([...files]); if (fails) throw fails; } });
+    await expect(d.handover.prepare(params(s))).rejects.toThrow(/could not be flushed to disk: EIO/);
+    expect(synced.map((r) => [...r].sort())).toEqual([replicaRoots(s.manifest).map((r) => r.path).sort()]);
+    // each file that landed, by its path here; a symlink holds no data to flush
+    const roots = new Map(replicaRoots(s.manifest).map((r) => [r.id, r.path]));
+    const files = s.landed.flatMap((l) => l.files.filter((f) => f.type === 'file').map((f) => (f.path ? path.join(roots.get(l.id)!, f.path) : roots.get(l.id)!)));
+    expect(files.length).toBeGreaterThan(0);
+    expect([...flushed[0]].sort()).toEqual(files.sort());
+    expect(journalOf(s.paths)).toMatchObject({ phase: 'verify' });
+    expect(journalOf(s.paths).preparedDigest).toBeUndefined();
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
+    fails = undefined;
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    expect(journalOf(s.paths)).toMatchObject({ phase: 'prepare', preparedDigest });
+    expect(synced).toHaveLength(2);
+  });
+
+  it('flushes the filesystems that hold a set of roots with the sync this platform has', async () => {
+    const s = await scene();
+    await expect(syncRoots(replicaRoots(s.manifest).map((r) => r.path))).resolves.toBeUndefined();
+    await expect(syncRoots([])).resolves.toBeUndefined();
+    await expect(syncRoots([path.join(s.base, 'gone')])).rejects.toThrow(/ENOENT/);
+    // on a Mac each file is flushed through to the drive; one the Git import removed has nothing left to flush
+    const root = replicaRoots(s.manifest)[0].path;
+    const file = path.join(root, 'flushed.txt');
+    fs.writeFileSync(file, 'x');
+    await expect(syncRoots([root], [file, path.join(root, 'removed.txt')], { platform: 'darwin' })).resolves.toBeUndefined();
+    // rsync -p keeps a mode the owner cannot read: one it can write is flushed through that, and one it can do neither with is named
+    const writeOnly = path.join(root, 'write-only');
+    const sealed = path.join(root, 'sealed');
+    fs.writeFileSync(writeOnly, 'x', { mode: 0o200 });
+    fs.writeFileSync(sealed, 'x', { mode: 0o000 });
+    const logged: string[] = [];
+    const log = { info: (m: string) => logged.push(m), error: (m: string) => logged.push(m) };
+    try {
+      await expect(syncRoots([root], [writeOnly, sealed, file], { platform: 'darwin', log })).resolves.toBeUndefined();
+    } finally {
+      fs.chmodSync(writeOnly, 0o600);
+      fs.chmodSync(sealed, 0o600);
+    }
+    expect(logged).toEqual([expect.stringMatching(new RegExp(`1 landed file could not be opened to flush.*${sealed}`))]);
   });
 
   it("imports an OpenCode session into this machine's OpenCode, in the folder its terminal resumes in and over the copy an earlier handover left, before it prepares anything to revive", async () => {

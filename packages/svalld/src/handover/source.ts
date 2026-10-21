@@ -185,6 +185,34 @@ function crowded(files: number, own: number, destination: number | undefined): B
   };
 }
 
+/** Why this machine could not ask its gateway who owns the fleet, as Freeze must with no one to answer a prompt. */
+function unasked(e: unknown): Blocker {
+  const said = (e as Error).message;
+  const code = e instanceof AuthorityFailure ? e.code : undefined;
+  if (code === 'identity_mismatch') return { code, message: `this machine's route to its gateway leads elsewhere: ${said}` };
+  if (code === 'not_found') {
+    return { code: 'identity_mismatch', message: `the gateway holds no record of this fleet (${said}); a gateway set up again needs svall host enable <gateway> --fleet <fleet>` };
+  }
+  if (code === 'authority_corrupt') {
+    return { code, message: `the gateway cannot read its record of this fleet: ${said}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };
+  }
+  const prompt = e instanceof AuthorityFailure ? e.data?.prompt : undefined;
+  const ssh = e instanceof AuthorityFailure && typeof e.data?.ssh === 'string' ? e.data.ssh : '<gateway>';
+  if (prompt === 'approval') {
+    return { code: 'ssh_interactive', message: `this machine's ssh to its gateway waits for a check Tailscale asks for: ${said}; approve it in the browser, or run ssh ${ssh} once in a terminal, then try again` };
+  }
+  if (prompt === 'host_key') {
+    return { code: 'ssh_interactive', message: `this machine's ssh to its gateway would have to ask about the gateway's host key: ${said}; run ssh ${ssh} once in a terminal and check the key, then try again` };
+  }
+  if (prompt) {
+    return { code: 'ssh_interactive', message: `this machine's ssh to its gateway could not log in without asking: ${said}; add its key to the agent with ssh-add, or install one there with ssh-copy-id ${ssh}, then try again` };
+  }
+  if (code === 'invalid_request') {
+    return { code: 'authority_unreachable', message: `this machine could not ask its gateway who owns this fleet: ${said}; add the gateway with svall host add <gateway> --ssh <destination>, then try again` };
+  }
+  return { code: 'authority_unreachable', message: `this machine could not ask its gateway who owns this fleet: ${said}; try again once the gateway answers` };
+}
+
 const named = (m: TransferManifestV1, transactionId: string): Frozen['manifest'] => {
   if (m.transactionId !== transactionId) throw new Error(`the manifest names handover ${m.transactionId}, not ${transactionId}`);
   return { ...m, transactionId };
@@ -205,13 +233,7 @@ export class SourceHandover {
     const { blockers, inventory } = await this.check(p.toMachineId, p, state);
     // Freeze asks the gateway on its own, with no one to answer a prompt: asked here first, read-only
     const authority = this.d.authority?.();
-    if (authority) {
-      await authority.get(this.fleet().id).catch((e: unknown) => {
-        blockers.push(e instanceof AuthorityFailure && e.code === 'identity_mismatch'
-          ? { code: 'identity_mismatch', message: `this machine's route to its gateway leads elsewhere: ${e.message}` }
-          : { code: 'ssh_interactive', message: `this machine could not ask its gateway who owns this fleet, as Freeze must without a prompt: ${(e as Error).message}` });
-      });
-    }
+    if (authority) await authority.get(this.fleet().id).catch((e: unknown) => { blockers.push(unasked(e)); });
     const signal = AbortSignal.timeout(CALL_TIMEOUT_MS);
     const [live, table] = await Promise.all([this.d.tmux.listWindows(signal), this.processes(signal)]);
     const terminals = classifyTerminals(state, live, table);
@@ -278,8 +300,10 @@ export class SourceHandover {
     if (this.freezing?.transactionId === transactionId) this.freezing.cancel.abort(aborting(transactionId));
     return this.serial(async () => {
       const held = this.open(transactionId);
-      if (!held) return;
-      if (revive) await this.revive(transactionId, held.stoppedTerminals, 'aborted');
+      // with its journal lost, what it stopped is what each slot says rested it
+      const lost = this.journal.journalState().kind === 'quarantined';
+      if (!held && !lost) return;
+      if (revive) await this.revive(transactionId, held?.stoppedTerminals ?? this.restedBy(transactionId), 'aborted');
       fs.rmSync(this.d.paths.manifest(transactionId), { force: true });
       this.journal.close();
     });
@@ -352,7 +376,9 @@ export class SourceHandover {
     }
     await this.mayTakeBack(p);
     if (held) boundary('source.abort.journal', () => this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() }));
-    await this.revive(p.transactionId, held?.stoppedTerminals ?? [], 'aborted');
+    // a journal closes only once what it stopped has reopened; one that could not be read leaves what each slot says rested it
+    const lost = this.journal.journalState().kind === 'quarantined';
+    await this.revive(p.transactionId, held?.stoppedTerminals ?? (lost ? this.restedBy(p.transactionId) : []), 'aborted');
     await this.release(p.transactionId);
     return {};
   }
@@ -551,12 +577,15 @@ export class SourceHandover {
     // a terminal whose window a rest that died closed still names that window, and reopens only once it names none
     const live = new Set((await this.d.tmux.listWindows()).map((w) => w.windowId));
     const { store, kill, clock } = this.d;
-    // an OpenCode resumed beside the server its closed window left would share its database with it
-    await serversGone({ store, journal: this.journal, processes: this.processes, kill, clock }, this.d.rest ?? {}, (t) => {
-      const c = store.state.characters[t.characterId];
-      const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
-      return !window || !live.has(window);
-    });
+    // an OpenCode resumed beside the server its closed window left would share its database with it; a journal that
+    // could not be read names no server
+    if (this.open(transactionId)) {
+      await serversGone({ store, journal: this.journal, processes: this.processes, kill, clock }, this.d.rest ?? {}, (t) => {
+        const c = store.state.characters[t.characterId];
+        const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
+        return !window || !live.has(window);
+      });
+    }
     this.d.store.update((d) => {
       for (const t of stopped) {
         const c = d.characters[t.characterId];
@@ -577,6 +606,14 @@ export class SourceHandover {
         this.progress(transactionId, c.id, { error: (e as Error).message }, phase);
       }
     }
+  }
+
+  /** The terminals whose slot names this handover as the one that rested it. */
+  private restedBy(transactionId: string): SourceJournal['stoppedTerminals'] {
+    return Object.values(this.d.store.state.characters).flatMap((c) => [
+      ...(c.restedBy === transactionId ? [{ characterId: c.id }] : []),
+      ...(c.second?.restedBy === transactionId ? [{ characterId: c.id, term: 2 as const }] : []),
+    ]);
   }
 
   /**

@@ -242,7 +242,7 @@ export class View {
           ...(this.about.destination ? [`\`${svall(`handover ${this.about.destination}`)}\` starts again.`] : []),
         ];
       case 'interrupted':
-        return [`Stopped ${o.phase === 'begin' ? 'before it began' : `while ${HEADINGS[o.phase].toLowerCase()}`}: ${o.error}`, next(o.safe)];
+        return [`Stopped ${o.phase === 'begin' ? 'before it began' : `while ${HEADINGS[o.phase].toLowerCase()}`}: ${o.error}`, ...(o.detail ? [`  ${o.detail}`] : []), next(o.safe)];
       case 'detached':
         return [`Stopped watching. The fleet is committed and the move goes on; \`${svall('handover status')}\` says where it stands.`];
     }
@@ -250,8 +250,8 @@ export class View {
 
   status(v: Verdict & { helper?: { pid: number } }): string[] {
     const { svall, machine } = this.words;
-    // a live helper is named without the journals being read; it says where it stands to whoever attaches
-    if (v.helper && v.standing === 'unknown' && !v.transactionId) return [`${v.reason[0].toUpperCase()}${v.reason.slice(1)}.`];
+    // a live helper is named without the journals being read, and a gateway that could not be asked names no handover
+    if (v.standing === 'unknown' && !v.transactionId && (v.helper || !v.fromMachineId)) return [`${v.reason[0].toUpperCase()}${v.reason.slice(1)}.`];
     if (v.standing === 'none' && !v.transactionId) {
       return [`No handover of this fleet is open: ${v.reason}.`, ...(v.safe.includes('abort') ? [`\`${svall('handover --abort')}\` clears what is left of it.`] : [])];
     }
@@ -261,7 +261,7 @@ export class View {
     if (v.helper) lines.push(`  running here as pid ${v.helper.pid}; \`${svall('handover attach')}\` follows it`);
     if (v.standing === 'superseded') lines.push(`Next: \`${svall('handover --forget')}\` drops this controller's journal of it; the daemons and the gateway keep theirs.`);
     else if (v.safe.length) lines.push(`Safe: ${v.safe.map((s) => `\`${svall(`handover --${s}`)}\``).join(' or ')}.`);
-    else lines.push('Nothing is safe until the gateway answers.');
+    else lines.push(v.standing === 'unknown' ? 'Nothing is safe until the gateway answers.' : 'Nothing is safe until one of the ways out above is taken.');
     return lines;
   }
 }

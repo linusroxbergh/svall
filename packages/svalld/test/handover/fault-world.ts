@@ -292,6 +292,9 @@ export class World {
   transactions = new Set<string>();
   /** the gateway is out of reach, as against dead: nothing restarts it until a test brings it back */
   away = false;
+  /** each flush a destination asked of the roots that landed, and why the next one fails, when it does */
+  synced: string[][] = [];
+  syncFails?: Error;
   now = 1000;
   private epoch = 0;
   private watching = false;
@@ -569,6 +572,7 @@ export class World {
         destination: {
           paths, config, store: mortal, fleet, tmux: m.tmux, processes: m.processes, authority, clock, git: noGit,
           homedir: () => this.home, sessionStartMs: 60_000, concurrency: 1, cli: m.cli, log,
+          syncRoots: async (roots) => { this.synced.push([...roots]); if (this.syncFails) throw this.syncFails; },
         },
       });
       instance = { life, ownership, handover, store, active: false, ctx: { ownership, handover, viewer: { kind: 'app' } } as unknown as Ctx };
