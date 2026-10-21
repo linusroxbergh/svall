@@ -184,14 +184,14 @@ test('Show in Finder is offered only for a folder on this Mac while the fleet ru
 test('while transferring, one bar sums every folder and session, a verified folder reads whole, and the rows wait behind a disclosure', () => {
   render(<HandoverSheet />);
   say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
-    // a folder still being checked is not yet verified; a verified one says so with every byte
-    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 600_000, totalBytes: 1_000_000 } },
+    // a fresh copy is checked with every byte sent; only the row the destination verified counts
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_2', phase: 'transfer', bytes: 250_000, totalBytes: 1_000_000 } },
-    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'session', id: 's0', phase: 'verify', bytes: 1_000, totalBytes: 1_000 } });
-  expect(screen.getByTestId('handover-transfer-total').textContent).toContain('851.0 KB of 2.0 MB · 1 of 3 verified');
-  expect(screen.getByTestId('handover-transfer-total').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 43%');
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'session', id: 's0', phase: 'verify', bytes: 1_000, totalBytes: 1_000, verified: true } });
+  expect(screen.getByTestId('handover-transfer-total').textContent).toContain('1.3 MB of 2.0 MB · 1 of 3 verified');
+  expect(screen.getByTestId('handover-transfer-total').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 63%');
   expect(screen.getByTestId('handover-transfer-rows').querySelector('summary')?.textContent).toBe('2 folders and 1 session');
-  expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 60%');
+  expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 100%');
   expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.host-mark')?.textContent).toBe('·');
   expect(screen.getByTestId('handover-row-transfer-s0').querySelector('.host-mark')?.textContent).toBe('✓');
   expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 characters at rest');
@@ -382,7 +382,7 @@ test('the sheet says when Abort stops being possible: once the commit begins, an
 
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
   preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
-  { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },
+  { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000, verified: true } },
   ...changed('verify', 'prepare', 'ready', 'commit', 'activate'),
   ...characters.map((c): HandoverEvent => ({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'character', id: c.id, phase: 'activate', ...(c.error && { error: c.error }) } })),
   ...changed('complete'),

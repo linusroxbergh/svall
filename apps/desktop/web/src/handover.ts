@@ -19,7 +19,7 @@ export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }
 ];
 export type SectionState = 'pending' | 'active' | 'waiting' | 'done' | 'stopped';
 
-type Progress = { done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string };
+type Progress = { done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string; verified?: boolean };
 export type Row = Progress & { section: SectionId; kind: HandoverEntityKind; id: string; phase: HandoverPhase };
 
 /** One handover as the sheet follows it: what the helper has said so far, and what the user chose. */
@@ -65,6 +65,7 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
   const row: Row = {
     section, kind: e.kind, id: e.id, phase: e.phase, done: e.done, total: e.total, bytes: e.bytes, totalBytes: e.totalBytes,
     ...(e.error && { error: withoutTokens(e.error) }), ...(e.notice && { notice: withoutTokens(e.notice) }), ...(e.archivedTo && { archivedTo: e.archivedTo }),
+    ...(e.verified && { verified: true }),
   };
   return at < 0 ? [...rows, row] : rows.map((r, i) => (i === at ? row : r));
 }
@@ -107,7 +108,7 @@ export function readable(e: unknown): e is HandoverEvent {
     case 'handover.changed': return isPhase(d.phase) && optional(d.transactionId, isString);
     case 'handover.entity':
       return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
-        && optional(d.error, isString) && optional(d.notice, isString) && optional(d.archivedTo, isString);
+        && optional(d.error, isString) && optional(d.notice, isString) && optional(d.archivedTo, isString) && optional(d.verified, (v) => typeof v === 'boolean');
     case 'handover.blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue) && optional(d.choices, isObject);
     case 'handover.retry': return isPhase(d.phase) && isNumber(d.attempt) && isString(d.error);
     case 'handover.result': return isOutcome(d);
@@ -552,8 +553,8 @@ export function fraction(row: Progress): number | undefined {
   return undefined;
 }
 
-/** A transfer row the destination has verified, which then counts every byte; one still being checked shares its phase. */
-export const verified = (row: Row): boolean => row.section === 'transfer' && row.phase === 'verify' && !row.error && fraction(row) === 1;
+/** A transfer row the destination has verified; one still being checked has its phase, and often every byte. */
+export const verified = (row: Row): boolean => row.section === 'transfer' && !!row.verified && !row.error;
 
 /** Every transfer row as one: bytes sent against bytes to send, and how many rows are verified. */
 export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number; done: number; total: number } {

@@ -224,7 +224,7 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 | --- | --- |
 | `handover.preflight` | The checks: what the manifest holds, the blockers, the warnings and the names of the characters, folders and sessions. |
 | `handover.changed` | The step the controller has moved to. |
-| `handover.entity` | One character, folder or session row: its progress, a notice, its error, or for an archived folder where the old copy is kept (`archivedTo`). |
+| `handover.entity` | One character, folder or session row: its progress, a notice, its error, for an archived folder where the old copy is kept (`archivedTo`), and for a folder or session the destination has verified, `verified`. |
 | `handover.blocked` | A decision that waits for an answer, with the choices the run holds so far, which an answer builds on. |
 | `handover.retry` | A call that did not answer and is being asked again. |
 | `handover.result` | The last line: how the run ended. |
