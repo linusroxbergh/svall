@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
   FleetState, Generation, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
@@ -60,8 +62,20 @@ export type DestinationDeps = {
   concurrency?: number;
   /** How to run an agent CLI that reads a session into its own database. */
   cli?: CliRun;
+  /** How to flush the roots that landed to disk. */
+  syncRoots?: (roots: readonly string[]) => Promise<void>;
   log: Logger;
 };
+
+const SYNC_MS = 5 * 60_000;
+
+/** Flushes the filesystems that hold `roots` to disk: `sync -f` once a filesystem on Linux, and on a Mac, whose sync names no file, everything. */
+export async function syncRoots(roots: readonly string[], platform: NodeJS.Platform = process.platform): Promise<void> {
+  const byDevice = new Map<number, string>();
+  for (const r of roots) { const { dev } = fs.statSync(r); if (!byDevice.has(dev)) byDevice.set(dev, r); }
+  if (!byDevice.size) return;
+  await promisify(execFile)('sync', platform === 'linux' ? ['-f', ...byDevice.values()] : [], { timeout: SYNC_MS });
+}
 
 /**
  * What Complete seals: what landed in each carried root and what the Git import wrote there, at the generation this
@@ -493,6 +507,11 @@ export class DestinationHandover {
     if (placed.length) throw blocked(placed);
     const unread = await this.importSessions(tx, m, run);
     if (unread.length) throw blocked(unread);
+    // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
+    const roots = [...at.values()];
+    await boundary('destination.prepare.sync', () => (this.d.syncRoots ?? syncRoots)(roots).catch((e: unknown) => {
+      throw new Error(`what landed in ${roots.join(', ')} could not be flushed to disk: ${(e as Error).message}`);
+    }));
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);

@@ -108,6 +108,7 @@ const REACH: Record<Failpoint, Reach> = {
   'destination.prepare.seal': { scenario: 'move', times: 1 },
   'destination.prepare.delete': { scenario: 'move', times: 2, resumes: true },
   'destination.prepare.import': { scenario: 'move', times: 2, resumes: true },
+  'destination.prepare.sync': { scenario: 'move', times: 1, resumes: true },
   'destination.prepare.state': { scenario: 'move', times: 1, resumes: true },
   'destination.prepare.journal': { scenario: 'move', times: 1 },
   'destination.prepare.stage': { scenario: 'move', times: 1 },
@@ -372,6 +373,28 @@ describe('a destination that restarts between its activation and its complete', 
     expect(restarted).toBe(true);
     expect(out.status).toBe('complete');
     expect(w.violations).toEqual([]);
+    expect(settledOn(w)).toBe('destination');
+  });
+});
+
+describe('a destination that cannot flush what landed to disk', () => {
+  const world = worlds();
+
+  it('journals no prepared state, so nothing is made ready, and prepares once a flush succeeds', async () => {
+    const w = world();
+    w.syncFails = new Error('EIO: i/o error, syncfs');
+    const first = await play(w, 'move');
+    expect(first).toMatchObject({ status: 'interrupted', phase: 'prepare', safe: ['resume', 'abort'], error: expect.stringContaining('could not be flushed to disk: EIO') });
+    const roots = [...new Set(w.synced.flat())];
+    expect(roots.length).toBeGreaterThan(0);
+    expect(roots.every((r) => r.startsWith(`${w.home}/`))).toBe(true);
+    const journal = JSON.parse(fs.readFileSync(w.trift.paths.journal, 'utf8')) as Record<string, unknown>;
+    expect(journal).toMatchObject({ role: 'destination', phase: 'verify' });
+    expect(journal).not.toHaveProperty('preparedDigest');
+    expect(w.record().transaction).toMatchObject({ phase: 'preparing' });
+    w.syncFails = undefined;
+    const said = await w.recover('resume');
+    expect(w.violations, said.join(' ')).toEqual([]);
     expect(settledOn(w)).toBe('destination');
   });
 });
