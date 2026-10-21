@@ -691,10 +691,10 @@ describe('archiving', () => {
     w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
     tree(app, { 'a.txt': 'edited', ...many });
     const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
-    expect(fs.existsSync(path.join(archivedTo, '.git'))).toBe(false);
+    expect(fs.readFileSync(path.join(archivedTo, '.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
     expect(fs.readFileSync(path.join(archivedTo, '.git.archived'), 'utf8')).toBe(`gitdir: ${common}/worktrees/wt\n`);
     expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toBe(
-      `Archived by a Svall handover from ${path.join(real(w.work), 'wt')}, the linked worktree on branch feat at ${commit}; its .git file is .git.archived, so git here leaves that worktree alone.\n`,
+      `Archived by a Svall handover from ${path.join(real(w.work), 'wt')}. Each linked worktree here keeps its .git file as .git.archived beside a .git that names no repository, so git there leaves the live worktree alone:\n- . was the linked worktree on branch feat at ${commit}\n`,
     );
     expect(fs.readFileSync(path.join(common, 'worktrees/wt/HEAD'), 'utf8')).toBe('ref: refs/heads/feat\n');
 
@@ -703,13 +703,43 @@ describe('archiving', () => {
     const again = tree(path.join(w.work, 'wt'), { '.git': 'gitdir: ../main/.git/worktrees/wt\n' });
     w.store().seal(dir(again), sealAs('tx-1', []), 'source');
     const detached = (await w.store().archive(dir(again), ['r_app'], claimFor(TX))).archivedTo;
-    expect(fs.readFileSync(path.join(detached, 'README.archived.txt'), 'utf8')).toContain('the linked worktree detached at cccc');
+    expect(fs.readFileSync(path.join(detached, 'README.archived.txt'), 'utf8')).toContain('\n- . was the linked worktree detached at cccc');
     const main = tree(path.join(w.work, 'main'), { 'b.txt': 'b' });
     w.store().seal(dir(main, 'r_main'), sealAs('tx-2', []), 'source');
     const kept = (await w.store().archive(dir(main, 'r_main'), ['r_main'], claimFor(TX))).archivedTo;
     expect(fs.statSync(path.join(kept, '.git')).isDirectory()).toBe(true);
     expect(fs.existsSync(path.join(kept, 'README.archived.txt'))).toBe(false);
   });
+
+  it.skipIf(!hasGit)('sets aside the .git file of each linked worktree a main checkout archived whole holds, and git in any archived worktree finds no repository (needs git)', async () => {
+    const w = world();
+    const run = (cwd: string, ...args: string[]): string => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    run(w.work, 'init', '-q', '-b', 'outer');
+    const repo = tree(path.join(w.work, 'repo'), { 'a.txt': 'a' });
+    run(repo, 'init', '-q', '-b', 'main');
+    run(repo, 'add', 'a.txt');
+    run(repo, 'commit', '-qm', 'init');
+    run(repo, 'worktree', 'add', '-q', '.claude/worktrees/x', '-b', 'x');
+    run(repo, 'worktree', 'add', '-q', path.join(w.work, 'wt'), '-b', 'wt');
+    const commit = run(repo, 'rev-parse', 'HEAD');
+    const archived = async (p: string, id: string): Promise<string> => {
+      w.store().seal(dir(p, id), sealAs('tx-0', []), 'source');
+      return (await w.store().archive(dir(p, id), [id], claimFor(TX))).archivedTo;
+    };
+
+    const main = await archived(repo, 'r_repo');
+    const nested = path.join(main, '.claude/worktrees/x');
+    expect(fs.readFileSync(path.join(nested, '.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
+    expect(fs.readFileSync(path.join(nested, '.git.archived'), 'utf8')).toMatch(/^gitdir: .*\/repo\/\.git\/worktrees\/x\n$/);
+    expect(fs.readFileSync(path.join(main, 'README.archived.txt'), 'utf8')).toContain(`\n- .claude/worktrees/x was the linked worktree on branch x at ${commit}\n`);
+    expect(fs.statSync(path.join(main, '.git')).isDirectory()).toBe(true);
+    // once the copy brings the live registration back, git in the archived worktree still finds no repository
+    fs.cpSync(path.join(main, '.git'), path.join(repo, '.git'), { recursive: true });
+    expect(() => run(nested, 'status')).toThrow();
+
+    const linked = await archived(path.join(w.work, 'wt'), 'r_wt');
+    expect(() => run(linked, 'rev-parse', '--show-toplevel')).toThrow();
+  }, 60_000);
 
   it('moves a file root aside without replacing a file already there', async () => {
     const w = world();

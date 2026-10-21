@@ -326,24 +326,48 @@ export class ReplicaStore {
   }
 
   /**
-   * Sets aside the .git file of a linked worktree archived from `from` to `to`, which still names its live registration,
-   * so git run in the archive changes nothing there, and says beside it which worktree it was.
+   * Sets aside the .git file of each linked worktree archived from `from` to `to`, the archive itself or one its main
+   * checkout registers under it, as each still names a live registration. A .git naming no repository takes its place, so
+   * git there neither changes the live worktree nor finds a repository above; a README says which worktree each was.
    */
   private detach(to: string, from: string): void {
-    const gitfile = path.join(to, '.git');
-    let text: string;
+    const read = (p: string): string => this.fs.readFile(p).toString('utf8');
+    const archived = (p: string): string => (holds(from, p) ? path.join(to, path.relative(from, p)) : p);
+    const registered = this.names(path.join(to, '.git/worktrees')).flatMap((name) => {
+      const gitfile = this.text(path.join(to, '.git/worktrees', name, 'gitdir'))?.trim();
+      const at = gitfile && path.resolve(from, '.git/worktrees', name, gitfile);
+      return at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? [path.relative(from, path.dirname(at))] : [];
+    });
+    const lines = ['', ...registered].flatMap((rel) => {
+      const gitfile = path.join(to, rel, '.git');
+      const text = this.text(gitfile, true);
+      if (text === undefined) return [];
+      this.fs.rename(gitfile, `${gitfile}.archived`);
+      this.fs.writeFile(gitfile, 'gitdir: /nonexistent\n');
+      const registration = /^gitdir: (.*)$/m.exec(text)?.[1];
+      const head = registration ? worktreeHead(archived(path.resolve(from, rel, registration)), read) : 'whose .git file names no registration';
+      return [`- ${rel || '.'} was the linked worktree ${head}`];
+    });
+    if (!lines.length) return;
+    this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each linked worktree here keeps its .git file as .git.archived beside a .git that names no repository, so git there leaves the live worktree alone:\n${lines.join('\n')}\n`);
+  }
+
+  /** A file's text, or undefined when nothing, or no file when `file` asks for one, is there. */
+  private text(p: string, file = false): string | undefined {
     try {
-      if (!this.fs.lstat(gitfile).isFile()) return;
-      text = this.fs.readFile(gitfile).toString('utf8');
+      if (file && !this.fs.lstat(p).isFile()) return undefined;
+      return this.fs.readFile(p).toString('utf8');
     } catch (e) {
-      if (errno(e) === 'ENOENT') return;
+      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return undefined;
       throw e;
     }
-    this.fs.rename(gitfile, `${gitfile}.archived`);
-    const registration = /^gitdir: (.*)$/m.exec(text)?.[1];
-    const at = registration ? worktreeHead(path.resolve(from, registration), (p) => this.fs.readFile(p).toString('utf8')) : 'whose registration its .git file does not name';
-    this.fs.writeFile(path.join(to, 'README.archived.txt'),
-      `Archived by a Svall handover from ${from}, the linked worktree ${at}; its .git file is .git.archived, so git here leaves that worktree alone.\n`);
+  }
+
+  private names(p: string): string[] {
+    try { return this.fs.readdir(p); } catch (e) {
+      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return [];
+      throw e;
+    }
   }
 
   private async assess(
