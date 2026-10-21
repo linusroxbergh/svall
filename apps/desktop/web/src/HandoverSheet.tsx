@@ -214,7 +214,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
           </span>
         </div>
       )}
-      {pre && !run.phase && <RestPlan ctx={ctx} />}
+      {pre && !run.phase && (run.following || actionsOf(run).tryAgain) && <RestPlan ctx={ctx} />}
       {blockers.map((b, i) => <BlockerRow key={`b${i}`} b={b} ctx={ctx} run={run} blockers={blockers} />)}
       {pre?.warnings.filter(staysInSight).map((w, i) => <BlockerRow key={`s${i}`} b={w} ctx={ctx} run={run} warning />)}
       {notes.length > 0 && (
@@ -312,7 +312,7 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
     const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet first` : ''].filter(Boolean);
     return { tone: 'stop', sub: parts.length ? `${parts.join('; ')}. Move to ${ctx.destination} runs the checks again.` : `Everything is settled: Move to ${ctx.destination} runs the checks again and goes on.` };
   }
-  if (r?.status === 'ready') return { tone: 'ok', sub: `Move to ${ctx.destination} runs the checks once more, then rests the characters above; until the commit, Abort gives the fleet back.` };
+  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} runs the checks once more, then rests the characters above; until the commit, Abort gives the fleet back.` };
   const a = actionsOf(run);
   if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped${a.abort ? `; Abort gives the fleet back to ${ctx.source}` : ''}.` };
   if (a.resume === 'Retry') return { tone: 'stop', sub: `Retry finishes resuming on ${ctx.destination}; nothing goes back from here.` };

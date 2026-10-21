@@ -76,6 +76,17 @@ test('a destination runs the checks alone and shows what moves and who stops bef
 
   fireEvent.click(screen.getByTestId('handover-try-again'));
   expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift' });
+  // a check read back at launch, with nothing open, offers no move and so no plan
+  act(() => {
+    store.getState().handoverReplay([
+      { event: 'handover.preflight', data: { summary: { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 }, blockers: [], warnings: [] } },
+      { event: 'handover.result', data: { status: 'ready' } },
+      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } },
+    ]);
+  });
+  expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
+  expect(screen.queryByTestId('handover-footnote')?.textContent ?? '').not.toContain('Move to');
+  act(() => store.getState().handoverFollow('trift'));
   // once the move has begun, the characters' own rows take the place of the plan
   act(() => store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } }));
   expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
