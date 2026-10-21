@@ -50,6 +50,7 @@ function home(fixture: string, name = '.claude'): string {
 const CLAUDE = [
   { version: '2.1.280', id: 'bf480ea6-5572-4554-8016-2dc5590f5bba', slug: '-Users-source-work-demo', agent: 'agent-a4906877eb9919cf5' },
   { version: '2.1.251', id: '1fb0d1a7-29a9-4159-a932-5ffd2da8faba', slug: '-home-source-work-demo', agent: 'agent-aec6de8cd1d2df280' },
+  { version: '2.1.306', id: 'e6b13e68-3d40-4759-91a3-5c1cde740f9d', slug: '-Users-source-work-demo', agent: 'agent-a1774cad8a601f106' },
 ] as const;
 const CODEX = [
   // written before the oldest Codex Svall runs, so the CLI that carries it has been updated since
@@ -443,7 +444,7 @@ describe('sessions in the transfer manifest', () => {
 
 // each fixture session, where its CLI keeps it under the agent home
 const FIXTURE_SESSIONS = [
-  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.1.283' })),
+  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.2.0' })),
   ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
 ];
 
