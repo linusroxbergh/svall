@@ -13,7 +13,7 @@ import { readFleetConfig } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import { AuthorityFailure } from '../gateway/authority.js';
 import type { Fleet } from '../fleet.js';
-import { runGit, type GitRunner } from '../links/git.js';
+import { handoverGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { opencodeFolders } from '../opencode/install.js';
 import type { OwnershipState } from '../ownership/state.js';
@@ -494,7 +494,7 @@ export class SourceHandover {
   /** Each carried repository using a Git extension the destination's git cannot open, found before anything moves. */
   private async gitBlockers(inventory: Inventory, info: SystemInfo): Promise<Blocker[]> {
     if (!inventory.git?.length) return [];
-    const git = this.d.git ?? runGit;
+    const git = this.d.git ?? handoverGit;
     const graphs = await Promise.all(inventory.git.map(async (g) => ({ id: g.id, commonDir: g.commonDir, ...(await readExtensions(g.commonDir, git)) })));
     return extensionBlockers(graphs, { destination: info.git, source: await gitVersion(git) });
   }

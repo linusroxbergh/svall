@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, FleetState, GitCheckout, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
-import { DIRS_ARGS, parseDirs, runGit, type GitDirs, type GitRunner } from '../links/git.js';
+import { DIRS_ARGS, handoverGit, parseDirs, type GitDirs, type GitRunner } from '../links/git.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 import { excludeMatcher, excludedPath, settle } from './inventory.js';
 
@@ -121,7 +121,7 @@ type Slot = { characterId: string; dirs: GitDirs };
  * registrations it does not. What cannot be read faithfully blocks.
  */
 export async function discoverGit(state: FleetState, opts: DiscoverOptions): Promise<GitDiscovery> {
-  const git = opts.git ?? runGit;
+  const git = opts.git ?? handoverGit;
   const exists = opts.exists ?? fs.existsSync;
   const blockers: Blocker[] = [];
   const warnings: Warning[] = [];
@@ -158,6 +158,8 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
       for (const [at, url] of await origins(read, standing, git, exists)) {
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
+      const commands = await configCommands(commonDir, git);
+      if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
       const held = await unusedWork(read.graph, git, exists);
       for (const [at, message] of held) blockers.push({ code: 'worktree_unused', message: `${at}: ${message}`, entity });
       const idle = read.graph.unused.filter((u) => !held.has(u.path));
@@ -244,6 +246,21 @@ async function origins(read: ReadGraph, standing: Set<string>, git: GitRunner, e
     if (r.code === 0 && hostLocal(url)) out.push([place === places[0] ? graph.main?.path ?? graph.commonDir : place, url]);
   }
   return out;
+}
+
+// a filter's commands, an fsmonitor hook and an ssh command, as against fsmonitor's own daemon or none
+const COMMAND_KEYS = '^(filter\\..+\\.(clean|smudge|process)|core\\.fsmonitor|core\\.sshcommand)$';
+const BOOLEAN = /^(true|false|yes|no|on|off|1|0|)$/i;
+
+/** The keys of a repository's own config that name a command git runs, each once. */
+async function configCommands(commonDir: string, git: GitRunner): Promise<string[]> {
+  const r = await git(['config', '--file', path.join(commonDir, 'config'), '-z', '--get-regexp', COMMAND_KEYS], commonDir);
+  if (r.code !== 0) return [];
+  const keys = r.stdout.split('\0').filter(Boolean).flatMap((entry) => {
+    const [key, value = ''] = entry.split('\n');
+    return key === 'core.fsmonitor' && BOOLEAN.test(value) ? [] : [key];
+  });
+  return [...new Set(keys)].sort(byCodeUnit);
 }
 
 /**

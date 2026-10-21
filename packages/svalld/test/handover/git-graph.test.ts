@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type Character } from '@svall/protocol';
 import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
-import { runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
+import { handoverGit, runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
 import { char, crew, git, hasGit, seedHere } from './git-fixture.js';
 
 const made: string[] = [];
@@ -172,6 +172,28 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     // a submodule a character works in is a graph of its own, its git dir and common dir one folder
     expect(sub.main).toMatchObject({ path: s.sub, gitDir: sub.commonDir, branch: 'refs/heads/main', characters: ['sub'] });
     expect(sub).toMatchObject({ worktrees: [], unused: [], stash: [] });
+  });
+
+  it('runs no fsmonitor a repository names, and warns of the commands its config would have git run once it travels', async () => {
+    const l = seedHere(made);
+    const s = l.source;
+    const marker = path.join(l.base, 'fsmonitor-ran');
+    const script = path.join(l.base, 'fsmonitor.sh');
+    fs.writeFileSync(script, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o755 });
+    git(l.base, s.main, 'config', 'core.fsmonitor', script);
+    git(l.base, s.main, 'config', 'filter.crypt.clean', 'crypt --clean');
+    git(l.base, s.main, 'config', 'filter.crypt.required', 'true');
+    git(l.base, s.main, 'config', 'core.sshCommand', 'ssh -i key');
+    git(l.base, s.sub, 'config', 'core.fsmonitor', 'true');
+    const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(d.warnings.filter((w) => w.code === 'git_config_command')).toEqual([{
+      code: 'git_config_command', entity: { kind: 'git', id: d.graphs[0].id },
+      message: `${path.join(s.main, '.git')}: its config names commands git runs, and travels with it: core.fsmonitor, core.sshcommand, filter.crypt.clean`,
+    }]);
+    // the handover's own git turns both off whatever the repository says
+    expect((await handoverGit(['config', '--get', 'core.fsmonitor'], s.main)).stdout.trim()).toBe('false');
+    expect((await handoverGit(['config', '--get', 'core.hooksPath'], s.main)).stdout.trim()).toBe('/dev/null');
   });
 
   it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {

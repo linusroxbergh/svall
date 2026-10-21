@@ -118,6 +118,7 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 | `git_mismatch` | blocks | After the copy, the destination's Git state (worktree list, HEAD, branch, status, index or stash) differs from what the source left. Nothing has committed. | Try again, which copies again. If it repeats, compare `git status` on both machines, and `git --version` on the destination. When the status differs at a file a clean filter handles (Git LFS, git-crypt, nbstripout), the destination's git lacks that filter: set it up there, such as with `git lfs install`, then Try again. |
 | `git_extension` | blocks | A repository uses a Git extension the destination's git is too old for, or the destination has no git. | Update or install git on the destination. |
 | `remote_local` | warns | A repository's `origin` names a path on the source machine. It travels as it is. | Nothing, unless you push or pull there; then point `origin` somewhere both machines reach. |
+| `git_config_command` | warns | A repository's own config names a command git runs: a clean, smudge or process filter, an fsmonitor hook, or `core.sshCommand`. It travels with the repository, and git on the other machine runs it there. Svall's own git runs no fsmonitor or hook, though git may run a filter when Svall reads the repository's status. | Make sure the command is one you want run on the other machine, or remove it with `git config --unset <key>` in the repository. |
 
 ### Copying
 

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
-import { DIRS_ARGS, parseDirs, runGit, type GitRunner } from '../links/git.js';
+import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
 import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, said, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 
@@ -56,7 +56,7 @@ async function reaches(tips: readonly string[], commit: string, at: string, git:
  * can tell, is unproven: the tips it does not know may reach it, and only the source can say.
  */
 export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'git'> = {}): Promise<{ kept: KeptWorktree[]; unproven: KeptCommit[] }> {
-  const git = deps.git ?? runGit;
+  const git = deps.git ?? handoverGit;
   const registrations = path.join(g.commonDir, 'worktrees');
   let ids: string[] = [];
   try { ids = fs.readdirSync(registrations); } catch { return { kept: [], unproven: [] }; }
@@ -81,7 +81,7 @@ export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'gi
  * On the source: which of `commits` no ref of the repository at `commonDir` reaches, one it does not hold at all
  * included. What a ref reaches is what the copy it sends holds.
  */
-export async function unreached(commonDir: string, commits: readonly string[], git: GitRunner = runGit): Promise<string[]> {
+export async function unreached(commonDir: string, commits: readonly string[], git: GitRunner = handoverGit): Promise<string[]> {
   const out: string[] = [];
   for (const commit of commits) {
     const r = await git(['rev-list', '-n', '1', commit, '--not', '--all', '--'], commonDir);
@@ -119,7 +119,7 @@ const unresolved = (e: Error, entity: HandoverEntity): Blocker => ({ code: 'work
  * carried nor kept here goes while its branch stays. Then git has to read the graph as the source left it.
  */
 async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  const git = deps.git ?? runGit;
+  const git = deps.git ?? handoverGit;
   const common = graph.commonDir;
   try {
     // a config carried as a link would be written through to wherever it leads
@@ -159,7 +159,7 @@ function described(e: WorktreeEntry): string {
  * and the stash holds the same entries.
  */
 export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git'> & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  const git = deps.git ?? runGit;
+  const git = deps.git ?? handoverGit;
   const entity: HandoverEntity = { kind: 'git', id: graph.id };
   const common = graph.commonDir;
   const differs: string[] = [];
