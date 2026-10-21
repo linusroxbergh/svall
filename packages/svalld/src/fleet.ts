@@ -392,7 +392,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!(this.deps.agentsFound ?? []).includes(agent)) {
       throw new Invalid(`svalld doesn't find ${AGENTS[agent].bin}; install ${AGENTS[agent].label}, then run ${SHIM} setup`);
     }
-    saveMainAgent(this.deps.paths, agent);
+    saveMainAgent(this.deps.paths, agent, this.deps.log.info);
     this.deps.config.mainAgent = agent;
     this.syncAgents();
   }
@@ -401,7 +401,7 @@ export class Fleet extends EventEmitter<Events> {
   renameFleet(name: string): void {
     const problem = fleetNameProblem(name, takenNames(os.homedir(), this.deps.paths.home));
     if (problem) throw new Invalid(problem);
-    initConfig(this.deps.paths);
+    initConfig(this.deps.paths, {}, this.deps.log.info);
     patchFleetConfig(this.deps.paths.fleetConfig, { name });
     this.deps.config.name = name;
     this.deps.store.update((d) => { d.name = name; });

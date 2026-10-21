@@ -245,6 +245,12 @@ wait until the window is reopened.
 | `daemon_down` | The fleet's daemon is not running there. | `svall host doctor <host>`; on Linux, `systemctl --user status svall-svalld@<fleet>`. |
 | `other` | Anything else, such as a machine that answers with another fleet or machine id. | Follow the message. |
 
+A window opens a fleet with no gateway in `fleet.json` on this Mac at once. For one with a gateway, it waits up to 10
+seconds for the connection helper to say where the fleet is; a helper that has not answered by then, as one stuck on
+ssh, leaves the window on this Mac when the route `svall` last cached names this Mac at the generation its daemon
+holds, and otherwise shows `other`: "the connection helper has not answered in 10 s". A window left on this Mac shows
+none of the helper's retries, and moves, terminals and all, once the helper names where the fleet is.
+
 ## Host commands
 
 `svall host add`, `upgrade` (and `upgrade --rollback`), `remove` and `enable` run their steps in order and stop at the
@@ -267,7 +273,7 @@ do, and exits 1 unless it is ready.
 | Step | Command | What it checks or does | When it fails |
 | --- | --- | --- | --- |
 | `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter) and the ssh destination. | Pick another name, or `svall host remove` the machine that holds it. |
-| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes this machine the gateway; then enable again. |
+| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet, and a fleet with no gateway has an `owner.json` naming this Mac: a daemon that could not read `~/.config/svall` runs as the machine its `owner.json` names. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes this machine the gateway; then enable again. For an `owner.json` naming another machine, quit Svall and open it on the fleet again, so its daemon starts as this Mac; then enable again. |
 | `ssh` | add | An interactive ssh, so you can accept the host key and log in. | `ssh <destination>` in a terminal and complete it. |
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps, which asks nothing: Svall needs a key ssh can use without asking, and a password gets only past the `ssh` step. For an upgrade, with or without `--rollback`, and an add of a name already in the registry, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A refused login: install a key with `ssh-copy-id <destination>` and keep its passphrase in the agent (`ssh-add --apple-use-keychain`), then add the machine again. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |
 | `os` | add | Linux on x86-64 or arm64, running Ubuntu. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
@@ -301,14 +307,14 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | --- | --- | --- |
 | `tmux` | both | tmux is there, and 3.5 or newer for Shift+Enter. |
 | `node` | both | Node 24 or newer runs `svall`. |
-| `claude` | both | Claude Code's version and login. |
+| `claude` | both | Claude Code's login, and for a fleet that hands over its version: 2.1.251 or newer. A fleet hands over once its `fleet.json` names a gateway or turns handover on, and every fleet on Linux does. |
 | `codex` | both | Codex's version and login. |
 | `opencode` | both | OpenCode's version and login. |
 | `agents` | both | No agent CLI is installed (a failure on a Mac, a warning on Linux). |
 | `path` | both | `~/.local/bin` is on your PATH. |
 | `shims` | both | The `svall` in `~/.local/bin` runs this build. |
 | `gh` | both | The GitHub CLI is logged in, for pull request links. |
-| `config` | both | `fleet.json` and `node.json` parse, and no `config.json` is left beside them. |
+| `config` | both | `fleet.json` and `node.json` parse, and no `config.json.bak` is in the way of a split. It warns of a `config.json` beside `fleet.json`, which the daemon moves aside unread as it starts. |
 | `svalld` | both | The fleet's daemon runs and answers. |
 | `hook receiver` | both | The daemon's hook socket answers. |
 | `hooks` | both | Claude Code's settings hold Svall's hooks. |
@@ -322,7 +328,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `daemon node` | Mac | The Node the launchd agent runs is still there. |
 | `daemon path` | Mac | The launchd agent's program is there and its PATH finds the agents. |
 | `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` your login shell sets. |
-| `rsync` | Mac | The rsync the release bundles, which a handover needs. |
+| `rsync` | Mac | For a fleet that hands over, the rsync the release bundles, which a handover needs. |
 | `doctor` | host doctor | The companion's doctor answered. |
 | `release` | host doctor | The machine runs this Mac's release and protocol. |
 | `space` | host doctor | Free space in the home. |

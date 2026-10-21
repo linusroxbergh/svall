@@ -4,7 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from './atomic.js';
-import { writeDurable } from './handover/durable.js';
+import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
 import { HOME_CWD, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { variant } from './runtime.js';
@@ -109,30 +109,43 @@ export function configRelinked(paths: Pick<Paths, 'legacyConfig'>): boolean {
 }
 
 /** Why the config files that `has` finds are no layout a fleet can start on, before any of them is read. */
-export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig' | 'nodeConfig'>, has: (file: string) => boolean): string | undefined {
-  if (!has(paths.legacyConfig) || configRelinked(paths)) return undefined;
-  if (has(paths.fleetConfig)) {
-    return `${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`;
-  }
+export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>, has: (file: string) => boolean): string | undefined {
+  if (!has(paths.legacyConfig) || has(paths.fleetConfig) || configRelinked(paths)) return undefined;
   const backup = `${paths.legacyConfig}.bak`;
   if (has(backup)) return `${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`;
   return undefined;
 }
 
+/** Whether a config.json lies beside fleet.json, as an older release's setup writes one, for the next split to move aside unread. */
+export const configStray = (paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>, has: (file: string) => boolean): boolean =>
+  has(paths.legacyConfig) && has(paths.fleetConfig) && !configRelinked(paths);
+
+const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+
 /**
  * Writes whichever of the two config files this fleet is missing, out of its config.json when it
  * still has one, and returns the files written. An unreadable config.json stops it before any write.
+ * A config.json beside fleet.json is moved aside unread, and `say` told where.
  */
-export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string[] {
+export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (line: string) => void = () => {}): string[] {
   const has = (file: string): boolean => fs.existsSync(file);
   const backup = `${paths.legacyConfig}.bak`;
   // a config.json is put beside the new files byte-exact before anything is read out of it, so the
-  // only file the split ever reads is one nothing edits any more
-  if (has(paths.legacyConfig) && !configRelinked(paths)) {
+  // only file the split ever reads is one nothing edits any more; one another start moves first is that start's to split
+  if (configStray(paths, has)) {
+    const aside = `${paths.legacyConfig}.unread-${Date.now()}`;
+    try {
+      fs.renameSync(paths.legacyConfig, aside);
+      say(`${paths.legacyConfig} moved to ${aside} unread: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}; copy anything you still want from it into them`);
+    } catch (e) { if (errno(e) !== 'ENOENT') throw e; }
+  } else if (has(paths.legacyConfig) && !configRelinked(paths)) {
     const refused = configRefusal(paths, has);
-    if (refused) throw new InvalidConfig(refused);
-    read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
-    fs.renameSync(paths.legacyConfig, backup);
+    // the backup another start has just made is no refusal
+    if (refused && has(paths.legacyConfig)) throw new InvalidConfig(refused);
+    try {
+      read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
+      fs.renameSync(paths.legacyConfig, backup);
+    } catch (e) { if (errno(e) !== 'ENOENT') throw e; }
   }
   const wrote: string[] = [];
   const split = has(backup) && !has(paths.fleetConfig) ? splitLegacy(backup) : undefined;
@@ -140,17 +153,19 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string
     writeJsonAtomic(paths.nodeConfig, split?.node ?? seed);
     wrote.push(paths.nodeConfig);
   }
-  // last, so a fleet.json is only ever there once the split behind it is whole
+  // last, so a fleet.json is only ever there once the split behind it is whole; and never replaced, so two starts run on one id
   if (!has(paths.fleetConfig)) {
-    writeJsonAtomic(paths.fleetConfig, split?.fleet ?? { id: newFleetId() });
-    wrote.push(paths.fleetConfig);
+    try {
+      createDurable(paths.fleetConfig, split?.fleet ?? { id: newFleetId() }, { mode: 0o600 });
+      wrote.push(paths.fleetConfig);
+    } catch (e) { if (errno(e) !== 'EEXIST') throw e; }
   }
   return wrote;
 }
 
-export function loadConfig(paths: Paths): Config {
+export function loadConfig(paths: Paths, say?: (line: string) => void): Config {
   if (!fs.existsSync(paths.home)) return Config.parse({});
-  initConfig(paths);
+  initConfig(paths, {}, say);
   return mergeConfig(read(paths.fleetConfig, FleetFile), read(paths.nodeConfig, NodeFile));
 }
 
@@ -209,10 +224,10 @@ export const patchFleetConfig = (file: string, patch: Raw): void => patchConfigF
 
 export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> };
 
-/** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be. */
-export function saveConfig(paths: Paths, patch: ConfigPatch): void {
+/** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be; `say` as for `initConfig`. */
+export function saveConfig(paths: Paths, patch: ConfigPatch, say?: (line: string) => void): void {
   fs.mkdirSync(paths.home, { recursive: true });
-  initConfig(paths);
+  initConfig(paths, {}, say);
   const { integrations, mobile, ...fleet } = patch;
   if (Object.keys(fleet).length) patchFleetConfig(paths.fleetConfig, fleet);
   // integrations are saved as agentsOff, which replaces an integrations list
@@ -222,8 +237,8 @@ export function saveConfig(paths: Paths, patch: ConfigPatch): void {
 }
 
 /** Sets mainAgent in fleet.json, split out first if need be. */
-export function saveMainAgent(paths: Paths, agent: AgentKind): void {
-  saveConfig(paths, { mainAgent: agent });
+export function saveMainAgent(paths: Paths, agent: AgentKind, say?: (line: string) => void): void {
+  saveConfig(paths, { mainAgent: agent }, say);
 }
 
 /** fleet.json as it stands now; an InvalidConfig says what in it is wrong. */

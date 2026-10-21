@@ -5,13 +5,14 @@ final class QuitFlowTests: XCTestCase {
     private var sent: [String] = []
     private var asked: [String] = []
     private var kills = 0
+    private var holds = 0
     private var answers: [Bool] = []
 
     private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false) -> QuitFlow {
         QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
                  elsewhere: { elsewhere }, handoverOpen: { handover },
                  confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); return true },
-                 kill: { [unowned self] done in kills += 1; done() })
+                 kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 })
     }
 
     private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0) {
@@ -37,6 +38,21 @@ final class QuitFlowTests: XCTestCase {
         // this Mac's daemon alone
         XCTAssertEqual(kills, 1)
         XCTAssertEqual(answers, [true])
+    }
+
+    func testADaemonStartAlreadyUnderWayIsHeldOnceTheFleetIsBeingStopped() {
+        let local = flow()
+        quit(local)
+        XCTAssertEqual(holds, 1)
+        local.stopped(ok: true)
+        XCTAssertEqual(holds, 1)
+        holds = 0
+        quit(flow(elsewhere: true))
+        XCTAssertEqual(holds, 1)
+        holds = 0
+        // an open handover leaves this Mac's daemon running
+        quit(flow(handover: true))
+        XCTAssertEqual(holds, 0)
     }
 
     func testAnOpenHandoverKeepsThisMacsDaemonOnEitherRoute() {

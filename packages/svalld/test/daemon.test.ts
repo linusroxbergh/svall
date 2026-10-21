@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
+import { emptyState } from '@svall/protocol';
 import { codexInstalled } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
@@ -82,6 +83,36 @@ runIf('startDaemon', () => {
     const logged: string[] = [];
     await (await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } })).stop();
     expect(logged.filter((l) => l.startsWith(`${p.legacyConfig} is not read`))).toHaveLength(1);
+  });
+
+  it('starts again on its split after a downgrade wrote config.json beside it, saying where that file went', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    // a fleet as the release before this one left it: state schema 8 and one config.json
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), version: 8 }));
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', mainAgent: 'codex' }));
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    const fleet = fs.readFileSync(p.fleetConfig, 'utf8');
+
+    // the older release reads its kept state back, and its setup writes a config.json of its own
+    const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.v8-'))!;
+    fs.copyFileSync(path.join(home, kept), p.state);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ mainAgent: 'claude' }));
+
+    const logged: string[] = [];
+    const again = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
+    try {
+      expect(again.store.state.version).toBe(9);
+      expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe(fleet);
+      expect(JSON.parse(fleet).mainAgent).toBe('codex');
+      expect(fs.existsSync(p.legacyConfig)).toBe(false);
+      const aside = fs.readdirSync(home).filter((f) => f.startsWith('config.json.unread-'));
+      expect(aside).toHaveLength(1);
+      expect(logged.filter((l) => l.startsWith(`${p.legacyConfig} moved to ${path.join(home, aside[0])} unread`))).toHaveLength(1);
+    } finally {
+      await again.stop();
+    }
   });
 
   it('has the fleet on disk by the time its port file goes', async () => {

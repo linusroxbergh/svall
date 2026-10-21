@@ -163,17 +163,37 @@ describe('finishing an interrupted split', () => {
     expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe(before);
   });
 
-  it('refuses a config.json written after the split rather than move it aside unread', () => {
+  it('moves a config.json written after the split aside unread, saying where, and starts on fleet.json and node.json', () => {
     const p = resolvePaths(legacyHome());
     const fleet = FleetConfig.parse({ id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', defaultCwd: '/kept' });
     fs.writeFileSync(p.fleetConfig, JSON.stringify(fleet));
 
-    // the class that has a stopped svalld wait for the fix instead of restarting
-    expect(() => loadConfig(p)).toThrow(InvalidConfig);
-    expect(() => loadConfig(p)).toThrow(`${p.legacyConfig} is not read any more`);
-    expect(() => loadConfig(p)).toThrow(p.nodeConfig);
-    expect(fs.readFileSync(p.legacyConfig, 'utf8')).toBe(LEGACY);
+    const said: string[] = [];
+    const config = loadConfig(p, (line) => said.push(line));
+    expect(config).toMatchObject({ id: fleet.id, defaultCwd: '/kept' });
+    expect(config.port).toBeUndefined();
+    expect(fs.existsSync(p.legacyConfig)).toBe(false);
     expect(fs.existsSync(`${p.legacyConfig}.bak`)).toBe(false);
+    const aside = fs.readdirSync(p.home).filter((f) => f.startsWith('config.json.unread-'));
+    expect(aside).toHaveLength(1);
+    expect(fs.readFileSync(path.join(p.home, aside[0]), 'utf8')).toBe(LEGACY);
+    expect(said).toEqual([`${p.legacyConfig} moved to ${path.join(p.home, aside[0])} unread: this fleet's settings are in ${p.fleetConfig} and ${p.nodeConfig}; copy anything you still want from it into them`]);
+  });
+
+  it('starts again after a downgrade writes config.json beside the split, and each time it does', () => {
+    const p = resolvePaths(legacyHome());
+    const { id } = loadConfig(p);
+    const now = vi.spyOn(Date, 'now');
+    for (let i = 0; i < 2; i++) {
+      now.mockReturnValue(1_800_000_000_000 + i * 86_400_000);
+      // an older release's setup finds no config.json and writes one of its own
+      fs.writeFileSync(p.legacyConfig, '{"mainAgent":"claude"}\n');
+      expect(loadConfig(p)).toMatchObject({ id, port: 47900, mainAgent: 'codex' });
+      expect(fs.existsSync(p.legacyConfig)).toBe(false);
+    }
+    now.mockRestore();
+    expect(fs.readFileSync(`${p.legacyConfig}.bak`, 'utf8')).toBe(LEGACY);
+    expect(fs.readdirSync(p.home).filter((f) => f.startsWith('config.json.unread-'))).toHaveLength(2);
   });
 
   it('refuses to split over a backup that is already there', () => {
@@ -186,6 +206,47 @@ describe('finishing an interrupted split', () => {
     expect(fs.readFileSync(p.legacyConfig, 'utf8')).toBe(LEGACY);
     expect(fs.existsSync(p.fleetConfig)).toBe(false);
     expect(fs.existsSync(p.nodeConfig)).toBe(false);
+  });
+});
+
+describe('two starts splitting at once', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('runs on the split the other start finished while this one was reading', () => {
+    const p = resolvePaths(legacyHome('{"port":47900}'));
+    const rename = fs.renameSync;
+    let other: string | undefined;
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (other === undefined) { vi.mocked(fs.renameSync).mockRestore(); other = loadConfig(p).id; }
+      rename(from, to);
+    });
+    const config = loadConfig(p);
+    expect(config.id).toBe(other);
+    expect(read(p.fleetConfig).id).toBe(other);
+    expect(config.port).toBe(47900);
+  });
+
+  it('finishes the split of a config.json the other start moved aside as this one looked for its backup', () => {
+    const p = resolvePaths(legacyHome());
+    const exists = fs.existsSync;
+    vi.spyOn(fs, 'existsSync').mockImplementation((file) => {
+      if (file === `${p.legacyConfig}.bak` && exists(p.legacyConfig)) fs.renameSync(p.legacyConfig, `${p.legacyConfig}.bak`);
+      return exists(file);
+    });
+    expect(loadConfig(p).port).toBe(47900);
+    expect(read(p.fleetConfig).id).toMatch(UUID);
+  });
+
+  it('keeps the fleet.json the other start wrote first, id and all', () => {
+    const p = resolvePaths(legacyHome('{"port":47900}'));
+    const other = { id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' };
+    const link = fs.linkSync;
+    vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
+      if (to === p.fleetConfig && !fs.existsSync(p.fleetConfig)) fs.writeFileSync(p.fleetConfig, JSON.stringify(other));
+      link(from, to);
+    });
+    expect(loadConfig(p).id).toBe(other.id);
+    expect(read(p.fleetConfig)).toEqual(other);
   });
 });
 
@@ -221,7 +282,7 @@ describe('a config.json a dotfile manager links in', () => {
     expect(fs.readFileSync(dotfile, 'utf8')).toBe(LEGACY);
   });
 
-  it('is refused beside fleet.json when it links anywhere else', () => {
+  it('is moved aside, still a link, beside fleet.json when it links anywhere else', () => {
     const { p } = linkedHome();
     loadConfig(p);
     const other = path.join(makeHome(), 'other.json');
@@ -229,8 +290,11 @@ describe('a config.json a dotfile manager links in', () => {
     fs.symlinkSync(other, p.legacyConfig);
 
     expect(configRelinked(p)).toBe(false);
-    expect(() => loadConfig(p)).toThrow(`${p.legacyConfig} is not read any more`);
-    expect(fs.lstatSync(p.legacyConfig).isSymbolicLink()).toBe(true);
+    loadConfig(p);
+    const aside = fs.readdirSync(p.home).filter((f) => f.startsWith('config.json.unread-'));
+    expect(aside).toHaveLength(1);
+    expect(fs.readlinkSync(path.join(p.home, aside[0]))).toBe(other);
+    expect(fs.readFileSync(other, 'utf8')).toBe(LEGACY);
   });
 });
 

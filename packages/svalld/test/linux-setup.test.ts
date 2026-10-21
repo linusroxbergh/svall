@@ -365,6 +365,8 @@ describe('setupLinux', () => {
     const paths = resolvePaths(f.home);
     const fleetId = FleetId.parse('11111111-2222-3333-4444-555555555555');
     fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 2, ownerMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f') }));
+    // a copy another machine owns is one a gateway holds
+    fs.writeFileSync(paths.legacyConfig, JSON.stringify({ home: { cwd: mc }, gatewayMachineId: '99999999-2222-3333-4444-555555555555' }));
 
     const { done } = await setupLinux(f.o);
     expect(snapshot()).toEqual(before);

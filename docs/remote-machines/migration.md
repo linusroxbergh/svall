@@ -22,9 +22,11 @@ fleet's `config.json` in two:
 The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on
 `config.json` is not read. A dotfile manager such as stow or home-manager may link it back to the file
 `config.json.bak` links to; that link is left alone, with a line in the daemon's log, so link `fleet.json` and
-`node.json` from your dotfiles instead. Any other `config.json` put back beside `fleet.json` stops the daemon until you
-move what you want from it into the new files and delete it; the daemon's log and `svall doctor` both say so. A
-`config.json.bak` already in the way stops the split the same way, before anything is written.
+`node.json` from your dotfiles instead. Any other `config.json` beside `fleet.json`, such as the one an older
+release's `svall setup` writes, is moved to `config.json.unread-<time>` unread when the daemon starts or `svall setup`
+runs, and the daemon's log or setup's output names it; copy anything you still want from it into the new files.
+`svall doctor` warns of one still there. A `config.json.bak` already in the way stops the split before anything is
+written, until you keep one of the two; the daemon's log and `svall doctor` both say so.
 
 ### State schema 9 and protocol 24
 
@@ -33,7 +35,10 @@ move what you want from it into the new files and delete it; the daemon's log an
 - The app, `svall` and the daemons of one release speak protocol 24 to each other. An app or `svall` from an older
   release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
-  gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md).
+  gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md). A fleet with no
+  gateway starts even where `~/.config/svall` cannot be written or holds a broken `machine.json`: its daemon runs as
+  the machine its `owner.json` names, and its log says what to fix. A fleet with a gateway does not: its daemon exits
+  at each start, with the fix in its log, until it can use `~/.config/svall` again.
 
 ### Named fleets
 
@@ -60,7 +65,8 @@ fleet this release had migrated, in a temporary home:
   touching the state. A release before OpenCode support says `newer than this svalld reads (7)`, and names a
   `state.json.v7-<time>` copy only when there is one.
 - **The older `svall setup`** finds no `config.json` and writes an empty one, so the fleet would start on the default
-  port with default settings.
+  port with default settings. Upgrading again over it moves that file aside unread and starts on `fleet.json` and
+  `node.json`.
 
 With the steps below, Svall 0.5.1 started the fleet as it was before the upgrade. 0.12.0 was not run this way; its state
 and configuration code differs from 0.5.1's only by optional state fields.

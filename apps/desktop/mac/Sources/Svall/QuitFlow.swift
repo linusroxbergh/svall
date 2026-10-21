@@ -11,6 +11,7 @@ final class QuitFlow {
     private let handoverOpen: () -> Bool
     private let confirm: (_ message: String, _ detail: String) -> Bool
     private let kill: (@escaping () -> Void) -> Void
+    private let holdStarts: () -> Void
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
     private var quitTimeout: Timer?
@@ -18,15 +19,17 @@ final class QuitFlow {
     private var userQuit = false
     // while the question is up, the user's answer is the only one: a late reply or a reload waits on it
     private var confirming = false
-    // once the fleet is being stopped for a quit, a page that loses the daemon must not start it again
-    private(set) var stopping = false
+    // once the fleet is being stopped for a quit, a page that loses the daemon must not start it again, nor a start already on its way
+    private(set) var stopping = false {
+        didSet { if stopping, !oldValue { holdStarts() } }
+    }
     // whether the fleet is being ended from here, which the quit waits on
     private var killing = false
 
     init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void,
          elsewhere: @escaping () -> Bool = { false }, handoverOpen: @escaping () -> Bool = { false },
          confirm: @escaping (_ message: String, _ detail: String) -> Bool = QuitFlow.alert,
-         kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill) {
+         kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill, holdStarts: @escaping () -> Void = FleetDaemon.holdStarts) {
         self.send = send
         self.isListening = isListening
         self.hideWindow = hideWindow
@@ -34,6 +37,7 @@ final class QuitFlow {
         self.handoverOpen = handoverOpen
         self.confirm = confirm
         self.kill = kill
+        self.holdStarts = holdStarts
     }
 
     /// Whether a quit waits on the page, the user or the fleet.

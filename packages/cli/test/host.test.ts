@@ -1604,6 +1604,22 @@ describe('host enable', () => {
     expect(written(home).gatewayMachineId).toBe(REMOTE);
   });
 
+  it('makes no record for a fleet whose daemon here runs as another machine, as one that could not read ~/.config/svall did', async () => {
+    ssh.reply(['owner', 'get'], answers({}));
+    const home = fleetHome();
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 0, ownerMachineId: OTHER_MAC }));
+
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
+    expect(out.result).toBe('actions');
+    expect(step('machine').at(-1)).toMatchObject({
+      status: 'fail',
+      detail: `${path.join(home, 'owner.json')} names ${OTHER_MAC}, not this machine (${MAC}): its daemon runs as the machine its owner record names when it cannot read ~/.config/svall`,
+      action: 'quit Svall and open it on this fleet again, so its daemon starts as this machine, then run this again',
+    });
+    expect(ownerCalls()).toEqual([]);
+    expect(written(home).gatewayMachineId).toBeUndefined();
+  });
+
   it('refuses a fleet another machine holds, naming the owner and generation, and leaves fleet.json alone', async () => {
     ssh.reply(['owner', 'get'], answers({ generation: 3, ownerMachineId: OTHER_MAC }));
     const home = fleetHome();
