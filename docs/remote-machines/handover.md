@@ -8,7 +8,7 @@ not resume waiting to be retried. It never leaves both running.
 
 Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and run `svall host doctor <name>`
 (**Check** in the app): no check should fail (✗). A warning (!) about `tmux`, `gh` or `path` does not stop a handover;
-an agent your fleet runs that is missing or not logged in there does.
+an agent your fleet runs that is missing or not logged in there does, and so does `linger` off.
 
 ## From the app
 
@@ -225,7 +225,7 @@ four to say what is safe:
 
 | Status says | Do |
 | --- | --- |
-| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet; `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
+| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet, on the machine that started the handover; on the other one, status names that machine and offers only Abort. `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
 | Resume only | After the commit. `svall handover --resume` activates the fleet on the machine it went to. The machine it came from never takes it back by itself. |
 | Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again; if it is gone for good, see [When the gateway is lost](#when-the-gateway-is-lost). A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
 | Forget | The gateway has moved on past this handover. `svall handover --forget` drops this Mac's journal of it. |
@@ -273,13 +273,16 @@ svall fleet recover --force-owner local --gateway spare       # another registry
 
 1. It shows what the gateway and every machine hold, this Mac's journal and cached route, every generation it saw,
    the record it would write (at a generation above all of them) and the risks.
-2. It writes only after you type the fleet id; without a terminal, `--confirm <fleet id>` does that.
+2. It writes only after you type the fleet id at its prompt, in a terminal of your own outside any fleet's agents and
+   tmux panes. Any other run shows the same and writes nothing.
 3. It records the write in `controller/recoveries.ndjson` in the fleet home, and with a gateway also in the gateway's
    `recoveries.ndjson`, then tells every machine that answers: the one it names runs the fleet, and the others let go
-   and close their terminals.
-4. A machine it could not reach is listed under **next**. This Mac, and the gateway's own machine unless `--gateway`
-   replaced it, take the record when their daemon next starts; any other has to be stopped, then the command run
-   again once it answers.
+   and close their terminals. Each asks the gateway itself; one that cannot reach it lets the fleet go on the record
+   it is told of, and never takes one that makes it the owner.
+4. A machine it could not reach, or the one it names that could not reach the gateway, is listed under **next**.
+   This Mac, and the gateway's own machine unless `--gateway` replaced it, take the record when their daemon next
+   starts, and while it runs let the fleet go within five minutes of a record naming another machine, which stops
+   its agents where they are; any other has to be stopped, then the command run again once it answers.
 
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
 carried. A machine that prepared a handover it never ran drops what it prepared, and the risks name it. `--gateway`
@@ -378,12 +381,6 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **An edit on the other machine while the copy runs is lost.** The checks compare each folder there with what was
   last carried before the copy starts; a change made there after that is overwritten. Leave the other machine's copies
   alone until the handover ends.
-- **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
-  both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
-  it once. On one Mac, the second start is refused.
-- **A late Begin can leave an open handover behind.** When the gateway receives a start only after its handover was
-  aborted, it holds a handover nobody drives. `svall handover status` shows it open, and `svall handover --abort`
-  closes it.
 - **Saved tool output can name the other machine's folder.** A Claude transcript names each full tool output it
   saved by path. They move to the same path when both machines keep Claude's files in the same folder (`~/.claude`,
   unless `CLAUDE_CONFIG_DIR` says otherwise). Where they differ, the agent sees only each output's preview; running
@@ -401,8 +398,8 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
-  Linux machine, so does `svall handover --resume` there. A move to this Mac also waits to confirm the commit with
-  the gateway, so it starts only once the link is back.
+  Linux machine, so does `svall handover --resume` there. The machine the fleet went to confirms the commit with the
+  gateway; when it cannot reach the gateway, it takes the gateway's answer to the commit that the controller kept.
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
   The character waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,
@@ -416,7 +413,11 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A Codex terminal a handover reopened with its session, or one you open again after a handover could not resume
   it, and quit before its first prompt** goes dormant again, its window closed, saying Codex exited before that
   session started: Codex reports a session only once it takes a turn. The session is kept; open the terminal again.
-- **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops.
+- **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops, or the
+  app's connection helper next starts and ends it.
+- **A copy of `machine.json` made before Svall tied it to the hardware goes unnoticed.** The first machine to read
+  a file that names no hardware binds it to its own, so two machines that held copies of it before then each bind
+  theirs, and both pass as that machine. Move one aside so it mints its own id.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
 - **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a
   single character or island, forward ports, keep a phone URL across machines, or move from one Linux machine to

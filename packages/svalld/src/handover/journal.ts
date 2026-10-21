@@ -35,12 +35,14 @@ export type SourceJournal = z.infer<typeof SourceJournal>;
 /**
  * What the machine receiving it knows: the generation it prepares for, the transfer it verified, the state
  * and fleet.json it would activate, and how each terminal came up. `sessionId` is the session a terminal resumes;
- * `notice` is what a terminal that came up still waits on in its window.
+ * `notice` is what a terminal that came up still waits on in its window. `controllerId` is the machine whose
+ * controller sent the first prepare, the only one whose prepare it takes again.
  */
 export const DestinationJournal = z.object({
   ...Common,
   role: z.literal('destination'),
   manifestDigest: Sha256,
+  controllerId: MachineId.optional(),
   landedDigest: Sha256.optional(),
   preparedPath: z.string().optional(),
   preparedDigest: Sha256.optional(),

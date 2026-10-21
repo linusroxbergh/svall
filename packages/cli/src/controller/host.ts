@@ -20,7 +20,7 @@ import { remoteOwner } from './authority.js';
 import { identify, MachineMismatch, remoteConnectionInfo } from './connection.js';
 import {
   bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion,
-  remoteRollback, requireCompatible, uploadArchive, type CompanionArchive, type FetchLike,
+  remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
 import { redact } from './process.js';
 import { MIN_RSYNC, rsyncVersion } from './rsync.js';
@@ -597,7 +597,10 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
     const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}; ${rollbackTo(name)}`;
     try {
       const now = await run.step('rollback', async () => {
-        const out = await remoteRollback(master, { svallBase: base, from: await currentRelease(master, base), ...(o.to !== undefined && { to: o.to }) })
+        const from = await currentRelease(master, base);
+        const refused = await rollbackRefusal(master, { svallBase: base, home: entry.record.home, from, ...(o.to !== undefined && { to: o.to }) });
+        if (refused) throw new StepError(`${refused}; ${name} stays on release ${from}`);
+        const out = await remoteRollback(master, { svallBase: base, from, ...(o.to !== undefined && { to: o.to }) })
           .catch(async (err: Error) => { throw new StepError(err.message, await runs()); });
         return { value: await currentRelease(master, base), detail: out.trim().split('\n').join('; ') };
       });

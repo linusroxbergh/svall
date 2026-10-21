@@ -138,7 +138,7 @@ const REACH: Record<Failpoint, Reach> = {
   'gateway.abort.write': { scenario: 'abort', times: 1 },
   'gateway.complete.write': { scenario: 'move', times: 1 },
   'gateway.commit.respond': { scenario: 'move', times: 1 },
-  'controller.journal': { scenario: 'move', times: 14 },
+  'controller.journal': { scenario: 'move', times: 16 },
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
@@ -158,7 +158,9 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
 // a move run's crash before the gateway holds its Begin or the controller has journaled one leaves nothing to resume
-const UNRESUMABLE = new Set(['gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1']);
+const UNRESUMABLE = new Set([
+  'gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1', 'controller.journal:before#2', 'controller.journal:after#2',
+]);
 
 describe('the guard on steps outside every failpoint', () => {
   const world = worlds();
@@ -431,9 +433,10 @@ describe('the gateway lost', () => {
       when: 'after Ready', at: 'controller.commit:before', first: { status: 'interrupted', phase: 'commit' }, source: false, destination: false,
       settles: { resume: 'destination', abort: 'source' },
     },
+    // the destination activates on the commit's answer the controller hands it
     {
-      when: 'after Commit', at: 'gateway.commit.respond:after', first: { status: 'interrupted', phase: 'activate' }, source: false, destination: false,
-      settles: { resume: 'destination', abort: 'destination' },
+      when: 'after Commit', at: 'gateway.commit.respond:after', first: { status: 'complete', pending: ['source', 'gateway'] } as Partial<Outcome>,
+      source: false, destination: true, settles: { resume: 'destination', abort: 'destination' },
     },
     {
       when: 'during Complete', at: 'destination.complete.journal:after', first: { status: 'complete', pending: ['source', 'gateway'] } as Partial<Outcome>,

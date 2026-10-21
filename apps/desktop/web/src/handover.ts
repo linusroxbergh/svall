@@ -513,6 +513,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return "If the repository runs there, add the platform to its .svall/handover.json; otherwise close the characters working in it.";
     case 'rsync_unsupported':
       return `On ${linux}, install rsync 3.2.3 or newer (\`sudo apt install rsync\`); on this Mac, \`${svall} doctor\` checks the one Svall brings.`;
+    case 'linger_off':
+      return `On ${linux}, run the loginctl enable-linger command the message names, so the fleet keeps running there while no one is logged in; then try again.`;
     case 'git_mismatch':
       return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
     case 'git_extension':

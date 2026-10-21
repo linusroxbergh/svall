@@ -318,12 +318,13 @@ export const methods = {
     result: z.object({ manifest: TransferManifestV1.extend({ transactionId: TransactionId }) }),
   },
   // the destination takes each root the manifest carries before anything is written into it, archiving one `archive` names
-  // when it cannot otherwise be taken; `landed` is what this handover's transfer has verified so far, which its copy may hold
+  // when it cannot otherwise be taken; `landed` is what this handover's transfer has verified so far, which its copy may hold.
+  // `controllerId`, here and in prepare, is the machine whose controller sends it, the only one taken once the handover names one
   'handover.claim': {
     params: z.object({
       transactionId: TransactionId, generation: Generation,
       manifest: TransferManifestV1.extend({ transactionId: TransactionId }), manifestDigest: Sha256, archive: z.array(z.string().min(1)).optional(),
-      landed: z.array(LandedRoot).optional(),
+      landed: z.array(LandedRoot).optional(), controllerId: MachineId.optional(),
     }),
     result: z.object({ roots: z.array(RootClaim), unproven: z.array(KeptCommit).optional() }),
   },
@@ -333,13 +334,14 @@ export const methods = {
     params: z.object({
       transactionId: TransactionId, generation: Generation,
       manifest: TransferManifestV1.extend({ transactionId: TransactionId }), manifestDigest: Sha256,
-      landed: z.array(LandedRoot),
+      landed: z.array(LandedRoot), controllerId: MachineId.optional(),
     }),
     result: z.object({ preparedDigest: Sha256 }),
   },
-  // `notice` is what a character that came up still waits on in its terminal
+  // `committed` is the gateway's answer that committed the handover, which the destination takes only when the gateway
+  // gives no answer of its own; `notice` is what a character that came up still waits on in its terminal
   'handover.activate': {
-    params: z.object({ transactionId: TransactionId, generation: Generation }),
+    params: z.object({ transactionId: TransactionId, generation: Generation, committed: OwnerRecord.optional() }),
     result: z.object({ characters: z.array(z.object({ id: z.string(), ok: z.boolean(), error: z.string().optional(), notice: z.string().optional() })) }),
   },
   // each side seals the roots it holds at g + 1 and closes its journal; the source seals what the transfer verified, `landed`

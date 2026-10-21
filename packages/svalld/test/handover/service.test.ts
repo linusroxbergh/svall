@@ -2,15 +2,15 @@ import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { FleetConfig, FleetId, MachineId, PROTOCOL_VERSION, emptyState, type Event } from '@svall/protocol';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FleetConfig, FleetId, MachineId, PROTOCOL_VERSION, emptyState, type Event, type OwnerRecord } from '@svall/protocol';
 import { Config } from '../../src/config.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { DestinationJournal, SourceJournal, openJournal } from '../../src/handover/journal.js';
 import { AuthorityFailure } from '../../src/gateway/authority.js';
 import type { Authority } from '../../src/handover/source.js';
-import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
-import { silentLogger } from '../../src/log.js';
+import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from '../../src/handover/startup.js';
+import { silentLogger, type Logger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, idleSides, makeHome } from '../helpers.js';
@@ -438,17 +438,58 @@ describe('a record a recovery relays', () => {
     expect(same.log).toEqual([]);
   });
 
-  it('takes the relayed record only when the gateway cannot be asked', async () => {
-    const unasked: (Authority | undefined)[] = [
-      { get: async () => { throw new AuthorityFailure('disconnected', 'machines.json names no ssh route to the gateway'); } },
-      { get: async () => { throw Object.assign(new Error('connect ENOENT /home/linus/.local/share/svall/gateway/authority.sock'), { code: 'ENOENT' }); } },
-      undefined,
-    ];
+  const unasked: (Authority | undefined)[] = [
+    { get: async () => { throw new AuthorityFailure('disconnected', 'machines.json names no ssh route to the gateway'); } },
+    { get: async () => { throw new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'); } },
+    { get: async () => { throw Object.assign(new Error('connect ENOENT /home/linus/.local/share/svall/gateway/authority.sock'), { code: 'ENOENT' }); } },
+    undefined,
+  ];
+
+  it('lets the fleet go on a relayed record naming another owner when the gateway cannot be asked', async () => {
+    for (const gateway of unasked) {
+      const b = boot({ record: { generation: 4, ownerMachineId: me }, ...(gateway && { gateway }) });
+      expect(await b.handover.relay({ record: { ...relayed, ownerMachineId: other }, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: other } });
+      expect(b.log).toEqual(['deactivate', `gateway ${third}`]);
+    }
+  });
+
+  it('refuses a relayed record naming this machine when the gateway cannot be asked, and changes nothing', async () => {
     for (const gateway of unasked) {
       const b = boot({ record: { generation: 4, ownerMachineId: other }, ...(gateway && { gateway }) });
-      expect(await b.handover.relay({ record: relayed, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
-      expect(b.log).toEqual(['activate', 'reconcile', 'resume', `gateway ${third}`]);
+      await expect(b.handover.relay({ record: relayed, gatewayMachineId: third })).rejects.toMatchObject({
+        code: 'invalid_params', message: `the gateway ${third} did not answer, so this machine does not take a record that makes it the owner; run the recovery again once the gateway answers`,
+      });
+      expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
+      expect(b.log).toEqual([]);
     }
+  });
+
+  // the line `svall fleet recover` writes in the fleet home before it tells this daemon to run the fleet alone
+  const audit = (home: string, after: object, at = new Date()): void => {
+    fs.mkdirSync(path.join(home, 'controller'), { recursive: true });
+    fs.appendFileSync(path.join(home, 'controller', 'recoveries.ndjson'), `${JSON.stringify({ at: at.toISOString(), fleetId, gatewayMachineId: null, before: null, after })}\n`);
+  };
+
+  it('runs the fleet alone only on the audit fleet recover wrote of that very record in the last ten minutes, and changes nothing without one', async () => {
+    const named: Authority = { get: async () => { throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'); } };
+    const wrong: [string, (home: string) => void][] = [
+      ['none', () => {}],
+      ['another generation', (home) => audit(home, { ...relayed, generation: 8 })],
+      ['another owner', (home) => audit(home, { ...relayed, ownerMachineId: other })],
+      ['through a gateway', (home) => fs.appendFileSync(path.join(home, 'controller', 'recoveries.ndjson'), `${JSON.stringify({ at: new Date().toISOString(), fleetId, gatewayMachineId: third, before: null, after: relayed })}\n`)],
+      ['stale', (home) => audit(home, relayed, new Date(Date.now() - 11 * 60_000))],
+    ];
+    for (const [what, arrange] of wrong) {
+      const b = boot({ record: { generation: 4, ownerMachineId: other }, named });
+      fs.mkdirSync(path.join(b.home, 'controller'), { recursive: true });
+      arrange(b.home);
+      await expect(b.handover.relay({ record: relayed }), what).rejects.toMatchObject({ code: 'invalid_params', message: expect.stringContaining('svall fleet recover') });
+      expect(b.ownership.record(), what).toMatchObject({ generation: 4, ownerMachineId: other });
+      expect(b.log, what).toEqual([]);
+    }
+    const b = boot({ record: { generation: 4, ownerMachineId: other }, named });
+    audit(b.home, relayed, new Date(Date.now() - 9 * 60_000));
+    expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
   });
 
   it('runs the fleet alone on a record that names no gateway once the gateway fleet.json names does not answer, letting go the handover it supersedes and dropping that gateway', async () => {
@@ -462,6 +503,7 @@ describe('a record a recovery relays', () => {
       const named: Authority = { get: async () => { throw failure; } };
       const b = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination(), named, gateway: { get: async () => { throw new Error('another gateway was asked'); } } });
       await enter(b);
+      audit(b.home, relayed);
       expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, superseded: 'tx-1', ownership: { generation: 9, ownerMachineId: me, frozen: false } });
       expect(b.asked).toEqual([]);
       expect(b.handover.journalState()).toEqual({ kind: 'none' });
@@ -579,5 +621,185 @@ describe('a start with a gateway', () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     await adoptAtStart({ handover: b.handover, fleetId, log: silentLogger });
     expect(b.ownership.writable()).toBe(true);
+  });
+});
+
+describe('a gateway asked while the daemon runs', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  const MINUTE = 60_000;
+  // how often a running daemon asks
+  const EVERY = 5 * MINUTE;
+  const record = (generation: number, ownerMachineId: MachineId) => ({ fleetId, generation, ownerMachineId });
+
+  // looks for a minute's passing every quarter of one, by the wall clock
+  function watch(b: ReturnType<typeof boot>, get: Authority['get'], log: Logger = silentLogger) {
+    vi.useFakeTimers();
+    return watchGateway({ handover: b.handover, authority: () => ({ get }), fleetId, machineId: me, log });
+  }
+
+  it('lets the fleet go at the next ask once the gateway names another machine at a higher generation', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    let held = record(4, me);
+    const stop = watch(b, async () => held);
+    await vi.advanceTimersByTimeAsync(EVERY);
+    expect(b.ownership.writable()).toBe(true);
+    held = record(5, other);
+    await vi.advanceTimersByTimeAsync(EVERY);
+    stop();
+    expect(b.ownership.record()).toMatchObject({ generation: 5, ownerMachineId: other });
+    expect(b.ownership.writable()).toBe(false);
+    expect(() => b.ownership.assertOwner('mutation')).toThrow(expect.objectContaining({ code: 'not_owner' }));
+    expect(b.log).toEqual(['deactivate']);
+  });
+
+  it('changes nothing on a record that does not outrank the one held, and leaves an open handover to its journal', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    const stop = watch(b, async () => record(3, other));
+    await vi.advanceTimersByTimeAsync(2 * EVERY);
+    stop();
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: me });
+    expect(b.ownership.writable()).toBe(true);
+
+    // the commit of the source's own handover, which the controller's Complete finishes
+    const src = boot({ record: { generation: 4, ownerMachineId: me }, journal: source() });
+    await enter(src);
+    const stopped = watch(src, async () => record(5, other));
+    await vi.advanceTimersByTimeAsync(2 * EVERY);
+    stopped();
+    expect(src.handover.journalState().kind).toBe('open');
+    expect(src.ownership.isFrozen()).toBe(true);
+    expect([...b.log, ...src.log]).toEqual([]);
+  });
+
+  it('leaves a record naming this machine to the next start, so a machine still running the fleet is not run beside', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: other } });
+    const stop = watch(b, async () => record(5, me));
+    await vi.advanceTimersByTimeAsync(2 * EVERY);
+    stop();
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
+    expect(b.ownership.writable()).toBe(false);
+    expect(b.log).toEqual([]);
+  });
+
+  it('asks every five minutes and at its first look after a sleep, never twice at once, and not once stopped', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    let calls = 0;
+    const stop = watch(b, async () => { calls++; return record(4, me); });
+    await vi.advanceTimersByTimeAsync(5 * MINUTE - 15_000);
+    expect(calls).toBe(0);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(calls).toBe(1);
+    // a sleep stops the timers and not the wall clock, however short it was
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(calls).toBe(2);
+    await vi.advanceTimersByTimeAsync(4 * MINUTE);
+    expect(calls).toBe(2);
+    stop();
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(calls).toBe(2);
+
+    let hung = 0;
+    let answer = (_: OwnerRecord) => {};
+    const stopHung = watch(b, () => { hung++; return new Promise((r) => { answer = r; }); });
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(hung).toBe(1);
+    // an answer that comes once the daemon is stopping is not taken
+    stopHung();
+    answer(record(5, other));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: me });
+    expect(b.log).toEqual([]);
+  });
+
+  it('asks again 15 s, 30 s, then a minute after asks that fail, up to five minutes apart, and every five minutes once one is answered', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    const at: number[] = [];
+    let answers = false;
+    const start = Date.now();
+    const stop = watch(b, async () => {
+      at.push((Date.now() - start) / 1000);
+      if (!answers) throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+      return record(4, me);
+    });
+    await vi.advanceTimersByTimeAsync(EVERY + 15_000 + 30_000 + 60_000 + 120_000 + 240_000 + 2 * EVERY);
+    expect(at).toEqual([300, 315, 345, 405, 525, 765, 1065, 1365]);
+    answers = true;
+    at.length = 0;
+    await vi.advanceTimersByTimeAsync(EVERY + 2 * EVERY);
+    stop();
+    expect(at).toEqual([1665, 1965, 2265]);
+  });
+
+  it('counts an ask at start that went unanswered as the first that failed, so a daemon up before the network asks 15 s later', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    const at: number[] = [];
+    const lines: string[] = [];
+    let answers = false;
+    vi.useFakeTimers();
+    const start = Date.now();
+    const get = async () => {
+      at.push((Date.now() - start) / 1000);
+      if (!answers) throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+      return record(4, me);
+    };
+    const log = { info: (l: string) => lines.push(l), error: (l: string) => lines.push(`error: ${l}`) };
+    const answered = await adoptAtStart({ handover: b.handover, authority: { get }, fleetId, log, timeoutMs: 20 });
+    expect(answered).toBe(false);
+    const stop = watchGateway({ handover: b.handover, authority: () => ({ get }), fleetId, machineId: me, log, answered });
+    await vi.advanceTimersByTimeAsync(15_000 + 30_000 + 60_000);
+    expect(at).toEqual([0, 15, 45, 105]);
+    answers = true;
+    await vi.advanceTimersByTimeAsync(120_000 + EVERY);
+    stop();
+    expect(at).toEqual([0, 15, 45, 105, 225, 525]);
+    expect(lines).toEqual([
+      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); starting on the record this machine holds',
+      'the gateway answers again',
+    ]);
+  });
+
+  it('asks at once after a wake that comes while an older ask is still out, and keeps asking soon while that one fails', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    let calls = 0;
+    let answer = (_: OwnerRecord) => {};
+    let fail = (_: Error) => {};
+    const stop = watch(b, () => { calls++; return calls === 1 ? new Promise((r) => { answer = r; }) : new Promise((_, j) => { fail = j; }); });
+    await vi.advanceTimersByTimeAsync(EVERY);
+    expect(calls).toBe(1);
+    // the machine sleeps while the first ask is out, and it is answered once it wakes
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
+    await vi.advanceTimersByTimeAsync(15_000);
+    answer(record(4, me));
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(calls).toBe(2);
+    // Wi-Fi not back yet: the ask after the wake fails, and the next goes 15 s later
+    fail(new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer'));
+    await vi.advanceTimersByTimeAsync(15_000);
+    stop();
+    expect(calls).toBe(3);
+  });
+
+  it('says once that the gateway does not answer and once that it answers again, and asks on after a record it could not take', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    const lines: string[] = [];
+    let calls = 0;
+    const get = async () => {
+      calls++;
+      if (calls <= 3) throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+      // a record of another fleet, which the daemon refuses
+      if (calls === 5) return { ...record(9, other), fleetId: FleetId.parse(crypto.randomUUID()) };
+      return record(4, me);
+    };
+    const stop = watch(b, get, { info: (l) => lines.push(l), error: (l) => lines.push(`error: ${l}`) });
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
+    stop();
+    expect(calls).toBe(8);
+    expect(lines).toEqual([
+      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); this machine keeps the record it holds and asks again, at most five minutes apart',
+      'the gateway answers again',
+      expect.stringMatching(/^error: the gateway's record at generation 9 could not be taken: the record is for fleet /),
+    ]);
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: me });
   });
 });
