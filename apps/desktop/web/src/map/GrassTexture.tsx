@@ -1,9 +1,9 @@
-import { useId, useMemo } from 'react';
+import { useMemo } from 'react';
 import meadowUrl from '../assets/meadow.png';
 import { theme } from '../theme.js';
 import { seedNum } from './coast.js';
 
-const DEEP = '#55704F';
+const DEEP = '85 112 79';
 // the meadow tile is a small blurred bitmap drawn large: soft patches cost one scaled image, not a gradient each
 const MEADOW = 640;
 
@@ -18,37 +18,25 @@ function rng(seed: string) {
   };
 }
 
-function scatter(seed: string, w: number, h: number) {
+function ground(seed: string, shape: string, w: number, h: number): React.CSSProperties {
   // the coast's wobble can carry the grass this far past its footprint
   const m = 1.15 * theme.coast.wobble * Math.min(w, h) / 2;
-  const box = { x: theme.pad - m, y: theme.pad - m, w: w + 2 * m, h: h + 2 * m };
   const r = rng(seed + 'grass');
-  const meadow = `translate(${Math.round(r() * MEADOW)} ${Math.round(r() * MEADOW)})`;
-  return { box, meadow };
+  const x = Math.round(r() * MEADOW), y = Math.round(r() * MEADOW);
+  const mid = `radial-gradient(${(w + 2 * m) * 0.48}px ${(h + 2 * m) * 0.46}px at ${theme.pad + w / 2}px ${theme.pad + h / 2}px, `
+    + `rgb(${DEEP} / .22), rgb(${DEEP} / .12) 50%, rgb(${DEEP} / 0))`;
+  return {
+    clipPath: `path("${shape}")`,
+    backgroundImage: `${mid}, url(${meadowUrl})`,
+    backgroundSize: `auto, ${MEADOW}px ${MEADOW}px`,
+    backgroundPosition: `0 0, ${x}px ${y}px`,
+    backgroundRepeat: 'no-repeat, repeat',
+  };
 }
 
-// Ground inside the grass edge: soft meadow patches and a deeper middle.
-// Drawn over the grass and under the land's own grain, out of hit testing.
+// Ground inside the grass edge: soft meadow patches and a deeper middle, over the grass and under the land's grain.
+// CSS backgrounds, not an SVG pattern: WebKit redraws a pattern's tile into a new buffer on every repaint and waits for it.
 export function GrassTexture({ seed, shape, w, h }: { seed: string; shape: string; w: number; h: number }) {
-  const { box, meadow } = useMemo(() => scatter(seed, w, h), [seed, w, h]);
-  // per instance: an island drawn twice on one page would otherwise clip to the other copy's shape
-  const id = useId();
-  const { pad } = theme;
-  return (
-    <g clipPath={`url(#grass-${id})`} pointerEvents="none">
-      <defs>
-        <clipPath id={`grass-${id}`}><path d={shape} /></clipPath>
-        <pattern id={`grass-meadow-${id}`} patternUnits="userSpaceOnUse" width={MEADOW} height={MEADOW} patternTransform={meadow}>
-          <image href={meadowUrl} width={MEADOW} height={MEADOW} preserveAspectRatio="none" />
-        </pattern>
-        <radialGradient id={`grass-mid-${id}`}>
-          <stop offset="0" stopColor={DEEP} stopOpacity=".22" />
-          <stop offset=".5" stopColor={DEEP} stopOpacity=".12" />
-          <stop offset="1" stopColor={DEEP} stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <rect x={box.x} y={box.y} width={box.w} height={box.h} fill={`url(#grass-meadow-${id})`} />
-      <ellipse cx={pad + w / 2} cy={pad + h / 2} rx={box.w * 0.48} ry={box.h * 0.46} fill={`url(#grass-mid-${id})`} />
-    </g>
-  );
+  const style = useMemo(() => ground(seed, shape, w, h), [seed, shape, w, h]);
+  return <div className="grass-texture" style={style} />;
 }

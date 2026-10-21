@@ -26,11 +26,11 @@ The [README's configuration table](../../README.md#configuration) says which key
 move what you want from it into the new files and delete it; the daemon's log and `svall doctor` both say so. A
 `config.json.bak` already in the way stops the split the same way, before anything is written.
 
-### State schema 9 and protocol 23
+### State schema 9 and protocol 24
 
 - On its first start, the daemon migrates `state.json` to version 9, where a second terminal has a folder of its own.
   The file as it was stays beside it as `state.json.v8-<time>`, or `.v7-` from a release before OpenCode support.
-- The app, `svall` and the daemons of one release speak protocol 23 to each other. An app or `svall` from an older
+- The app, `svall` and the daemons of one release speak protocol 24 to each other. An app or `svall` from an older
   release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
   gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md).
@@ -50,13 +50,13 @@ move what you want from it into the new files and delete it; the daemon's log an
 
 An older release refuses a fleet this release has migrated, and its install would put a fresh configuration in place
 of yours. Going back therefore means putting back the copies the upgrade kept. The release before this one is Svall
-0.12.0 (protocol 22, state schema 8). Its state checks are 0.9.0's, and its schema adds one optional field to 0.9.0's.
+0.13.0 (protocol 23, state schema 8). Its state checks are 0.9.0's, and its schema adds one optional field to 0.9.0's.
 What follows was checked by running Svall 0.5.1 (protocol 19) and Svall 0.3.2 (protocol 18, state schema 7) against a
 fleet this release had migrated, in a temporary home:
 
 - **The older daemon does not start.** Svall 0.5.1's log says `state.json is version 9, newer than this svalld reads
   (8): …; or, to go back to the fleet as this version last saw it, move ~/.svall/state.json.v8-<time> to
-  ~/.svall/state.json; svalld starts once it is fixed`, the message 0.9.0 to 0.12.0 print too, and it waits without
+  ~/.svall/state.json; svalld starts once it is fixed`, the message 0.9.0 to 0.13.0 print too, and it waits without
   touching the state. A release before OpenCode support says `newer than this svalld reads (7)`, and names a
   `state.json.v7-<time>` copy only when there is one.
 - **The older `svall setup`** finds no `config.json` and writes an empty one, so the fleet would start on the default

@@ -20,7 +20,9 @@
 .map-world .island svg{display:block;overflow:visible;pointer-events:none}
 .map-world .island .land{cursor:grab}
 .island .grass{filter:brightness(var(--map-tone, 1)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent))}
-.island .land-texture{opacity:.22}
+/* the ground's textures and the waterline over them are layers over the land's svg, out of hit testing */
+.island > .grass-texture,.island > .land-texture,.island > .waterline{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.island > .land-texture{opacity:.22}
 .map-world .island[data-dragging="true"]{opacity:.7}
 .map-world .island[data-dragging="true"] .land{cursor:grabbing}
 .map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:--ox var(--dur-fast) var(--ease-out),--oy var(--dur-fast) var(--ease-out)}
@@ -29,7 +31,7 @@
   background:color-mix(in srgb,var(--sand) 5%,transparent)}
 
 [data-drop-hover="true"]{outline:2px solid var(--sel);outline-offset:2px}
-.island[data-drop-hover="true"] svg{filter:brightness(1.15)}
+.island[data-drop-hover="true"] :is(svg,.grass-texture,.land-texture){filter:brightness(1.15)}
 
 .ilabel{position:absolute;left:50%;transform:translateX(-50%);z-index:12;cursor:pointer;
   display:flex;align-items:center;gap:var(--sp-md);white-space:nowrap;
@@ -74,13 +76,13 @@
 .tok:hover,.tok.sel{z-index:30}
 /* the card sits pressed into the ground: a soft darker patch behind it, left in place when the card lifts */
 .tok::before{content:'';position:absolute;z-index:-1;pointer-events:none;
-  inset:calc(var(--tok)*-.2) calc(var(--tok)*-.2) calc(var(--tok)*-.18);border-radius:calc(var(--tok)*.41);
+  inset:calc(var(--tok)*-.2) calc(var(--tok)*-.2) calc(var(--tok)*-.18);border-radius:calc(var(--tok)*.33);
   background:color-mix(in srgb, var(--grass-press) 30%, transparent);filter:blur(calc(var(--tok)*.14))}
 .home .tok::before{background:color-mix(in srgb, var(--home-sand-press) 30%, transparent)}
 .tok.drag::before{display:none}
 
 .tok .card{position:relative;width:var(--card-w);height:var(--card-h);
-  border-radius:calc(var(--tok)*.21);
+  border-radius:calc(var(--tok)*.14);
   display:flex;flex-direction:column;overflow:hidden;
   /* the map's grain inked in the card's tint; --grain offsets it so neighbours differ */
   background:url('../assets/card-grain.png') var(--grain, 0 0)/96px 96px,
@@ -89,8 +91,13 @@
   transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease)}
 .tok .card::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:8;
   border-radius:inherit;
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 46%, transparent),
-             inset 0 calc(var(--tok)*.2) calc(var(--tok)*.24) calc(var(--tok)*-.12) var(--shade-1)}
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 50%, transparent),
+             inset 0 calc(var(--tok)*.22) calc(var(--tok)*.26) calc(var(--tok)*-.12) var(--shade-1),
+             inset 0 calc(var(--tok)*-.1) calc(var(--tok)*.16) calc(var(--tok)*-.1) color-mix(in srgb, var(--card-tint) 22%, transparent)}
+/* a printed frame between the edge band and the foot */
+.tok .card::before{content:'';position:absolute;z-index:8;pointer-events:none;
+  inset:calc(var(--tok)*.25) calc(var(--tok)*.08) calc(var(--tok)*.54);border-radius:calc(var(--tok)*.05);
+  border:1px solid color-mix(in srgb, var(--card-tint) 20%, transparent)}
 .tok:hover .card{transform:translateY(-6px);
   box-shadow:0 2px 0 color-mix(in srgb, var(--card-tint) 12%, transparent),
              0 10px 16px -7px var(--shade-2),
@@ -166,7 +173,7 @@
 .tok .foot{flex:none;height:calc(var(--tok)*.46);
   display:flex;align-items:center;justify-content:space-between;gap:calc(var(--tok)*.08);
   padding:0 calc(var(--tok)*.20);
-  background:linear-gradient(color-mix(in srgb, var(--card-tint) 10%, transparent),color-mix(in srgb, var(--card-tint) 17%, transparent));
+  background:linear-gradient(color-mix(in srgb, var(--card-tint) 11%, transparent),color-mix(in srgb, var(--card-tint) 18%, transparent));
   box-shadow:inset 0 1px 0 color-mix(in srgb, var(--card-tint) 24%, transparent)}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
@@ -190,7 +197,7 @@
 .tok .rail{position:absolute;z-index:9;right:calc(var(--tok)*-.36);
   top:calc(var(--tok)*.09);bottom:calc(var(--tok)*.46);
   display:flex;flex-direction:column;justify-content:center;gap:calc(var(--tok)*.08)}
-.tok .chip{width:calc(var(--tok)*.72);height:calc(var(--tok)*.72);border-radius:30%;
+.tok .chip{width:calc(var(--tok)*.72);height:calc(var(--tok)*.72);border-radius:26%;
   padding:0;box-sizing:border-box;
   display:grid;place-items:center;flex:none;cursor:pointer;
   font-size:calc(var(--tok)*.34);font-weight:var(--w-bold);letter-spacing:0;line-height:1;
@@ -214,6 +221,9 @@
 .tok.bot .edge i{position:absolute;inset:0 auto 0 0;background:var(--st);box-shadow:1px 0 0 color-mix(in srgb, var(--cream) 70%, transparent)}
 .tok.bot .nm{flex:none;height:calc(var(--tok)*.7);padding-top:calc(var(--tok)*.14)}
 .tok.bot .stage{position:relative;flex:1;min-height:0}
+/* faint ruling on the paper behind the robot */
+.tok.bot .stage::before{content:'';position:absolute;inset:0 calc(var(--tok)*.1) calc(var(--tok)*.02);pointer-events:none;
+  background:repeating-linear-gradient(0deg, transparent 0 calc(var(--tok)*.14), color-mix(in srgb, var(--card-tint) 3.5%, transparent) calc(var(--tok)*.14) calc(var(--tok)*.16))}
 .tok.bot .stage::after{content:'';position:absolute;left:50%;bottom:calc(var(--tok)*.04);transform:translateX(-50%);
   width:calc(var(--tok)*1.3);height:calc(var(--tok)*.14);border-radius:50%;
   background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}

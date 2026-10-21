@@ -150,14 +150,17 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 23 with ownership and handover', () => {
-    expect(PROTOCOL_VERSION).toBe(23);
+  it('is 24 with ownership, handover and the machine\'s cores in the load reading', () => {
+    expect(PROTOCOL_VERSION).toBe(24);
+    const u = { cpu: 1, mem: 2, procs: 3 };
+    expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: {} }).success).toBe(false);
+    expect(methods['load.get'].result.parse({ at: 1, cores: 8, total: u, app: u, chars: {} }).cores).toBe(8);
   });
 
   it('was 22 with the load reading', () => {
     expect(methods['load.get'].params.safeParse({}).success).toBe(true);
     const u = { cpu: 1, mem: 2, procs: 3 };
-    expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: { c_a: { ...u, shellOnly: true, sleepable: false } } }).success).toBe(true);
+    expect(methods['load.get'].result.safeParse({ at: 1, cores: 8, total: u, app: u, chars: { c_a: { ...u, shellOnly: true, sleepable: false } } }).success).toBe(true);
   });
 
   it('was 21 with robot portraits', () => {

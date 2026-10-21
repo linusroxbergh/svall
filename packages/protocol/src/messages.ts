@@ -46,7 +46,8 @@ export const LoadUsage = z.object({ cpu: z.number(), mem: z.number(), procs: z.n
 export type LoadUsage = z.infer<typeof LoadUsage>;
 export const LoadChar = LoadUsage.extend({ shellOnly: z.boolean(), sleepable: z.boolean() });
 export type LoadChar = z.infer<typeof LoadChar>;
-export const LoadSnapshot = z.object({ at: z.number(), total: LoadUsage, app: LoadUsage, codex: LoadUsage.optional(), chars: z.record(z.string(), LoadChar) });
+// cores is the machine's logical cores
+export const LoadSnapshot = z.object({ at: z.number(), cores: z.number(), total: LoadUsage, app: LoadUsage, codex: LoadUsage.optional(), chars: z.record(z.string(), LoadChar) });
 export type LoadSnapshot = z.infer<typeof LoadSnapshot>;
 
 // a phone socket the proxy vouched for, one row per login, timed from the earliest socket that login holds
@@ -416,4 +417,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 23;
+export const PROTOCOL_VERSION = 24;

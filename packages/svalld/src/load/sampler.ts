@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import type { LoadChar, LoadSnapshot, LoadUsage } from '@svall/protocol';
 import { attribute, type Scope } from './attribute.js';
 import type { LiveProc } from './procs.js';
@@ -98,7 +99,7 @@ export class LoadSampler {
     const codex = owners.codex.length ? usage(owners.codex) : undefined;
     const parts = [app, ...(codex ? [codex] : []), ...Object.values(chars)];
     const total = { cpu: parts.reduce((s, u) => s + u.cpu, 0), mem: parts.reduce((s, u) => s + u.mem, 0), procs: parts.reduce((s, u) => s + u.procs, 0) };
-    const snap = { at, total, app, ...(codex ? { codex } : {}), chars };
+    const snap = { at, cores: availableParallelism(), total, app, ...(codex ? { codex } : {}), chars };
     if (gen === this.gen) this.snap = snap;
     return snap;
   }

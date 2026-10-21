@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
 import { dropBuffers, editBuffer, loadBuffer } from '../src/ide/buffers.js';
-import { followQuit, QUIT_FLUSH_MS, unsavedFiles } from '../src/quit.js';
+import { followMemory, followQuit, QUIT_FLUSH_MS, unsavedFiles } from '../src/quit.js';
 import { watchDoc } from '../src/resources/autosave.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet } from './fixtures.js';
@@ -115,6 +115,40 @@ describe('followQuit', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(down.answers()).toEqual([{ type: 'quit.stopped', ok: false }]);
     down.stop();
+  });
+});
+
+describe('followMemory', () => {
+  // a page in the background, with the reload it would take counted instead
+  function memory() {
+    const q = setup();
+    q.store.getState().setActive(false);
+    const reload = vi.fn();
+    const off = followMemory({ store: q.store, bridge: q.bridge, reload });
+    return { ...q, reload, stop: () => { off(); q.stop(); } };
+  }
+
+  it('reloads a page in the background once its docs are written', async () => {
+    const m = memory();
+    m.edit('a.md', 'typed');
+    m.bridge.emit({ type: 'memory.high' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.disk['a.md']).toBe('typed');
+    expect(m.reload).toHaveBeenCalledTimes(1);
+    m.stop();
+  });
+
+  it.each([
+    ['is back in front', (m: ReturnType<typeof memory>) => m.store.getState().setActive(true)],
+    ['has a file unsaved', (m: ReturnType<typeof memory>) => m.store.getState().markFile('c1', '/repo/a.ts', { dirty: true })],
+    ['has a browser tab open', (m: ReturnType<typeof memory>) => m.store.getState().webviewOpened('t1', { x: 0, y: 0, width: 10, height: 10 })],
+  ])('keeps a page that %s', async (_, hold) => {
+    const m = memory();
+    hold(m);
+    m.bridge.emit({ type: 'memory.high' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.reload).not.toHaveBeenCalled();
+    m.stop();
   });
 });
 

@@ -147,6 +147,7 @@ enum FromShell {
     case openFleetFailed(home: String, reason: String)
     case setupResult(step: String, ok: Bool, json: String)
     case folderPicked(path: String)
+    case memoryHigh
 
     var json: [String: Any] {
         switch self {
@@ -197,6 +198,7 @@ enum FromShell {
         case .openFleetFailed(let home, let reason): return ["type": "openFleet.failed", "home": home, "reason": reason]
         case .setupResult(let step, let ok, let json): return ["type": "setup.result", "step": step, "ok": ok, "json": json]
         case .folderPicked(let path): return ["type": "folder.picked", "path": path]
+        case .memoryHigh: return ["type": "memory.high"]
         }
     }
 }

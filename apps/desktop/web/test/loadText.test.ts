@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { cpuText, memText } from '../src/loadText.js';
+import { coresText, memText } from '../src/loadText.js';
 
 describe('loadText', () => {
-  it('spells cpu with one decimal under 10%', () => {
-    expect(cpuText(14.04)).toBe('14%');
-    expect(cpuText(3.21)).toBe('3.2%');
-    expect(cpuText(0)).toBe('0.0%');
-    expect(cpuText(250.4)).toBe('250%');
-    // rounding to one decimal can reach 10 before the switch to whole numbers does
-    expect(cpuText(9.96)).toBe('10.0%');
+  it('spells cpu as cores, with two decimals under one core', () => {
+    expect(coresText(250.4)).toBe('2.5');
+    expect(coresText(1240)).toBe('12.4');
+    expect(coresText(45.2)).toBe('0.45');
+    expect(coresText(0)).toBe('0.00');
+    // rounding to two decimals can reach one core before the switch to one decimal does
+    expect(coresText(99.6)).toBe('1.0');
   });
 
   it('spells memory in MB, or GB from 1 GB', () => {

@@ -25,6 +25,8 @@ final class ShellRouter {
     // before it has, a token would be sent into nothing
     private var listening = false
     private var pendingNotify: [FromShell] = []
+    // since when the app has sat in the background or minimised, until its page is offered a fresh start
+    private var awaySince: Date?
     // the menu's Quit, which shows the chord the page quits with
     private let quitItem: NSMenuItem
     private lazy var quitFlow = QuitFlow(send: { [weak self] in self?.bridge.send($0) }, isListening: { [weak self] in self?.listening ?? false },
@@ -124,11 +126,22 @@ final class ShellRouter {
             guard let window = note.object as? NSWindow else { return }
             self?.surfaces.setWindowVisible(window.occlusionState.contains(.visible))
         }
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.offerFreshPage() }
     }
 
     // the app counts as in front only while its window isn't sitting minimised in the Dock
     private func sendAppActive() {
-        bridge.send(.appActive(NSApp.isActive && !(webView.window?.isMiniaturized ?? false)))
+        let active = NSApp.isActive && !(webView.window?.isMiniaturized ?? false)
+        awaySince = active ? nil : awaySince ?? Date()
+        bridge.send(.appActive(active))
+    }
+
+    // a web process past 1.2 GB, short of the 1.5 GB where WebKit flushes its caches every 30 s and stalls the page, gets
+    // one offer of a fresh page per spell of five minutes away; the page turns it down while it holds unsaved work
+    private func offerFreshPage() {
+        guard let away = awaySince, away.timeIntervalSinceNow < -300, let footprint = webView.webContentFootprint, footprint > 1_200_000_000 else { return }
+        awaySince = nil
+        bridge.send(.memoryHigh)
     }
 
     /// Lets go of what belonged to the page that is leaving.
@@ -435,5 +448,16 @@ final class ShellRouter {
         guard holding, event.window === container.window else { return }
         let hit = container.hitTest(container.convert(event.locationInWindow, from: nil))
         if hit == nil || !hit!.isDescendant(of: webView) { bridge.send(.pressedAway) }
+    }
+}
+
+private extension WKWebView {
+    /// The physical footprint of the page's web process, found through WebKit's private accessor for its pid.
+    var webContentFootprint: UInt64? {
+        let key = "_webProcessIdentifier"
+        guard responds(to: Selector((key))), let pid = value(forKey: key) as? pid_t, pid > 0 else { return nil }
+        var info = rusage_info_v4()
+        let ok = withUnsafeMutablePointer(to: &info) { $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) } }
+        return ok == 0 ? info.ri_phys_footprint : nil
     }
 }

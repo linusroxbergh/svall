@@ -15,6 +15,7 @@ window.matchMedia = ((media: string) => ({
 })) as never;
 
 const removes: (() => void)[] = [];
+const TIMELINE = {};
 
 // a robot on a card with the given status; an action it plays moves two parts and lasts until end() is called
 function robot(status: string) {
@@ -23,12 +24,12 @@ function robot(status: string) {
   card.innerHTML = '<svg data-idle="blink" data-work="type"></svg>';
   document.body.append(card);
   const bot = card.firstElementChild as SVGElement;
-  const r = { bot, parts: [] as { finished: Promise<void>; playbackRate: number }[], end: () => {} };
+  const r = { bot, parts: [] as { finished: Promise<void>; playbackRate: number; timeline: object | null }[], end: () => {} };
   Object.assign(bot, {
     getAnimations: () => {
       if (!bot.dataset.act) return [];
       const finished = new Promise<void>((done) => { r.end = done; });
-      r.parts = [{ finished, playbackRate: 1 }, { finished, playbackRate: 1 }];
+      r.parts = [{ finished, playbackRate: 1, timeline: TIMELINE }, { finished, playbackRate: 1, timeline: TIMELINE }];
       return r.parts;
     },
   });
@@ -77,6 +78,25 @@ describe('the robot scheduler', () => {
     expect(r.bot.dataset.act).toBeUndefined();
     await tick(2);
     expect(r.bot.dataset.act).toBe('blink');
+  });
+
+  it('lets go of each part\'s timeline once its action ends, played out or stopped', async () => {
+    const r = robot('idle');
+    setMotion(true);
+    await tick();
+    const played = r.parts;
+    expect(played.map((a) => a.timeline)).toEqual([TIMELINE, TIMELINE]);
+    r.end();
+    await tick();
+    expect(played.map((a) => a.timeline)).toEqual([null, null]);
+    await tick(LONGEST);
+    const stopped = r.parts;
+    expect(stopped).not.toBe(played);
+    setMotion(false);
+    // the cancel settles the stopped action's animations
+    r.end();
+    await tick();
+    expect(stopped.map((a) => a.timeline)).toEqual([null, null]);
   });
 
   it('rests its centre give or take a tenth, after a first rest anywhere up to the centre', async () => {
@@ -229,6 +249,23 @@ describe('a robot inlined on a card', () => {
       const idsOf = (el: Element) => [...el.querySelectorAll('[id]')].map((e) => e.id);
       expect(idsOf(a).length).toBeGreaterThan(0);
       expect(idsOf(a).filter((id) => idsOf(b).includes(id))).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps each design\'s actions in one sheet in the head, so copies coming and going leave the page\'s sheets alone', async () => {
+    const src = fs.readFileSync(path.join(robotsDir, 'robot-01.svg'), 'utf8');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(src)));
+    try {
+      const { container, unmount } = render(<><Robot n={1} /><Robot n={1} /></>);
+      await act(async () => {});
+      expect(container.querySelectorAll('.stage > svg')).toHaveLength(2);
+      expect(container.querySelectorAll('style')).toHaveLength(0);
+      const sheets = [...document.head.querySelectorAll('style')];
+      expect(sheets.filter((s) => s.textContent!.includes('@keyframes r01-sway'))).toHaveLength(1);
+      unmount();
+      expect([...document.head.querySelectorAll('style')]).toEqual(sheets);
     } finally {
       vi.unstubAllGlobals();
     }

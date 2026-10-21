@@ -72,7 +72,7 @@ export const stubUsage = (): Promise<UsageSnapshot> =>
 
 // and a load reading, which tests not about load take
 export const stubLoad = (): Promise<LoadSnapshot> =>
-  Promise.resolve({ at: 0, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, chars: {} });
+  Promise.resolve({ at: 0, cores: 8, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, chars: {} });
 
 // and a phone link it can report; tests that are not about serving take this one
 const OFF: MobileStatus = { serving: false, url: '', port: 443, logins: [], phones: [], error: 'no tailscale in tests' };

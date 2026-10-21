@@ -9,7 +9,7 @@ import { useApp, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
-import { cpuText, memText } from './loadText.js';
+import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { portraitTint, portraitUrl, robotOf, robotUrl, stepRobot } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
@@ -141,7 +141,7 @@ export function SideCard({ id }: { id: string }) {
             <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
             {load && (
               <>
-                <div className="row"><span>cpu</span><b className="tnum" data-testid="side-cpu">{cpuText(load.cpu)}</b></div>
+                <div className="row"><span>cpu</span><b className="tnum" data-testid="side-cpu">{coresText(load.cpu)} cores</b></div>
                 <div className="row"><span>ram</span><b className="tnum" data-testid="side-ram">{memText(load.mem)}</b></div>
                 <div className="row"><span>procs</span><b className="tnum" data-testid="side-procs">{load.procs}</b></div>
               </>
