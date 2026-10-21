@@ -992,7 +992,8 @@ export class Handover {
     for (const c of r.commands ?? []) {
       blockers.push({
         code: 'git_config_command', entity: { kind: 'git', id: c.graph },
-        message: `${c.at}: its repository's own config names commands git would run on ${where}, whose global config does not set them the same: ${c.keys.join(', ')}; set each up the same there with git config --global, or remove it from the repository's config`,
+        message: `${c.at}: its repository's own config names commands git would run on ${where}, whose global config does not set them the same: ${c.keys.join(', ')}; set each up the same there with git config --global, or remove it from the repository's config`
+          + (c.conditional ? `; ${where}'s global config has conditional includes, which the checks cannot apply to a repository not there yet, and prepare checks again once it lands` : ''),
       });
     }
     const notices: Warning[] = r.roots.flatMap((x) => (!x.check.ok && archived.has(x.id)

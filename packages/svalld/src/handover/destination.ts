@@ -271,8 +271,8 @@ export class DestinationHandover {
   }
 
   /** What the repositories `graphs` bring would have git run here that this machine's own config does not set the same; prepare checks again what landed. */
-  private async commandsUnset(graphs: readonly ReceivedGraph[]): Promise<{ graph: string; at: string; keys: string[] }[]> {
-    const out: { graph: string; at: string; keys: string[] }[] = [];
+  private async commandsUnset(graphs: readonly ReceivedGraph[]): Promise<{ graph: string; at: string; keys: string[]; conditional?: true }[]> {
+    const out: { graph: string; at: string; keys: string[]; conditional?: true }[] = [];
     try {
       for (const g of graphs) for (const u of await unsetHere(g.commands ?? [], this.d.git ?? handoverGit)) out.push({ graph: g.id, ...u });
     } catch (e) {

@@ -429,11 +429,17 @@ describe('preflight', () => {
   it('blocks at the checks a carried repository naming a command git would run on the destination, whose global config does not set it the same', async () => {
     const w = new World();
     const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
-    w.destination.answers['handover.inspect'] = ((p: unknown) => ({ ...inspect(p), commands: [{ graph: 'g_app', at: '/Users/ada/app', keys: ['filter.crypt.clean'] }] })) as never;
-    expect((await controller(w).preflight(trift, {})).blockers).toContainEqual({
+    w.destination.answers['handover.inspect'] = ((p: unknown) => ({
+      ...inspect(p), commands: [{ graph: 'g_app', at: '/Users/ada/app', keys: ['filter.crypt.clean'] }, { graph: 'g_app', at: '/Users/ada/new', keys: ['filter.crypt.clean'], conditional: true }],
+    })) as never;
+    const { blockers } = await controller(w).preflight(trift, {});
+    expect(blockers).toContainEqual({
       code: 'git_config_command', entity: { kind: 'git', id: 'g_app' },
       message: '/Users/ada/app: its repository\'s own config names commands git would run on trift, whose global config does not set them the same: filter.crypt.clean; set each up the same there with git config --global, or remove it from the repository\'s config',
     });
+    expect(blockers).toContainEqual(expect.objectContaining({
+      message: expect.stringMatching(/^\/Users\/ada\/new: .*; trift's global config has conditional includes, which the checks cannot apply to a repository not there yet, and prepare checks again once it lands$/),
+    }));
   });
 
   it('warns that Claude warns about bypass mode with "No, exit" preselected where a carried resume asks for it and the destination\'s Claude has not accepted it', async () => {

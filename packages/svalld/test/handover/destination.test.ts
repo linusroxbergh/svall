@@ -2485,6 +2485,27 @@ describe('destination inspect', () => {
     expect(r.commands).toEqual([{ graph: 'g_app', at: '/r/app', keys: ['filter.crypt.clean'] }, { graph: 'g_app', at: '/r/wt', keys: ['filter.lfs.clean'] }]);
   });
 
+  it('reads the global config inside a repository already here, where a conditional include on its path applies, and says when it could not', async () => {
+    const s = await scene({ land: false });
+    const repos = path.join(fs.realpathSync(s.base), 'repos');
+    const held = path.join(repos, 'app');
+    fs.mkdirSync(held, { recursive: true });
+    execFileSync('git', ['init', '-q', held]);
+    const global = path.join(s.base, 'global.gitconfig');
+    const work = path.join(s.base, 'work.gitconfig');
+    execFileSync('git', ['config', '--file', work, 'filter.crypt.clean', 'git-crypt clean']);
+    execFileSync('git', ['config', '--file', global, `includeIf.gitdir:${repos}/.path`, work]);
+    const git: GitRunner = (args, cwd) => new Promise((resolve) => execFile('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: global } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
+    const d = daemon(s, { git });
+    const crypt = (at: string) => ({ at, key: 'filter.crypt.clean', value: 'git-crypt clean' });
+    const r = await d.handover.inspect({
+      roots: [], excludes: [], folders: [], git: [{ id: 'g_app', commonDir: path.join(held, '.git'), carried: [], tips: [], commands: [crypt(held), crypt(path.join(repos, 'new'))] }],
+    });
+    // the repository here reads the filter its path includes; one not here yet reads the global config as '/' does
+    expect(r.commands).toEqual([{ graph: 'g_app', at: path.join(repos, 'new'), keys: ['filter.crypt.clean'], conditional: true }]);
+  });
+
   it('says whether each root could be taken and what each folder it is asked about is good for, and writes no record', async () => {
     const s = await scene({ land: false });
     const d = daemon(s);

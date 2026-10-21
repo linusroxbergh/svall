@@ -307,14 +307,29 @@ const command = (s: Setting): boolean => COMMAND.test(s.key) && !(s.key === 'cor
 const ownSettings = (all: readonly Setting[]): Set<string> =>
   new Set(all.filter((s) => s.scope === 'system' || s.scope === 'global').map((s) => `${s.key}\n${s.value}`));
 
-/** The keys of `commands`, by where each is read, that git would run on this machine and its global or system config does not set the same. */
-export async function unsetHere(commands: readonly GitCommand[], git: GitRunner): Promise<{ at: string; keys: string[] }[]> {
-  const runs = commands.filter((c) => runsHere(c.key));
-  if (!runs.length) return [];
-  const own = ownSettings(await settings(git, '/'));
-  const by = new Map<string, string[]>();
-  for (const c of runs) if (!own.has(`${c.key}\n${c.value}`)) by.set(c.at, [...(by.get(c.at) ?? []), c.key]);
-  return [...by].map(([at, keys]) => ({ at, keys }));
+/**
+ * The keys of `commands`, by where each is read, that git would run on this machine and its global or system config does
+ * not set the same. That config is read in the repository already at `at`, where an include conditional on its path
+ * applies; elsewhere `conditional` says it holds such an include, which only the repository's arrival can settle.
+ */
+export async function unsetHere(commands: readonly GitCommand[], git: GitRunner): Promise<{ at: string; keys: string[]; conditional?: true }[]> {
+  const by = new Map<string, GitCommand[]>();
+  for (const c of commands) if (runsHere(c.key)) by.set(c.at, [...(by.get(c.at) ?? []), c]);
+  const out: { at: string; keys: string[]; conditional?: true }[] = [];
+  let anywhere: Setting[] | undefined;
+  for (const [at, list] of by) {
+    let there: Setting[] | undefined;
+    try { there = fs.existsSync(at) ? await settings(git, at) : undefined; } catch (e) {
+      if (!(e instanceof GitFailure)) throw e;
+    }
+    const held = there?.some((s) => s.scope === 'local') ? there : undefined;
+    const all = held ?? (anywhere ??= await settings(git, '/'));
+    const own = ownSettings(all);
+    const keys = list.filter((c) => !own.has(`${c.key}\n${c.value}`)).map((c) => c.key);
+    const conditional = !held && all.some((s) => (s.scope === 'global' || s.scope === 'system') && s.key.startsWith('includeif.'));
+    if (keys.length) out.push({ at, keys, ...(conditional && { conditional: true as const }) });
+  }
+  return out;
 }
 
 /**
