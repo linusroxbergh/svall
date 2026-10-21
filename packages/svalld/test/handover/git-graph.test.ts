@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type Character } from '@svall/protocol';
-import { configCommands, discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees } from '../../src/handover/git-graph.js';
+import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { handoverGit, runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
 import { char, crew, git, hasGit, seedHere } from './git-fixture.js';
@@ -196,14 +196,21 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     expect((await handoverGit(['config', '--get', 'core.hooksPath'], s.main)).stdout.trim()).toBe('/dev/null');
   });
 
-  it('names the commands of a repository\'s config, what it includes, each worktree\'s config and each submodule\'s', async () => {
+  it('warns of the commands each checkout reads from its repository\'s config, an include that applies only there, its worktree config and each submodule\'s', async () => {
     const l = seedHere(made);
     const common = path.join(l.source.main, '.git');
-    fs.writeFileSync(path.join(l.base, 'included.inc'), '[filter "inc"]\n\tclean = x\n');
-    fs.appendFileSync(path.join(common, 'config'), `[include]\n\tpath = ${path.join(l.base, 'included.inc')}\n[core]\n\tfsmonitor = true\n`);
+    const include = (name: string, text: string) => { fs.writeFileSync(path.join(l.base, name), text); return path.join(l.base, name); };
+    fs.appendFileSync(path.join(common, 'config'), [
+      `[include]\n\tpath = ${include('all.inc', '[filter "inc"]\n\tclean = x\n')}`,
+      `[includeIf "onbranch:sibling-branch"]\n\tpath = ${include('sibling.inc', '[filter "br"]\n\tclean = x\n')}`,
+      '[extensions]\n\tworktreeConfig = true', '[core]\n\tfsmonitor = true\n',
+    ].join('\n'));
     fs.writeFileSync(path.join(common, 'worktrees/nested/config.worktree'), '[filter "wt"]\n\tsmudge = x\n');
     fs.appendFileSync(path.join(common, 'modules/sub/config'), '[core]\n\tsshCommand = x\n[filter "sub"]\n\tprocess = x\n');
-    expect(await configCommands(common, handoverGit)).toEqual(['core.sshcommand', 'filter.inc.clean', 'filter.sub.process', 'filter.wt.smudge']);
+    const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
+    expect(d.warnings.find((w) => w.code === 'git_config_command' && w.entity?.id === graphId(common))?.message).toBe(
+      `${common}: its config names commands git runs, and travels with it: core.sshcommand, filter.br.clean, filter.inc.clean, filter.sub.process, filter.wt.smudge`,
+    );
   });
 
   it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {

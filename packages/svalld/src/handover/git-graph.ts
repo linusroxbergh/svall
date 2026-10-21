@@ -158,7 +158,8 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
       for (const [at, url] of await origins(read, standing, git, exists)) {
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
-      const commands = await configCommands(commonDir, git);
+      const checkouts = [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees].map((c) => c.path);
+      const commands = [...new Set((await repoCommands(commonDir, checkouts, git)).map((c) => c.key))].sort(byCodeUnit);
       if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
       const held = await unusedWork(read.graph, git, exists);
       for (const [at, message] of held) blockers.push({ code: 'worktree_unused', message: `${at}: ${message}`, entity });
@@ -251,29 +252,6 @@ async function origins(read: ReadGraph, standing: Set<string>, git: GitRunner, e
 // a filter's commands, an fsmonitor hook and an ssh command, as against fsmonitor's own daemon or none
 const COMMAND_KEYS = '^(filter\\..+\\.(clean|smudge|process)|core\\.fsmonitor|core\\.sshcommand)$';
 const BOOLEAN = /^(true|false|yes|no|on|off|1|0|)$/i;
-
-/**
- * The keys that name a command git runs in a repository's own configs, each once: its config with what that includes,
- * each worktree's own, and each submodule's.
- */
-export async function configCommands(commonDir: string, git: GitRunner): Promise<string[]> {
-  const worktrees = path.join(commonDir, 'worktrees');
-  const files = [
-    path.join(commonDir, 'config'), path.join(commonDir, 'config.worktree'),
-    ...names(worktrees).map((n) => path.join(worktrees, n, 'config.worktree')),
-    ...submoduleDirs(path.join(commonDir, 'modules')).map((d) => path.join(d, 'config')),
-  ].filter((f) => fs.existsSync(f));
-  const keys: string[] = [];
-  for (const file of files) {
-    const r = await git(['config', '--file', file, '--includes', '-z', '--get-regexp', COMMAND_KEYS], commonDir);
-    if (r.code !== 0) continue;
-    for (const entry of r.stdout.split('\0').filter(Boolean)) {
-      const [key, value = ''] = entry.split('\n');
-      if (!(key === 'core.fsmonitor' && BOOLEAN.test(value))) keys.push(key);
-    }
-  }
-  return [...new Set(keys)].sort(byCodeUnit);
-}
 
 const names = (dir: string): string[] => { try { return fs.readdirSync(dir); } catch { return []; } };
 
