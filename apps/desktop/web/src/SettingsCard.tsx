@@ -155,7 +155,7 @@ const checked = (c: NonNullable<MachineRow['check']>): string => {
 function Machines() {
   const machines = useApp((s) => s.machines);
   const error = useApp((s) => s.machinesError);
-  const list = () => app.bridge.send({ type: 'host.list' });
+  const list = () => { app.bridge.send({ type: 'host.list' }); };
   useEffect(list, []);
   return (
     <div className="rows" data-testid="machines">
