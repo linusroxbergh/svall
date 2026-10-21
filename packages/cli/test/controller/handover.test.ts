@@ -242,19 +242,21 @@ describe('preflight', () => {
   });
 
   it('checks alone: reports the manifest and what stops a handover, then ends ready or blocked with nothing begun or rested', async () => {
+    // reads alone: who owns the fleet, both machines, and the manifest
+    const reads = ['gateway:get', 'mac:handover.preflight', 'mac:ownership.get', 'mac:system.info', 'trift:handover.inspect', 'trift:ownership.get', 'trift:system.info'];
     const clear = new World();
     const out = await controller(clear).check(trift, {});
     expect(out).toEqual({ status: 'ready' });
     expect(clear.events.map((e) => e.event)).toEqual(['handover.preflight', 'handover.result']);
     expect(clear.events[0]).toMatchObject({ data: { blockers: [], summary: { roots: 2 } } });
-    expect(clear.ops.filter((op) => !/^(gateway:get|mac:|trift:)(system\.info|ownership\.get|handover\.(preflight|inspect|status)|get)?/.test(op))).toEqual([]);
+    expect([...clear.ops].sort()).toEqual(reads);
     expect(clear.store.j).toBeUndefined();
     expect(clear.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
 
     const busy = new World();
     busy.source.preflightBlockers = [{ code: 'shell_busy', message: 'ada\'s terminal is running npm run dev', entity: { kind: 'character', id: 'c_ada' } }];
     expect(await controller(busy).check(trift, {})).toEqual({ status: 'blocked', phase: 'begin', blockers: busy.source.preflightBlockers });
-    expect(busy.ops).not.toContain('gateway:begin');
+    expect([...busy.ops].sort()).toEqual(reads);
   });
 
   it('adds the destination\'s roots and room, the destination\'s git, and what differs between the machines', async () => {
