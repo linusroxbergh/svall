@@ -158,8 +158,10 @@ test('the sheet carries a move to the gateway through all five sections, then th
   ], names: { characters: { [a.id]: 'ada', [b.id]: 'bo' }, roots: { r_0a1b: '/home/ada/app' }, sessions: { s0: 'bo' } } } });
   await expect(page.getByTestId('handover-summary')).toContainText('1 folder, 120 files, 40.0 MB, 1 session');
   await expect(page.getByTestId('handover-intro')).toHaveCount(0);
+  await expect(page.getByTestId('handover-warning-config_difference')).toBeVisible();
   await expect(page.getByTestId('handover-warning-config_difference')).toContainText('agent CLI versions differ');
   await expect(page.getByTestId('handover-warning-config_difference')).not.toContainText(/MCP|skill/i);
+  await expect(page.getByTestId('handover-warning-codex_trust')).toBeVisible();
   await expect(page.getByTestId('handover-warning-codex_trust')).toContainText('trust each moved folder');
 
   await say(page, ...changed('begin', 'freeze'), character(a.id, 'freeze'), character(b.id, 'freeze'));
@@ -176,7 +178,7 @@ test('the sheet carries a move to the gateway through all five sections, then th
     { event: 'handover.entity', data: { transactionId: 'tx1', kind: 'session', id: 's0', phase: 'transfer', bytes: 400, totalBytes: 1000 } });
   await expect(page.getByTestId('handover-row-transfer-r_0a1b')).toContainText('12.0 MB of 40.0 MB');
   // each row is named by what preflight said it is: where a root lands, as the user would say it, whose a session is
-  await expect(page.getByTestId('handover-row-transfer-r_0a1b')).toContainText('~/app');
+  await expect(page.getByTestId('handover-row-transfer-r_0a1b')).toContainText('/home/ada/app');
   await expect(page.getByTestId('handover-row-transfer-r_0a1b').locator('.ho-who')).toHaveAttribute('title', '/home/ada/app');
   await expect(page.getByTestId('handover-row-transfer-s0')).toContainText("bo's session");
   await expect(page.getByTestId('handover-section-rest')).toHaveAttribute('data-state', 'done');

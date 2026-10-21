@@ -3,8 +3,9 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
-  actionsOf, asksStatus, blockerHint, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf, entityLabel, entityPath,
-  formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, verdictOf, wayOut, withChoice,
+  accountHome, actionsOf, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf,
+  entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, staysInSight,
+  transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
@@ -62,6 +63,9 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
   const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
   const path = entityPath(b.entity, names, b.message);
   const upgrade = upgradeAsked(b, ctx);
+  const side = blockerSide(b);
+  // the shell opens a folder only on this Mac, and only while the fleet runs here
+  const finder = !ctx.pull && side === 'source' && app.bridge.present;
   const picked = !!choice && chosen(run.choices, b);
   const { problem, remedy, quote } = problemOf(b.message, !!choice || !!hint);
   const more = [remedy, choice && hint].filter(Boolean) as string[];
@@ -69,7 +73,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
   return (
     <div className="host-step ho-issue" data-testid={`handover-${warning ? 'warning' : 'blocker'}-${b.code}`} data-status={warning ? 'warn' : picked ? 'ok' : 'fail'} data-picked={picked || undefined}>
       <span className="host-mark">{warning ? '!' : picked ? '✓' : '×'}</span>
-      <span className="ho-who" title={path}>{entityLabel(b.entity, ctx.name, names, b.message) ?? ''}</span>
+      <span className="ho-who" title={path}>{entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? ''}</span>
       <span className="host-said">
         {picked ? <span className="ho-plan">{planOf(choice!, b, ctx, names)}</span> : problem}
         {!picked && quote && <q className="ho-quote">{quote.slice(1, -1)}</q>}
@@ -85,9 +89,9 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
             {!picked && who && (
               <button className="btn ho-choice" data-testid="handover-open-card" onClick={() => openCard(who)}>Open {ctx.name(who)}</button>
             )}
-            {!picked && !who && path && app.bridge.present && (
-              <button className="btn ho-choice" data-testid="handover-show-folder" onClick={() => openFolder(app.bridge, path)}>Show in Finder</button>
-            )}
+            {!picked && !who && path && (finder
+              ? <button className="btn ho-choice" data-testid="handover-show-folder" onClick={() => openFolder(app.bridge, path)}>Show in Finder</button>
+              : <span className="ho-path" data-testid="handover-path">{path}{side && ` on ${side === 'source' ? ctx.source : ctx.destination}`}</span>)}
             {upgrade && (
               <button className="btn ho-choice" data-testid="handover-upgrade" onClick={() => { store().toggleHandover(false); store().toggleHost(true, upgrade); }}>Upgrade {upgrade}…</button>
             )}
@@ -109,7 +113,7 @@ function EntityRow({ row, ctx, run }: { row: Row; ctx: HintContext; run: Handove
   const text = running ? 'resumed' : rowText(row);
   const names = run.preflight?.names;
   const path = entityPath(row.kind === 'root' ? row : undefined, names);
-  const f = row.section === 'transfer' ? (row.phase === 'verify' && !row.error ? 1 : fraction(row)) : undefined;
+  const f = row.section === 'transfer' ? fraction(row) : undefined;
   const retry = () => {
     const api = app.api();
     api.call('char.revive', { id: row.id }).then(() => (c?.second && !c.second.tmux ? api.call('char.second', { id: row.id }) : undefined))
@@ -117,8 +121,8 @@ function EntityRow({ row, ctx, run }: { row: Row; ctx: HintContext; run: Handove
   };
   return (
     <div className="host-step" data-testid={`handover-row-${row.section}-${row.id}`} data-status={row.error && !running ? 'fail' : 'ok'}>
-      <span className="host-mark">{row.error && !running ? '×' : f === 1 || (row.section === 'rest' && row.done === row.total && row.total !== undefined) ? '✓' : '·'}</span>
-      <span className="ho-who" title={path}>{entityLabel(row, ctx.name, names)}</span>
+      <span className="host-mark">{row.error && !running ? '×' : verified(row) || (row.section === 'rest' && row.done === row.total && row.total !== undefined) ? '✓' : '·'}</span>
+      <span className="ho-who" title={path}>{entityLabel(row, ctx.name, names, undefined, ctx.home)}</span>
       <span className="host-said">
         {text}
         {f !== undefined && <span className="ho-bar"><i style={{ width: `${Math.round(f * 100)}%` }} /></span>}
@@ -167,6 +171,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
   const rows = run.rows.filter((r) => r.section === id);
   const blockers = blockersIn(run, id);
   const pre = id === 'checks' ? run.preflight : undefined;
+  const notes = pre?.warnings.filter((w) => !staysInSight(w)) ?? [];
   const done = state === 'done';
   // a freeze still waiting on agents takes new choices without anyone having to wait for it to give up
   const interrupt = id === 'rest' && state === 'active' && run.choices.interruptAfterMs === undefined && rows.some((x) => x.total === undefined && !x.error);
@@ -186,12 +191,13 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
         </div>
       )}
       {blockers.map((b, i) => <BlockerRow key={`b${i}`} b={b} ctx={ctx} run={run} blockers={blockers} />)}
-      {pre && pre.warnings.length > 0 && (
+      {pre?.warnings.filter(staysInSight).map((w, i) => <BlockerRow key={`s${i}`} b={w} ctx={ctx} run={run} warning />)}
+      {notes.length > 0 && (
         <div className="host-step">
           <span className="host-mark" />
           <span className="host-said">
-            <More label={plural(pre.warnings.length, 'note')} testid="handover-notes">
-              {pre.warnings.map((w, i) => <BlockerRow key={`w${i}`} b={w} ctx={ctx} run={run} warning />)}
+            <More label={plural(notes.length, 'note')} testid="handover-notes">
+              {notes.map((w, i) => <BlockerRow key={`w${i}`} b={w} ctx={ctx} run={run} warning />)}
             </More>
           </span>
         </div>
@@ -335,6 +341,7 @@ export function HandoverSheet() {
   const runsOn = useApp((s) => s.connection?.owner);
   const owner = runsOn ?? 'local';
   const characters = useApp((s) => s.fleet.characters);
+  const home = useApp((s) => accountHome(s.shell?.home));
   const shut = useRef<HTMLButtonElement>(null);
   // the user asked to pick a destination over a run the sheet still shows
   const [picking, setPicking] = useState(false);
@@ -369,7 +376,7 @@ export function HandoverSheet() {
   const to = run && destinationOf(run, runsOn, gateway);
   const destination = destinationName(to);
   const ctx: HintContext = {
-    destination, source: to === 'local' ? gateway ?? 'the gateway' : to ? 'This Mac' : 'the machine it came from', pull: to === 'local',
+    destination, source: to === 'local' ? gateway ?? 'the gateway' : to ? 'This Mac' : 'the machine it came from', pull: to === 'local', home,
     name: (id) => characters[id]?.name ?? run?.preflight?.names?.characters[id] ?? id,
   };
   const close = () => store().toggleHandover(false);

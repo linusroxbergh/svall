@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Blocker, HandoverPhase, MachineId, SafeAction, Standing } from '@svall/protocol';
 import {
   actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  goOn, rowText, sectionStates, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  goOn, rowText, sectionStates, shortPath, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
 const tx = 'tx-1';
@@ -46,10 +46,10 @@ describe('the handover a sheet follows', () => {
     const run = play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [], names } }]);
     const name = (id: string) => run.preflight?.names?.characters[id] ?? id;
     expect(entityLabel({ kind: 'character', id: 'c1' }, name, run.preflight?.names)).toBe('ada');
-    expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names)).toBe('~/app');
+    expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names, undefined, '/home/ada')).toBe('~/app');
     expect(entityLabel({ kind: 'session', id: 's0' }, name, run.preflight?.names)).toBe("ada's session");
     // a repository is named by the path its message leads with
-    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no character uses are not registered')).toBe('~/src/beta');
+    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no character uses are not registered', '/Users/ada')).toBe('~/src/beta');
     // without what preflight said, the id is what there is
     expect(entityLabel({ kind: 'root', id: 'r_b' }, name, run.preflight?.names)).toBe('folder r_b');
     expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, 'the destination has no git')).toBe('repository');
@@ -103,6 +103,14 @@ describe('the handover a sheet follows', () => {
     const row = run.rows.find((r) => r.id === 'r_a')!;
     expect(row.error).toBeUndefined();
     expect(rowText(row)).toBe('12.0 MB of 40.0 MB; what was there is kept at /home/ada/a.archived-1');
+  });
+
+  it("turns only the account's own home into ~", () => {
+    expect(shortPath('/Users/ada/src/app', '/Users/ada')).toBe('~/src/app');
+    expect(shortPath('/Users/ada', '/Users/ada')).toBe('~');
+    expect(shortPath('/Users/Shared/proj', '/Users/ada')).toBe('/Users/Shared/proj');
+    expect(shortPath('/Users/adam/x', '/Users/ada')).toBe('/Users/adam/x');
+    expect(shortPath('/home/bo/app')).toBe('/home/bo/app');
   });
 
   it('shows progress in bytes', () => {
@@ -329,6 +337,15 @@ describe('what each blocker and warning is explained with', () => {
     const hint = blockerHint({ code: 'agent_unsettled', message: "Ada's terminal did not come to rest after it was interrupted", entity: { kind: 'character', id: 'c1' } }, ctx);
     expect(hint).toMatch(/hook/);
     expect(hint).toMatch(/Terminate and carry/);
+  });
+
+  it('sends a path that cannot travel to the terminal it is in, or a folder to what the message names', () => {
+    const terminal = blockerHint({ code: 'path_unsupported', message: "Ada's terminal is in /Users/ada/.ssh, which stays on its machine", entity: { kind: 'character', id: 'c1' } }, ctx);
+    expect(terminal).toMatch(/cd that terminal/);
+    const folder = blockerHint({ code: 'path_unsupported', message: 'handover.exclude pattern "[" cannot be read by rsync', entity: { kind: 'root', id: 'r_a' } }, ctx);
+    expect(folder).not.toMatch(/terminal/);
+    expect(folder).toMatch(/handover\.exclude.*writable on studio/);
+    expect(blockerHint({ code: 'path_unsupported', message: 'the destination keeps this fleet\'s docs at another path' }, ctx)).toBe(folder);
   });
 
   it('points a kept character at its toggle', () => {

@@ -21,7 +21,7 @@ beforeEach(() => {
   store = createAppStore();
   setAppStore(store);
   store.getState().setFleet(fleet());
-  store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
   store.getState().handoverFollow('trift');
 });
 
@@ -133,7 +133,9 @@ test('stopped at the checks, every blocker names what it is about in words and h
   const taken = screen.getByTestId('handover-blocker-destination_occupied');
   expect(taken.querySelector('.ho-who')?.textContent).toBe('~/src/beta');
   expect(taken.querySelector('.ho-who')?.getAttribute('title')).toBe('/Users/ada/src/beta');
-  expect(taken.querySelector('[data-testid="handover-show-folder"]')).not.toBeNull();
+  // that folder is on trift, so it is named, not opened in this Mac's Finder
+  expect(taken.querySelector('[data-testid="handover-show-folder"]')).toBeNull();
+  expect(taken.querySelector('[data-testid="handover-path"]')?.textContent).toBe('/Users/ada/src/beta on trift');
   const notes = screen.getByTestId('handover-notes');
   expect(notes.querySelector('summary')?.textContent).toBe('2 notes');
   expect(screen.getByTestId('handover-warning-env_file').querySelector('.ho-who')?.textContent).toBe('~/src/alpha');
@@ -145,16 +147,51 @@ test('stopped at the checks, every blocker names what it is about in words and h
   expect(store.getState().handoverOpen).toBe(false);
 });
 
+test('the warnings that bite once the fleet has moved stay in sight, and only the rest fold away', () => {
+  render(<HandoverSheet />);
+  say({ event: 'handover.preflight', data: { summary, blockers: [], warnings: [
+    ...(preflight.event === 'handover.preflight' ? preflight.data.warnings : []),
+    { code: 'claude_trust', message: 'Claude asks whether to trust ~/src/alpha the first time dev resumes on trift', entity: { kind: 'character', id: 'c0' } },
+    { code: 'claude_bypass', message: 'claude-x resumes in Bypass Permissions mode, which Claude on trift has not accepted', entity: { kind: 'character', id: 'c2' } },
+    { code: 'config_difference', message: 'claude 2.0.1 runs on this machine and 2.0.3 on trift' },
+  ], names } });
+  for (const code of ['claude_trust', 'claude_bypass', 'config_difference']) {
+    expect(screen.getByTestId(`handover-warning-${code}`).closest('details'), code).toBeNull();
+  }
+  expect(screen.getByTestId('handover-warning-claude_trust').querySelector('em')?.textContent).toMatch(/"No, exit" preselected/);
+  expect(screen.getByTestId('handover-notes').querySelector('summary')?.textContent).toBe('2 notes');
+  expect(screen.getByTestId('handover-warning-env_file').closest('details')).not.toBeNull();
+});
+
+test('Show in Finder is offered only for a folder on this Mac while the fleet runs here; elsewhere the path is named with its machine', () => {
+  render(<HandoverSheet />);
+  const linked = (message: string): HandoverEvent => ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code: 'path_symlinked', message, entity: { kind: 'root', id: 'r_1' } }] } });
+  say(preflight, linked('/Users/ada/src/alpha leads to /Volumes/work/alpha through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use /Volumes/work/alpha instead'));
+  expect(screen.getByTestId('handover-show-folder')).toBeTruthy();
+  // the destination's own link: on trift
+  say(linked('/Users/ada/src/alpha leads to /data/alpha on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first'));
+  expect(screen.queryByTestId('handover-show-folder')).toBeNull();
+  expect(screen.getByTestId('handover-path').textContent).toBe('/Users/ada/src/alpha on trift');
+  // in a pull the fleet runs on the gateway, and this Mac opens no folder for it
+  act(() => store.getState().handoverFollow('local'));
+  say(preflight, linked('/Users/ada/src/alpha leads to /Volumes/work/alpha through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use /Volumes/work/alpha instead'));
+  expect(screen.queryByTestId('handover-show-folder')).toBeNull();
+  expect(screen.getByTestId('handover-path').textContent).toBe('/Users/ada/src/alpha on trift');
+});
+
 test('while transferring, one bar sums every folder and session, a verified folder reads whole, and the rows wait behind a disclosure', () => {
   render(<HandoverSheet />);
   say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
+    // a folder still being checked is not yet verified; a verified one says so with every byte
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 600_000, totalBytes: 1_000_000 } },
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_2', phase: 'transfer', bytes: 250_000, totalBytes: 1_000_000 } },
-    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'session', id: 's0', phase: 'transfer', bytes: 0, totalBytes: 1_000 } });
-  expect(screen.getByTestId('handover-transfer-total').textContent).toContain('1.3 MB of 2.0 MB · 1 of 3 verified');
-  expect(screen.getByTestId('handover-transfer-total').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 62%');
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'session', id: 's0', phase: 'verify', bytes: 1_000, totalBytes: 1_000 } });
+  expect(screen.getByTestId('handover-transfer-total').textContent).toContain('851.0 KB of 2.0 MB · 1 of 3 verified');
+  expect(screen.getByTestId('handover-transfer-total').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 43%');
   expect(screen.getByTestId('handover-transfer-rows').querySelector('summary')?.textContent).toBe('2 folders and 1 session');
-  expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 100%');
+  expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 60%');
+  expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.host-mark')?.textContent).toBe('·');
+  expect(screen.getByTestId('handover-row-transfer-s0').querySelector('.host-mark')?.textContent).toBe('✓');
   expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 characters at rest');
   expect(screen.getByTestId('handover-headline').textContent).toBe('Transferring files and sessions…');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();

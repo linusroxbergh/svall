@@ -362,7 +362,8 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
 
 export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry', carry: 'Carry the folder whole' };
 
-export type HintContext = { destination: string; source: string; pull: boolean; name(id: string): string };
+// home: the account's home, which is the same path on both machines, when the page knows it
+export type HintContext = { destination: string; source: string; pull: boolean; home?: string; name(id: string): string };
 
 // a session OpenCode's database went on with; a divergence of files, whatever the agent, ends with the files
 const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Za-z]{14}) past the copy coming in$/;
@@ -419,7 +420,9 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'agent_hooks_missing':
       return `Run svall setup on ${ctx.destination}, then try again.`;
     case 'path_unsupported':
-      return 'Move what it names, or cd that terminal to a folder that travels, or close the character; then try again.';
+      return b.entity?.kind === 'character'
+        ? 'Move what it names, or cd that terminal to a folder that travels, or close the character; then try again.'
+        : `Follow the message: move what it names out of the folder that carries it, fix handover.exclude in fleet.json, or make the folder writable on ${ctx.destination}; then try again.`;
     default:
       return undefined;
   }
@@ -432,8 +435,26 @@ export function upgradeAsked(b: Blocker, ctx: HintContext): string | undefined {
   return machineName(linux) ? linux : undefined;
 }
 
-/** A path as the user says it: the account's home as `~`. */
-export const shortPath = (p: string): string => p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~');
+/** A path as the user says it: the account's home, when known, as `~`. */
+export const shortPath = (p: string, home?: string): string => (home && (p === home || p.startsWith(`${home}/`)) ? `~${p.slice(home.length)}` : p);
+
+/** The account's home a fleet home lies in, such as `/Users/ada` for `/Users/ada/.svall`. */
+export const accountHome = (fleetHome: string | undefined): string | undefined => (fleetHome ? /^\/(?:Users|home)\/[^/]+(?=\/|$)/.exec(fleetHome)?.[0] : undefined);
+
+/** Which machine the folder a blocker names is on, when its code or message says. */
+export function blockerSide(b: Blocker): 'source' | 'destination' | undefined {
+  switch (b.code) {
+    case 'external_writer': return /^the source /.test(b.message) ? 'source' : 'destination';
+    case 'path_symlinked': return /lands at the path it has on the source/.test(b.message) ? 'destination' : 'source';
+    case 'worktree_unresolved': case 'worktree_unused': case 'repository_unused': return 'source';
+    case 'destination_occupied': case 'destination_diverged': case 'parent_missing': case 'git_mismatch': case 'git_extension': case 'path_collision': return 'destination';
+    default: return undefined;
+  }
+}
+
+// warnings about what the user meets on the destination, which stay in sight while the rest fold away
+const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'config_difference'];
+export const staysInSight = (w: Warning): boolean => AFTER_MOVE.includes(w.code);
 
 /** The full path a blocker or row is about, when it is about a folder: a root's, or the one a Git message leads with. */
 export function entityPath(e: Blocker['entity'], names?: Names, message?: string): string | undefined {
@@ -444,12 +465,12 @@ export function entityPath(e: Blocker['entity'], names?: Names, message?: string
 }
 
 /** Who or what an entity is for the user: a character's name, a folder by its short path, whose a session is; an id only when nothing names it. */
-export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names, message?: string): string | undefined {
+export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names, message?: string, home?: string): string | undefined {
   if (!e) return undefined;
   if (e.kind === 'character') return name(e.id);
   if (e.kind === 'session') return names?.sessions?.[e.id] ? `${names.sessions[e.id]}'s session` : `session ${e.id}`;
   const path = entityPath(e, names, message);
-  if (path) return shortPath(path);
+  if (path) return shortPath(path, home);
   return e.kind === 'root' ? `folder ${e.id}` : 'repository';
 }
 
@@ -467,7 +488,7 @@ export function planOf(choice: Choice, b: Blocker, ctx: HintContext, names?: Nam
   switch (choice) {
     case 'interrupt': return `${who} will be stopped with Escape and resume from its transcript on ${ctx.destination}.`;
     case 'terminate': return `What runs in ${who}'s terminal will be ended; the shell reopens in its folder on ${ctx.destination}.`;
-    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message) ?? 'that folder'} on ${ctx.destination} will be set aside first, to a timestamped folder beside it.`;
+    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? 'that folder'} on ${ctx.destination} will be set aside first, to a timestamped folder beside it.`;
     case 'carry': return `${who}'s folder will be carried whole, with the repositories in it.`;
   }
 }
@@ -488,16 +509,18 @@ export function fraction(row: Progress): number | undefined {
   return undefined;
 }
 
-/** Every transfer row as one: bytes sent against bytes to send, a verified row counting as whole. */
+/** A transfer row the destination has verified, which then counts every byte; one still being checked shares its phase. */
+export const verified = (row: Row): boolean => row.section === 'transfer' && row.phase === 'verify' && !row.error && fraction(row) === 1;
+
+/** Every transfer row as one: bytes sent against bytes to send, and how many rows are verified. */
 export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number; done: number; total: number } {
   const t = { bytes: 0, totalBytes: 0, done: 0, total: 0 };
   for (const r of rows) {
     if (r.section !== 'transfer') continue;
     t.total++;
-    const whole = r.phase === 'verify' && !r.error;
-    if (whole || fraction(r) === 1) t.done++;
+    if (verified(r)) t.done++;
     t.totalBytes += r.totalBytes ?? 0;
-    t.bytes += whole ? r.totalBytes ?? 0 : Math.min(r.bytes ?? 0, r.totalBytes ?? r.bytes ?? 0);
+    t.bytes += Math.min(r.bytes ?? 0, r.totalBytes ?? r.bytes ?? 0);
   }
   return t;
 }
