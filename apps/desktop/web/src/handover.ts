@@ -72,6 +72,13 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
 
 const scrubbed = (blockers: Blocker[]): Blocker[] => blockers.map((b) => ({ ...b, message: withoutTokens(b.message) }));
 
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+/** The controller's words without the ids and generations it names: an ownership record as a record, a transaction as the handover. */
+const plain = (text: string): string => withoutTokens(text)
+  .replace(new RegExp(`\\b${UUID} at generation \\d+(?: in handover ${UUID} \\([^)]*\\))?`, 'gi'), 'a different record of the fleet')
+  .replace(/ at generation \d+/g, '')
+  .replace(new RegExp(`\\b${UUID}\\b`, 'gi'), 'the handover');
+
 type Fields = Record<string, unknown>;
 const isObject = (v: unknown): v is Fields => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isString = (v: unknown): v is string => typeof v === 'string';
@@ -142,9 +149,9 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
       // an answer starts from the choices the run holds, which a sheet relaunched after the start never saw
       return { ...next, decision: { phase: e.data.phase, blockers: scrubbed(e.data.blockers) }, ...(e.data.choices && { choices: e.data.choices }) };
     case 'handover.retry':
-      return { ...next, retry: { ...e.data, error: withoutTokens(e.data.error) } };
+      return { ...next, retry: { ...e.data, error: plain(e.data.error) } };
     case 'handover.result': {
-      const data = e.data.status === 'interrupted' ? { ...e.data, error: withoutTokens(e.data.error) }
+      const data = e.data.status === 'interrupted' ? { ...e.data, error: plain(e.data.error) }
         : e.data.status === 'blocked' ? { ...e.data, blockers: scrubbed(e.data.blockers) } : e.data;
       return { ...next, result: data, decision: undefined, retry: undefined, awaitingOwner: data.status === 'complete' };
     }

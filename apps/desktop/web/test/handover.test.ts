@@ -190,6 +190,20 @@ describe('what the sheet offers', () => {
     expect(headline(play([result({ status: 'none', reason: 'no handover of this fleet is open anywhere' })]), 'studio')).toBe('There was no handover of this fleet to resume or abort.');
   });
 
+  it("leaves the controller's ids and generations out of what a stopped run or a call asked again says", () => {
+    const [id, mac] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90'];
+    const holds = `${mac} at generation 4 in handover ${id} (ready-to-commit)`;
+    const stopped = (phase: HandoverPhase, error: string) =>
+      endFollow(play([...through('verify'), changed('prepare'), changed('ready'), changed('commit'), result({ status: 'interrupted', transactionId: tx, phase, error, safe: ['resume', 'abort'] })]), 1);
+    expect(headline(stopped('commit', `the gateway did not commit ${id} and holds ${holds}: timed out`), 'studio'))
+      .toBe('Stopped at Committing: the gateway did not commit the handover and holds a different record of the fleet: timed out');
+    expect(headline(stopped('begin', `the gateway answered Begin with ${mac} at generation 3, not a handover from mac to studio preparing at generation 3`), 'studio'))
+      .toBe('Stopped at Checks: the gateway answered Begin with a different record of the fleet, not a handover from mac to studio preparing');
+    const asked = play([...through('verify'), changed('prepare'), changed('ready'),
+      { event: 'handover.retry', data: { transactionId: tx, phase: 'ready', attempt: 2, error: `the gateway would not record ${id} ready: busy` } }]);
+    expect(headline(asked, 'studio')).toBe('Verifying… asking again (attempt 2): the gateway would not record the handover ready: busy');
+  });
+
   it('names where a relaunched handover goes from where the fleet runs now: the other end before the commit, that end after it', () => {
     const relaunched = (standing: Standing, safe: SafeAction[], phase: HandoverPhase) =>
       endFollow(play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', transactionId: tx, phase, safe, reason: '' } }], followRun()), 0);
