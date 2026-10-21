@@ -125,11 +125,14 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     }
     // staged through the filter, as a repository that uses one stages its files
     for (const c of [d.main, d.nested, d.sibling, d.detached, d.locked]) git(l.base, c, 'add', 'staged.txt');
+    // the usual way to push to a second GitHub account, which no handover git runs
+    git(l.base, d.main, 'config', 'core.sshCommand', 'ssh -i ~/.ssh/work');
     const { manifest } = await handed(l);
     fs.rmSync(ran, { force: true });
     const blockers = await importGraphs(manifest);
     expect(blockers.map((b) => b.code)).toEqual(expect.arrayContaining(['git_config_command']));
     expect(blockers.map((b) => b.message).join('\n')).toMatch(/filter\.up\.clean[\s\S]*filter\.sub\.clean|filter\.sub\.clean[\s\S]*filter\.up\.clean/);
+    expect(blockers.map((b) => b.message).join('\n')).not.toContain('sshcommand');
     expect(fs.existsSync(ran)).toBe(false);
 
     // with the same filters in this machine's global config, git runs them here as the source did, and reads the same status

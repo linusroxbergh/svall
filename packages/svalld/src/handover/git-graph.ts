@@ -280,6 +280,9 @@ async function settings(git: GitRunner, cwd: string, gitDir?: string): Promise<S
 
 const COMMAND = new RegExp(COMMAND_KEYS);
 
+/** Whether a command setting stops a handover on a destination that does not set it the same: an ssh command runs only for a fetch or push, which no handover git makes. */
+export const runsHere = (key: string): boolean => key !== 'core.sshcommand';
+
 /**
  * Each command setting a repository's own or worktree config holds for a checkout, or a submodule's Git directory under
  * `commonDir`, read there with the includes that apply, and whether this machine's global or system config sets it the same.
