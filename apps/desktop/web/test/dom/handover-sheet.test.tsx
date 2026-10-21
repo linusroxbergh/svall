@@ -283,6 +283,34 @@ test('a status the sheet could not read leaves the blockers and the new start', 
   expect(screen.getByTestId('handover-footnote').textContent).toBe('1 thing to fix outside the sheet first. Move to trift runs the checks again.');
 });
 
+test('where nothing is safe or the gateway has moved on, the sheet names the commands that go on from a terminal, as code to copy', () => {
+  render(<HandoverSheet />);
+  const commands = () => [...screen.getByTestId('handover-way-out').querySelectorAll('code')].map((c) => c.textContent);
+  say(...changed('begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit'),
+    { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'commit', error: 'the gateway did not answer', safe: [] } });
+  act(() => store.getState().handoverExit(1));
+  expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local --gateway <machine>']);
+  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^Once the gateway answers, svall handover status in a terminal says what is safe\. If it is gone for good/);
+
+  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
+  expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local --gateway <machine>']);
+
+  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
+  expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
+  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/Forget is enough when another handover or a recovery moved it on/);
+
+  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: '' } }]));
+  expect(screen.queryByTestId('handover-way-out')).toBeNull();
+});
+
+test('a generation the gateway does not share names the restart and the recovery that clear it, with the machine that runs the fleet', () => {
+  render(<HandoverSheet />);
+  say(openAtChecks('generation_mismatch', `This Mac holds this fleet for ${MAC} at generation 4, and the gateway for ${MAC} at 0`));
+  const hint = screen.getByTestId('handover-blocker-generation_mismatch').querySelector('em')!;
+  expect([...hint.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
+  expect(hint.textContent).toMatch(/restart Svall's daemon on This Mac/);
+});
+
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
   preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
   { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },

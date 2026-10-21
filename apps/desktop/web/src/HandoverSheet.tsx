@@ -4,7 +4,7 @@ import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
   actionsOf, asksStatus, blockerHint, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf, entityLabel, entityPath,
-  formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, verdictOf, withChoice,
+  formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, verdictOf, wayOut, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
@@ -42,6 +42,9 @@ function openCard(id: string): void {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** Text with the commands it names, between backticks, as code a click selects whole. */
+const withCode = (text: string): ReactNode[] => text.split('`').map((part, i) => (i % 2 ? <code key={i} className="ho-cmd">{part}</code> : part));
+
 function More({ label, children, testid }: { label: string; children: ReactNode; testid?: string }) {
   return (
     <details className="ho-more" data-testid={testid}>
@@ -70,7 +73,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
       <span className="host-said">
         {picked ? <span className="ho-plan">{planOf(choice!, b, ctx, names)}</span> : problem}
         {!picked && quote && <q className="ho-quote">{quote.slice(1, -1)}</q>}
-        {!picked && !choice && hint && <em>{hint}</em>}
+        {!picked && !choice && hint && <em>{withCode(hint)}</em>}
         {!warning && (
           <span className="ho-acts">
             {choice && (
@@ -90,7 +93,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
             )}
           </span>
         )}
-        {!picked && more.length > 0 && <More label="Details">{more.map((m, i) => <span key={i}>{m}</span>)}</More>}
+        {!picked && more.length > 0 && <More label="Details">{more.map((m, i) => <span key={i}>{withCode(m)}</span>)}</More>}
       </span>
     </div>
   );
@@ -283,6 +286,7 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
 function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onAgain(): void }) {
   const acts = actionsOf(run);
   const said = headline(run, ctx.destination);
+  const way = wayOut(run);
   const { tone, sub } = footerNote(run, ctx);
   const close = () => store().toggleHandover(false);
   let buttons: ReactNode[];
@@ -313,6 +317,7 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
     <div className="ho-foot" data-testid="handover-footer" data-tone={tone}>
       {said && <div className="ho-status" data-testid="handover-headline" aria-live="polite">{said}</div>}
       {sub && <div className="ho-sub" data-testid="handover-footnote">{sub}</div>}
+      {way && <div className="ho-sub" data-testid="handover-way-out">{withCode(way)}</div>}
       {buttons.length > 0 && <div className="acts">{buttons}</div>}
       {acts.start && (
         <button className="btn ghost ho-again" data-testid="handover-again" onClick={onAgain}>Move the fleet somewhere else…</button>

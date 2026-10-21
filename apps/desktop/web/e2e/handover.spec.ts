@@ -383,6 +383,7 @@ test('a journal the gateway has moved on from offers Forget, and a standing with
   } }] });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
   await expect(page.getByTestId('handover-headline')).toHaveText("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
+  await expect(page.getByTestId('handover-way-out').locator('code')).toHaveText(['svall handover status', 'svall fleet recover --force-owner local']);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-resume')).toHaveCount(0);
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);

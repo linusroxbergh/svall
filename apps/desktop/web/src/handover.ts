@@ -188,6 +188,20 @@ export function goOn(run: HandoverRun): HandoverRun {
   return { ...run, following: true, goingOn: true, phase, status: undefined, result: undefined, error: undefined, decision: undefined, retry: undefined, cancelled: undefined, aborting: undefined };
 }
 
+/** The way on from a terminal where the sheet has none, as handover.md gives it; commands stand between backticks. */
+export function wayOut(run: HandoverRun): string | undefined {
+  const s = verdictOf(run);
+  if (s?.standing === 'superseded') {
+    return '`svall handover status` says where the fleet stands now. Forget is enough when another handover or a recovery moved it on; '
+      + "if the gateway was set up again, `svall fleet recover --force-owner local` then makes this Mac the fleet's owner.";
+  }
+  if (s ? s.standing === 'unknown' : commitUnknown(run.result)) {
+    return 'Once the gateway answers, `svall handover status` in a terminal says what is safe. If it is gone for good, '
+      + "`svall fleet recover --force-owner local --gateway <machine>` makes this Mac the fleet's owner, with another of your machines as its gateway.";
+  }
+  return undefined;
+}
+
 /** Past the commit: the fleet is the destination's, and only going on is left. */
 export function isCommitted(run: HandoverRun): boolean {
   if (run.status) return run.status.standing === 'committed' || run.status.standing === 'moved';
@@ -357,6 +371,11 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
   switch (b.code) {
+    case 'generation_mismatch': {
+      const owner = !ctx.pull ? 'local' : machineName(ctx.source) ? ctx.source : '<machine>';
+      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again; \`svall handover status\` says which. `
+        + `With nothing open, restart Svall's daemon on ${ctx.source}, which takes the gateway's newer record; a gateway set up again needs \`svall fleet recover --force-owner ${owner}\`.`;
+    }
     case 'agent_working':
       return `Continue waiting lets it finish its turn. Interrupt and carry stops every agent still at work with Escape; each resumes from its transcript on ${ctx.destination}.`;
     case 'agent_blocked':
