@@ -627,6 +627,35 @@ describe('archiving', () => {
     expect(fs.readFileSync(`${canonical}.archived-${STAMP}-4/a.txt`, 'utf8')).toBe('edited');
   });
 
+  it('sets an archived linked worktree\'s .git file aside, so git there leaves the live worktree alone, and says which it was', async () => {
+    const w = world();
+    const common = path.join(real(w.work), 'main/.git');
+    const commit = 'c'.repeat(40);
+    tree(common, { 'worktrees/wt/HEAD': 'ref: refs/heads/feat\n', 'worktrees/wt/commondir': '../..\n', 'packed-refs': `# pack-refs with: peeled\n${commit} refs/heads/feat\n` });
+    const app = tree(path.join(w.work, 'wt'), { 'a.txt': 'a', '.git': `gitdir: ${common}/worktrees/wt\n` });
+    w.store().seal(dir(app), sealAs('tx-0', await content(app)), 'source');
+    write(app, 'a.txt', 'edited');
+    const { archivedTo } = w.store().archive(dir(app), ['r_app']);
+    expect(fs.existsSync(path.join(archivedTo, '.git'))).toBe(false);
+    expect(fs.readFileSync(path.join(archivedTo, '.git.archived'), 'utf8')).toBe(`gitdir: ${common}/worktrees/wt\n`);
+    expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toBe(
+      `Archived by a Svall handover from ${path.join(real(w.work), 'wt')}, the linked worktree on branch feat at ${commit}; its .git file is .git.archived, so git here leaves that worktree alone.\n`,
+    );
+    expect(fs.readFileSync(path.join(common, 'worktrees/wt/HEAD'), 'utf8')).toBe('ref: refs/heads/feat\n');
+
+    // a detached one is named by its commit, and a main checkout's own .git folder stays as it is
+    fs.writeFileSync(path.join(common, 'worktrees/wt/HEAD'), `${commit}\n`);
+    const again = tree(path.join(w.work, 'wt'), { '.git': 'gitdir: ../main/.git/worktrees/wt\n' });
+    w.store().seal(dir(again), sealAs('tx-1', []), 'source');
+    const detached = w.store().archive(dir(again), ['r_app']).archivedTo;
+    expect(fs.readFileSync(path.join(detached, 'README.archived.txt'), 'utf8')).toContain('the linked worktree detached at cccc');
+    const main = tree(path.join(w.work, 'main'), { 'b.txt': 'b' });
+    w.store().seal(dir(main, 'r_main'), sealAs('tx-2', []), 'source');
+    const kept = w.store().archive(dir(main, 'r_main'), ['r_main']).archivedTo;
+    expect(fs.statSync(path.join(kept, '.git')).isDirectory()).toBe(true);
+    expect(fs.existsSync(path.join(kept, 'README.archived.txt'))).toBe(false);
+  });
+
   it('moves a file root aside without replacing a file already there', () => {
     const w = world();
     const note = path.join(w.work, 'todo.md');

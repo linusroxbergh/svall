@@ -39,6 +39,7 @@ export type ReplicaFs = {
   mkdir(p: string, recursive: boolean): void;
   // O_EXCL: fails with EEXIST when anything holds the name
   createFile(p: string): void;
+  writeFile(p: string, text: string): void;
   link(from: string, to: string): void;
   rename(from: string, to: string): void;
   unlink(p: string): void;
@@ -52,6 +53,7 @@ export const realReplicaFs: ReplicaFs = {
   readFile: (p) => fs.readFileSync(p),
   mkdir: (p, recursive) => { fs.mkdirSync(p, { recursive }); },
   createFile: (p) => fs.closeSync(fs.openSync(p, 'wx', 0o600)),
+  writeFile: (p, text) => fs.writeFileSync(p, text, { flag: 'wx', mode: 0o644 }),
   link: (from, to) => fs.linkSync(from, to),
   rename: (from, to) => fs.renameSync(from, to),
   unlink: (p) => fs.unlinkSync(p),
@@ -125,6 +127,18 @@ const blocked = (code: HandoverIssueCode, message: string, root: ReplicaRoot): B
 export const contentDigest = (files: readonly TransferFile[]): string => canonicalDigest([...files]
   .sort((a, b) => byCodeUnit(a.path, b.path))
   .map((f) => (f.type === 'file' ? [f.path, 'file', f.size, f.sha256] : [f.path, 'symlink', f.target])));
+
+/** Where a linked worktree's registration says it stands, read from its files: on a branch at a commit, or detached at one. */
+function worktreeHead(registration: string, read: (p: string) => string): string {
+  const text = (p: string): string | undefined => { try { return read(p).trim(); } catch { return undefined; } };
+  const head = text(path.join(registration, 'HEAD'));
+  const branch = head && /^ref: refs\/heads\/(.+)$/.exec(head)?.[1];
+  if (!branch) return head ? `detached at ${head}` : 'whose HEAD cannot be read';
+  const common = path.resolve(registration, text(path.join(registration, 'commondir')) ?? '../..');
+  const ref = `refs/heads/${branch}`;
+  const commit = text(path.join(common, ref)) ?? text(path.join(common, 'packed-refs'))?.split('\n').find((l) => l.endsWith(` ${ref}`))?.split(' ')[0];
+  return commit ? `on branch ${branch} at ${commit}` : `on branch ${branch}, which has no commit`;
+}
 
 /** Why a manifest path cannot name a place under its root, if it cannot. */
 export function relativeProblem(p: string): string | undefined {
@@ -264,9 +278,31 @@ export class ReplicaStore {
       if (!this.moveAside(at, to, st.isDirectory())) continue;
       const held = this.read(at);
       if (held.bytes) this.put(at, held.bytes, undefined);
+      if (st.isDirectory()) this.detach(to, at);
       return { path: at, archivedTo: to };
     }
     throw new ReplicaError('conflict', `every archive name beside ${at} is taken`);
+  }
+
+  /**
+   * Sets aside the .git file of a linked worktree archived from `from` to `to`, which still names its live registration,
+   * so git run in the archive changes nothing there, and says beside it which worktree it was.
+   */
+  private detach(to: string, from: string): void {
+    const gitfile = path.join(to, '.git');
+    let text: string;
+    try {
+      if (!this.fs.lstat(gitfile).isFile()) return;
+      text = this.fs.readFile(gitfile).toString('utf8');
+    } catch (e) {
+      if (errno(e) === 'ENOENT') return;
+      throw e;
+    }
+    this.fs.rename(gitfile, `${gitfile}.archived`);
+    const registration = /^gitdir: (.*)$/m.exec(text)?.[1];
+    const at = registration ? worktreeHead(path.resolve(from, registration), (p) => this.fs.readFile(p).toString('utf8')) : 'whose registration its .git file does not name';
+    this.fs.writeFile(path.join(to, 'README.archived.txt'),
+      `Archived by a Svall handover from ${from}, the linked worktree ${at}; its .git file is .git.archived, so git here leaves that worktree alone.\n`);
   }
 
   private async assess(
