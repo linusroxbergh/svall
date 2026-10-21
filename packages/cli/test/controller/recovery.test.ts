@@ -64,6 +64,11 @@ const cases: Case[] = [
     want: { standing: 'unknown', action: 'none', safe: [] },
   },
   {
+    name: 'no word from the gateway and no journal anywhere leaves it unknown whether a handover is open, not none',
+    o: { gateway: { ok: false, error: 'ssh: connect to host trift: timed out' }, source: { ok: true, value: { status: {}, ownership: { fleetId, generation: 4, ownerMachineId: mac, frozen: false } } } },
+    want: { standing: 'unknown', action: 'none', safe: [], reason: expect.stringContaining('the gateway could not be asked (ssh: connect to host trift: timed out)') },
+  },
+  {
     name: 'a Begin whose answer was lost is the gateway\'s preparing handover between the same machines',
     o: { controller: journal({ transactionId: undefined, phase: 'begin' }), gateway: { ok: true, value: at(4, mac, tx('preparing', 'tx-9')) } },
     want: { standing: 'open', action: 'continue', transactionId: 'tx-9' },

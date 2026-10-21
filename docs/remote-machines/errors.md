@@ -186,8 +186,24 @@ The `handover.result` line, and what `svall handover` prints last. The command e
 | `none` | There was no handover to resume or abort. | Nothing. |
 | `blocked` | Nothing committed, and the fleet stays where it was. The blockers are listed. | Settle them and start again; flags such as `--interrupt-after`, `--terminate-shells` and `--archive` answer the choices a person would make. |
 | `aborted` | Nothing committed, and the fleet runs on the source again with the terminals the handover stopped reopened. | Start again when ready. |
-| `interrupted` | The run stopped part way. `safe` lists what may follow: `resume`, `abort`, both, or neither when only the gateway can say whether the commit landed. | Do what `safe` says, or `svall handover status` once the gateway answers. |
+| `interrupted` | The run stopped part way. `safe` lists what may follow: `resume`, `abort` or both; when it lists neither, `stop` says why (below). Where `error` says it plainly, `detail` keeps what the journals said. | Do what `safe` says, or what the `stop` row says. |
 | `detached` | You cancelled after the commit: the move goes on without anyone watching. | `svall handover attach` follows it; `svall handover status` says where it stands. |
+
+## Why nothing is safe
+
+The `stop` of an `interrupted` run whose `safe` is empty.
+
+| Stop | What it means | What to do |
+| --- | --- | --- |
+| `commit_unknown` | The commit was sent and no answer settled whether it landed. The source stays frozen. | `svall handover status` once the gateway answers; it then offers resume or abort. |
+| `gateway_unknown` | The gateway could not be asked, so whether the handover committed is unknown. | Check the link to the gateway (`svall host doctor <gateway>`), then `svall handover status`. |
+| `journal_lost` | After the commit, the destination's handover journal could not be read, so whether it activated is unknown. `detail` names the file it was moved to. | On the destination, put the file back and restart the fleet's daemon, then `svall handover --resume`; or `svall fleet recover --force-owner <machine>`. |
+| `superseded` | The gateway has moved the fleet on past this handover, through another handover or a recovery. | `svall handover --forget`. |
+| `elsewhere` | The handover is between two other machines, or names one this machine has no route to. | `--resume` or `--abort` on the machine the error names. |
+| `running` | Another run of a handover of this fleet holds this machine. | `svall handover attach` follows it. |
+| `not_begun` | The checks failed before Begin, such as a machine or the gateway that did not answer, so nothing is open. | Fix what the error names, then start again. |
+| `invalid` | The command could not run as asked: its arguments, a fleet that names no gateway, or a machine not in the registry. | Fix what the error names and run it again. |
+| `unexpected` | Something no step expects failed. | `svall handover status` says where it stands. |
 
 ## What `svall handover status` says
 
@@ -204,7 +220,7 @@ handover helper is running on this Mac, it names its pid instead; `svall handove
 | `moved` | The gateway closed the handover after the commit; what is left (the source's or the destination's close) only needs finishing. With the destination's journal unreadable, as for `committed`. | resume, or nothing |
 | `returned` | The gateway no longer holds the handover and the source owns the fleet at its generation; an abort only needs finishing. | abort |
 | `superseded` | The gateway has moved on past the handover this Mac's journal names, through another handover or a recovery. | `svall handover --forget` |
-| `unknown` | The gateway cannot say whether the handover committed. Nothing is safe until it answers. | nothing |
+| `unknown` | The gateway cannot say whether the handover committed, or could not be asked and no journal here names a handover. Nothing is safe until it answers. | nothing |
 
 ### Action
 

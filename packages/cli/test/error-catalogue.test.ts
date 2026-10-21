@@ -71,6 +71,7 @@ const CODES: Record<string, () => string[]> = {
   '## Daemon refusals': () => HandoverError.options.map((o) => o.shape.code.value),
   '## Gateway answers': () => [...AUTHORITY_ERROR_CODES, ...named.failures(GATEWAY_CLIENT)],
   '## How a run ends': () => named.statuses(EVENTS),
+  '## Why nothing is safe': () => union(EVENTS, 'export type StopReason ='),
   '### Standing': () => union(EVENTS, 'export type Standing ='),
   '### Action': () => union(EVENTS, '  action:'),
   '## Events': () => named.events(EVENTS),
