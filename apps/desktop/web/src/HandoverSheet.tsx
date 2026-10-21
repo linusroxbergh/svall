@@ -5,7 +5,7 @@ import { openFolder } from './bridge.js';
 import {
   accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
   entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, restPlan, resumeTally, rowText, sectionStates, staysInSight,
-  svallFor, transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
+  svallFor, transferPace, transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type RestHow, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
@@ -163,6 +163,7 @@ function RestPlan({ ctx }: { ctx: HintContext }) {
 /** Every folder and session as one bar, with each row behind it. */
 function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run: HandoverRun; done: boolean }) {
   const t = transferTotals(rows);
+  const pace = done ? undefined : transferPace(run);
   const failed = rows.filter((r) => r.error);
   const fine = rows.filter((r) => !r.error);
   const f = t.totalBytes ? Math.min(1, t.bytes / t.totalBytes) : t.total ? t.done / t.total : 0;
@@ -173,7 +174,7 @@ function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run
       <div className="host-step" data-testid="handover-transfer-total" data-status={failed.length ? 'fail' : 'ok'}>
         <span className="host-mark">{done ? '✓' : failed.length ? '×' : '·'}</span>
         <span className="host-said">
-          {done ? `${what} verified on ${ctx.destination}, ${formatBytes(t.totalBytes)}` : `${formatBytes(t.bytes)} of ${formatBytes(t.totalBytes)} · ${t.done} of ${t.total} verified`}
+          {done ? `${what} verified on ${ctx.destination}, ${formatBytes(t.totalBytes)}` : `${formatBytes(t.bytes)} of ${formatBytes(t.totalBytes)} · ${t.done} of ${t.total} verified${pace ? ` · ${pace.text}` : ''}`}
           <span className="ho-bar ho-bar-all"><i style={{ width: `${Math.round(f * 100)}%` }} /></span>
           {!done && !failed.length && <span className="ho-sub">Files already on {ctx.destination} are not sent again, so a bar can stop short until its folder is verified.</span>}
         </span>

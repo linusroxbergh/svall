@@ -79,13 +79,13 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
     : {})),
   handoverEvent: (e) => set((s) => {
     if (!readable(e)) return {};
-    const handover = applyEvent(s.handover ?? followRun(), e);
+    const handover = applyEvent(s.handover ?? followRun(), e, { now: Date.now() });
     const asks = e.event === 'handover.blocked' || (e.event === 'handover.status' && needsUser(e.data));
     return { handover, handoverOpen: s.handoverOpen || asks };
   }),
   // folded in one step, so no line of a finished run holds or closes a terminal on its way to the status
   handoverReplay: (events) => set((s) => {
-    const rebuilt = events.reduce(applyEvent, followRun(s.handover?.to));
+    const rebuilt = events.reduce((run, e) => applyEvent(run, e), followRun(s.handover?.to));
     const asked = s.handover?.checking ? s.handover : undefined;
     const nothingOpen = rebuilt.status?.standing === 'none' && !rebuilt.status.safe.length;
     // with nothing open the run the sheet asked about stands, which the events file lacks when the launcher refused;

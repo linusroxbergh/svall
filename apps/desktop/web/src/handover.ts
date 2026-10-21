@@ -54,6 +54,8 @@ export type HandoverRun = {
   stopped?: HandoverRun;
   // the status is the sheet's own look at this run, which a status found by a later look is not
   checked?: boolean;
+  // the transfer's bytes when this page first and last counted them, by its clock; a run read back has none
+  pace?: { from: { at: number; bytes: number }; last: { at: number; bytes: number } };
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -144,8 +146,8 @@ export function readable(e: unknown): e is HandoverEvent {
   }
 }
 
-/** Folds one line the helper printed onto the run it belongs to; a line it cannot read leaves the run as it was. */
-export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
+/** Folds one line the helper printed onto the run it belongs to; a line it cannot read leaves the run as it was. `now`: when it arrived. */
+export function applyEvent(run: HandoverRun, e: HandoverEvent, o: { now?: number } = {}): HandoverRun {
   if (!readable(e)) return run;
   const tx = 'transactionId' in e.data && typeof e.data.transactionId === 'string' ? e.data.transactionId : undefined;
   // the controller goes on from a decision only once it is answered; a daemon's relayed row can trail the decision
@@ -162,8 +164,12 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
       const furthest = next.phase && step(next.phase) >= step(phase) ? next.phase : phase;
       return { ...next, phase: furthest, retry: undefined };
     }
-    case 'handover.entity':
-      return { ...next, rows: withEntity(next.rows, e.data) };
+    case 'handover.entity': {
+      const rows = withEntity(next.rows, e.data);
+      if (o.now === undefined || sectionOf(e.data.kind, e.data.phase) !== 'transfer') return { ...next, rows };
+      const sample = { at: o.now, bytes: transferTotals(rows).bytes };
+      return { ...next, rows, pace: { from: next.pace?.from ?? sample, last: sample } };
+    }
     case 'handover.blocked':
       // an answer starts from the choices the run holds, which a sheet relaunched after the start never saw
       return { ...next, decision: { phase: e.data.phase, blockers: scrubbed(e.data.blockers) }, ...(e.data.choices && { choices: e.data.choices }) };
@@ -668,6 +674,23 @@ export function transferTotals(rows: Row[]): { bytes: number; totalBytes: number
     t.bytes += Math.min(r.bytes ?? 0, r.totalBytes ?? r.bytes ?? 0);
   }
   return t;
+}
+
+const leftText = (ms: number): string => {
+  const min = Math.round(ms / 60_000);
+  if (min < 1) return 'under a minute left';
+  return min < 60 ? `about ${min} min left` : `about ${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''} left`;
+};
+
+/** The whole transfer's rate since this page first counted its bytes, and the time left at that rate, once five seconds have passed. */
+export function transferPace(run: HandoverRun): { rate: number; leftMs: number; text: string } | undefined {
+  const p = run.pace;
+  const ms = p ? p.last.at - p.from.at : 0;
+  const sent = p ? p.last.bytes - p.from.bytes : 0;
+  if (!p || ms < 5000 || sent <= 0) return undefined;
+  const rate = (sent / ms) * 1000;
+  const leftMs = (Math.max(0, transferTotals(run.rows).totalBytes - p.last.bytes) / rate) * 1000;
+  return { rate, leftMs, text: `${formatBytes(Math.round(rate))}/s, ${leftText(leftMs)}` };
 }
 
 /** How the resume went for every character the freeze rested: agents resume from transcripts, shells reopen as they are opened. */

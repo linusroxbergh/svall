@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
   actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  blockerSide, goOn, restPlan, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, restPlan, rowText, sectionStates, shortPath, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 import { chr } from './fixtures.js';
 
@@ -11,7 +11,7 @@ const summary = { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_00
 const changed = (phase: HandoverPhase): HandoverEvent => ({ event: 'handover.changed', data: { transactionId: tx, phase } });
 const entity = (data: Partial<Extract<HandoverEvent, { event: 'handover.entity' }>['data']> & { kind: 'character' | 'root' | 'session' | 'git'; id: string }): HandoverEvent =>
   ({ event: 'handover.entity', data: { transactionId: tx, phase: 'freeze', ...data } });
-const play = (events: HandoverEvent[], run: HandoverRun = followRun('studio')) => events.reduce(applyEvent, run);
+const play = (events: HandoverEvent[], run: HandoverRun = followRun('studio')) => events.reduce((r, e) => applyEvent(r, e), run);
 
 const through = (phase: 'freeze' | 'transfer' | 'verify' | 'commit' | 'activate') => {
   const order = ['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate'] as const;
@@ -119,6 +119,23 @@ describe('the handover a sheet follows', () => {
     expect(shortPath('/Users/Shared/proj', '/Users/ada')).toBe('/Users/Shared/proj');
     expect(shortPath('/Users/adam/x', '/Users/ada')).toBe('/Users/adam/x');
     expect(shortPath('/home/bo/app')).toBe('/home/bo/app');
+  });
+
+  it('paces the whole transfer from the bytes sent since its first row, once a few seconds have passed', () => {
+    const root = (bytes: number) => entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes, totalBytes: 100_000_000 });
+    const at = (run: HandoverRun, e: HandoverEvent, now: number) => applyEvent(run, e, { now });
+    let run = play(through('transfer'));
+    run = at(run, root(10_000_000), 1_000);
+    expect(transferPace(run)).toBeUndefined();
+    run = at(run, root(11_000_000), 2_000);
+    expect(transferPace(run)).toBeUndefined();
+    run = at(run, root(40_000_000), 7_000);
+    // 30 MB in 6 s, and 60 MB left
+    expect(transferPace(run)).toEqual({ rate: 5_000_000, leftMs: 12_000, text: '5.0 MB/s, under a minute left' });
+    run = at(run, root(40_000_000), 1_000 + 6 * 60_000);
+    expect(transferPace(run)?.text).toBe('83.3 KB/s, about 12 min left');
+    // a run read back, with no time of its own, is never paced
+    expect(transferPace(play([...through('transfer'), root(10_000_000), root(40_000_000)]))).toBeUndefined();
   });
 
   it('shows progress in bytes', () => {
