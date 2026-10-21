@@ -269,6 +269,23 @@ test('past the commit, a status that leaves only resuming opens the sheet and re
   expect(resumes(send)).toBe(2);
 });
 
+test('a resume the sheet started by itself is not started again by what its helper replays, however often', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  act(() => store.getState().handoverReplay([committed('committed')]));
+  expect(resumes(send)).toBe(1);
+  // the helper had already ended: attach reads back its result and the status, then exits
+  for (let i = 0; i < 3; i++) {
+    act(() => {
+      store.getState().handoverEvent({ event: 'handover.result', data: { status: 'interrupted', transactionId: TX, phase: 'activate', error: 'ssh to trift closed', safe: ['resume'] } });
+      store.getState().handoverEvent(committed('committed'));
+      store.getState().handoverExit(0);
+    });
+  }
+  expect(resumes(send)).toBe(1);
+  expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
+});
+
 const openAtChecks = (code: 'transaction_open' | 'generation_mismatch' | 'identity_mismatch', message: string): HandoverEvent =>
   ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code, message }] } });
 const attaches = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.attach').length;

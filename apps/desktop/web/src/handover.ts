@@ -179,8 +179,8 @@ export const checking = (run: HandoverRun): boolean => !!run.checking && !run.st
 export const verdictOf = (run: HandoverRun): Verdict | undefined =>
   (run.status?.standing === 'none' && !run.status.safe.length && run.result?.status === 'blocked' ? undefined : run.status);
 
-/** A status past the commit that leaves only resuming, which the sheet then does without asking. */
-export const goesOnByItself = (run: HandoverRun | undefined): boolean => !!run?.status && !run.following
+/** A status past the commit that leaves only resuming, which the sheet then does without asking, once per run it rebuilds. */
+export const goesOnByItself = (run: HandoverRun | undefined): boolean => !!run?.status && !run.following && !run.goingOn
   && (run.status.standing === 'committed' || run.status.standing === 'moved') && run.status.safe.length === 1 && run.status.safe[0] === 'resume';
 
 /** The run a resume the sheet started by itself follows: what the status rebuilt, at the furthest step either reached. */
