@@ -124,7 +124,7 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `external_writer` | blocks | A carried folder's or an agent session's files kept changing through three copy passes, on the source or in the destination's copy: an editor, a build or a watcher still writes there. What a pass after the first replaced or deleted in a folder's copy is kept beside it in `<folder>.overwritten-<handover id>`. | Close whatever writes there, then Try again (or `svall handover --resume`). For a carried folder, also choose Archive and carry (`--archive <root>`): its copy on the destination holds what no pass verified, so Try again alone reports `destination_diverged` for it. A session needs no Archive. |
+| `external_writer` | blocks | A carried folder's or an agent session's files kept changing through three copy passes, on the source or in the destination's copy: an editor, a build or a watcher still writes there. What a pass after the first replaced or deleted in a folder's copy is kept beside it in `<folder>.overwritten-<handover id>`, a subfolder for each pass. | Close whatever writes there, then Try again (or `svall handover --resume`). For a carried folder, also choose Archive and carry (`--archive <root>`): its copy on the destination holds what no pass verified, so Try again alone reports `destination_diverged` for it. A session needs no Archive. |
 
 ### Warnings
 

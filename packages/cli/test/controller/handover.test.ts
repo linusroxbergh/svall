@@ -60,10 +60,15 @@ describe('the controller transaction', () => {
     expect(row('verified').data).toMatchObject({ phase: 'verify', verified: true });
   });
 
-  it('says on a transfer row which files a pass after the first kept aside, and where', () => {
-    const overwritten = { keptAt: '/Users/ada/app.overwritten-tx-1', paths: ['a.txt', 'notes/b.md'] };
-    const e = entryEvent('tx-1', { id: 'r_app', kind: 'root', state: 'verified', pass: 2, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, overwritten, updatedAt: 0 });
-    expect(e.data).toMatchObject({ notice: '2 files the copy replaced or deleted after its first pass are kept at /Users/ada/app.overwritten-tx-1: a.txt, notes/b.md' });
+  it('says on a transfer row which files a pass after the first kept aside, and where, naming twenty at most', () => {
+    const row = (paths: string[]) => entryEvent('tx-1', {
+      id: 'r_app', kind: 'root', state: 'verified', pass: 2, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, overwritten: { keptAt: '/Users/ada/app.overwritten-tx-1', paths }, updatedAt: 0,
+    }).data;
+    expect(row(['r-pass2/a.txt', 'r-pass2/notes/b.md'])).toMatchObject({ notice: '2 files the copy replaced or deleted after its first pass are kept at /Users/ada/app.overwritten-tx-1: r-pass2/a.txt, r-pass2/notes/b.md' });
+    const many = Array.from({ length: 30_000 }, (_, i) => `r-pass2/f${i}`);
+    const notice = (row(many) as { notice: string }).notice;
+    expect(notice).toMatch(/^30000 files the copy .*: r-pass2\/f0, .*r-pass2\/f19, and 29980 more$/);
+    expect(notice.length).toBeLessThan(1000);
   });
 
   it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {

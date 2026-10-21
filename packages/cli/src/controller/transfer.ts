@@ -178,11 +178,13 @@ export async function transfer(o: TransferOptions): Promise<TransferResult> {
   const d: TransferDeps = { run: runRsync, readFile: (p) => fs.readFileSync(p, 'utf8'), now: Date.now, ...o.deps };
   const journal = new ProgressJournal(o.transactionId, transactionDir(o.transactionId, o.stateDir), d.now);
   const rsh = remoteShell(o.master.socket);
+  // names the folder each later pass of this run keeps what it replaces in, apart from another run's or pass's
+  const run = new Date(d.now()).toISOString().replace(/\.\d+Z$/, 'Z').replaceAll(':', '');
   const entries: EntryOutcome[] = [];
   let stopped = false;
   for (const entry of o.entries) {
     if (stopped) { entries.push({ id: entry.id, status: 'pending' }); continue; }
-    const outcome = await boundary('controller.rsync', () => new Mirror(entry, o, d, journal, rsh).run());
+    const outcome = await boundary('controller.rsync', () => new Mirror(entry, o, d, journal, rsh, run).run());
     entries.push(outcome);
     stopped = outcome.status === 'cancelled' || (outcome.status === 'failed' && outcome.reason !== 'refused');
   }
@@ -206,6 +208,7 @@ class Mirror {
     private d: TransferDeps,
     private journal: ProgressJournal,
     private rsh: string,
+    private runStamp: string,
   ) {
     const held = journal.get(entry.id);
     this.progress = {
@@ -330,12 +333,13 @@ class Mirror {
     // the first pass writes over what the claim just proved; a later one over a copy that may have changed since, so it
     // keeps aside what it replaces or deletes. rsync's quick check misses an edit of the same size within the same second;
     // a later pass compares content
+    const into = `${this.runStamp}-pass${pass}`;
     const backup = pass > 1 ? plan.backup : undefined;
     const replaced: string[] = [];
-    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1, ...(backup && { backupDir: backup }) }, (l) => {
+    const r = await this.rsync({ ...plan.job, dryRun: false, checksum: pass > 1, ...(backup && { backupDir: `${backup}/${into}` }) }, (l) => {
       if (l.kind === 'item') {
         const kept = backup && backedUp(l);
-        if (kept) replaced.push(kept);
+        if (kept) replaced.push(`${into}/${kept}`);
         this.put({ items: this.progress.items + 1 });
       } else if (l.kind === 'progress') this.put({ bytes: l.bytes, ...(l.total !== undefined && { done: l.done, total: l.total }) });
     });

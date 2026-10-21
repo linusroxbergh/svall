@@ -11,10 +11,14 @@ export function namesOf(m: TransferManifestV1): Names {
   };
 }
 
+// the most kept files a row names: every event of the row repeats it, and a watcher takes no line over 1 MiB
+const NAMED = 20;
+
 /** What a root's copy moved aside after its first pass, for its row. */
 function overwrittenNotice({ keptAt, paths }: NonNullable<EntryProgress['overwritten']>): string {
   const one = paths.length === 1;
-  return `${paths.length} ${one ? 'file' : 'files'} the copy replaced or deleted after its first pass ${one ? 'is' : 'are'} kept at ${keptAt}: ${paths.join(', ')}`;
+  const named = `${paths.slice(0, NAMED).join(', ')}${paths.length > NAMED ? `, and ${paths.length - NAMED} more` : ''}`;
+  return `${paths.length} ${one ? 'file' : 'files'} the copy replaced or deleted after its first pass ${one ? 'is' : 'are'} kept at ${keptAt}: ${named}`;
 }
 
 /**
