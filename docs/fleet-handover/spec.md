@@ -116,7 +116,10 @@ only ids. Renaming a host cannot change ownership.
 another machine's id. Its daemon then runs no fleet a gateway holds: it starts read-only, asks the
 gateway nothing and refuses every handover and recovery call until the file is moved aside and a new
 id minted, which owns a fleet once the gateway names it, as a forced recovery naming it does. While no
-fleet on the machine names a gateway, the daemon binds the file to its hardware.
+fleet on the machine names a gateway, the daemon binds the file to its hardware. After the machine's
+own hardware changes, `svall doctor --rebind`, run by a person at a terminal, binds the file to it. A
+virtual machine cloned with its `/etc/machine-id` keeps its source's hardware id, so the copy goes
+unnoticed there.
 
 The controller's machine registry lives at `~/.config/svall/machines.json` and contains no
 fleet API tokens:

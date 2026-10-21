@@ -14,7 +14,7 @@ import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, doctorCommand, opencodeCheck, reportLines, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, type DoctorDeps } from '../src/commands/doctor.js';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
@@ -152,6 +152,21 @@ describe('doctor', () => {
     for (const text of ['{"id":"9b4d0c1e-2f3a-4b5c-8d6e-7f8091a2b3c4"}', undefined]) {
       expect(byName(await doctor(priv, fake({ files: { [MACHINE]: text } }).deps))['machine id']).toMatchObject({ status: 'skip' });
     }
+  });
+
+  it('binds machine.json to this machine\'s hardware with --rebind, for a person at a terminal, and only when it was made on other hardware', () => {
+    const bound: string[] = [];
+    const run = (o: { stored?: string; actual?: string; unattended?: string }) => rebindMachineFile({
+      file: MACHINE, hardwareId: o.actual, unattended: o.unattended,
+      read: () => JSON.stringify({ id: '9b4d0c1e-2f3a-4b5c-8d6e-7f8091a2b3c4', ...(o.stored && { hardwareId: o.stored }) }),
+      rebind: (hw) => { bound.push(hw); },
+    });
+    expect(run({ stored: 'HW-1', actual: 'HW-2', unattended: 'has no terminal' })).toEqual({ ok: false, message: expect.stringMatching(/^nothing was changed: .*a person at a terminal.*has no terminal$/) });
+    expect(run({ stored: 'HW-1', actual: 'HW-1' })).toEqual({ ok: true, message: `${MACHINE} was made on this machine: there is nothing to rebind` });
+    expect(run({ stored: 'HW-1' })).toEqual({ ok: false, message: expect.stringContaining('cannot be read') });
+    expect(bound).toEqual([]);
+    expect(run({ stored: 'HW-1', actual: 'HW-2' })).toEqual({ ok: true, message: expect.stringContaining(`${MACHINE} is bound to this machine's hardware`) });
+    expect(bound).toEqual(['HW-2']);
   });
 
   it('warns about shims setup would write differently now, and a plist that is missing or runs another build', async () => {

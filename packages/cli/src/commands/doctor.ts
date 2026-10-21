@@ -16,7 +16,7 @@ import { gatewayPrefix } from '@svall/svalld/gateway/bin';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
 import { agentHomesEnv, svalldUnitName, GATEWAY_UNIT, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
-import { configDir, copiedRemedy, hardwareId } from '@svall/svalld/machine';
+import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svalld/machine';
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
@@ -31,6 +31,7 @@ import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
+import { unattended } from './fleet-recover.js';
 import { missing, preflight, realPreflightDeps, type PreflightDeps } from './preflight.js';
 
 export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] } };
@@ -110,6 +111,20 @@ function machine(d: DoctorDeps): Check {
   return stored === actual
     ? { name: 'machine id', status: 'ok', detail: `${file} was made on this machine` }
     : { name: 'machine id', status: 'warn', detail: `${file} was made on hardware ${stored}, and this machine is ${actual}: ${copiedRemedy(file)}` };
+}
+
+/**
+ * `svall doctor --rebind`: machine.json bound to this machine's hardware, for a person whose machine changed hardware
+ * under it; on a copy of another machine's file, both would run the fleets a gateway holds.
+ */
+export function rebindMachineFile(o: { file: string; hardwareId?: string; unattended?: string; read(file: string): string | undefined; rebind(hardwareId: string): void }): { ok: boolean; message: string } {
+  if (o.unattended) return { ok: false, message: `nothing was changed: rebinding machine.json needs a person at a terminal outside any fleet's agents and tmux panes, and this run ${o.unattended}` };
+  if (!o.hardwareId) return { ok: false, message: `this machine's hardware id cannot be read, so ${o.file} has nothing to be bound to` };
+  let stored: string | undefined;
+  try { stored = (JSON.parse(o.read(o.file) ?? '{}') as { hardwareId?: string }).hardwareId; } catch { /* svalld names a file it cannot read */ }
+  if (stored === o.hardwareId) return { ok: true, message: `${o.file} was made on this machine: there is nothing to rebind` };
+  o.rebind(o.hardwareId);
+  return { ok: true, message: `${o.file} is bound to this machine's hardware: restart svalld to run its fleets as this machine` };
 }
 
 // the process listening on the port, on `host` alone when given, as lsof names it
@@ -438,7 +453,18 @@ function connectHook(path: string): Promise<void> {
 }
 
 export function doctorCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform): Command {
-  return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing').action(async () => {
+  const rebind = "bind machine.json to this machine's hardware, after the hardware changed under it";
+  return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing unless --rebind').option('--rebind', rebind).action(async (o: { rebind?: boolean }) => {
+    if (o.rebind) {
+      const file = path.join(configDir(), 'machine.json');
+      const r = rebindMachineFile({
+        file, hardwareId: hardwareId(), read: readOrUndefined, rebind: (hw) => rebindMachine(hw),
+        unattended: unattended(process.env, process.stdin.isTTY === true && process.stdout.isTTY === true),
+      });
+      process.stdout.write(`${r.message}\n`);
+      if (!r.ok) process.exitCode = 1;
+      return;
+    }
     const t = target();
     let integrations: AgentKind[] | undefined;
     try { integrations = peekConfig(resolvePaths(profileHome(PRIVATE))).integrations; } catch { /* the private fleet's doctor reports it */ }
