@@ -149,18 +149,19 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
   for (const [commonDir, slots] of [...byCommon].sort(([a], [b]) => byCodeUnit(a, b))) {
     const entity: HandoverEntity = { kind: 'git', id: graphId(commonDir) };
     try {
-      const read = await readGraph(commonDir, slots, git);
+      const commands = await configCommands(commonDir, git);
+      const g = withoutFilters(git, commands);
+      const read = await readGraph(commonDir, slots, g);
       graphs.push(read.graph);
       for (const checkout of [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees]) {
         const left = read.tracked.get(checkout.path)!.filter((p) => excludedPath(p, excluded));
         if (left.length) blockers.push({ code: 'path_unsupported', message: `${checkout.path}: ${trackedLeft(left)}`, entity });
       }
-      for (const [at, url] of await origins(read, standing, git, exists)) {
+      for (const [at, url] of await origins(read, standing, g, exists)) {
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
-      const commands = await configCommands(commonDir, git);
       if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
-      const held = await unusedWork(read.graph, git, exists);
+      const held = await unusedWork(read.graph, g, exists);
       for (const [at, message] of held) blockers.push({ code: 'worktree_unused', message: `${at}: ${message}`, entity });
       const idle = read.graph.unused.filter((u) => !held.has(u.path));
       if (idle.length) warnings.push({ code: 'worktree_unused', message: unusedMessage(read.graph.commonDir, idle), entity });
@@ -252,15 +253,47 @@ async function origins(read: ReadGraph, standing: Set<string>, git: GitRunner, e
 const COMMAND_KEYS = '^(filter\\..+\\.(clean|smudge|process)|core\\.fsmonitor|core\\.sshcommand)$';
 const BOOLEAN = /^(true|false|yes|no|on|off|1|0|)$/i;
 
-/** The keys of a repository's own config that name a command git runs, each once. */
-async function configCommands(commonDir: string, git: GitRunner): Promise<string[]> {
-  const r = await git(['config', '--file', path.join(commonDir, 'config'), '-z', '--get-regexp', COMMAND_KEYS], commonDir);
-  if (r.code !== 0) return [];
-  const keys = r.stdout.split('\0').filter(Boolean).flatMap((entry) => {
-    const [key, value = ''] = entry.split('\n');
-    return key === 'core.fsmonitor' && BOOLEAN.test(value) ? [] : [key];
-  });
+/**
+ * The keys that name a command git runs in a repository's own configs, each once: its config with what that includes,
+ * each worktree's own, and each submodule's.
+ */
+export async function configCommands(commonDir: string, git: GitRunner): Promise<string[]> {
+  const worktrees = path.join(commonDir, 'worktrees');
+  const files = [
+    path.join(commonDir, 'config'), path.join(commonDir, 'config.worktree'),
+    ...names(worktrees).map((n) => path.join(worktrees, n, 'config.worktree')),
+    ...submoduleDirs(path.join(commonDir, 'modules')).map((d) => path.join(d, 'config')),
+  ].filter((f) => fs.existsSync(f));
+  const keys: string[] = [];
+  for (const file of files) {
+    const r = await git(['config', '--file', file, '--includes', '-z', '--get-regexp', COMMAND_KEYS], commonDir);
+    if (r.code !== 0) continue;
+    for (const entry of r.stdout.split('\0').filter(Boolean)) {
+      const [key, value = ''] = entry.split('\n');
+      if (!(key === 'core.fsmonitor' && BOOLEAN.test(value))) keys.push(key);
+    }
+  }
   return [...new Set(keys)].sort(byCodeUnit);
+}
+
+const names = (dir: string): string[] => { try { return fs.readdirSync(dir); } catch { return []; } };
+
+// each submodule's Git directory under `modules`, a nested one's too, by the HEAD it holds
+function submoduleDirs(modules: string): string[] {
+  return names(modules).flatMap((n) => {
+    const d = path.join(modules, n);
+    if (!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()) return [];
+    return fs.existsSync(path.join(d, 'HEAD')) ? [d, ...submoduleDirs(path.join(d, 'modules'))] : submoduleDirs(d);
+  });
+}
+
+/** A runner that turns off each filter `commands` names, so git reads files as they are and runs none of them. */
+export function withoutFilters(git: GitRunner, commands: readonly string[]): GitRunner {
+  const filters = [...new Set(commands.flatMap((k) => /^filter\.(.+)\.(clean|smudge|process)$/.exec(k)?.[1] ?? []))];
+  const odd = filters.find((f) => f.includes('='));
+  if (odd !== undefined) throw new GitFailure(`the filter ${JSON.stringify(odd)} cannot be turned off from git's command line`);
+  const settings = filters.flatMap((f) => ['clean=', 'smudge=', 'process=', 'required=false'].flatMap((s) => ['-c', `filter.${f}.${s}`]));
+  return settings.length ? (args, cwd) => git([...settings, ...args], cwd) : git;
 }
 
 /**

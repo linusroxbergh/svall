@@ -112,6 +112,22 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     expect(rebuilds(asked)).toEqual([]);
   });
 
+  it('runs no filter a landed config names, its own, one it includes or a submodule\'s, whatever the source warned of', async () => {
+    const l = seedHere(made);
+    const { manifest } = await handed(l);
+    const common = path.join(l.source.main, '.git');
+    const ran = path.join(l.base, 'filter-ran');
+    const filter = (name: string) => `[filter "${name}"]\n\tclean = touch '${ran}-${name}'; cat\n\tprocess = touch '${ran}-${name}'\n\trequired = true\n`;
+    fs.writeFileSync(path.join(l.base, 'included.inc'), filter('inc'));
+    fs.appendFileSync(path.join(common, 'config'), `${filter('own')}[include]\n\tpath = ${path.join(l.base, 'included.inc')}\n`);
+    fs.writeFileSync(path.join(common, 'info/attributes'), '* filter=own\n*.txt filter=inc\n');
+    fs.appendFileSync(path.join(common, 'modules/sub/config'), filter('sub'));
+    fs.mkdirSync(path.join(common, 'modules/sub/info'), { recursive: true });
+    fs.writeFileSync(path.join(common, 'modules/sub/info/attributes'), '* filter=sub\n');
+    expect(await importGraphs(manifest)).toEqual([]);
+    expect(fs.readdirSync(l.base).filter((f) => f.startsWith('filter-ran'))).toEqual([]);
+  });
+
   it('finds the same graph the second time', async () => {
     const l = seedHere(made);
     const { manifest } = await handed(l);

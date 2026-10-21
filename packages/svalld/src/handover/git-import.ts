@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
-import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, said, type WorktreeEntry } from './git-graph.js';
+import { configCommands, GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, said, withoutFilters, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 
 /** What `git init` probes of the filesystem a Git directory sits on; `precomposeUnicode` only where git probes it, on macOS. */
@@ -159,11 +159,13 @@ function described(e: WorktreeEntry): string {
  * and the stash holds the same entries.
  */
 export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git'> & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  const git = deps.git ?? handoverGit;
+  let git = deps.git ?? handoverGit;
   const entity: HandoverEntity = { kind: 'git', id: graph.id };
   const common = graph.commonDir;
   const differs: string[] = [];
   try {
+    // what landed decides what this machine turns off, whatever the source said of it
+    git = withoutFilters(git, await configCommands(common, git));
     const checkouts = [...(graph.main ? [graph.main] : []), ...graph.worktrees];
     for (const c of checkouts) {
       const dirs = parseDirs(await must(git, DIRS_ARGS, c.path));
