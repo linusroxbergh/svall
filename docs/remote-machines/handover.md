@@ -19,8 +19,8 @@ you choose **Move**, which runs the checks once more and goes on through six ste
 
 1. **Checks.** Nothing is touched yet. A blocker found here stops the move before anything rests.
 2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
-   terminal is brought to rest, and its window closed; its pane says which step the handover is at. The Load tab still
-   reads; its Sleep and Delete are refused.
+   terminal is brought to rest, and its window closed; its pane says which step the handover is at, and a click on it
+   opens the sheet. The Load tab still reads; its Sleep and Delete are refused.
 3. **Transferring files and sessions.** Each folder and agent session is copied, with progress, the rate so far and
    the time left at that rate.
 4. **Verifying.** The copy is checked, and the other machine prepares the fleet. Abort still gives it back.

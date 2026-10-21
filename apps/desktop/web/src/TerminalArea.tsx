@@ -73,7 +73,9 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   }, [key, opacity, resting, veiled]);
 
   if (!c) return null;
-  if (resting) return <div className="revive" data-testid="terminal-held">{restingSays}</div>;
+  if (resting) {
+    return <button type="button" className="revive held" data-testid="terminal-held" onClick={() => app.store.getState().toggleHandover(true)}>{restingSays}</button>;
+  }
   if (error) {
     return (
       <div className="revive" data-testid="terminal-error">

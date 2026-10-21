@@ -62,3 +62,4 @@
 .board-empty .acts { display: flex; gap: var(--sp-md); justify-content: center; }
 .surface { position: absolute; inset: 0; color: var(--ink-3); display: grid; place-items: center; }
 .revive { position: absolute; inset: 0; display: grid; place-items: center; }
+.revive.held { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }

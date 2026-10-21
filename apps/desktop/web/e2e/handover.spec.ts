@@ -181,9 +181,10 @@ test('the sheet carries a move to the gateway through all six sections, then the
   // the source rests every terminal: the surfaces on them go, and none comes back while the fleet moves
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'term.close' && m.id === b.id)).toBe(true);
   await page.getByTestId('handover-close').click();
-  // a rested terminal says the step the handover is at
+  // a rested terminal says the step the handover is at, and opens the sheet
   await expect(page.getByTestId('terminal-held').first()).toHaveText('Resting for the handover: Resting characters…');
-  await page.getByTestId('handover-tab').click();
+  await page.getByTestId('terminal-held').first().click();
+  await expect(page.getByTestId('handover-sheet')).toBeVisible();
 
   await say(page, character(a.id, 'freeze', { done: 1, total: 1 }), character(b.id, 'freeze', { done: 1, total: 1 }), ...changed('transfer'),
     { event: 'handover.entity', data: { transactionId: 'tx1', kind: 'root', id: 'r_0a1b', phase: 'transfer', bytes: 12_000_000, totalBytes: 40_000_000 } },
