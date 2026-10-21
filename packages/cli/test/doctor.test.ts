@@ -304,11 +304,11 @@ describe('doctor', () => {
     }
   });
 
-  it('fails the two layouts svalld refuses to start on: a config.json beside fleet.json, and one whose backup is in the way', async () => {
+  it('warns of a config.json beside fleet.json, which svalld moves aside, and fails one whose backup is in the way', async () => {
     const at = (file: string) => `/u/.svall/${file}`;
     const fleet = '{ "id": "11111111-2222-3333-4444-555555555555" }';
     const beside = byName(await doctor(priv, fake({ files: { [at('fleet.json')]: fleet, [at('node.json')]: '{}', [at('config.json')]: '{}' } }).deps)).config;
-    expect(beside).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^\/u\/\.svall\/config\.json is not read any more: .* and delete it; a stopped svalld waits for it to be fixed$/) });
+    expect(beside).toMatchObject({ status: 'warn', detail: '/u/.svall/config.json is not read: svalld moves it aside unread as it starts; copy anything you still want from it into /u/.svall/fleet.json or /u/.svall/node.json' });
     const blocked = byName(await doctor(priv, fake({ files: { [at('config.json')]: '{}', [at('config.json.bak')]: '{}' } }).deps)).config;
     expect(blocked).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^\/u\/\.svall\/config\.json\.bak is in the way .* and start again; a stopped svalld waits for it to be fixed$/) });
   });

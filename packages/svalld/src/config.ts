@@ -109,26 +109,32 @@ export function configRelinked(paths: Pick<Paths, 'legacyConfig'>): boolean {
 }
 
 /** Why the config files that `has` finds are no layout a fleet can start on, before any of them is read. */
-export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig' | 'nodeConfig'>, has: (file: string) => boolean): string | undefined {
-  if (!has(paths.legacyConfig) || configRelinked(paths)) return undefined;
-  if (has(paths.fleetConfig)) {
-    return `${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`;
-  }
+export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>, has: (file: string) => boolean): string | undefined {
+  if (!has(paths.legacyConfig) || has(paths.fleetConfig) || configRelinked(paths)) return undefined;
   const backup = `${paths.legacyConfig}.bak`;
   if (has(backup)) return `${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`;
   return undefined;
 }
 
+/** Whether a config.json lies beside fleet.json, as an older release's setup writes one, for the next split to move aside unread. */
+export const configStray = (paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>, has: (file: string) => boolean): boolean =>
+  has(paths.legacyConfig) && has(paths.fleetConfig) && !configRelinked(paths);
+
 /**
  * Writes whichever of the two config files this fleet is missing, out of its config.json when it
  * still has one, and returns the files written. An unreadable config.json stops it before any write.
+ * A config.json beside fleet.json is moved aside unread, and `say` told where.
  */
-export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string[] {
+export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (line: string) => void = () => {}): string[] {
   const has = (file: string): boolean => fs.existsSync(file);
   const backup = `${paths.legacyConfig}.bak`;
   // a config.json is put beside the new files byte-exact before anything is read out of it, so the
   // only file the split ever reads is one nothing edits any more
-  if (has(paths.legacyConfig) && !configRelinked(paths)) {
+  if (configStray(paths, has)) {
+    const aside = `${paths.legacyConfig}.unread-${Date.now()}`;
+    fs.renameSync(paths.legacyConfig, aside);
+    say(`${paths.legacyConfig} moved to ${aside} unread: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}; copy anything you still want from it into them`);
+  } else if (has(paths.legacyConfig) && !configRelinked(paths)) {
     const refused = configRefusal(paths, has);
     if (refused) throw new InvalidConfig(refused);
     read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
@@ -148,9 +154,9 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string
   return wrote;
 }
 
-export function loadConfig(paths: Paths): Config {
+export function loadConfig(paths: Paths, say?: (line: string) => void): Config {
   if (!fs.existsSync(paths.home)) return Config.parse({});
-  initConfig(paths);
+  initConfig(paths, {}, say);
   return mergeConfig(read(paths.fleetConfig, FleetFile), read(paths.nodeConfig, NodeFile));
 }
 

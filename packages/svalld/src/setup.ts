@@ -108,7 +108,7 @@ export function setupFleetHome(o: FleetHome): string[] {
   installHookScripts(paths);
   done.push(`hook script -> ${paths.hookScript}`);
   done.push(`statusline script -> ${paths.statusScript}`);
-  for (const file of initConfig(paths, { port: o.port })) done.push(`config -> ${file}`);
+  for (const file of initConfig(paths, { port: o.port }, (line) => done.push(line))) done.push(`config -> ${file}`);
   return done;
 }
 

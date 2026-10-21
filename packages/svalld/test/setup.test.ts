@@ -908,10 +908,11 @@ describe('refreshFleetPlists', () => {
       fs.mkdirSync(home);
       await setupHome({ home, label: profileLabel(profileOf(home)), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la, launchctl: false });
     }
-    fs.writeFileSync(path.join(bad, 'config.json'), '{}');
+    fs.rmSync(path.join(bad, 'fleet.json'));
+    for (const f of ['config.json', 'config.json.bak']) fs.writeFileSync(path.join(bad, f), '{}');
     const now = bundleRuntime('/Applications/Svall.app');
     const { done } = await refreshFleetPlists({ homes: [bad, work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
-    expect(done).toContainEqual(`left ${bad}: ${path.join(bad, 'config.json')} is not read any more: this fleet's settings are in ${path.join(bad, 'fleet.json')} and ${path.join(bad, 'node.json')}. Move anything you still want from it into them and delete it.`);
+    expect(done).toContainEqual(`left ${bad}: ${path.join(bad, 'config.json.bak')} is in the way of putting ${path.join(bad, 'config.json')} beside the new files. Keep whichever of the two you want, delete the other, and start again.`);
     expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: now })).toBe(true);
   });
 });
@@ -949,6 +950,16 @@ describe('setupHome', () => {
     await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 });
     expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8')).port).toBe(47900);
     expect(fs.readFileSync(path.join(home, 'config.json.bak'), 'utf8')).toBe('{"port":47900}\n');
+  });
+
+  it('says where it moved a config.json an older release wrote beside fleet.json', async () => {
+    const home = makeHome();
+    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    await setupHome(o);
+    fs.writeFileSync(path.join(home, 'config.json'), '{}\n');
+    const lines = await setupHome(o);
+    const aside = fs.readdirSync(home).find((f) => f.startsWith('config.json.unread-'))!;
+    expect(lines).toContain(`${path.join(home, 'config.json')} moved to ${path.join(home, aside)} unread: this fleet's settings are in ${path.join(home, 'fleet.json')} and ${path.join(home, 'node.json')}; copy anything you still want from it into them`);
   });
 
   it('starts the daemon PATH at a Homebrew node folder that an upgrade keeps', async () => {
