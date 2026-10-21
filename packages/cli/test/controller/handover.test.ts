@@ -278,6 +278,18 @@ describe('preflight', () => {
     expect(r.warnings.filter((x) => x.code === 'config_difference').map((x) => x.message)).toEqual([expect.stringMatching(/^opencode on trift runs 2\.0\.30, newer than 2\.0\.22 on mac; /)]);
   });
 
+  it('orders prereleases as semver does when it says the destination runs a newer release', async () => {
+    const w = new World();
+    const claude = (m: typeof mac, version: string) => ({ agentAdapters: info(m).agentAdapters.map((a) => (a.kind === 'claude' ? { ...a, version } : a)) });
+    const differs = async (here: string, there: string) => {
+      [w.infos[mac], w.infos[trift]] = [claude(mac, here), claude(trift, there)];
+      return (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'config_difference').map((x) => x.message);
+    };
+    expect(await differs('2.1.290-beta.1', '2.1.290-beta.2')).toEqual([expect.stringMatching(/^claude on trift runs 2\.1\.290-beta\.2, newer than 2\.1\.290-beta\.1 on mac; /)]);
+    expect(await differs('2.1.290-beta.1', '2.1.290')).toHaveLength(1);
+    expect(await differs('2.1.290-beta.2', '2.1.290-beta.2')).toEqual([]);
+  });
+
   it("warns that the destination's Codex cannot sandbox its commands, naming the fix, for a fleet that runs Codex", async () => {
     const w = new World();
     w.infos[trift] = { agentAdapters: info(trift).agentAdapters.map((a) => (a.kind === 'codex' ? { ...a, sandbox: 'AppArmor keeps bwrap from it: sudo fix it' } : a)) };

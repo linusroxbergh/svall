@@ -7,7 +7,7 @@ import {
   type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
-import { AGENTS, parseVersion, versionOk } from '../../agents.js';
+import { AGENTS, compareVersions, versionOk } from '../../agents.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
@@ -271,8 +271,7 @@ export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly
       continue;
     }
     if (a && b && a !== b) blockers.push({ code: 'incompatible_adapter', message: `${kind} sessions are read by adapter ${a.adapter} here and ${b.adapter} on the destination` });
-    const mine = here?.version && parseVersion(here.version);
-    if (mine && !versionOk({ minVersion: mine }, there.version)) {
+    if (here?.version && compareVersions(there.version, here.version) === -1) {
       blockers.push({ code: 'incompatible_adapter', message: `the destination's ${kind} ${there.version} is older than this machine's ${here!.version}, which writes sessions it may not read; update ${kind} on the destination` });
     }
     if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });

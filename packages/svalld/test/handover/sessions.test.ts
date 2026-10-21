@@ -1057,6 +1057,11 @@ describe('agent preflight', () => {
     expect(agentBlockers({ kinds: ['claude'], source: [ok('claude')], destination: [ok('claude', { version: '2.1.251' })] })[0].message)
       .toBe("the destination's claude 2.1.251 is older than this machine's 2.1.280, which writes sessions it may not read; update claude on the destination");
     expect(codes([ok('claude', { version: '2.1.251' })], [ok('claude')])).toEqual([]);
+    // the same prerelease on both, or a later one there, reads what this machine wrote
+    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290-beta.1' })])).toEqual([]);
+    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290-beta.2' })])).toEqual([]);
+    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290' })])).toEqual([]);
+    expect(codes([ok('claude', { version: '2.1.290' })], [ok('claude', { version: '2.1.290-beta.2' })])).toEqual(['incompatible_adapter']);
     expect(codes([ok('claude')], [])).toEqual(['agent_cli_missing']);
     expect(codes([ok('claude')], [ok('claude', { version: undefined })])).toEqual(['agent_cli_missing']);
     // the Mac's own release, and one newer than any adapter has seen

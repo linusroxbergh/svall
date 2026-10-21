@@ -5,7 +5,7 @@ import {
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
   type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
-import { parseVersion, versionOk } from '@svall/svalld/agents';
+import { compareVersions } from '@svall/svalld/agents';
 import { boundary } from '@svall/svalld/handover/failpoints';
 import { graphsHere } from '@svall/svalld/handover/git-import';
 import { canonicalDigest } from '@svall/svalld/handover/hash';
@@ -155,8 +155,7 @@ function differences(source: Side, a: SystemInfo, destination: Side, b: SystemIn
   const confined = b.agentAdapters.flatMap((y): Warning[] => (kinds.has(y.kind) && y.sandbox ? [{ code: 'codex_sandbox', message: `On ${destination.route.name}, ${y.sandbox}` }] : []));
   return [...confined, ...a.agentAdapters.flatMap((x): Warning[] => {
     const y = b.agentAdapters.find((z) => z.kind === x.kind);
-    const mine = x.version && parseVersion(x.version);
-    if (!kinds.has(x.kind) || !mine || !y?.version || x.version === y.version || !versionOk({ minVersion: mine }, y.version)) return [];
+    if (!kinds.has(x.kind) || !x.version || !y?.version || compareVersions(y.version, x.version) !== 1) return [];
     return [{
       code: 'config_difference',
       message: `${x.kind} on ${destination.route.name} runs ${y.version}, newer than ${x.version} on ${source.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
