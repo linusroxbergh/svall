@@ -223,6 +223,11 @@ What else to know:
 - **Killing the app** stops nothing, since the helper runs on. **Killing the helper** (or a foreground `svall
   handover`) leaves the handover where it stopped. The journals say where that is, the sheet rebuilds from them when
   the app opens, and `status` says what to do.
+- **Starting while a handover is open here** stops and offers only `svall handover --resume`, which goes the one safe
+  way on; `svall handover status` says whether `--abort` is safe too.
+- **The Mac sleeping** suspends the helper and drops its link. Before the commit the fleet stays frozen on the machine
+  it was leaving; after it, the fleet runs on neither machine. Once the Mac wakes, Resume or Abort, or Retry after the
+  commit, goes on. Keep the Mac awake until a handover ends.
 - **A dropped link** takes the controller from about 45 seconds to two and a half minutes to give up, depending on
   the step: each call waits up to 30 seconds and is asked up to four times, and the ssh connection is closed after 45
   seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort, or Retry after
@@ -322,6 +327,12 @@ svall host enable studio2 --fleet private
 svall host remove studio --forget
 ```
 
+## When the Mac is lost
+
+A fleet the Linux machine runs goes on there, and `svall` in a terminal on it works as before. A new Mac cannot take
+the fleet in this version, since `svall host add` and `svall host enable` set up only a Linux machine. A fleet the
+lost Mac ran is gone with it, past the read-only copy the Linux machine holds from the last handover.
+
 ## Known limitations
 
 - **OpenCode leaves its undo snapshots and subagent sessions behind.** On the other machine, undoing a step from
@@ -360,9 +371,11 @@ svall host remove studio --forget
   that filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file
   is copied. Nothing checks this sooner: set the same filter up on the other machine first, such as with `git lfs
   install`.
-- **A move to this Mac can run nowhere for a while.** If the link drops right after the commit of a move to this Mac,
-  the Mac waits to confirm the commit with the gateway, which it cannot reach, so the fleet runs on neither machine.
-  Once the link is back, Retry (`svall handover --resume`) starts it here.
+- **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
+  drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
+  activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
+  Linux machine, so does `svall handover --resume` there. A move to this Mac also waits to confirm the commit with
+  the gateway, so it starts only once the link is back.
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
   The character waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,

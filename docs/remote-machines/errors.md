@@ -178,7 +178,10 @@ What the gateway's ownership authority answers. They appear in handover messages
 ## How a run ends
 
 The `handover.result` line, and what `svall handover` prints last. The command exits 0 when it did what it was asked
-(a start or `--resume` that completed, an `--abort` that aborted) and 1 otherwise.
+(a start or `--resume` that completed, an `--abort` that aborted) and 1 otherwise. `--detach` exits 0 once the helper
+listens, or as the run did if it ended first. `attach` exits 0 once the run it follows ends, whatever its result.
+`status` exits 0 whenever it could say where the handover stands, `unknown` included. `--forget` exits 0 only when it
+dropped the journal.
 
 | Status | What it means | What to do |
 | --- | --- | --- |
@@ -251,8 +254,9 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 ## Connection errors
 
 The app and `svall` reach a fleet on another machine through ssh. When that fails, the banner and the error name one of
-these. Only `unreachable` and `daemon_down` are retried by themselves, backing off to every 16 seconds; the others
-wait until the window is reopened.
+these. Only `unreachable` and `daemon_down` are retried by themselves: the app backs off to every 16 seconds for as
+long as the window is open, and a `svall` command tries five times, waiting up to 8 seconds between tries. The others
+wait until the window is reopened or the command runs again.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |
