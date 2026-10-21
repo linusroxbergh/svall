@@ -42,6 +42,10 @@ async function rawAll(repo: string, ref: string, paths: string[]): Promise<Files
   return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await raw(repo, ref, p)] as const)));
 }
 
+/** Each word that a file of `words` no longer holds, as `<label> <word>`; a file that is gone is left to the caller. */
+const lost = (f: Files, words: Record<string, string[]>, label: string): string[] =>
+  Object.entries(words).flatMap(([p, ws]) => (f[p] === undefined ? [] : ws.filter((w) => !f[p]!.includes(w)).map((w) => `${label} ${w}`)));
+
 // hook fields Svall keeps (agent-hook.mjs KEEP) or reads before keeping, on every event and per event
 const HOOK_COMMON = ['hook_event_name', 'session_id', 'transcript_path', 'cwd'];
 export const CLAUDE_FIELDS: Record<(typeof CLAUDE_HOOKS)[number], string[]> = {
@@ -191,6 +195,18 @@ const PLUGIN_API: Record<string, string[]> = {
   'packages/core/src/tool/plugin/shell.ts': ['status: output.status', 'shellID: output.shellID', 'status: "running"'],
   'packages/core/src/tool/plugin/opencode.ts': ['name: "worktree_create"', 'namespace: "opencode"'],
 };
+// what the session adapter (src/handover/sessions/opencode.ts) reads: an export's message ids, pending undo and folder, and
+// what export, import and a session it does not hold print
+const SESSION_API: Record<string, string[]> = {
+  'packages/cli/src/commands/handlers/session/export.ts': ['process.stdout.write(JSON.stringify(data'],
+  'packages/cli/src/commands/handlers/session/import.ts': ['`Imported session: ${', 'Session already exists'],
+  'packages/server/src/handlers/session-error.ts': ['`Session not found: '],
+  'packages/schema/src/session-transfer.ts': ['info: Session.Info', 'messages: Schema.Array(SessionMessage.Info)'],
+  'packages/schema/src/session.ts': ['location: Location.Ref', 'revert: Revert'],
+  'packages/schema/src/location.ts': ['directory: AbsolutePath'],
+  'packages/schema/src/session-message.ts': ['id: ID'],
+};
+const OPENCODE_FILES = [...SCHEMA, ...Object.keys(PLUGIN_API), ...Object.keys(SESSION_API)];
 // the events hooks/opencode-plugin.js handles, and the payload fields it reads
 export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'session.step.started', 'session.step.ended', 'session.text.ended',
   'permission.asked', 'form.created', 'permission.replied', 'form.replied', 'form.cancelled',
@@ -215,16 +231,17 @@ const opencode: Harness = {
     const [v2, v3, fresh] = await Promise.all([refs(2), refs(3), json<{ version: string }>('https://opencode.ai/update/api/latest/cli/npm')]);
     return opencodeRelease(v2.map((t) => t.ref), v3.map((t) => t.ref), fresh.version);
   },
-  files: (version) => rawAll(OPENCODE, `v${version}`, [...SCHEMA, ...Object.keys(PLUGIN_API)]),
+  files: (version) => rawAll(OPENCODE, `v${version}`, OPENCODE_FILES),
   check(f) {
-    const gone = [...SCHEMA, ...Object.keys(PLUGIN_API)].filter((p) => f[p] === undefined);
+    const gone = OPENCODE_FILES.filter((p) => f[p] === undefined);
     const schema = SCHEMA.map((p) => f[p] ?? '').join('\n');
     const events = quotedTypes(schema);
     const missing = [
       ...gone,
       ...OPENCODE_EVENTS.filter((e) => !events.includes(e)).map((e) => `event ${e}`),
       ...OPENCODE_FIELDS.filter((k) => !hasKey(schema, k)).map((k) => `field ${k}`),
-      ...Object.entries(PLUGIN_API).flatMap(([p, words]) => (f[p] === undefined ? [] : words.filter((w) => !f[p]!.includes(w)).map((w) => `plugin API ${w}`))),
+      ...lost(f, PLUGIN_API, 'plugin API'),
+      ...lost(f, SESSION_API, 'session'),
     ];
     return { missing, events };
   },
@@ -248,6 +265,8 @@ export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
   opencode: [
     [['--help'], ['--standalone', '-s', '--prompt']],
     [['run', '--help'], ['--standalone', '--format', '--agent', '-m']],
+    [['session', 'export', '--help'], ['--standalone']],
+    [['session', 'import', '--help'], ['--standalone', '--directory']],
     [['session', 'delete', '--help'], ['--standalone']],
     [['auth', 'list', '--help'], ['--standalone']],
   ],

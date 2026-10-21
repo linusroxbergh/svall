@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { CLAUDE_HOOKS, CODEX_HOOKS } from '../packages/svalld/src/hooks/receiver.js';
-import { CLAUDE_FIELDS, CODEX_FIELDS, CODEX_LOG, HARNESSES, OPENCODE_EVENTS, type Files } from '../scripts/compat/harnesses.js';
+import { CLAUDE_FIELDS, CODEX_FIELDS, CODEX_LOG, HARNESSES, HELP, OPENCODE_EVENTS, type Files } from '../scripts/compat/harnesses.js';
 
 const ROOT = path.join(import.meta.dirname, '..');
 
@@ -39,6 +39,13 @@ const opencodeFiles = (): Files => ({
   'packages/plugin/src/promise/event.ts': 'Pick<EventApi, "subscribe">',
   'packages/core/src/tool/plugin/shell.ts': 'metadata: { status: output.status, shellID: output.shellID } status: "running"',
   'packages/core/src/tool/plugin/opencode.ts': 'name: "worktree_create" options: { namespace: "opencode" }',
+  'packages/cli/src/commands/handlers/session/export.ts': 'process.stdout.write(JSON.stringify(data, null, 2) + EOL)',
+  'packages/cli/src/commands/handlers/session/import.ts': 'stderr.write(`Session already exists${EOL}`) stdout.write(`Imported session: ${imported.data.id}${EOL}`)',
+  'packages/server/src/handlers/session-error.ts': 'message: `Session not found: ${error.sessionID}`',
+  'packages/schema/src/session-transfer.ts': 'Schema.Struct({ info: Session.Info, messages: Schema.Array(SessionMessage.Info) })',
+  'packages/schema/src/session.ts': 'Schema.Struct({ id: ID, location: Location.Ref, revert: Revert.pipe(optional) })',
+  'packages/schema/src/location.ts': 'Ref = Schema.Struct({ directory: AbsolutePath })',
+  'packages/schema/src/session-message.ts': 'const Base = { id: ID, time: Schema.Struct({}) }',
 });
 
 describe('checks', () => {
@@ -65,9 +72,26 @@ describe('checks', () => {
     f['packages/schema/src/form.ts'] = undefined;
     expect(HARNESSES.opencode.check(f).missing).toEqual(['packages/schema/src/form.ts', 'event session.step.ended', 'field tokens', 'plugin API "execute.after"']);
   });
+
+  test('OpenCode: what the session adapter reads of an export, and of what import prints, is checked', () => {
+    const f = opencodeFiles();
+    f['packages/cli/src/commands/handlers/session/import.ts'] = 'Session already exists stdout.write(`Imported ${imported.data.id}${EOL}`)';
+    f['packages/schema/src/session.ts'] = 'Schema.Struct({ id: ID, location: Location.Ref })';
+    f['packages/schema/src/session-transfer.ts'] = undefined;
+    expect(HARNESSES.opencode.check(f).missing).toEqual(['packages/schema/src/session-transfer.ts', 'session `Imported session: ${', 'session revert: Revert']);
+  });
 });
 
 describe('what Svall reads stays listed', () => {
+  test('every flag the OpenCode session adapter passes is looked for in its session command\'s help', () => {
+    const adapter = fs.readFileSync(path.join(ROOT, 'packages/svalld/src/handover/sessions/opencode.ts'), 'utf8');
+    const passed = Array.from(adapter.matchAll(/\['session', '(\w+)', ([^\]]*)\]/g), (m) => [m[1], Array.from(m[2].matchAll(/'(--[\w-]+)'/g), (x) => x[1])] as const);
+    expect(new Set(passed.map(([sub]) => sub))).toEqual(new Set(['export', 'import', 'delete']));
+    for (const [sub, flags] of passed) {
+      expect(HELP.opencode.find(([argv]) => argv.join(' ') === `session ${sub} --help`)?.[1], sub).toEqual(expect.arrayContaining(flags));
+    }
+  });
+
   test('the OpenCode events checked are the ones the plugin handles', () => {
     const plugin = fs.readFileSync(path.join(ROOT, 'packages/svalld/hooks/opencode-plugin.js'), 'utf8');
     const handled = Array.from(plugin.matchAll(/case '([a-z.]+)':/g), (m) => m[1]);
