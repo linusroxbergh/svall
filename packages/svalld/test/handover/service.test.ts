@@ -731,6 +731,34 @@ describe('a gateway asked while the daemon runs', () => {
     expect(at).toEqual([1665, 1965, 2265]);
   });
 
+  it('counts an ask at start that went unanswered as the first that failed, so a daemon up before the network asks 15 s later', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    const at: number[] = [];
+    const lines: string[] = [];
+    let answers = false;
+    vi.useFakeTimers();
+    const start = Date.now();
+    const get = async () => {
+      at.push((Date.now() - start) / 1000);
+      if (!answers) throw new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+      return record(4, me);
+    };
+    const log = { info: (l: string) => lines.push(l), error: (l: string) => lines.push(`error: ${l}`) };
+    const answered = await adoptAtStart({ handover: b.handover, authority: { get }, fleetId, log, timeoutMs: 20 });
+    expect(answered).toBe(false);
+    const stop = watchGateway({ handover: b.handover, authority: () => ({ get }), fleetId, machineId: me, log, answered });
+    await vi.advanceTimersByTimeAsync(15_000 + 30_000 + 60_000);
+    expect(at).toEqual([0, 15, 45, 105]);
+    answers = true;
+    await vi.advanceTimersByTimeAsync(120_000 + EVERY);
+    stop();
+    expect(at).toEqual([0, 15, 45, 105, 225, 525]);
+    expect(lines).toEqual([
+      'the gateway did not say who owns this fleet (ssh trift exited 255 without an answer); starting on the record this machine holds',
+      'the gateway answers again',
+    ]);
+  });
+
   it('asks at once after a wake that comes while an older ask is still out, and keeps asking soon while that one fails', async () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     let calls = 0;

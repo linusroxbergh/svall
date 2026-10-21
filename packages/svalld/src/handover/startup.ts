@@ -72,13 +72,13 @@ export async function enterStartupMode(mode: StartupMode, { ownership, journal, 
 /**
  * On start a gateway that answers in time has the last word on who runs this fleet. One that cannot be asked, holds
  * no record of it, or is too slow leaves the daemon on owner.json and its journal; the gateway on this machine is
- * asked again until it listens or the wait is up.
+ * asked again until it listens or the wait is up. Returns false when the gateway did not say.
  */
 export async function adoptAtStart(o: {
   handover: Pick<HandoverService, 'adopt'>; authority?: Authority; fleetId: FleetId; log: Logger; timeoutMs?: number;
-}): Promise<void> {
+}): Promise<boolean> {
   const { authority } = o;
-  if (!authority) return;
+  if (!authority) return true;
   const ms = o.timeoutMs ?? GATEWAY_START_MS;
   let timer: NodeJS.Timeout | undefined;
   let waiting = true;
@@ -101,33 +101,34 @@ export async function adoptAtStart(o: {
     ]);
   } catch (e) {
     o.log.info(`the gateway did not say who owns this fleet (${(e as Error).message}); starting on the record this machine holds`);
-    return;
+    return false;
   } finally {
     waiting = false;
     clearTimeout(timer);
   }
   await take(o, record, true);
+  return true;
 }
 
 /**
  * While the daemon runs, asks the gateway again every five minutes, and at its first look after the machine wakes: a timer
  * stands still while the machine sleeps, and the wall clock does not. An ask that fails, as one does while the network
  * comes back from a sleep, is asked again 15 s later, then twice as long each time, up to five minutes, until one is
- * answered. Only a record that names another owner is taken:
- * one naming `machineId` waits for a start or the recovery that wrote it, which tells the machines it takes the fleet
- * from first. Returns what stops it.
+ * answered; `answered: false`, from an ask at start that failed, counts as the first. Only a record that names another
+ * owner is taken: one naming `machineId` waits for a start or the recovery that wrote it, which tells the machines it
+ * takes the fleet from first. Returns what stops it.
  */
 export function watchGateway(o: {
-  handover: Pick<HandoverService, 'adopt'>; authority: () => Authority | undefined; fleetId: FleetId; machineId: MachineId; log: Logger; everyMs?: number;
+  handover: Pick<HandoverService, 'adopt'>; authority: () => Authority | undefined; fleetId: FleetId; machineId: MachineId; log: Logger; everyMs?: number; answered?: boolean;
 }): () => void {
   const every = o.everyMs ?? GATEWAY_EVERY_MS;
   const tick = Math.min(GATEWAY_TICK_MS, every / 4);
-  let due = Date.now() + every;
+  let failing = o.answered === false;
+  let due = Date.now() + (failing ? tick : every);
   // how long after a failed ask the next one waits
-  let wait = tick;
+  let wait = failing ? Math.min(2 * tick, every) : tick;
   let asking = false;
   let woke = false;
-  let failing = false;
   let stopped = false;
   /** Whether the gateway answered. */
   const ask = async (): Promise<boolean> => {

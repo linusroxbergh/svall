@@ -222,7 +222,7 @@ async function start(opts: Options): Promise<Daemon> {
   await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !config.gatewayMachineId });
   // a machine that shares another's id takes no record from the gateway: one naming that id may mean the other machine
   const asked = (): Authority | undefined => (copied ? undefined : authority());
-  await adoptAtStart({ handover, authority: asked(), fleetId: config.id, log });
+  const answered = await adoptAtStart({ handover, authority: asked(), fleetId: config.id, log });
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
@@ -276,7 +276,7 @@ async function start(opts: Options): Promise<Daemon> {
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
     // a record the gateway took while this daemon ran that names another owner, as a recovery that could not reach it writes, lets the fleet go here
-    teardown.push(watchGateway({ handover, authority: asked, fleetId: config.id, machineId: me, log, everyMs: opts.gatewayEveryMs }));
+    teardown.push(watchGateway({ handover, authority: asked, fleetId: config.id, machineId: me, log, everyMs: opts.gatewayEveryMs, answered }));
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
