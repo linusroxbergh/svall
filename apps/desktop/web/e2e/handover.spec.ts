@@ -93,7 +93,10 @@ test('a character a handover could not resume starts afresh from a summary of it
   await expect(page.getByTestId('resume-error')).toHaveText(FAILED);
 
   await page.getByTestId('fresh').click();
+  await expect(page.getByTestId('fresh-ask')).toContainText(sid);
+  await page.getByTestId('fresh-go').click();
   await expect(page.getByTestId('surface')).toHaveAttribute('data-char', id, { timeout: 10_000 });
+  await expect(page.getByTestId('toast')).toContainText(`old session ${sid} kept`);
   const c = (await svall.api.call('state.get', {})).characters[id];
   expect(c.resumeError).toBeUndefined();
   expect(c.agent).toBeUndefined();

@@ -943,6 +943,16 @@ runIf('Fleet', () => {
     await expect(b.fleet.startFresh(c.id)).rejects.toThrow(Invalid);
   });
 
+  it('starts afresh only a terminal whose resume failed', async () => {
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const OLD = 'ses_0123456789abCDEFGHIJKLMNop';
+    b.store.update((d) => {
+      d.characters[c.id].second = { cwd: '/tmp', unread: false, agent: { kind: 'opencode', sessionId: OLD, status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${OLD}` } };
+    });
+    await expect(b.fleet.startFresh(c.id, 2)).rejects.toThrow(`${c.name}'s second terminal has no failed resume to start afresh from; revive it`);
+  });
+
   it('starts a dormant second terminal afresh with its own prompt file', async () => {
     const b = await boot();
     const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

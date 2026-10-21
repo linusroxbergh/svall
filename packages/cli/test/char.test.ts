@@ -190,11 +190,11 @@ describe('a resume that failed', () => {
 
 describe('char revive', () => {
   const ada: Character = { ...base, id: 'c_ada', name: 'ada', tmux: undefined };
-  function daemon() {
+  function daemon(held = ada) {
     const calls: [string, Record<string, unknown>][] = [];
     const client = {
       call: async (method: string, params: Record<string, unknown>) => {
-        if (method === 'state.get') return { characters: { c_ada: ada }, islands: { i_1: { id: 'i_1', name: 'home' } } };
+        if (method === 'state.get') return { characters: { c_ada: held }, islands: { i_1: { id: 'i_1', name: 'home' } } };
         calls.push([method, params]);
         return ada;
       },
@@ -203,8 +203,10 @@ describe('char revive', () => {
     return { calls, connect: async () => client as unknown as Client };
   }
   const run = async (d: ReturnType<typeof daemon>, ...argv: string[]) => {
-    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    let out = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
     try { await charCommands(d.connect, () => false).parseAsync(['revive', 'ada', ...argv], { from: 'user' }); } finally { spy.mockRestore(); }
+    return out;
   };
 
   it('resumes the session, or with --fresh starts a new one from a summary of it, in either terminal', async () => {
@@ -214,5 +216,12 @@ describe('char revive', () => {
     await run(d, '--fresh', '--term', '2');
     expect(d.calls).toEqual([['char.revive', { id: 'c_ada' }], ['char.fresh', { id: 'c_ada' }], ['char.fresh', { id: 'c_ada', term: 2 }]]);
     await expect(run(d, '--term', '2')).rejects.toThrow(/--term goes with --fresh/);
+  });
+
+  it('says where the old session stays once a fresh one has started', async () => {
+    const old = { kind: 'codex' as const, sessionId: 'old-1', transcriptPath: '/h/.codex/sessions/r.jsonl', status: 'idle' as const, lastActivityAt: 0 };
+    const d = daemon({ ...ada, agent: old, second: { cwd: '/r', unread: false, agent: { ...old, kind: 'opencode', sessionId: 'ses_old' } } });
+    expect(await run(d, '--fresh')).toBe('c_ada dormant; old session old-1 kept at /h/.codex/sessions/r.jsonl\n');
+    expect(await run(d, '--fresh', '--term', '2')).toBe('c_ada dormant; old session ses_old kept in OpenCode\n');
   });
 });

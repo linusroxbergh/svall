@@ -803,6 +803,7 @@ export class Fleet extends EventEmitter<Events> {
     const slot = term === 2 ? c.second : c;
     const which = term === 2 ? `${c.name}'s second terminal` : c.name;
     if (!slot?.agent || slot.tmux) throw new Invalid(`${which} has no dormant session to start afresh from`);
+    if (!slot.resumeError) throw new Invalid(`${which} has no failed resume to start afresh from; revive it`);
     if (this.carried(id, term)) throw new Invalid(`${which} is still being resumed by a handover`);
     const { kind, sessionId, transcriptPath } = slot.agent;
     const prompt = repairBrief(kind, transcriptPath ? readTail(transcriptPath, 4 * 1024 * 1024) : '', { sessionId });

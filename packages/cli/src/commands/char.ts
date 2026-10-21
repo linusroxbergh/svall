@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, type AgentStatus } from '@svall/protocol';
+import { AgentKind, ApiError, keptSession, type AgentStatus } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
@@ -151,8 +151,9 @@ Handing work to a new robot:
       const term = termOf(o.term);
       return withFleet(connect, async (c, state) => {
         const target = charId(state, id);
+        const old = (term === 2 ? state.characters[target]?.second : state.characters[target])?.agent;
         const ch = o.fresh ? await c.call('char.fresh', { id: target, ...(term && { term }) }) : await c.call('char.revive', { id: target });
-        printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
+        printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}${o.fresh && old ? `; ${keptSession(old)}` : ''}`);
       });
     });
 
