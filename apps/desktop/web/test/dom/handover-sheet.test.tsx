@@ -178,7 +178,14 @@ test('a decision mid-run says how many things wait on it, with the agent at work
 // what the controller's status reasons look like: ids and generations the sheet never shows
 const [TX, MAC, TRIFT] = ['2f6c1e9a-41b7-4c1e-9d2a-6b0e3c5d7f11', '7d3e0b52-9c4a-4f18-a6b2-0e5d8c1f3a90', 'c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45'];
 
-test('a run that stopped offers Resume and Abort before the commit with what each does, and only Retry after it', () => {
+const committed = (standing: 'committed' | 'moved'): HandoverEvent => ({ event: 'handover.status', data: {
+  standing, journals: {}, action: standing === 'committed' ? 'continue' : 'finish', transactionId: TX, phase: 'activate', safe: ['resume'],
+  reason: `${TX} is committed: the fleet belongs to ${TRIFT} at generation 4, and only its activation can go on`,
+} });
+const resumes = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.resume').length;
+
+test('a run that stopped before the commit offers Resume and Abort with what each does, and waits for one', () => {
+  const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
   act(() => {
     store.getState().toggleHandover(true);
@@ -190,11 +197,37 @@ test('a run that stopped offers Resume and Abort before the commit with what eac
   expect(screen.getByTestId('handover-footnote').textContent).toBe('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
   expect(screen.getByTestId('handover-resume').textContent).toBe('Resume');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();
-  act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'continue', transactionId: TX, phase: 'activate', safe: ['resume'], reason: `${TX} is committed: the fleet belongs to ${TRIFT} at generation 4, and only its activation can go on` } }]));
+  expect(resumes(send)).toBe(0);
+  expect(screen.getByTestId('handover-sheet').textContent).not.toMatch(new RegExp(`${TX}|${MAC}|generation`));
+});
+
+test('past the commit, a status that leaves only resuming opens the sheet and resumes by itself, and a resume that stops again offers Retry', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  act(() => store.getState().handoverReplay([preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer', 'verify', 'prepare', 'ready', 'commit'),
+    { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'commit', error: 'ssh to trift closed', safe: ['resume'] } },
+    committed('committed')]));
+  expect(resumes(send)).toBe(1);
+  expect(store.getState().handoverOpen).toBe(true);
+  expect(screen.getByTestId('handover-headline').textContent).toBe("The fleet is trift's now, so the sheet resumes it there by itself…");
+  expect(screen.getByTestId('handover-section-resume').dataset.state).toBe('active');
+  expect(screen.getByTestId('handover-rest-rows')).toBeTruthy();
+  expect(screen.queryByTestId('handover-resume')).toBeNull();
+  expect(screen.queryByTestId('handover-abort')).toBeNull();
+  expect(screen.getByTestId('handover-sheet').textContent).not.toMatch(new RegExp(`${TX}|${TRIFT}|generation|activation`));
+
+  act(() => {
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx', phase: 'activate', error: 'ssh to trift closed', safe: ['resume'] } });
+    store.getState().handoverExit(1);
+  });
   expect(screen.getByTestId('handover-resume').textContent).toBe('Retry');
   expect(screen.queryByTestId('handover-abort')).toBeNull();
   expect(screen.getByTestId('handover-footnote').textContent).toBe('Retry finishes resuming on trift; nothing goes back from here.');
-  expect(screen.getByTestId('handover-sheet').textContent).not.toMatch(new RegExp(`${TX}|${TRIFT}|generation|activation`));
+  expect(resumes(send)).toBe(1);
+
+  // a moved fleet the gateway left only to be finished goes on by itself too
+  act(() => store.getState().handoverReplay([committed('moved')]));
+  expect(resumes(send)).toBe(2);
 });
 
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [

@@ -4,7 +4,7 @@ import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
   actionsOf, blockerHint, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, entityLabel, entityPath, formatBytes, fraction,
-  headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, withChoice,
+  goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
@@ -345,6 +345,13 @@ export function HandoverSheet() {
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [open]);
+
+  // read from the store, so a second run of this effect finds the resume already under way
+  useEffect(() => {
+    if (!enabled || !goesOnByItself(store().handover)) return;
+    store().handoverGoOn();
+    app.bridge.send({ type: 'handover.resume' });
+  }, [run, enabled]);
 
   if (!open || !enabled) return null;
   const destination = destinationName(run?.to);

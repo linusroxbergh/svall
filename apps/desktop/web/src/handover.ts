@@ -43,6 +43,8 @@ export type HandoverRun = {
   cancelled?: boolean;
   // the fleet has moved and the page has not yet loaded it from its new owner
   awaitingOwner: boolean;
+  // the sheet resumed it by itself, since past the commit nothing else was safe
+  goingOn?: boolean;
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -158,6 +160,17 @@ export const needsUser = (v: Verdict): boolean => v.safe.length > 0 || v.standin
 
 /** A run that stopped sending its commit without hearing whether the gateway took it: only the gateway can say, and nothing is safe until it does. */
 const commitUnknown = (r: Outcome | undefined): boolean => r?.status === 'interrupted' && r.phase === 'commit' && r.safe.length === 0;
+
+/** A status past the commit that leaves only resuming, which the sheet then does without asking. */
+export const goesOnByItself = (run: HandoverRun | undefined): boolean => !!run?.status && !run.following
+  && (run.status.standing === 'committed' || run.status.standing === 'moved') && run.status.safe.length === 1 && run.status.safe[0] === 'resume';
+
+/** The run a resume the sheet started by itself follows: what the status rebuilt, at the furthest step either reached. */
+export function goOn(run: HandoverRun): HandoverRun {
+  const at = run.status?.phase;
+  const phase = at && (!run.phase || step(at) > step(run.phase)) ? at : run.phase;
+  return { ...run, following: true, goingOn: true, phase, status: undefined, result: undefined, error: undefined, decision: undefined, retry: undefined, cancelled: undefined, aborting: undefined };
+}
 
 /** Past the commit: the fleet is the destination's, and only going on is left. */
 export function isCommitted(run: HandoverRun): boolean {
@@ -516,7 +529,7 @@ export function headline(run: HandoverRun, destination: string): string {
   if (!live(run)) return '';
   if (run.aborting) return 'Stopping: the fleet goes back to where it was…';
   if (!run.phase && !run.preflight) return run.to ? 'Starting…' : 'Looking for a handover…';
-  const now = `${label(SECTIONS[sectionAt(run.phase ?? 'begin')].id)}…`;
+  const now = run.goingOn ? `The fleet is ${destination}'s now, so the sheet resumes it there by itself…` : `${label(SECTIONS[sectionAt(run.phase ?? 'begin')].id)}…`;
   return run.retry ? `${now} asking again (attempt ${run.retry.attempt}): ${run.retry.error}` : now;
 }
 

@@ -39,7 +39,8 @@ A character marked **keep on this machine** on its card blocks the handover unti
 
 Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own, and quitting
 leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
-handover stands, with **Resume** and **Abort** before the commit, or only **Retry** after it.
+handover stands, with **Resume** and **Abort** before the commit. After it, resuming is all that is safe, so the sheet
+resumes by itself and offers **Retry** only if that stops again.
 
 Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.

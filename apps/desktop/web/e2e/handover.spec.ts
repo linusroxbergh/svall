@@ -287,7 +287,7 @@ test('a decision waits for its answer, which goes as one choose, while the sheet
   expect(await lastOf(page, 'handover.cancel')).toEqual({ type: 'handover.cancel' });
 });
 
-test('a relaunch rebuilds a stopped handover, with Resume and Abort before the commit and only Retry after it', async ({ page, svall }) => {
+test('a relaunch rebuilds a stopped handover, with Resume and Abort before the commit, and past it resumes by itself with Retry only after that fails', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   // the events file of the run the app was closed during, then what the journals say now
@@ -306,12 +306,20 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
 
   await receive(page, { type: 'handover.replay', events: [
     { event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'continue', transactionId: TX, phase: 'activate', safe: ['resume'], reason: `${TX} is committed: the fleet belongs to ${STUDIO} at generation 4, and only its activation can go on` } }] });
-  await expect(page.getByTestId('handover-resume')).toHaveText('Retry');
+  await expect(page.getByTestId('handover-headline')).toContainText('so the sheet resumes it there by itself…');
+  const resumes = async () => (await sent(page)).filter((m) => m.type === 'handover.resume').length;
+  await expect.poll(resumes).toBe(1);
+  await expect(page.getByTestId('handover-resume')).toHaveCount(0);
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(/abort|roll ?back|undo|revert/i);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
+
+  await say(page, { event: 'handover.result', data: { status: 'interrupted', transactionId: TX, phase: 'activate', error: 'ssh to studio closed', safe: ['resume'] } });
+  await receive(page, { type: 'handover.exit', code: 1 });
+  await expect(page.getByTestId('handover-resume')).toHaveText('Retry');
+  await expect(page.getByTestId('handover-abort')).toHaveCount(0);
   await page.getByTestId('handover-resume').click();
-  expect(await lastOf(page, 'handover.resume')).toEqual({ type: 'handover.resume' });
+  expect(await resumes()).toBe(2);
 });
 
 test('a launch after a finished move that once asked leaves an open terminal alone and the sheet shut', async ({ page, svall }) => {
