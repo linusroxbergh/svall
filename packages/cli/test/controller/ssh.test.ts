@@ -328,7 +328,7 @@ describe('sweepMasters', () => {
     const named = (pid: number | undefined): string => `${pid}-0123456789ab`;
     fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
     // pid 1 is another user's, which a signal check is refused for
-    const kept = [named(running.pid), named(process.pid), named(1), 'handover-0123456789abcdef.sock', '0123456789ab'];
+    const kept = [named(running.pid), named(process.pid), named(1), 'handover-0123456789abcdef.sock'];
     for (const name of [named(gone.pid), ...kept]) fs.writeFileSync(path.join(ssh.socketDir, name), '');
     fs.writeFileSync(path.join(ssh.dir, 'state', `${named(gone.pid)}.master`), String(orphan.pid));
 
@@ -338,6 +338,24 @@ describe('sweepMasters', () => {
     expect(fs.readdirSync(ssh.socketDir).sort()).toEqual(kept.sort());
     await waitFor(() => !alive(orphan.pid as number));
     running.kill();
+  });
+
+  it('ends the master on a socket named before the pid led it once its parent is gone, and leaves one whose parent runs', async () => {
+    // a master left behind is launchd's or init's child, as a shell's background job is once the shell exits
+    const sh = spawn('sh', ['-c', 'sleep 30 >/dev/null 2>&1 & echo $!'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const orphan = Number(await new Promise<string>((resolve) => { sh.stdout.on('data', (b: Buffer) => resolve(b.toString().trim())); }));
+    await new Promise((resolve) => { sh.on('close', resolve); });
+    const owned = spawn('sleep', ['30']);
+    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
+    const [left, held, stale] = ['0123456789ab', 'ba9876543210', 'aaaaaaaaaaaa'];
+    for (const name of [left, held, stale]) fs.writeFileSync(path.join(ssh.socketDir, name), '');
+    fs.writeFileSync(path.join(ssh.dir, 'state', `${left}.master`), String(orphan));
+    fs.writeFileSync(path.join(ssh.dir, 'state', `${held}.master`), String(owned.pid));
+    await sweepMasters(ssh.socketDir);
+    expect(fs.readdirSync(ssh.socketDir)).toEqual([held]);
+    await waitFor(() => !alive(orphan));
+    expect(alive(owned.pid as number)).toBe(true);
+    owned.kill();
   });
 
   it('keeps the socket of a master that would not exit, and removes one no master listens on', async () => {

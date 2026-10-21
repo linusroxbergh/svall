@@ -23,10 +23,10 @@ final class UpdatesTests: XCTestCase {
         XCTAssertNil(notice())
 
         try write(".svall-work/owner.json", #"{"fleetId":"w","generation":3,"ownerMachineId":"\#(trift)"}"#)
-        XCTAssertEqual(notice(), "work runs on \(trift), which this update leaves out of reach until svall host upgrade \(trift); svall -p work handover local brings it back first, and Check for Updates again installs it now")
+        XCTAssertEqual(notice(), "work runs on \(trift), which an update that changes Svall's protocol leaves out of reach until svall host upgrade \(trift); svall -p work handover local brings it back first, and Check for Updates again installs it now")
         try write(".config/svall/machines.json", #"{"machines":{"\#(trift)":{"name":"trift","gateway":true}}}"#)
         try write(".svall-work/fleet.json", #"{"id":"w","name":"lab","gatewayMachineId":"\#(trift)"}"#)
-        XCTAssertEqual(notice(), "lab runs on trift, which this update leaves out of reach until svall host upgrade trift; svall -p work handover local brings it back first, and Check for Updates again installs it now")
+        XCTAssertEqual(notice(), "lab runs on trift, which an update that changes Svall's protocol leaves out of reach until svall host upgrade trift; svall -p work handover local brings it back first, and Check for Updates again installs it now")
 
         // Svall Dev's fleets, and a copy of a fleet home under another name, are not this app's to wait on
         try write(".svall-work/owner.json", #"{"fleetId":"w","generation":4,"ownerMachineId":"\#(me)"}"#)

@@ -38,7 +38,8 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     }
 
     // an update can change the protocol, leaving a fleet another machine runs out of this Mac's reach until that machine runs the
-    // same release, so the first check the user asks for meanwhile shows why instead; the banner's probe runs on
+    // same release, and the appcast does not say whether it does, so the first check the user asks for meanwhile shows why instead;
+    // the banner's probe runs on
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         guard updateCheck != .updateInformation, let notice = holdBack() else { return }
         throw NSError(domain: "Svall", code: 1, userInfo: [NSLocalizedDescriptionKey: notice])
@@ -70,7 +71,7 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
             let machine = ((json(configDir + "/machines.json")?["machines"] as? [String: Any])?[owner] as? [String: Any])?["name"] as? String ?? owner
             let named = (fleet["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? profile
             let svall = profile == "private" ? "svall" : "svall -p \(profile)"
-            return "\(named) runs on \(machine), which this update leaves out of reach until svall host upgrade \(machine); \(svall) handover local brings it back first, and Check for Updates again installs it now"
+            return "\(named) runs on \(machine), which an update that changes Svall's protocol leaves out of reach until svall host upgrade \(machine); \(svall) handover local brings it back first, and Check for Updates again installs it now"
         }
         return nil
     }

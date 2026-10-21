@@ -84,6 +84,8 @@ export function ownSocketDir(dir: string): string {
 const socketFor = (dir: string, destination: string): string =>
   path.join(dir, `${process.pid}-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
 const SOCKET_NAME = /^(\d+)-[0-9a-f]{12}$/;
+// how a release before the pid led the name named a socket
+const UNNAMED = /^[0-9a-f]{12}$/;
 
 function running(pid: number): boolean {
   try {
@@ -95,9 +97,19 @@ function running(pid: number): boolean {
   }
 }
 
+/** Whether no master listens on `socket`, or the one that does was left by its process: launchd or init holds it now. */
+async function abandoned(socket: string): Promise<boolean> {
+  const r = await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'check', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
+  if (/control socket connect/i.test(r.stderr)) return true;
+  const pid = /pid=(\d+)/.exec(r.stderr)?.[1];
+  if (!pid) return false;
+  return (await runProcess('ps', ['-o', 'ppid=', '-p', pid], { timeoutMs: CONTROL_TIMEOUT })).stdout.trim() === '1';
+}
+
 /**
  * Ends the master on every socket in `dir` whose process is gone, and removes the socket: a process killed where no
- * handler ran leaves its detached `ssh -M` running. A running process's sockets, and names it cannot read, are left alone.
+ * handler ran leaves its detached `ssh -M` running. A socket named before the pid led its name goes once its master is
+ * abandoned. A running process's sockets, and names it cannot read, are left alone.
  */
 export async function sweepMasters(dir: string = defaultSocketDir()): Promise<void> {
   let names: string[];
@@ -108,9 +120,10 @@ export async function sweepMasters(dir: string = defaultSocketDir()): Promise<vo
   }
   await Promise.all(names.map(async (name) => {
     const pid = Number(SOCKET_NAME.exec(name)?.[1]);
-    if (!pid || pid === process.pid || running(pid)) return;
     const socket = path.join(dir, name);
     try {
+      const gone = pid ? pid !== process.pid && !running(pid) : UNNAMED.test(name) && await abandoned(socket);
+      if (!gone) return;
       const r = await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
       // a master that did not take the exit keeps its socket for the next sweep; one no master listens on goes
       if (r.code === 0 || /control socket connect/i.test(r.stderr)) fs.rmSync(socket, { force: true });
