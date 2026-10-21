@@ -77,7 +77,8 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
 
 const scrubbed = (blockers: Blocker[]): Blocker[] => blockers.map((b) => ({ ...b, message: withoutTokens(b.message) }));
 
-const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+// an id inside a path names a file or a folder, and stays
+const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
 const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
 /**
  * The controller's words without the ids and generations it names: the shapes it writes in whole, a transaction as the
@@ -89,6 +90,7 @@ const plain = (text: string): string => withoutTokens(text)
   .replace(ids(' in handover UUID'), ' in another handover')
   .replace(/ at generation \d+/g, '')
   .replace(ids('(^|; )UUID\\b'), '$1the handover')
+  .replace(ids(': UUID is committed'), ': the handover is committed')
   .replace(ids('\\bhandover UUID\\b'), 'the handover')
   .replace(ids('\\b(record|commit|of|abort|whether|past) UUID\\b'), '$1 the handover')
   .replace(ids('\\bmachine UUID\\b'), 'another machine')

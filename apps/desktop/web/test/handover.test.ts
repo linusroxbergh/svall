@@ -209,6 +209,13 @@ describe('what the sheet offers', () => {
     expect(said(`ssh ada@trift reaches machine ${mac}, not the gateway c41a9e07-5b3d-4e62-8f1c-2a7d9b0e6f45`)).toBe('ssh ada@trift reaches another machine, not the gateway');
     expect(said(`${id} is committed: the fleet belongs to ${mac} at generation 4, and only its activation can go on`))
       .toBe('the handover is committed: the fleet belongs to a machine, and only its activation can go on');
+    expect(said(`the gateway would not record ${id} ready: ${id} is committed; this fleet belongs to ${mac} at generation 5`))
+      .toBe('the gateway would not record the handover ready: the handover is committed; this fleet belongs to a machine');
+    // an id in a path names a file, which stays as it is
+    const transcript = `/Users/ada/.claude/projects/-Users-ada-app/${id}.jsonl`;
+    expect(said(`claude --resume exited 1 reading ${transcript}`)).toBe(`claude --resume exited 1 reading ${transcript}`);
+    expect(said(`/Users/ada/.claude/projects/-Users-ada-app/${id}/subagents is not a folder`)).toBe(`/Users/ada/.claude/projects/-Users-ada-app/${id}/subagents is not a folder`);
+    expect(said(`ssh ada@trift reaches machine ${mac}.`)).toBe('ssh ada@trift reaches another machine.');
   });
 
   it('names where a relaunched handover goes from where the fleet runs now: the other end before the commit, that end after it', () => {
