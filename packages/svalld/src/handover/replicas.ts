@@ -259,7 +259,8 @@ export class ReplicaStore {
   /**
    * Sets a root's content aside in a timestamped sibling no other file or folder holds, and returns where it now lies;
    * only when `approved` names the root. A folder that differs from what handover left in at most a few files, each one
-   * there to move, keeps the rest, and its record names that rest as handover's, so `t` claims it as a replica. Any other
+   * there to move, keeps the rest, and its record names that rest as handover's, so `t` claims it as a replica; a README
+   * in the archive names what was deleted there, which the copy brings back. Any other
    * root is renamed whole, and its record forgotten so the path can be reserved.
    */
   async archive(root: ReplicaRoot, approved: readonly string[] | undefined, t: Inspect): Promise<{ path: string; archivedTo: string }> {
@@ -282,6 +283,9 @@ export class ReplicaStore {
       const to = `${at}.archived-${stamp}${n > 1 ? `-${n}` : ''}`;
       if (few) {
         if (!this.moveOut(at, to, few.moved)) continue;
+        if (few.removed.length && !few.moved.includes('README.archived.txt')) {
+          this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${at}, which held the files here as they are. It had deleted these, which the handover's copy brings back:\n${few.removed.map((p) => `- ${p}\n`).join('')}`);
+        }
         this.put(at, few.bytes, few.record);
       } else {
         if (!this.moveAside(at, to, st.isDirectory())) continue;
@@ -297,9 +301,9 @@ export class ReplicaStore {
   /**
    * The paths to set aside from a root whose record a claim by `t` would prove it against, when it differs in at most a
    * few, each a file or link there and none in Git's records, whose objects the copy would delete; and its record once
-   * they are gone, naming what stays as what handover left.
+   * they are gone, naming what stays as what handover left; with what was deleted there.
    */
-  private async few(root: ReplicaRoot, at: string, t: Inspect): Promise<{ moved: string[]; bytes: Buffer; record: ReplicaRecord } | undefined> {
+  private async few(root: ReplicaRoot, at: string, t: Inspect): Promise<{ moved: string[]; removed: string[]; bytes: Buffer; record: ReplicaRecord } | undefined> {
     const { bytes, record: r } = this.read(at);
     if (!bytes || !r || r.state === 'reserved' || (r.state === 'receiving' && r.transactionId === t.transactionId)) return undefined;
     const accepted = r.state === 'sealed' ? [r.baseline] : [r.baseline, r.incoming, ...(t.incoming ? [t.incoming] : [])];
@@ -309,7 +313,7 @@ export class ReplicaStore {
     const git = root.kind === 'gitdir' || [...moved, ...d.removed.preview].some((p) => p.split('/').includes('.git'));
     if (git || d.unchecked.count || d.added.count + d.changed.count + d.removed.count > FEW || !moved.every((p) => there.has(p))) return undefined;
     const baseline = files.filter((f) => !moved.includes(f.path));
-    return { moved, bytes, record: r.state === 'sealed' ? { ...r, baseline } : { ...r, baseline, incoming: [] } };
+    return { moved, removed: d.removed.preview, bytes, record: r.state === 'sealed' ? { ...r, baseline } : { ...r, baseline, incoming: [] } };
   }
 
   /** Moves each path under `from` to the same path in a folder `to` made for it; false when anything holds that name. */

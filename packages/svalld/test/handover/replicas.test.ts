@@ -622,8 +622,12 @@ describe('archiving', () => {
     expect(await store.claim(dir(app), claimFor(TX, incoming))).toMatchObject({ ok: false, blocker: { code: 'destination_diverged' } });
     const canonical = path.join(real(w.work), 'app');
     expect(await store.archive(dir(app), ['r_app'], claimFor(TX, incoming))).toEqual({ path: canonical, archivedTo: `${canonical}.archived-${STAMP}` });
-    expect((await content(`${canonical}.archived-${STAMP}`)).map((f) => f.path)).toEqual(['a.txt', 'sub/new.txt']);
+    expect((await content(`${canonical}.archived-${STAMP}`)).map((f) => f.path)).toEqual(['README.archived.txt', 'a.txt', 'sub/new.txt']);
     expect(fs.readFileSync(`${canonical}.archived-${STAMP}/a.txt`, 'utf8')).toBe('edited');
+    // what was deleted there comes back with the copy, so the archive says so
+    expect(fs.readFileSync(`${canonical}.archived-${STAMP}/README.archived.txt`, 'utf8')).toBe(
+      `Archived by a Svall handover from ${canonical}, which held the files here as they are. It had deleted these, which the handover's copy brings back:\n- d.txt\n`,
+    );
     expect((await content(app)).map((f) => f.path)).toEqual(['.DS_Store', '.git/HEAD', 'b.txt', 'sub/c.txt']);
     expect(await store.claim(dir(app), claimFor(TX, incoming))).toMatchObject({ ok: true, kind: 'replica' });
   });
