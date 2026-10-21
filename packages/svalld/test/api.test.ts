@@ -58,7 +58,7 @@ describe('startApi', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     try {
       await expect(startApi({
-        host: '127.0.0.1', port: (blocker.address() as net.AddressInfo).port, token: 'secret',
+        host: '127.0.0.1', port: (blocker.address() as net.AddressInfo).port, token: 'secret', pass: 'p4ss',
         store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
         push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
         claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
@@ -89,7 +89,7 @@ runIf('API', () => {
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), silentLogger, () => [claude.json], [paths.docs, paths.agentProfiles]);
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
+      host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs,
     });

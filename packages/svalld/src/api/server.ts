@@ -22,7 +22,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string;
-  origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; pass?: string; fleetName?: () => string | undefined; heartbeatMs?: number;
+  origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
 
 const MAX_PAYLOAD = 8 * 1024 * 1024;
@@ -124,7 +124,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const behindKey = (req: IncomingMessage) => { const key = opts.key?.(); return key ? stripKey(req.url ?? '/', key) : undefined; };
   // The key proves only that much: it is in the serve command's arguments, which other users on the Mac can read. A phone
   // also holds the pass, which left the Mac in the QR code alone, in the cookie /pair set from the link's fragment
-  const paired = (req: IncomingMessage) => { const given = cookieOf(req, PASS_COOKIE); return !opts.pass || (given !== undefined && tokenMatches(given, opts.pass)); };
+  const paired = (req: IncomingMessage) => { const given = cookieOf(req, PASS_COOKIE); return given !== undefined && tokenMatches(given, opts.pass); };
   // a request through the key proves tailscale is up, so a refused one asks it again who owns this Mac: it may not have
   // answered when the daemon started, or the Mac may be signed in as someone else since
   let lookedAt = -Infinity;
@@ -147,7 +147,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return;
     }
     // a Home Screen app opens where the manifest says: a paired page's manifest leads back in with the pass
-    serveBundle(req, res, dist, opts.fleetName?.(), stripped && opts.pass && paired(req) ? `/#${opts.pass}` : undefined);
+    serveBundle(req, res, dist, opts.fleetName?.(), stripped && paired(req) ? `/#${opts.pass}` : undefined);
   });
 
   async function body(req: IncomingMessage, res: ServerResponse): Promise<string | undefined> {
@@ -167,7 +167,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     if (!originAllowed(req, origins, true)) { res.writeHead(403).end(); return; }
     const given = await body(req, res);
     if (given === undefined) return;
-    if (!opts.pass || !tokenMatches(given, opts.pass)) { res.writeHead(403).end(); return; }
+    if (!tokenMatches(given, opts.pass)) { res.writeHead(403).end(); return; }
     res.writeHead(204, { 'set-cookie': `${PASS_COOKIE}=${opts.pass}; Path=/; Max-Age=${PASS_MAX_AGE_S}; Secure; HttpOnly; SameSite=Strict` }).end();
   }
 

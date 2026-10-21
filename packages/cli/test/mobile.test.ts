@@ -3,7 +3,7 @@ import type { MobileStatus } from '@svall/protocol';
 import type { Client } from '../src/client.js';
 import { mobileCommand } from '../src/commands/mobile.js';
 
-const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', port: 8443, logins: [], phones: [] };
+const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', pair: 'https://mac.tailnet.ts.net:8443/#p4ss', port: 8443, logins: [], phones: [] };
 
 function fake(status: MobileStatus, json = false) {
   const asked: boolean[] = [];
@@ -20,11 +20,11 @@ function fake(status: MobileStatus, json = false) {
 afterEach(() => vi.restoreAllMocks());
 
 describe('svall mobile', () => {
-  it('asks the daemon to serve, and prints the QR and the link it answers with', async () => {
+  it('asks the daemon to serve, and prints the QR and the pairing link it answers with', async () => {
     const f = fake({ ...SERVING, logins: ['you@example.com'] });
     await f.run('on');
     expect(f.asked).toEqual([true]);
-    expect(f.out.join('')).toContain('https://mac.tailnet.ts.net:8443/');
+    expect(f.out.join('')).toContain('https://mac.tailnet.ts.net:8443/#p4ss');
     expect(f.out.join('')).toContain('█');
     expect(f.out.join('')).toContain('only you@example.com may drive the fleet; to let others in, list them and yourself in mobile.logins');
   });
@@ -35,6 +35,7 @@ describe('svall mobile', () => {
     const printed = JSON.parse(f.out.join('')) as MobileStatus;
     expect(printed.qr).toBeUndefined();
     expect(printed.url).toBe(SERVING.url);
+    expect(printed.pair).toBe(SERVING.pair);
     expect(f.out.join('')).not.toContain('█');
 
     const g = fake({ ...SERVING, serving: false, qr: 'data:image/png;base64,AAAA' }, true);

@@ -43,6 +43,24 @@ test('a phone left on an older page loads the new one once, and again after a la
   expect(reload).toHaveBeenCalledTimes(2);
 });
 
+// the link from the QR code carries the pass in its fragment: the page pairs by it before anything else
+test('a page opened with a pass posts it, then asks for the manifest with its cookie, then opens the socket', async () => {
+  let paired = () => {};
+  const posts: [string, RequestInit][] = [];
+  vi.stubGlobal('fetch', (url: string, init: RequestInit) => { posts.push([url, init]); return new Promise<Response>((r) => { paired = () => r(new Response(null, { status: 204 })); }); });
+  vi.stubGlobal('location', { protocol: 'https:', host: 'fleet.ts.net', pathname: '/', hash: '#p4ss', reload });
+  document.head.replaceChildren();
+  vi.resetModules();
+  apis.push((await import('../../src/mobile/boot.js')).initPhone().api());
+  expect(posts).toEqual([['/pair', { method: 'POST', body: 'p4ss' }]]);
+  expect(document.head.querySelector('link[rel=manifest]')).toBeNull();
+  expect(Socket.all).toHaveLength(0);
+  paired();
+  await vi.waitFor(() => expect(Socket.all).toHaveLength(1));
+  const link = document.head.querySelector('link[rel=manifest]')!;
+  expect([link.getAttribute('href'), link.getAttribute('crossorigin')]).toEqual(['/manifest.webmanifest', 'use-credentials']);
+});
+
 test('a patch that does not apply fetches the whole fleet again', async () => {
   const socket = await boot();
   socket.hello();

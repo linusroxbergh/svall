@@ -334,7 +334,8 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
 - Only your own tailnet login gets in, on a phone that opened the QR code's
   link or the copied one; no token reaches the phone. To let others in, list
   their logins and yours in `mobile.logins` and restart the daemon. To unpair
-  every phone, delete `mobile-pass` in the fleet's folder and restart it.
+  every phone, delete `mobile-pass` in the fleet's folder and restart it; a
+  Home Screen app is then removed and added again from the QR code's link.
 - Each fleet is its own Home Screen app on its own port: 443 for the private
   fleet, and for each other fleet the first free port from 8443 up, which the
   private fleet takes too while something else serves 443. The port is kept in
