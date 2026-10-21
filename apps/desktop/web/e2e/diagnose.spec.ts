@@ -69,7 +69,7 @@ test('a fleet on another machine that cannot be reached says so in place of the 
   await expect(screen).not.toContainText('svalld not running');
 });
 
-test('a fleet on this Mac whose gateway did not answer says so, and offers the copy here read-only when the shell has one', async ({ page }) => {
+test('a fleet on this Mac whose gateway did not answer says so, and offers the copy here when the shell has one', async ({ page }) => {
   const sent = await fakeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio', copyHere: true },
@@ -83,7 +83,7 @@ test('a fleet on this Mac whose gateway did not answer says so, and offers the c
   await expect(screen).toContainText('The gateway studio did not answer, so where the fleet runs is not known; trying again.');
   await expect(screen).not.toContainText('svalld not running');
   await expect(screen).not.toContainText('setup');
-  await expect(screen.getByTestId('connection-here')).toHaveText("Open this Mac's copy, read-only");
+  await expect(screen.getByTestId('connection-here')).toHaveText("Open this Mac's copy");
   await screen.getByTestId('connection-here').click();
   expect((await sent()).filter((m) => m.type === 'connection.here')).toEqual([{ type: 'connection.here' }]);
 });

@@ -49,7 +49,7 @@ function BannerBody({ banner }: { banner: Banner }) {
       {banner.ssh && <> Run <code data-testid="connection-ssh">ssh {banner.ssh}</code> once in Terminal, then Reconnect.</>}
       {banner.actions.map((a) => {
         switch (a) {
-          case 'here': return <button key={a} className="btn" data-testid="connection-here" onClick={() => app.bridge.send({ type: 'connection.here' })}>Open this Mac&apos;s copy, read-only</button>;
+          case 'here': return <button key={a} className="btn" data-testid="connection-here" onClick={() => app.bridge.send({ type: 'connection.here' })}>Open this Mac&apos;s copy</button>;
           case 'upgrade': return <button key={a} className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
           case 'check': return <button key={a} className="btn" data-testid="connection-check" onClick={() => check(name)}>Check {name}</button>;
           case 'reconnect': return <button key={a} className="btn" data-testid="connection-reconnect" onClick={() => app.bridge.send({ type: 'connection.retry' })}>Reconnect</button>;
