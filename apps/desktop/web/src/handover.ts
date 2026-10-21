@@ -501,12 +501,14 @@ export const shortPath = (p: string, home?: string): string => (home && (p === h
 /** The account's home a fleet home lies in, such as `/Users/ada` for `/Users/ada/.svall`. */
 export const accountHome = (fleetHome: string | undefined): string | undefined => (fleetHome ? /^\/(?:Users|home)\/[^/]+(?=\/|$)/.exec(fleetHome)?.[0] : undefined);
 
-/** Which machine the folder a blocker names is on, when its code or message says. */
-export function blockerSide(b: Blocker): 'source' | 'destination' | undefined {
+/** Which machine the folder a blocker names is on, when its code, its message or the step that found it (`phase`) says. */
+export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'destination' | undefined {
   switch (b.code) {
     case 'external_writer': return /^the source /.test(b.message) ? 'source' : 'destination';
     case 'path_symlinked': return /lands at the path it has on the source/.test(b.message) ? 'destination' : 'source';
-    case 'worktree_unresolved': case 'worktree_unused': case 'repository_unused': return 'source';
+    // the checks and the freeze read the source's folders; the destination checks its own once they have landed
+    case 'path_unsupported': return phase === 'begin' || phase === 'freeze' ? 'source' : undefined;
+    case 'worktree_unresolved': case 'worktree_unused': case 'repository_unused': case 'platform_unsupported': case 'mission_control_shared': return 'source';
     case 'destination_occupied': case 'destination_diverged': case 'parent_missing': case 'git_mismatch': case 'git_extension': case 'path_collision': return 'destination';
     default: return undefined;
   }

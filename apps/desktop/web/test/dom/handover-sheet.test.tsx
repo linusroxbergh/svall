@@ -174,6 +174,9 @@ test('Show in Finder is offered only for a folder on this Mac while the fleet ru
   say(linked('/Users/ada/src/alpha leads to /data/alpha on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first'));
   expect(screen.queryByTestId('handover-show-folder')).toBeNull();
   expect(screen.getByTestId('handover-path').textContent).toBe('/Users/ada/src/alpha on trift');
+  // a folder the checks could not carry is on this Mac
+  say({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code: 'path_unsupported', message: '/Users/ada/src/alpha: 1 path cannot be carried: a\nb', entity: { kind: 'root', id: 'r_1' } }] } });
+  expect(screen.getByTestId('handover-show-folder')).toBeTruthy();
   // in a pull the fleet runs on the gateway, and this Mac opens no folder for it
   act(() => store.getState().handoverFollow('local'));
   say(preflight, linked('/Users/ada/src/alpha leads to /Volumes/work/alpha through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use /Volumes/work/alpha instead'));

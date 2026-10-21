@@ -63,7 +63,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
   const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
   const path = entityPath(b.entity, names, b.message);
   const upgrade = upgradeAsked(b, ctx);
-  const side = blockerSide(b);
+  const side = blockerSide(b, run.decision?.phase ?? (run.result?.status === 'blocked' ? run.result.phase : undefined));
   // the shell opens a folder only on this Mac, and only while the fleet runs here
   const finder = !ctx.pull && side === 'source' && app.bridge.present;
   const picked = !!choice && chosen(run.choices, b);

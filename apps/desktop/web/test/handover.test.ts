@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing } from '@svall/protocol';
 import {
   actionsOf, applyEvent, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  goOn, rowText, sectionStates, shortPath, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, rowText, sectionStates, shortPath, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
 const tx = 'tx-1';
@@ -339,6 +339,18 @@ describe('what each blocker and warning is explained with', () => {
     const hint = blockerHint({ code: 'agent_unsettled', message: "Ada's terminal did not come to rest after it was interrupted", entity: { kind: 'character', id: 'c1' } }, ctx);
     expect(hint).toMatch(/hook/);
     expect(hint).toMatch(/Terminate and carry/);
+  });
+
+  it('says which machine a folder blocker is about where its code, message or step does', () => {
+    const root = { kind: 'root' as const, id: 'r_a' };
+    expect(blockerSide({ code: 'platform_unsupported', message: '/w/app is marked for darwin only', entity: root })).toBe('source');
+    expect(blockerSide({ code: 'mission_control_shared', message: '~/.svall/home is also the fleet work\'s', entity: root })).toBe('source');
+    expect(blockerSide({ code: 'destination_occupied', message: '/w/app already exists', entity: root })).toBe('destination');
+    // the checks read a folder on the source; the destination's own checks come later
+    const carried: Blocker = { code: 'path_unsupported', message: '/w/app: 2 paths cannot be carried: a, b', entity: root };
+    expect(blockerSide(carried, 'begin')).toBe('source');
+    expect(blockerSide(carried, 'prepare')).toBeUndefined();
+    expect(blockerSide(carried)).toBeUndefined();
   });
 
   it('sends a path that cannot travel to the terminal it is in, or a folder to what the message names', () => {
