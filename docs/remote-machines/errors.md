@@ -224,7 +224,7 @@ handover helper is running on this Mac, it names its pid instead; `svall handove
 | `moved` | The gateway closed the handover after the commit; what is left (the source's or the destination's close) only needs finishing. With the destination's journal unreadable, as for `committed`. | resume, or nothing |
 | `returned` | The gateway no longer holds the handover and the source owns the fleet at its generation; an abort only needs finishing. | abort |
 | `superseded` | The gateway has moved on past the handover this Mac's journal names, through another handover or a recovery. | `svall handover --forget` |
-| `unknown` | The gateway cannot say whether the handover committed, or could not be asked and no journal here names a handover. Nothing is safe until it answers. | nothing |
+| `unknown` | The gateway cannot say whether the handover committed, or could not be asked and no journal here names a handover. Nothing is safe until it answers: `svall host doctor <gateway>` says why it does not, and for one gone for good, [When the gateway is lost](handover.md#when-the-gateway-is-lost). | nothing |
 
 ### Action
 

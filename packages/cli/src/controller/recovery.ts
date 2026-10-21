@@ -157,7 +157,9 @@ export function assess(o: Observation): Verdict {
   const base = { ...f, phase: o.controller?.phase ?? journals.destination ?? journals.source, journals };
   const verdict = (standing: Standing, action: Verdict['action'], safe: SafeAction[], reason: string): Verdict => ({ ...base, standing, action, safe, reason });
 
-  if (!f && !o.gateway.ok) return verdict('unknown', 'none', [], `the gateway could not be asked (${o.gateway.error}), so whether a handover of this fleet is open there is unknown`);
+  if (!f && !o.gateway.ok) {
+    return verdict('unknown', 'none', [], `the gateway could not be asked (${o.gateway.error}), so whether a handover of this fleet is open there is unknown; \`svall host doctor <gateway>\` says why, and if it is gone for good, \`svall fleet recover --force-owner local\` runs the fleet without it`);
+  }
   if (!f) return verdict('none', 'none', [], 'no handover of this fleet is open anywhere');
   if (!record) {
     return verdict('unknown', 'none', [], `the gateway cannot say whether ${f.transactionId ?? 'the handover'} committed (${o.gateway.ok ? '' : o.gateway.error}); nothing is safe until it answers`);

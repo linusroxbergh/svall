@@ -66,7 +66,7 @@ const cases: Case[] = [
   {
     name: 'no word from the gateway and no journal anywhere leaves it unknown whether a handover is open, not none',
     o: { gateway: { ok: false, error: 'ssh: connect to host trift: timed out' }, source: { ok: true, value: { status: {}, ownership: { fleetId, generation: 4, ownerMachineId: mac, frozen: false } } } },
-    want: { standing: 'unknown', action: 'none', safe: [], reason: expect.stringContaining('the gateway could not be asked (ssh: connect to host trift: timed out)') },
+    want: { standing: 'unknown', action: 'none', safe: [], reason: expect.stringMatching(/^the gateway could not be asked \(ssh: connect to host trift: timed out\).*`svall host doctor <gateway>` says why.*gone for good, `svall fleet recover --force-owner local`/) },
   },
   {
     name: 'a Begin whose answer was lost is the gateway\'s preparing handover between the same machines',
