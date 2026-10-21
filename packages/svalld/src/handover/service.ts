@@ -23,8 +23,8 @@ export type HandoverDeps = {
   destination: DestinationDeps;
   /** What a record naming this machine starts, and one naming another stops. */
   fleet?: Pick<Fleet, 'activate' | 'reconcileNow' | 'deactivate' | 'resumeInterrupted'>;
-  /** Names another machine this fleet's gateway, in fleet.json and in the running config. */
-  setGateway?(id: MachineId): void;
+  /** Names another machine this fleet's gateway, or none, in fleet.json and in the running config. */
+  setGateway?(id: MachineId | undefined): void;
   /** How to ask a given machine's gateway, before it is this fleet's. */
   authorityFor?(gatewayMachineId: MachineId): Authority;
 };
@@ -97,10 +97,14 @@ export class HandoverService {
   /**
    * A record `svall fleet recover` relays. The gateway it names is asked here, and its answer is what is taken; the
    * relayed record stands in only when that gateway cannot be asked. The gateway is renamed once its record is taken.
+   * A record that names no gateway is this machine's to run alone, and once taken, fleet.json names none.
    */
-  async relay(p: { record: OwnerRecord; gatewayMachineId: MachineId }): Promise<Result<'ownership.adopt'>> {
+  async relay(p: { record: OwnerRecord; gatewayMachineId?: MachineId }): Promise<Result<'ownership.adopt'>> {
     let record = p.record;
-    const gateway = this.deps.authorityFor?.(p.gatewayMachineId);
+    if (!p.gatewayMachineId && record.ownerMachineId !== this.deps.ownership.machineId) {
+      throw Object.assign(new Error(`a record that names no gateway is run by this machine alone, and this one names ${record.ownerMachineId}`), { code: 'invalid_params' });
+    }
+    const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;
     if (gateway) {
       try {
         record = await gateway.get(this.deps.ownership.record().fleetId);

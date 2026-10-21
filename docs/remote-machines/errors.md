@@ -269,7 +269,7 @@ do, and exits 1 unless it is ready.
 | Step | Command | What it checks or does | When it fails |
 | --- | --- | --- | --- |
 | `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter) and the ssh destination. | Pick another name, or `svall host remove` the machine that holds it. |
-| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes this machine the gateway; then enable again. |
+| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes that machine the gateway, or `svall fleet recover --force-owner local` leaves the fleet with none; then enable again. |
 | `ssh` | add | An interactive ssh, so you can accept the host key and log in. | `ssh <destination>` in a terminal and complete it. |
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps, which asks nothing: Svall needs a key ssh can use without asking, and a password gets only past the `ssh` step. For an upgrade, with or without `--rollback`, and an add of a name already in the registry, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A refused login: install a key with `ssh-copy-id <destination>` and keep its passphrase in the agent (`ssh-add --apple-use-keychain`), then add the machine again. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |
 | `os` | add | Linux on x86-64 or arm64, running Ubuntu. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
@@ -333,8 +333,9 @@ and adds what only this Mac can check. A check that fails makes the command exit
 ## Disaster recovery
 
 `svall fleet recover --force-owner <machine>` writes a new ownership record at the gateway when the ordinary ways
-cannot: see [Recovering a fleet](handover.md#when-the-gateway-is-lost). It first shows what the gateway and every
-machine hold.
+cannot, or with the only gateway gone, this Mac's own record with no gateway: see
+[When the gateway is lost](handover.md#when-the-gateway-is-lost). It first shows what the gateway and every machine
+hold.
 
 ### What the gateway holds
 
@@ -344,12 +345,12 @@ machine hold.
 | `absent` | The gateway holds no record of this fleet. |
 | `corrupt` | The gateway cannot read its record (see `authority_corrupt`). |
 | `refused` | The machine answered and its authority refused or did not answer. |
-| `unreachable` | The gateway could not be reached at all. |
+| `unreachable` | The gateway could not be reached at all. `--force-owner local` then runs the fleet on this Mac alone, with no gateway; `--gateway <machine>` names another machine to take its place. |
 
 ### Results
 
 | Result | What it means | What to do |
 | --- | --- | --- |
-| `recovered` | The record is written and the machine you named took it: it owns the fleet at the new generation. | Follow any `next` lines for machines that were not reached. |
-| `incomplete` | The record is written, and the machine you named has not taken it yet. | Follow the `next` lines: stop the fleet where it still runs, then run the command again. |
-| `refused` | Nothing was written. | Follow the message: a gateway that answered is not lost, a replacement gateway must hold no record, and the fleet id must be typed to confirm. |
+| `recovered` | The record is written and the machine you named took it: it owns the fleet at the new generation, or with no gateway, runs it alone. | Follow any `next` lines for machines that were not reached. |
+| `incomplete` | The record is written, and the machine you named has not taken it yet. Run alone with this Mac's daemon down, `owner.json` and `fleet.json` are written and the daemon takes them when it starts. | Follow the `next` lines: stop the fleet where it still runs, or start this Mac's daemon, then run the command again where it says so. |
+| `refused` | Nothing was written. | Follow the message: a gateway that answered is not lost, a replacement gateway must hold no record, a machine that answers that it runs the fleet is not lost either, a handover journal on this Mac waits for its daemon, and the fleet id must be typed to confirm. |

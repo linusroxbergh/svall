@@ -241,16 +241,16 @@ If the gateway machine is gone for good, or its record of the fleet cannot be re
 `svall fleet recover` writes a new ownership record, and is never part of an ordinary retry:
 
 ```sh
-svall fleet recover --force-owner local                       # this Mac is to own the fleet
-svall fleet recover --force-owner local --gateway spare       # and another registry machine replaces the lost gateway
+svall fleet recover --force-owner local                       # the gateway is gone and nothing replaces it: this Mac runs the fleet alone
+svall fleet recover --force-owner local --gateway spare       # another registry machine replaces the lost gateway
 ```
 
 1. It shows what the gateway and every machine hold, this Mac's journal and cached route, every generation it saw,
    the record it would write (at a generation above all of them) and the risks.
 2. It writes only after you type the fleet id; without a terminal, `--confirm <fleet id>` does that.
-3. It records the write in the gateway's `recoveries.ndjson` and in `controller/recoveries.ndjson` in the fleet home,
-   then tells every machine that answers: the one it names runs the fleet, and the others let go and close their
-   terminals.
+3. It records the write in `controller/recoveries.ndjson` in the fleet home, and with a gateway also in the gateway's
+   `recoveries.ndjson`, then tells every machine that answers: the one it names runs the fleet, and the others let go
+   and close their terminals.
 4. A machine it could not reach is listed under **next**. This Mac, and the gateway's own machine unless `--gateway`
    replaced it, take the record when their daemon next starts; any other has to be stopped, then the command run
    again once it answers.
@@ -258,6 +258,26 @@ svall fleet recover --force-owner local --gateway spare       # and another regi
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
 carried. `--gateway` needs a machine from the registry that holds no record of the fleet, and is refused while the
 current gateway still answers.
+
+### When the only gateway is gone
+
+With one Linux machine, nothing can replace it as the gateway, since a Mac is never one. When it does not answer,
+`svall fleet recover --force-owner local` runs the fleet on this Mac alone:
+
+- This Mac's daemon takes a record above every generation it saw, lets go any handover its journal holds (the
+  terminals it rested reopen, and what it prepared is dropped), and runs the fleet. `fleet.json` names no gateway
+  from then on, so no handover moves the fleet until `svall host enable <host> --fleet <fleet>` makes a machine its
+  gateway again. This Mac's own journal of a handover is dropped with it.
+- With this Mac's daemon not running, the command writes `owner.json` and `fleet.json` itself and ends `incomplete`
+  until the daemon starts, unless a handover journal lies there, which only the daemon lets go: start it first
+  (`svall doctor` says why it is not running).
+- It refuses while another machine answers that it runs the fleet.
+- Then `svall host remove <name> --forget` drops the lost machine from the registry. Before the recovery it refuses
+  while this Mac keeps a journal of a handover, or the lost machine owns the fleet.
+
+The lost machine never learns of the record. If it comes back still running the fleet, both machines run it until
+you stop the fleet's daemon there (`systemctl --user stop svall-svalld@<fleet>`), and its copy of the work since the
+last handover stays on its disk.
 
 ### A gateway set up again
 

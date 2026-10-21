@@ -69,7 +69,7 @@ function boot(opts: { record?: object; journal?: unknown; home?: string; gateway
   };
   const asked: MachineId[] = [];
   const handover = new HandoverService({
-    ownership, journal: openJournal(paths), fleet, setGateway: (id) => { log.push(`gateway ${id}`); }, ...idleSides(paths, { config }),
+    ownership, journal: openJournal(paths), fleet, setGateway: (id) => { log.push(`gateway ${id ?? 'none'}`); }, ...idleSides(paths, { config }),
     ...(opts.gateway && { authorityFor: (id: MachineId) => { asked.push(id); return opts.gateway!; } }),
   });
   return { home, paths, ownership, handover, log, asked };
@@ -447,6 +447,23 @@ describe('a record a recovery relays', () => {
       expect(await b.handover.relay({ record: relayed, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
       expect(b.log).toEqual(['activate', 'reconcile', 'resume', `gateway ${third}`]);
     }
+  });
+
+  it('runs the fleet alone on a record that names no gateway, asking none, letting go the handover it supersedes and dropping the gateway fleet.json names', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination(), gateway: { get: async () => { throw new Error('a gateway was asked'); } } });
+    await enter(b);
+    expect(await b.handover.relay({ record: relayed })).toMatchObject({ adopted: true, superseded: 'tx-1', ownership: { generation: 9, ownerMachineId: me, frozen: false } });
+    expect(b.asked).toEqual([]);
+    expect(b.handover.journalState()).toEqual({ kind: 'none' });
+    expect(b.ownership.writable()).toBe(true);
+    expect(b.log).toEqual(['activate', 'reconcile', 'resume', 'gateway none']);
+  });
+
+  it('refuses a record that names no gateway and another machine as the owner, and changes nothing', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: other } });
+    await expect(b.handover.relay({ record: { ...relayed, ownerMachineId: other } })).rejects.toMatchObject({ code: 'invalid_params' });
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: other });
+    expect(b.log).toEqual([]);
   });
 
   it('refuses a relayed record the gateway says it does not hold, and changes nothing', async () => {
