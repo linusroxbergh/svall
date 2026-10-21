@@ -428,6 +428,9 @@ describe('fleet recover --force-owner', () => {
     expect(await quiet.run({ gateway: 'vault', confirm: fleetId })).toBe(false);
     expect(quiet.of('recover.result')[0].message).toMatch(/trift is not lost/);
     expect(quiet.audit(VAULT)).toEqual([]);
+    // without a replacement, the refusal names how to start the authority again
+    expect(await quiet.run({ confirm: fleetId })).toBe(false);
+    expect(quiet.of('recover.result')[1].message).toMatch(/on trift, `systemctl --user start svall-gateway` starts it, and `svall host doctor trift` says why it stopped/);
 
     const holding = world();
     holding.hold(TRIFT, record);

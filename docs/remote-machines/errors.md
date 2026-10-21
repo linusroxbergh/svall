@@ -360,7 +360,7 @@ hold.
 | `record` | The gateway answered with its record: who owns the fleet, at which generation, and any open handover. |
 | `absent` | The gateway holds no record of this fleet. |
 | `corrupt` | The gateway cannot read its record (see `authority_corrupt`). |
-| `refused` | The machine answered and its authority refused or did not answer. |
+| `refused` | The machine answered and its authority refused or did not answer. One that did not answer is down, not lost: `systemctl --user start svall-gateway` there starts it. |
 | `unreachable` | The gateway could not be reached at all. `--force-owner local` then runs the fleet on this Mac alone, with no gateway; `--gateway <machine>` names another machine to take its place. |
 
 ### Results

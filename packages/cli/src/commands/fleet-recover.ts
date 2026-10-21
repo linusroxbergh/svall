@@ -83,7 +83,10 @@ async function readGateway(d: RecoverDeps, entry: MachineEntry, fleetId: FleetId
   const { code, message } = answer.error;
   if (code === 'not_found') return { state: 'absent' };
   // the machine answered, and only its authority did not: that gateway is down, not lost
-  if (code === 'disconnected' || code === 'timeout') return { state: 'refused', message: `its machine answered, and its authority did not: ${message}` };
+  if (code === 'disconnected' || code === 'timeout') {
+    const name = entry.record.name;
+    return { state: 'refused', message: `its machine answered, and its authority did not: ${message}; on ${name}, \`systemctl --user start svall-gateway\` starts it, and \`svall host doctor ${name}\` says why it stopped` };
+  }
   return { state: code === 'authority_corrupt' ? 'corrupt' : 'refused', message };
 }
 
