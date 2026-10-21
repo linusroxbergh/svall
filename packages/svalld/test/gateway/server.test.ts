@@ -276,11 +276,20 @@ describe('a fleet authority as its daemon reaches it', () => {
     expect((await failure(far.get(FLEET))).code).toBe('not_found');
     answer = { code: 255, stdout: '', stderr: 'ssh: connect to host trift port 22: Connection refused' };
     expect(await failure(far.get(FLEET))).toEqual(expect.objectContaining({ code: 'disconnected', message: expect.stringMatching(/Connection refused/), data: undefined }));
-    // an ssh that would have to ask before it went on says so, apart from one that reached nothing
-    for (const stderr of ['linus@trift: Permission denied (publickey).', 'Host key verification failed.']) {
-      answer = { code: 255, stdout: '', stderr };
-      expect(await failure(far.get(FLEET)), stderr).toEqual(expect.objectContaining({ code: 'disconnected', data: { prompt: true } }));
+    // an ssh that would have to ask before it went on says what for, apart from one that reached nothing
+    const asked: [number, string, string][] = [
+      [255, 'linus@trift: Permission denied (publickey).', 'auth'],
+      [255, 'Received disconnect from 100.64.0.2 port 22:2: Too many authentication failures', 'auth'],
+      [255, 'Host key verification failed.', 'host_key'],
+      // Tailscale SSH in check mode waits for the browser until the timeout kills ssh
+      [-1, '# Tailscale SSH requires an additional check.\n# To authenticate, visit: https://login.tailscale.com/a/l1234', 'approval'],
+    ];
+    for (const [code, stderr, prompt] of asked) {
+      answer = { code, stdout: '', stderr };
+      expect(await failure(far.get(FLEET)), stderr).toEqual(expect.objectContaining({ code: 'disconnected', data: { prompt, ssh: 'linus@trift' } }));
     }
+    answer = { code: -1, stdout: '', stderr: '' };
+    expect(await failure(far.get(FLEET))).toEqual(expect.objectContaining({ code: 'disconnected', data: undefined }));
     // a frame that is no authority's answer is a refusal, never taken for silence
     answer = { code: 0, stdout: `${named}${JSON.stringify({ result: { record: { fleetId: FLEET } } })}\n`, stderr: '' };
     expect(await failure(far.get(FLEET))).toMatchObject({ code: 'invalid_request' });

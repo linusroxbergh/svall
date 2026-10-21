@@ -426,7 +426,10 @@ describe('source preflight', () => {
     expect(await ask()).toEqual([{ code: 'authority_unreachable', message: expect.stringContaining('ECONNREFUSED') }]);
     b.gateway.down = false;
     const cases: [AuthorityFailure, string, RegExp][] = [
-      [new AuthorityFailure('disconnected', 'ssh linus@trift exited 255 without an answer: Permission denied (publickey).', { prompt: true }), 'ssh_interactive', /Permission denied/],
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited 255 without an answer: Permission denied (publickey).', { prompt: 'auth', ssh: 'linus@trift' }), 'ssh_interactive', /Permission denied.*ssh-add.*ssh-copy-id linus@trift/],
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited 255 without an answer: Host key verification failed.', { prompt: 'host_key', ssh: 'linus@trift' }), 'ssh_interactive', /host key.*run ssh linus@trift once/],
+      [new AuthorityFailure('disconnected', 'ssh linus@trift exited -1 without an answer: # Tailscale SSH requires an additional check.', { prompt: 'approval', ssh: 'linus@trift' }), 'ssh_interactive', /approve it in the browser, or run ssh linus@trift once/],
+      [new AuthorityFailure('invalid_request', '/Users/linus/.config/svall/machines.json names no ssh route to the gateway 1111'), 'authority_unreachable', /no ssh route.*svall host add/],
       [new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'), 'authority_unreachable', /did not answer owner\.get/],
       [new AuthorityFailure('authority_corrupt', `the record for fleet ${fleetId} is unreadable`), 'authority_corrupt', /unreadable.*svall fleet recover/],
       [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall host enable/],

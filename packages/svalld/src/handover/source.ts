@@ -196,7 +196,20 @@ function unasked(e: unknown): Blocker {
   if (code === 'authority_corrupt') {
     return { code, message: `the gateway cannot read its record of this fleet: ${said}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };
   }
-  if (e instanceof AuthorityFailure && e.data?.prompt) return { code: 'ssh_interactive', message: `this machine's ssh to its gateway would have to ask before it could go on: ${said}` };
+  const prompt = e instanceof AuthorityFailure ? e.data?.prompt : undefined;
+  const ssh = e instanceof AuthorityFailure && typeof e.data?.ssh === 'string' ? e.data.ssh : '<gateway>';
+  if (prompt === 'approval') {
+    return { code: 'ssh_interactive', message: `this machine's ssh to its gateway waits for a check Tailscale asks for: ${said}; approve it in the browser, or run ssh ${ssh} once in a terminal, then try again` };
+  }
+  if (prompt === 'host_key') {
+    return { code: 'ssh_interactive', message: `this machine's ssh to its gateway would have to ask about the gateway's host key: ${said}; run ssh ${ssh} once in a terminal and check the key, then try again` };
+  }
+  if (prompt) {
+    return { code: 'ssh_interactive', message: `this machine's ssh to its gateway could not log in without asking: ${said}; add its key to the agent with ssh-add, or install one there with ssh-copy-id ${ssh}, then try again` };
+  }
+  if (code === 'invalid_request') {
+    return { code: 'authority_unreachable', message: `this machine could not ask its gateway who owns this fleet: ${said}; add the gateway with svall host add <gateway> --ssh <destination>, then try again` };
+  }
   return { code: 'authority_unreachable', message: `this machine could not ask its gateway who owns this fleet: ${said}; try again once the gateway answers` };
 }
 

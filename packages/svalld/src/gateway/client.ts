@@ -154,8 +154,18 @@ const Registry = z.object({ machines: z.record(z.string(), MachineRecord) });
 // the far svall names its machine before the authority answers, so a route that now leads elsewhere is refused
 const OWNER_GET = '"$1" version --json; exec "$1" gateway owner get --fleet "$2"';
 
-// what ssh in batch mode says where it would have asked for a password, a passphrase or a host key
-const PROMPT = /permission denied|too many authentication failures|no supported authentication|host key verification failed|remote host identification has changed/i;
+// what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
+const AUTH = /permission denied|too many authentication failures|no supported authentication/i;
+const HOST_KEY = /host key verification failed|remote host identification has changed/i;
+// what Tailscale SSH in check mode prints while it waits for a check in the browser, until the timeout kills ssh
+const APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
+
+/** What ssh would have had to ask about before it could go on, from what it printed. */
+function prompted(r: { code: number; stderr: string }): 'auth' | 'host_key' | 'approval' | undefined {
+  if (r.code === 255 && AUTH.test(r.stderr)) return 'auth';
+  if (r.code === 255 && HOST_KEY.test(r.stderr)) return 'host_key';
+  return APPROVAL.test(r.stderr) ? 'approval' : undefined;
+}
 
 export type FleetAuthorityOptions = {
   gatewayMachineId: MachineId;
@@ -195,9 +205,10 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'svall-owner', svallExe(gateway.svallBase), fleetId].map(shq).join(' ')]);
       const answeredAs = versionMachineId(r.stdout);
       const line = lastLine(r.stdout);
+      const prompt = prompted(r);
       const silent = (): AuthorityFailure =>
         new AuthorityFailure('disconnected', `ssh ${gateway.ssh} exited ${r.code} without an answer: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 200)}`,
-          r.code === 255 && PROMPT.test(r.stderr) ? { prompt: true } : undefined);
+          prompt && { prompt, ssh: gateway.ssh });
       // an ssh that answered nothing never reached a machine to tell apart
       if (answeredAs === undefined && line === undefined) throw silent();
       if (answeredAs !== o.gatewayMachineId) {
