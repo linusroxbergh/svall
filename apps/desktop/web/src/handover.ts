@@ -529,9 +529,9 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Both machines need the same Svall release: Upgrade ${linux} under Settings → Machines. If it runs a newer release than this Mac, update this Mac first.`;
     }
     case 'authority_unreachable':
-      return `The fleet's gateway did not answer: Check ${ctx.pull ? ctx.source : ctx.destination} under Settings → Machines, then try again.`;
+      return `The fleet's gateway could not say who owns this fleet: Check ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} under Settings → Machines, then try again.`;
     case 'authority_corrupt':
-      return `The gateway on ${ctx.pull ? ctx.source : ctx.destination} cannot read its record of this fleet: put a readable record back there, or run svall fleet recover in a terminal.`;
+      return `The gateway on ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} cannot read its record of this fleet: put a readable record back there, or run svall fleet recover in a terminal.`;
     case 'agent_cli_missing':
       return "Install it on the machine the message names, where Svall's daemon finds it, then try again.";
     case 'agent_logged_out':
