@@ -92,7 +92,7 @@ function createApp(): AppContext {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
       if (m.type === 'shell.info') {
-        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, handoverEnabled: m.handoverEnabled, gateway: m.gateway });
+        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, handoverEnabled: m.handoverEnabled, gateway: m.gateway, profile: m.profile });
         if (m.handoverEnabled && !followedHandover) {
           followedHandover = true;
           store.getState().handoverFollow();

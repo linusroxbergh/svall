@@ -13,15 +13,16 @@ an agent your fleet runs that is missing or not logged in there does.
 ## From the app
 
 Choose **Handover** at the foot of the sidebar, then the machine to move the fleet to: the gateway's name, or **This
-Mac** to bring it back. The sheet follows five steps:
+Mac** to bring it back. The sheet follows six steps:
 
 1. **Checks.** Nothing is touched yet. The sheet lists what would be carried, anything that blocks, and warnings.
 2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
    terminal is brought to rest, and its window closed. The Load tab still reads; its Sleep and Delete are refused.
 3. **Transferring files and sessions.** Each folder and agent session is copied, with progress.
-4. **Verifying and committing.** The copy is checked, the other machine prepares the fleet, and the gateway commits
-   it to that machine. From here there is no way back.
-5. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
+4. **Verifying.** The copy is checked, and the other machine prepares the fleet. Abort still gives it back.
+5. **Committing.** The gateway commits the fleet to that machine. From here there is no way back, and the sheet says
+   so.
+6. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
 
 When something needs your answer, the sheet waits for one. You can close it meanwhile, such as to answer an agent in
 its terminal, and open it again from **Handover**, which is marked while a decision waits:
@@ -39,7 +40,8 @@ A character marked **keep on this machine** on its card blocks the handover unti
 
 Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own, and quitting
 leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
-handover stands, with **Resume** and **Abort** before the commit, or only **Retry** after it.
+handover stands, with **Resume** and **Abort** before the commit. After it, resuming is all that is safe, so the sheet
+resumes by itself and offers **Retry** only if that stops again.
 
 Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.
@@ -215,7 +217,7 @@ four to say what is safe:
 | --- | --- |
 | Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet; `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
 | Resume only | After the commit. `svall handover --resume` activates the fleet on the machine it went to. The machine it came from never takes it back by itself. |
-| Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again. A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
+| Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again; if it is gone for good, see [When the gateway is lost](#when-the-gateway-is-lost). A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
 | Forget | The gateway has moved on past this handover. `svall handover --forget` drops this Mac's journal of it. |
 
 What else to know:
@@ -230,8 +232,8 @@ What else to know:
   commit, goes on. Keep the Mac awake until a handover ends.
 - **A dropped link** takes the controller from about 45 seconds to two and a half minutes to give up, depending on
   the step: each call waits up to 30 seconds and is asked up to four times, and the ssh connection is closed after 45
-  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort, or Retry after
-  the commit. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
+  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort before the
+  commit; after it, the sheet resumes by itself once, then offers Retry. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
   it then ends complete, and `svall handover --resume` finishes what they missed.
 - **A handover journal a machine cannot read** is moved aside to `handover/journal.json.broken-<time>` in its fleet
   home, and that machine starts read-only. On the machine the fleet came from, Abort takes the fleet back and reopens

@@ -9,6 +9,7 @@ import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { manifestDigest, spaceNeed, type ScanFs } from '@svall/svalld/handover/manifest';
 import { replicaRoots } from '@svall/svalld/handover/replicas';
 import { resolvePaths } from '@svall/svalld/paths';
+import { entryEvent } from '../../src/controller/events.js';
 import { Handover, NoRoute, Refused } from '../../src/controller/handover.js';
 import { authorityOp, connectHandover, gatewayOf, Masters, reconnecting } from '../../src/controller/reach.js';
 import { remoteOwner } from '../../src/controller/authority.js';
@@ -44,12 +45,19 @@ describe('the controller transaction', () => {
     expect(phases(w)).toEqual(['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete']);
     // rows for the sheet: each root and session file as it lands, each character as it comes up
     const entity = (id: string) => w.events.find((e) => e.event === 'handover.entity' && e.data.id === id);
-    expect(entity('r_app')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64 } });
+    expect(entity('r_app')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64, verified: true } });
     expect(entity('s0')).toMatchObject({ data: { kind: 'session', phase: 'verify' } });
     expect(entity('c_bo')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', error: expect.stringContaining('SessionStart') } });
     expect(w.events[0]).toMatchObject({ event: 'handover.preflight', data: { blockers: [], summary: { roots: 2 } } });
     expect(settledOn(w)).toBe('destination');
     expect(w.events.at(-1)).toEqual({ event: 'handover.result', data: out });
+  });
+
+  it('marks a transfer row verified only once its copy is, as a row still being checked has its phase and every byte too', () => {
+    const row = (state: 'verifying' | 'verified') =>
+      entryEvent('tx-1', { id: 'r_app', kind: 'root', state, pass: 1, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, updatedAt: 0 });
+    expect(row('verifying')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64 } });
+    expect(row('verified').data).toMatchObject({ phase: 'verify', verified: true });
   });
 
   it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {

@@ -8,7 +8,8 @@ export type Connection = { host: string; port: number; token: string };
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
 // handoverEnabled: fleet.json's handover.enabled, which every control for another machine waits on
 // gateway: the registry name of the machine fleet.json names as its gateway
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string };
+// profile: the one `svall -p` names this fleet by, absent for the private fleet and a home of its own
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string; profile?: string };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 

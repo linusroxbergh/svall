@@ -438,7 +438,7 @@ final class ShellRouter {
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
                                ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: SvallHome.handoverEnabled(),
-                               gateway: SvallHome.gatewayName()))
+                               gateway: SvallHome.gatewayName(), profile: SvallHome.profile))
     }
 
     private func followHandover(_ run: (HandoverSession) throws -> Void) {

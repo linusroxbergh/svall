@@ -55,10 +55,13 @@ export type Verdict = {
   reason: string;
 };
 
-/** How far one character, root or session row has come, and why it stopped; `archivedTo`: where what a root held before went. */
+/**
+ * How far one character, root or session row has come, and why it stopped; `archivedTo`: where what a root held before went;
+ * `verified`: the destination has verified a root's or session's copy, which phase `verify` alone does not say.
+ */
 export type EntityData = {
   transactionId: string; kind: HandoverEntityKind; id: string; phase: HandoverPhase;
-  done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string;
+  done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string; verified?: boolean;
 };
 
 /** What a blocker or a row points at, for a person: each character's name, where each root lands, and whose each session row `s<i>` is. */

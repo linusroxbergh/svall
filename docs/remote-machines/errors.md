@@ -6,7 +6,8 @@ page lacks or this page names one the code no longer has.
 
 Where codes show up:
 
-- **The handover sheet** shows the message the machine wrote and, for many codes, a line on what to do.
+- **The handover sheet** shows the message the machine wrote with its code beside it and, for every code that blocks, a
+  line on what to do.
 - **`svall handover`** prints a blocker as `✗ <who>: <message> (<code>)` and a warning with `!`. With `--json`, each
   blocker or warning carries `code`, `message` and, when it is about one thing, `entity` (`character`, `root`,
   `session` or `git`, with its id).
@@ -36,10 +37,10 @@ What `handover.changed` and `status` report, in order.
 | `begin` | Checks | The gateway opens the handover at the fleet's generation. | Resume or Abort. |
 | `freeze` | Resting characters | The source fences every change, rests its terminals and writes the manifest. | Resume or Abort. |
 | `transfer` | Transferring files and sessions | The destination claims each folder, then rsync copies folders and sessions. | Resume or Abort; a resume copies only what changed. |
-| `verify` | Verifying and committing | The copy is checked against the source. | Resume or Abort. |
-| `prepare` | Verifying and committing | The destination proves what landed, imports Git, places the sessions, flushes what landed to disk and writes the state it would run. | Resume or Abort. |
-| `ready` | Verifying and committing | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
-| `commit` | Verifying and committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
+| `verify` | Verifying | The copy is checked against the source. | Resume or Abort. |
+| `prepare` | Verifying | The destination proves what landed, imports Git, places the sessions, flushes what landed to disk and writes the state it would run. | Resume or Abort. |
+| `ready` | Verifying | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
+| `commit` | Committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
 | `activate` | Resuming characters | The destination runs the fleet and resumes the terminals the handover rested. | Resume (Retry). |
 | `complete` | Resuming characters | Both machines and the gateway close the handover. | Resume finishes what is left. |
 | `aborted` | the section it stopped in | An abort is letting go on both machines. The source takes its fleet back first, and a machine that cannot be reached lets go at the next Abort. | Abort again finishes it. |
@@ -61,7 +62,7 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 | --- | --- | --- | --- |
 | `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine or the gateway answered with another machine id, the gateway holds no record of this fleet, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin from a machine that does not own the fleet, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: `svall host enable <host> --fleet <fleet>`. Another fleet on the destination: the same command gives it a copy of this one. A machine set up again, with a new machine id, or a gateway with no record of the fleet: [A gateway set up again](handover.md#a-gateway-set-up-again). Run handovers from the Mac. |
 | `generation_mismatch` | blocks | The source's copy of the ownership record and the gateway's name different generations: another handover or a recovery moved the fleet since the source last heard, or the gateway's record was made again. | `svall handover status`. With nothing open and the gateway ahead, restart the source's daemon: on start it takes a record with a higher generation, never a lower one. A gateway behind the source, as one [set up again](handover.md#a-gateway-set-up-again) is, needs `svall fleet recover --force-owner <machine>` naming the machine that runs the fleet (`local` for this Mac), which writes a record above both. |
-| `transaction_open` | blocks | A handover of this fleet is already open: at the gateway (also when Begin finds another handover there, or this one past preparing), as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `svall handover status`, then `svall handover --resume` or `--abort`, whichever it says is safe. |
+| `transaction_open` | blocks | A handover of this fleet is already open: at the gateway (also when Begin finds another handover there, or this one past preparing), as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `svall handover status`, then `svall handover --resume` or `--abort`, whichever it says is safe. The sheet reads that status itself for this blocker, `generation_mismatch` and `identity_mismatch`, and when its status finds one open, offers Resume, Abort or Forget in place of a new start. |
 | `incompatible_release` | blocks | The two machines run different Svall releases. A handover needs the same release on both. | `svall host upgrade <host>` installs this Mac's release there. If the host is newer, update Svall on the Mac first. |
 | `incompatible_protocol` | blocks | The two machines speak different RPC protocols, or the gateway keeps its ownership records under another authority schema than this Mac's release. | As for `incompatible_release`, on the machine the message names. |
 | `incompatible_schema` | blocks | The two machines read different fleet state or transfer manifest versions. | As for `incompatible_release`. |
@@ -244,7 +245,7 @@ What `svall handover --json` prints, one per line. The app reads the same stream
 | --- | --- |
 | `handover.preflight` | The checks: what the manifest holds, the blockers, the warnings and the names of the characters, folders and sessions. |
 | `handover.changed` | The step the controller has moved to. |
-| `handover.entity` | One character, folder or session row: its progress, a notice, its error, or for an archived folder where the old copy is kept (`archivedTo`). |
+| `handover.entity` | One character, folder or session row: its progress, a notice, its error, for an archived folder where the old copy is kept (`archivedTo`), and for a folder or session the destination has verified, `verified`. |
 | `handover.blocked` | A decision that waits for an answer, with the choices the run holds so far, which an answer builds on. |
 | `handover.retry` | A call that did not answer and is being asked again. |
 | `handover.result` | The last line: how the run ended. |
