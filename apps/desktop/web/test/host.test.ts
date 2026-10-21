@@ -39,6 +39,20 @@ describe('host run', () => {
     expect(JSON.stringify(run)).not.toContain('s3cr3t');
   });
 
+  it('names no machine by its id, and keeps an id that names a file', () => {
+    const [other, mine, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
+    let run = beginRun('add', { name: 'trift', ssh: 'trift.test' });
+    run = applyStep(run, step('master', 'fail', { detail: `trift.test now reaches machine ${other}, not trift (${far})`, action: `point trift.test back at trift (${far})` }));
+    run = applyStep(run, step('machine', 'fail', { detail: `/Users/ada/.svall/owner.json names ${other}, not this machine (${mine}): its daemon runs as that machine` }));
+    run = applyStep(run, step('claude', 'warn', { detail: `/Users/ada/.claude/projects/-app/${other}.jsonl is not there` }));
+    expect(run.steps.map((s) => s.detail)).toEqual([
+      'trift.test now reaches another machine, not trift',
+      '/Users/ada/.svall/owner.json names another machine, not this machine: its daemon runs as that machine',
+      `/Users/ada/.claude/projects/-app/${other}.jsonl is not there`,
+    ]);
+    expect(run.steps[0].action).toBe('point trift.test back at trift');
+  });
+
   it('masks a token wherever it is labelled, and leaves the rest of the line alone', () => {
     expect(withoutTokens('machine 3f2a-9c: {"token":"abc123"} ok')).toBe('machine 3f2a-9c: {"token":"…"} ok');
     expect(withoutTokens('no secret here')).toBe('no secret here');

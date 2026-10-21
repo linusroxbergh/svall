@@ -8,6 +8,13 @@ export function withoutTokens(text: string): string {
   return text.replace(TOKEN, '$1…').replace(TOKEN_FLAG, '$1…');
 }
 
+// a machine's id says nothing to a person; one inside a path names a file, and stays
+const ID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
+const withoutIds = (text: string): string => text
+  .replace(new RegExp(` \\(${ID}\\)`, 'gi'), '')
+  .replace(new RegExp(`\\b(machine )?${ID}`, 'gi'), 'another machine');
+const plainStep = (text: string): string => withoutIds(withoutTokens(text));
+
 /** The phases the checklist shows, and the steps `svall host …` emits inside each. */
 const PHASES = [
   { phase: 'connect', label: 'Connection', steps: ['name', 'machine', 'ssh', 'master'] },
@@ -50,8 +57,8 @@ export const beginRun = (op: HostOp, args: HostArgs): HostRun => ({ op, args, st
 export function applyStep(run: HostRun, event: HostStep): HostRun {
   const row: HostStep = {
     step: event.step, status: event.status,
-    ...(event.detail ? { detail: withoutTokens(event.detail) } : {}),
-    ...(event.action ? { action: withoutTokens(event.action) } : {}),
+    ...(event.detail ? { detail: plainStep(event.detail) } : {}),
+    ...(event.action ? { action: plainStep(event.action) } : {}),
   };
   if (event.status === 'start' && run.steps.some((s) => s.step === event.step)) return run;
   const at = run.steps.findIndex((s) => s.step === event.step && s.status === 'start');
