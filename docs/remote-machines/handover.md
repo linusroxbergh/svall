@@ -256,7 +256,8 @@ What else to know:
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the
   handover until you copy the changes back or archive it. What a pass after a folder's first replaces there is kept
-  aside; only a file saved there before the first pass reaches it is lost.
+  aside; only a file saved there after the checks and before the folder's first pass reaches it is lost, and the checks
+  cover every folder at once, before the first is copied.
 - **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
 
@@ -374,11 +375,11 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   background server, whose hooks Svall ignores, so its terminal has no agent: the checks show `shell_busy` (*is running
   codex*), and Terminate and carry leaves its session on the machine the fleet left. Type `codex --no-daemon` there
   instead; a character's own zsh and the agents Svall starts add it already.
-- **An edit on the other machine before the copy reaches it can be lost.** The checks compare each folder there with
-  what was last carried before the copy starts, and every pass after a folder's first keeps aside what it replaces,
-  but a file saved there after the checks and before the folder's first pass reaches it is overwritten. Folders are
-  copied one after another, so that can be a while for the last of them. Leave the other machine's copies alone until
-  the handover ends.
+- **An edit on the other machine before the copy reaches it can be lost.** The checks compare every folder there with
+  what was last carried, all at once, just before the copy starts. Folders are then copied one after another, and every
+  pass after a folder's first keeps aside what it replaces, but a file saved in a folder after the checks and before
+  that folder's first pass reaches it is overwritten. For each folder, that span takes in the copy and verification of
+  every folder ahead of it. Leave the other machine's copies alone until the handover ends.
 - **A folder whose parent cannot be written on the other machine**, such as `/srv/app` with `/srv` owned by root,
   stops the copy with an rsync error once a pass after its first has something to keep aside, since
   `<folder>.overwritten-<handover id>` goes beside it.
