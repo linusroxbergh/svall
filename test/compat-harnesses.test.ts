@@ -12,6 +12,10 @@ const claudeSdk = (drop?: string) => [
   'export declare type BaseHookInput = {\n    session_id: string;\n    transcript_path: string;\n    cwd: string;\n};',
   ...CLAUDE_HOOKS.map((e) => `export declare type ${e}HookInput = BaseHookInput & {\n${['hook_event_name', ...CLAUDE_FIELDS[e]].filter((k) => `${e}.${k}` !== drop).map((k) => `    ${k}: string;`).join('\n')}\n};`),
 ].join('\n');
+// what the session adapter reads out of Claude Code's binary, as its bundled JS spells it
+const claudeBin = 'function gg(){return S(Me(),"projects")}let o=S(xb(a),`${e}.jsonl`);S(n,".claude.json");S(n,".config.json");'
+  + 'S(d,".claude","settings.local.json");var zhe={hasTrustDialogAccepted:!1};ue().bypassPermissionsModeAccepted;skipDangerousModePermissionPrompt:x()';
+const claudeFiles = (sdk = claudeSdk()): Files => ({ 'sdk.d.ts': sdk, claude: claudeBin });
 
 const codexFiles = (): Files => {
   const files: Files = { 'codex-rs/hooks/schema/generated/': 'stop.command.input.schema.json\nsubagent-start.command.input.schema.json\nstop.command.output.schema.json' };
@@ -50,10 +54,17 @@ const opencodeFiles = (): Files => ({
 
 describe('checks', () => {
   test('Claude: a release with everything passes, and one that drops a field Svall reads names it', () => {
-    expect(HARNESSES.claude.check({ 'sdk.d.ts': claudeSdk() })).toEqual({ missing: [], events: ['PreToolUse', 'Stop'] });
-    expect(HARNESSES.claude.check({ 'sdk.d.ts': claudeSdk('Notification.notification_type') }).missing).toEqual(['Notification.notification_type']);
-    expect(HARNESSES.claude.check({ 'sdk.d.ts': claudeSdk().replace('export declare type StopHookInput', 'export declare type Gone') }).missing).toEqual(['hook Stop']);
-    expect(HARNESSES.claude.check({ 'sdk.d.ts': undefined }).missing).toEqual(["the Agent SDK's sdk.d.ts"]);
+    expect(HARNESSES.claude.check(claudeFiles())).toEqual({ missing: [], events: ['PreToolUse', 'Stop'] });
+    expect(HARNESSES.claude.check(claudeFiles(claudeSdk('Notification.notification_type'))).missing).toEqual(['Notification.notification_type']);
+    expect(HARNESSES.claude.check(claudeFiles(claudeSdk().replace('export declare type StopHookInput', 'export declare type Gone'))).missing).toEqual(['hook Stop']);
+    expect(HARNESSES.claude.check({ ...claudeFiles(), 'sdk.d.ts': undefined }).missing).toEqual(["the Agent SDK's sdk.d.ts"]);
+  });
+
+  test('Claude: where a session lies and the keys that trust a folder and accept bypass mode are read from its binary', () => {
+    const f = claudeFiles();
+    f.claude = f.claude!.replace('`${e}.jsonl`', '`${e}.json`').replace('hasTrustDialogAccepted', 'trustAccepted');
+    expect(HARNESSES.claude.check(f).missing).toEqual(['session }.jsonl`', 'session hasTrustDialogAccepted']);
+    expect(HARNESSES.claude.check({ ...claudeFiles(), claude: undefined }).missing).toEqual(["Claude Code's native binary"]);
   });
 
   test('Codex: hooks and rollout records Svall reads are checked, and the hook list read', () => {

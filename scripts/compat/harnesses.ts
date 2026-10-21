@@ -20,10 +20,11 @@ export type Release = { version: string; fresh: string; note?: string; problem?:
 /** A vendor source that couldn't be reached, as opposed to one that answered without the file. */
 export class Unreachable extends Error {}
 
-async function fetchOk(url: string): Promise<Response | undefined> {
+// `ms` bounds the body's download too
+async function fetchOk(url: string, ms = 30_000): Promise<Response | undefined> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { 'user-agent': 'svall-compat' }, signal: AbortSignal.timeout(30_000) });
+    res = await fetch(url, { headers: { 'user-agent': 'svall-compat' }, signal: AbortSignal.timeout(ms) });
   } catch (e) {
     throw new Unreachable(`${url}: ${(e as Error).message}`);
   }
@@ -40,6 +41,19 @@ async function json<T>(url: string): Promise<T> {
 const raw = (repo: string, ref: string, file: string) => text(`https://raw.githubusercontent.com/${repo}/${ref}/${file}`);
 async function rawAll(repo: string, ref: string, paths: string[]): Promise<Files> {
   return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await raw(repo, ref, p)] as const)));
+}
+
+/** A file of an npm tarball, or undefined when the tarball or the file is gone. */
+async function untar(url: string | undefined, file: string, ms?: number): Promise<Buffer | undefined> {
+  const tgz = url === undefined ? undefined : await fetchOk(url, ms);
+  if (!tgz) return undefined;
+  const input = Buffer.from(await tgz.arrayBuffer());
+  try {
+    return execFileSync('tar', ['-xzOf', '-', `package/${file}`], { input, maxBuffer: 1 << 30, stdio: ['pipe', 'pipe', 'ignore'] });
+  } catch {
+    // tar fails when the tarball no longer holds the file
+    return undefined;
+  }
 }
 
 /** Each word that a file of `words` no longer holds, as `<label> <word>`; a file that is gone is left to the caller. */
@@ -80,6 +94,13 @@ type SdkDoc = { versions: Record<string, { claudeCodeVersion?: string; dist: { t
 let sdkDoc: Promise<SdkDoc> | undefined;
 const sdk = () => (sdkDoc ??= json<SdkDoc>('https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk'));
 const SDK_TYPES = 'sdk.d.ts';
+// no SDK holds Claude Code's config keys or session paths; its native binary, published with each release, holds its JS as plain text
+const CLAUDE_BIN = 'claude';
+const binTarball = (version: string) => `https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-${version}.tgz`;
+// what the session adapter (src/handover/sessions/claude.ts) reads: projects/<slug>/<id>.jsonl, by the minified joins that
+// build it, and the config and settings keys that trust a folder and accept bypass mode
+const CLAUDE_STRINGS = [',"projects")', '}.jsonl`', '.claude.json', '.config.json', 'settings.local.json',
+  'hasTrustDialogAccepted', 'bypassPermissionsModeAccepted', 'skipDangerousModePermissionPrompt'];
 
 /** The Claude Code release to check: the newest, or while its Agent SDK isn't out yet, the newest one an SDK types. */
 const DAY = 24 * 60 * 60 * 1000;
@@ -103,19 +124,15 @@ const claude: Harness = {
   },
   async files(version) {
     const pkg = Object.values((await sdk()).versions).find((v) => v.claudeCodeVersion === version);
-    const tgz = pkg && (await fetchOk(pkg.dist.tarball));
-    if (!tgz) return { [SDK_TYPES]: undefined };
-    const input = Buffer.from(await tgz.arrayBuffer());
-    try {
-      return { [SDK_TYPES]: execFileSync('tar', ['-xzOf', '-', `package/${SDK_TYPES}`], { input, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['pipe', 'pipe', 'ignore'] }) };
-    } catch {
-      // tar fails when the tarball no longer holds the file
-      return { [SDK_TYPES]: undefined };
-    }
+    // the binary runs to a hundred megabytes and more
+    const [types, bin] = await Promise.all([untar(pkg?.dist.tarball, SDK_TYPES), untar(binTarball(version), CLAUDE_BIN, 10 * 60_000)]);
+    return { [SDK_TYPES]: types?.toString('utf8'), [CLAUDE_BIN]: bin?.toString('latin1') };
   },
   check(f) {
+    const bin = f[CLAUDE_BIN];
+    const sessions = bin === undefined ? ["Claude Code's native binary"] : CLAUDE_STRINGS.filter((w) => !bin.includes(w)).map((w) => `session ${w}`);
     const src = f[SDK_TYPES];
-    if (src === undefined) return { missing: [`the Agent SDK's ${SDK_TYPES}`], events: [] };
+    if (src === undefined) return { missing: [`the Agent SDK's ${SDK_TYPES}`, ...sessions], events: [] };
     const base = tsTypeProps(src, 'BaseHookInput') ?? [];
     const missing = CLAUDE_HOOKS.flatMap((e) => {
       const own = tsTypeProps(src, `${e}HookInput`);
@@ -123,7 +140,7 @@ const claude: Harness = {
       return [...HOOK_COMMON, ...CLAUDE_FIELDS[e]].filter((k) => !base.includes(k) && !own.includes(k)).map((k) => `${e}.${k}`);
     });
     const events = tsConstStrings(src, 'HOOK_EVENTS');
-    return { missing: events ? missing : [...missing, 'HOOK_EVENTS'], events: events ?? [] };
+    return { missing: [...missing, ...(events ? [] : ['HOOK_EVENTS']), ...sessions], events: events ?? [] };
   },
 };
 
