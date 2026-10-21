@@ -195,7 +195,7 @@ export const needsUser = (v: Verdict): boolean => v.safe.length > 0 || v.standin
 const stopOf = (r: Outcome | undefined): StopReason | undefined => (r?.status === 'interrupted' && !r.safe.length ? r.stop : undefined);
 
 // stops where the status says more than the run did: whose handover is open, or the run that holds this machine
-const STATUS_SAYS: (StopReason | undefined)[] = [undefined, 'superseded', 'running', 'elsewhere', 'unexpected'];
+const STATUS_SAYS: (StopReason | undefined)[] = [undefined, 'superseded', 'running', 'unexpected'];
 
 // blockers that mean another handover of this fleet may be open, which only `handover status` can say what to do about
 const OPEN_ELSEWHERE: string[] = ['transaction_open', 'generation_mismatch', 'identity_mismatch'];

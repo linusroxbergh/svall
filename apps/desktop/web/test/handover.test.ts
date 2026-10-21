@@ -270,8 +270,11 @@ describe('what the sheet offers', () => {
 
   it('reads the status for a stop only the status can say more of', () => {
     const run = (stop: StopReason) => endFollow(play([result({ status: 'interrupted', phase: 'begin', error: 'it stopped', safe: [], stop })]), 1);
-    expect((['superseded', 'running', 'elsewhere', 'unexpected'] as const).filter((s) => !asksStatus(run(s)))).toEqual([]);
-    expect((['commit_unknown', 'gateway_unknown', 'journal_lost', 'not_begun', 'invalid'] as const).filter((s) => asksStatus(run(s)))).toEqual([]);
+    expect((['superseded', 'running', 'unexpected'] as const).filter((s) => !asksStatus(run(s)))).toEqual([]);
+    // a handover between other machines is theirs to go on with, as the run's error says
+    expect((['commit_unknown', 'gateway_unknown', 'journal_lost', 'elsewhere', 'not_begun', 'invalid'] as const).filter((s) => asksStatus(run(s)))).toEqual([]);
+    const theirs = endFollow(play([result({ status: 'interrupted', phase: 'begin', error: 'this machine is neither the source studio nor the destination spare of the handover; run it on studio or spare', safe: [], stop: 'elsewhere' })]), 1);
+    expect(headline(theirs, 'studio')).toBe('Stopped at Checks: this machine is neither the source studio nor the destination spare of the handover; run it on studio or spare');
   });
 
   it('says why what is left to finish is left once the fleet has moved', () => {
