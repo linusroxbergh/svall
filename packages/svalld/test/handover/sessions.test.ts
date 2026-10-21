@@ -51,12 +51,16 @@ function home(fixture: string, name = '.claude'): string {
 const CLAUDE = [
   { version: '2.1.280', id: 'bf480ea6-5572-4554-8016-2dc5590f5bba', slug: '-Users-source-work-demo', agent: 'agent-a4906877eb9919cf5' },
   { version: '2.1.251', id: '1fb0d1a7-29a9-4159-a932-5ffd2da8faba', slug: '-home-source-work-demo', agent: 'agent-aec6de8cd1d2df280' },
+  { version: '2.1.306', id: 'e6b13e68-3d40-4759-91a3-5c1cde740f9d', slug: '-Users-source-work-demo', agent: 'agent-a1774cad8a601f106' },
 ] as const;
 const CODEX = [
   // written before the oldest Codex Svall runs, so the CLI that carries it has been updated since
   { version: '0.155.1', cli: '0.156.0', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04' },
   { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f' },
+  { version: '0.162.1', file: 'sessions/2026/10/21/rollout-2026-10-21T20-28-35-01a15fb8-ddb3-7720-9bbc-6558d68e05f4.jsonl', id: '01a15fb8-ddb3-7720-9bbc-6558d68e05f4' },
 ] as const;
+// the real `session export --standalone` each release wrote, sanitized
+const OPENCODE = [{ version: '2.1.1', id: 'ses_ea0466195ffe4ecU6vYSCBwDEd' }] as const;
 
 describe('the adapter registry', () => {
   it('reads every Claude Code and Codex release from its adapter\'s minimum on, and none before', () => {
@@ -444,8 +448,8 @@ describe('sessions in the transfer manifest', () => {
 
 // each fixture session, where its CLI keeps it under the agent home
 const FIXTURE_SESSIONS = [
-  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.1.283' })),
-  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
+  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.2.0' })),
+  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.163.0' })),
 ];
 
 describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind, version, cli, id, agentHome, transcript, newer }) => {
@@ -473,6 +477,43 @@ describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind,
     expect(installSession(session, staged)).toEqual({ transcriptPath });
     for (const f of session.files) expect(fs.readFileSync(path.join(agents, f.path)), f.path).toEqual(fs.readFileSync(path.join(staged, f.path)));
     expect(placeTranscripts(manifest.snapshot, manifest.sessions).characters.c1.agent!.transcriptPath).toBe(transcriptPath);
+  });
+});
+
+describe.each(OPENCODE)('an OpenCode export as $version wrote it', ({ version, id }) => {
+  const kept = path.join(FIXTURES, 'opencode', version, `${id}.json`);
+  const real = (): Exported => JSON.parse(fs.readFileSync(kept, 'utf8'));
+
+  it('is written out with no undo pending, and refused with one', async () => {
+    const base = tmp();
+    const env = fakeEnv(path.join(base, 'oc'));
+    hold(env, real());
+    const file = path.join(base, 'out.json');
+    await opencodeAdapter.exportSession!(id, file, cliRunner(env), base);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(real());
+    const undone = real();
+    undone.info.revert = { messageID: undone.messages[1].id };
+    hold(env, undone);
+    await expect(opencodeAdapter.exportSession!(id, file, cliRunner(env), base))
+      .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('has an undo pending') });
+  });
+
+  it('is told apart by its message ids from a copy here that went on another way', async () => {
+    const base = tmp();
+    const env = fakeEnv(path.join(base, 'oc'));
+    hold(env, real());
+    await expect(opencodeAdapter.checkSession!(id, kept, base, cliRunner(env))).resolves.toBeUndefined();
+    const went = real();
+    went.messages.splice(-1, 1, { ...went.messages.at(-1)!, id: 'msg_15fb9c51300168SRdmut5Yo4Lt' });
+    hold(env, went);
+    await expect(opencodeAdapter.checkSession!(id, kept, base, cliRunner(env))).rejects.toMatchObject({ code: 'destination_diverged' });
+  });
+
+  it('is taken back into the folder it ran in', async () => {
+    const asked: string[][] = [];
+    const run: CliRun = async (_cmd, args) => { asked.push(args); return { code: 0, stdout: `Imported session: ${id}\n`, stderr: '' }; };
+    await opencodeAdapter.restoreSession!(id, kept, run);
+    expect(asked).toEqual([['session', 'import', '--standalone', '--directory', '/Users/source/work/demo', kept]]);
   });
 });
 

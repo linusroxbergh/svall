@@ -76,10 +76,12 @@ release integration checks, not as already proven by this fixture.
 
 ## Versioned session fixtures
 
-`2.1.251/` and `2.1.280/` are real sessions laid out as a Claude config folder
-(`projects/<slug>/<id>.jsonl` and the session's `subagents/`), one made by each release with
-`--safe-mode -p`: a Bash `pwd`, an Edit and a general-purpose subagent. 2.1.280 ran on macOS and
-2.1.251 on Ubuntu 24.04. They were sanitized by replacing the home and probe paths with
-`/Users/source` or `/home/source`, emails with `user@example.invalid`, thinking signatures with a
-placeholder, and any string over 600 characters with its first 200. Record structure is unchanged.
+`2.1.251/`, `2.1.280/` and `2.1.306/` are real sessions laid out as a Claude config folder
+(`projects/<slug>/<id>.jsonl` and the session's `subagents/`), one made by each of Claude Code
+2.1.251, 2.1.280 and 2.1.306 with `--safe-mode -p --model haiku` in a disposable `work/demo`: a Bash
+`pwd`, an Edit and a general-purpose subagent. 2.1.280 and 2.1.306 ran on macOS and 2.1.251 on
+Ubuntu 24.04. They were sanitized by replacing the home and probe paths with `/Users/source` or
+`/home/source`, emails with `user@example.invalid`, the account's organization id with a zero UUID,
+thinking signatures with a placeholder, and any string over 600 characters with its first 200. Record
+structure is unchanged.
 `test/handover/sessions.test.ts` checks the session adapter against each of them.
