@@ -121,6 +121,12 @@ describe('rsyncArgv', () => {
     expect(real).not.toContain('--checksum');
   });
 
+  it('keeps what a copy replaces or deletes in the backup folder it names, and nothing on a dry run', () => {
+    expect(rsyncArgv({ ...job, delete: true, backupDir: '/dst.overwritten-tx' })).toEqual(expect.arrayContaining(['--backup', '--backup-dir=/dst.overwritten-tx']));
+    expect(rsyncArgv({ ...job, dryRun: true, backupDir: '/dst.overwritten-tx' }).some((a) => a.startsWith('--backup'))).toBe(false);
+    expect(rsyncArgv(job).some((a) => a.startsWith('--backup'))).toBe(false);
+  });
+
   it('protects each object store it names from --delete, ahead of the filter file', () => {
     const argv = rsyncArgv({ ...job, delete: true, filterFile: '/state/r.rules', protect: ['.git/objects', 'objects'] });
     expect(argv.filter((a) => a.startsWith('--filter=') || a.startsWith('--exclude-from='))).toEqual([

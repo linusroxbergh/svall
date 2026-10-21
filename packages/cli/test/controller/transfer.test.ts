@@ -509,6 +509,30 @@ describe('transfer with a scripted rsync', () => {
     expect(rsync.real()).toHaveLength(3);
   });
 
+  it('keeps aside and lists what a later pass replaces in a copy that changed after the first, and backs up nothing in the first', async () => {
+    const copy = tree(tmp(), { 'a.txt': 'a' });
+    const state = tmp();
+    const rsync = fakeRsync((argv, n) => {
+      if (argv.includes('--dry-run')) return {};
+      // something edits the pulled copy and adds a file there once the first pass wrote it
+      if (n.real === 1) { fs.writeFileSync(path.join(copy, 'a.txt'), 'edited here'); fs.writeFileSync(path.join(copy, 'new.txt'), 'mine'); return {}; }
+      if (n.real > 2) return {};
+      fs.writeFileSync(path.join(copy, 'a.txt'), 'a');
+      fs.rmSync(path.join(copy, 'new.txt'));
+      return { lines: ['>fcst...... a.txt', '*deleting   new.txt', '*deleting   old/', 'cLc.t...... l -> a.txt', '>f+++++++++ fresh.txt', '.f..t...... b.txt'] };
+    });
+    const entry = await root({ source: '/far/app', claimed: copy, scanned: copy });
+    const r = await transfer(options({ roles: PULL, entries: [entry], stateDir: state, deps: { run: rsync.run } }));
+    const keptAt = `${copy}.overwritten-tx-1`;
+    // the pass that put the copy back reads as one more change, which the third pass finds settled
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 3, overwritten: { keptAt, paths: ['a.txt', 'l', 'new.txt'] } }]);
+    const [first, second] = rsync.real();
+    expect(first.some((a) => a.startsWith('--backup'))).toBe(false);
+    expect(second).toEqual(expect.arrayContaining(['--backup', `--backup-dir=${keptAt}`]));
+    // a resume reads the list back from the journal
+    expect(readJournal(state).entries.r_app.overwritten).toEqual({ keptAt, paths: ['a.txt', 'l', 'new.txt'] });
+  });
+
   it('names the local copy when something writes into it while it is compared', async () => {
     const copy = tree(tmp(), { 'a.txt': 'a' });
     let writes = 0;
@@ -799,6 +823,24 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(fs.readFileSync(path.join(claimed, 'notes.md'), 'utf8')).toBe('v1');
     const landed = (r.entries[0] as { files: TransferFile[] }).files;
     expect(content(landed)).toEqual(content(await scan(claimed)));
+  });
+
+  it('moves an edit made in the far copy after the first pass aside before the next pass replaces it', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', 'notes.md': 'v0' });
+    const claimed = tmp();
+    let edited = false;
+    const run: RunRsync = async (exe, argv, o) => {
+      const r = await runRsync(exe, argv, o);
+      if (!argv.includes('--dry-run') && !edited) { fs.writeFileSync(path.join(claimed, 'notes.md'), 'my edit'); fs.writeFileSync(path.join(claimed, 'mine.md'), 'mine'); edited = true; }
+      return r;
+    };
+    const r = await transfer({ transactionId: 'tx-d', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run } });
+    const keptAt = `${claimed}.overwritten-tx-d`;
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 2, overwritten: { keptAt, paths: ['mine.md', 'notes.md'] } }]);
+    expect(fs.readFileSync(path.join(claimed, 'notes.md'), 'utf8')).toBe('v0');
+    expect(fs.readFileSync(path.join(keptAt, 'notes.md'), 'utf8')).toBe('my edit');
+    expect(fs.readFileSync(path.join(keptAt, 'mine.md'), 'utf8')).toBe('mine');
+    temps.push(keptAt);
   });
 
   it('stops after three passes of a source an outside writer keeps changing', async () => {

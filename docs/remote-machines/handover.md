@@ -114,8 +114,9 @@ A folder the fleet left on a machine stays there as a replica of what was last c
 changed. If something on that replica changed while the machine did not own the fleet, the checks before the copy stop
 the handover rather than overwrite it: copy the changes back by hand, or archive the replica. What an OS or editor
 writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log` and `*.swp` files) never counts as a
-change, though it moves like any file, and neither does Git packing a repository's refs. A change made there once
-the copy has started is overwritten.
+change, though it moves like any file, and neither does Git packing a repository's refs. Once the copy has started,
+whatever a pass after the first replaces or deletes there is moved into a sibling folder named
+`<folder>.overwritten-<handover id>`, and the folder's row and the result list each such file.
 
 A repository can say where it runs with `.svall/handover.json`, such as `{ "platforms": ["darwin"] }`, which
 blocks a move to Linux while a character works in it. An Xcode project in a folder moving to Linux is only a warning.
@@ -250,7 +251,8 @@ What else to know:
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the
-  handover until you copy the changes back or archive it. One made while the copy runs is lost.
+  handover until you copy the changes back or archive it. What a pass after the first replaces there is kept aside;
+  only a file saved there during the first pass, before the copy reaches it, is lost.
 - **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
 
@@ -368,9 +370,10 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   background server, whose hooks Svall ignores, so its terminal has no agent: the checks show `shell_busy` (*is running
   codex*), and Terminate and carry leaves its session on the machine the fleet left. Type `codex --no-daemon` there
   instead; a character's own zsh and the agents Svall starts add it already.
-- **An edit on the other machine while the copy runs is lost.** The checks compare each folder there with what was
-  last carried before the copy starts; a change made there after that is overwritten. Leave the other machine's copies
-  alone until the handover ends.
+- **An edit on the other machine during the first copy pass can be lost.** The checks compare each folder there with
+  what was last carried before the copy starts, and every later pass keeps aside what it replaces, but a file saved
+  there while the first pass runs, before the copy reaches it, is overwritten. Leave the other machine's copies alone
+  until the handover ends.
 - **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
   both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
   it once. On one Mac, the second start is refused.

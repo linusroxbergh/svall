@@ -11,7 +11,16 @@ export function namesOf(m: TransferManifestV1): Names {
   };
 }
 
-/** A transfer entry's progress as an entity row: a root, and where its claim archived what it held, or a session by its place `s<i>` in the manifest. */
+/** What a root's copy moved aside after its first pass, for its row. */
+function overwrittenNotice({ keptAt, paths }: NonNullable<EntryProgress['overwritten']>): string {
+  const one = paths.length === 1;
+  return `${paths.length} ${one ? 'file' : 'files'} the copy replaced or deleted after its first pass ${one ? 'is' : 'are'} kept at ${keptAt}: ${paths.join(', ')}`;
+}
+
+/**
+ * A transfer entry's progress as an entity row: a root, where its claim archived what it held and what its copy kept
+ * aside, or a session by its place `s<i>` in the manifest.
+ */
 export function entryEvent(transactionId: string, p: EntryProgress, archivedTo?: string): HandoverEvent {
   const phase: HandoverPhase = p.state === 'verifying' || p.state === 'verified' ? 'verify' : 'transfer';
   return {
@@ -19,6 +28,7 @@ export function entryEvent(transactionId: string, p: EntryProgress, archivedTo?:
     data: {
       transactionId, kind: p.kind === 'root' ? 'root' : 'session', id: p.id, phase,
       done: p.done, total: p.total, bytes: p.bytes, totalBytes: p.totalBytes, ...(p.error && { error: p.error }), ...(archivedTo && { archivedTo }),
+      ...(p.overwritten && { notice: overwrittenNotice(p.overwritten) }),
       ...(p.state === 'verified' && { verified: true }),
     },
   };

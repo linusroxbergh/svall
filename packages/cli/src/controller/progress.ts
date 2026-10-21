@@ -30,6 +30,8 @@ export const EntryProgress = z.object({
   // the copy the last verification proved and the digest of what it read, so a resume re-verifies before it skips a copy
   verifiedKey: z.string().optional(),
   verifiedScan: z.string().optional(),
+  // what passes after the first replaced or deleted in the copy, and the folder beside it they were moved into
+  overwritten: z.object({ keptAt: z.string(), paths: z.array(z.string()) }).optional(),
   updatedAt: z.number(),
 });
 export type EntryProgress = z.infer<typeof EntryProgress>;

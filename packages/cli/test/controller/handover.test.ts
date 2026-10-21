@@ -60,6 +60,12 @@ describe('the controller transaction', () => {
     expect(row('verified').data).toMatchObject({ phase: 'verify', verified: true });
   });
 
+  it('says on a transfer row which files a pass after the first kept aside, and where', () => {
+    const overwritten = { keptAt: '/Users/ada/app.overwritten-tx-1', paths: ['a.txt', 'notes/b.md'] };
+    const e = entryEvent('tx-1', { id: 'r_app', kind: 'root', state: 'verified', pass: 2, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, overwritten, updatedAt: 0 });
+    expect(e.data).toMatchObject({ notice: '2 files the copy replaced or deleted after its first pass are kept at /Users/ada/app.overwritten-tx-1: a.txt, notes/b.md' });
+  });
+
   it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {
     const w = new World();
     const notice = 'codex waits at its "Trust this folder?" prompt in bo\'s terminal; answer it there';

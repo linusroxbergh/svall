@@ -119,6 +119,8 @@ export type RsyncJob = {
   filterFile?: string;
   // folders under the target whose files --delete leaves, as an extra object costs nothing and a missing one breaks an index
   protect?: readonly string[];
+  // where a copy moves each file it replaces or deletes, on the target's machine
+  backupDir?: string;
   // a NUL-separated list of the only paths under the source to copy
   filesFrom?: string;
   delete: boolean;
@@ -134,7 +136,7 @@ const BASE = ['-rlpt', '--no-specials', '--no-devices', '-s', '-8', '--itemize-c
 export function rsyncArgv(job: RsyncJob): string[] {
   return [
     ...BASE,
-    ...(job.dryRun ? ['--dry-run', '--checksum'] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2']),
+    ...(job.dryRun ? ['--dry-run', '--checksum'] : [...(job.checksum ? ['--checksum'] : []), '--info=progress2', ...(job.backupDir ? ['--backup', `--backup-dir=${job.backupDir}`] : [])]),
     ...(job.delete ? ['--delete'] : []),
     ...(job.mkpath ? ['--mkpath'] : []),
     // a protect rule reads only as a --filter, and only ahead of the filter file's `+ .git/**`
@@ -155,6 +157,13 @@ export type RsyncLine =
 const ITEM = /^([<>ch.][fdLDS][.+ ?a-zA-Z]{9}) (.+)$/;
 const MESSAGE = /^\*(\S+) +(.+)$/;
 const PROGRESS = /^\s*(\d[\d,]*)\s+\d+%\s+\S+\s+\S+(?:\s+\(xfr#\d+, (?:to|ir)-chk=(\d+)\/(\d+)\))?\s*$/;
+
+/** The path a copy with a backup folder kept there for an itemized line: a file or link it replaced or deleted. */
+export function backedUp(l: { change: string; name: string }): string | undefined {
+  if (l.change === '*deleting') return l.name.endsWith('/') ? undefined : l.name;
+  if (!/^[<>c][fL]/.test(l.change) || l.change.endsWith('+++++++++')) return undefined;
+  return l.change[1] === 'L' ? l.name.split(' -> ')[0] : l.name;
+}
 
 /** A link whose only itemized change is its mode: a Linux link is always 0777 and cannot be chmodded, so no pass settles it. */
 export const linkModeOnly = (change: string): boolean => /^\.L[. ]{3}p[. ]{5}$/.test(change);

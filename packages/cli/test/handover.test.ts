@@ -1135,6 +1135,22 @@ describe('the human reading of an archived root', () => {
   });
 });
 
+describe('the human reading of what a copy kept aside', () => {
+  it('says once which files a later pass replaced and where they are kept, and again when the handover completes', () => {
+    const printed: string[] = [];
+    const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
+    view.show(pre());
+    const notice = '1 file the copy replaced or deleted after its first pass is kept at /home/ada/app.overwritten-tx-1: a.txt';
+    const row = { transactionId: 'tx-1', kind: 'root' as const, id: 'r_app', notice };
+    view.show({ event: 'handover.entity', data: { ...row, phase: 'transfer' } });
+    view.show({ event: 'handover.entity', data: { ...row, phase: 'verify', done: 2, total: 2 } });
+    view.show({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] } });
+    expect(printed.filter((l) => l.includes(notice))).toEqual([`  ! /home/ada/app: ${notice}`, `  ! /home/ada/app: ${notice}`]);
+    expect(printed.indexOf(`  ! /home/ada/app: ${notice}`)).toBeLessThan(printed.findIndex((l) => l.startsWith('Handed over')));
+    expect(printed.at(-1)).toBe(`  ! /home/ada/app: ${notice}`);
+  });
+});
+
 describe('the human reading of what a resumed character waits on', () => {
   it('says so on its row as it resumes and again when the handover completes', () => {
     const printed: string[] = [];

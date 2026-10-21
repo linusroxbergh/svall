@@ -658,7 +658,8 @@ export function resumeTally(run: HandoverRun): { resumed: number; failed: number
 }
 
 export function rowText(row: Row): string {
-  return row.archivedTo ? `${progressText(row)}; what was there is kept at ${row.archivedTo}` : progressText(row);
+  const text = row.archivedTo ? `${progressText(row)}; what was there is kept at ${row.archivedTo}` : progressText(row);
+  return row.section === 'transfer' && row.notice ? `${text}; ${row.notice}` : text;
 }
 
 function progressText(row: Row): string {
