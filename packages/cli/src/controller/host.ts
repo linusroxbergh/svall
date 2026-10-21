@@ -780,6 +780,12 @@ export function enableHost(name: string, o: { fleetHome: string }, d: HostDeps):
         throw new StepError(`${file} names ${held.record.name} as its gateway, which may still hold this fleet`,
           `if ${held.record.name} is gone for good, \`${svall}fleet recover --force-owner local --gateway ${name}\` makes ${name} the gateway, then run this again`);
       }
+      // a record the gateway makes for this machine would leave such a daemon owning nothing at its next start
+      const ran = named ? undefined : cachedOwner(o.fleetHome)?.ownerMachineId;
+      if (ran && ran !== d.machineId()) {
+        throw new StepError(`${resolvePaths(o.fleetHome).owner} names ${ran}, not this machine (${d.machineId()}): its daemon runs as the machine its owner record names when it cannot read ~/.config/svall`,
+          'quit Svall and open it on this fleet again, so its daemon starts as this machine, then run this again');
+      }
       return Promise.resolve(out);
     });
     // both steps ride the one master whose machine was checked, which no later command can leave for another

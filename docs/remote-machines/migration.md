@@ -35,7 +35,9 @@ written, until you keep one of the two; the daemon's log and `svall doctor` both
 - The app, `svall` and the daemons of one release speak protocol 24 to each other. An app or `svall` from an older
   release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
-  gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md).
+  gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md). A fleet with no
+  gateway starts even where `~/.config/svall` cannot be written or holds a broken `machine.json`: its daemon runs as
+  the machine its `owner.json` names, and its log says what to fix.
 
 ### Named fleets
 

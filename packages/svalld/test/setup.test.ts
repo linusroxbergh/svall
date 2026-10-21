@@ -700,6 +700,24 @@ esac
     expect(fs.existsSync(path.join(home, 'LaunchAgents/io.github.linusroxbergh.svall.svalld.plist'))).toBe(true);
   });
 
+  it('seeds the home folder of a fleet no gateway holds whatever ~/.config/svall and owner.json hold', async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
+    // the id a daemon ran as while it could not read ~/.config/svall
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: '11111111-2222-3333-4444-555555555555', generation: 0, ownerMachineId: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }));
+    const config = path.join(makeHome(), '.config');
+    fs.mkdirSync(config, { mode: 0o555 });
+    vi.stubEnv('SVALL_CONFIG_DIR', path.join(config, 'svall'));
+    try {
+      const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) };
+      const lines = await runSetup(o);
+      expect(lines.filter((l) => l.startsWith('home folder'))).toEqual([]);
+      expect(fs.existsSync(path.join(home, 'mc', 'CLAUDE.md'))).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('installs no hooks for an agent the user turned off, and takes back ones already there', async () => {
     const home = makeHome();
     const settingsPath = path.join(home, 'claude', 'settings.json');

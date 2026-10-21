@@ -6,7 +6,7 @@ import {
 } from './agent-hooks.js';
 import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
-import { initConfig, loadConfig, reservedFleetNames } from './config.js';
+import { initConfig, loadConfig, peekConfig, reservedFleetNames } from './config.js';
 import { writeAtomic } from './jsonfile.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
 import { machineId } from './machine.js';
@@ -183,8 +183,9 @@ function writeShims(shimDir: string, runtime: Runtime): string[] {
   });
 }
 
-// the machine this fleet's ownership record names, when it is not this one
+// the machine this fleet's ownership record names, when it is not this one; no other can own a fleet no gateway holds
 function ownedElsewhere(paths: Paths): MachineId | undefined {
+  if (!peekConfig(paths).gatewayMachineId) return undefined;
   let owner: MachineId;
   try { owner = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { return undefined; }
   return owner === machineId() ? undefined : owner;
