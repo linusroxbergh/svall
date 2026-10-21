@@ -230,6 +230,59 @@ test('past the commit, a status that leaves only resuming opens the sheet and re
   expect(resumes(send)).toBe(2);
 });
 
+const openAtChecks = (code: 'transaction_open' | 'generation_mismatch' | 'identity_mismatch', message: string): HandoverEvent =>
+  ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code, message }] } });
+const attaches = (send: { mock: { calls: unknown[][] } }) => send.mock.calls.filter(([m]) => (m as { type: string }).type === 'handover.attach').length;
+
+test('a handover already open at the checks is looked up, and the sheet offers what its status says is safe in place of a new start', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  const open = openAtChecks('transaction_open', `this fleet is already in handover ${TX} (preparing); resume or abort it first`);
+  say(open);
+  act(() => store.getState().handoverExit(1));
+  expect(attaches(send)).toBe(1);
+  expect(screen.queryByTestId('handover-try-again')).toBeNull();
+  expect(screen.getByTestId('handover-footnote').textContent).toBe('Asking where that handover stands…');
+
+  // what the shell reads back: the run that blocked, then where the open one stands
+  act(() => store.getState().handoverReplay([open,
+    { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: `${TX} is preparing and has not committed; it can go on, or be aborted back to ${MAC}` } }]));
+  expect(attaches(send)).toBe(1);
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
+  expect(screen.getByTestId('handover-blocker-transaction_open')).toBeTruthy();
+  expect(screen.getByTestId('handover-resume').textContent).toBe('Resume');
+  expect(screen.getByTestId('handover-abort')).toBeTruthy();
+  expect(screen.queryByTestId('handover-try-again')).toBeNull();
+  expect(screen.getByTestId('handover-footnote').textContent).toBe('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
+
+  // one the gateway has moved on from is Forget's
+  act(() => store.getState().handoverReplay([open, { event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
+  expect(screen.getByTestId('handover-forget')).toBeTruthy();
+  expect(screen.queryByTestId('handover-try-again')).toBeNull();
+});
+
+test('a generation the gateway does not share, with nothing open, keeps its blocker and the new start', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  const stale = openAtChecks('generation_mismatch', `This Mac holds this fleet for ${MAC} at generation 4, and the gateway for ${MAC} at 0`);
+  say(stale);
+  act(() => store.getState().handoverExit(1));
+  expect(attaches(send)).toBe(1);
+  act(() => store.getState().handoverReplay([stale, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } }]));
+  expect(screen.getByTestId('handover-headline').textContent).toBe('1 thing to settle before the fleet moves to trift. Nothing has moved.');
+  expect(screen.getByTestId('handover-blocker-generation_mismatch')).toBeTruthy();
+  expect(screen.getByTestId('handover-try-again').textContent).toBe('Move to trift');
+  expect(attaches(send)).toBe(1);
+});
+
+test('a status the sheet could not read leaves the blockers and the new start', () => {
+  render(<HandoverSheet />);
+  say(openAtChecks('transaction_open', `this fleet is already in handover ${TX} (preparing); resume or abort it first`));
+  act(() => { store.getState().handoverExit(1); store.getState().handoverExit(1, 'svall: the gateway did not answer'); });
+  expect(screen.getByTestId('handover-try-again')).toBeTruthy();
+  expect(screen.getByTestId('handover-footnote').textContent).toBe('1 thing to fix outside the sheet first. Move to trift runs the checks again.');
+});
+
 const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
   preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
   { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },

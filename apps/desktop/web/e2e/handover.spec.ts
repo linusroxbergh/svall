@@ -328,6 +328,31 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   expect(await resumes()).toBe(2);
 });
 
+test('a handover the checks find already open is looked up, and the sheet offers its Resume and Abort in place of a new start', async ({ page, svall }) => {
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  await nothingOpen(page);
+  await page.getByTestId('handover-tab').click();
+  await page.getByTestId('handover-to-gateway').click();
+  const open: HandoverEvent = { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
+    { code: 'transaction_open', message: `this fleet is already in handover ${TX} (preparing); resume or abort it first` },
+  ] } };
+  await say(page, open);
+  await receive(page, { type: 'handover.exit', code: 1 });
+  const attaches = async () => (await sent(page)).filter((m) => m.type === 'handover.attach').length;
+  await expect.poll(attaches).toBe(2);
+  await expect(page.getByTestId('handover-try-again')).toHaveCount(0);
+  await receive(page, { type: 'handover.replay', events: [open,
+    { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: `${TX} is preparing and has not committed; it can go on, or be aborted back to ${MAC}` } }] });
+  await expect(page.getByTestId('handover-blocker-transaction_open')).toBeVisible();
+  await expect(page.getByTestId('handover-resume')).toHaveText('Resume');
+  await expect(page.getByTestId('handover-abort')).toBeVisible();
+  await expect(page.getByTestId('handover-try-again')).toHaveCount(0);
+  await page.getByTestId('handover-resume').click();
+  expect(await lastOf(page, 'handover.resume')).toEqual({ type: 'handover.resume' });
+  expect(await attaches()).toBe(2);
+});
+
 test('a launch after a finished move that once asked leaves an open terminal alone and the sheet shut', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('after') });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });

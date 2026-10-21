@@ -3,8 +3,8 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
-  actionsOf, blockerHint, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, entityLabel, entityPath, formatBytes, fraction,
-  goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, withChoice,
+  actionsOf, asksStatus, blockerHint, blockersIn, CHOICE_LABEL, checking, choiceFor, chosen, decisionPending, destinationName, destinationOf, entityLabel, entityPath,
+  formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, resumeTally, rowText, sectionStates, transferTotals, upgradeAsked, verdictOf, withChoice,
   type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
@@ -266,7 +266,8 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
   const r = run.result;
   if (r?.status === 'complete' || run.status?.standing === 'moved') return { tone: 'done' };
   if (decisionPending(run)) return { tone: 'wait' };
-  if (r?.status === 'blocked') {
+  if (checking(run)) return { tone: 'stop', sub: 'Asking where that handover stands…' };
+  if (r?.status === 'blocked' && !verdictOf(run)) {
     const open = r.blockers.filter((b) => choiceFor(b) && !chosen(run.choices, b)).length;
     const fix = r.blockers.filter((b) => !choiceFor(b)).length;
     const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet first` : ''].filter(Boolean);
@@ -347,11 +348,16 @@ export function HandoverSheet() {
     return () => window.removeEventListener('keydown', key, true);
   }, [open]);
 
-  // read from the store, so a second run of this effect finds the resume already under way
+  // what the sheet does without asking; read from the store, so a second run of this effect finds it under way
   useEffect(() => {
-    if (!enabled || !goesOnByItself(store().handover)) return;
-    store().handoverGoOn();
-    app.bridge.send({ type: 'handover.resume' });
+    if (!enabled) return;
+    if (goesOnByItself(store().handover)) {
+      store().handoverGoOn();
+      app.bridge.send({ type: 'handover.resume' });
+    } else if (asksStatus(store().handover)) {
+      store().handoverCheck();
+      app.bridge.send({ type: 'handover.attach' });
+    }
   }, [run, enabled]);
 
   if (!open || !enabled) return null;

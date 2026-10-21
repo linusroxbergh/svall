@@ -45,6 +45,8 @@ export type HandoverRun = {
   awaitingOwner: boolean;
   // the sheet resumed it by itself, since past the commit nothing else was safe
   goingOn?: boolean;
+  // the sheet asked where a handover the checks found open stands
+  checking?: boolean;
 };
 
 const step = (p: HandoverPhase): number => (p === 'aborted' ? -1 : HANDOVER_PHASES.indexOf(p));
@@ -161,6 +163,20 @@ export const needsUser = (v: Verdict): boolean => v.safe.length > 0 || v.standin
 /** A run that stopped sending its commit without hearing whether the gateway took it: only the gateway can say, and nothing is safe until it does. */
 const commitUnknown = (r: Outcome | undefined): boolean => r?.status === 'interrupted' && r.phase === 'commit' && r.safe.length === 0;
 
+// blockers that mean another handover of this fleet may be open, which only `handover status` can say what to do about
+const OPEN_ELSEWHERE: string[] = ['transaction_open', 'generation_mismatch', 'identity_mismatch'];
+
+/** A run the checks stopped for a handover that may already be open, whose status the sheet then reads. */
+export const asksStatus = (run: HandoverRun | undefined): boolean => !!run && !run.following && !run.status && !run.checking
+  && run.result?.status === 'blocked' && run.result.blockers.some((b) => OPEN_ELSEWHERE.includes(b.code));
+
+/** The status the sheet asked for is on its way. */
+export const checking = (run: HandoverRun): boolean => !!run.checking && !run.status && !run.error;
+
+/** The status the sheet goes by: one that finds nothing open leaves a run the checks stopped to its blockers. */
+export const verdictOf = (run: HandoverRun): Verdict | undefined =>
+  (run.status?.standing === 'none' && !run.status.safe.length && run.result?.status === 'blocked' ? undefined : run.status);
+
 /** A status past the commit that leaves only resuming, which the sheet then does without asking. */
 export const goesOnByItself = (run: HandoverRun | undefined): boolean => !!run?.status && !run.following
   && (run.status.standing === 'committed' || run.status.standing === 'moved') && run.status.safe.length === 1 && run.status.safe[0] === 'resume';
@@ -247,7 +263,7 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
   }
   if (run.following) return none;
   const resume = (safe: SafeAction[]) => (safe.includes('resume') ? (isCommitted(run) ? 'Retry' as const : 'Resume' as const) : undefined);
-  const s = run.status;
+  const s = verdictOf(run);
   if (s) {
     return {
       ...none, resume: resume(s.safe), abort: s.safe.includes('abort'), forget: s.standing === 'superseded',
@@ -257,7 +273,7 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
   const r = run.result;
   switch (r?.status) {
     case 'complete': return { ...none, resume: r.pending?.length ? 'Retry' : undefined, start: !r.pending?.length };
-    case 'blocked': return { ...none, tryAgain: !!run.to, start: true };
+    case 'blocked': return { ...none, tryAgain: !!run.to && !checking(run), start: true };
     case 'aborted': case 'none': return { ...none, start: true };
     case 'interrupted': return { ...none, resume: resume(r.safe), abort: r.safe.includes('abort'), follow: r.safe.length === 0 };
     case 'detached': return { ...none, follow: true };
@@ -509,7 +525,7 @@ function standingLine(s: Verdict, destination: string): string {
 
 /** The sheet's one line on where the handover stands. `destination` is the machine it goes to, by name. */
 export function headline(run: HandoverRun, destination: string): string {
-  const s = run.status;
+  const s = verdictOf(run);
   if (s) return standingLine(s, destination);
   const r = run.result;
   switch (r?.status) {
