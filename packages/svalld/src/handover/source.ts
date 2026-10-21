@@ -13,7 +13,7 @@ import { readFleetConfig } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import { AuthorityFailure } from '../gateway/authority.js';
 import type { Fleet } from '../fleet.js';
-import { runGit, type GitRunner } from '../links/git.js';
+import { handoverGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { opencodeFolders } from '../opencode/install.js';
 import type { OwnershipState } from '../ownership/state.js';
@@ -26,7 +26,7 @@ import { discoverGit } from './git-graph.js';
 import { canonicalJson } from './hash.js';
 import { buildInventory, expandExcludes, settle, type Inventory, type InventoryRoot, type MachineMaps } from './inventory.js';
 import { SourceJournal } from './journal.js';
-import { buildManifest, readManifest, realScanFs, summarize, writeManifest, type ScanFs } from './manifest.js';
+import { buildManifest, readManifest, realScanFs, summarize, writeManifest, type Hashes, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
 import { classifyTerminals, launchFlags, restChoices, restTerminals, serversGone, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
@@ -225,6 +225,8 @@ const named = (m: TransferManifestV1, transactionId: string): Frozen['manifest']
 export class SourceHandover {
   private queue: Promise<unknown> = Promise.resolve();
   private freezing?: { transactionId: string; choices: string; cancel: AbortController; done: Promise<Frozen> };
+  // what the last manifest read took of each root file, which the next takes for each file whose stat is unchanged
+  private hashes?: Hashes;
 
   constructor(private journal: Journal, private ownership: OwnershipState, private agents: () => Promise<AgentProbe[]>, private d: SourceDeps) {}
 
@@ -248,7 +250,8 @@ export class SourceHandover {
     // counted from names before any file is read, so a fleet far past the bound is refused without being hashed
     const names = await buildManifest(inventory, header, this.d.scanFs, false);
     const crowd = this.crowded(names.listed.files, p.destination.info);
-    const built = crowd ? names : await buildManifest(inventory, header, this.d.scanFs);
+    const built = crowd ? names : await buildManifest(inventory, header, this.d.scanFs, true, this.hashes);
+    if (!crowd) this.hashes = built.hashes;
     const big = crowd ? [crowd] : this.limits(built.manifest, p.destination.info);
     // one too large to answer whole is answered without its file lists
     const manifest = big.length
@@ -345,7 +348,8 @@ export class SourceHandover {
     const inventory = await this.inventory(this.d.store.state, p);
     const unexported = await boundary('source.freeze.export', () => this.exportSessions(inventory, false));
     if (unexported.length) return this.refuse(tx.id, unexported);
-    const built = await buildManifest(inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs);
+    const built = await buildManifest(inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs, true, this.hashes);
+    this.hashes = built.hashes;
     const big = this.limits(built.manifest, p.destination.info);
     // the rest records where each second terminal stands, which can be a folder holding repositories no character works in
     const unused = p.choices.carryUnused ? [] : built.unused;
@@ -494,7 +498,7 @@ export class SourceHandover {
   /** Each carried repository using a Git extension the destination's git cannot open, found before anything moves. */
   private async gitBlockers(inventory: Inventory, info: SystemInfo): Promise<Blocker[]> {
     if (!inventory.git?.length) return [];
-    const git = this.d.git ?? runGit;
+    const git = this.d.git ?? handoverGit;
     const graphs = await Promise.all(inventory.git.map(async (g) => ({ id: g.id, commonDir: g.commonDir, ...(await readExtensions(g.commonDir, git)) })));
     return extensionBlockers(graphs, { destination: info.git, source: await gitVersion(git) });
   }

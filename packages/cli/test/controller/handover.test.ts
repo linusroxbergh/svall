@@ -60,6 +60,17 @@ describe('the controller transaction', () => {
     expect(row('verified').data).toMatchObject({ phase: 'verify', verified: true });
   });
 
+  it('says on a transfer row which files a pass after the first kept aside, and where, naming twenty at most', () => {
+    const row = (paths: string[]) => entryEvent('tx-1', {
+      id: 'r_app', kind: 'root', state: 'verified', pass: 2, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, overwritten: { keptAt: '/Users/ada/app.overwritten-tx-1', paths }, updatedAt: 0,
+    }).data;
+    expect(row(['r-pass2/a.txt', 'r-pass2/notes/b.md'])).toMatchObject({ notice: '2 files the copy replaced or deleted after its first pass are kept at /Users/ada/app.overwritten-tx-1: r-pass2/a.txt, r-pass2/notes/b.md' });
+    const many = Array.from({ length: 30_000 }, (_, i) => `r-pass2/f${i}`);
+    const notice = (row(many) as { notice: string }).notice;
+    expect(notice).toMatch(/^30000 files the copy .*: r-pass2\/f0, .*r-pass2\/f19, and 29980 more$/);
+    expect(notice.length).toBeLessThan(1000);
+  });
+
   it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {
     const w = new World();
     const notice = 'codex waits at its "Trust this folder?" prompt in bo\'s terminal; answer it there';
@@ -347,6 +358,24 @@ describe('preflight', () => {
     }
   });
 
+  it('blocks two roots apart here that a destination folding case would put in one folder', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      const app = r.manifest.roots.find((x) => x.id === 'r_app')!;
+      app.files = app.files.filter((f) => f.path !== 'Readme.md');
+      r.manifest.roots.push({ id: 'r_App', kind: 'context', entry: 'dir', path: at('App'), files: [file('b.txt')] });
+      return r;
+    }) as never;
+    expect((await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'path_collision')).toEqual([]);
+    w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };
+    expect((await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'path_collision')).toEqual([{
+      code: 'path_collision', entity: { kind: 'root', id: 'r_app' },
+      message: `${at('App')} and ${at('app')} differ only by case or Unicode normalization, which trift does not tell apart, so they would land in one folder there`,
+    }]);
+  });
+
   it('asks the destination nothing about roots once the source refused a manifest too large to answer with its file lists', async () => {
     for (const code of ['too_many_files', 'manifest_too_large'] as const) {
       const w = new World();
@@ -413,6 +442,22 @@ describe('preflight', () => {
     expect(asked).toEqual(expect.arrayContaining([{ kind: 'claude', cwd: '/Users/ada/app', repo: '/Users/ada/app', root: '/Users/ada/app' }]));
     w.destination.trusted.add('claude /Users/ada/app');
     expect((await trust()).map((x) => x.code)).toEqual(['codex_trust']);
+  });
+
+  it('blocks at the checks a carried repository naming a command git would run on the destination, whose global config does not set it the same', async () => {
+    const w = new World();
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: unknown) => ({
+      ...inspect(p), commands: [{ graph: 'g_app', at: '/Users/ada/app', keys: ['filter.crypt.clean'] }, { graph: 'g_app', at: '/Users/ada/new', keys: ['filter.crypt.clean'], conditional: true }],
+    })) as never;
+    const { blockers } = await controller(w).preflight(trift, {});
+    expect(blockers).toContainEqual({
+      code: 'git_config_command', entity: { kind: 'git', id: 'g_app' },
+      message: '/Users/ada/app: its repository\'s own config names commands git would run on trift, whose global config does not set them the same: filter.crypt.clean; set each up the same there with git config --global, or remove it from the repository\'s config',
+    });
+    expect(blockers).toContainEqual(expect.objectContaining({
+      message: expect.stringMatching(/^\/Users\/ada\/new: .*; trift's global config has conditional includes, which the checks cannot apply to a repository not there yet, and prepare checks again once it lands$/),
+    }));
   });
 
   it('warns that Claude warns about bypass mode with "No, exit" preselected where a carried resume asks for it and the destination\'s Claude has not accepted it', async () => {

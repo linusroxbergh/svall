@@ -167,7 +167,9 @@ function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run
   const whole = done ? t.totalBytes : transferBytes(run);
   const pace = done ? undefined : transferPace(run);
   const failed = rows.filter((r) => r.error);
-  const fine = rows.filter((r) => !r.error);
+  // a row whose copy kept files aside stays in sight like one that failed
+  const loud = rows.filter((r) => r.error || r.notice);
+  const fine = rows.filter((r) => !r.error && !r.notice);
   const f = whole ? Math.min(1, t.bytes / whole) : t.total ? t.done / t.total : 0;
   const counts = [[rows.filter((r) => r.kind === 'root').length, 'folder'], [rows.filter((r) => r.kind === 'session').length, 'session']] as const;
   const what = counts.filter(([n]) => n > 0).map(([n, one]) => plural(n, one)).join(' and ');
@@ -181,7 +183,7 @@ function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run
           {!done && !failed.length && <span className="ho-sub">Files already on {ctx.destination} are not sent again, so a bar can stop short until its folder is verified.</span>}
         </span>
       </div>
-      {failed.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
+      {loud.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
       {fine.length > 0 && (
         <div className="host-step"><span className="host-mark" /><span className="host-said">
           <More label={what} testid="handover-transfer-rows">

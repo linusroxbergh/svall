@@ -311,6 +311,9 @@ export const methods = {
       untrusted: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
       // the folders of `resumes` asking for bypass mode whose agent here warns about that mode before it resumes there
       bypassWarned: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
+      // the command settings of `git` that git would run here and this machine's own config does not set the same, by where each is read
+      // `conditional`: no repository is at `at` here yet, and this machine's global config holds includes conditional on where one is
+      commands: z.array(z.object({ graph: z.string(), at: z.string(), keys: z.array(z.string()), conditional: z.boolean().optional() })).optional(),
     }),
   },
   'handover.freeze': {

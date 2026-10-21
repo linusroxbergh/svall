@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { caseCollisions, probeFolders, type ProbeFs } from '../../src/handover/probe.js';
+import { caseCollisions, probeFolders, rootCollisions, type ProbeFs } from '../../src/handover/probe.js';
 
 const made: string[] = [];
 const tmp = (): string => { const d = fs.mkdtempSync('/tmp/svall-t-'); made.push(d); return d; };
@@ -64,6 +64,16 @@ describe('the folders a destination writes into', () => {
 
   it('names the paths that differ only by case, grouped with the names each clashes with', () => {
     expect(caseCollisions(['notes/todo.md', 'b.txt', 'Notes/TODO.md', 'keep.md', 'B.txt'])).toEqual([['B.txt', 'b.txt'], ['Notes/TODO.md', 'notes/todo.md']]);
+  });
+
+  it('names the roots a case-folding destination would put in one folder, or one inside the other, though they are apart here', () => {
+    const [composed, decomposed] = ['/Users/ada/caf\u00e9', '/Users/ada/cafe\u0301'];
+    expect(rootCollisions(['/Users/ada/src/app', '/Users/ada/Src/lib/x', '/Users/ada/src/App', '/Users/ada/src/lib', composed, decomposed, '/Users/ada/other'])).toEqual([
+      { a: decomposed, b: composed, inside: false },
+      { a: '/Users/ada/src/App', b: '/Users/ada/src/app', inside: false },
+      { a: '/Users/ada/src/lib', b: '/Users/ada/Src/lib/x', inside: true },
+    ]);
+    expect(rootCollisions(['/Users/ada/a', '/Users/ada/a/b', '/Users/ada/ab'])).toEqual([]);
   });
 
   it('names the paths that differ only by Unicode normalization, which a Mac holds as one name', () => {

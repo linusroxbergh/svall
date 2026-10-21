@@ -182,6 +182,11 @@ export class View {
           this.shown.set(`archived:${d.id}`, d.archivedTo);
           this.print(`  ! ${who}: what was there is kept at ${d.archivedTo}`);
         }
+        // what a copy kept aside matters most on a row that failed
+        if (d.kind !== 'character' && d.notice && this.shown.get(`notice:${d.id}`) !== `  ! ${who}: ${d.notice}`) {
+          this.shown.set(`notice:${d.id}`, `  ! ${who}: ${d.notice}`);
+          this.print(`  ! ${who}: ${d.notice}`);
+        }
         if (d.kind === 'root' && !d.error && d.total !== undefined && d.done === d.total) {
           line = `  ✓ ${who} ${d.phase === 'verify' ? 'verified' : 'copied'}`;
         }
@@ -223,6 +228,7 @@ export class View {
           lines.push(`  ✗ ${this.names.characters[c.id] ?? c.id} did not resume: ${c.error ?? 'no reason given'}; it stays dormant with its transcript`);
         }
         for (const c of o.characters.filter((x) => x.ok && x.notice)) lines.push(`  ! ${this.names.characters[c.id] ?? c.id}: ${c.notice}`);
+        for (const [key, line] of this.shown) if (key.startsWith('notice:')) lines.push(line);
         if (o.pending?.length) lines.push(`Still to finish on the ${o.pending.join(' and the ')}: \`${svall('handover --resume')}\`.`);
         return lines;
       }

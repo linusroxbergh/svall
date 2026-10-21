@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Blocker, FleetState, GitCheckout, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
-import { DIRS_ARGS, parseDirs, runGit, type GitDirs, type GitRunner } from '../links/git.js';
+import type { Blocker, FleetState, GitCheckout, GitCommand, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
+import { DIRS_ARGS, handoverGit, parseDirs, type GitDirs, type GitRunner } from '../links/git.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 import { excludeMatcher, excludedPath, settle } from './inventory.js';
 
@@ -121,7 +121,7 @@ type Slot = { characterId: string; dirs: GitDirs };
  * registrations it does not. What cannot be read faithfully blocks.
  */
 export async function discoverGit(state: FleetState, opts: DiscoverOptions): Promise<GitDiscovery> {
-  const git = opts.git ?? runGit;
+  const git = opts.git ?? handoverGit;
   const exists = opts.exists ?? fs.existsSync;
   const blockers: Blocker[] = [];
   const warnings: Warning[] = [];
@@ -158,6 +158,11 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
       for (const [at, url] of await origins(read, standing, git, exists)) {
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
+      const checkouts = [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees].map((c) => c.path);
+      const found = await repoCommands(commonDir, checkouts, git);
+      if (found.length) read.graph.commands = found.map(({ at, key, value }) => ({ at, key, value }));
+      const commands = [...new Set(found.map((c) => c.key))].sort(byCodeUnit);
+      if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
       const held = await unusedWork(read.graph, git, exists);
       for (const [at, message] of held) blockers.push({ code: 'worktree_unused', message: `${at}: ${message}`, entity });
       const idle = read.graph.unused.filter((u) => !held.has(u.path));
@@ -242,6 +247,87 @@ async function origins(read: ReadGraph, standing: Set<string>, git: GitRunner, e
     const r = await git(['config', '--get', 'remote.origin.url'], place);
     const url = r.stdout.trim();
     if (r.code === 0 && hostLocal(url)) out.push([place === places[0] ? graph.main?.path ?? graph.commonDir : place, url]);
+  }
+  return out;
+}
+
+// a filter's commands, an fsmonitor hook and an ssh command, as against fsmonitor's own daemon or none
+const COMMAND_KEYS = '^(filter\\..+\\.(clean|smudge|process)|core\\.fsmonitor|core\\.sshcommand)$';
+const BOOLEAN = /^(true|false|yes|no|on|off|1|0|)$/i;
+
+const names = (dir: string): string[] => { try { return fs.readdirSync(dir); } catch { return []; } };
+
+// each submodule's Git directory under `modules`, a nested one's too, by the HEAD it holds
+function submoduleDirs(modules: string): string[] {
+  return names(modules).flatMap((n) => {
+    const d = path.join(modules, n);
+    if (!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()) return [];
+    return fs.existsSync(path.join(d, 'HEAD')) ? [d, ...submoduleDirs(path.join(d, 'modules'))] : submoduleDirs(d);
+  });
+}
+
+type Setting = { scope: string; key: string; value: string };
+
+/** Every setting git reads in `cwd`, or for the Git directory `gitDir`, with its scope; each include that applies there is followed. */
+async function settings(git: GitRunner, cwd: string, gitDir?: string): Promise<Setting[]> {
+  const out = await must(git, [...(gitDir ? ['--git-dir', gitDir] : []), 'config', '--show-scope', '--list', '-z'], cwd, gitDir);
+  const fields = out.split('\0');
+  const read: Setting[] = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const [key, ...value] = fields[i + 1].split('\n');
+    read.push({ scope: fields[i], key, value: value.join('\n') });
+  }
+  return read;
+}
+
+const COMMAND = new RegExp(COMMAND_KEYS);
+
+/** Whether a command setting stops a handover on a destination that does not set it the same: an ssh command runs only for a fetch or push, which no handover git makes. */
+export const runsHere = (key: string): boolean => key !== 'core.sshcommand';
+
+/**
+ * Each command setting a repository's own or worktree config holds for a checkout, or a submodule's Git directory under
+ * `commonDir`, read there with the includes that apply, and whether this machine's global or system config sets it the same.
+ */
+export async function repoCommands(commonDir: string, checkouts: readonly string[], git: GitRunner): Promise<(GitCommand & { own: boolean })[]> {
+  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((at) => ({ at, cwd: at })), ...submoduleDirs(path.join(commonDir, 'modules')).map((at) => ({ at, cwd: commonDir, gitDir: at }))];
+  const found: (GitCommand & { own: boolean })[] = [];
+  for (const { at, cwd, gitDir } of places) {
+    const all = await settings(git, cwd, gitDir);
+    const own = ownSettings(all);
+    // the last value of a key is the one git uses
+    const values = new Map<string, string>();
+    for (const s of all) if ((s.scope === 'local' || s.scope === 'worktree') && command(s)) values.set(s.key, s.value);
+    for (const [key, value] of [...values].sort(([a], [b]) => byCodeUnit(a, b))) found.push({ at, key, value, own: own.has(`${key}\n${value}`) });
+  }
+  return found;
+}
+
+const command = (s: Setting): boolean => COMMAND.test(s.key) && !(s.key === 'core.fsmonitor' && BOOLEAN.test(s.value));
+const ownSettings = (all: readonly Setting[]): Set<string> =>
+  new Set(all.filter((s) => s.scope === 'system' || s.scope === 'global').map((s) => `${s.key}\n${s.value}`));
+
+/**
+ * The keys of `commands`, by where each is read, that git would run on this machine and its global or system config does
+ * not set the same. That config is read in the repository already at `at`, where an include conditional on its path
+ * applies; elsewhere `conditional` says it holds such an include, which only the repository's arrival can settle.
+ */
+export async function unsetHere(commands: readonly GitCommand[], git: GitRunner): Promise<{ at: string; keys: string[]; conditional?: true }[]> {
+  const by = new Map<string, GitCommand[]>();
+  for (const c of commands) if (runsHere(c.key)) by.set(c.at, [...(by.get(c.at) ?? []), c]);
+  const out: { at: string; keys: string[]; conditional?: true }[] = [];
+  let anywhere: Setting[] | undefined;
+  for (const [at, list] of by) {
+    let there: Setting[] | undefined;
+    try { there = fs.existsSync(at) ? await settings(git, at) : undefined; } catch (e) {
+      if (!(e instanceof GitFailure)) throw e;
+    }
+    const held = there?.some((s) => s.scope === 'local') ? there : undefined;
+    const all = held ?? (anywhere ??= await settings(git, '/'));
+    const own = ownSettings(all);
+    const keys = list.filter((c) => !own.has(`${c.key}\n${c.value}`)).map((c) => c.key);
+    const conditional = !held && all.some((s) => (s.scope === 'global' || s.scope === 'system') && s.key.startsWith('includeif.'));
+    if (keys.length) out.push({ at, keys, ...(conditional && { conditional: true as const }) });
   }
   return out;
 }

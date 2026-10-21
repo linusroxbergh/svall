@@ -519,6 +519,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
     case 'git_extension':
       return `Update or install git on ${ctx.destination}.`;
+    case 'git_config_command':
+      return `Set each command up the same in ${ctx.destination}'s global git config (\`git config --global <key> <command>\`), or remove it with \`git config --unset <key>\` in the repository.`;
     case 'manifest_too_large': case 'too_many_files':
       return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {
@@ -723,7 +725,8 @@ export function resumeTally(run: HandoverRun): { resumed: number; failed: number
 }
 
 export function rowText(row: Row): string {
-  return row.archivedTo ? `${progressText(row)}; what was there is kept at ${row.archivedTo}` : progressText(row);
+  const text = row.archivedTo ? `${progressText(row)}; what was there is kept at ${row.archivedTo}` : progressText(row);
+  return row.section === 'transfer' && row.notice ? `${text}; ${row.notice}` : text;
 }
 
 function progressText(row: Row): string {

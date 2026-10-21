@@ -141,7 +141,7 @@ export const HandoverIssueCode = z.enum([
   'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
-  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
+  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
   'too_many_files', 'repository_unused', 'linger_off',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
@@ -183,6 +183,9 @@ export const TransferFile = z.discriminatedUnion('type', [
     mode: z.number().int().nonnegative(), size: z.number().int().nonnegative(), mtimeMs: z.number().int(), sha256: Sha256,
     // a Git index by its staged entries alone, so a refresh of its stat data changes nothing
     gitIndex: Sha256.optional(),
+    // a loose Git ref by the value it holds, and a packed-refs file by each ref it packs, so packing refs changes nothing
+    ref: z.string().optional(),
+    refs: z.record(z.string(), z.string()).optional(),
   }),
   z.object({ type: z.literal('symlink'), path: z.string(), target: z.string() }),
 ]);
@@ -249,6 +252,10 @@ export const GitRegistration = z.object({
 export type GitRegistration = z.infer<typeof GitRegistration>;
 
 /** One repository graph: its common Git directory, its main checkout unless it is bare, and the linked worktrees the fleet uses. */
+/** A setting naming a command git runs, as a repository's own or worktree config holds it where `at` reads it. */
+export const GitCommand = z.object({ at: z.string(), key: z.string(), value: z.string() });
+export type GitCommand = z.infer<typeof GitCommand>;
+
 export const GitGraph = z.object({
   id: z.string().min(1),
   commonDir: z.string(),
@@ -259,6 +266,8 @@ export const GitGraph = z.object({
   stash: z.array(ObjectName),
   // the object every ref names, and so every commit the copy of its objects holds reachable
   tips: z.array(ObjectName).optional(),
+  // each command setting its checkouts and submodules read from the repository's own config
+  commands: z.array(GitCommand).optional(),
 });
 export type GitGraph = z.infer<typeof GitGraph>;
 
@@ -281,7 +290,7 @@ export const TransferManifestV1 = z.object({
 export type TransferManifestV1 = z.infer<typeof TransferManifestV1>;
 
 /** A graph a manifest carries as the machine it goes to reads it: its common directory there, the registrations the manifest carries, and every commit its copy holds reachable. */
-export const ReceivedGraph = z.object({ id: z.string().min(1), commonDir: MachinePath, carried: z.array(z.string()), tips: z.array(ObjectName) });
+export const ReceivedGraph = z.object({ id: z.string().min(1), commonDir: MachinePath, carried: z.array(z.string()), tips: z.array(ObjectName), commands: z.array(GitCommand).optional() });
 export type ReceivedGraph = z.infer<typeof ReceivedGraph>;
 
 /**

@@ -5,6 +5,7 @@ import { FleetId, Generation, Sha256, TransactionId, TransferFile, type Blocker,
 import type { Paths } from '../paths.js';
 import { createDurable, realStages, syncDir, writeDurable, type DurableStages } from './durable.js';
 import { diverged, divergenceBlocker, proveReplica, type Divergence } from './divergence.js';
+import { boundary } from './failpoints.js';
 import { byCodeUnit, canonicalDigest } from './hash.js';
 import { CONTROL, rootMatcher, type MachineLocal } from './inventory.js';
 import { scanPath, type ScanFs } from './manifest.js';
@@ -39,6 +40,7 @@ export type ReplicaFs = {
   mkdir(p: string, recursive: boolean): void;
   // O_EXCL: fails with EEXIST when anything holds the name
   createFile(p: string): void;
+  writeFile(p: string, text: string): void;
   link(from: string, to: string): void;
   rename(from: string, to: string): void;
   unlink(p: string): void;
@@ -52,6 +54,7 @@ export const realReplicaFs: ReplicaFs = {
   readFile: (p) => fs.readFileSync(p),
   mkdir: (p, recursive) => { fs.mkdirSync(p, { recursive }); },
   createFile: (p) => fs.closeSync(fs.openSync(p, 'wx', 0o600)),
+  writeFile: (p, text) => fs.writeFileSync(p, text, { flag: 'wx', mode: 0o644 }),
   link: (from, to) => fs.linkSync(from, to),
   rename: (from, to) => fs.renameSync(from, to),
   unlink: (p) => fs.unlinkSync(p),
@@ -108,6 +111,8 @@ type Blocked = { kind: 'blocked'; blocker: Blocker; divergence?: Divergence };
 type Verdict = { kind: 'reserve' | 'adopt' | 'resume' } | { kind: 'replica'; found: TransferFile[] } | Blocked;
 
 const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+// the most paths an archive sets aside one by one; a root that differs in more is set aside whole
+const FEW = 20;
 // the name rsync gives a file it has not finished writing: `.<name>.` and six characters, beside where the file goes
 const RSYNC_PARTIAL = /^(.*\/)?\.([^/]+)\.[A-Za-z0-9]{6}$/;
 /** Whether `p` is rsync's unfinished copy of one of the `incoming` paths. */
@@ -125,6 +130,18 @@ const blocked = (code: HandoverIssueCode, message: string, root: ReplicaRoot): B
 export const contentDigest = (files: readonly TransferFile[]): string => canonicalDigest([...files]
   .sort((a, b) => byCodeUnit(a.path, b.path))
   .map((f) => (f.type === 'file' ? [f.path, 'file', f.size, f.sha256] : [f.path, 'symlink', f.target])));
+
+/** Where a linked worktree's registration says it stands, read from its files: on a branch at a commit, or detached at one. */
+function worktreeHead(registration: string, read: (p: string) => string): string {
+  const text = (p: string): string | undefined => { try { return read(p).trim(); } catch { return undefined; } };
+  const head = text(path.join(registration, 'HEAD'));
+  const branch = head && /^ref: refs\/heads\/(.+)$/.exec(head)?.[1];
+  if (!branch) return head ? `detached at ${head}` : 'whose HEAD cannot be read';
+  const common = path.resolve(registration, text(path.join(registration, 'commondir')) ?? '../..');
+  const ref = `refs/heads/${branch}`;
+  const commit = text(path.join(common, ref)) ?? text(path.join(common, 'packed-refs'))?.split('\n').find((l) => l.endsWith(` ${ref}`))?.split(' ')[0];
+  return commit ? `on branch ${branch} at ${commit}` : `on branch ${branch}, which has no commit`;
+}
 
 /** Why a manifest path cannot name a place under its root, if it cannot. */
 export function relativeProblem(p: string): string | undefined {
@@ -241,10 +258,13 @@ export class ReplicaStore {
   }
 
   /**
-   * Renames a root to a timestamped sibling no other file or folder holds, forgets its record so the path
-   * can be reserved, and returns where the old content now lies. Only when `approved` names the root.
+   * Sets a root's content aside in a timestamped sibling no other file or folder holds, and returns where it now lies;
+   * only when `approved` names the root. A folder that differs from what handover left in at most a few files, each one
+   * there to move, keeps the rest, and its record names that rest as handover's, so `t` claims it as a replica; a README
+   * in the archive names what was deleted there, which the copy brings back. Any other
+   * root is renamed whole, and its record forgotten so the path can be reserved.
    */
-  archive(root: ReplicaRoot, approved: readonly string[] | undefined): { path: string; archivedTo: string } {
+  async archive(root: ReplicaRoot, approved: readonly string[] | undefined, t: Inspect): Promise<{ path: string; archivedTo: string }> {
     const at = this.canonical(root.path);
     if (!approved?.some((name) => name === root.id || name === root.path || name === at)) {
       throw new ReplicaError('not_approved', `archiving ${at} takes a choice that names it`);
@@ -258,15 +278,101 @@ export class ReplicaStore {
       if (errno(e) === 'ENOENT') throw new ReplicaError('missing', `nothing is at ${at}`);
       throw e;
     }
+    const few = st.isDirectory() ? await this.few(root, at, t) : undefined;
     const stamp = new Date((this.opts.now ?? Date.now)()).toISOString().replace(/\.\d+Z$/, 'Z').replaceAll(':', '');
     for (let n = 1; n <= 100; n++) {
       const to = `${at}.archived-${stamp}${n > 1 ? `-${n}` : ''}`;
-      if (!this.moveAside(at, to, st.isDirectory())) continue;
-      const held = this.read(at);
-      if (held.bytes) this.put(at, held.bytes, undefined);
+      if (few) {
+        if (!boundary('destination.archive.moveout', () => this.moveOut(at, to, few.moved))) continue;
+        if (few.removed.length && !few.moved.includes('README.archived.txt')) {
+          this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${at}, which held the files here as they are. It had deleted these, which the handover's copy brings back:\n${few.removed.map((p) => `- ${p}\n`).join('')}`);
+        }
+        this.put(at, few.bytes, few.record);
+      } else {
+        if (!boundary('destination.archive.aside', () => this.moveAside(at, to, st.isDirectory()))) continue;
+        const held = this.read(at);
+        if (held.bytes) this.put(at, held.bytes, undefined);
+      }
+      if (st.isDirectory()) this.detach(to, at);
       return { path: at, archivedTo: to };
     }
     throw new ReplicaError('conflict', `every archive name beside ${at} is taken`);
+  }
+
+  /**
+   * The paths to set aside from a root whose record a claim by `t` would prove it against, when it differs in at most a
+   * few, each a file or link there and none in Git's records, whose objects the copy would delete; and its record once
+   * they are gone, naming what stays as what handover left; with what was deleted there.
+   */
+  private async few(root: ReplicaRoot, at: string, t: Inspect): Promise<{ moved: string[]; removed: string[]; bytes: Buffer; record: ReplicaRecord } | undefined> {
+    const { bytes, record: r } = this.read(at);
+    if (!bytes || !r || r.state === 'reserved' || (r.state === 'receiving' && r.transactionId === t.transactionId)) return undefined;
+    const accepted = r.state === 'sealed' ? [r.baseline] : [r.baseline, r.incoming, ...(t.incoming ? [t.incoming] : [])];
+    const { divergence: d, files } = await proveReplica(at, accepted, t.excludes, this.opts.scanFs, root.kind, kept(t.keep ?? []), FEW + 1);
+    const moved = [...d.added.preview, ...d.changed.preview];
+    const there = new Set(files.map((f) => f.path));
+    const git = root.kind === 'gitdir' || [...moved, ...d.removed.preview].some((p) => p.split('/').includes('.git'));
+    if (git || d.unchecked.count || d.added.count + d.changed.count + d.removed.count > FEW || !moved.every((p) => there.has(p))) return undefined;
+    const baseline = files.filter((f) => !moved.includes(f.path));
+    return { moved, removed: d.removed.preview, bytes, record: r.state === 'sealed' ? { ...r, baseline } : { ...r, baseline, incoming: [] } };
+  }
+
+  /** Moves each path under `from` to the same path in a folder `to` made for it; false when anything holds that name. */
+  private moveOut(from: string, to: string, paths: readonly string[]): boolean {
+    try { this.fs.mkdir(to, false); } catch (e) {
+      if (errno(e) === 'EEXIST') return false;
+      throw e;
+    }
+    for (const p of paths) {
+      this.fs.mkdir(path.dirname(path.join(to, p)), true);
+      this.fs.rename(path.join(from, p), path.join(to, p));
+    }
+    return true;
+  }
+
+  /**
+   * Sets aside the .git file of each linked worktree archived from `from` to `to`, the archive itself or one its main
+   * checkout registers under it, as each still names a live registration. A .git naming no repository takes its place, so
+   * git there neither changes the live worktree nor finds a repository above; a README says which worktree each was.
+   */
+  private detach(to: string, from: string): void {
+    const read = (p: string): string => this.fs.readFile(p).toString('utf8');
+    const archived = (p: string): string => (holds(from, p) ? path.join(to, path.relative(from, p)) : p);
+    const registered = this.names(path.join(to, '.git/worktrees')).flatMap((name) => {
+      const gitfile = this.text(path.join(to, '.git/worktrees', name, 'gitdir'))?.trim();
+      const at = gitfile && path.resolve(from, '.git/worktrees', name, gitfile);
+      return at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? [path.relative(from, path.dirname(at))] : [];
+    });
+    const lines = ['', ...registered].flatMap((rel) => {
+      const gitfile = path.join(to, rel, '.git');
+      const text = this.text(gitfile, true);
+      if (text === undefined) return [];
+      this.fs.rename(gitfile, `${gitfile}.archived`);
+      this.fs.writeFile(gitfile, 'gitdir: /nonexistent\n');
+      const registration = /^gitdir: (.*)$/m.exec(text)?.[1];
+      const head = registration ? worktreeHead(archived(path.resolve(from, rel, registration)), read) : 'whose .git file names no registration';
+      return [`- ${rel || '.'} was the linked worktree ${head}`];
+    });
+    if (!lines.length) return;
+    this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each linked worktree here keeps its .git file as .git.archived beside a .git that names no repository, so git there leaves the live worktree alone:\n${lines.join('\n')}\n`);
+  }
+
+  /** A file's text, or undefined when nothing, or no file when `file` asks for one, is there. */
+  private text(p: string, file = false): string | undefined {
+    try {
+      if (file && !this.fs.lstat(p).isFile()) return undefined;
+      return this.fs.readFile(p).toString('utf8');
+    } catch (e) {
+      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return undefined;
+      throw e;
+    }
+  }
+
+  private names(p: string): string[] {
+    try { return this.fs.readdir(p); } catch (e) {
+      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return [];
+      throw e;
+    }
   }
 
   private async assess(

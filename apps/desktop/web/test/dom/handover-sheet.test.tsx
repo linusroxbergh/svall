@@ -252,6 +252,18 @@ test('while transferring, one bar sums every folder and session, a verified fold
   expect(screen.queryByTestId('handover-done')).toBeNull();
 });
 
+test('a folder whose copy kept files aside shows that above the folded rows', () => {
+  render(<HandoverSheet />);
+  const notice = '1 file the copy replaced or deleted after its first pass is kept at /Users/ada/src/alpha.overwritten-tx: a.txt';
+  say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000, totalBytes: 1_000, verified: true, notice } },
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_2', phase: 'verify', bytes: 1_000, totalBytes: 1_000, verified: true } });
+  const row = screen.getByTestId('handover-row-transfer-r_1');
+  expect(row.textContent).toContain(notice);
+  expect(screen.getByTestId('handover-transfer-rows').contains(row)).toBe(false);
+  expect(screen.getByTestId('handover-transfer-rows').contains(screen.getByTestId('handover-row-transfer-r_2'))).toBe(true);
+});
+
 test('a decision mid-run says how many things wait on it, with the agent at work named above the characters at rest', () => {
   render(<HandoverSheet />);
   say(preflight, ...changed('begin', 'freeze'), ...rested(),

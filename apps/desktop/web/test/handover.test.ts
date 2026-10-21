@@ -108,6 +108,12 @@ describe('the handover a sheet follows', () => {
     expect(rowText(row)).toBe('12.0 MB of 40.0 MB; what was there is kept at /home/ada/a.archived-1');
   });
 
+  it('keeps what a later pass of a root\'s copy kept aside on its row', () => {
+    const notice = '1 file the copy replaced or deleted after its first pass is kept at /home/ada/a.overwritten-tx: a.txt';
+    const run = play([...through('transfer'), { event: 'handover.entity', data: { transactionId: tx, kind: 'root', id: 'r_a', phase: 'verify', bytes: 40_000_000, totalBytes: 40_000_000, verified: true, notice } }]);
+    expect(rowText(run.rows.find((r) => r.id === 'r_a')!)).toBe(`40.0 MB of 40.0 MB; ${notice}`);
+  });
+
   it("names the fleet a command acts on by its profile, as the shell's own svall calls do", () => {
     expect(svallFor('work')).toBe('svall -p work');
     expect(svallFor(undefined)).toBe('svall');

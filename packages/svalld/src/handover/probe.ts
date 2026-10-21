@@ -29,6 +29,25 @@ export function caseCollisions(relatives: string[]): string[][] {
   return groups.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
+/**
+ * Roots apart here that a case-folding filesystem reads as one folder, or one inside the other (`a` the outer), once
+ * case and Unicode normalization are folded; in order of `a`.
+ */
+export function rootCollisions(roots: readonly string[]): { a: string; b: string; inside: boolean }[] {
+  const fold = (p: string): string => p.normalize('NFD').toLowerCase();
+  const sorted = [...new Set(roots)].sort();
+  const out: { a: string; b: string; inside: boolean }[] = [];
+  for (const a of sorted) {
+    for (const b of sorted) {
+      // a root inside another here is inside it there too
+      if (a === b || b.startsWith(`${a}/`) || a.startsWith(`${b}/`)) continue;
+      if (fold(a) === fold(b)) { if (a < b) out.push({ a, b, inside: false }); }
+      else if (fold(b).startsWith(`${fold(a)}/`)) out.push({ a, b, inside: true });
+    }
+  }
+  return out;
+}
+
 const swapCase = (name: string): string => name.replace(/[A-Za-z]/g, (c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
 
 /**
