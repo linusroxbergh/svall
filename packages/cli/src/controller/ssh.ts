@@ -22,6 +22,8 @@ const PATTERNS: [RegExp, SshErrorKind][] = [
   [/permission denied|too many authentication failures|no supported authentication/i, 'auth'],
   // a close during authentication names the user or says preauth; every other close is the transport's
   [/connection closed by (authenticating|invalid) user|\[preauth\]/i, 'auth'],
+  // Tailscale SSH in check mode waits for a check in the browser, which batch mode never takes
+  [/tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i, 'auth'],
   [/host key verification failed|remote host identification has changed/i, 'host_key'],
   [/connection refused|connection timed out|operation timed out|could not resolve|name or service not known|no route to host|network is unreachable/i, 'unreachable'],
   // a master that died takes its socket with it: every command on it fails until one is opened again
@@ -78,9 +80,58 @@ export function ownSocketDir(dir: string): string {
 }
 
 // a control socket path has to stay under the Unix socket limit, so the destination is hashed short.
-// The pid keeps each process on a master of its own: one process letting go never ends another's
+// The pid in front keeps each process on a master of its own, and names whose master it is once that process is gone
 const socketFor = (dir: string, destination: string): string =>
-  path.join(dir, crypto.createHash('sha256').update(`${process.pid}\0${destination}`).digest('hex').slice(0, 12));
+  path.join(dir, `${process.pid}-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
+const SOCKET_NAME = /^(\d+)-[0-9a-f]{12}$/;
+// how a release before the pid led the name named a socket
+const UNNAMED = /^[0-9a-f]{12}$/;
+
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // another user's process refuses the signal, and runs all the same
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/** Whether no master listens on `socket`, or the one that does was left by its process: launchd or init holds it now. */
+async function abandoned(socket: string): Promise<boolean> {
+  const r = await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'check', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
+  if (/control socket connect/i.test(r.stderr)) return true;
+  const pid = /pid=(\d+)/.exec(r.stderr)?.[1];
+  if (!pid) return false;
+  return (await runProcess('ps', ['-o', 'ppid=', '-p', pid], { timeoutMs: CONTROL_TIMEOUT })).stdout.trim() === '1';
+}
+
+/**
+ * Ends the master on every socket in `dir` whose process is gone, and removes the socket: a process killed where no
+ * handler ran leaves its detached `ssh -M` running. A socket named before the pid led its name goes once its master is
+ * abandoned. A running process's sockets, and names it cannot read, are left alone.
+ */
+export async function sweepMasters(dir: string = defaultSocketDir()): Promise<void> {
+  let names: string[];
+  try {
+    names = fs.readdirSync(ownSocketDir(dir));
+  } catch {
+    return;
+  }
+  await Promise.all(names.map(async (name) => {
+    const pid = Number(SOCKET_NAME.exec(name)?.[1]);
+    const socket = path.join(dir, name);
+    try {
+      const gone = pid ? pid !== process.pid && !running(pid) : UNNAMED.test(name) && await abandoned(socket);
+      if (!gone) return;
+      const r = await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
+      // a master that did not take the exit keeps its socket for the next sweep; one no master listens on goes
+      if (r.code === 0 || /control socket connect/i.test(r.stderr)) fs.rmSync(socket, { force: true });
+    } catch {
+      // a socket ssh could not be run for is left to the next sweep
+    }
+  }));
+}
 
 /** One master per socket path, so two callers in this process reaching the same destination share the connection. */
 const masters = new Map<string, Promise<SshMaster>>();
@@ -162,14 +213,19 @@ export class SshMaster {
       if (await this.check()) return this;
       // a master that could not be spawned, or died without a word, is the transport's failure
       if (gone) throw this.fail(child.pid === undefined || !stderr.trim() ? 'unreachable' : classifySsh(stderr), `ssh could not reach ${this.destination}: ${stderr.trim() || 'the control master exited'}`);
-      if (Date.now() >= end) throw this.fail('unreachable', `ssh did not open a control master to ${this.destination} within ${OPEN_TIMEOUT}ms`);
+      // a master still waiting may have said what for, as one waiting on a Tailscale check does
+      if (Date.now() >= end) {
+        const kind = classifySsh(stderr);
+        throw this.fail(kind === 'other' ? 'unreachable' : kind, `ssh did not open a control master to ${this.destination} within ${OPEN_TIMEOUT}ms${stderr.trim() ? `: ${stderr.trim()}` : ''}`);
+      }
       await sleep(POLL);
     }
   }
 
   private fail(kind: SshErrorKind, message: string): SshError {
     this.release();
-    return new SshError(kind, message);
+    // an ssh in a terminal can answer what batch mode could not: a passphrase, a password, or Tailscale's check
+    return new SshError(kind, kind === 'auth' ? `${message}; run ssh ${this.destination} once in a terminal, then try again` : message);
   }
 
   private release(): void {

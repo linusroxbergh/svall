@@ -63,7 +63,7 @@ const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/
 
 // launchd gives the daemon no shell PATH, so the folder this shell finds claude or codex in is added after the usual
 // ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
-function daemonPath(nodeDir?: string): string {
+export function daemonPath(nodeDir?: string): string {
   const usual = [...nodeDir ? [nodeDir] : [], path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
   const found = AGENT_KINDS.map((k) => onPath(AGENTS[k].bin, process.env.PATH ?? ''))
     .filter((dir) => dir !== undefined).map(realPath);

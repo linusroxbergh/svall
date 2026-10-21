@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { runConnect, type ConnectEvent } from '../controller/connect.js';
 import { MachineRegistry } from '../controller/registry.js';
-import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
+import { closeMastersOnSignal, SshMaster, sweepMasters } from '../controller/ssh.js';
 
 /**
  * What tells this helper to let go: the controller closed its input. A signal ends it at once, even
@@ -35,6 +35,8 @@ export function connectCommand(home: () => string, profile: () => string | undef
     .description('hold the connection to whichever machine owns this fleet, one JSON object per line')
     .action(async () => {
       const { stopped, release } = shutdown();
+      // only a process that is gone has its masters ended, so none this helper opens is touched
+      void sweepMasters();
       try {
         process.exitCode = await runConnect({
           fleetHome: home(),

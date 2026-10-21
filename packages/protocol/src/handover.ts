@@ -14,7 +14,8 @@ export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 hex digest');
 
 /**
  * A handover in flight: at most one per fleet, and the gateway is the only writer. The freeze and the
- * digest arrive together, and are what a `ready-to-commit` transaction was granted on.
+ * digest arrive together, and are what a `ready-to-commit` transaction was granted on. `controllerId` is
+ * the machine whose controller drives it, and `nonce` names the Begin that opened it.
  */
 export const TransactionRecord = z.object({
   id: z.string().min(1),
@@ -24,11 +25,13 @@ export const TransactionRecord = z.object({
   startedAt: z.number(),
   sourceFrozenAt: z.number().optional(),
   preparedDigest: Sha256.optional(),
+  controllerId: MachineId.optional(),
+  nonce: z.guid().optional(),
 });
 export type TransactionRecord = z.infer<typeof TransactionRecord>;
 
 /** The version of the ownership records a machine writes and reads. */
-export const AUTHORITY_SCHEMA_VERSION = 1;
+export const AUTHORITY_SCHEMA_VERSION = 2;
 
 /** Which machine may run a fleet, at which generation. The gateway swaps it on generation and owner. */
 export const OwnerRecord = z.object({
@@ -36,6 +39,8 @@ export const OwnerRecord = z.object({
   generation: z.number().int().nonnegative(),
   ownerMachineId: MachineId,
   transaction: TransactionRecord.optional(),
+  // the nonces of the last Begins let go, none of which opens a handover should it arrive late
+  retiredNonces: z.array(z.guid()).optional(),
 });
 export type OwnerRecord = z.infer<typeof OwnerRecord>;
 
@@ -137,7 +142,7 @@ export const HandoverIssueCode = z.enum([
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
-  'too_many_files', 'repository_unused',
+  'too_many_files', 'repository_unused', 'linger_off',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
 
@@ -382,6 +387,8 @@ export const SystemInfo = z.object({
   git: z.string().optional(),
   // the daemon's V8 heap_size_limit in bytes, which bounds the files a handover may carry
   heapLimit: z.number().int().positive().optional(),
+  // whether a Linux account's services run while no one is logged in; absent on a Mac, or where loginctl cannot say
+  linger: z.object({ user: z.string(), on: z.boolean() }).optional(),
 });
 export type SystemInfo = z.infer<typeof SystemInfo>;
 

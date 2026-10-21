@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { Character, FleetState, Island, STATE_SCHEMA_VERSION } from './state.js';
 
+/** The oldest state.json version any release has read, which this one still lifts to its own. */
+export const OLDEST_STATE_SCHEMA_VERSION = 7;
+
 const CURRENT = STATE_SCHEMA_VERSION;
-const OLDEST = 7;
+const OLDEST = OLDEST_STATE_SCHEMA_VERSION;
 
 export class NewerStateVersion extends Error {
   constructor(version: number) {

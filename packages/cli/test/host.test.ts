@@ -6,7 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
-import { FleetId, MachineId, PROTOCOL_VERSION } from '@svall/protocol';
+import { FleetId, MachineId, OLDEST_STATE_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState } from '@svall/protocol';
 import { shq } from '@svall/svalld/text';
 import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
@@ -835,21 +835,21 @@ describe('host upgrade', () => {
 
   /**
    * A companion on this machine: every far command runs here, `current` is a real link, and each release's svall is a
-   * script that answers as that release. Its setup installs an archive and keeps it only while the new release's daemon
+   * script that answers as that release, naming the state schema it reads unless that is null. Its setup installs an archive and keeps it only while the new release's daemon
    * comes up (no `down-<release>` file beside the releases) and speaks the protocol this svall's client does; else it goes
    * back to the release it replaced, or after a reinstall under that name to the newest other kept, as a real setup does.
    */
-  async function farMachine(o: { releases: [string, number][]; accepts?: (release: string) => boolean; pins?: string }) {
+  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string }) {
     const home = path.join(work, 'far');
     const base = `${home}/.local/share/svall`;
     const now = () => path.basename(fs.readlinkSync(`${base}/current`));
     const d = await daemon({ release: now, accepts: () => o.accepts?.(now()) ?? true });
-    const svall = (version: string, protocol: number) => `#!/bin/sh
+    const svall = (version: string, protocol: number, schema: number | null = STATE_SCHEMA_VERSION) => `#!/bin/sh
 base='${base}'
 now() { basename "$(readlink "$base/current")"; }
 case "$1" in
   connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN })}' ;;
-  version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol }, null, 2)}' ;;
+  version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2)}' ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   setup)
     if [ "$2" = --rollback ]; then
@@ -868,9 +868,9 @@ case "$1" in
     fi ;;
 esac
 `;
-    for (const [version, protocol] of o.releases) {
+    for (const [version, protocol, schema] of o.releases) {
       fs.mkdirSync(`${base}/releases/${version}/bin`, { recursive: true });
-      fs.writeFileSync(`${base}/releases/${version}/bin/svall`, svall(version, protocol), { mode: 0o755 });
+      fs.writeFileSync(`${base}/releases/${version}/bin/svall`, svall(version, protocol, schema), { mode: 0o755 });
       fs.mkdirSync(`${base}/releases/${version}/release`);
       fs.copyFileSync(o.pins ?? signer.signers, `${base}/releases/${version}/release/allowed_signers`);
     }
@@ -1173,6 +1173,57 @@ esac
     expect(out).toEqual({ result: 'ready', actions: [] });
     expect(far.now()).toBe('1.2.2');
     expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on release 1.2.2' });
+  });
+
+  /** A fleet on the far machine, kept in `dir` under its home, whose state.json is at `version`. */
+  const fleetState = (dir: string, version: number): string => {
+    const file = path.join(work, 'far', dir, 'state.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify({ ...emptyState(), version }, null, 2)}\n`);
+    return file;
+  };
+
+  it('refuses a rollback onto a release that reads an older state schema than a fleet there keeps, before anything changes', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, STATE_SCHEMA_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
+    fleetState('.svall', STATE_SCHEMA_VERSION - 1);
+    const newer = fleetState('.svall-work', STATE_SCHEMA_VERSION);
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    const named = await rollbackHost('trift', { to: '1.2.2' }, deps({ registry: far.registry }));
+    await far.close();
+    expect([out.result, named.result]).toEqual(['actions', 'actions']);
+    expect(step('rollback')).toEqual([1, 2].map(() => ({
+      step: 'rollback', status: 'fail',
+      detail: `${newer} is at state schema ${STATE_SCHEMA_VERSION}, and release 1.2.2 reads ${STATE_SCHEMA_VERSION - 1}: its svalld would refuse to start after going back; trift stays on release 1.2.3`,
+    })));
+    expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
+    expect(far.now()).toBe('1.2.3');
+  });
+
+  it('goes back onto a release that reads every fleet\'s state there, whatever a folder no profile names holds', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, STATE_SCHEMA_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
+    fleetState('.svall', STATE_SCHEMA_VERSION - 1);
+    fleetState('.svall-work.old', STATE_SCHEMA_VERSION);
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(far.now()).toBe('1.2.2');
+  });
+
+  it('refuses a rollback onto a release that does not say which state schema it reads only while a fleet there is newer than any release read', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, null], ['1.2.3', PROTOCOL_VERSION]] });
+    const state = fleetState('.svall', OLDEST_STATE_SCHEMA_VERSION + 1);
+    const refused = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    expect(refused.result).toBe('actions');
+    expect(step('rollback').at(-1)).toMatchObject({
+      status: 'fail',
+      detail: `release 1.2.2 does not say which state schema it reads, and ${state} is at state schema ${OLDEST_STATE_SCHEMA_VERSION + 1}, newer than the oldest a release has read (${OLDEST_STATE_SCHEMA_VERSION}): its svalld could refuse to start after going back; trift stays on release 1.2.3`,
+    });
+    expect(far.now()).toBe('1.2.3');
+    fleetState('.svall', OLDEST_STATE_SCHEMA_VERSION);
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(far.now()).toBe('1.2.2');
   });
 
   it('rolls back from the command line, and refuses a rollback asked with a release to install', async () => {

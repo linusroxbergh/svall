@@ -12,6 +12,7 @@ const fleetId = FleetId.parse(crypto.randomUUID());
 const mac = MachineId.parse(crypto.randomUUID());
 const trift = MachineId.parse(crypto.randomUUID());
 const TX = 'tx-1';
+const NONCE = crypto.randomUUID();
 
 const temps: string[] = [];
 afterEach(() => { for (const d of temps.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -44,6 +45,21 @@ const cases: Case[] = [
     want: { standing: 'open', action: 'continue', safe: ['resume', 'abort'], transactionId: TX, generation: 4, phase: 'transfer' },
   },
   {
+    name: 'an open transaction another machine\'s controller drives can only be aborted from here',
+    o: { local: mac, names: { [trift]: 'trift' }, gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: trift }) } },
+    want: { standing: 'open', action: 'none', safe: ['abort'], reason: expect.stringContaining('goes on from trift') },
+  },
+  {
+    name: 'an open transaction this machine\'s controller drives can go on or be aborted',
+    o: { local: mac, controller: journal(), gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: mac }) } },
+    want: { standing: 'open', action: 'continue', safe: ['resume', 'abort'] },
+  },
+  {
+    name: 'a committed transaction goes forward from either end, whichever controller began it',
+    o: { local: mac, controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, { ...tx('committed'), controllerId: trift }) } },
+    want: { standing: 'committed', action: 'continue', safe: ['resume'] },
+  },
+  {
     name: 'a committed transaction only goes forward, whatever the controller last wrote',
     o: { controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) } },
     want: { standing: 'committed', action: 'continue', safe: ['resume'] },
@@ -72,6 +88,16 @@ const cases: Case[] = [
     name: 'a Begin whose answer was lost is the gateway\'s preparing handover between the same machines',
     o: { controller: journal({ transactionId: undefined, phase: 'begin' }), gateway: { ok: true, value: at(4, mac, tx('preparing', 'tx-9')) } },
     want: { standing: 'open', action: 'continue', transactionId: 'tx-9' },
+  },
+  {
+    name: 'a Begin whose answer was lost is the gateway\'s preparing handover carrying its nonce',
+    o: { controller: journal({ transactionId: undefined, phase: 'begin', nonce: NONCE }), gateway: { ok: true, value: at(4, mac, { ...tx('preparing', 'tx-9'), nonce: NONCE }) } },
+    want: { standing: 'open', action: 'continue', transactionId: 'tx-9' },
+  },
+  {
+    name: 'a preparing handover between the same machines that another Begin opened is not this controller\'s',
+    o: { controller: journal({ transactionId: undefined, phase: 'begin', nonce: NONCE }), gateway: { ok: true, value: at(4, mac, { ...tx('preparing', 'tx-9'), nonce: crypto.randomUUID() }) } },
+    want: { standing: 'superseded', action: 'none', safe: [] },
   },
   {
     name: 'a Begin the gateway never made moved nothing',

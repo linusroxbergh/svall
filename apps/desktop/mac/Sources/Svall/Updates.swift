@@ -37,6 +37,45 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
         updater.checkForUpdateInformation()
     }
 
+    // an update can change the protocol, leaving a fleet another machine runs out of this Mac's reach until that machine runs the
+    // same release, and the appcast does not say whether it does, so the first check the user asks for meanwhile shows why instead;
+    // the banner's probe runs on
+    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
+        guard updateCheck != .updateInformation, let notice = holdBack() else { return }
+        throw NSError(domain: "Svall", code: 1, userInfo: [NSLocalizedDescriptionKey: notice])
+    }
+
+    private var heldBack = false
+
+    /// The notice for the first update asked for while another machine runs a fleet of this Mac; nil once shown, so asking again installs it.
+    func holdBack(_ deferral: () -> String? = { Updates.deferral() }) -> String? {
+        guard !heldBack, let notice = deferral() else { return nil }
+        heldBack = true
+        return notice
+    }
+
+    /// Why an update waits: a fleet home here whose fleet.json names a gateway and whose owner.json names another machine
+    /// than this one, read from files alone; nil while this Mac runs every fleet it has.
+    static func deferral(homeDirectory: String = NSHomeDirectory(), configDir: String = SvallHome.configDir) -> String? {
+        func json(_ file: String) -> [String: Any]? {
+            FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        }
+        guard let me = json(configDir + "/machine.json")?["id"] as? String else { return nil }
+        for name in ((try? FileManager.default.contentsOfDirectory(atPath: homeDirectory)) ?? []).sorted() {
+            let home = homeDirectory + "/" + name
+            // the profiles svall names fleets by, which leave out Svall Dev's
+            guard let profile = SvallHome.fleetProfile(of: home, in: homeDirectory),
+                  profile.range(of: #"^(?!dev(-|$))[a-z][a-z0-9-]*$"#, options: .regularExpression) != nil,
+                  let fleet = json(home + "/fleet.json"), fleet["gatewayMachineId"] is String,
+                  let owner = json(home + "/owner.json")?["ownerMachineId"] as? String, owner != me else { continue }
+            let machine = ((json(configDir + "/machines.json")?["machines"] as? [String: Any])?[owner] as? [String: Any])?["name"] as? String ?? owner
+            let named = (fleet["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? profile
+            let svall = profile == "private" ? "svall" : "svall -p \(profile)"
+            return "\(named) runs on \(machine), which an update that changes Svall's protocol leaves out of reach until svall host upgrade \(machine); \(svall) handover local brings it back first, and Check for Updates again installs it now"
+        }
+        return nil
+    }
+
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) { waiting = item.displayVersionString }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) { waiting = nil }

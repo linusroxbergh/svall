@@ -5,12 +5,14 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Outcome } from '@svall/protocol';
+import { AuthorityClient } from '@svall/svalld/gateway/client';
 import { armFailpoints } from '@svall/svalld/handover/failpoints';
 import * as real from '../../../svalld/test/handover/fault-world.js';
 import { cleanHomes, makeHome } from '../../../svalld/test/helpers.js';
 import { runHandover, type CliDeps, type Ctx, type Transaction } from '../../src/commands/handover.js';
 import type { Handover } from '../../src/controller/handover.js';
 import { helperPaths } from '../../src/controller/helper.js';
+import { fileStore } from '../../src/controller/recovery.js';
 import { MachineRegistry } from '../../src/controller/registry.js';
 import { World, controller, keptCommit, opIndex, recover, settledOn, trift, type Fault } from './world.js';
 
@@ -54,6 +56,17 @@ const RUNS: Record<string, Run> = {
       await begin(p);
       c.cancel();
       throw new Error('gateway begin: the connection dropped before the answer');
+    };
+    return { w, go: () => c.start(trift, {}) };
+  },
+  'a cancel while a Begin that never arrived goes unanswered': () => {
+    const w = new World();
+    const c = controller(w);
+    const begin = w.gateway.begin;
+    w.gateway.begin = async () => {
+      w.gateway.begin = begin;
+      c.cancel();
+      throw new Error('gateway begin: the connection dropped before the request went out');
     };
     return { w, go: () => c.start(trift, {}) };
   },
@@ -155,9 +168,9 @@ const crashed = (at: 'controller.manifest' | 'controller.commit') => async (w: r
 const resume = (w: real.World): Promise<Outcome> => { const c = w.controller(); return w.run(() => c.resume()); };
 const abort = (w: real.World): Promise<Outcome> => { const c = w.controller(); return w.run(() => c.abort()); };
 
-/** A start from this machine whose controller dies as it would ask the gateway to record `at`. */
-async function diesAt(w: real.World, at: string): Promise<void> {
-  const a = party(w, 'mac', 'start');
+/** A start from this machine, or from `on`, whose controller dies as it would ask the gateway to record `at`. */
+async function diesAt(w: real.World, at: string, on: 'mac' | 'trift' = 'mac'): Promise<void> {
+  const a = party(w, on, 'start');
   const life = w.lifeOfController(a.c);
   w.gate = async (g) => { if (g.life === life && g.label === at) life.dead = true; };
   await a.go();
@@ -170,7 +183,7 @@ const unreadable = async (w: real.World): Promise<void> => {
   fs.writeFileSync(path.join(w.ctlDir, 'handover.json'), '{"version":1,');
 };
 
-/** An abort here, before whose gateway abort a resume on trift takes the handover whole to trift. */
+/** An abort here, before whose gateway abort a resume on trift, which began the handover, takes it whole to trift. */
 async function overtaken(w: real.World): Promise<Outcome> {
   const a = party(w, 'mac', 'abort');
   const held = w.lifeOfController(a.c);
@@ -197,7 +210,7 @@ const SCRIPTS: Record<string, Script> = {
   // the journal is rebuilt from the daemons', and the destination asked to prepare again with nothing landed
   "resume from the daemons' journals once prepared": { before: unreadable, go: resume },
   // the gateway answers the abort at the next generation, and is asked where the fleet went
-  'abort once prepared, overtaken by a resume on trift': { before: (w) => diesAt(w, 'gateway ready'), go: overtaken, from: 'gateway abort' },
+  'abort once prepared, overtaken by a resume on trift': { before: (w) => diesAt(w, 'gateway ready', 'trift'), go: overtaken, from: 'gateway abort' },
 };
 
 /** Each script's requests, run once at collection: a request a script shares with the move before they part is the move's to strike. */
@@ -325,6 +338,59 @@ describe('an unknown Commit', () => {
       });
     }
   }
+});
+
+// ---- a destination that cannot reach the gateway after the commit: it activates on the commit's answer the controller kept
+
+describe('a destination the gateway does not answer after the commit', () => {
+  const world = real.worlds();
+
+  it('activates on the commit a controller that died before asking it journaled, once a new one resumes', async () => {
+    const w = world();
+    await diesAt(w, 'trift handover.activate');
+    const journal = JSON.parse(fs.readFileSync(path.join(w.ctlDir, 'handover.json'), 'utf8')) as Record<string, unknown>;
+    expect(journal.committed).toEqual(w.record());
+    w.blind.add('trift');
+    const out = await resume(w);
+    expect(out, w.trace.join(' | ')).toMatchObject({ status: 'complete' });
+    expect(w.violations).toEqual([]);
+    w.blind.clear();
+    expect(real.settledOn(w)).toBe('destination');
+  });
+});
+
+// ---- a Begin that reaches the gateway only after its handover was let go opens nothing
+
+describe('a Begin that reaches the gateway only after its handover was let go', () => {
+  const world = real.worlds();
+  const BEGIN = PROBED.move.labels.indexOf('gateway begin');
+
+  it('is refused, and the fleet stays the source\'s, free to begin again', async () => {
+    const w = world();
+    const a = party(w, 'mac', 'start');
+    let nonce: string | undefined;
+    w.message = { at: BEGIN, kind: 'dropped' };
+    w.gate = async () => {
+      if (w.requests.length !== BEGIN) return;
+      nonce = fileStore(w.ctlDir).read()?.nonce;
+      a.c.cancel();
+    };
+    const out = await a.go();
+    w.gate = undefined;
+    expect(out).toMatchObject({ status: 'aborted', phase: 'begin' });
+    expect(nonce).toBeDefined();
+    const client = await AuthorityClient.connect(w.prefix);
+    try {
+      const late = client.begin({ fleetId: real.fleetId, expectedGeneration: real.G, fromMachineId: real.MAC, toMachineId: real.TRIFT, controllerId: real.MAC, nonce });
+      await expect(late).rejects.toThrow('that Begin belongs to a handover already let go');
+    } finally {
+      client.close();
+    }
+    expect(w.record().transaction).toBeUndefined();
+    expect(await real.play(w, 'move')).toMatchObject({ status: 'complete' });
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('destination');
+  });
 });
 
 // ---- a cancel while Begin goes unanswered: an abort closes what the gateway may have opened
@@ -515,7 +581,9 @@ describe('two controllers on different machines', () => {
       const outcomes = await race(w, meets(party(w, 'mac', 'start')), meets(same ? second : { ...second, go: () => w.run(() => second.c.start(real.TRIFT, { ...real.choices(w), interruptAfterMs: 0 }), second.c) }));
       w.gate = undefined;
       expect(arrived).toBe(2);
-      // the gateway answers a Begin between the same machines at the same generation with the handover it holds, so both drive that one
+      // the gateway refuses the Begin of the controller that does not drive the handover it holds, naming the one that does
+      expect(outcomes.map((o) => o.status).sort()).toEqual(['blocked', 'complete']);
+      expect(outcomes.find((o) => o.status === 'blocked')).toMatchObject({ phase: 'begin', blockers: [{ code: 'transaction_open', message: expect.stringContaining('the controller on') }] });
       expect(await settleBoth(w, outcomes)).toBe('destination');
     });
   }
@@ -624,15 +692,25 @@ describe('a controller with no journal of its own', () => {
   const world = real.worlds();
 
   for (const at of ['gateway ready', 'gateway commit'] as const) {
-    it(`on trift, resumes a handover whose controller died before ${at.split(' ')[1]} once the destination prepared, and takes it to the destination`, async () => {
+    it(`on trift, sends back a resume of a handover whose controller here died before ${at.split(' ')[1]} once the destination prepared, which a resume here takes to the destination`, async () => {
       const w = world();
       await diesAt(w, at);
-      expect(w.trift.current!.handover.journalState()).toMatchObject({ kind: 'open', journal: { phase: 'prepare' } });
+      expect(w.trift.current!.handover.journalState()).toMatchObject({ kind: 'open', journal: { phase: 'prepare', controllerId: real.MAC } });
       const out = await party(w, 'trift', 'resume').go();
-      expect(out, w.trace.join(' | ')).toMatchObject({ status: 'complete' });
-      await settleBoth(w, [out]);
+      expect(out, w.trace.join(' | ')).toMatchObject({ status: 'interrupted', safe: ['abort'], error: expect.stringContaining('whose controller began it') });
+      expect(w.record().transaction).toMatchObject({ phase: at === 'gateway ready' ? 'preparing' : 'ready-to-commit' });
+      expect(await settleBoth(w, [out])).toBe('destination');
     });
   }
+
+  it('on trift, sends back a resume of a handover a controller here began, which a resume here takes to the destination', async () => {
+    const w = world();
+    await crashed('controller.manifest')(w);
+    const out = await party(w, 'trift', 'resume').go();
+    expect(out, w.trace.join(' | ')).toMatchObject({ status: 'interrupted', safe: ['abort'], error: expect.stringContaining('whose controller began it') });
+    expect(w.requests.filter((r) => r === 'link rsync')).toEqual([]);
+    expect(await settleBoth(w, [out])).toBe('destination');
+  });
 
   for (const edge of [undefined, 'before', 'after'] as const) {
     it(`here, resumes from the daemons' journals a handover whose own journal cannot be read${edge ? `, dying ${edge} it sets that journal aside` : ''}, once the destination prepared`, async () => {

@@ -8,7 +8,7 @@ import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, saveConfig, setGateway } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig, setGateway } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { fleetAuthority } from './gateway/client.js';
@@ -17,10 +17,11 @@ import { ProcessTable } from './handover/processes.js';
 import { HandoverService } from './handover/service.js';
 import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
 import type { Authority } from './handover/source.js';
-import { adoptAtStart, enterStartupMode, startupMode } from './handover/startup.js';
+import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
+import { lingerState, realRun } from './linux/service.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { machineId, machineIdFailure } from './machine.js';
+import { configDir, copiedRemedy, machineIdentity, machineIdFailure, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
@@ -94,8 +95,11 @@ function lockSocket(home: string): Promise<() => void> {
   });
 }
 
-/** `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh. */
-type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority };
+/**
+ * `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh; `gatewayEveryMs`, how
+ * often a running daemon asks it again; `hardware`, for the reader of this machine's hardware id.
+ */
+type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority; gatewayEveryMs?: number; hardware?: HardwareReader };
 
 export class OtherBuildHome extends Error {}
 
@@ -110,18 +114,44 @@ export async function startDaemon(opts: Options): Promise<Daemon> {
   return { ...daemon, stop: async () => { await daemon.stop(); unlock(); } };
 }
 
+// every fleet home in this account's home, set up or not
+const fleetHomes = (home: string): string[] => [home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
+
 // a fleet no gateway holds needs no machine id of its own: without one it runs as its owner record's, or as a new one
-// that record keeps for the next start
-function fleetMachineId(paths: Paths, gateway: MachineId | undefined, log: Logger): MachineId {
+// that record keeps for the next start. A machine.json made on other hardware is another machine's id: `copied` names it
+// while a gateway holds this fleet, and it becomes this machine's once no fleet here names a gateway
+function fleetMachineId(paths: Paths, gateway: MachineId | undefined, log: Logger, hardware?: HardwareReader): { id: MachineId; copied?: string } {
+  let identity: ReturnType<typeof machineIdentity>;
   try {
-    return machineId();
+    identity = machineIdentity(configDir(), hardware);
   } catch (e) {
     if (gateway) throw new Error(machineIdFailure(e), { cause: e });
     let id: MachineId;
     try { id = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { id = MachineId.parse(crypto.randomUUID()); }
     log.error(`${machineIdFailure(e)}; no gateway holds this fleet, so it runs as ${id}`);
-    return id;
+    return { id };
   }
+  const { id, hardware: seen } = identity;
+  if (!seen) return { id };
+  const file = path.join(configDir(), 'machine.json');
+  const made = `${file} was made on hardware ${seen.stored}, and this machine is ${seen.actual}`;
+  if (gateway) {
+    log.error(`${made}, so this fleet is read-only here: ${copiedRemedy(file)}; \`svall doctor\` checks it`);
+    return { id, copied: file };
+  }
+  // a fleet that cannot be read may name one
+  const gatewayed = fleetHomes(paths.home).some((h) => { try { return !!peekConfig(resolvePaths(h)).gatewayMachineId; } catch { return true; } });
+  if (gatewayed) {
+    log.error(`${made}, and another fleet here names a gateway: ${copiedRemedy(file)}`);
+    return { id };
+  }
+  try {
+    rebindMachine(seen.actual);
+    log.error(`${made}; no fleet here names a gateway, so the file is this machine's from now on`);
+  } catch (e) {
+    log.error(`${made}; no fleet here names a gateway, and the file could not be bound to this machine: ${(e as Error).message}`);
+  }
+  return { id };
 }
 
 async function start(opts: Options): Promise<Daemon> {
@@ -165,8 +195,8 @@ async function start(opts: Options): Promise<Daemon> {
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   // without a gateway no other machine can hold this fleet, so a record this one cannot read is repaired
-  const me = fleetMachineId(paths, config.gatewayMachineId, log);
-  const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !config.gatewayMachineId });
+  const { id: me, copied } = fleetMachineId(paths, config.gatewayMachineId, log, opts.hardware);
+  const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !config.gatewayMachineId, copied });
   // a handover reads state.json back from disk, so a frozen, held or replica fleet writes each change at once
   store.batchWritesWhile(() => ownership.writable());
   const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound });
@@ -179,6 +209,7 @@ async function start(opts: Options): Promise<Daemon> {
   };
   const handover = new HandoverService({
     ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps()), fleet, setGateway: (id) => setGateway(paths, config, id),
+    ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
     authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
     source: {
       paths, store, fleet, tmux, viewers: terminals, log,
@@ -189,12 +220,14 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const journal = handover.journalState();
   await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !config.gatewayMachineId });
-  await adoptAtStart({ handover, authority: authority(), fleetId: config.id, log });
+  // a machine that shares another's id takes no record from the gateway: one naming that id may mean the other machine
+  const asked = (): Authority | undefined => (copied ? undefined : authority());
+  const answered = await adoptAtStart({ handover, authority: asked(), fleetId: config.id, log });
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
   // counts, set up or not
-  const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
+  const homes = () => fleetHomes(paths.home);
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
@@ -242,6 +275,8 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
+    // a record the gateway took while this daemon ran that names another owner, as a recovery that could not reach it writes, lets the fleet go here
+    teardown.push(watchGateway({ handover, authority: asked, fleetId: config.id, machineId: me, log, everyMs: opts.gatewayEveryMs, answered }));
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));

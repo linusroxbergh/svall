@@ -12,6 +12,7 @@ import {
 import { NodeFile, mergeConfig, namedGateway, type Config } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
+import { unanswered } from '../gateway/authority.js';
 import { handoverGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { opencodeFolders } from '../opencode/install.js';
@@ -173,6 +174,9 @@ const blocked = (blockers: Blocker[]): Error => {
   return handoverError({ code: 'blocked', message: found.map((b) => b.message).join('; '), blockers: found });
 };
 const notReady = (message: string): Error => handoverError({ code: 'not_ready', message });
+const anotherController = (tx: string, drives: string, asked: string | undefined): Error => handoverError({
+  code: 'transaction_mismatch', message: `handover ${tx} is driven by the controller on ${drives}, not ${asked ? `the one on ${asked}` : 'one that names no machine'}`, expected: tx,
+});
 
 const wire = (check: ReplicaCheck): WireCheck =>
   (check.ok ? { ok: true, path: check.path, kind: check.kind } : { ok: false, path: check.path, blocker: check.blocker });
@@ -420,6 +424,7 @@ export class DestinationHandover {
         expected: id, ...(tx && { actual: tx.id }),
       });
     }
+    if (tx.controllerId && tx.controllerId !== p.controllerId) throw anotherController(id, tx.controllerId, p.controllerId);
     if (record.generation !== p.generation - 1) {
       throw handoverError({ code: 'generation_mismatch', message: `the gateway holds this fleet at generation ${record.generation}, not ${p.generation - 1}`, expected: p.generation - 1, actual: record.generation });
     }
@@ -461,6 +466,7 @@ export class DestinationHandover {
     if (held && held.manifestDigest !== p.manifestDigest) {
       throw handoverError({ code: 'transaction_mismatch', message: `this machine prepares handover ${tx} from manifest ${held.manifestDigest}, not ${p.manifestDigest}` });
     }
+    if (held?.controllerId && held.controllerId !== p.controllerId) throw anotherController(tx, held.controllerId, p.controllerId);
     if (held?.preparedDigest) {
       boundary('destination.prepare.stage', () => { for (const f of this.staged(tx)) fs.rmSync(f, { recursive: true, force: true }); });
       return { preparedDigest: held.preparedDigest };
@@ -481,6 +487,7 @@ export class DestinationHandover {
       boundary('destination.verify.journal', () => this.journal.write(DestinationJournal.parse({
         role: 'destination', transactionId: tx, generation: p.generation, fleetId: this.d.config.id,
         fromMachineId: m.fromMachineId, toMachineId: m.toMachineId, phase: 'verify', manifestDigest: p.manifestDigest, updatedAt: this.clock.now(),
+        ...(p.controllerId && { controllerId: p.controllerId }),
       })));
     }
     // a machine receiving a fleet runs nothing of it until activation
@@ -692,7 +699,7 @@ export class DestinationHandover {
     let j = this.open(tx);
     if (!j) throw handoverError({ code: 'transaction_mismatch', message: `this machine is not receiving handover ${tx}`, expected: tx });
     if (!j.preparedDigest || !j.fleet) throw notReady(`handover ${tx} is not prepared on this machine yet`);
-    const record = await this.committed(j);
+    const record = await this.committed(j, p.committed);
     await boundary('destination.activate.install', () => this.ownership.installCommitted(record));
     if (j.phase === 'prepare') j = this.advance(j, 'commit');
     if (j.phase === 'commit') {
@@ -714,26 +721,53 @@ export class DestinationHandover {
     });
   }
 
-  /** The gateway's record, when it names this machine the owner at the prepared generation with this handover committed on this state. */
-  private async committed(j: DestinationJournal): Promise<OwnerRecord> {
-    const record = await this.ask();
+  /**
+   * The gateway's record, when it names this machine the owner at the prepared generation with this handover committed on
+   * this state. While the gateway gives no answer at all, `held`, the commit's answer the controller kept, stands in for it
+   * when it says exactly that.
+   */
+  private async committed(j: DestinationJournal, held?: OwnerRecord): Promise<OwnerRecord> {
+    let record: OwnerRecord;
+    try {
+      record = await this.ask();
+    } catch (e) {
+      if (!held || !unanswered((e as Error).cause)) throw e;
+      const refused = this.uncommitted(j, held, false);
+      if (!refused) return held;
+      // still the gateway's to answer, and the controller's record says why it could not stand in
+      throw handoverError({ code: 'authority_unreachable', message: `${(e as Error).message}; the commit the controller kept does not stand in for it: ${refused.message}` });
+    }
+    const refused = this.uncommitted(j, record, true);
+    if (refused) throw refused;
+    return record;
+  }
+
+  /** Why `record` does not show this handover committed to this machine on the state it prepared; `asked`: the gateway's own answer. */
+  private uncommitted(j: DestinationJournal, record: OwnerRecord, asked: boolean): Error | undefined {
     const tx = record.transaction;
     const id = j.transactionId;
-    if (tx?.id === id && tx.phase !== 'committed') throw notReady(`the gateway holds handover ${id} ${tx.phase}; it has not committed it`);
-    if (record.ownerMachineId !== this.ownership.machineId) {
-      throw handoverError({ code: 'not_owner', message: `the gateway names ${record.ownerMachineId} as this fleet's owner at generation ${record.generation}`, ownerMachineId: record.ownerMachineId, generation: record.generation });
+    const me = this.ownership.machineId;
+    if (tx?.id === id && tx.phase !== 'committed') return notReady(`the gateway holds handover ${id} ${tx.phase}; it has not committed it`);
+    if (record.fleetId !== this.d.config.id) {
+      return handoverError({ code: 'transaction_mismatch', message: `the record is for fleet ${record.fleetId}, and this daemon runs fleet ${this.d.config.id}`, expected: id });
+    }
+    if (record.ownerMachineId !== me) {
+      return handoverError({ code: 'not_owner', message: `the gateway names ${record.ownerMachineId} as this fleet's owner at generation ${record.generation}`, ownerMachineId: record.ownerMachineId, generation: record.generation });
     }
     if (record.generation !== j.generation) {
-      throw handoverError({ code: 'generation_mismatch', message: `the gateway holds this fleet at generation ${record.generation}, not ${j.generation}`, expected: j.generation, actual: record.generation });
+      return handoverError({ code: 'generation_mismatch', message: `the gateway holds this fleet at generation ${record.generation}, not ${j.generation}`, expected: j.generation, actual: record.generation });
     }
-    // a record the gateway has since completed no longer names the handover; only one this machine saw commit may be trusted then
-    if (tx ? tx.id !== id : j.phase === 'prepare') {
-      throw handoverError({ code: 'transaction_mismatch', message: tx ? `the gateway committed handover ${tx.id}, not ${id}` : `the gateway holds no record of handover ${id} committing`, expected: id, ...(tx && { actual: tx.id }) });
+    // a record the gateway has since completed no longer names the handover; only its own answer, to a machine that saw it commit, may be trusted then
+    if (tx ? tx.id !== id || tx.toMachineId !== me : !asked || j.phase === 'prepare') {
+      return handoverError({
+        code: 'transaction_mismatch', message: tx ? `the gateway committed handover ${tx.id} to ${tx.toMachineId}, not ${id} to this machine` : `the gateway holds no record of handover ${id} committing`,
+        expected: id, ...(tx && { actual: tx.id }),
+      });
     }
     if (tx && tx.preparedDigest !== j.preparedDigest) {
-      throw handoverError({ code: 'transaction_mismatch', message: `handover ${id} was committed on prepared state ${tx.preparedDigest}, and this machine prepared ${j.preparedDigest}`, expected: id, actual: tx.id });
+      return handoverError({ code: 'transaction_mismatch', message: `handover ${id} was committed on prepared state ${tx.preparedDigest}, and this machine prepared ${j.preparedDigest}`, expected: id, actual: tx.id });
     }
-    return record;
+    return undefined;
   }
 
   /** fleet.json, then the state: each step is safe to repeat, and a rename that landed before a crash is found by its digest. */
@@ -1118,7 +1152,8 @@ export class DestinationHandover {
     try {
       return await authority.get(this.d.config.id);
     } catch (e) {
-      throw handoverError({ code: 'authority_unreachable', message: `the gateway could not say who owns this fleet: ${(e as Error).message}` });
+      // the failure underneath says whether the gateway answered at all
+      throw Object.assign(handoverError({ code: 'authority_unreachable', message: `the gateway could not say who owns this fleet: ${(e as Error).message}` }), { cause: e });
     }
   }
 

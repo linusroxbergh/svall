@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -174,8 +175,21 @@ export type FleetAuthorityOptions = {
   prefix?: string;
   /** the controller's registry, which names the gateway's ssh route */
   registry?: string;
+  /** where the connection kept to each gateway has its control socket */
+  controlDir?: string;
   ssh?: SshRun;
 };
+
+// a socket path holds 103 bytes on a Mac, and ssh binds the control socket under a name 17 bytes longer first
+const CONTROL_MAX = 86;
+
+/** One connection to each gateway, kept between the asks of every fleet here; none where its socket would not fit. */
+function kept(dir: string, destination: string): string[] {
+  const socket = path.join(dir, `gw-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
+  if (Buffer.byteLength(socket) > CONTROL_MAX) return [];
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { return []; }
+  return ['-o', 'ControlMaster=auto', '-o', 'ControlPersist=10m', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', `ControlPath=${socket}`];
+}
 
 /**
  * How a daemon asks its fleet's gateway who owns the fleet: on the gateway, over the authority's own socket;
@@ -192,6 +206,7 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
     };
   }
   const registry = o.registry ?? path.join(configDir(), 'machines.json');
+  const controlDir = o.controlDir ?? path.join(path.dirname(registry), 'ssh');
   const ssh = o.ssh ?? realSsh;
   return {
     get: async (fleetId) => {
@@ -202,7 +217,7 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       // a registry that knows no way to the gateway asked for is a wrong question, not a gateway that is away
       const gateway = machines[o.gatewayMachineId];
       if (!gateway?.ssh) throw new AuthorityFailure('invalid_request', `${registry} names no ssh route to the gateway ${o.gatewayMachineId}`, { unrouted: true });
-      const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'svall-owner', svallExe(gateway.svallBase), fleetId].map(shq).join(' ')]);
+      const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', ...kept(controlDir, gateway.ssh), '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'svall-owner', svallExe(gateway.svallBase), fleetId].map(shq).join(' ')]);
       const answeredAs = versionMachineId(r.stdout);
       const line = lastLine(r.stdout);
       const prompt = prompted(r);
