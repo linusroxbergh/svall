@@ -56,6 +56,7 @@ const CODEX = [
   // written before the oldest Codex Svall runs, so the CLI that carries it has been updated since
   { version: '0.155.1', cli: '0.156.0', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04' },
   { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f' },
+  { version: '0.162.1', file: 'sessions/2026/10/21/rollout-2026-10-21T20-28-35-01a15fb8-ddb3-7720-9bbc-6558d68e05f4.jsonl', id: '01a15fb8-ddb3-7720-9bbc-6558d68e05f4' },
 ] as const;
 
 describe('the adapter registry', () => {
@@ -445,7 +446,7 @@ describe('sessions in the transfer manifest', () => {
 // each fixture session, where its CLI keeps it under the agent home
 const FIXTURE_SESSIONS = [
   ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.2.0' })),
-  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
+  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.163.0' })),
 ];
 
 describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind, version, cli, id, agentHome, transcript, newer }) => {
