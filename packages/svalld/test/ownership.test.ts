@@ -13,6 +13,7 @@ import { silentLogger } from '../src/log.js';
 import { copiedRemedy, machineId } from '../src/machine.js';
 import { startDaemon } from '../src/main.js';
 import { classification } from '../src/ownership/guard.js';
+import { DestinationJournal, SourceJournal } from '../src/handover/journal.js';
 import { OwnershipState } from '../src/ownership/state.js';
 import { resolvePaths } from '../src/paths.js';
 import { releaseVersion } from '../src/release.js';
@@ -526,6 +527,61 @@ runIf('a daemon starting with a gateway', () => {
     } finally {
       client.ws.close();
       await d.stop();
+    }
+  });
+
+  it('while it runs, keeps the fleet past a gateway behind it, and waits for a start to run one the gateway hands it', async () => {
+    const here = machineId();
+    const cases: [string, MachineId, OwnerRecord, string][] = [
+      // a gateway restored from a backup answers a generation it has since passed
+      ['behind', here, { fleetId, generation: 1, ownerMachineId: other }, 'result'],
+      ['naming this machine', other, { fleetId, generation: 3, ownerMachineId: here }, 'error'],
+    ];
+    for (const [what, owner, later, island] of cases) {
+      const home = gated(owner);
+      let held: OwnerRecord = { fleetId, generation: 2, ownerMachineId: owner };
+      let asks = 0;
+      const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => { asks++; return held; } }, gatewayEveryMs: 40 });
+      const client = await TestClient.connect(d.port, d.token);
+      try {
+        held = later;
+        const from = asks;
+        await waitFor(() => asks >= from + 3);
+        expect(await client.call('ownership.get'), what).toMatchObject({ result: { generation: 2, ownerMachineId: owner } });
+        expect(await client.call('island.create', { name: 'x' }), what).toHaveProperty(island);
+      } finally {
+        client.ws.close();
+        await d.stop();
+      }
+    }
+  });
+
+  it('while it runs, leaves a handover journal open on either side to answer for the records the gateway gives', async () => {
+    const here = machineId();
+    const journals: [string, MachineId, object, OwnerRecord][] = [
+      ['source', here, SourceJournal.parse({ role: 'source', transactionId: 'tx-1', generation: 2, fleetId, fromMachineId: here, toMachineId: other, phase: 'transfer', updatedAt: 1 }),
+        { fleetId, generation: 3, ownerMachineId: other, transaction: { id: 'tx-1', fromMachineId: here, toMachineId: other, phase: 'committed', startedAt: 1 } }],
+      ['destination', other, DestinationJournal.parse({ role: 'destination', transactionId: 'tx-1', generation: 3, fleetId, fromMachineId: other, toMachineId: here, phase: 'prepare', manifestDigest: 'a'.repeat(64), updatedAt: 1 }),
+        { fleetId, generation: 3, ownerMachineId: here, transaction: { id: 'tx-1', fromMachineId: other, toMachineId: here, phase: 'committed', startedAt: 1 } }],
+    ];
+    for (const [role, owner, journal, later] of journals) {
+      const home = gated(owner);
+      const paths = resolvePaths(home);
+      fs.mkdirSync(paths.handoverDir, { recursive: true });
+      fs.writeFileSync(paths.journal, JSON.stringify(journal));
+      let held: OwnerRecord = { fleetId, generation: 2, ownerMachineId: owner };
+      let asks = 0;
+      const d = await startDaemon({ home, port: 0, log: silentLogger, authority: { get: async () => { asks++; return held; } }, gatewayEveryMs: 40 });
+      const client = await TestClient.connect(d.port, d.token);
+      try {
+        held = later;
+        const from = asks;
+        await waitFor(() => asks >= from + 3);
+        expect(await client.call('ownership.get'), role).toMatchObject({ result: { generation: 2, ownerMachineId: owner, frozen: true, journal: { role, transactionId: 'tx-1' } } });
+      } finally {
+        client.ws.close();
+        await d.stop();
+      }
     }
   });
 
