@@ -46,10 +46,13 @@ describe('the handover a sheet follows', () => {
     const run = play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [], names } }]);
     const name = (id: string) => run.preflight?.names?.characters[id] ?? id;
     expect(entityLabel({ kind: 'character', id: 'c1' }, name, run.preflight?.names)).toBe('ada');
-    expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names)).toBe('/home/ada/app');
+    expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names)).toBe('~/app');
     expect(entityLabel({ kind: 'session', id: 's0' }, name, run.preflight?.names)).toBe("ada's session");
+    // a repository is named by the path its message leads with
+    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no character uses are not registered')).toBe('~/src/beta');
     // without what preflight said, the id is what there is
     expect(entityLabel({ kind: 'root', id: 'r_b' }, name, run.preflight?.names)).toBe('folder r_b');
+    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, 'the destination has no git')).toBe('repository');
   });
 
   it('puts a character the destination brought up under Resuming, apart from its rest row', () => {
