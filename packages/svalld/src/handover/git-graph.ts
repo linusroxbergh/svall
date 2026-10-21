@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Blocker, FleetState, GitCheckout, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
+import type { Blocker, FleetState, GitCheckout, GitCommand, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitDirs, type GitRunner } from '../links/git.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 import { excludeMatcher, excludedPath, settle } from './inventory.js';
@@ -159,7 +159,9 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
       const checkouts = [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees].map((c) => c.path);
-      const commands = [...new Set((await repoCommands(commonDir, checkouts, git)).map((c) => c.key))].sort(byCodeUnit);
+      const found = await repoCommands(commonDir, checkouts, git);
+      if (found.length) read.graph.commands = found.map(({ at, key, value }) => ({ at, key, value }));
+      const commands = [...new Set(found.map((c) => c.key))].sort(byCodeUnit);
       if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
       const held = await unusedWork(read.graph, git, exists);
       for (const [at, message] of held) blockers.push({ code: 'worktree_unused', message: `${at}: ${message}`, entity });
@@ -287,20 +289,32 @@ export const runsHere = (key: string): boolean => key !== 'core.sshcommand';
  * Each command setting a repository's own or worktree config holds for a checkout, or a submodule's Git directory under
  * `commonDir`, read there with the includes that apply, and whether this machine's global or system config sets it the same.
  */
-export async function repoCommands(commonDir: string, checkouts: readonly string[], git: GitRunner): Promise<{ at: string; key: string; own: boolean }[]> {
+export async function repoCommands(commonDir: string, checkouts: readonly string[], git: GitRunner): Promise<(GitCommand & { own: boolean })[]> {
   const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((at) => ({ at, cwd: at })), ...submoduleDirs(path.join(commonDir, 'modules')).map((at) => ({ at, cwd: commonDir, gitDir: at }))];
-  const found: { at: string; key: string; own: boolean }[] = [];
+  const found: (GitCommand & { own: boolean })[] = [];
   for (const { at, cwd, gitDir } of places) {
     const all = await settings(git, cwd, gitDir);
-    const own = new Set(all.filter((s) => s.scope === 'system' || s.scope === 'global').map((s) => `${s.key}\n${s.value}`));
-    const keys = new Map<string, boolean>();
-    for (const s of all) {
-      if ((s.scope !== 'local' && s.scope !== 'worktree') || !COMMAND.test(s.key) || (s.key === 'core.fsmonitor' && BOOLEAN.test(s.value))) continue;
-      keys.set(s.key, (keys.get(s.key) ?? true) && own.has(`${s.key}\n${s.value}`));
-    }
-    for (const [key, same] of [...keys].sort(([a], [b]) => byCodeUnit(a, b))) found.push({ at, key, own: same });
+    const own = ownSettings(all);
+    // the last value of a key is the one git uses
+    const values = new Map<string, string>();
+    for (const s of all) if ((s.scope === 'local' || s.scope === 'worktree') && command(s)) values.set(s.key, s.value);
+    for (const [key, value] of [...values].sort(([a], [b]) => byCodeUnit(a, b))) found.push({ at, key, value, own: own.has(`${key}\n${value}`) });
   }
   return found;
+}
+
+const command = (s: Setting): boolean => COMMAND.test(s.key) && !(s.key === 'core.fsmonitor' && BOOLEAN.test(s.value));
+const ownSettings = (all: readonly Setting[]): Set<string> =>
+  new Set(all.filter((s) => s.scope === 'system' || s.scope === 'global').map((s) => `${s.key}\n${s.value}`));
+
+/** The keys of `commands`, by where each is read, that git would run on this machine and its global or system config does not set the same. */
+export async function unsetHere(commands: readonly GitCommand[], git: GitRunner): Promise<{ at: string; keys: string[] }[]> {
+  const runs = commands.filter((c) => runsHere(c.key));
+  if (!runs.length) return [];
+  const own = ownSettings(await settings(git, '/'));
+  const by = new Map<string, string[]>();
+  for (const c of runs) if (!own.has(`${c.key}\n${c.value}`)) by.set(c.at, [...(by.get(c.at) ?? []), c.key]);
+  return [...by].map(([at, keys]) => ({ at, keys }));
 }
 
 /**

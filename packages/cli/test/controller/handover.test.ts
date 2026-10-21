@@ -397,6 +397,16 @@ describe('preflight', () => {
     expect((await trust()).map((x) => x.code)).toEqual(['codex_trust']);
   });
 
+  it('blocks at the checks a carried repository naming a command git would run on the destination, whose global config does not set it the same', async () => {
+    const w = new World();
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: unknown) => ({ ...inspect(p), commands: [{ graph: 'g_app', at: '/Users/ada/app', keys: ['filter.crypt.clean'] }] })) as never;
+    expect((await controller(w).preflight(trift, {})).blockers).toContainEqual({
+      code: 'git_config_command', entity: { kind: 'git', id: 'g_app' },
+      message: '/Users/ada/app: its repository\'s own config names commands git would run on trift, whose global config does not set them the same: filter.crypt.clean; set each up the same there with git config --global, or remove it from the repository\'s config',
+    });
+  });
+
   it('warns that Claude warns about bypass mode with "No, exit" preselected where a carried resume asks for it and the destination\'s Claude has not accepted it', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };

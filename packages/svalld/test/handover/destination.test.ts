@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -2379,6 +2379,21 @@ describe('destination claim', () => {
 });
 
 describe('destination inspect', () => {
+  it('names each command a carried repository would have git run here that this machine\'s global config does not set the same, and no ssh command', async () => {
+    const s = await scene({ land: false });
+    const global = path.join(s.base, 'global.gitconfig');
+    execFileSync('git', ['config', '--file', global, 'filter.lfs.clean', 'git-lfs clean -- %f']);
+    const git: GitRunner = (args, cwd) => new Promise((resolve) => execFile('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: global } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
+    const d = daemon(s, { git });
+    const commands = [
+      { at: '/r/app', key: 'filter.lfs.clean', value: 'git-lfs clean -- %f' }, { at: '/r/app', key: 'filter.crypt.clean', value: 'git-crypt clean' },
+      { at: '/r/app', key: 'core.sshcommand', value: 'ssh -i ~/.ssh/work' }, { at: '/r/wt', key: 'filter.lfs.clean', value: 'lfs-other' },
+    ];
+    const r = await d.handover.inspect({ roots: [], excludes: [], folders: [], git: [{ id: 'g_app', commonDir: path.join(s.base, 'nowhere/.git'), carried: [], tips: [], commands }] });
+    expect(r.commands).toEqual([{ graph: 'g_app', at: '/r/app', keys: ['filter.crypt.clean'] }, { graph: 'g_app', at: '/r/wt', keys: ['filter.lfs.clean'] }]);
+  });
+
   it('says whether each root could be taken and what each folder it is asked about is good for, and writes no record', async () => {
     const s = await scene({ land: false });
     const d = daemon(s);

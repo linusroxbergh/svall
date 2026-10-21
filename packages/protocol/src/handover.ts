@@ -247,6 +247,10 @@ export const GitRegistration = z.object({
 export type GitRegistration = z.infer<typeof GitRegistration>;
 
 /** One repository graph: its common Git directory, its main checkout unless it is bare, and the linked worktrees the fleet uses. */
+/** A setting naming a command git runs, as a repository's own or worktree config holds it where `at` reads it. */
+export const GitCommand = z.object({ at: z.string(), key: z.string(), value: z.string() });
+export type GitCommand = z.infer<typeof GitCommand>;
+
 export const GitGraph = z.object({
   id: z.string().min(1),
   commonDir: z.string(),
@@ -257,6 +261,8 @@ export const GitGraph = z.object({
   stash: z.array(ObjectName),
   // the object every ref names, and so every commit the copy of its objects holds reachable
   tips: z.array(ObjectName).optional(),
+  // each command setting its checkouts and submodules read from the repository's own config
+  commands: z.array(GitCommand).optional(),
 });
 export type GitGraph = z.infer<typeof GitGraph>;
 
@@ -279,7 +285,7 @@ export const TransferManifestV1 = z.object({
 export type TransferManifestV1 = z.infer<typeof TransferManifestV1>;
 
 /** A graph a manifest carries as the machine it goes to reads it: its common directory there, the registrations the manifest carries, and every commit its copy holds reachable. */
-export const ReceivedGraph = z.object({ id: z.string().min(1), commonDir: MachinePath, carried: z.array(z.string()), tips: z.array(ObjectName) });
+export const ReceivedGraph = z.object({ id: z.string().min(1), commonDir: MachinePath, carried: z.array(z.string()), tips: z.array(ObjectName), commands: z.array(GitCommand).optional() });
 export type ReceivedGraph = z.infer<typeof ReceivedGraph>;
 
 /**

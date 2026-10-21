@@ -208,6 +208,11 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     fs.writeFileSync(path.join(common, 'worktrees/nested/config.worktree'), '[filter "wt"]\n\tsmudge = x\n');
     fs.appendFileSync(path.join(common, 'modules/sub/config'), '[core]\n\tsshCommand = x\n[filter "sub"]\n\tprocess = x\n');
     const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
+    // each with the value it is read with there, for the destination to compare with its own
+    expect(d.graphs.find((g) => g.commonDir === common)?.commands).toEqual(expect.arrayContaining([
+      { at: l.source.sibling, key: 'filter.br.clean', value: 'x' }, { at: l.source.nested, key: 'filter.wt.smudge', value: 'x' },
+      { at: path.join(common, 'modules/sub'), key: 'core.sshcommand', value: 'x' },
+    ]));
     expect(d.warnings.find((w) => w.code === 'git_config_command' && w.entity?.id === graphId(common))?.message).toBe(
       `${common}: its config names commands git runs, and travels with it: core.sshcommand, filter.br.clean, filter.inc.clean, filter.sub.process, filter.wt.smudge`,
     );

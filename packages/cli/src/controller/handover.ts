@@ -959,6 +959,12 @@ export class Handover {
       ...r.roots.flatMap((x) => (x.check.ok || archived.has(x.id) ? [] : [x.check.blocker])),
       ...await this.lostCommits(source, destination, m, r.unproven, 'begin'),
     ];
+    for (const c of r.commands ?? []) {
+      blockers.push({
+        code: 'git_config_command', entity: { kind: 'git', id: c.graph },
+        message: `${c.at}: its repository's own config names commands git would run on ${where}, whose global config does not set them the same: ${c.keys.join(', ')}; set each up the same there with git config --global, or remove it from the repository's config`,
+      });
+    }
     const notices: Warning[] = r.roots.flatMap((x) => (!x.check.ok && archived.has(x.id)
       ? [{ ...x.check.blocker, message: `${x.check.path} is archived when the handover claims it: ${x.check.blocker.message}` }] : []));
     // a root lands at the path it has here, so what holds it outside the home has to be there already

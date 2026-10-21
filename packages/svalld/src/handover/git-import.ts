@@ -33,7 +33,10 @@ export function graphsHere(m: Pick<TransferManifestV1, 'git'>): ReceivedGraph[] 
   return (m.git ?? []).map((g): ReceivedGraph => {
     const checkouts = [...(g.main ? [g.main] : []), ...g.worktrees];
     const heads = checkouts.flatMap((c) => (c.head ? [c.head] : []));
-    return { id: g.id, commonDir: g.commonDir, carried: g.worktrees.map((w) => path.basename(w.gitDir)), tips: [...new Set([...(g.tips ?? []), ...heads, ...g.stash])] };
+    return {
+      id: g.id, commonDir: g.commonDir, carried: g.worktrees.map((w) => path.basename(w.gitDir)), tips: [...new Set([...(g.tips ?? []), ...heads, ...g.stash])],
+      ...(g.commands && { commands: g.commands }),
+    };
   });
 }
 

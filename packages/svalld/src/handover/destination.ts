@@ -12,7 +12,7 @@ import {
 import { NodeFile, mergeConfig, namedGateway, type Config } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
-import type { GitRunner } from '../links/git.js';
+import { handoverGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { opencodeFolders } from '../opencode/install.js';
 import type { OwnershipState } from '../ownership/state.js';
@@ -22,6 +22,7 @@ import { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { writeDurable } from './durable.js';
 import { boundary } from './failpoints.js';
+import { GitFailure, unsetHere } from './git-graph.js';
 import { graphsHere, importGraphs, keptWorktrees, type KeptWorktree } from './git-import.js';
 import { canonicalDigest } from './hash.js';
 import { machineLocal, rootMatcher, settle } from './inventory.js';
@@ -257,11 +258,23 @@ export class DestinationHandover {
       const bypassing = (p.resumes ?? []).filter((f) => f.bypass);
       const bypassWarned: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
       for (const f of bypassing) if (!(await this.bypassAccepted(f))) bypassWarned.push({ kind: f.kind, cwd: f.cwd });
+      const commands = await this.commandsUnset(p.git ?? []);
       return {
         roots, folders: probeFolders(p.folders, this.d.probeFs), ...(p.links && { missing }), ...(stays.unproven.length && { unproven: stays.unproven }),
-        ...(p.resumes && { untrusted }), ...(bypassing.length && { bypassWarned }),
+        ...(p.resumes && { untrusted }), ...(bypassing.length && { bypassWarned }), ...(commands.length && { commands }),
       };
     });
+  }
+
+  /** What the repositories `graphs` bring would have git run here that this machine's own config does not set the same; prepare checks again what landed. */
+  private async commandsUnset(graphs: readonly ReceivedGraph[]): Promise<{ graph: string; at: string; keys: string[] }[]> {
+    const out: { graph: string; at: string; keys: string[] }[] = [];
+    try {
+      for (const g of graphs) for (const u of await unsetHere(g.commands ?? [], this.d.git ?? handoverGit)) out.push({ graph: g.id, ...u });
+    } catch (e) {
+      if (!(e instanceof GitFailure)) throw e;
+    }
+    return out;
   }
 
   /** Whether this machine's agent CLI of `folder`'s kind resumes there without first asking whether to trust it. */
