@@ -5,7 +5,8 @@ import { peekConfig } from '@svall/svalld/config';
 import { versionMachineId, type OwnerAnswer } from '@svall/svalld/gateway/client';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
-import { isProfileName, PRIVATE } from '@svall/svalld/profile';
+import { svalldUnitName } from '@svall/svalld/linux/setup';
+import { isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { Client } from '../client.js';
@@ -67,10 +68,14 @@ type ConnectionInfo = z.infer<typeof ConnectionInfo>;
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 
 /** What this machine's own daemon answers about the fleet it runs. */
-export function localConnectionInfo(fleetHome: string): ConnectionInfo {
+export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform = process.platform): ConnectionInfo {
   const paths = resolvePaths(fleetHome);
   if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
-    throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). Start it with \`svall setup\` or \`pnpm svalld\`.`);
+    // on Linux the daemon is a systemd unit, which says why it is down
+    const how = platform === 'linux'
+      ? `\`systemctl --user status ${svalldUnitName(profileOf(paths.home))}\` there says why, as \`svall host doctor <machine>\` does from the Mac`
+      : 'Start it with `svall setup` or `pnpm svalld`';
+    throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). ${how}.`);
   }
   const config = peekConfig(paths);
   // without a gateway no record but this machine's own can exist, so there is no generation to report

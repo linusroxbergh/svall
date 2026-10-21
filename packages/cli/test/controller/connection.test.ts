@@ -8,7 +8,7 @@ import { AuthorityClient } from '@svall/svalld/gateway/client';
 import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { machineId } from '@svall/svalld/machine';
 import { connectionInfoCommand } from '../../src/commands/connection.js';
-import { connectFor, connectRemote, FleetMismatch, MachineMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
+import { connectFor, connectRemote, FleetMismatch, localConnectionInfo, MachineMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
 import { MachineRegistry, type MachineEntry } from '../../src/controller/registry.js';
 import { SshError, SshMaster } from '../../src/controller/ssh.js';
 import { cleanHomes, makeHome, waitFor } from '../../../svalld/test/helpers.js';
@@ -269,6 +269,14 @@ describe('svall connection-info', () => {
 
   it('refuses when svalld is not running', async () => {
     await expect(run(true)).rejects.toThrow(/svalld is not running/);
+  });
+
+  it('names the way to start svalld on the platform it runs on', () => {
+    const said = (platform: NodeJS.Platform) => { try { localConnectionInfo(home, platform); } catch (e) { return (e as Error).message; } return ''; };
+    expect(said('darwin')).toContain('`svall setup`');
+    expect(said('linux')).toContain(`systemctl --user status svall-svalld@${path.basename(home)}.service`);
+    expect(said('linux')).toContain('`svall host doctor <machine>` does from the Mac');
+    expect(said('linux')).not.toMatch(/svall setup|pnpm svalld/);
   });
 
   it('carries the generation its daemon holds when the fleet has a gateway', async () => {
