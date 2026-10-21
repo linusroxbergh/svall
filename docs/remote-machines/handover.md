@@ -380,6 +380,10 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   pass after a folder's first keeps aside what it replaces, but a file saved in a folder after the checks and before
   that folder's first pass reaches it is overwritten. For each folder, that span takes in the copy and verification of
   every folder ahead of it. Leave the other machine's copies alone until the handover ends.
+- **A worktree the other machine keeps can lose its branch name.** The copy keeps the Git objects such a worktree
+  needs there, but not its branch once the machine the fleet is on no longer has that branch: the copy deletes the
+  ref and replaces `packed-refs` whole. Its HEAD then names a branch that is gone: `git reflog` in that worktree names its commit, and
+  `git branch <name> <commit>` names it again.
 - **A folder whose parent cannot be written on the other machine**, such as `/srv/app` with `/srv` owned by root,
   stops the copy with an rsync error once a pass after its first has something to keep aside, since
   `<folder>.overwritten-<handover id>` goes beside it.
