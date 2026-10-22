@@ -1094,9 +1094,8 @@ export class Handover {
     const to = controller?.destination.machineId ?? tx?.toMachineId;
     const named = [...new Set([drives, to].filter((id): id is MachineId => id !== undefined))];
     const unrouted = named.filter((id) => !this.routes(id));
-    const local = {
-      local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) } }), ...(unrouted.length && { unrouted }),
-    };
+    const names = Object.fromEntries(named.filter((id) => !unrouted.includes(id)).map((id) => [id, this.nameOf(id)]));
+    const local = { local: this.d.local, ...(Object.keys(names).length && { names }), ...(unrouted.length && { unrouted }) };
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
     const owned = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('ownership.get', {}));
     type Status = Seen<Result<'handover.status'>>;

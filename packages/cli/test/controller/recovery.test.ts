@@ -52,7 +52,7 @@ const cases: Case[] = [
   {
     name: 'an open transaction a machine this one has no route to drives goes on or is aborted only there, as on Linux for one the Mac began',
     o: { local: trift, unrouted: [mac], gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: mac }) } },
-    want: { standing: 'open', action: 'none', safe: [], reason: expect.stringContaining(`goes on from ${mac}, whose controller began it: run \`svall handover --resume\` or \`--abort\` there`) },
+    want: { standing: 'open', action: 'none', safe: [], reason: expect.stringContaining('goes on from the Mac that began it: run `svall handover --resume` or `--abort` there') },
   },
   {
     name: 'an open transaction this machine\'s controller drives can go on or be aborted',

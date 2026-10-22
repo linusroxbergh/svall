@@ -112,7 +112,7 @@ export type Seen<T> = { ok: true; value: T } | { ok: false; error: string };
 /** The four journals: the controller's own, the gateway's record, and what each daemon holds. */
 /**
  * `local`: the machine this controller runs on; `names`: what the registry calls a machine the verdict may name;
- * `unrouted`: one of those the registry has no route to.
+ * `unrouted`: one of those the registry has no route to, and so no name for.
  */
 export type Observation = {
   local?: MachineId;
@@ -199,7 +199,9 @@ export function assess(o: Observation): Verdict {
     `${f.transactionId} moved this fleet to ${f.toMachineId}, whose handover journal could not be read and was moved to ${unread}: on that machine, repair it and put it back at ${unread?.replace(/\.broken-\d+$/, '')}, then restart the fleet's daemon there and resume; or \`svall fleet recover --force-owner <machine>\` names the machine to run the fleet, from the state it holds`);
   // after the commit only the destination goes on, so the source does only with a route to it, which the Linux machine has not to the Mac
   const stranded = o.local === f.fromMachineId && !!o.unrouted?.includes(f.toMachineId);
-  const onlyThere = `; it goes on only from ${o.names?.[f.toMachineId] ?? f.toMachineId}, where it went: run \`svall handover --resume\` there`;
+  // a machine with no route from here is the Mac, which no Linux registry holds
+  const went = o.names?.[f.toMachineId];
+  const onlyThere = `; it goes on only from ${went ? `${went}, where it went` : 'the Mac it went to'}: run \`svall handover --resume\` there`;
   if (tx?.id === f.transactionId) {
     if (tx.phase === 'committed') {
       if (unread) return lost('committed');
@@ -209,11 +211,11 @@ export function assess(o: Observation): Verdict {
     // before the commit only the controller that began it goes on, since the destination takes claim and prepare from it
     // alone; an abort reaches both ends only with a route to that machine, which the Linux machine has not to the Mac
     if (tx.controllerId && o.local && tx.controllerId !== o.local && (o.local === f.fromMachineId || o.local === f.toMachineId)) {
-      const by = o.names?.[tx.controllerId] ?? tx.controllerId;
+      const by = o.names?.[tx.controllerId];
       if (o.unrouted?.includes(tx.controllerId)) {
-        return verdict('open', 'none', [], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${by}, whose controller began it: run \`svall handover --resume\` or \`--abort\` there`);
+        return verdict('open', 'none', [], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${by ? `${by}, whose controller began it` : 'the Mac that began it'}: run \`svall handover --resume\` or \`--abort\` there`);
       }
-      return verdict('open', 'none', ['abort'], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${by}, whose controller began it, or is aborted back to ${f.fromMachineId}`);
+      return verdict('open', 'none', ['abort'], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${by ?? tx.controllerId}, whose controller began it, or is aborted back to ${f.fromMachineId}`);
     }
     const said = `${tx.id} is ${tx.phase} and has not committed; it can go on, or be aborted back to ${f.fromMachineId}`;
     return verdict('open', 'continue', ['resume', 'abort'], sourceUnread

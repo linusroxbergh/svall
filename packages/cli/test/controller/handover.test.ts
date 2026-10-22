@@ -1750,7 +1750,9 @@ describe('a far machine that is down', () => {
       const ops = w.ops.length;
       const c = controller(w, unrouted(w));
       const out = await (act === 'resume' ? c.resume() : c.abort());
-      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining(`it goes on from ${mac}, whose controller began it: run \`svall handover --resume\` or \`--abort\` there`) });
+      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining('it goes on from the Mac that began it: run `svall handover --resume` or `--abort` there') });
+      // the Mac is in no registry here, so its id would say nothing
+      expect(out.status === 'interrupted' && out.error, act).not.toContain(mac);
       expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
       expect(w.store.j, act).toBeUndefined();
       await recover(w, act);
@@ -1770,7 +1772,7 @@ describe('a far machine that is down', () => {
     const ops = w.ops.length;
     const c = controller(w, unrouted(w));
     const { verdict } = await c.status();
-    expect(verdict).toMatchObject({ standing: 'committed', safe: [], reason: expect.stringContaining(`it goes on only from ${mac}, where it went: run \`svall handover --resume\` there`) });
+    expect(verdict).toMatchObject({ standing: 'committed', safe: [], reason: expect.stringContaining('it goes on only from the Mac it went to: run `svall handover --resume` there') });
     expect(verdict.reason).not.toContain('--abort');
     const out = await c.resume();
     expect(out).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining('run `svall handover --resume` there') });
