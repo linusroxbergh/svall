@@ -113,8 +113,11 @@ describe('normalizeHook', () => {
     fs.mkdirSync(path.join(projects, '-src-beta'));
     const hook = (name: string, session_id: string, transcript_path: string) =>
       normalizeHook({ charId: 'c_1', hook: { hook_event_name: name, session_id, transcript_path } })?.transcriptPath;
-    expect(hook('SessionStart', SID, path.join(projects, '-src-alpha--wt-react-boilerplate', `${SID}.jsonl`))).toBe(kept);
+    const moved = path.join(projects, '-src-alpha--wt-react-boilerplate', `${SID}.jsonl`);
+    expect(hook('SessionStart', SID, moved)).toBe(kept);
     expect(hook('Stop', SID, kept)).toBe(kept);
+    // only a session's start is looked up: its later hooks name the file it writes
+    expect(hook('Stop', SID, moved)).toBe(moved);
     // a new session has written nothing yet, and Claude writes it where it says
     const fresh = '7c1e4a2b-9d3f-4b6a-8e5c-2f1a0b9c8d7e';
     expect(hook('SessionStart', fresh, path.join(projects, '-src-beta', `${fresh}.jsonl`))).toBe(path.join(projects, '-src-beta', `${fresh}.jsonl`));

@@ -88,9 +88,10 @@ function claudeTranscript(file: string, id: string | undefined): string {
   let found: { file: string; at: number } | undefined;
   for (const name of names) {
     const f = path.join(projects, name, `${id}.jsonl`);
-    let at: number;
-    try { at = fs.statSync(f).mtimeMs; } catch { continue; }
-    if (!found || at > found.at) found = { file: f, at };
+    // most folders hold no file of the session, which stat answers without throwing; a file among them still throws
+    let at: number | undefined;
+    try { at = fs.statSync(f, { throwIfNoEntry: false })?.mtimeMs; } catch { continue; }
+    if (at !== undefined && (!found || at > found.at)) found = { file: f, at };
   }
   return found?.file ?? file;
 }
@@ -167,7 +168,7 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   const id = sessionId(h.session_id);
   // a codex subagent's events name its own rollout
   const named = h.agent_id ? undefined : transcript(h.transcript_path);
-  const transcriptPath = named && kind.data === 'claude' ? transcript(claudeTranscript(named, id)) : named;
+  const transcriptPath = named && kind.data === 'claude' && name === 'SessionStart' ? transcript(claudeTranscript(named, id)) : named;
   const notificationType = str(h.notification_type);
   const message = str(h.message);
   const tasks = count(h.background_tasks, WORKING_TASKS);
