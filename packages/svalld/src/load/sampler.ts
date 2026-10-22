@@ -23,6 +23,7 @@ export class LoadSampler {
   private readonly firstGapMs: number;
   private prev?: Reading;
   private snap?: LoadSnapshot;
+  private failed?: Error;
   private starting?: Promise<LoadSnapshot>;
   private timer?: ReturnType<typeof setInterval>;
   private until = 0;
@@ -36,8 +37,10 @@ export class LoadSampler {
     this.firstGapMs = d.firstGapMs ?? 500;
   }
 
+  // a sample that failed is what the asker hears of, until one succeeds; the last reading stays for the next
   get(): Promise<LoadSnapshot> {
     this.until = this.now() + this.leaseMs;
+    if (this.failed) return Promise.reject(this.failed);
     if (this.snap) return Promise.resolve(this.snap);
     const starting = (this.starting ??= this.begin().finally(() => { if (this.starting === starting) this.starting = undefined; }));
     return starting;
@@ -48,7 +51,7 @@ export class LoadSampler {
     this.gen++;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
-    this.prev = this.snap = this.starting = undefined;
+    this.prev = this.snap = this.failed = this.starting = undefined;
     this.busy = false;
   }
 
@@ -63,7 +66,7 @@ export class LoadSampler {
         if (this.now() >= this.until) return this.stop();
         if (this.busy) return;
         this.busy = true;
-        this.sample(gen, this.prev!).catch(() => {}).finally(() => { if (gen === this.gen) this.busy = false; });
+        this.sample(gen, this.prev!).catch((e: Error) => { if (gen === this.gen) this.failed = e; }).finally(() => { if (gen === this.gen) this.busy = false; });
       }, this.everyMs);
     }
     return snap;
@@ -100,7 +103,7 @@ export class LoadSampler {
     const parts = [app, ...(codex ? [codex] : []), ...Object.values(chars)];
     const total = { cpu: parts.reduce((s, u) => s + u.cpu, 0), mem: parts.reduce((s, u) => s + u.mem, 0), procs: parts.reduce((s, u) => s + u.procs, 0) };
     const snap = { at, cores: availableParallelism(), total, app, ...(codex ? { codex } : {}), chars };
-    if (gen === this.gen) this.snap = snap;
+    if (gen === this.gen) { this.snap = snap; this.failed = undefined; }
     return snap;
   }
 }

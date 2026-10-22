@@ -418,6 +418,12 @@ describe('applyHook with a nested session', () => {
     const c = run([...outer, codex('SessionStart'), codex('PermissionRequest'), codex('Stop'), codex('SessionEnd')]);
     expect(c.agent).toMatchObject({ kind: 'claude', sessionId: S1, status: 'working' });
   });
+  it('keeps the agent through the end of a process that lost the session to a revive', () => {
+    const c = run([...outer, ev('SessionStart', S1, { pid: 300 }), ev('SessionEnd', S1, { pid: 100 })], [300]);
+    expect(c.agent).toMatchObject({ sessionId: S1, pid: 300 });
+    expect(run([...outer, ev('SessionEnd', S1, { pid: 100 })]).agent).toBeUndefined();
+    expect(run([...outer, ev('SessionEnd', S1)]).agent).toBeUndefined();
+  });
   it('takes a new session from the process that holds the slot: clear, resume, compact', () => {
     const c = run([...outer, ev('SessionStart', S2, { pid: 100 }), ev('SessionEnd', S1, { pid: 100 }), ev('UserPromptSubmit', S2, { pid: 100 })]);
     expect(c.agent).toMatchObject({ sessionId: S2, status: 'working', pid: 100 });

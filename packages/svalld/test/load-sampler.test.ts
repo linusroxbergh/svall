@@ -122,6 +122,22 @@ describe('LoadSampler', () => {
     load.stop();
   });
 
+  it('tells the asker of a sample that failed, and keeps the reading for when one succeeds', async () => {
+    let n = 0;
+    const read = vi.fn(async () => { if (++n === 3) throw new Error('ps died'); return [proc(10, 1, n * 100)]; });
+    const load = new LoadSampler({ read, scope: async () => scope(), sleepable: () => true });
+    const first = load.get();
+    await vi.advanceTimersByTimeAsync(500);
+    await first;
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(read).toHaveBeenCalledTimes(3);
+    await expect(load.get()).rejects.toThrow('ps died');
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(read).toHaveBeenCalledTimes(4);
+    expect((await load.get()).chars.c_a.procs).toBe(1);
+    load.stop();
+  });
+
   it('starts afresh after a stop that landed while scope was pending', async () => {
     let release!: () => void;
     let slow = false;

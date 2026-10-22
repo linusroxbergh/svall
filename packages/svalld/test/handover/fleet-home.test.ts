@@ -42,6 +42,7 @@ const ENTRIES: Record<string, Handling> = {
   'tmux.conf': 'machine-local',
   'tmux-binary': 'machine-local',
   'mobile-key': 'machine-local',
+  'mobile-pass': 'machine-local',
   'push.json': 'machine-local',
   'vapid.json': 'machine-local',
   usage: 'machine-local',

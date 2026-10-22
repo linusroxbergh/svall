@@ -7,6 +7,7 @@ import { readTail } from '../agent/transcript.js';
 import { underCodexServer } from '../codex/server.js';
 import type { Config } from '../config.js';
 import { briefReply } from '../context/brief.js';
+import type { Proc } from '../dormancy.js';
 import type { RefreshLinks } from '../fleet.js';
 import type { SocketEvent } from '../hooks/receiver.js';
 import { resolveRepo } from '../links/git.js';
@@ -15,7 +16,7 @@ import type { Store } from '../store.js';
 
 type Deps = {
   store: Store; config: Config; log: Logger; render: (island: Island, c?: Character) => string; refreshLinks: RefreshLinks;
-  writable: () => boolean; frozen: () => boolean; track: (work: Promise<unknown>, what: string) => void;
+  writable: () => boolean; frozen: () => boolean; track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
 };
 
 // a pid is looked at again after this long, as one an ended server freed may come back as an agent
@@ -26,12 +27,24 @@ const SERVER_CHECK_MS = 60_000;
 export class AgentEvents {
   private hookCwd = new Map<string, string>();
   private rolloutMark = new Map<string, RolloutMark>();
-  private servers = new Map<number, { server: boolean; at: number }>();
+  private servers = new Map<number, { server: Promise<boolean>; at: number }>();
+  private listing?: Promise<Proc[]>;
+  private chains = new Map<string, Promise<unknown>>();
 
   constructor(private deps: Deps) {}
 
-  apply(e: SocketEvent): string | undefined {
-    if ('hook' in e && e.hook.pid && this.fromServer(e.hook.pid)) { this.letGo(e.hook.charId, e.hook.pid); return undefined; }
+  // a character's events land in the order they arrived, however long the server check on one of them takes
+  apply(e: SocketEvent): Promise<string | undefined> {
+    const id = ('hook' in e ? e.hook : e.status).charId;
+    const run = (this.chains.get(id) ?? Promise.resolve()).then(() => this.run(e));
+    const tail = run.catch(() => {});
+    this.chains.set(id, tail);
+    tail.then(() => { if (this.chains.get(id) === tail) this.chains.delete(id); });
+    return run;
+  }
+
+  private async run(e: SocketEvent): Promise<string | undefined> {
+    if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.charId, e.hook.pid); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
     const frozen = this.deps.frozen();
     let reply: string | undefined;
@@ -87,14 +100,32 @@ export class AgentEvents {
 
   // a plain `codex` runs its hooks inside Codex's shared server, with the environment of whichever terminal started
   // it, and so does every run its sessions start: they name that terminal's character, or none
-  private fromServer(pid: number): boolean {
+  private fromServer(pid: number): Promise<boolean> {
     const seen = this.servers.get(pid);
     if (seen && Date.now() - seen.at < SERVER_CHECK_MS) return seen.server;
-    const server = underCodexServer(pid);
-    if (server && !seen?.server) this.deps.log.info(`hooks from Codex's shared server (pid ${pid}) ignored: they name no terminal of their own`);
+    const server = this.check(pid, seen?.server);
     if (this.servers.size > 100) this.servers.clear();
     this.servers.set(pid, { server, at: Date.now() });
     return server;
+  }
+
+  private async check(pid: number, before?: Promise<boolean>): Promise<boolean> {
+    const server = underCodexServer(pid, await this.processes(pid));
+    if (server && !(await before)) this.deps.log.info(`hooks from Codex's shared server (pid ${pid}) ignored: they name no terminal of their own`);
+    return server;
+  }
+
+  // one ps read serves every event that arrives while it runs; a pid it lacks started after it, and gets a fresh one
+  private async processes(pid: number): Promise<Proc[]> {
+    const shared = this.listing;
+    const procs = await (shared ?? this.list());
+    if (!shared || procs.some((p) => p.pid === pid)) return procs;
+    return this.listing ?? this.list();
+  }
+
+  private list(): Promise<Proc[]> {
+    this.listing = this.deps.processes().finally(() => { this.listing = undefined; });
+    return this.listing;
   }
 
   // a slot a server's events took before svalld dropped them would never hear its end; a dormant one keeps the agent its revive resumes

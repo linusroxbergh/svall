@@ -51,7 +51,7 @@ export const fleetOrigin = (d: MobileDeps, home: string): string | undefined => 
   return p ? `http://127.0.0.1:${p}/` : undefined;
 };
 
-/** Where serve sends the phone: the daemon's port behind the key only svalld and tailscaled hold. */
+/** Where serve sends the phone: the daemon's port behind the key tailscaled prepends to each request it proxies. */
 export function fleetTarget(d: MobileDeps, home: string): string {
   const origin = fleetOrigin(d, home);
   if (!origin) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
@@ -185,7 +185,7 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
  */
 export function mobileControl(d: MobileDeps, opts: {
   // read at each look, since activating a handover replaces the configured list
-  home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void;
+  home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void; pass: string;
   // the ports other fleets keep, and where this fleet keeps the one it serves on, saying whether that worked
   kept: () => number[]; savePort: (port: number) => boolean;
 }): Mobile & Served & { logins: () => string[] } {
@@ -246,9 +246,11 @@ export function mobileControl(d: MobileDeps, opts: {
       if (at !== saved && opts.savePort(at)) saved = at;
     }
     const url = phoneUrl(host, at);
+    // the pass rides in the fragment, which a browser keeps to itself: neither tailscale nor the daemon's log sees it
+    const pair = `${url}#${opts.pass}`;
     const status: MobileStatus = {
-      serving, url, port: at, logins: logins(), phones: opts.phones.list(),
-      qr: await QRCode.toDataURL(url, { margin: 1, width: 320 }),
+      serving, url, port: at, logins: logins(), phones: opts.phones.list(), pair,
+      qr: await QRCode.toDataURL(pair, { margin: 1, width: 320 }),
     };
     // the mapping outlives the checkout it was made from: a page cleaned away leaves the switch on over nothing
     if (serving && !d.exists(dist)) status.pageMissing = true;

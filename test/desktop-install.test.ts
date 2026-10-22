@@ -30,8 +30,9 @@ function machine() {
   dirs.push(root);
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
-  // a process ps names Svall, as the app's is
-  fs.copyFileSync(process.execPath, path.join(bin, 'Svall'), fs.constants.COPYFILE_FICLONE);
+  // a process ps names Svall, as the app's is: ps shows the path exec'd, and a link runs where a copy of a system binary
+  // is killed for its signature and a copy of node loses its @rpath library
+  fs.symlinkSync('/bin/sleep', path.join(bin, 'Svall'));
   const log = path.join(root, 'quits');
   // records each quit's pid and whether a window quit before it is still open, then closes the window a second later
   fs.writeFileSync(path.join(bin, 'osascript'), `#!/bin/sh
@@ -43,7 +44,7 @@ echo "$pid $open" >> ${log}
 [ -f ${log}.cancel ] || (sleep 1; kill "$pid") >/dev/null 2>&1 &
 `, { mode: 0o755 });
   const window = (home: string, command = path.join(bin, 'Svall')): number => {
-    const p = spawn(command, command.endsWith('Svall') ? ['-e', 'setTimeout(() => {}, 600_000)'] : ['600']);
+    const p = spawn(command, ['600']);
     procs.push(p);
     fs.mkdirSync(path.join(root, home), { recursive: true });
     fs.writeFileSync(path.join(root, home, 'app.pid'), `${p.pid}\t${path.join(root, home)}\n`);

@@ -171,3 +171,64 @@ test('the grip drags the shelf from its corner and the size is kept once it is l
   expect(kept.w).toBeCloseTo(0.7);
   expect(kept.h).toBeCloseTo(0.7);
 });
+
+// two instruction files, so the filter can leave one of them
+const twoFiles = () => {
+  const C = 'r:/u/.claude';
+  const row = (name: string) => ({ id: `instructions:${name}`, name, reveal: `/u/.claude/${name}`, target: 'file' as const, open: { rootId: C, path: name } });
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [{ kind: 'instructions' as const, items: [row('CLAUDE.md'), row('AGENTS.md')] }] };
+  call.mockImplementation((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: '/u/.claude' } : {}));
+  store.getState().setResources([src]);
+  store.getState().toggleResources(true, { where: C, what: 'all' });
+};
+
+test('a filter typed down to one file shows it and keeps the keys in the filter', async () => {
+  twoFiles();
+  render(<OnMap />);
+  await act(async () => {});
+  const find = screen.getByTestId('resources-filter') as HTMLInputElement;
+  fireEvent.pointerDown(find);
+  find.focus();
+  await act(async () => { fireEvent.change(find, { target: { value: 'CLA' } }); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
+  expect(document.activeElement).toBe(find);
+  await act(async () => { fireEvent.change(find, { target: { value: 'CLAU' } }); });
+  expect(find.value).toBe('CLAU');
+  expect(document.activeElement).toBe(find);
+});
+
+test('a row the pointer picks still hands the keys to its file', async () => {
+  twoFiles();
+  render(<OnMap />);
+  await act(async () => {});
+  const row = screen.getByTestId('resources-item-instructions-AGENTS.md');
+  fireEvent.pointerDown(row);
+  await act(async () => { fireEvent.click(row); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('AGENTS.md');
+  expect(document.activeElement?.closest('.editor')).not.toBeNull();
+});
+
+test('a file the list opens on its own under a chip leaves nothing behind that a later Enter pick would trip on', async () => {
+  const C = 'r:/u/.claude';
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [
+    { kind: 'instructions' as const, items: [{ id: 'instructions:CLAUDE.md', name: 'CLAUDE.md', reveal: '/u/.claude/CLAUDE.md', target: 'file' as const, open: { rootId: C, path: 'CLAUDE.md' } }] },
+    { kind: 'skills' as const, items: [{ id: 'skills:tidy', name: 'tidy', reveal: '/u/.claude/skills/tidy', target: 'folder' as const, open: { rootId: C, path: 'skills/tidy/SKILL.md', folder: 'skills/tidy' } }] },
+  ] };
+  call.mockImplementation((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: '/u/.claude' } : {}));
+  store.getState().setResources([src]);
+  store.getState().toggleResources(true, { where: C, what: 'all' });
+  render(<OnMap />);
+  await act(async () => {});
+  const claude = screen.getByTestId('resources-item-instructions-CLAUDE.md');
+  fireEvent.pointerDown(claude);
+  await act(async () => { fireEvent.click(claude); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
+  // the chip leaves one file, the one already shown, so the pane mounts nothing
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-what-instructions')); });
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-what-all')); });
+  const tidy = screen.getByTestId('resources-item-skills-tidy');
+  tidy.focus();
+  await act(async () => { fireEvent.click(tidy); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('skills/tidy/SKILL.md');
+  expect(document.activeElement?.closest('.editor')).not.toBeNull();
+});

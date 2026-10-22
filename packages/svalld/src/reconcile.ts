@@ -80,8 +80,10 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.characters));
   const secondNames = new Set(Object.keys(state.characters).map(secondName));
+  // a window held, when the listing was taken, by a character closed since goes with it, and is nobody's to adopt
+  const held = new Set([...before].filter(([id]) => !knownIds.has(id)).flatMap(([, b]) => [b.main, b.second]));
   // a row with no name, or one the listing could not split into its fields, is no window to adopt
-  const strays = live.filter((w) => w.name && w.paneId && typeof w.path === 'string' && !knownIds.has(w.name) && !secondNames.has(w.name));
+  const strays = live.filter((w) => w.name && w.paneId && typeof w.path === 'string' && !knownIds.has(w.name) && !secondNames.has(w.name) && !held.has(w.windowId));
   // a stray named like a character id keeps that id, so the SVALL_CHAR_ID its agent carries still reaches it
   const taken = new Set(knownIds);
   const strayIds = strays.map((w) => {

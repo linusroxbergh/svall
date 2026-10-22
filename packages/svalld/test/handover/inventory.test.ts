@@ -116,14 +116,15 @@ describe('path classification', () => {
     const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t.jsonl', status: 'idle' as const, lastActivityAt: 1 };
     state.characters.c1 = char('c1', {
       tmux, panePath: '/Users/linus/p', hint: 'codex-silent', codexDaemon: true, star: 0,
-      agent: { ...agent, pid: 41, monitors: ['b1'], subagents: ['a1'] }, second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42, monitors: ['b2'], subagents: ['a2'] } },
+      agent: { ...agent, pid: 41, monitors: ['b1'], subagents: ['a1'], flags: ['--effort', "'high'"] },
+      second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42, monitors: ['b2'], subagents: ['a2'], flags: ['--verbose'] } },
     });
     const exported = exportSnapshot(state);
     expect(exported.characters.c1.tmux).toBeUndefined();
     expect(exported.characters.c1.panePath).toBeUndefined();
     expect(exported.characters.c1.hint).toBeUndefined();
     expect(exported.characters.c1.codexDaemon).toBeUndefined();
-    // a pid, a monitor's task or a subagent names a process on this machine only, and the destination finds its own agents
+    // a pid, a monitor's task, a subagent or the launch flags ps showed name a process on this machine only, and the destination finds its own agents
     expect(exported.characters.c1.agent).toEqual(agent);
     expect(exported.characters.c1.star).toBe(0);
     expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false, agent });

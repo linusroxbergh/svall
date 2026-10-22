@@ -34,14 +34,15 @@ export function resolveFile(dir: string, pathname: string): string | undefined {
 
 const BRANDED = new Set(['index.html', 'manifest.webmanifest']);
 
-/** The page and its manifest name the fleet, so two fleets installed on one phone can be told apart. */
-export function brand(file: string, text: string, fleet: string): string {
-  if (path.basename(file) === 'index.html') return text.replace('<title>Svall</title>', `<title>Svall ${fleet}</title>`);
+/** The page and its manifest name the fleet, so two fleets installed on one phone can be told apart; the manifest may
+ *  also say where a Home Screen app opens. */
+export function brand(file: string, text: string, fleet?: string, startUrl?: string): string {
+  if (path.basename(file) === 'index.html') return fleet ? text.replace('<title>Svall</title>', `<title>Svall ${fleet}</title>`) : text;
   const manifest = JSON.parse(text) as Record<string, unknown>;
-  return JSON.stringify({ ...manifest, name: `Svall ${fleet}`, short_name: `svall ${fleet}` });
+  return JSON.stringify({ ...manifest, ...(fleet ? { name: `Svall ${fleet}`, short_name: `svall ${fleet}` } : {}), ...(startUrl ? { start_url: startUrl } : {}) });
 }
 
-export function serveBundle(req: IncomingMessage, res: ServerResponse, dir: string, fleetName?: string): void {
+export function serveBundle(req: IncomingMessage, res: ServerResponse, dir: string, fleetName?: string, startUrl?: string): void {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
   const file = resolveFile(dir, new URL(req.url ?? '/', 'http://svalld').pathname);
   if (!file) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(fs.existsSync(path.join(dir, 'index.html')) ? 'Not found' : NOT_BUILT); return; }
@@ -49,8 +50,8 @@ export function serveBundle(req: IncomingMessage, res: ServerResponse, dir: stri
   const hashed = path.relative(dir, file).startsWith(`assets${path.sep}`);
   const cache = hashed ? 'public, max-age=31536000, immutable' : 'no-cache';
   let branded: string | undefined;
-  if (fleetName && BRANDED.has(path.basename(file))) {
-    try { branded = brand(file, fs.readFileSync(file, 'utf8'), fleetName); } catch { /* served as built below */ }
+  if ((fleetName || startUrl) && BRANDED.has(path.basename(file))) {
+    try { branded = brand(file, fs.readFileSync(file, 'utf8'), fleetName, startUrl); } catch { /* served as built below */ }
   }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': cache, ...HEADERS });
   if (req.method === 'HEAD') { res.end(); return; }

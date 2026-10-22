@@ -947,6 +947,8 @@ describe('the resume a carried terminal keeps', () => {
     state.characters.c1 = char('c1', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -p 'work' --local-provider 'ollama' -s 'workspace-write' ${SID}`) });
     state.characters.c2 = char('c2', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --profile 'work' ${SID}`) });
     state.characters.c3 = char('c3', { cwd: '/h', agent: { kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --effort 'high' --resume ${SID}` } });
+    // the flags remembered at a start are read again from the process the destination starts, never carried
+    state.characters.c4 = char('c4', { cwd: '/h', agent: { kind: 'codex', sessionId: SID, transcriptPath: '/h/.codex/r.jsonl', status: 'idle', lastActivityAt: 0, flags: ['--yolo', '-p', "'work'"] } });
     const { characters } = importState({
       version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
@@ -954,6 +956,8 @@ describe('the resume a carried terminal keeps', () => {
     expect(characters.c1.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -s 'workspace-write' ${SID}` });
     expect(characters.c2.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
     expect(characters.c3.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
+    expect(characters.c4.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
+    expect(characters.c4.agent?.flags).toBeUndefined();
   });
 
   it('keeps a resume a crash left interrupted, and marks none the handover rested', () => {

@@ -5,11 +5,13 @@ const ROWS = ['.res-node', '.res-item'] as const;
 type At = { col: number; row: number };
 type Step = At | 'editor' | undefined;
 
-// A row the arrows picked shows its file without sending the keys after it, so the walk can go on; a row
-// the pointer picked hands them to the editor as it always has. The pane asks once, as it opens the file.
+// A row the arrows picked shows its file without sending the keys after it, so the walk can go on, and so
+// does a file the list opened under a filter being typed, which keeps them; a row the pointer picked hands
+// them to the editor as it always has. The pane asks once, as it opens the file.
 let walked = false;
 export const takesKeys = (): boolean => { const was = walked; walked = false; return !was; };
 export const pointerPicked = (): void => { walked = false; };
+export const openedItself = (): void => { walked = true; };
 
 /** Where an arrow key takes the shelf. A row of -1 asks the column for the one it has already chosen;
  *  a row of -1 coming in means nothing in the column holds the keys, so down lands on its first. */

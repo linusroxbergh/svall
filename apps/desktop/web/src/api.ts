@@ -1,12 +1,12 @@
-import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, UNPAIRED, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
 
 export { ApiError };
 
 // where svalld answers, and the token to say on arrival; a socket the proxy has already vouched for has none
 type Endpoint = { url: string; token?: string };
 
-// refused: the proxy brought the page from a tailnet login the fleet does not accept
-export type Status = 'connecting' | 'online' | 'offline' | 'outdated' | 'refused';
+// refused: the proxy brought the page from a tailnet login the fleet does not accept; unpaired: the page holds no pass
+export type Status = 'connecting' | 'online' | 'offline' | 'outdated' | 'refused' | 'unpaired';
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 type Opts = { WS?: typeof WebSocket; minDelay?: number; maxDelay?: number; callTimeout?: number };
@@ -24,7 +24,7 @@ export class Api {
   private online = false;
   // a daemon on another protocol, or one that refuses this login, stays reported as such across retries, until one
   // admits the page or none answers; the owner's login can still be on its way to the daemon, so the retries go on
-  private held?: 'outdated' | 'refused';
+  private held?: 'outdated' | 'refused' | 'unpaired';
   private next = 1;
   private messages = 0;
   private pending = new Map<number, Pending>();
@@ -134,6 +134,7 @@ export class Api {
       this.pending.clear();
       if (this.stopped) return;
       if (ev.code === LOGIN_REFUSED) { this.held = 'refused'; this.onStatus('refused'); }
+      else if (ev.code === UNPAIRED) { this.held = 'unpaired'; this.onStatus('unpaired'); }
       else if (!answered) this.held = undefined;
       if (!this.held) this.onStatus('offline');
       this.timer = setTimeout(() => this.open(), this.delay);

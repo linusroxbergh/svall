@@ -1,6 +1,7 @@
+import path from 'node:path';
 import { Command } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { contextKind, isPathRef, type ContextItem } from '@svall/protocol';
+import { bareUrl, contextKind, isPathRef, itemUrl, type ContextItem } from '@svall/protocol';
 
 // a token with a scheme or an absolute path starts an item; everything else is the label of the item before it
 const startsItem = (token: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//i.test(token) || isPathRef(token);
@@ -23,15 +24,22 @@ export function parseContext(spec: string): ContextItem[] {
 export type ContextFlags = { context: string[]; pin: string[]; unpin: string[]; drop: string[] };
 const repeat = (v: string, acc: string[]) => [...acc, v];
 
+// a ref as svalld stores it: a path expanded and resolved, a link at the level worth a chip; so a ~ path or a view
+// inside a PR given here matches the stored item, and an item given as ~/x in the same command matches its own ref
+const refKey = (ref: string): string => (isPathRef(ref) ? path.resolve(expandHome(ref.trim())) : bareUrl(itemUrl(ref)));
+
 // --context replaces the manual items (auto and scribe kept); --pin/--unpin set or clear pinned by ref; --drop removes by ref.
 export function editContext(current: ContextItem[], o: ContextFlags): ContextItem[] | undefined {
   if (!o.context.length && !o.pin.length && !o.unpin.length && !o.drop.length) return undefined;
-  const pin = o.pin.map(expandHome), unpin = o.unpin.map(expandHome), drop = o.drop.map(expandHome);
-  let items = o.context.length ? [...current.filter((it) => it.source !== 'manual'), ...o.context.flatMap(parseContext)] : [...current];
-  // an item given as ~/x in the same command is still unexpanded, so both sides match on the expanded ref
-  items = items.filter((it) => !drop.includes(expandHome(it.ref)));
-  return items.map((it) => {
-    const ref = expandHome(it.ref);
+  const items = o.context.length ? [...current.filter((it) => it.source !== 'manual'), ...o.context.flatMap(parseContext)] : [...current];
+  const known = new Set(items.map((it) => refKey(it.ref)));
+  for (const [flag, refs] of [['--pin', o.pin], ['--unpin', o.unpin], ['--drop', o.drop]] as const) {
+    const missing = refs.find((ref) => !known.has(refKey(ref)));
+    if (missing !== undefined) throw new Error(`${flag} ${missing} matches no context item`);
+  }
+  const pin = o.pin.map(refKey), unpin = o.unpin.map(refKey), drop = o.drop.map(refKey);
+  return items.filter((it) => !drop.includes(refKey(it.ref))).map((it) => {
+    const ref = refKey(it.ref);
     if (pin.includes(ref)) return { ...it, pinned: true as const };
     if (unpin.includes(ref)) { const { pinned: _p, ...rest } = it; return rest; }
     return it;

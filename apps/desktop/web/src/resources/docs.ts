@@ -1,7 +1,7 @@
 import { getBuffer, replaceText } from '../ide/buffers.js';
 import { closeFile, openFile } from '../ide/files.js';
 import { flushDoc } from './autosave.js';
-import { loadResources, type ResourcesDeps } from './load.js';
+import { reloadResources, type ResourcesDeps } from './load.js';
 import { docSlug } from './model.js';
 
 const DESCRIPTION = 'description: ';
@@ -26,7 +26,7 @@ export async function createDoc(d: ResourcesDeps, rootId: string, typed: string)
   try { await d.api.call('docs.create', { id: rootId, path, text: skeleton() }); }
   catch (e) { return refuse(d, (e as Error).message); }
   fresh.add(key(rootId, path));
-  await loadResources(d);
+  await reloadResources(d);
   await openFile(d, rootId, path);
   return true;
 }
@@ -43,7 +43,7 @@ export async function renameDoc(d: ResourcesDeps, rootId: string, path: string, 
   catch (e) { return refuse(d, (e as Error).message); }
   const wasOpen = d.store.getState().ide[rootId]?.open.includes(path) ?? false;
   if (wasOpen) closeFile(d, rootId, path);
-  await loadResources(d);
+  await reloadResources(d);
   if (wasOpen) await openFile(d, rootId, to);
   return true;
 }
@@ -58,10 +58,10 @@ export async function deleteDoc(d: ResourcesDeps, rootId: string, path: string):
   try { await d.api.call('docs.delete', { id: rootId, path }); }
   catch (e) { refuse(d, (e as Error).message); return; }
   closeFile(d, rootId, path);
-  await loadResources(d);
+  await reloadResources(d);
   const put = text;
   const undo = put === undefined ? undefined : () => {
-    void d.api.call('docs.create', { id: rootId, path, text: put }).then(() => loadResources(d), (e: Error) => d.store.getState().showToast(e.message));
+    void d.api.call('docs.create', { id: rootId, path, text: put }).then(() => reloadResources(d), (e: Error) => d.store.getState().showToast(e.message));
   };
   d.store.getState().showToast(`Deleted ${bare(path)}`, 'ok', undo && { label: 'Undo', run: undo });
 }
@@ -77,9 +77,9 @@ export async function deleteResource(d: ResourcesDeps, name: string, open: { roo
   try { ({ token } = await d.api.call('resources.delete', { id: rootId, path: target })); }
   catch (e) { refuse(d, (e as Error).message); return; }
   for (const p of d.store.getState().ide[rootId]?.open.filter(under) ?? []) closeFile(d, rootId, p);
-  await loadResources(d);
+  await reloadResources(d);
   const undo = () => {
-    void d.api.call('resources.restore', { token }).then(() => loadResources(d), (e: Error) => d.store.getState().showToast(e.message));
+    void d.api.call('resources.restore', { token }).then(() => reloadResources(d), (e: Error) => d.store.getState().showToast(e.message));
   };
   d.store.getState().showToast(`Deleted ${name}`, 'ok', { label: 'Undo', run: undo });
 }
@@ -102,6 +102,6 @@ export async function letGo(d: ResourcesDeps, rootId: string, path: string): Pro
   try { await d.api.call('docs.delete', { id: rootId, path }); }
   catch (e) { refuse(d, (e as Error).message); return; }
   closeFile(d, rootId, path);
-  await loadResources(d);
+  await reloadResources(d);
   d.store.getState().showToast(`Discarded empty ${bare(path)}`, 'ok');
 }

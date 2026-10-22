@@ -65,6 +65,8 @@ export const MobileStatus = z.object({
   phones: z.array(PhoneSession),
   // the mapping points at a checkout with no phone page built, so the phone would get nothing
   pageMissing: z.literal(true).optional(),
+  // the address with the pass in its fragment, which the QR encodes: a phone pairs by opening it
+  pair: z.string().optional(),
   qr: z.string().optional(),
   error: z.string().optional(),
 });
@@ -423,6 +425,8 @@ export const HelloReply = z.object({ id: z.literal(0), result: HelloResult });
 export type HelloReply = z.infer<typeof HelloReply>;
 // the close code for a socket the proxy brought from a tailnet login the fleet does not accept
 export const LOGIN_REFUSED = 4403;
+// the close code for a phone socket that carries no pass cookie: the page has to be opened from the QR code again
+export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 24;
+export const PROTOCOL_VERSION = 25;

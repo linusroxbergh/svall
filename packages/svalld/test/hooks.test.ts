@@ -278,6 +278,37 @@ describe('hook receiver', () => {
     await r.close();
   });
 
+  it('answers a hook that waits on a reply when the event throws, or its promise fails', async () => {
+    const sock = path.join(makeHome(), 'hooks.sock');
+    const said: string[] = [];
+    const r = await startHookReceiver(sock, (e) => {
+      if ('status' in e) throw new Error('no');
+      if (e.hook.name === 'SessionStart') throw new Error('boom');
+      return Promise.reject(new Error('later'));
+    }, { info() {}, error: (m) => said.push(m) });
+    const ask = (line: object) => new Promise<string>((resolve) => {
+      let buf = '';
+      const c = net.createConnection(sock, () => c.write(JSON.stringify(line) + '\n'));
+      c.on('data', (d: Buffer) => { buf += d.toString(); if (buf.includes('\n')) { c.end(); resolve(buf); } });
+    });
+    expect(await ask({ charId: 'c_9', hook: { hook_event_name: 'SessionStart', session_id: SID } })).toBe('{"additionalContext":""}\n');
+    expect(await ask({ charId: 'c_9', hook: { hook_event_name: 'UserPromptSubmit', session_id: SID } })).toBe('{"additionalContext":""}\n');
+    expect(said).toEqual(['hook line ignored: Error: boom', 'hook line ignored: Error: later']);
+    await r.close();
+  });
+
+  it('writes the reply an event promises once it resolves', async () => {
+    const sock = path.join(makeHome(), 'hooks.sock');
+    const r = await startHookReceiver(sock, async () => { await new Promise((res) => setTimeout(res, 20)); return 'brief'; }, silentLogger);
+    const reply = await new Promise<string>((resolve) => {
+      let buf = '';
+      const c = net.createConnection(sock, () => c.write(JSON.stringify({ charId: 'c_9', hook: { hook_event_name: 'UserPromptSubmit', session_id: SID } }) + '\n'));
+      c.on('data', (d: Buffer) => { buf += d.toString(); if (buf.includes('\n')) { c.end(); resolve(buf); } });
+    });
+    expect(reply).toBe('{"additionalContext":"brief"}\n');
+    await r.close();
+  });
+
   it('closes while a hook connection is still open', async () => {
     const sock = path.join(makeHome(), 'hooks.sock');
     const r = await startHookReceiver(sock, () => undefined, silentLogger);

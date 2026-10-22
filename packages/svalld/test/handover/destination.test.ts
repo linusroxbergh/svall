@@ -1829,14 +1829,14 @@ describe('destination activate', () => {
     const key = 'k'.repeat(48);
     const unused = {} as never;
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store: s.store, fleet: unused, fleets: unused, handover: d.handover, terminals: unused, workspace: unused,
+      host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store: s.store, fleet: unused, fleets: unused, handover: d.handover, terminals: unused, workspace: unused,
       usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger, push: unused, vapidPublicKey: 'k', phones: new Phones(),
       claude: { dir: '', json: '' }, ownership: d.ownership,
       logins: () => d.config.mobile.logins, origins: () => d.config.mobile.origins, key: () => key,
     });
     // 400 is a login and origin the proxy check let through to a body it could not read; 401 a login, 403 an origin, refused
     const post = (login: string, origin?: string) => fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, {
-      method: 'POST', headers: { 'tailscale-user-login': login, ...(origin && { origin }) }, body: '{}',
+      method: 'POST', headers: { 'tailscale-user-login': login, cookie: 'svall-pass=p4ss', ...(origin && { origin }) }, body: '{}',
     }).then((r) => r.status);
     try {
       // this machine's own fleet.json let in both logins and one other page
@@ -1858,7 +1858,7 @@ describe('destination activate', () => {
     const key = 'k'.repeat(48);
     const unused = {} as never;
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store: s.store, fleet: unused, fleets: unused, handover: d.handover,
+      host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store: s.store, fleet: unused, fleets: unused, handover: d.handover,
       terminals: { closeAll: () => {} } as never, workspace: { unwatchAll: () => {} } as never,
       usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger, push: unused, vapidPublicKey: 'k', phones: new Phones(),
       claude: { dir: '', json: '' }, ownership: d.ownership,
@@ -1866,7 +1866,7 @@ describe('destination activate', () => {
     });
     // a phone socket as the proxy opens it, with what it has been told and how it ended
     const phone = async (login: string) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'tailscale-user-login': login } });
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'tailscale-user-login': login, cookie: 'svall-pass=p4ss' } });
       const seen = { messages: 0, closed: undefined as number | undefined };
       ws.on('message', () => { seen.messages++; });
       ws.on('close', (code) => { seen.closed = code; });
@@ -2283,7 +2283,7 @@ withTmux('destination activate on real terminals', () => {
 
     // answered, Claude resumes the carried session in that window and reports it as any resume does
     const transcriptPath = bo.agent!.transcriptPath!;
-    first.fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath, pid: claude!.pid } });
+    await first.fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath, pid: claude!.pid } });
     expect(s.store.state.characters.c_bo).toMatchObject({ tmux: bo.tmux, agent: { kind: 'claude', sessionId: SID, transcriptPath, pid: claude!.pid } });
     expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: true, sessionId: SID });
