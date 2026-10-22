@@ -1234,6 +1234,17 @@ esac
     expect(far.now()).toBe('1.2.3');
   });
 
+  it('refuses a rollback onto a release that reads an older state schema than a fleet in a home named for a command svall keeps', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, STATE_SCHEMA_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
+    fleetState('.svall', STATE_SCHEMA_VERSION - 1);
+    const newer = fleetState('.svall-host', STATE_SCHEMA_VERSION);
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`${newer} is at state schema ${STATE_SCHEMA_VERSION}`) });
+    expect(far.now()).toBe('1.2.3');
+  });
+
   it('goes back onto a release that reads every fleet\'s state there, whatever a folder no profile names holds', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, STATE_SCHEMA_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
     fleetState('.svall', STATE_SCHEMA_VERSION - 1);
@@ -1367,6 +1378,12 @@ describe('host list', () => {
     fs.mkdirSync(path.join(work, '.svall-broken'));
     fs.writeFileSync(path.join(work, '.svall-broken', 'fleet.json'), '{');
     expect(fleetsNaming(REMOTE, work).sort()).toEqual(['private', 'work']);
+  });
+
+  it('finds a fleet whose home is named for a command svall keeps among those naming a machine as their gateway', () => {
+    fs.mkdirSync(path.join(work, '.svall-host'), { recursive: true });
+    fs.writeFileSync(path.join(work, '.svall-host', 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE }));
+    expect(fleetsNaming(REMOTE, work)).toEqual(['host']);
   });
 });
 

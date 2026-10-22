@@ -7,7 +7,7 @@ import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { homeCommands } from '@svall/svalld/handover/inventory';
 import { unitPath } from '@svall/svalld/linux/setup';
-import { isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
+import { isFleetName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
@@ -631,7 +631,7 @@ function fleetHomes(homedir: string): string[] {
     return [];
   }
   return names
-    .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isProfileName(f.slice('.svall-'.length))))
+    .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isFleetName(f.slice('.svall-'.length))))
     .map((f) => path.join(homedir, f))
     .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
 }

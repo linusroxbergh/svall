@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { RESERVED } from '@svall/protocol';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import { codexPaths, type CodexPaths } from './codex/install.js';
 import { gatewayPaths } from './gateway/authority.js';
@@ -13,7 +12,7 @@ import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { opencodePaths, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { resolvePaths } from './paths.js';
-import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
+import { BUNDLE_ID, homePrefix, isFleetName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shimNames } from './setup.js';
 import { resolveTmux } from './tmux/tmux.js';
@@ -245,9 +244,6 @@ export async function runUninstall(o: {
 const isFleetHome = (p: string): boolean =>
   fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
   && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig, `${resolvePaths(p).legacyConfig}.bak`].some((f) => fs.existsSync(f));
-
-// a home named for a command svall keeps holds a fleet no -p reaches, which is still one to stop and purge
-const isFleetName = (name: string): boolean => isProfileName(name) || RESERVED.includes(name);
 
 export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isFleetName(f.slice(homePrefix.length))))

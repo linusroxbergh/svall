@@ -6,6 +6,9 @@ import { variant, type Variant } from './runtime.js';
 
 export { isProfileName };
 
+// a fleet home's name: a profile's, or one svall keeps for a command, whose fleet no -p reaches but is still a fleet
+export const isFleetName = (name: string): boolean => isProfileName(name) || RESERVED.includes(name);
+
 const release = variant === 'release';
 export const PRIVATE = 'private';
 export const BUNDLE_ID = release ? 'io.github.linusroxbergh.svall' : 'io.github.linusroxbergh.svall.dev';
