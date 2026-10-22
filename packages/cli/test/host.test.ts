@@ -1529,6 +1529,19 @@ describe('host remove', () => {
     expect(gatewayOf(begun)).toBe(REMOTE);
   });
 
+  it('names a fleet a handover holds open in a home named for a command svall keeps by that home, which no -p reaches', async () => {
+    const registry = registered('trift.test');
+    const held = fleetAt('.svall-host', { gateway: REMOTE, owner: MAC });
+    fs.mkdirSync(path.join(held, 'handover'));
+    fs.writeFileSync(path.join(held, 'handover', 'journal.json'), JSON.stringify({
+      role: 'source', transactionId: 'tx-1', generation: 2, fleetId: FLEET, fromMachineId: MAC, toMachineId: REMOTE, phase: 'freeze', updatedAt: 1,
+    }));
+    const out = await removeHost('trift', {}, deps({ registry }));
+    const said = out.actions.join('\n');
+    expect(said).toContain(`\`SVALL_HOME=${shq(held)} svall handover --resume\``);
+    expect(said).not.toContain('-p host');
+  });
+
   it('refuses while a handover through another gateway holds a fleet open, as it may by now have left the fleet on this machine', async () => {
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');
