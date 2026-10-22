@@ -9,14 +9,18 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 ## Status
 
 - **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6, then
-  the svall port (PR #2 on `worktree-port-pr-1`, main merged, protocol 24) and two fix waves on it, each a set
-  of sub-PRs reviewed and re-reviewed before integration (`ledger/progress.md` from "2026-10-21"): the sheet's
-  recovery states, the connection banner and Machines panel, controller recovery paths, flag-off inertness,
-  agent-session honesty, transfer safety, the split-brain guard, and the review step, Machines list and
-  switch. The fault suites crash every failpoint and fault every controller request; the container harness
-  (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux and passed at the wave-1 head; a release
-  installs fresh on x86-64 and arm64; real Claude, Codex and OpenCode sessions resumed both ways on
-  linus-vault at a84bf57d and one way at 4c11f026.
+  the svall port (PR #2 on `worktree-port-pr-1`, main merged twice, protocol 25) and four fix waves on it,
+  each a set of sub-PRs reviewed and re-reviewed before integration (`ledger/progress.md` from "2026-10-21"):
+  the sheet's recovery states, the connection banner and Machines panel, controller recovery paths, flag-off
+  inertness, agent-session honesty, transfer safety, the split-brain guard, the review step, Machines list
+  and switch; then what the real-machine round trip found (index mode bits, transcript path after a cwd
+  move, one OpenCode login probe, second-terminal rollback) and what the integration deep review found
+  (`ledger/pr2-integration-review-18082655.md`: reserved-name fleets in uninstall, per-terminal launch
+  flags, a durable prepare proof, submodule filters and archives, route-aware stops, forgetting a dead
+  source). The fault suites crash every failpoint and fault every controller request; the container harness
+  (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux and passes at every integrated head; a
+  release installs fresh on x86-64 and arm64; real Claude, Codex and OpenCode sessions resumed both ways on
+  linus-vault at 10447557 and 18082655 (`ledger/pr2-onmachine-report-10447557.md`).
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
@@ -60,10 +64,11 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
   statically linked LGPL libintl, and the Flaticon art shipped as files.
 - **A published download** would need the app to install its bundled release on first launch; the app
   ships from source today (`pnpm desktop:install`). No arm64 companion is carried.
-- **Follow-ups** still open after the two fix waves: `docs/fleet-handover/deferred.md` at a84bf57d (the
-  MinimalPlans board "svall remote machines" mirrors it), minus what the ledger marks fixed; plus the
-  pre-commit resume canary, the nightly live resume test, and GitHub Support purging the pre-rewrite
-  commit of `fix4-sessions`.
+- **Follow-ups** still open after the four fix waves: `docs/fleet-handover/deferred.md` at a84bf57d (the
+  MinimalPlans board "svall remote machines" mirrors it), minus what the ledger marks fixed; the lows the
+  last reviews left in the PR notes (`writeDurable`'s temp beside a config, the Mac-as-source lost-record
+  wording, a stale OpenCode answer passing the Zen warning); plus the pre-commit resume canary, the nightly
+  live resume test, and GitHub Support purging the pre-rewrite commit of `fix4-sessions`.
 
 ## How the work was run
 
