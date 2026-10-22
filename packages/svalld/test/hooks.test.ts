@@ -105,6 +105,20 @@ describe('normalizeHook', () => {
     expect(hook(`/${'x'.repeat(1000)}.jsonl`)?.transcriptPath).toBe(`/${'x'.repeat(1000)}.jsonl`);
     expect(hook(`/${'x'.repeat(5000)}.jsonl`)?.transcriptPath).toBeUndefined();
   });
+  it("names a resumed Claude session's transcript where it is when its SessionStart names the project of the folder it resumed in", () => {
+    const projects = path.join(makeHome(), '.claude', 'projects');
+    const kept = path.join(projects, '-src-alpha', `${SID}.jsonl`);
+    fs.mkdirSync(path.dirname(kept), { recursive: true });
+    fs.writeFileSync(kept, '{}\n');
+    fs.mkdirSync(path.join(projects, '-src-beta'));
+    const hook = (name: string, session_id: string, transcript_path: string) =>
+      normalizeHook({ charId: 'c_1', hook: { hook_event_name: name, session_id, transcript_path } })?.transcriptPath;
+    expect(hook('SessionStart', SID, path.join(projects, '-src-alpha--wt-react-boilerplate', `${SID}.jsonl`))).toBe(kept);
+    expect(hook('Stop', SID, kept)).toBe(kept);
+    // a new session has written nothing yet, and Claude writes it where it says
+    const fresh = '7c1e4a2b-9d3f-4b6a-8e5c-2f1a0b9c8d7e';
+    expect(hook('SessionStart', fresh, path.join(projects, '-src-beta', `${fresh}.jsonl`))).toBe(path.join(projects, '-src-beta', `${fresh}.jsonl`));
+  });
   it('keeps an absolute cwd only', () => {
     const hook = (cwd: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PreToolUse', cwd } });
     expect(hook('/repo/.claude/worktrees/x')?.cwd).toBe('/repo/.claude/worktrees/x');

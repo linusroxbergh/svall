@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import net from 'node:net';
+import path from 'node:path';
 import { AgentKind, isSessionId } from '@svall/protocol';
 import type { Logger } from '../log.js';
 
@@ -77,6 +78,23 @@ const transcript = (v: unknown): string | undefined => {
   return s?.startsWith('/') && s.endsWith('.jsonl') && s.length <= MAX_PATH ? s : undefined;
 };
 
+// Claude's SessionStart on a resume from another folder names that folder's project, which holds no file of the
+// session; its transcript is then the newest one another project of the same projects folder holds under its id
+function claudeTranscript(file: string, id: string | undefined): string {
+  const projects = path.dirname(path.dirname(file));
+  if (!id || path.basename(file) !== `${id}.jsonl` || path.basename(projects) !== 'projects' || fs.existsSync(file)) return file;
+  let names: string[];
+  try { names = fs.readdirSync(projects); } catch { return file; }
+  let found: { file: string; at: number } | undefined;
+  for (const name of names) {
+    const f = path.join(projects, name, `${id}.jsonl`);
+    let at: number;
+    try { at = fs.statSync(f).mtimeMs; } catch { continue; }
+    if (!found || at > found.at) found = { file: f, at };
+  }
+  return found?.file ?? file;
+}
+
 // a pasted prompt runs to megabytes; only its head is ever shown. The id pairs the hook with the
 // transcript entry Claude Code writes for it afterwards; Codex names the turn the prompt opened instead.
 export const MAX_PROMPT = 4000;
@@ -148,7 +166,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (Number.isInteger(pid) && (pid as number) > 0) ev.pid = pid as number;
   const id = sessionId(h.session_id);
   // a codex subagent's events name its own rollout
-  const transcriptPath = h.agent_id ? undefined : transcript(h.transcript_path);
+  const named = h.agent_id ? undefined : transcript(h.transcript_path);
+  const transcriptPath = named && kind.data === 'claude' ? transcript(claudeTranscript(named, id)) : named;
   const notificationType = str(h.notification_type);
   const message = str(h.message);
   const tasks = count(h.background_tasks, WORKING_TASKS);
