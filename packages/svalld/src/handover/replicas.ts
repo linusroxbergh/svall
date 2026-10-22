@@ -131,13 +131,13 @@ export const contentDigest = (files: readonly TransferFile[]): string => canonic
   .sort((a, b) => byCodeUnit(a.path, b.path))
   .map((f) => (f.type === 'file' ? [f.path, 'file', f.size, f.sha256] : [f.path, 'symlink', f.target])));
 
-/** Where a linked worktree's registration says it stands, read from its files: on a branch at a commit, or detached at one. */
-function worktreeHead(registration: string, read: (p: string) => string): string {
+/** Where a Git directory says its checkout stands, read from its files: on a branch at a commit, or detached at one. */
+function checkoutHead(gitDir: string, read: (p: string) => string): string {
   const text = (p: string): string | undefined => { try { return read(p).trim(); } catch { return undefined; } };
-  const head = text(path.join(registration, 'HEAD'));
+  const head = text(path.join(gitDir, 'HEAD'));
   const branch = head && /^ref: refs\/heads\/(.+)$/.exec(head)?.[1];
   if (!branch) return head ? `detached at ${head}` : 'whose HEAD cannot be read';
-  const common = path.resolve(registration, text(path.join(registration, 'commondir')) ?? '../..');
+  const common = path.resolve(gitDir, text(path.join(gitDir, 'commondir')) ?? '.');
   const ref = `refs/heads/${branch}`;
   const commit = text(path.join(common, ref)) ?? text(path.join(common, 'packed-refs'))?.split('\n').find((l) => l.endsWith(` ${ref}`))?.split(' ')[0];
   return commit ? `on branch ${branch} at ${commit}` : `on branch ${branch}, which has no commit`;
@@ -331,36 +331,45 @@ export class ReplicaStore {
   }
 
   /**
-   * Sets aside the .git file of each linked worktree archived from `from` to `to`, the archive itself or one its main
-   * checkout registers under it, as each still names a live registration. A .git naming no repository takes its place, so
-   * git there neither changes the live worktree nor finds a repository above; a README says which worktree each was.
+   * Sets aside each .git file archived from `from` to `to` that names a Git directory outside the archive, as a linked
+   * worktree's does, or a submodule's whose Git directory a linked worktree's registration holds. A .git naming no repository
+   * takes its place, so git there neither changes a live repository nor finds one above; a README says which checkout each was.
    */
   private detach(to: string, from: string): void {
     const read = (p: string): string => this.fs.readFile(p).toString('utf8');
     const archived = (p: string): string => (holds(from, p) ? path.join(to, path.relative(from, p)) : p);
-    const registered = this.names(path.join(to, '.git/worktrees')).flatMap((name) => {
-      const gitfile = this.text(path.join(to, '.git/worktrees', name, 'gitdir'))?.trim();
-      const at = gitfile && path.resolve(from, '.git/worktrees', name, gitfile);
-      return at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? [path.relative(from, path.dirname(at))] : [];
-    });
-    const lines = ['', ...registered].flatMap((rel) => {
+    const lines = this.gitfiles(to).flatMap((rel) => {
       const gitfile = path.join(to, rel, '.git');
-      const text = this.text(gitfile, true);
-      if (text === undefined) return [];
+      const named = /^gitdir: (.*)$/m.exec(read(gitfile))?.[1];
+      const gitDir = named && path.resolve(to, rel, named);
+      if (!gitDir || holds(to, gitDir)) return [];
       this.fs.rename(gitfile, `${gitfile}.archived`);
       this.fs.writeFile(gitfile, 'gitdir: /nonexistent\n');
-      const registration = /^gitdir: (.*)$/m.exec(text)?.[1];
-      const head = registration ? worktreeHead(archived(path.resolve(from, rel, registration)), read) : 'whose .git file names no registration';
-      return [`- ${rel || '.'} was the linked worktree ${head}`];
+      const own = archived(gitDir);
+      const head = checkoutHead(own, read);
+      return [this.text(path.join(own, 'commondir')) === undefined ? `- ${rel || '.'} was the checkout of ${gitDir}, ${head}` : `- ${rel || '.'} was the linked worktree ${head}`];
     });
     if (!lines.length) return;
-    this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each linked worktree here keeps its .git file as .git.archived beside a .git that names no repository, so git there leaves the live worktree alone:\n${lines.join('\n')}\n`);
+    this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each .git file here that named a Git directory outside this folder is kept as .git.archived beside a .git that names no repository, so git there leaves the live repository alone:\n${lines.join('\n')}\n`);
   }
 
-  /** A file's text, or undefined when nothing, or no file when `file` asks for one, is there. */
-  private text(p: string, file = false): string | undefined {
+  /** Each folder under `dir` that holds a .git file, relative to it and `dir` itself as '', looking into no Git directory and through no link. */
+  private gitfiles(dir: string, rel = ''): string[] {
+    return this.names(path.join(dir, rel)).sort(byCodeUnit).flatMap((name) => {
+      let st: fs.Stats;
+      // a name that is not valid UTF-8 comes back from readdir as one no lstat finds
+      try { st = this.fs.lstat(path.join(dir, rel, name)); } catch (e) {
+        if (errno(e) === 'ENOENT') return [];
+        throw e;
+      }
+      if (name === '.git') return st.isFile() ? [rel] : [];
+      return st.isDirectory() ? this.gitfiles(dir, path.join(rel, name)) : [];
+    });
+  }
+
+  /** A file's text, or undefined when nothing is there. */
+  private text(p: string): string | undefined {
     try {
-      if (file && !this.fs.lstat(p).isFile()) return undefined;
       return this.fs.readFile(p).toString('utf8');
     } catch (e) {
       if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return undefined;
