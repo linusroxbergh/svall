@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OLDEST_STATE_SCHEMA_VERSION } from '@svall/protocol';
-import { isProfileName } from '@svall/svalld/profile';
+import { isFleetName } from '@svall/svalld/profile';
 import { shq } from '@svall/svalld/text';
 import { stageArchive } from '../../../../scripts/install-release.mjs';
 import { MANIFEST, NAMESPACE, SIG, SUMS, type Verify } from '../../../../scripts/release-manifest.mjs';
@@ -238,7 +238,7 @@ async function stateVersions(master: SshMaster, home: string): Promise<{ file: s
   return out.split('\n').flatMap((line) => {
     const [file = '', version = ''] = line.split(' ');
     const dir = file.split('/')[0];
-    const fleet = dir === '.svall' || (dir.startsWith('.svall-') && isProfileName(dir.slice('.svall-'.length)));
+    const fleet = dir === '.svall' || (dir.startsWith('.svall-') && isFleetName(dir.slice('.svall-'.length)));
     return fleet && /^\d+$/.test(version) ? [{ file: path.posix.join(home, file), version: Number(version) }] : [];
   });
 }

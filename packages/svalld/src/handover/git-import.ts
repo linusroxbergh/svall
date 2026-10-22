@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
+import { writeDurable } from './durable.js';
 import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, runsHere, said, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 
@@ -103,12 +105,24 @@ async function adaptRules(common: string, rules: FsRules, git: GitRunner): Promi
     ['core.ignorecase', rules.ignoreCase, rules.ignoreCase],
     ['core.precomposeunicode', rules.precomposeUnicode ?? false, rules.precomposeUnicode !== undefined],
   ];
+  const changes: [string, string][] = [];
   for (const [key, value, written] of keys) {
     const r = await git(['config', '--file', config, '--type=bool', '--get', key], common);
     if (r.code !== 0 && r.code !== 1) throw new GitFailure(`${config}: git config --get ${key} failed: ${said(r.stderr) || `exit ${r.code}`}`);
     const held = r.code === 0 ? r.stdout.trim() === 'true' : undefined;
     if (held === value || (held === undefined && !written)) continue;
-    await must(git, ['config', '--file', config, key, String(value)], common);
+    changes.push([key, String(value)]);
+  }
+  if (!changes.length) return;
+  // git renames its edit into place unflushed, so it edits a copy outside the root, which replaces the config only once on disk
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-config-'));
+  const copy = path.join(dir, 'config');
+  try {
+    fs.copyFileSync(config, copy);
+    for (const [key, value] of changes) await must(git, ['config', '--file', copy, key, value], common);
+    writeDurable(config, fs.readFileSync(copy), { mode: fs.statSync(config).mode & 0o777 });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 

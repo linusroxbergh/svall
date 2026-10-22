@@ -217,6 +217,29 @@ function adopt(config: Config, fleet: FleetConfig): void {
   replaceIn(config, { ...rest, mobile: config.mobile });
 }
 
+// a fleet.json linked elsewhere (stow, home-manager) is written where it points, with the mode it had; a link into a
+// store this account cannot write gives way to a file of the fleet's own
+function writeFleet(file: string, fleet: FleetConfig, log: Logger): void {
+  let real = file;
+  let mode = 0o600;
+  try {
+    real = fs.realpathSync(file);
+    mode = fs.statSync(real).mode & 0o777;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+  try {
+    writeDurable(real, fleet, { mode });
+    // the umask narrows the mode a file is created with
+    fs.chmodSync(real, mode);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (real === file || !['EACCES', 'EROFS', 'EPERM'].includes(code ?? '')) throw e;
+    log.info(`${file} links to ${real}, which could not be written (${code}), so a file of its own replaces the link`);
+    writeDurable(file, fleet, { mode: 0o600 });
+  }
+}
+
 /**
  * The machine receiving a fleet: it proves what landed and prepares the state it would run beside the one it
  * runs, then, once the gateway has committed, makes that state active and starts the terminals the handover
@@ -458,8 +481,8 @@ export class DestinationHandover {
 
   /**
    * Checks everything it can before its first write, journals, proves each root holds what the transfer
-   * verified under this handover's claim, imports the Git graphs, places the sessions, and only then writes
-   * the prepared state. A root verified once is not verified again: the import has since changed it.
+   * verified under this handover's claim and flushes it to disk, imports the Git graphs, places the sessions, and
+   * only then writes the prepared state. Asked again, it proves each root again, against the seal or what landed.
    */
   private async runPrepare(p: Prepare): Promise<Result<'handover.prepare'>> {
     const m = p.manifest;
@@ -497,6 +520,7 @@ export class DestinationHandover {
     this.ownership.hold(`handover ${tx} has not been activated on this machine`);
     const landedDigest = canonicalDigest(p.landed);
     const verified = this.open(tx)?.landedDigest === landedDigest;
+    const earlier = verified ? this.recorded(tx, p.manifestDigest) : undefined;
     const at = new Map<string, string>();
     // the registrations of worktrees that stay here, which this handover's claim left as they were
     const stays = new Map<string, string[]>();
@@ -511,7 +535,12 @@ export class DestinationHandover {
         }
         at.set(r.id, check.path);
         stays.set(r.id, this.replicas.keptBy(spec, tx));
-        const landed = verified ? undefined : await landedProblem(r, check.path, p.landed.find((x) => x.id === r.id)!.files, m.excludes, this.d.scanFs, kept(stays.get(r.id)!));
+        // a root proved before is proved again against what the seal recorded the import left there, as a power cut may have
+        // taken it, or against what landed, as a copy made again since puts it back; a prepare that died in the import before
+        // the seal recorded it trusts what it proved, flushed before it was recorded
+        const sealed = earlier?.roots.find((x) => x.id === r.id)?.files;
+        const files = p.landed.find((x) => x.id === r.id)!.files;
+        const landed = verified && !sealed ? undefined : await landedProblem(r, check.path, sealed ? [sealed, files] : [files], m.excludes, this.d.scanFs, kept(stays.get(r.id)!));
         if (landed) blockers.push(landed);
       }
     });
@@ -519,7 +548,14 @@ export class DestinationHandover {
 
     const git = gitProblems(m, [...at.values()]);
     if (git.length) throw blocked(git);
-    // verified once the import may have changed the roots, and not before: a retry until then compares what landed again
+    // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
+    const here = [...at.values()];
+    const flush = (files: string[]): Promise<void> => (this.d.syncRoots ?? ((r, f) => syncRoots(r, f, { log: this.d.log })))(here, files).catch((e: unknown) => {
+      throw new Error(`what landed in ${here.join(', ')} could not be flushed to disk: ${(e as Error).message}`);
+    });
+    const landedFiles = carried.flatMap((r) => p.landed.find((x) => x.id === r.id)!.files.flatMap((f) => (f.type === 'file' ? [f.path ? path.join(at.get(r.id)!, f.path) : at.get(r.id)!] : [])));
+    await boundary('destination.verify.sync', () => flush(landedFiles));
+    // recorded before the import changes the roots, and on disk
     if (!verified) boundary('destination.verify.record', () => this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() }));
     const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
     const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
@@ -544,7 +580,6 @@ export class DestinationHandover {
     } finally {
       // what Complete seals, or an abort leaves claimable: what landed, with what the import wrote however far it got and
       // nothing else written there meanwhile; a prepare asked again keeps what the one that proved it recorded
-      const earlier = verified ? this.recorded(tx, p.manifestDigest) : undefined;
       const roots: SealRecord['roots'] = [];
       for (const r of carried) {
         const files = earlier?.roots.find((x) => x.id === r.id)?.files ?? await asImported(r);
@@ -568,12 +603,8 @@ export class DestinationHandover {
     if (placed.length) throw blocked(placed);
     const unread = await this.importSessions(tx, m, run);
     if (unread.length) throw blocked(unread);
-    // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
-    const roots = [...at.values()];
-    const files = carried.flatMap((r) => p.landed.find((x) => x.id === r.id)!.files.flatMap((f) => (f.type === 'file' ? [f.path ? path.join(at.get(r.id)!, f.path) : at.get(r.id)!] : [])));
-    await boundary('destination.prepare.sync', () => (this.d.syncRoots ?? ((r, f) => syncRoots(r, f, { log: this.d.log })))(roots, files).catch((e: unknown) => {
-      throw new Error(`what landed in ${roots.join(', ')} could not be flushed to disk: ${(e as Error).message}`);
-    }));
+    // and what the import wrote since
+    await boundary('destination.prepare.sync', () => flush(graphsHere(m).map((g) => path.join(g.commonDir, 'config'))));
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);
@@ -775,7 +806,7 @@ export class DestinationHandover {
 
   /** fleet.json, then the state: each step is safe to repeat, and a rename that landed before a crash is found by its digest. */
   private promote(j: DestinationJournal): void {
-    boundary('destination.promote.fleet', () => writeDurable(this.d.paths.fleetConfig, j.fleet!, { mode: 0o600 }));
+    boundary('destination.promote.fleet', () => writeFleet(this.d.paths.fleetConfig, j.fleet!, this.d.log));
     adopt(this.d.config, j.fleet!);
     const prepared = this.d.paths.preparedState(j.transactionId);
     boundary('destination.promote.state', () => {

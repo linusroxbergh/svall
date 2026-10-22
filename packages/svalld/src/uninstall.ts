@@ -12,7 +12,7 @@ import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { opencodePaths, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { resolvePaths } from './paths.js';
-import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
+import { BUNDLE_ID, homePrefix, isFleetName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shimNames } from './setup.js';
 import { resolveTmux } from './tmux/tmux.js';
@@ -246,7 +246,7 @@ const isFleetHome = (p: string): boolean =>
   && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig, `${resolvePaths(p).legacyConfig}.bak`].some((f) => fs.existsSync(f));
 
 export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
-  .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isProfileName(f.slice(homePrefix.length))))
+  .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isFleetName(f.slice(homePrefix.length))))
   .sort()
   .map((f) => path.join(homedir, f))
   .filter(isFleetHome);

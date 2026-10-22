@@ -38,7 +38,7 @@ import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { Phones } from '../../src/phones.js';
 import { Store } from '../../src/store.js';
-import { runGit, type GitRunner } from '../../src/links/git.js';
+import { handoverGit, runGit, type GitRunner } from '../../src/links/git.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { parseScreen, Tmux } from '../../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, idleSides, makeHome, stubLoad, stubMobile, stubUsage, waitFor } from '../helpers.js';
@@ -454,7 +454,7 @@ describe('destination prepare', () => {
     expect(d.ownership.writable()).toBe(false);
   });
 
-  it('flushes every root that landed to disk before it journals the prepared state, and journals none while that fails', async () => {
+  it('flushes every root that landed to disk before it records having proved it, and records nothing while that fails', async () => {
     const s = await scene();
     const synced: string[][] = [];
     const flushed: string[][] = [];
@@ -468,12 +468,27 @@ describe('destination prepare', () => {
     expect(files.length).toBeGreaterThan(0);
     expect([...flushed[0]].sort()).toEqual(files.sort());
     expect(journalOf(s.paths)).toMatchObject({ phase: 'verify' });
-    expect(journalOf(s.paths).preparedDigest).toBeUndefined();
+    expect(journalOf(s.paths).landedDigest).toBeUndefined();
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
     fails = undefined;
     const { preparedDigest } = await d.handover.prepare(params(s));
     expect(journalOf(s.paths)).toMatchObject({ phase: 'prepare', preparedDigest });
-    expect(synced).toHaveLength(2);
+    // what landed, then what the Git import wrote, of which this fleet's roots hold nothing
+    expect(flushed.slice(1).map((f) => [...f].sort())).toEqual([files, []]);
+  });
+
+  it('proves what landed again when asked again after recording that proof, and journals no prepare over a file a power cut emptied', async () => {
+    const s = await scene();
+    let flushes = 0;
+    // the power goes before the import's writes reach the disk
+    const d = daemon(s, { syncRoots: async () => { if (++flushes === 2) throw new Error('EIO: i/o error, syncfs'); } });
+    await expect(d.handover.prepare(params(s))).rejects.toThrow(/could not be flushed to disk: EIO/);
+    expect(journalOf(s.paths).landedDigest).toBeDefined();
+    fs.truncateSync(path.join(s.dst, 'work/bo/index.ts'));
+    const r = await refusal(d.handover.prepare(params(s)));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'destination_diverged', message: expect.stringContaining('index.ts') }));
+    expect(journalOf(s.paths)).toMatchObject({ phase: 'verify' });
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
   });
 
   it('flushes the filesystems that hold a set of roots with the sync this platform has', async () => {
@@ -841,11 +856,13 @@ describe('destination prepare', () => {
       return { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
     };
     const d = daemon(s, { git });
-    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+    const codes = async () => blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code);
+    expect(await codes()).toContain('worktree_unresolved');
+    // asked again with what landed, as a prepare whose answer was lost is, it proves that again, bar the config its import wrote
+    expect(await codes()).toEqual(['worktree_unresolved']);
     fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here\n');
     fs.writeFileSync(path.join(s.dst, 'work/bo/mine.txt'), 'written here\n');
-    // asked again with what landed, as a prepare whose answer was lost is, it does not prove that again
-    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+    expect(await codes()).toContain('destination_diverged');
 
     const r = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
     const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
@@ -1012,7 +1029,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const macTree = park(l, 'mac');
     const landed = await transfer(paths, built.manifest, (p) => parkedAt(l, macTree, p));
     const store = Store.load(paths.state, () => {});
-    return { home, paths, store, manifest: built.manifest, digest: built.digest, landed, probes: [] as AgentProbe[] };
+    return { home, paths, store, manifest: built.manifest, digest: built.digest, landed, probes: [] as AgentProbe[], macTree };
   }
 
   it('imports every graph, and records for Complete each root as the import left it', async () => {
@@ -1041,6 +1058,46 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     fs.rmSync(s.paths.preparedState(TX));
     const again = daemon(s);
     expect(await again.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed })).toEqual(r);
+  });
+
+  it('journals no prepare, asked again, over a config a power cut emptied after the import wrote it', async () => {
+    const l = seedHere(made);
+    const s = await gitScene(l);
+    let flushes = 0;
+    const params = { transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed };
+    // the power goes before the import's writes reach the disk
+    await expect(daemon(s, { syncRoots: async () => { if (++flushes === 2) throw new Error('EIO: i/o error, syncfs'); } }).handover.prepare(params)).rejects.toThrow(/EIO/);
+    const config = path.join(l.source.main, '.git/config');
+    fs.truncateSync(config);
+    const r = await refusal(daemon(s).handover.prepare(params));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'destination_diverged', message: expect.stringContaining('1 changed (.git/config)') }));
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
+  });
+
+  it('prepares again over a copy made again after a prepare its Git import outlived, which put back what that import rewrote', async () => {
+    const l = seedHere(made);
+    // the opposite of what this filesystem probes, so the import rewrites the config
+    git(l.base, l.source.main, 'config', 'core.ignorecase', String(!fs.existsSync(path.join(l.source.main, '.git/CoNfIg'))));
+    const s = await gitScene(l);
+    const params = { transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed };
+    const config = path.join(l.source.main, '.git/config');
+    const landedConfig = fs.readFileSync(config, 'utf8');
+    // git cannot read the checkouts once the import has rewritten the config, so the prepare blocks
+    const failing: GitRunner = async (args, cwd) => (args.includes('status') ? { code: 128, stdout: '', stderr: 'fatal: index.lock exists' } : handoverGit(args, cwd));
+    expect(blockersOf(await refusal(daemon(s, { git: failing }).handover.prepare(params))).map((b) => b.code)).toContain('worktree_unresolved');
+    expect(fs.readFileSync(config, 'utf8')).not.toBe(landedConfig);
+    // copied again, as rsync does with --delete and each root's claim
+    const d = daemon(s);
+    const claimed = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+    for (const r of replicaRoots(s.manifest)) {
+      const keep = claimed.roots.find((x) => x.id === r.id)!.keep ?? [];
+      const aside = keep.map((k) => { const to = fs.mkdtempSync('/tmp/svall-kept-'); made.push(to); fs.renameSync(path.join(r.path, k), path.join(to, 'k')); return { k, to }; });
+      fs.rmSync(r.path, { recursive: true, force: true });
+      fs.cpSync(parkedAt(l, s.macTree, r.path), r.path, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true });
+      for (const a of aside) { fs.rmSync(path.join(r.path, a.k), { recursive: true, force: true }); fs.renameSync(path.join(a.to, 'k'), path.join(r.path, a.k)); }
+    }
+    expect(fs.readFileSync(config, 'utf8')).toBe(landedConfig);
+    expect(await d.handover.prepare(params)).toMatchObject({ preparedDigest: expect.any(String) });
   });
 
   /**
@@ -1325,6 +1382,45 @@ describe('destination activate', () => {
     expect(journalOf(s.paths)).toMatchObject({ phase: 'activate' });
     expect(journalOf(s.paths).activation!.every((a) => a.ok)).toBe(true);
     expect(d.events).toContainEqual({ event: 'handover.entity', data: { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'activate' } });
+  });
+
+  it('writes the fleet.json it promotes through a link to the file it names, with the mode that file had', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    const target = path.join(s.base, 'dotfiles/fleet.json');
+    fs.mkdirSync(path.dirname(target));
+    fs.renameSync(s.paths.fleetConfig, target);
+    fs.chmodSync(target, 0o660);
+    fs.symlinkSync(target, s.paths.fleetConfig);
+    d.gateway.commit(preparedDigest);
+
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    expect(fs.lstatSync(s.paths.fleetConfig).isSymbolicLink()).toBe(true);
+    expect(FleetConfig.parse(JSON.parse(fs.readFileSync(target, 'utf8'))).home.cwd).toBe('~/mc');
+    expect(mode(target)).toBe('660');
+  });
+
+  it.skipIf(process.getuid?.() === 0)('replaces a fleet.json linked into a store it cannot write with a file of its own, and says so', async () => {
+    const lines: string[] = [];
+    const s = await scene();
+    const d = daemon(s, { log: { info: (m) => { lines.push(m); }, error: (m) => { lines.push(m); } } });
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    const store = path.join(s.base, 'nix-store');
+    const target = path.join(store, 'fleet.json');
+    fs.mkdirSync(store);
+    fs.renameSync(s.paths.fleetConfig, target);
+    fs.chmodSync(target, 0o444);
+    fs.chmodSync(store, 0o555);
+    fs.symlinkSync(target, s.paths.fleetConfig);
+    const before = fs.readFileSync(target, 'utf8');
+    d.gateway.commit(preparedDigest);
+    try {
+      await d.handover.activate({ transactionId: TX, generation: 5 });
+    } finally { fs.chmodSync(store, 0o755); }
+    expect(fs.lstatSync(s.paths.fleetConfig).isSymbolicLink()).toBe(false);
+    expect(FleetConfig.parse(JSON.parse(fs.readFileSync(s.paths.fleetConfig, 'utf8'))).home.cwd).toBe('~/mc');
+    expect(mode(s.paths.fleetConfig)).toBe('600');
+    expect(fs.readFileSync(target, 'utf8')).toBe(before);
+    expect(lines).toContainEqual(expect.stringContaining(`${s.paths.fleetConfig} links to ${target}`));
   });
 
   it('names a resume that never comes up as its character error, keeps the fleet, and clears it when the session starts after all', async () => {

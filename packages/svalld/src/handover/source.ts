@@ -593,13 +593,18 @@ export class SourceHandover {
         return !window || !live.has(window);
       });
     }
+    // only an agent the rest terminated had its turn cut short, which its revive tells it
+    const ended = (this.open(transactionId)?.terminated ?? []).filter((x) => x.term !== 2).map((x) => x.characterId);
     this.d.store.update((d) => {
       for (const t of stopped) {
         const c = d.characters[t.characterId];
         const slot = t.term === 2 ? c?.second : c;
         if (!c || !slot?.tmux || live.has(slot.tmux.windowId)) continue;
         if (t.term === 2) markSlotDormant(slot, t.flags);
-        else { markDormant(c, t.flags); delete c.revive?.interrupted; }
+        else {
+          markDormant(c, t.flags);
+          if (ended.includes(c.id) && c.revive?.command) c.revive.interrupted = true; else delete c.revive?.interrupted;
+        }
       }
     });
     for (const t of stopped) {

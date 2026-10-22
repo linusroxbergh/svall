@@ -218,7 +218,8 @@ Every delete, rename and archive a handover or its install makes, with the recor
   - ownership (`owner.json`) and the daemon journal;
   - replica records, prepared state, seals and manifests;
   - `fleet.json` and `node.json`; a change to an existing `fleet.json` keeps its mode and writes through a link to
-    the file it names;
+    the file it names, except that the one a handover promotes replaces a link it cannot write through, as into a
+    read-only Nix store, with a file of its own at 0600, and logs that;
   - the gateway's records (folder 0700);
   - the controller's journal and progress (folder 0700);
   - the registry `machines.json` and `machine.json` (folder 0700).
@@ -319,7 +320,10 @@ of the manifest and of what landed, not read off the wire.
   ctime was within 2 s of that read, as git treats a racy-clean index entry, then again in the controller's verify when the controller runs there. The destination
   hashes a replica at preflight, again at the claim, then what landed at prepare, and once more after the Git import
   each root that holds or lies in a carried Git directory. The seal is what landed, with only what the import writes
-  taken from that last read: each carried graph's `config`, and the worktree registrations it removes. rsync's
+  taken from that last read: each carried graph's `config`, which the import has git change in a copy it flushes and
+  renames into place, and the worktree registrations it removes. Prepare flushes what landed before it records having
+  proved it, and one asked again once the seal is written hashes each root once more, against the seal or, for a root
+  copied again since, what landed. rsync's
   compare reads both sides by checksum in a pull; in a push it compares sizes and times, since prepare re-hashes the
   copy against the source's read, except in a resume, whose compares and first pass go by checksum so a retry after
   prepare finds a file of the same size and second that differs. Each of the destination's proofs guards a different moment (before any write, before

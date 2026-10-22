@@ -1262,6 +1262,29 @@ describe('source abort', () => {
     expect(revives).toEqual([{ command: `claude --resume ${SID}` }]);
   });
 
+  it('tells an agent a rest that died terminated that a restart cut it off, once an abort revives it, and no other', async () => {
+    // the rest terminated bo's agent, or what ran in bo's second terminal, killed bo's window and died before it laid bo dormant
+    for (const [terminated, interrupted] of [[{ characterId: 'c_bo' }, true], [{ characterId: 'c_bo', term: 2 as const }, false]] as const) {
+      const b = boot();
+      b.gateway.begin();
+      b.handover.write(SourceJournal.parse({
+        role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
+        stoppedTerminals: [{ characterId: 'c_bo' }], terminated: [{ ...terminated, processes: [] }], updatedAt: 1,
+      }));
+      b.world.panes.delete('@3');
+      await b.ownership.freeze(b.gateway.record.transaction!);
+      const again = await b.restart();
+      b.gateway.abort();
+      const revives: unknown[] = [];
+      const revive = b.deps.fleet.reviveCharacter;
+      b.deps.fleet.reviveCharacter = async (id) => { revives.push(structuredClone(b.store.state.characters[id].revive)); return revive(id); };
+
+      await again.handover.abort({ transactionId: TX, generation: 4 });
+
+      expect(revives).toEqual([{ command: `claude --resume ${SID}`, ...(interrupted && { interrupted }) }]);
+    }
+  });
+
   it('resumes an agent a lost tmux cut off mid-turn during the freeze once the abort lets the fleet run again', async () => {
     const b = boot({ characters: (work) => [char('c_bo', path.join(work, 'bo'), { tmux: win(3) })] });
     b.store.update((d) => { d.characters.c_bo.agent = b.agent('working'); });

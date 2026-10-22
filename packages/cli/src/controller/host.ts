@@ -7,7 +7,7 @@ import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { homeCommands } from '@svall/svalld/handover/inventory';
 import { unitPath } from '@svall/svalld/linux/setup';
-import { isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
+import { isFleetName, isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
@@ -631,7 +631,7 @@ function fleetHomes(homedir: string): string[] {
     return [];
   }
   return names
-    .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isProfileName(f.slice('.svall-'.length))))
+    .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isFleetName(f.slice('.svall-'.length))))
     .map((f) => path.join(homedir, f))
     .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
 }
@@ -653,6 +653,8 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   const named = homes.filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
   const svall = (home: string, args: string): string => {
     const profile = profileOf(home, d.homedir);
+    // a home named for a command svall keeps is no -p's, and is reached by its folder
+    if (profile !== PRIVATE && !isProfileName(profile)) return `\`SVALL_HOME=${shq(home)} svall ${args}\``;
     return `\`svall ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
   };
   // a gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it, and whichever
