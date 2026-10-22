@@ -184,6 +184,9 @@ profile for bwrap is installed, a Codex character asks before each command. The 
 (`codex_sandbox`) and name the commands that install the profile, or, when `codex sandbox -- true` fails there for
 another reason, what it said.
 
+A resumed Codex reports its process only with its first turn, as it runs its SessionStart hook then: until that turn,
+`svall char list` shows its `pid` as null while it runs.
+
 ## What restarts
 
 Nothing that runs moves; the handover brings each terminal to rest first.
