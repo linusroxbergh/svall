@@ -34,10 +34,10 @@ enum HandoverCommand {
         profile.map { ["-p", $0] } ?? []
     }
 
-    /// `to` is `local` or the fleet's gateway by its registry name; nothing else is a destination.
-    static func start(to: String, choices: HandoverChoices?, gateway: String?, profile: String?) -> [String]? {
-        guard to == "local" || to == gateway, to.allowed(by: machineNamePattern) else { return nil }
-        var flags: [String] = []
+    /// `to` is `local` or the fleet's gateway by its registry name; nothing else is a destination. `check` runs the checks alone.
+    static func start(to: String, choices: HandoverChoices?, gateway: String?, profile: String?, check: Bool = false) -> [String]? {
+        guard to == "local" || to == gateway, to.allowed(by: machineNamePattern), !handoverWords.contains(to) else { return nil }
+        var flags: [String] = check ? ["--check"] : []
         if let ms = choices?.interruptAfterMs {
             guard ms >= 0 else { return nil }
             flags += ["--interrupt-after", "\(ms)ms"]
@@ -58,6 +58,18 @@ enum HandoverCommand {
     static func attach(profile: String?) -> [String] { prefix(profile) + ["handover", "attach", "--json"] }
     static func status(profile: String?) -> [String] { prefix(profile) + ["handover", "status", "--json"] }
     static func forget(profile: String?) -> [String] { prefix(profile) + ["handover", "--forget", "--json"] }
+    static func enabled(_ on: Bool, profile: String?) -> [String] { prefix(profile) + ["handover", on ? "on" : "off"] }
+}
+
+/// The remote machines switch: `svall handover on|off`, which keeps fleet.json's other keys and refuses off while the fleet names a gateway.
+enum HandoverSwitch {
+    /// `done` gets nil, or why it did not, on main; the child is kept until then.
+    static func turn(_ on: Bool, executable: String, profile: String?, done: @escaping (String?) -> Void) -> LineChild {
+        let child = LineChild(executable: executable, arguments: HandoverCommand.enabled(on, profile: profile), stdin: false)
+        child.onExit = { code, stderr in done(code == 0 ? nil : stderr.last ?? "svall exited with code \(code)") }
+        do { try child.start() } catch { DispatchQueue.main.async { done("\(error)") } }
+        return child
+    }
 }
 
 /// A line `attach` passes to the live helper on its stdin.

@@ -5,7 +5,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import type { HandoverEvent } from '../../src/handover.js';
 import { setAppStore } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { chr, fleet } from '../fixtures.js';
 
 const bridge = { present: true, send: () => {}, onMessage: () => () => {} };
 let store: AppStore;
@@ -49,6 +49,49 @@ test('a decision that opens the sheet, or arrives while it is up, puts the focus
   expect(document.activeElement).toBe(screen.getByTestId('handover-go'));
 });
 
+test('a destination runs the checks alone and shows what moves and who stops before anything freezes; Move starts the handover', () => {
+  const send = vi.spyOn(bridge, 'send');
+  const agent = (status: 'idle' | 'working') => ({ kind: 'claude' as const, sessionId: 's', status, lastActivityAt: 0 });
+  store.getState().setFleet({ ...fleet(), characters: {
+    c1: chr('c1', 'i_b', { x: 1, y: 1 }, { name: 'ada', agent: agent('idle') }),
+    c2: chr('c2', 'i_b', { x: 2, y: 1 }, { name: 'bo', agent: agent('working') }),
+    c3: chr('c3', 'i_a', { x: 1, y: 1 }, { name: 'cy' }),
+  } });
+  store.setState({ handover: undefined });
+  render(<HandoverSheet />);
+  act(() => store.getState().toggleHandover(true));
+  fireEvent.click(screen.getByTestId('handover-to-gateway'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift', check: true });
+  act(() => {
+    store.getState().handoverEvent({ event: 'handover.preflight', data: { summary: { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 }, blockers: [], warnings: [] } });
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'ready' } });
+    store.getState().handoverExit(0);
+  });
+  expect(screen.getByTestId('handover-summary').textContent).toBe('2 folders, 120 files, 42.0 MB, 1 session');
+  expect(screen.getByTestId('handover-rest-resume').textContent).toBe('ada stops now and resumes from its transcript on trift.');
+  expect(screen.getByTestId('handover-rest-wait').textContent).toContain('bo is working: the handover waits up to three minutes');
+  expect(screen.getByTestId('handover-rest-shell').textContent).toContain('cy closes; the shell reopens in its folder on trift');
+  expect(screen.getByTestId('handover-section-rest').getAttribute('data-state')).toBe('pending');
+  expect(screen.getByTestId('handover-headline').textContent).toBe('Nothing stops the move to trift, and nothing has moved yet.');
+
+  fireEvent.click(screen.getByTestId('handover-try-again'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift' });
+  // a check read back at launch, with nothing open, offers no move and so no plan
+  act(() => {
+    store.getState().handoverReplay([
+      { event: 'handover.preflight', data: { summary: { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 }, blockers: [], warnings: [] } },
+      { event: 'handover.result', data: { status: 'ready' } },
+      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } },
+    ]);
+  });
+  expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
+  expect(screen.queryByTestId('handover-footnote')?.textContent ?? '').not.toContain('Move to');
+  act(() => store.getState().handoverFollow('trift'));
+  // once the move has begun, the characters' own rows take the place of the plan
+  act(() => store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } }));
+  expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
+});
+
 test('a release blocker opens the machines panel on the Linux machine, in place of the sheet', () => {
   render(<><HandoverSheet /><HostSetup /></>);
   act(() => {
@@ -59,7 +102,8 @@ test('a release blocker opens the machines panel on the Linux machine, in place 
   });
   fireEvent.click(screen.getByTestId('handover-upgrade'));
   expect(screen.queryByTestId('handover-sheet')).toBeNull();
-  expect((screen.getByTestId('host-name') as HTMLInputElement).value).toBe('trift');
+  expect(screen.getByTestId('host-machine').textContent).toBe('trift');
+  expect(screen.getByTestId('host-setup').querySelector('[data-testid="machine-upgrade"]')).not.toBeNull();
 });
 
 test('a folder that holds repositories no character works in blocks on its character until Carry the folder whole is chosen, and the start again carries it', () => {
@@ -187,6 +231,11 @@ test('Show in Finder is offered only for a folder on this Mac while the fleet ru
 test('while transferring, one bar sums every folder and session, a verified folder reads whole, and the rows wait behind a disclosure', () => {
   render(<HandoverSheet />);
   say(preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
+    { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'transfer', bytes: 500_000, totalBytes: 1_000_000 } });
+  // before the other rows say their size, the whole is what preflight found
+  expect(screen.getByTestId('handover-transfer-total').textContent).toContain('500.0 KB of 2.0 MB');
+  expect(screen.getByTestId('handover-transfer-total').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 25%');
+  say(
     // a fresh copy is checked with every byte sent; only the row the destination verified counts
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000 } },
     { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_2', phase: 'transfer', bytes: 250_000, totalBytes: 1_000_000 } },
@@ -610,6 +659,14 @@ test('done, the footer says where the fleet runs with a Close, the route points 
   fireEvent.click(screen.getByTestId('handover-again'));
   expect(screen.getByTestId('handover-destinations')).toBeTruthy();
   expect(screen.queryByTestId('handover-footer')).toBeNull();
+  // the machine chosen there runs its checks in sight, and offers its Move
+  fireEvent.click(screen.getByTestId('handover-to-gateway'));
+  act(() => {
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'ready' } });
+    store.getState().handoverExit(0);
+  });
+  expect(screen.queryByTestId('handover-destinations')).toBeNull();
+  expect(screen.getByTestId('handover-try-again').textContent).toBe('Move to trift');
 });
 
 test('done with a character that did not resume, the tally and its row say so, and the row offers Retry and its card', () => {

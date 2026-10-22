@@ -165,6 +165,9 @@ extension String {
 /// A machine's registry name: the only name `svall host` and `svall handover` take for one.
 let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
 
+/// What `svall handover` reads as its own words before a machine's name, which the registry refuses as names.
+let handoverWords: Set<String> = ["on", "off", "status", "attach"]
+
 /// The argv of `svall host <op> … --json`. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
 enum HostCommand {

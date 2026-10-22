@@ -13,12 +13,16 @@ an agent your fleet runs that is missing or not logged in there does, and so doe
 ## From the app
 
 Choose **Handover** at the foot of the sidebar, then the machine to move the fleet to: the gateway's name, or **This
-Mac** to bring it back. The sheet follows six steps:
+Mac** to bring it back. That runs the checks alone: the sheet lists the folders, files and size that would be
+carried, which characters stop and how each comes back, anything that blocks, and warnings. Nothing is touched until
+you choose **Move**, which runs the checks once more and goes on through six steps:
 
-1. **Checks.** Nothing is touched yet. The sheet lists what would be carried, anything that blocks, and warnings.
+1. **Checks.** Nothing is touched yet. A blocker found here stops the move before anything rests.
 2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
-   terminal is brought to rest, and its window closed. The Load tab still reads; its Sleep and Delete are refused.
-3. **Transferring files and sessions.** Each folder and agent session is copied, with progress.
+   terminal is brought to rest, and its window closed; its pane says which step the handover is at, and a click on it
+   opens the sheet. The Load tab still reads; its Sleep and Delete are refused.
+3. **Transferring files and sessions.** Each folder and agent session is copied, with progress, the rate so far and
+   the time left at that rate.
 4. **Verifying.** The copy is checked, and the other machine prepares the fleet. Abort still gives it back.
 5. **Committing.** The gateway commits the fleet to that machine. From here there is no way back, and the sheet says
    so.
@@ -44,7 +48,9 @@ handover stands, with **Resume** and **Abort** before the commit. After it, resu
 resumes by itself and offers **Retry** only if that stops again.
 
 While the app follows a handover, the Mac stays out of idle sleep, on battery too, unless **keep Mac awake** is off. A
-handover that goes on without the window watching is followed again.
+handover that goes on without the window watching is followed again. With notifications on, a handover that waits for
+you, is ready to move, finishes or stops while the app is in the background posts a banner, which opens the sheet; a
+stop past the commit that the sheet resumes by itself posts none.
 
 Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.
@@ -54,6 +60,7 @@ card and your pane layout, which belong to this Mac. The machine's name shows at
 ```sh
 svall handover studio                         # move this fleet to studio
 svall handover local                          # bring it back to this Mac
+svall handover studio --check                 # run the checks alone; nothing is rested or moved
 svall handover status                         # where a handover stands, and what is safe; changes nothing
 svall handover --resume                       # go on with an open handover
 svall handover --abort                        # take the fleet back, before the commit only

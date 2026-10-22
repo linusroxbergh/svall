@@ -182,7 +182,7 @@ What the gateway's ownership authority answers. They appear in handover messages
 ## How a run ends
 
 The `handover.result` line, and what `svall handover` prints last. The command exits 0 when it did what it was asked
-(a start or `--resume` that completed, an `--abort` that aborted) and 1 otherwise. `--detach` exits 0 once the helper
+(a start or `--resume` that completed, an `--abort` that aborted, a `--check` that found nothing in the way) and 1 otherwise. `--detach` exits 0 once the helper
 listens, or as the run did if it ended first. `attach` exits 0 once the run it follows ends, whatever its result.
 `status` exits 0 whenever it could say where the handover stands, `unknown` included. `--forget` exits 0 only when it
 dropped the journal.
@@ -195,6 +195,7 @@ dropped the journal.
 | `aborted` | Nothing committed, and the fleet runs on the source again with the terminals the handover stopped reopened. | Start again when ready. |
 | `interrupted` | The run stopped part way. `safe` lists what may follow: `resume`, `abort` or both; when it lists neither, `stop` says why (below). Where `error` says it plainly, `detail` keeps what the journals said. | Do what `safe` says, or what the `stop` row says. |
 | `detached` | You cancelled after the commit: the move goes on without anyone watching. | `svall handover attach` follows it; `svall handover status` says where it stands. |
+| `ready` | A `--check` found nothing that stops a handover, and began nothing. | `svall handover <machine>` moves the fleet; in the app, Move. |
 
 ## Why nothing is safe
 
@@ -305,7 +306,7 @@ handover**) or a list of what is still to do, and exits 1 unless nothing is left
 
 | Step | Command | What it checks or does | When it fails |
 | --- | --- | --- | --- |
-| `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter) and the ssh destination. | Pick another name, or `svall host remove` the machine that holds it. |
+| `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter, and not `local`, `on`, `off`, `status` or `attach`, which `svall handover` takes as its own) and the ssh destination. | Pick another name, or `svall host remove` the machine that holds it. |
 | `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet, and a fleet with no gateway has an `owner.json` naming this Mac: a daemon that could not read `~/.config/svall` runs as the machine its `owner.json` names. | `svall host list`; `svall host add` it. If the gateway it names is gone for good, `svall fleet recover --force-owner local --gateway <name>` makes that machine the gateway, or `svall fleet recover --force-owner local` leaves the fleet with none; then enable again. For an `owner.json` naming another machine, quit Svall and open it on the fleet again, so its daemon starts as this Mac; then enable again. |
 | `ssh` | add | An interactive ssh, so you can accept the host key and log in. A failure names ssh's exit and the last of what it said. | `ssh <destination>` once in Terminal and complete it, then add the machine again. |
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps, which asks nothing: Svall needs a key ssh can use without asking, and a password gets only past the `ssh` step. For an upgrade, with or without `--rollback`, and an add of a name already in the registry, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A refused login: install a key with `ssh-copy-id <destination>` and keep its passphrase in the agent (`ssh-add --apple-use-keychain`), then add the machine again. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |

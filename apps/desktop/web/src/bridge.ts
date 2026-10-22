@@ -20,6 +20,11 @@ export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'ena
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string };
+// one machine as `svall host list --json` gives it: no ssh for this Mac, the fleets here it is the gateway of, and its last check
+export type MachineRow = {
+  name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[];
+  check?: { at: number; failed: number; warned: number; release?: string };
+};
 
 // where the fleet this window shows is running, as the shell's connect helper reports it;
 // machine: the one that did not answer (`local` for this Mac's daemon), destination: the ssh that reaches it
@@ -70,9 +75,13 @@ export type ToShell =
   // the shell runs the bundled svall for one host operation at a time, and stops it on cancel
   | { type: 'host.start'; op: HostOp; args: HostArgs }
   | { type: 'host.cancel' }
+  // `svall host list`, answered by host.machines
+  | { type: 'host.list' }
+  // sets fleet.json's handover.enabled, then sends shell.info again
+  | { type: 'handover.enable'; on: boolean }
   // the shell starts, resumes or aborts a handover as a detached helper, then follows it with `handover attach`,
-  // whose stdin carries the user's answers; `to` is `local` or the gateway's name
-  | { type: 'handover.start'; to: string; choices?: HandoverChoices }
+  // whose stdin carries the user's answers; `to` is `local` or the gateway's name, and `check` runs the checks alone
+  | { type: 'handover.start'; to: string; choices?: HandoverChoices; check?: boolean }
   | { type: 'handover.resume' }
   | { type: 'handover.abort' }
   // follows a live helper, or reads back the last run and the status when none is live
@@ -106,6 +115,8 @@ export type FromShell =
   | { type: 'notice'; text: string }
   | { type: 'host.step'; op: HostOp; event: HostStep }
   | { type: 'host.done'; op: HostOp; code: number }
+  // the registry, read again after every host operation too; `error` when it could not be read
+  | { type: 'host.machines'; machines: MachineRow[]; error?: string }
   // each line the helper printed, and the end of the process the page was following
   | { type: 'handover.event'; event: HandoverEvent }
   | { type: 'handover.replay'; events: HandoverEvent[] }

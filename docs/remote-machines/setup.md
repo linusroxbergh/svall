@@ -42,22 +42,18 @@ that holds it (`/Volumes/work`) must exist there first, owned by the account.
 
 ## Turning it on
 
-Everything for another machine in the app waits on one setting per fleet. Open the fleet's `fleet.json` (Settings →
-Fleet config, or `~/.svall/fleet.json`) and set:
-
-```json
-"handover": { "enabled": true }
-```
-
-keeping any other keys in the `handover` object as they are. Then quit and reopen the app. Settings gains a
-**Machines** section, the sidebar's foot a **Handover** button, and each character's card a **keep on this machine**
-switch.
+Everything for another machine in the app waits on one setting per fleet: Settings → The fleet → **remote machines
+(experimental)**. Turned on, Settings gains a **Machines** section, the sidebar's foot a **Handover** button, and each
+character's card a **keep on this machine** switch, without reopening the app. It stays on while the fleet names a
+gateway, and is set where the fleet runs. The switch runs `svall handover on` (or `off`), which writes
+`"handover": { "enabled": true }` into the fleet's `fleet.json`, keeping the other keys, so the setting moves with the
+fleet; set by hand there, it takes effect when the app opens again.
 
 The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
 
 ## Adding the machine
 
-In the app, open Settings → Machines → **Set up**, give the machine a name (lowercase letters, digits and dashes,
+In the app, open Settings → Machines → **Add machine**, give the machine a name (lowercase letters, digits and dashes,
 such as `studio`) and its ssh destination (such as `ada@studio`), and choose **Add machine**. From a terminal:
 
 ```sh
@@ -66,22 +62,23 @@ svall host add studio --ssh ada@studio
 
 Both run the same steps and show each as it finishes:
 
-1. **Connect.** One interactive ssh, so you can accept the host key and log in, then one control connection for the
-   rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
-2. **Prerequisites.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
+1. **Reaching the machine.** One interactive ssh, so you can accept the host key and log in, then one control
+   connection for the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
+2. **What the machine needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
    Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering.
-3. **Companion.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
-   pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
-4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
+3. **Svall on the machine.** The Linux release matching this Mac's own release, checked against the digest this
+   Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
+4. **Running Svall there.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
    Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's own
    `svall doctor` finds them.
-6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
+6. **Trying it out.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
-7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
+7. **This Mac's list of machines.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
 
-It ends by saying the machine is added, or with a list of what is still for you to do. Once it is added, **Make it
+It ends by saying the machine is added, or with a list of what is still for you to do. In the app, a step that
+failed with nothing named to do offers **Try again** (**Check again** after a check). Once it is added, **Make it
 this fleet's gateway** (`svall host enable <name> --fleet <fleet>`) readies it for handover. Svall never runs `sudo`
 and never copies a login, so these are yours:
 
@@ -147,10 +144,13 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 
 ## Looking after it
 
+Settings → Machines lists every machine with its ssh destination, the fleets on this Mac it is the gateway of, and the
+release and result of its last check, each with the buttons below.
+
 | Command | In the app | What it does |
 | --- | --- | --- |
-| `svall host list` | | Every machine in the registry, with its id and whether it is a gateway. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
+| `svall host list` | Settings → Machines | Every machine in the registry, with its id, the fleets on this Mac it is the gateway of, and its last check. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path; `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads. |
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
@@ -196,7 +196,8 @@ On the Linux machine, all under the account:
 
 On the Mac:
 
-- `~/.config/svall/machine.json`, this Mac's machine id, and `machines.json`, the registry. A registry that
+- `~/.config/svall/machine.json`, this Mac's machine id, `machines.json`, the registry, and `checks.json`, each
+  machine's last check. A registry that
   cannot be read is moved aside to `machines.json.broken-<time>` with a warning, and a command that then misses a
   machine names that copy.
 - In each fleet home: `fleet.json` names the gateway, `owner.json` holds this machine's copy of the ownership record,

@@ -318,23 +318,31 @@ export class Handover {
 
   /** Preflight, and then the transaction from Begin, unless preflight found what stops it. */
   start(to: MachineId, choices: HandoverChoices = {}): Promise<Outcome> {
-    return this.watch(async () => {
-      const open = this.d.store.read(true);
-      if (open) return { status: 'interrupted', transactionId: open.transactionId, phase: open.phase, error: 'a handover of this fleet is already open here; resume it, which goes the one safe way on', safe: ['resume'] };
-      let pre: Preflight;
-      try { pre = await this.preflight(to, choices); } catch (e) {
-        const stops = interactive(e) ?? foreign(e) ?? incompatible(e);
-        if (!stops) return this.interrupted('begin', messageOf(e), [], 'not_begun');
-        return { status: 'blocked', phase: 'begin', blockers: [stops] };
-      }
-      if (pre.blockers.length || !pre.manifest) return { status: 'blocked', phase: 'begin', blockers: pre.blockers };
-      if (this.cancel$.signal.aborted) return { status: 'aborted', phase: 'begin' };
-      const [source, destination] = await Promise.all([this.side(pre.manifest.fromMachineId), this.side(to)]);
-      const now = this.clock.now();
-      this.j = { version: 1, fleetId: this.d.fleetId, generation: pre.generation, source: source.route, destination: destination.route, choices, phase: 'begin', startedAt: now, updatedAt: now };
-      this.d.store.write(this.j);
-      return this.forward(false);
-    });
+    return this.watch(() => this.opening(to, choices, true));
+  }
+
+  /** Preflight alone, as a start would run it, ending `ready` where nothing stops one. */
+  check(to: MachineId, choices: HandoverChoices = {}): Promise<Outcome> {
+    return this.watch(() => this.opening(to, choices, false));
+  }
+
+  private async opening(to: MachineId, choices: HandoverChoices, go: boolean): Promise<Outcome> {
+    const open = this.d.store.read(true);
+    if (open) return { status: 'interrupted', transactionId: open.transactionId, phase: open.phase, error: 'a handover of this fleet is already open here; resume it, which goes the one safe way on', safe: ['resume'] };
+    let pre: Preflight;
+    try { pre = await this.preflight(to, choices); } catch (e) {
+      const stops = interactive(e) ?? foreign(e) ?? incompatible(e);
+      if (!stops) return this.interrupted('begin', messageOf(e), [], 'not_begun');
+      return { status: 'blocked', phase: 'begin', blockers: [stops] };
+    }
+    if (pre.blockers.length || !pre.manifest) return { status: 'blocked', phase: 'begin', blockers: pre.blockers };
+    if (!go) return { status: 'ready' };
+    if (this.cancel$.signal.aborted) return { status: 'aborted', phase: 'begin' };
+    const [source, destination] = await Promise.all([this.side(pre.manifest.fromMachineId), this.side(to)]);
+    const now = this.clock.now();
+    this.j = { version: 1, fleetId: this.d.fleetId, generation: pre.generation, source: source.route, destination: destination.route, choices, phase: 'begin', startedAt: now, updatedAt: now };
+    this.d.store.write(this.j);
+    return this.forward(false);
   }
 
   /** Goes the one safe way on from where the journals say the handover stands. */

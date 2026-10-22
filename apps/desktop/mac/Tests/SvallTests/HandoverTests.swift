@@ -102,6 +102,9 @@ final class HandoverTests: XCTestCase {
         // the wait the page chose goes on as it chose it, not rounded to a second
         XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(interruptAfterMs: 1500), gateway: "studio", profile: nil),
                        ["handover", "studio", "--json", "--detach", "--interrupt-after", "1500ms"])
+        // the checks alone, before anything is rested
+        XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(carryUnused: true), gateway: "studio", profile: nil, check: true),
+                       ["handover", "studio", "--json", "--detach", "--check", "--carry-unused"])
         XCTAssertEqual(HandoverCommand.resume(profile: "work"), ["-p", "work", "handover", "--resume", "--json", "--detach"])
         XCTAssertEqual(HandoverCommand.abort(profile: nil), ["handover", "--abort", "--json", "--detach"])
         XCTAssertEqual(HandoverCommand.attach(profile: "work"), ["-p", "work", "handover", "attach", "--json"])
@@ -113,6 +116,10 @@ final class HandoverTests: XCTestCase {
         XCTAssertNil(HandoverCommand.start(to: "elsewhere", choices: nil, gateway: "studio", profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "studio", choices: nil, gateway: nil, profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "--resume", choices: nil, gateway: "--resume", profile: nil))
+        // svall handover reads these as its own words, so a gateway by one of these names is never a destination
+        for word in ["on", "off", "status", "attach"] {
+            XCTAssertNil(HandoverCommand.start(to: word, choices: nil, gateway: word, profile: nil), word)
+        }
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(archiveRoots: ["--delete"]), gateway: "studio", profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(archiveRoots: ["relative/path"]), gateway: "studio", profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(interruptAfterMs: -1), gateway: "studio", profile: nil))
@@ -124,13 +131,39 @@ final class HandoverTests: XCTestCase {
                        ["handover", "local", "--json", "--detach"])
     }
 
+    func testTheSwitchRunsSvallHandoverOnOrOffAndSaysWhyNot() throws {
+        let argv = NSTemporaryDirectory() + "svall-switch-\(UUID().uuidString)"
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: argv) }
+        let svall = try fakeHelper(prints: [], then: """
+        printf '%s\\n' "$*" >> '\(argv)'
+        case "$*" in *off*) echo 'svall: this fleet names a gateway, so handover stays on' >&2; exit 1 ;; esac
+        """)
+        var said: [String?] = []
+        for on in [true, false] {
+            let done = expectation(description: "handover \(on ? "on" : "off")")
+            let child = HandoverSwitch.turn(on, executable: svall, profile: "work") { said.append($0); done.fulfill() }
+            withExtendedLifetime(child) { wait(for: [done], timeout: 10) }
+        }
+        XCTAssertEqual(try String(contentsOfFile: argv, encoding: .utf8), "-p work handover on\n-p work handover off\n")
+        XCTAssertEqual(said, [nil, "svall: this fleet names a gateway, so handover stays on"])
+    }
+
     func testThePageAsksForAHandoverByTheFormsItMayUse() throws {
         let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
-        guard case .handoverStart(let to, let choices) = try decode(#"{"type":"handover.start","to":"studio","choices":{"interruptAfterMs":0,"archiveRoots":["r_0a1b"]}}"#) else {
+        guard case .handoverStart(let to, let choices, let check) = try decode(#"{"type":"handover.start","to":"studio","choices":{"interruptAfterMs":0,"archiveRoots":["r_0a1b"]}}"#) else {
             return XCTFail("handover.start did not decode")
         }
         XCTAssertEqual(to, "studio")
         XCTAssertEqual(choices, HandoverChoices(interruptAfterMs: 0, archiveRoots: ["r_0a1b"]))
+        XCTAssertNil(check)
+        guard case .handoverStart(_, _, let checking) = try decode(#"{"type":"handover.start","to":"studio","check":true}"#) else {
+            return XCTFail("handover.start did not decode")
+        }
+        XCTAssertEqual(checking, true)
+        guard case .handoverEnable(let on) = try decode(#"{"type":"handover.enable","on":true}"#) else {
+            return XCTFail("handover.enable did not decode")
+        }
+        XCTAssertTrue(on)
         guard case .handoverChoose(let chosen) = try decode(#"{"type":"handover.choose","choices":{"terminateShells":true}}"#) else {
             return XCTFail("handover.choose did not decode")
         }
@@ -146,7 +179,7 @@ final class HandoverTests: XCTestCase {
             }
         }
         XCTAssertEqual(HandoverControl.choose(chosen).line, #"{"choose":{"terminateShells":true}}"#)
-        guard case .handoverStart(_, let carry) = try decode(#"{"type":"handover.start","to":"studio","choices":{"carryUnused":true}}"#) else {
+        guard case .handoverStart(_, let carry, _) = try decode(#"{"type":"handover.start","to":"studio","choices":{"carryUnused":true}}"#) else {
             return XCTFail("handover.start did not decode")
         }
         XCTAssertEqual(carry, HandoverChoices(carryUnused: true))

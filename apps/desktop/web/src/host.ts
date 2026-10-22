@@ -8,23 +8,52 @@ export function withoutTokens(text: string): string {
   return text.replace(TOKEN, '$1…').replace(TOKEN_FLAG, '$1…');
 }
 
+/** The machines this Mac knows: each one's name by its id. */
+export type MachineNames = Record<string, string>;
+
+// an id says nothing to a person; one inside a path names a file, and stays
+const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
+const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+
+/** A step's words with a machine this Mac knows by its name, any other as another machine, and no other id or generation. */
+function withoutIds(text: string, names: MachineNames): string {
+  const machine = (id: string) => names[id] ?? 'another machine';
+  return text
+    .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
+    .replace(/ at generation \d+/g, '')
+    .replace(ids(' \\(UUID\\)'), '')
+    .replace(ids('\\banswered with fleetId UUID, not UUID'), 'answered for another fleet')
+    .replace(ids('\\banswered with machineId (UUID), not UUID'), (_, id: string) => `answered as ${machine(id)}`)
+    .replace(ids('\\b(?:the )?fleet UUID'), 'the fleet')
+    .replace(ids(' in handover UUID'), ' in another handover')
+    .replace(ids('UUID is committed'), 'the handover is committed')
+    .replace(ids('\\bmachine (UUID)'), (_, id: string) => machine(id))
+    .replace(ids('\\b(names|belongs to) (UUID)'), (_, said: string, id: string) => `${said} ${machine(id)}`)
+    .replace(ids('(UUID) holds'), (_, id: string) => `${machine(id)} holds`)
+    // an id said anywhere else is a known machine's name, or nothing
+    .replace(ids('\\s?(UUID)'), (all: string, id: string) => (names[id] ? all.replace(id, names[id]) : ''));
+}
+
+const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
+
 /** The phases the checklist shows, and the steps `svall host …` emits inside each. */
 const PHASES = [
-  { phase: 'connect', label: 'Connect', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'Prerequisites', steps: ['os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger'] },
-  { phase: 'companion', label: 'Companion', steps: ['release', 'upload', 'install', 'uninstall'] },
-  { phase: 'service', label: 'Service', steps: ['service', 'identity', 'authority', 'fleet'] },
+  { phase: 'connect', label: 'Reaching the machine', steps: ['name', 'machine', 'ssh', 'master'] },
+  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger'] },
+  { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'uninstall'] },
+  { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'authority', 'fleet'] },
   { phase: 'agents', label: 'Agent logins', steps: ['claude', 'codex', 'opencode'] },
   // an upgrade puts the release before back when its probe fails
-  { phase: 'probe', label: 'Final probe', steps: ['probe', 'rollback'] },
+  { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback'] },
   // an add writes the registry after its final probe, and a removal after its uninstall
-  { phase: 'registry', label: 'Registry', steps: ['registry'] },
+  { phase: 'registry', label: "This Mac's list of machines", steps: ['registry'] },
 ] as const;
 
 export type Phase = (typeof PHASES)[number]['phase'] | 'other';
 export type PhaseRows = { phase: Phase; label: string; rows: HostStep[] };
 
-const OTHER = { phase: 'other' as const, label: 'Setup' };
+// the checks a machine's own doctor adds
+const OTHER = { phase: 'other' as const, label: 'Checks' };
 
 const phaseOf = (step: string) => PHASES.find((p) => (p.steps as readonly string[]).includes(step)) ?? OTHER;
 
@@ -46,11 +75,11 @@ export type HostRun = { op: HostOp; args: HostArgs; steps: HostStep[]; running: 
 export const beginRun = (op: HostOp, args: HostArgs): HostRun => ({ op, args, steps: [], running: true });
 
 /** A step is announced before it runs and named again when it ends: the row is the same row. */
-export function applyStep(run: HostRun, event: HostStep): HostRun {
+export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {}): HostRun {
   const row: HostStep = {
     step: event.step, status: event.status,
-    ...(event.detail ? { detail: withoutTokens(event.detail) } : {}),
-    ...(event.action ? { action: withoutTokens(event.action) } : {}),
+    ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
+    ...(event.action ? { action: plainStep(event.action, names) } : {}),
   };
   if (event.status === 'start' && run.steps.some((s) => s.step === event.step)) return run;
   const at = run.steps.findIndex((s) => s.step === event.step && s.status === 'start');
@@ -64,13 +93,20 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
-  space: 'Free space', linger: 'Lingering', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
+  space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
   service: 'Services', identity: 'Installed release', authority: 'Ownership record', fleet: 'Fleets', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
+  systemd: 'Fleet service', gateway: 'Gateway service', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
+  gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
+  'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall',
 };
 
 /** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */
 export const stepLabel = (step: string): string => STEP_LABEL[step] ?? step;
+
+/** What a step said, without the machine the panel already names when the sentence starts with it. */
+export const stepSaid = (row: HostStep, machine: string): string | undefined =>
+  (row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail);
 
 export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', enable: "Make it this fleet's gateway",

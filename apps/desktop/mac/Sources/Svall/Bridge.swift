@@ -39,7 +39,9 @@ enum ToShell: Decodable {
     case updateInstall
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
-    case handoverStart(to: String, choices: HandoverChoices?)
+    case hostList
+    case handoverEnable(on: Bool)
+    case handoverStart(to: String, choices: HandoverChoices?, check: Bool?)
     case handoverResume
     case handoverAbort
     case handoverAttach
@@ -57,7 +59,7 @@ enum ToShell: Decodable {
     case connectionRetry
     case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, reason, battery }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -94,7 +96,9 @@ enum ToShell: Decodable {
         case "update.install": self = .updateInstall
         case "host.start": self = .hostStart(op: try c.decode(HostOp.self, forKey: .op), args: try c.decode(HostArgs.self, forKey: .args))
         case "host.cancel": self = .hostCancel
-        case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices))
+        case "host.list": self = .hostList
+        case "handover.enable": self = .handoverEnable(on: try c.decode(Bool.self, forKey: .on))
+        case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices), check: try c.decodeIfPresent(Bool.self, forKey: .check))
         case "handover.resume": self = .handoverResume
         case "handover.abort": self = .handoverAbort
         case "handover.attach": self = .handoverAttach
@@ -123,6 +127,7 @@ enum FromShell {
     case notice(text: String)
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
+    case hostMachines(machines: [[String: Any]], error: String?)
     case handoverEvent([String: Any])
     case handoverReplay([[String: Any]])
     case handoverExit(code: Int32, error: String?)
@@ -170,6 +175,10 @@ enum FromShell {
             if let action = step.action { event["action"] = action }
             return ["type": "host.step", "op": op, "event": event]
         case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
+        case .hostMachines(let machines, let error):
+            var json: [String: Any] = ["type": "host.machines", "machines": machines]
+            if let error { json["error"] = error }
+            return json
         case .handoverEvent(let event): return ["type": "handover.event", "event": event]
         case .handoverReplay(let events): return ["type": "handover.replay", "events": events]
         case .handoverExit(let code, let error):

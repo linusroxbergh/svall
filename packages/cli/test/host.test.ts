@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, OLDEST_STATE_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState } from '@svall/protocol';
 import { shq } from '@svall/svalld/text';
-import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
+import { addHost, doctorHost, enableHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -613,6 +613,13 @@ describe('host add', () => {
     expect(ssh.calls()).toEqual([]);
   });
 
+  it('refuses a name svall handover takes as its own word before it reaches the machine', async () => {
+    const out = await addHost({ name: 'status', ssh: 'trift.test', release: archive() }, deps());
+    expect(step('name').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('status is a word svall handover') });
+    expect(out.result).toBe('actions');
+    expect(ssh.calls()).toEqual([]);
+  });
+
   describe('again for a name in the registry', () => {
     const gateway = (registry: MachineRegistry, home = HOME): void => {
       registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall`, gateway: true }, REMOTE);
@@ -715,6 +722,34 @@ describe('host doctor', () => {
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.map((c) => c.name)).toEqual(expect.arrayContaining(['systemd', 'linger', 'release', 'space']));
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
+  });
+
+  it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off for linus' }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
+    const config = path.join(work, 'config');
+    registered().save();
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await hostCommands(() => true, () => config).parseAsync(['doctor', 'trift'], { from: 'user' });
+    } finally {
+      out.mockRestore();
+    }
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
+    expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
+  });
+
+  it('keeps a check that could not reach the machine as failed, so host list never shows an older ready', async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.save();
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    await expect(hostCommands(() => true, () => config).parseAsync(['doctor', 'trift'], { from: 'user' })).rejects.toThrow();
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 1, warned: 0 } });
   });
 
   it('names the remote user, not the machine, when the companion reports no linger of its own', async () => {
@@ -1303,6 +1338,35 @@ esac
     await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     await d.close();
     expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/svall/staging-1.2.3`, `${HOME}/.cache/svall/companion-1.2.3.tar.gz`]);
+  });
+});
+
+describe('host list', () => {
+  it('names each machine with its ssh, the fleets here it is the gateway of, and its last check, this Mac without an ssh', async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'ada@trift', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: true }, REMOTE);
+    const { machineRows } = await import('../src/commands/host.js');
+    const check = { at: 1, failed: 0, warned: 2, release: '1.2.3' };
+    const rows = machineRows(registry, { [REMOTE]: check }, (id) => (id === REMOTE ? ['private', 'work'] : []));
+    expect(rows).toEqual([
+      { name: registry.localMachine().name, id: registry.localId, platform: `${process.platform === 'linux' ? 'linux' : 'darwin'}-${process.arch}`, gateway: false, fleets: [] },
+      { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', gateway: true, fleets: ['private', 'work'], check },
+    ]);
+  });
+
+  it('finds the fleets on this Mac whose fleet.json names a machine as their gateway, by profile', () => {
+    const fleet = (dir: string, gateway?: string) => {
+      fs.mkdirSync(path.join(work, dir), { recursive: true });
+      fs.writeFileSync(path.join(work, dir, 'fleet.json'), JSON.stringify({ id: FLEET, ...(gateway && { gatewayMachineId: gateway }) }));
+    };
+    fleet('.svall', REMOTE);
+    fleet('.svall-work', REMOTE);
+    fleet('.svall-lab', OTHER_MAC);
+    fleet('.svall-home');
+    fs.mkdirSync(path.join(work, '.svall-broken'));
+    fs.writeFileSync(path.join(work, '.svall-broken', 'fleet.json'), '{');
+    expect(fleetsNaming(REMOTE, work).sort()).toEqual(['private', 'work']);
   });
 });
 

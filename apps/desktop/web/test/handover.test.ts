@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
   actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  blockerSide, goOn, rowText, sectionStates, shortPath, svallFor, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, restingLine, restPlan, rowText, sectionStates, shortPath, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
+import { chr } from './fixtures.js';
 
 const tx = 'tx-1';
 const summary = { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 };
 const changed = (phase: HandoverPhase): HandoverEvent => ({ event: 'handover.changed', data: { transactionId: tx, phase } });
 const entity = (data: Partial<Extract<HandoverEvent, { event: 'handover.entity' }>['data']> & { kind: 'character' | 'root' | 'session' | 'git'; id: string }): HandoverEvent =>
   ({ event: 'handover.entity', data: { transactionId: tx, phase: 'freeze', ...data } });
-const play = (events: HandoverEvent[], run: HandoverRun = followRun('studio')) => events.reduce(applyEvent, run);
+const play = (events: HandoverEvent[], run: HandoverRun = followRun('studio')) => events.reduce((r, e) => applyEvent(r, e), run);
 
 const through = (phase: 'freeze' | 'transfer' | 'verify' | 'commit' | 'activate') => {
   const order = ['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate'] as const;
@@ -124,6 +125,53 @@ describe('the handover a sheet follows', () => {
     expect(shortPath('/Users/Shared/proj', '/Users/ada')).toBe('/Users/Shared/proj');
     expect(shortPath('/Users/adam/x', '/Users/ada')).toBe('/Users/adam/x');
     expect(shortPath('/home/bo/app')).toBe('/home/bo/app');
+  });
+
+  it('paces the whole transfer from the bytes sent since its first row, once a few seconds have passed', () => {
+    const root = (bytes: number) => entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes, totalBytes: 100_000_000 });
+    const at = (run: HandoverRun, e: HandoverEvent, now: number) => applyEvent(run, e, { now });
+    let run = play(through('transfer'));
+    run = at(run, root(10_000_000), 1_000);
+    expect(transferPace(run)).toBeUndefined();
+    run = at(run, root(11_000_000), 2_000);
+    expect(transferPace(run)).toBeUndefined();
+    run = at(run, root(40_000_000), 7_000);
+    // 30 MB in 6 s, and 60 MB left
+    expect(transferPace(run)).toEqual({ rate: 5_000_000, leftMs: 12_000, text: '5.0 MB/s, under a minute left' });
+    run = at(run, root(40_000_000), 1_000 + 6 * 60_000);
+    expect(transferPace(run)?.text).toBe('83.3 KB/s, about 12 min left');
+    // a run read back, with no time of its own, is never paced
+    expect(transferPace(play([...through('transfer'), root(10_000_000), root(40_000_000)]))).toBeUndefined();
+  });
+
+  it('paces a transfer the page attached to part way from the bytes sent after the lines it replayed', () => {
+    const root = (bytes: number) => entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes, totalBytes: 10_000_000_000 });
+    let run = play(through('transfer'));
+    // what attach replays arrives at once
+    for (const [bytes, at] of [[1_000_000_000, 0], [4_000_000_000, 3], [6_000_000_000, 5]]) run = applyEvent(run, root(bytes), { now: 50_000 + at });
+    run = applyEvent(run, root(6_100_000_000), { now: 60_005 });
+    expect(transferPace(run)?.rate).toBe(10_000_000);
+  });
+
+  it('counts the whole transfer from what preflight found, before every row has said its size', () => {
+    const pre: HandoverEvent = { event: 'handover.preflight', data: { summary: { ...summary, bytes: 100_000_000 }, blockers: [], warnings: [] } };
+    const a = (bytes: number) => entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes, totalBytes: 20_000_000 });
+    let run = applyEvent(play([pre, ...through('transfer')]), a(0), { now: 0 });
+    run = applyEvent(run, a(20_000_000), { now: 10_000 });
+    // the first root alone is a fifth of the whole: 80 MB left at 2 MB/s
+    expect(restingLine(run)).toBe('Resting for the handover: Transferring files and sessions, 20%…');
+    expect(transferPace(run)?.leftMs).toBe(40_000);
+    run = applyEvent(run, entity({ kind: 'root', id: 'r_b', phase: 'transfer', bytes: 30_000_000, totalBytes: 80_000_000 }), { now: 20_000 });
+    expect(restingLine(run)).toBe('Resting for the handover: Transferring files and sessions, 50%…');
+    expect(transferPace(run)?.leftMs).toBe(20_000);
+  });
+
+  it('says where a handover stands on a terminal it rested', () => {
+    expect(restingLine(play(through('freeze')))).toBe('Resting for the handover: Resting characters…');
+    const moving = play([...through('transfer'), entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes: 25, totalBytes: 100 })]);
+    expect(restingLine(moving)).toBe('Resting for the handover: Transferring files and sessions, 25%…');
+    const asks = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'transfer', blockers: [{ code: 'destination_diverged', message: 'changed' }] } }]);
+    expect(restingLine(asks)).toBe('Resting for the handover: it waits for you in Handover.');
   });
 
   it('shows progress in bytes', () => {
@@ -293,6 +341,14 @@ describe('what the sheet offers', () => {
     expect(actionsOf(blocked)).toMatchObject({ tryAgain: true, cancel: false });
   });
 
+  it('ends a check that found nothing in the way at Checks, offering the move and saying nothing has moved', () => {
+    const ready = endFollow(play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } }, result({ status: 'ready' })]), 0);
+    expect(sectionStates(ready).map((s) => s.state)).toEqual(['done', 'pending', 'pending', 'pending', 'pending', 'pending']);
+    expect(actionsOf(ready)).toMatchObject({ tryAgain: true, start: true, cancel: false, abort: false });
+    expect(headline(ready, 'studio')).toBe('Nothing stops the move to studio, and nothing has moved yet.');
+    expect(holdsTerminals(ready)).toBe(false);
+  });
+
   it('never speaks of going back once the fleet has moved', () => {
     const rollback = /abort|roll ?back|undo|revert|cancel/i;
     const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, characters: [{ id: 'c1', ok: true }, { id: 'c2', ok: false, error: 'exited 1' }], pending: ['source'] })]);
@@ -301,6 +357,26 @@ describe('what the sheet offers', () => {
     const stuck = play([...through('activate'), result({ status: 'interrupted', transactionId: tx, phase: 'activate', error: 'studio did not answer', safe: ['resume'] })]);
     expect(headline(stuck, 'studio')).not.toMatch(rollback);
     expect(headline(play([...through('activate'), result({ status: 'detached', transactionId: tx })]), 'studio')).not.toMatch(rollback);
+  });
+});
+
+describe('who stops for a handover, and how', () => {
+  const agent = (status: 'working' | 'idle' | 'blocked' | 'done', extra: object = {}) => ({ kind: 'claude' as const, sessionId: 's', status, lastActivityAt: 0, ...extra });
+  it('groups the characters by what their main terminal does now, in the fleet\'s order', () => {
+    const characters = {
+      a: chr('a', 'i', { x: 0, y: 0 }, { name: 'ada', agent: agent('idle') }),
+      b: chr('b', 'i', { x: 0, y: 0 }, { name: 'bo', agent: agent('working') }),
+      c: chr('c', 'i', { x: 0, y: 0 }, { name: 'cy', agent: agent('blocked') }),
+      d: chr('d', 'i', { x: 0, y: 0 }, { name: 'di', agent: agent('done', { background: true }) }),
+      e: chr('e', 'i', { x: 0, y: 0 }, { name: 'ed' }),
+      f: chr('f', 'i', { x: 0, y: 0 }, { name: 'fi', tmux: undefined, agent: agent('idle') }),
+      g: chr('g', 'i', { x: 0, y: 0 }, { name: 'gu', agent: agent('done') }),
+    };
+    expect(restPlan(characters)).toEqual([
+      { how: 'resume', names: ['ada', 'gu'] }, { how: 'wait', names: ['bo'] }, { how: 'answer', names: ['cy'] },
+      { how: 'background', names: ['di'] }, { how: 'shell', names: ['ed'] }, { how: 'dormant', names: ['fi'] },
+    ]);
+    expect(restPlan({})).toEqual([]);
   });
 });
 
@@ -565,6 +641,7 @@ describe('the helper lines the sheet reads', () => {
       reads: ['data.phase', 'data.error', 'data.safe'],
     },
     { line: { event: 'handover.result', data: { status: 'detached', transactionId: tx } }, reads: ['data.transactionId'] },
+    { line: { event: 'handover.result', data: { status: 'ready' } }, reads: ['data.status'] },
     { line: { event: 'handover.status', data: { standing: 'open', phase: 'transfer', safe: ['resume'], reason: 'handover tx-1 is under way' } }, reads: ['data.standing', 'data.safe', 'data.reason'] },
   ];
   const without = (line: Record<string, unknown>, at: string): unknown => {

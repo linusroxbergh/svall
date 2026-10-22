@@ -187,7 +187,7 @@ const FLEET = FleetId.parse('11111111-2222-3333-4444-555555555555');
 const TRIFT = MachineId.parse('66666666-7777-8888-9999-aaaaaaaaaaaa');
 const NONE: Verdict = { standing: 'none', journals: {}, safe: [], action: 'none', reason: 'no handover of this fleet is open anywhere' };
 
-type Kind = 'start' | 'resume' | 'abort';
+type Kind = 'start' | 'check' | 'resume' | 'abort';
 
 /** A transaction whose steps a test writes: what it records, what it asks, and how it ends. */
 class FakeTx {
@@ -225,6 +225,7 @@ class FakeTx {
     return {
       handover: {
         start: (to, choices) => tx.run('start', to, choices),
+        check: (to, choices) => tx.run('check', to, choices),
         resume: () => tx.run('resume'),
         abort: () => tx.run('abort'),
         status: async () => {
@@ -281,6 +282,7 @@ function harness(o: { json?: boolean; tty?: boolean; profile?: string; gateway?:
 }
 
 const start = (to = 'trift', choices: HandoverChoices = {}): Job => ({ kind: 'start', to, choices });
+const check = (to = 'trift', choices: HandoverChoices = {}): Job => ({ kind: 'start', to, choices, check: true });
 const pre = (blockers: Blocker[] = [], warnings: Blocker[] = []): HandoverEvent => ({
   event: 'handover.preflight',
   data: {
@@ -400,6 +402,23 @@ describe('svall handover', () => {
       expect(text).toContain('--carry-unused carries the Git repositories a folder holds that no character works in');
       expect(text).not.toMatch(/Choose/);
     }
+  });
+
+  it('checks alone with --check: prints the checks and says nothing stops a handover, or prints the blockers, and never asks', async () => {
+    const ready = harness({ tty: true });
+    ready.tx.script = async () => { ready.tx.record(pre()); return { status: 'ready' }; };
+    expect(await runHandover(check(), ready.ctx)).toEqual({ code: 0 });
+    expect(ready.tx.calls).toEqual([{ kind: 'check', to: TRIFT, choices: {} }]);
+    expect(ready.out()).toContain('Checks: 2 roots, 5 files');
+    expect(ready.out()).toContain('Nothing stops a handover to trift; `svall handover trift` moves the fleet.');
+
+    const busy = harness({ tty: true });
+    const blockers: Blocker[] = [{ code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'character', id: 'c_bo' } }];
+    busy.tx.script = async () => { busy.tx.record(pre(blockers)); return { status: 'blocked', phase: 'begin', blockers }; };
+    expect(await runHandover(check('trift', { carryUnused: true }), busy.ctx)).toEqual({ code: 1 });
+    expect(busy.tx.calls).toEqual([{ kind: 'check', to: TRIFT, choices: { carryUnused: true } }]);
+    expect(busy.out()).toContain("bo's terminal is running npm run dev");
+    expect(busy.out()).not.toMatch(/Choose/);
   });
 
   it('offers at Begin to carry a folder whole with the repositories no character works in, and starts again with that choice', async () => {
@@ -640,6 +659,8 @@ describe('svall handover', () => {
       [{ kind: 'resume' }, { status: 'interrupted', transactionId: 'tx-1', phase: 'transfer', error: 'rsync died', safe: ['resume', 'abort'] }, 1],
       [{ kind: 'abort' }, { status: 'aborted', transactionId: 'tx-1', phase: 'transfer' }, 0],
       [{ kind: 'abort' }, { status: 'interrupted', transactionId: 'tx-1', phase: 'commit', error: 'committed', safe: ['resume'] }, 1],
+      [check(), { status: 'ready' }, 0],
+      [check(), { status: 'blocked', phase: 'begin', blockers: [] }, 1],
     ];
     for (const [job, outcome, code] of cases) {
       const h = harness({ json: true });
@@ -1286,6 +1307,39 @@ describe('svall handover --detach', () => {
   });
 });
 
+describe('svall handover on and off', () => {
+  const turn = async (h: Harness, word: 'on' | 'off'): Promise<void> => {
+    const cmd = handoverCommand({ target: () => ({ name: 'private', home: h.home, managed: true }), profile: () => undefined, json: () => false, deps: () => h.deps });
+    cmd.exitOverride();
+    await cmd.parseAsync([word], { from: 'user' });
+  };
+  const config = (h: Harness): unknown => JSON.parse(fs.readFileSync(path.join(h.home, 'fleet.json'), 'utf8'));
+
+  it('sets handover.enabled in fleet.json with every other key kept, and keeps it on while the fleet names a gateway', async () => {
+    const h = harness({ gateway: false });
+    const file = path.join(h.home, 'fleet.json');
+    fs.writeFileSync(file, JSON.stringify({ id: FLEET, name: 'work', handover: { excludeDefaults: false } }));
+    fs.chmodSync(file, 0o600);
+    await turn(h, 'on');
+    expect(config(h)).toEqual({ id: FLEET, name: 'work', handover: { excludeDefaults: false, enabled: true } });
+    expect(mode(file)).toBe(0o600);
+    await turn(h, 'off');
+    expect(config(h)).toEqual({ id: FLEET, name: 'work', handover: { excludeDefaults: false, enabled: false } });
+
+    const gated = harness();
+    fs.writeFileSync(path.join(gated.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: TRIFT, handover: { enabled: true } }));
+    await expect(turn(gated, 'off')).rejects.toThrow(/names a gateway/);
+    expect(config(gated)).toEqual({ id: FLEET, gatewayMachineId: TRIFT, handover: { enabled: true } });
+  });
+
+  it('refuses a fleet.json that is not a fleet config, and leaves it as it was', async () => {
+    const h = harness();
+    fs.writeFileSync(path.join(h.home, 'fleet.json'), '{ not json');
+    await expect(turn(h, 'on')).rejects.toThrow(/invalid config/);
+    expect(fs.readFileSync(path.join(h.home, 'fleet.json'), 'utf8')).toBe('{ not json');
+  });
+});
+
 describe('svall handover arguments', () => {
   const parse = async (h: Harness, ...argv: string[]): Promise<{ job?: Job; code?: number }> => {
     let job: Job | undefined;
@@ -1310,6 +1364,7 @@ describe('svall handover arguments', () => {
     expect((await parse(h, 'trift', '--interrupt-after', '0s', '--archive', 'r_1f2e')).job).toEqual({
       kind: 'start', to: 'trift', choices: { interruptAfterMs: 0, archiveRoots: ['r_1f2e'] },
     });
+    expect((await parse(h, 'trift', '--check', '--carry-unused')).job).toEqual({ kind: 'start', to: 'trift', choices: { carryUnused: true }, check: true });
     expect((await parse(h, '--resume')).job).toEqual({ kind: 'resume' });
     expect((await parse(h, '--abort')).job).toEqual({ kind: 'abort' });
     expect(parseDuration('1m')).toBe(60_000);
@@ -1319,6 +1374,7 @@ describe('svall handover arguments', () => {
     await expect(parse(h)).rejects.toThrow();
     await expect(parse(h, '--resume', '--terminate-shells')).rejects.toThrow();
     await expect(parse(h, '--resume', '--carry-unused')).rejects.toThrow();
+    await expect(parse(h, '--resume', '--check')).rejects.toThrow();
   });
 
   it('answers bad arguments with a handover.result under --json or --detach, and starts nothing', async () => {

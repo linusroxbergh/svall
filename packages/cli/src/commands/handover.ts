@@ -4,6 +4,7 @@ import type net from 'node:net';
 import readline from 'node:readline';
 import { Command, Option as Flag } from 'commander';
 import { FleetConfig, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
+import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { resolvePaths } from '@svall/svalld/paths';
 import { profileOf } from '@svall/svalld/profile';
 import type { Handover } from '../controller/handover.js';
@@ -18,7 +19,7 @@ import { options, Prompter, View, type Words } from './handover-view.js';
 
 /** The one handover transaction of a fleet, as the commands drive it. */
 export type Transaction = Pick<Connected, 'secrets' | 'close'> & {
-  handover: Pick<Handover, 'start' | 'resume' | 'abort' | 'status' | 'choose' | 'cancel'> & { readonly finished?: Promise<Outcome> };
+  handover: Pick<Handover, 'start' | 'check' | 'resume' | 'abort' | 'status' | 'choose' | 'cancel'> & { readonly finished?: Promise<Outcome> };
 };
 
 export type Decide = (blockers: Blocker[], phase: HandoverPhase) => Promise<HandoverChoices | 'cancel'>;
@@ -38,7 +39,8 @@ export type CliDeps = {
   launchTimeoutMs?: number;
 };
 
-export type Job = { kind: 'start'; to: string; choices: HandoverChoices } | { kind: 'resume' } | { kind: 'abort' };
+/** `check`: preflight alone, which begins nothing. */
+export type Job = { kind: 'start'; to: string; choices: HandoverChoices; check?: true } | { kind: 'resume' } | { kind: 'abort' };
 /** `helper`: the process a launcher left running, with no terminal; its decisions wait for an attached client. */
 export type Ctx = { fleetHome: string; profile?: string; json: boolean; deps: CliDeps; helper?: boolean };
 /** `hard`: the process is to exit now, the transaction behind it or not. */
@@ -136,7 +138,8 @@ class Decisions {
   }
 }
 
-const done = (job: Job, o: Outcome): boolean => (job.kind === 'abort' ? o.status === 'aborted' : o.status === 'complete');
+const done = (job: Job, o: Outcome): boolean =>
+  o.status === (job.kind === 'abort' ? 'aborted' : job.kind === 'start' && job.check ? 'ready' : 'complete');
 
 // an answer is the whole of the choices from here on: one it leaves out is turned off
 const replace = (held: HandoverChoices, answer: HandoverChoices): void => {
@@ -252,6 +255,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
 
   const run = async (t: Transaction): Promise<Outcome> => {
     if (job.kind === 'start' && to) {
+      if (job.check) return t.handover.check(to.id, { ...held });
       let o = await t.handover.start(to.id, { ...held });
       // nothing began, so a person's answer is a new start with the choices it names
       while (prompter && !cancelled && o.status === 'blocked' && !o.transactionId) {
@@ -557,14 +561,14 @@ export function realDeps(): CliDeps {
 
 type Flags = {
   interruptAfter?: string; terminateShells?: boolean; archive: string[]; carryUnused?: boolean;
-  resume?: boolean; abort?: boolean; forget?: boolean; detach?: boolean; helper?: boolean;
+  resume?: boolean; abort?: boolean; forget?: boolean; detach?: boolean; helper?: boolean; check?: boolean;
 };
 
 function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
   const asked = [machine !== undefined, f.resume, f.abort, f.forget].filter(Boolean).length;
   if (asked !== 1) throw new Error('name one machine to hand the fleet to (a host, or local), or one of --resume, --abort and --forget');
-  if (machine === undefined && (f.interruptAfter !== undefined || f.terminateShells || f.archive.length || f.carryUnused)) {
-    throw new Error('--interrupt-after, --terminate-shells, --archive and --carry-unused go with the machine a handover starts to');
+  if (machine === undefined && (f.interruptAfter !== undefined || f.terminateShells || f.archive.length || f.carryUnused || f.check)) {
+    throw new Error('--interrupt-after, --terminate-shells, --archive, --carry-unused and --check go with the machine a handover starts to');
   }
   if (f.forget && f.detach) throw new Error('--forget runs in the foreground only');
   if (f.forget) return 'forget';
@@ -576,7 +580,16 @@ function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
     ...(f.archive.length && { archiveRoots: f.archive }),
     ...(f.carryUnused && { carryUnused: true }),
   };
-  return { kind: 'start', to: machine as string, choices };
+  return { kind: 'start', to: machine as string, choices, ...(f.check && { check: true as const }) };
+}
+
+/** Sets handover.enabled in fleet.json, the rest of its handover settings kept; a fleet that names a gateway keeps it on. */
+export function setHandoverEnabled(fleetHome: string, enabled: boolean): void {
+  const paths = resolvePaths(fleetHome);
+  const { gatewayMachineId } = readFleetConfig(paths);
+  if (!enabled && gatewayMachineId) throw new Error('this fleet names a gateway, so handover stays on; `svall host remove` that machine first');
+  const raw = JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')) as { handover?: object };
+  patchFleetConfig(paths.fleetConfig, { handover: { ...raw.handover, enabled } });
 }
 
 export function handoverCommand(o: {
@@ -595,6 +608,7 @@ export function handoverCommand(o: {
     .option('--terminate-shells', "terminate what keeps a terminal busy: a shell's foreground process, a job suspended with ctrl+z once any agent beside it is at rest, and an interrupted agent that will not settle; an agent with a background command still running counts as not settled")
     .option('--archive <root>', 'move a destination root that diverged or is occupied to a timestamped sibling first, by the root id a blocker names or its path; repeatable', (v: string, acc: string[]) => [...acc, v], [] as string[])
     .option('--carry-unused', 'carry the Git repositories a folder holds that no character works in')
+    .option('--check', 'run the checks alone and say what would move and what stops it; nothing is rested or moved')
     .option('--resume', 'go the one safe way on with the handover left open')
     .option('--abort', 'take the fleet back to the machine it came from; before the commit only')
     .option('--forget', "drop this controller's journal of a handover the gateway has moved past")
@@ -622,5 +636,12 @@ export function handoverCommand(o: {
     });
   cmd.command('status').description('where the handover stands and what is safe, changing nothing').action(async () => { guard(); exit(await runStatus(ctx())); });
   cmd.command('attach').description('follow the handover running here, and steer it from stdin').action(async () => { guard(); exit(await runAttach(ctx())); });
+  for (const on of [true, false]) {
+    cmd.command(on ? 'on' : 'off').description(`turn ${on ? 'on' : 'off'} the app's controls for other machines: this fleet's handover.enabled`).action(() => {
+      const c = ctx();
+      setHandoverEnabled(c.fleetHome, on);
+      c.deps.stdout.write(`handover is ${on ? 'on' : 'off'} for this fleet\n`);
+    });
+  }
   return cmd;
 }

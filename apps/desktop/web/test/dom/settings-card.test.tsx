@@ -246,3 +246,85 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   expect(store.getState().settings.robotMotion).toBe(false);
   expect(checked('set-robot-motion')).toBe('false');
 });
+
+test('Machines lists every machine with its ssh, the fleets it is the gateway of, its release and last check, each with its own actions, and Add machine last', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+  render(<SettingsCard />);
+  show('machines');
+  expect(sent).toContainEqual({ type: 'host.list' });
+  act(() => store.getState().setMachines([
+    { name: 'mac', id: 'm0', platform: 'darwin-arm64', gateway: false, fleets: [] },
+    { name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64', gateway: true, fleets: ['private', 'work'], check: { at: Date.UTC(2026, 9, 21, 12, 0), failed: 0, warned: 2, release: '0.13.0' } },
+    { name: 'studio', id: 'm2', ssh: 'ada@studio', platform: 'linux-arm64', gateway: false, fleets: [] },
+  ]));
+  // this Mac is no machine to act on
+  expect(screen.queryByTestId('machine-mac')).toBeNull();
+  const trift = screen.getByTestId('machine-trift');
+  expect(trift.textContent).toContain('ada@trift');
+  expect(trift.textContent).toContain('gateway for private, work');
+  expect(trift.textContent).toContain('release 0.13.0');
+  expect(trift.textContent).toContain('2 warnings');
+  expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
+  // the gateway of this fleet is not offered to be made it again
+  expect(trift.querySelector('[data-testid="machine-enable"]')).toBeNull();
+  expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-enable"]')).not.toBeNull();
+  // a rollback is offered only by the upgrade whose own rollback failed
+  expect(trift.querySelector('[data-testid="machine-rollback"]')).toBeNull();
+
+  fireEvent.click(trift.querySelector('[data-testid="machine-doctor"]')!);
+  expect(sent).toContainEqual({ type: 'host.start', op: 'doctor', args: { name: 'trift' } });
+  expect(store.getState().hostOpen).toBe(true);
+  expect(store.getState().hostMachine).toBe('trift');
+
+  // one run at a time
+  expect((screen.getByTestId('machine-studio').querySelector('[data-testid="machine-forget"]') as HTMLButtonElement).disabled).toBe(true);
+  act(() => { store.getState().hostDone('doctor', 0); store.getState().toggleHost(false); });
+  fireEvent.click(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-forget"]')!);
+  expect(store.getState().hostConfirm).toEqual({ name: 'studio', forget: true });
+  expect(store.getState().hostMachine).toBe('studio');
+
+  act(() => store.getState().toggleHost(false));
+  fireEvent.click(screen.getByTestId('machine-add'));
+  expect(store.getState().hostOpen).toBe(true);
+  expect(store.getState().hostMachine).toBeUndefined();
+});
+
+test('Machines says when the list could not be read, and offers to read it again', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+  render(<SettingsCard />);
+  show('machines');
+  act(() => store.getState().setMachines([], 'svall host list exited with code 1'));
+  expect(screen.getByTestId('machines-error').textContent).toContain('svall host list exited with code 1');
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('machines-reload'));
+  expect(sent).toEqual([{ type: 'host.list' }]);
+});
+
+test('remote machines is a fleet switch svall writes to fleet.json, says what it shows and that it moves with the fleet, and is left alone while the fleet names a gateway or runs elsewhere', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: false });
+  render(<SettingsCard />);
+  show('fleet');
+  const on = screen.getByTestId('set-handover');
+  expect(on.getAttribute('aria-checked')).toBe('false');
+  expect(screen.queryByTestId('settings-tab-machines')).toBeNull();
+  fireEvent.click(on);
+  expect(sent).toContainEqual({ type: 'handover.enable', on: true });
+  // the shell sends its info again, and the Machines pane is there without a relaunch
+  act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true }));
+  expect(screen.getByTestId('set-handover').getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByTestId('settings-tab-machines')).toBeTruthy();
+  expect(screen.getByTestId('set-handover').closest('.row')?.textContent).toContain("kept in this fleet's fleet.json, so it moves with the fleet");
+  const link = screen.getByRole('link', { name: 'Setting up a Linux machine' });
+  fireEvent.click(link);
+  expect(sent).toContainEqual({ type: 'openUrl', url: 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md' });
+
+  act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' }));
+  expect((screen.getByTestId('set-handover') as HTMLButtonElement).disabled).toBe(true);
+  // a fleet that runs on another machine is set where it runs
+  act(() => {
+    store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+    store.getState().setConnectionState({ state: 'online', owner: 'trift' });
+  });
+  expect((screen.getByTestId('set-handover') as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByTestId('set-handover').title).toBe('The fleet runs on trift, which holds its setting');
+});

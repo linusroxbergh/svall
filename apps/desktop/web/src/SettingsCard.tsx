@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setRobots, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
-import { openConfig, openUrl, shim } from './bridge.js';
+import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
 import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
+import { MachineActions } from './HostSetup.js';
 import { Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -128,12 +129,58 @@ function FleetName() {
   );
 }
 
-function Machines() {
+const SETUP_DOC = 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md';
+
+// fleet.json's handover.enabled, which the shell sets with `svall handover on|off` and then names again in shell.info
+function RemoteMachines() {
+  const on = useApp((s) => !!s.shell?.handoverEnabled);
+  const gateway = useApp((s) => s.shell?.gateway);
+  const away = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
   return (
-    <div className="rows">
+    <div className="row">
+      <span>remote machines (experimental)<Info id="remote">Shows Settings → Machines, the Handover button and each card&apos;s keep on this machine switch, to move this fleet to a Linux machine and back. It is kept in this fleet&apos;s fleet.json, so it moves with the fleet. <a href={SETUP_DOC} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Setting up a Linux machine</a> walks through it.</Info></span>
+      <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-handover" disabled={!!away || (on && !!gateway)}
+        title={away ? `The fleet runs on ${away}, which holds its setting` : on && gateway ? `${gateway} is this fleet's gateway: remove it under Machines first` : undefined}
+        onClick={() => app.bridge.send({ type: 'handover.enable', on: !on })}>{on ? 'on' : 'off'}</button></b>
+    </div>
+  );
+}
+
+const checked = (c: NonNullable<MachineRow['check']>): string => {
+  const when = new Date(c.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const found = c.failed ? `${c.failed} ${c.failed === 1 ? 'check' : 'checks'} failed` : c.warned ? `${c.warned} ${c.warned === 1 ? 'warning' : 'warnings'}` : 'ready';
+  return `checked ${when}: ${found}`;
+};
+
+/** Every machine this Mac can hand a fleet to, each with what can be done to it, and a new one last. */
+function Machines() {
+  const machines = useApp((s) => s.machines);
+  const error = useApp((s) => s.machinesError);
+  const list = () => { app.bridge.send({ type: 'host.list' }); };
+  useEffect(list, []);
+  return (
+    <div className="rows" data-testid="machines">
+      {machines?.filter((m) => m.ssh).map((m) => (
+        <div key={m.id} className="machine" data-testid={`machine-${m.name}`}>
+          <div className="row">
+            <span><b>{m.name}</b> {m.ssh}</span>
+            <b className="machine-said">
+              {[m.fleets.length ? `gateway for ${m.fleets.join(', ')}` : '', m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
+                .filter(Boolean).join(' · ')}
+            </b>
+          </div>
+          <MachineActions name={m.name} />
+        </div>
+      ))}
+      {error && (
+        <div className="row" data-testid="machines-error">
+          <span>{error}</span>
+          <b><button className="btn set-open" data-testid="machines-reload" onClick={list}>Read again</button></b>
+        </div>
+      )}
       <div className="row">
         <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Svall installs itself there over ssh, checks what it needs, and reports what is still to do. <code>svall host</code> does the same from a terminal.</Info></span>
-        <b><button className="btn set-open" data-testid="settings-hosts" onClick={() => app.store.getState().toggleHost(true)}>Set up</button></b>
+        <b><button className="btn set-open" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
       </div>
     </div>
   );
@@ -175,6 +222,7 @@ function Scribe() {
           </b>
         </div>
         <Dormancy />
+        {app.bridge.present && <RemoteMachines />}
       </div>
     </>
   );
@@ -207,7 +255,7 @@ function Notifications() {
     <>
       <div className="rows">
         <div className="row">
-          <span>notifications<Info id="notify">macOS banners when a character needs you or is done. Approve and Deny work from the banner.</Info></span>
+          <span>notifications<Info id="notify">macOS banners when a character needs you or is done, and when a handover waits for you, finishes or stops. Approve and Deny work from the banner.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" onClick={flip}>{shown ? 'on' : 'off'}</button></b>
         </div>
         {shown && (

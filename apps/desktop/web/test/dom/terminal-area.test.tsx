@@ -125,3 +125,14 @@ test('a dormant character wakes nothing while a handover rests the fleet', () =>
   expect(screen.getByTestId('terminal-held')).toBeTruthy();
   expect(call).not.toHaveBeenCalled();
 });
+
+test('a terminal rested for a handover says the step it is at, and opens the sheet on a click', () => {
+  act(() => {
+    store.getState().handoverFollow('trift');
+    for (const phase of ['begin', 'freeze', 'transfer'] as const) store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase } });
+  });
+  render(<TerminalArea id="c1" />);
+  expect(screen.getByTestId('terminal-held').textContent).toBe('Resting for the handover: Transferring files and sessions…');
+  act(() => screen.getByTestId('terminal-held').click());
+  expect(store.getState().handoverOpen).toBe(true);
+});

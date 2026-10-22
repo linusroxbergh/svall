@@ -24,7 +24,7 @@ import {
 } from './install.js';
 import { redact } from './process.js';
 import { MIN_RSYNC, rsyncVersion } from './rsync.js';
-import { MachineRegistry, type MachineEntry } from './registry.js';
+import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
 import { fileStore } from './recovery.js';
 import { cachedOwner, readRoute } from './route.js';
 import { SshError, type SshMaster } from './ssh.js';
@@ -314,6 +314,8 @@ const remotePaths = (home: string, version: string) => ({
 function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered | undefined> {
   const name = MachineRecord.shape.name.safeParse(o.name);
   if (!name.success) throw new StepError(`${o.name} is not a machine name: ${name.error.issues[0].message}`);
+  const reserved = reservedName(o.name);
+  if (reserved) throw new StepError(reserved);
   const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
   if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
   const held = registry.get(o.name);
@@ -441,7 +443,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
   });
 }
 
-export type HostReport = { machine: string; checks: Check[] };
+/** `release`: the one the machine answered it runs. */
+export type HostReport = { machine: string; checks: Check[]; release?: string };
 
 function need(registry: MachineRegistry, name: string): Registered {
   const entry = registry.get(name);
@@ -475,6 +478,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   const entry = need(d.registry, name);
   const master = await d.openMaster(entry.record.ssh);
   const checks: Check[] = [];
+  let release: string | undefined;
   try {
     const base = entry.record.svallBase;
     try {
@@ -483,6 +487,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     } catch (err) { checks.push(failed('doctor', err)); }
     try {
       const v = await remoteJson<RemoteVersion>(master, base, ['version', '--json'], 'svall version --json');
+      release = v.release;
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
       checks.push({
         name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
@@ -511,7 +516,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   } finally {
     await master.close().catch(() => undefined);
   }
-  return { machine: entry.record.name, checks };
+  return { machine: entry.record.name, checks, ...(release && { release }) };
 }
 
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } =>
@@ -629,6 +634,12 @@ function fleetHomes(homedir: string): string[] {
     .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isProfileName(f.slice('.svall-'.length))))
     .map((f) => path.join(homedir, f))
     .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
+}
+
+/** The fleets on this Mac whose fleet.json names `id` as their gateway, by profile; one that cannot be read names none. */
+export function fleetsNaming(id: MachineId, homedir: string): string[] {
+  const names = (home: string): boolean => { try { return readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === id; } catch { return false; } };
+  return fleetHomes(homedir).filter(names).map((home) => profileOf(home, homedir));
 }
 
 /**

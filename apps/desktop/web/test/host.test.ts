@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, machineName, outcomeOf,
-  runActions, sshDestination, stepLabel, withoutTokens,
+  runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
@@ -39,6 +39,36 @@ describe('host run', () => {
     expect(JSON.stringify(run)).not.toContain('s3cr3t');
   });
 
+  it('names no machine by its id, and keeps an id that names a file', () => {
+    const [other, mine, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
+    let run = beginRun('add', { name: 'trift', ssh: 'trift.test' });
+    run = applyStep(run, step('master', 'fail', { detail: `trift.test now reaches machine ${other}, not trift (${far})`, action: `point trift.test back at trift (${far})` }));
+    run = applyStep(run, step('machine', 'fail', { detail: `/Users/ada/.svall/owner.json names ${other}, not this machine (${mine}): its daemon runs as that machine` }));
+    run = applyStep(run, step('claude', 'warn', { detail: `/Users/ada/.claude/projects/-app/${other}.jsonl is not there` }));
+    expect(run.steps.map((s) => s.detail)).toEqual([
+      'trift.test now reaches another machine, not trift',
+      '/Users/ada/.svall/owner.json names another machine, not this machine: its daemon runs as that machine',
+      `/Users/ada/.claude/projects/-app/${other}.jsonl is not there`,
+    ]);
+    expect(run.steps[0].action).toBe('point trift.test back at trift');
+  });
+
+  it('names a machine this Mac knows by its name, and leaves out the ids of fleets and handovers and the generations', () => {
+    const [studio, other, fleet, theirs, tx] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '1a1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
+    const names = { [studio]: 'studio' };
+    const said = (detail: string) => applyStep(beginRun('enable', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
+    expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
+    expect(said(`trift answered with machineId ${other}, not ${studio}`)).toBe('trift answered as another machine');
+    expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
+    expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`))
+      .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`);
+    expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4 in handover ${tx}`))
+      .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it in another handover");
+    expect(said(`trift cannot take a copy of this fleet: ${tx} is committed; this fleet belongs to ${other} at generation 5`))
+      .toBe('trift cannot take a copy of this fleet: the handover is committed; this fleet belongs to another machine');
+    expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
+  });
+
   it('masks a token wherever it is labelled, and leaves the rest of the line alone', () => {
     expect(withoutTokens('machine 3f2a-9c: {"token":"abc123"} ok')).toBe('machine 3f2a-9c: {"token":"…"} ok');
     expect(withoutTokens('no secret here')).toBe('no secret here');
@@ -54,7 +84,7 @@ describe('host run', () => {
 
 describe('the end of a run', () => {
   const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
-    endRun(steps.reduce(applyStep, beginRun(op, { name: 'box', ...args })), code);
+    endRun(steps.reduce((run, s) => applyStep(run, s), beginRun(op, { name: 'box', ...args })), code);
 
   it('says an add that finished clean added the machine, and offers to make it the gateway until it is one', () => {
     const add = ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]);
@@ -91,7 +121,7 @@ describe('the end of a run', () => {
     expect(outcomeOf(fine, undefined)).toEqual({ text: "ready to be this fleet's gateway; 2 warnings", next: 'gateway' });
     expect(outcomeOf(ended('doctor', 0, [step('release', 'ok')]), 'box').text).toBe('ready for handover');
     const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
-    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'systemd: inactive'] });
+    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'Fleet service: inactive'] });
   });
 
   it('says what a new gateway, a removal and a rollback did, and offers the handover once there is a gateway', () => {
@@ -106,7 +136,17 @@ describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
     expect(['master', 'identity', 'authority', 'fleet', 'registry'].map(stepLabel))
       .toEqual(['Connection', 'Installed release', 'Ownership record', 'Fleets', 'Machine list']);
+    // the checks a machine's own doctor reports
+    expect(['systemd', 'gateway', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
+      .toEqual(['Fleet service', 'Gateway service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
     expect(stepLabel('weather')).toBe('weather');
+  });
+
+  it('leaves out the machine the panel already names where a step starts with it', () => {
+    expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toBe('runs release 0.5.0');
+    expect(stepSaid({ step: 'fleet', status: 'ok', detail: "studio's unused fleet is now this fleet" }, 'studio')).toBe("studio's unused fleet is now this fleet");
+    expect(stepSaid({ step: 'ssh', status: 'ok', detail: 'studios answered' }, 'studio')).toBe('studios answered');
+    expect(stepSaid({ step: 'ssh', status: 'ok' }, 'studio')).toBeUndefined();
   });
 });
 
@@ -115,17 +155,23 @@ describe('the attended checklist', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tmux', 'ok'), step('release', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Connect', ['ssh', 'master']],
-      ['Prerequisites', ['tmux']],
-      ['Companion', ['release']],
+      ['Reaching the machine', ['ssh', 'master']],
+      ['What the machine needs', ['tmux']],
+      ['Svall on the machine', ['release']],
       ['Agent logins', ['claude', 'codex', 'opencode']],
-      ['Final probe', ['probe']],
+      ['Trying it out', ['probe']],
     ]);
   });
 
   it('opens a phase again when a later step comes back to it', () => {
     expect(groupSteps([step('ssh', 'ok'), step('tmux', 'ok'), step('master', 'ok')]).map((g) => g.label))
-      .toEqual(['Connect', 'Prerequisites', 'Connect']);
+      .toEqual(['Reaching the machine', 'What the machine needs', 'Reaching the machine']);
+  });
+
+  it('calls no phase by the name of a step in it', () => {
+    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
+      'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'probe', 'rollback', 'registry'];
+    for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
@@ -134,23 +180,23 @@ describe('the attended checklist', () => {
     const remove = ['machine', 'fleet', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);
-      expect(labels).not.toContain('Setup');
+      expect(labels).not.toContain('Checks');
       expect(new Set(labels).size).toBe(labels.length);
     }
   });
 
-  it('puts the rollback of an upgrade whose probe failed under Final probe, after the probe', () => {
+  it('puts the rollback of an upgrade whose probe failed beside the probe, after it', () => {
     const steps = [step('machine', 'ok'), step('master', 'ok'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok'),
                    step('probe', 'warn'), step('rollback', 'warn')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Connect', ['machine', 'master']],
-      ['Companion', ['release', 'upload', 'install']],
-      ['Final probe', ['probe', 'rollback']],
+      ['Reaching the machine', ['machine', 'master']],
+      ['Svall on the machine', ['release', 'upload', 'install']],
+      ['Trying it out', ['probe', 'rollback']],
     ]);
   });
 
   it('shows a step it does not know rather than dropping it', () => {
-    expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Setup', rows: [step('weather', 'ok')] }]);
+    expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Checks', rows: [step('weather', 'ok')] }]);
   });
 });
 
