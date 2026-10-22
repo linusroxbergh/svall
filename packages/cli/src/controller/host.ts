@@ -6,7 +6,6 @@ import { AGENTS, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { homeCommands } from '@svall/svalld/handover/inventory';
-import { OPENCODE_LOGIN } from '@svall/svalld/handover/sessions/registry';
 import { unitPath } from '@svall/svalld/linux/setup';
 import { isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -239,10 +238,8 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       const version = v.stdout.trim().split('\n')[0];
       if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
       if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
-      // OpenCode's login is the model provider's that doctor and the handover's checks read
-      const probe = kind === 'opencode' ? OPENCODE_LOGIN : { args: a.loginArgs, loggedIn: a.loggedIn };
-      const login = await call(probe.args);
-      if (login.code === 0 && probe.loggedIn(login.stdout)) {
+      const login = await call(a.loginArgs);
+      if (login.code === 0 && a.loggedIn(login.stdout)) {
         const checks = o.report.checks.filter((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
         if (!checks.length) return { value: undefined, detail: `${version}, logged in` };
         const how = (detail: string) => { const at = detail.lastIndexOf(': '); return at < 0 ? detail : detail.slice(at + 2); };

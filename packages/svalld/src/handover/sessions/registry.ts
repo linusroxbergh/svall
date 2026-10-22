@@ -145,17 +145,6 @@ const json = (text: string | undefined): Record<string, unknown> | undefined => 
   try { return text === undefined ? undefined : JSON.parse(text); } catch { return undefined; }
 };
 
-/**
- * OpenCode's login, as doctor and the checks read it: `opencode auth list --format json` lists a model provider's
- * login or key, or an MCP server's, as an integration.
- */
-export const OPENCODE_LOGIN = {
-  args: ['auth', 'list', '--standalone', '--format', 'json'],
-  loggedIn: (text: string): boolean => {
-    const listed: unknown = json(text);
-    return Array.isArray(listed) && listed.some((i: { id?: unknown }) => typeof i.id === 'string' && !i.id.startsWith('mcp_'));
-  },
-};
 
 /**
  * Probes this machine's CLI for one agent. Claude Code names its own config folder, which is where its hooks must be;
@@ -175,8 +164,8 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
     return { kind, version, home: dir, loggedIn: status?.loggedIn === true, hooks: !!settings && hooksInstalled(settings, hooksHome) };
   }
   if (kind === 'opencode') {
-    const login = await d.run('opencode', OPENCODE_LOGIN.args);
-    return { kind, version, home, loggedIn: login.code === 0 && OPENCODE_LOGIN.loggedIn(login.stdout), hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
+    const login = await d.run('opencode', AGENTS.opencode.loginArgs);
+    return { kind, version, home, loggedIn: login.code === 0 && AGENTS.opencode.loggedIn(login.stdout), hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
   }
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));

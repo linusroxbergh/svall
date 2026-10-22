@@ -42,9 +42,15 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
   opencode: {
     label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/v2/docs/', minVersion: [2, 0, 22],
     installCommand: 'curl -fsSL https://opencode.ai/v2/install | bash',
-    // a fresh install runs on OpenCode Zen's free model without a login; a private server leaves the user's shared
-    // background service unstarted
-    loginArgs: ['auth', 'list', '--standalone'], loggedIn: () => true,
+    // its login is a model provider's login or key, which auth list names; an MCP server's is an integration too. A
+    // private server leaves the user's shared background service unstarted
+    loginArgs: ['auth', 'list', '--standalone', '--format', 'json'],
+    loggedIn: (out) => {
+      try {
+        const listed: unknown = JSON.parse(out);
+        return Array.isArray(listed) && listed.some((i: { id?: unknown }) => typeof i.id === 'string' && !i.id.startsWith('mcp_'));
+      } catch { return false; }
+    },
     loginHint: 'opencode auth login',
     crewCommand: 'opencode',
   },
