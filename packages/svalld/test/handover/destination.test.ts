@@ -38,7 +38,7 @@ import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { Phones } from '../../src/phones.js';
 import { Store } from '../../src/store.js';
-import { runGit, type GitRunner } from '../../src/links/git.js';
+import { handoverGit, runGit, type GitRunner } from '../../src/links/git.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { parseScreen, Tmux } from '../../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, idleSides, makeHome, stubLoad, stubMobile, stubUsage, waitFor } from '../helpers.js';
@@ -1029,7 +1029,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const macTree = park(l, 'mac');
     const landed = await transfer(paths, built.manifest, (p) => parkedAt(l, macTree, p));
     const store = Store.load(paths.state, () => {});
-    return { home, paths, store, manifest: built.manifest, digest: built.digest, landed, probes: [] as AgentProbe[] };
+    return { home, paths, store, manifest: built.manifest, digest: built.digest, landed, probes: [] as AgentProbe[], macTree };
   }
 
   it('imports every graph, and records for Complete each root as the import left it', async () => {
@@ -1058,6 +1058,46 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     fs.rmSync(s.paths.preparedState(TX));
     const again = daemon(s);
     expect(await again.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed })).toEqual(r);
+  });
+
+  it('journals no prepare, asked again, over a config a power cut emptied after the import wrote it', async () => {
+    const l = seedHere(made);
+    const s = await gitScene(l);
+    let flushes = 0;
+    const params = { transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed };
+    // the power goes before the import's writes reach the disk
+    await expect(daemon(s, { syncRoots: async () => { if (++flushes === 2) throw new Error('EIO: i/o error, syncfs'); } }).handover.prepare(params)).rejects.toThrow(/EIO/);
+    const config = path.join(l.source.main, '.git/config');
+    fs.truncateSync(config);
+    const r = await refusal(daemon(s).handover.prepare(params));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'destination_diverged', message: expect.stringContaining('1 changed (.git/config)') }));
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
+  });
+
+  it('prepares again over a copy made again after a prepare its Git import outlived, which put back what that import rewrote', async () => {
+    const l = seedHere(made);
+    // the opposite of what this filesystem probes, so the import rewrites the config
+    git(l.base, l.source.main, 'config', 'core.ignorecase', String(!fs.existsSync(path.join(l.source.main, '.git/CoNfIg'))));
+    const s = await gitScene(l);
+    const params = { transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed };
+    const config = path.join(l.source.main, '.git/config');
+    const landedConfig = fs.readFileSync(config, 'utf8');
+    // git cannot read the checkouts once the import has rewritten the config, so the prepare blocks
+    const failing: GitRunner = async (args, cwd) => (args.includes('status') ? { code: 128, stdout: '', stderr: 'fatal: index.lock exists' } : handoverGit(args, cwd));
+    expect(blockersOf(await refusal(daemon(s, { git: failing }).handover.prepare(params))).map((b) => b.code)).toContain('worktree_unresolved');
+    expect(fs.readFileSync(config, 'utf8')).not.toBe(landedConfig);
+    // copied again, as rsync does with --delete and each root's claim
+    const d = daemon(s);
+    const claimed = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+    for (const r of replicaRoots(s.manifest)) {
+      const keep = claimed.roots.find((x) => x.id === r.id)!.keep ?? [];
+      const aside = keep.map((k) => { const to = fs.mkdtempSync('/tmp/svall-kept-'); made.push(to); fs.renameSync(path.join(r.path, k), path.join(to, 'k')); return { k, to }; });
+      fs.rmSync(r.path, { recursive: true, force: true });
+      fs.cpSync(parkedAt(l, s.macTree, r.path), r.path, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true });
+      for (const a of aside) { fs.rmSync(path.join(r.path, a.k), { recursive: true, force: true }); fs.renameSync(path.join(a.to, 'k'), path.join(r.path, a.k)); }
+    }
+    expect(fs.readFileSync(config, 'utf8')).toBe(landedConfig);
+    expect(await d.handover.prepare(params)).toMatchObject({ preparedDigest: expect.any(String) });
   });
 
   /**

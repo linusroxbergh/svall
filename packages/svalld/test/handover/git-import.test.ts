@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, FleetConfig, type GitCheckout, type MachineId, type TransferManifestV1 } from '@svall/protocol';
 import { discoverGit, graphId, readWorktrees } from '../../src/handover/git-graph.js';
 import { graphsHere, importGraphs, keptWorktrees, unreached, validateGraph } from '../../src/handover/git-import.js';
@@ -196,6 +196,29 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     // a Mac's own filesystem, as git init probes it there
     await importGraphs(manifest, { probe: () => ({ ignoreCase: true, precomposeUnicode: true }) });
     expect(configs.map(read)).toEqual(before);
+  });
+
+  it('has git change a copy of the config beside it, flushed and renamed into place, so a power cut leaves one or the other whole', async () => {
+    const l = seedHere(made);
+    const s = l.source;
+    git(l.base, s.main, 'config', 'core.ignorecase', 'true');
+    const { manifest } = await handed(l);
+    const config = path.join(s.main, '.git/config');
+    const edited: string[] = [];
+    const watching: GitRunner = (args, cwd) => {
+      if (args[0] === 'config' && !args.includes('--get')) edited.push(args[args.indexOf('--file') + 1]);
+      return runGit(args, cwd);
+    };
+    const fsync = vi.spyOn(fs, 'fsyncSync');
+    try {
+      expect(await importGraphs(manifest, { git: watching, probe: () => ({ ignoreCase: false }) })).toEqual([]);
+      expect(fsync).toHaveBeenCalled();
+    } finally { fsync.mockRestore(); }
+    expect(edited.length).toBeGreaterThan(0);
+    // each graph's own copy, never a config itself
+    expect(edited.filter((f) => !/\/config\.svall-\d+-[0-9a-f]{8}$/.test(f))).toEqual([]);
+    expect(read(config)).toContain('\tignorecase = false');
+    expect(fs.readdirSync(path.dirname(config)).filter((f) => f.startsWith('config.'))).toEqual([]);
   });
 
   it('leaves a config carried as a link, and what it leads to, as they came', async () => {

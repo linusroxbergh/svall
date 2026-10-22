@@ -513,12 +513,6 @@ export class DestinationHandover {
     const landedDigest = canonicalDigest(p.landed);
     const verified = this.open(tx)?.landedDigest === landedDigest;
     const earlier = verified ? this.recorded(tx, p.manifestDigest) : undefined;
-    // what the Git import rewrites, by real path: each graph's config and the registrations it does not carry
-    const graphDirs = graphsHere(m).map((g) => ({ common: realPath(g.commonDir), worktrees: g.carried }));
-    const rewrites = (file: string): boolean => graphDirs.some(({ common, worktrees }) => {
-      const rel = path.posix.relative(common, file);
-      return rel === 'config' || (rel.startsWith('worktrees/') && !worktrees.includes(rel.split('/')[1]));
-    });
     const at = new Map<string, string>();
     // the registrations of worktrees that stay here, which this handover's claim left as they were
     const stays = new Map<string, string[]>();
@@ -533,12 +527,12 @@ export class DestinationHandover {
         }
         at.set(r.id, check.path);
         stays.set(r.id, this.replicas.keptBy(spec, tx));
-        const mine = kept(stays.get(r.id)!);
-        // a root proved before is proved again, as a power cut may have taken what was proved, unless the prepare died in the
-        // import before the seal recorded what that import wrote
-        const sealed = !!earlier?.roots.find((x) => x.id === r.id)?.files;
-        const ignore = verified ? (rel: string) => mine(rel) || rewrites(path.posix.join(check.path, rel)) : mine;
-        const landed = verified && !sealed ? undefined : await landedProblem(r, check.path, p.landed.find((x) => x.id === r.id)!.files, m.excludes, this.d.scanFs, ignore);
+        // a root proved before is proved again against what the seal recorded the import left there, as a power cut may have
+        // taken it, or against what landed, as a copy made again since puts it back; a prepare that died in the import before
+        // the seal recorded it trusts what it proved, flushed before it was recorded
+        const sealed = earlier?.roots.find((x) => x.id === r.id)?.files;
+        const files = p.landed.find((x) => x.id === r.id)!.files;
+        const landed = verified && !sealed ? undefined : await landedProblem(r, check.path, sealed ? [sealed, files] : [files], m.excludes, this.d.scanFs, kept(stays.get(r.id)!));
         if (landed) blockers.push(landed);
       }
     });
@@ -553,7 +547,7 @@ export class DestinationHandover {
     });
     const landedFiles = carried.flatMap((r) => p.landed.find((x) => x.id === r.id)!.files.flatMap((f) => (f.type === 'file' ? [f.path ? path.join(at.get(r.id)!, f.path) : at.get(r.id)!] : [])));
     await boundary('destination.verify.sync', () => flush(landedFiles));
-    // recorded before the import changes the roots, and on disk: a retry from here proves what landed again bar what the import rewrites
+    // recorded before the import changes the roots, and on disk
     if (!verified) boundary('destination.verify.record', () => this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() }));
     const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
     const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations

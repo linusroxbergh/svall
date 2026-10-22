@@ -109,9 +109,9 @@ export function sessionProblems(m: TransferManifestV1, homes: Partial<Record<Age
 
 /** Whether a root holds what the transfer verified in it, read as its source was: excludes left out, a Git index by what it stages. */
 export async function landedProblem(
-  root: TransferRoot, at: string, verified: readonly TransferFile[], excludes: readonly string[], sfs?: ScanFs, ignore?: (relative: string) => boolean,
+  root: TransferRoot, at: string, verified: readonly (readonly TransferFile[])[], excludes: readonly string[], sfs?: ScanFs, ignore?: (relative: string) => boolean,
 ): Promise<Blocker | undefined> {
-  const { divergence } = await proveReplica(at, [verified], excludes, sfs, root.kind, ignore);
+  const { divergence } = await proveReplica(at, verified, excludes, sfs, root.kind, ignore);
   if (!diverged(divergence)) return undefined;
   return { code: 'destination_diverged', message: `${at} no longer holds what the transfer verified: ${describeDivergence(at, divergence)}`, entity: { kind: 'root', id: root.id } };
 }
