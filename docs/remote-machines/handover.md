@@ -72,6 +72,7 @@ svall handover --forget                       # drop this Mac's journal of a han
 - `-p <fleet>` moves another fleet, and `--json` prints one event per line ([the events](errors.md#events)).
 - In a terminal, a decision shows as a short menu. It starts from the choices the run already holds, on a `--resume`
   too. While characters rest, type `i` and Enter to interrupt and carry the agents still working, or `c` to cancel.
+  Ctrl-D cancels the decision on screen, or the next one asked; in `attach` it stops following.
 - Ctrl-C before the commit aborts the handover, and the fleet stays where it was. After the commit the move goes on;
   a second Ctrl-C stops watching, and `svall handover --resume` finishes it.
 - `--detach` leaves the handover to a background helper and prints its pid; `svall handover attach` follows it, and

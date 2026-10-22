@@ -283,6 +283,7 @@ export class View {
 export class Prompter {
   private rl: readline.Interface;
   private waiting?: (line: string | undefined | null) => void;
+  private over = false;
 
   constructor(input: NodeJS.ReadableStream, private print: (line: string) => void, private idle: (line: string) => void, private ended?: () => void) {
     this.rl = readline.createInterface({ input, terminal: false });
@@ -292,6 +293,7 @@ export class Prompter {
     });
     // input that ends cancels where a person drives the run, and where they only watch one it just ends the watch
     this.rl.on('close', () => {
+      this.over = true;
       const w = this.waiting;
       this.waiting = undefined;
       w?.(this.ended ? null : undefined);
@@ -301,6 +303,7 @@ export class Prompter {
 
   /** The option a person picks; `cancel` when input that drives the run ends, and undefined when the question went away. */
   async pick(opts: Option[]): Promise<HandoverChoices | 'cancel' | undefined> {
+    if (this.over) return this.ended ? undefined : 'cancel';
     for (;;) {
       for (const o of opts) this.print(`  ${o.key}) ${o.label}`);
       const keys = opts.map((o) => o.key);

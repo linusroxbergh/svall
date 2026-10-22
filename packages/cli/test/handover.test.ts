@@ -551,6 +551,29 @@ describe('svall handover', () => {
     expect(answered).toEqual({ archiveRoots: ['r_app'], interruptAfterMs: 0, terminateShells: ['c_ada'] });
   });
 
+  it('cancels at once a blocker asked after the terminal\'s input ended', async () => {
+    const h = harness({ tty: true });
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    let answered: HandoverChoices | 'cancel' | undefined;
+    let rest: (() => void) | undefined;
+    h.tx.script = async () => {
+      h.tx.record(changed('freeze'));
+      await new Promise<void>((r) => { rest = r; });
+      h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
+      answered = await h.tx.decide(working, 'freeze');
+      return { status: 'blocked', transactionId: 'tx-1', phase: 'freeze', blockers: working };
+    };
+    const run = runHandover(start(), h.ctx);
+    await waitFor(() => rest !== undefined);
+    // Ctrl-D while the characters rest, with no question asked
+    h.stdin.end();
+    await new Promise((r) => setTimeout(r, 50));
+    rest!();
+    await waitFor(() => answered !== undefined, 1000);
+    expect(answered).toBe('cancel');
+    expect(await run).toEqual({ code: 1 });
+  });
+
   it('on Ctrl-C before the commit aborts, says so and what comes next', async () => {
     const h = harness();
     h.tx.script = async () => {
