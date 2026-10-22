@@ -20,6 +20,7 @@ import { repairBrief } from '../../src/handover/sessions/repair.js';
 import { SessionError, type CliRun, type SessionFs } from '../../src/handover/sessions/types.js';
 import { mergeCodexHooks, mergeHooks, mergeStatusLine, statusWrapper } from '../../src/agent-hooks.js';
 import { codexHookCommand } from '../../src/codex/install.js';
+import { BWRAP_PROFILE, USERNS_RESTRICTED } from '../../src/codex/install.js';
 import { opencodePaths } from '../../src/opencode/install.js';
 import { resolvePaths } from '../../src/paths.js';
 import { PRIVATE, profileHome } from '../../src/profile.js';
@@ -50,12 +51,16 @@ function home(fixture: string, name = '.claude'): string {
 const CLAUDE = [
   { version: '2.1.280', id: 'bf480ea6-5572-4554-8016-2dc5590f5bba', slug: '-Users-source-work-demo', agent: 'agent-a4906877eb9919cf5' },
   { version: '2.1.251', id: '1fb0d1a7-29a9-4159-a932-5ffd2da8faba', slug: '-home-source-work-demo', agent: 'agent-aec6de8cd1d2df280' },
+  { version: '2.1.306', id: 'e6b13e68-3d40-4759-91a3-5c1cde740f9d', slug: '-Users-source-work-demo', agent: 'agent-a1774cad8a601f106' },
 ] as const;
 const CODEX = [
   // written before the oldest Codex Svall runs, so the CLI that carries it has been updated since
   { version: '0.155.1', cli: '0.156.0', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04' },
   { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f' },
+  { version: '0.162.1', file: 'sessions/2026/10/21/rollout-2026-10-21T20-28-35-01a15fb8-ddb3-7720-9bbc-6558d68e05f4.jsonl', id: '01a15fb8-ddb3-7720-9bbc-6558d68e05f4' },
 ] as const;
+// the real `session export --standalone` each release wrote, sanitized
+const OPENCODE = [{ version: '2.1.1', id: 'ses_ea0466195ffe4ecU6vYSCBwDEd' }] as const;
 
 describe('the adapter registry', () => {
   it('reads every Claude Code and Codex release from its adapter\'s minimum on, and none before', () => {
@@ -443,8 +448,8 @@ describe('sessions in the transfer manifest', () => {
 
 // each fixture session, where its CLI keeps it under the agent home
 const FIXTURE_SESSIONS = [
-  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.1.283' })),
-  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
+  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.2.0' })),
+  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.163.0' })),
 ];
 
 describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind, version, cli, id, agentHome, transcript, newer }) => {
@@ -472,6 +477,43 @@ describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind,
     expect(installSession(session, staged)).toEqual({ transcriptPath });
     for (const f of session.files) expect(fs.readFileSync(path.join(agents, f.path)), f.path).toEqual(fs.readFileSync(path.join(staged, f.path)));
     expect(placeTranscripts(manifest.snapshot, manifest.sessions).characters.c1.agent!.transcriptPath).toBe(transcriptPath);
+  });
+});
+
+describe.each(OPENCODE)('an OpenCode export as $version wrote it', ({ version, id }) => {
+  const kept = path.join(FIXTURES, 'opencode', version, `${id}.json`);
+  const real = (): Exported => JSON.parse(fs.readFileSync(kept, 'utf8'));
+
+  it('is written out with no undo pending, and refused with one', async () => {
+    const base = tmp();
+    const env = fakeEnv(path.join(base, 'oc'));
+    hold(env, real());
+    const file = path.join(base, 'out.json');
+    await opencodeAdapter.exportSession!(id, file, cliRunner(env), base);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(real());
+    const undone = real();
+    undone.info.revert = { messageID: undone.messages[1].id };
+    hold(env, undone);
+    await expect(opencodeAdapter.exportSession!(id, file, cliRunner(env), base))
+      .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('has an undo pending') });
+  });
+
+  it('is told apart by its message ids from a copy here that went on another way', async () => {
+    const base = tmp();
+    const env = fakeEnv(path.join(base, 'oc'));
+    hold(env, real());
+    await expect(opencodeAdapter.checkSession!(id, kept, base, cliRunner(env))).resolves.toBeUndefined();
+    const went = real();
+    went.messages.splice(-1, 1, { ...went.messages.at(-1)!, id: 'msg_15fb9c51300168SRdmut5Yo4Lt' });
+    hold(env, went);
+    await expect(opencodeAdapter.checkSession!(id, kept, base, cliRunner(env))).rejects.toMatchObject({ code: 'destination_diverged' });
+  });
+
+  it('is taken back into the folder it ran in', async () => {
+    const asked: string[][] = [];
+    const run: CliRun = async (_cmd, args) => { asked.push(args); return { code: 0, stdout: `Imported session: ${id}\n`, stderr: '' }; };
+    await opencodeAdapter.restoreSession!(id, kept, run);
+    expect(asked).toEqual([['session', 'import', '--standalone', '--directory', '/Users/source/work/demo', kept]]);
   });
 });
 
@@ -957,17 +999,39 @@ describe('agent preflight', () => {
     expect(await probeAgent('codex', deps)).toEqual({ kind: 'codex', version: '0.156.1', home: '/cfg/codex', loggedIn: true, hooks: true });
   });
 
-  it("reads OpenCode's version, its login as auth list --standalone answers, and its plugin where XDG_CONFIG_HOME puts it, and places its sessions in the private fleet's logs", async () => {
+  it("reads OpenCode's version, its login as a model provider auth list --standalone names, and its plugin where XDG_CONFIG_HOME puts it, and places its sessions in the private fleet's logs", async () => {
     const env = { XDG_CONFIG_HOME: '/cfg' };
     const plugin = opencodePaths(env, '/home/t').plugin;
     const logs = path.join(profileHome(PRIVATE, '/home/t'), 'transcripts/opencode');
-    const deps = (login: number, files: Record<string, string>) => ({
-      run: runner({ 'opencode --version': { stdout: '2.0.22\n' }, 'opencode auth list --standalone': { code: login, stdout: '' } }),
+    // as OpenCode 2.0.22 to 2.1.1 print it: an MCP server's login is an integration too
+    const mcp = { id: 'mcp_27245be96d0b1111', name: 'linear', connections: [{ type: 'credential', label: 'linear' }] };
+    const openai = { id: 'openai', name: 'OpenAI', connections: [{ type: 'credential', label: 'OpenAI' }] };
+    const deps = (login: number, listed: unknown[], files: Record<string, string>) => ({
+      run: runner({ 'opencode --version': { stdout: '2.0.22\n' }, 'opencode auth list --standalone --format json': { code: login, stdout: JSON.stringify(listed) } }),
       read: async (f: string) => files[f], env, homedir: '/home/t',
     });
-    expect(await probeAgent('opencode', deps(0, { [plugin]: '// svall' }))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: true, hooks: true });
-    expect(await probeAgent('opencode', deps(1, {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
-    expect(await probeAgent('opencode', { ...deps(0, {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', deps(0, [mcp, openai], { [plugin]: '// svall' }))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: true, hooks: true });
+    expect(await probeAgent('opencode', deps(0, [mcp], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', deps(0, [], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', deps(1, [openai], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
+    expect(await probeAgent('opencode', { ...deps(0, [], {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
+  });
+
+  it("says when AppArmor keeps Codex from sandboxing its commands, as only Linux's restriction of user namespaces can", async () => {
+    const codexHooksAt = { '/home/t/.codex/hooks.json': codexHooks };
+    const denied = 'bwrap: setting up uid map: Permission denied\nbwrap: No permissions to create new namespace';
+    const deps = (restricted: string | undefined, sandbox: number, stderr = denied) => ({
+      run: async (cmd: string, args: string[]) => ([cmd, ...args].join(' ') === 'codex sandbox -- true'
+        ? { code: sandbox, stdout: '', stderr } : runner({ 'codex --version': { stdout: 'codex-cli 0.156.1\n' }, 'codex login status': { stdout: 'Logged in\n' } })(cmd, args)),
+      read: async (f: string) => (f === USERNS_RESTRICTED ? restricted : codexHooksAt[f as keyof typeof codexHooksAt]), env: {}, homedir: '/home/t',
+    });
+    expect((await probeAgent('codex', deps('1\n', 1))).sandbox).toBe(`AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`);
+    // any other failure is named as it is
+    expect((await probeAgent('codex', deps('1\n', 2, 'error: unknown subcommand'))).sandbox).toBe('codex sandbox -- true fails there (error: unknown subcommand): run it there to see why');
+    expect(await probeAgent('codex', deps('1\n', 0))).toEqual({ kind: 'codex', version: '0.156.1', home: '/home/t/.codex', loggedIn: true, hooks: true });
+    expect((await probeAgent('codex', deps('0\n', 1))).sandbox).toBeUndefined();
+    expect((await probeAgent('codex', deps(undefined, 1))).sandbox).toBeUndefined();
+    expect(agentAdapters([{ kind: 'codex', version: '0.156.1', home: '/h', loggedIn: true, hooks: true, sandbox: 'no' }])[0].sandbox).toBe('no');
   });
 
   it('sees a CLI that is missing, logged out or without hooks', async () => {
@@ -988,7 +1052,16 @@ describe('agent preflight', () => {
     const codes = (source: AgentProbe[], destination: AgentProbe[], kinds: ('claude' | 'codex')[] = ['claude']) =>
       agentBlockers({ kinds, source, destination }).map((b) => b.code);
     expect(codes([ok('claude')], [ok('claude')])).toEqual([]);
-    expect(codes([ok('claude')], [ok('claude', { version: '2.1.251' })])).toEqual([]);
+    // a destination older than the source may not read what the source's release wrote; a newer one does
+    expect(codes([ok('claude')], [ok('claude', { version: '2.1.251' })])).toEqual(['incompatible_adapter']);
+    expect(agentBlockers({ kinds: ['claude'], source: [ok('claude')], destination: [ok('claude', { version: '2.1.251' })] })[0].message)
+      .toBe("the destination's claude 2.1.251 is older than this machine's 2.1.280, which writes sessions it may not read; update claude on the destination");
+    expect(codes([ok('claude', { version: '2.1.251' })], [ok('claude')])).toEqual([]);
+    // the same prerelease on both, or a later one there, reads what this machine wrote
+    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290-beta.1' })])).toEqual([]);
+    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290-beta.2' })])).toEqual([]);
+    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290' })])).toEqual([]);
+    expect(codes([ok('claude', { version: '2.1.290' })], [ok('claude', { version: '2.1.290-beta.2' })])).toEqual(['incompatible_adapter']);
     expect(codes([ok('claude')], [])).toEqual(['agent_cli_missing']);
     expect(codes([ok('claude')], [ok('claude', { version: undefined })])).toEqual(['agent_cli_missing']);
     // the Mac's own release, and one newer than any adapter has seen

@@ -21,6 +21,13 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
   return [...words, t.agent.sessionId].join(' ');
 }
 
+/** The command that starts a new session with the launch flags `revive`, as `reviveCommand` built it for `sessionId`, resumes with. */
+export function freshCommand(revive: string, kind: AgentKind, sessionId: string): string {
+  const resume = kind === 'codex' ? /^codex resume -c tui\.resume_cwd=session(.*) (\S+)$/ : kind === 'opencode' ? /^opencode(.*) -s (\S+)$/ : /^claude(.*) --resume (\S+)$/;
+  const m = resume.exec(revive);
+  return m?.[2] === sessionId ? `${kind}${m[1]}` : kind;
+}
+
 // a terminal without a window keeps its directory and the command that brings its session back
 export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
   delete t.tmux;

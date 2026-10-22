@@ -94,7 +94,7 @@ export function idleSides(paths: Paths, o: { store?: Store; config?: Config } = 
   const idle = async (): Promise<never> => { throw new Error('this test runs no handover phase'); };
   const store = o.store ?? Store.load(paths.state, () => {});
   const fleet = { settle: idle, activate: idle, deactivate: idle, reconcileNow: idle, resumeInterrupted: idle, reviveCharacter: idle, openSecond: idle, onSessionStart: () => () => {}, carries: () => {} };
-  const tmux = { listWindows: idle, sendBytes: idle, sendLine: idle, capture: idle, killWindow: idle, ensureServer: idle };
+  const tmux = { listWindows: idle, sendBytes: idle, sendLine: idle, capture: idle, screen: idle, killWindow: idle, ensureServer: idle };
   return {
     source: { paths, store, fleet, tmux, viewers: { detach: idle }, log: silentLogger },
     destination: { paths, config: o.config ?? Config.parse({}), store, fleet, tmux, log: silentLogger },

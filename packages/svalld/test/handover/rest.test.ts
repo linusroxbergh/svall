@@ -355,7 +355,8 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(world.log).toEqual(['keys %1 1b', 'detach c_ada', 'kill @1']);
-    expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
+    // its turn was cut short, so its revive tells it what of its background work is gone
+    expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
   });
 
   it('reports an interrupted agent that does not come to rest, and closes nothing', async () => {
@@ -422,7 +423,7 @@ describe('restTerminals', () => {
 
     expect(await run).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(world.log).toEqual(['SIGTERM 1090', 'SIGCONT 1090', 'detach c_ada', 'kill @1']);
-    expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --dangerously-skip-permissions --effort 'high' --resume ${SID}` });
+    expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --dangerously-skip-permissions --effort 'high' --resume ${SID}`, interrupted: true });
   });
 
   it('terminates an interrupted agent that will not settle when its terminal may be terminated, journaling it first and keeping the session it carries', async () => {
@@ -447,7 +448,7 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(store.state.characters.c_ada.agent?.sessionId).toBe(SID);
-    expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
     expect(journalOf(paths).terminated).toEqual([{ characterId: 'c_ada', processes: ['claude', '/bin/zsh -c npm test'] }]);
   });
 
@@ -505,7 +506,7 @@ describe('restTerminals', () => {
     expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(pane.servers?.filter(Boolean)).toEqual([]);
     expect(world.log.slice(6)).toEqual(['detach c_ada', 'kill @1']);
-    expect(store.state.characters.c_ada.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
+    expect(store.state.characters.c_ada.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}`, interrupted: true });
   });
 
   it('rests an idle agent still running commands in the background only by terminating it when chosen, and names those commands otherwise', async () => {
@@ -531,10 +532,11 @@ describe('restTerminals', () => {
     expect(result).toMatchObject({ ok: true });
     expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
     expect(journalOf(ended.paths).terminated).toEqual([{ characterId: 'c_ada', processes: ['claude', '/bin/zsh -c npm run dev'] }]);
-    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
+    // what it ran in the background is gone, which its revive tells it
+    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
   });
 
-  it('holds up a Claude Code agent whose monitor still watches as one with a command left running, and rests it once ended without the note a crash leaves', async () => {
+  it('holds up a Claude Code agent whose monitor still watches as one with a command left running, and rests it once ended with the note on what was stopped', async () => {
     const watching = () => boot([char('c_ada', { tmux: win(1), agent: { ...agent('claude', 'done'), monitors: ['b1'] } })]);
     const kept = watching();
     kept.world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c tail -f build.log'] });
@@ -556,7 +558,7 @@ describe('restTerminals', () => {
     await run;
     expect(result).toMatchObject({ ok: true });
     expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
-    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
     expect(ended.store.state.characters.c_ada.agent?.monitors).toBeUndefined();
   });
 
@@ -790,7 +792,7 @@ describe('restTerminals', () => {
     expect(result).toMatchObject({ ok: true });
     expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1060', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
     expect(ended.world.orphans).toEqual([]);
-    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });
+    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}`, interrupted: true });
   });
 
   it('interrupts a working or blocked OpenCode with two Escapes sent 200 ms apart, and rests a working one only once its plugin reports the turn over, not when its command ends alone', async () => {
@@ -928,7 +930,7 @@ describe('restTerminals', () => {
         { characterId: 'c_bo' },
       ],
     });
-    expect(store.state.characters.c_bo.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID2}` });
+    expect(store.state.characters.c_bo.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID2}`, interrupted: true });
   });
 
   it('reads a terminal whose agent record has gone stale by what holds it, and neither rests nor interrupts that job unasked', async () => {

@@ -143,6 +143,7 @@ export class Machine {
     sendBytes: async () => { this.acting('keys', false); },
     sendLine: async () => { this.acting('line', false); },
     capture: async () => Buffer.from(''),
+    screen: async () => ({ rows: [], cursor: 0, shown: false, command: '' }),
     ensureServer: async () => {},
     killWindow: async (windowId: string) => {
       this.acting(`kill ${windowId}`);

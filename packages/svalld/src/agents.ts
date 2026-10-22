@@ -76,5 +76,22 @@ export function versionOk(a: Pick<AgentAdapter, 'minVersion'>, text: string): bo
   return !text.includes(`${v.join('.')}-`);
 }
 
-export const mainAgent = (configured: AgentKind | undefined, found: AgentKind[]): AgentKind =>
+// -1, 0 or 1 in semver order, a release after its prereleases; undefined when either line has no x.y.z
+export function compareVersions(a: string, b: string): number | undefined {
+  const [x, y] = [a, b].map((t) => /(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(t));
+  if (!x || !y) return undefined;
+  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Math.sign(Number(x[i]) - Number(y[i]));
+  if (!x[4] || !y[4]) return Number(!x[4]) - Number(!y[4]);
+  const [p, q] = [x[4].split('.'), y[4].split('.')];
+  for (let i = 0; i < Math.min(p.length, q.length); i++) {
+    if (p[i] === q[i]) continue;
+    const [m, n] = [/^\d+$/.test(p[i]), /^\d+$/.test(q[i])];
+    if (m && n) return Math.sign(Number(p[i]) - Number(q[i]));
+    if (m !== n) return m ? -1 : 1;
+    return p[i] < q[i] ? -1 : 1;
+  }
+  return Math.sign(p.length - q.length);
+}
+
+export const mainAgent =(configured: AgentKind | undefined, found: AgentKind[]): AgentKind =>
   configured ?? (!found.length || found.includes('claude') ? 'claude' : found[0]);

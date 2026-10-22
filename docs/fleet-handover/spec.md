@@ -594,9 +594,11 @@ Session files are copied byte for byte. An adapter therefore depends only on whe
 session's files, or for OpenCode on its export and import, not on the record format, and has a
 minimum supported version but no maximum.
 The imported `agent.transcriptPath` always points at the destination file before activation.
-Preflight blocks an agent below its adapter's minimum or a session whose required file is missing.
-A separate repair action may start a fresh agent with a generated transcript summary, but this is
-visibly a new session and is never the automatic handover path.
+Preflight blocks an agent below its adapter's minimum, a destination release older than the
+source's, or a session whose required file is missing. A terminal whose resume failed offers
+**Start fresh from summary** (`svall char revive <id> --fresh`): a new session of the same agent in
+its folder, with its launch flags, whose first prompt summarises the old session's last turns and
+says it is a new one. The old session's files stay. It is never the automatic handover path.
 
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
 OpenCode's data, config, state and cache folders (`~/.local/share/opencode`, `~/.config/opencode`,
@@ -608,9 +610,9 @@ user's code, and a worktree there travels as any other worktree of the repositor
 main checkout with it. It lands at the same path, and the destination's OpenCode finds it through
 Git once the Git import has registered it.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
-afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
-on the two machines; the warning names the settings, skills and MCP servers each machine keeps,
-which are not compared. Repository and project-local instructions travel with their filesystem
+afresh, blocks (`incompatible_adapter`) when an agent CLI the fleet runs is older on the destination
+than on the source, and warns (`config_difference`) when it is newer there; the warning names the
+settings, skills and MCP servers each machine keeps, which are not compared. Repository and project-local instructions travel with their filesystem
 roots.
 
 ## Terminal records

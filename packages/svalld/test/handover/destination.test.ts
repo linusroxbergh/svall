@@ -40,7 +40,7 @@ import { Phones } from '../../src/phones.js';
 import { Store } from '../../src/store.js';
 import { runGit, type GitRunner } from '../../src/links/git.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
-import { Tmux } from '../../src/tmux/tmux.js';
+import { parseScreen, Tmux } from '../../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, idleSides, makeHome, stubLoad, stubMobile, stubUsage, waitFor } from '../helpers.js';
 import { fakeEnv, held, hold, type Exported } from './fake-opencode.js';
 import { crew as gitCrew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
@@ -152,6 +152,8 @@ class Crew {
   exiting = new Set<string>();
   /** resumes ctrl+z stops before their SessionStart, which hand the terminal back to the shell */
   stopped = new Set<string>();
+  /** terminals whose agent shows its empty prompt line once its window opens */
+  prompts = new Set<string>();
   /**
    * terminals whose window opens and then never another step, as the daemon dies there: with its resume typed and
    * not entered, or entered with the agent starting and its SessionStart gone with that daemon
@@ -193,6 +195,11 @@ class Crew {
       if (w) this.log.push(`kill ${w.key}`);
     },
     capture: async (paneId) => Buffer.from((this.byPane(paneId)?.screen ?? []).join('\r\n')),
+    screen: async (paneId) => {
+      const w = this.byPane(paneId);
+      if (w && this.prompts.has(w.key)) return parseScreen(fs.readFileSync(path.join(import.meta.dirname, '../fixtures/composer', `${w.command}-empty.txt`), 'utf8'));
+      return { rows: w?.screen ?? [], cursor: 0, shown: false, command: w?.command ?? '' };
+    },
   };
 
   // each pane as ps shows it: its shell, and the job holding its terminal unless the shell is at its prompt
@@ -1394,7 +1401,7 @@ describe('destination activate', () => {
     void run.finally(() => { done = true; });
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
     expect((await run).characters.find((c) => c.id === 'c_bo')?.ok).toBe(false);
-    expect(s.store.state.characters.c_bo.revive).toEqual({ command: 'claude --resume 99999999-9999-4999-8999-999999999999' });
+    expect(s.store.state.characters.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
   /** Activates with the clock moving half a second at a time for twenty seconds, a minute at a time after that, and says how far it had moved when the activation answered. */
@@ -1409,11 +1416,28 @@ describe('destination activate', () => {
     return { r: await run, at };
   }
 
-  it("counts a resumed Codex up once its pane has run Codex through the settle, with no SessionStart, and keeps its window", async () => {
+  it('counts a resumed Codex up once its pane shows its prompt, with no SessionStart, and keeps its window', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
     d.crew.silent.add('c_dee');
+    d.crew.prompts.add('c_dee');
     // this machine's Codex trusts dee's folder, so no prompt waits there
+    fs.writeFileSync(path.join(s.dst, '.codex/config.toml'), `[projects."${path.join(s.dst, 'work/demo')}"]\ntrust_level = "trusted"\n`);
+
+    const { r, at } = await activateBy(d);
+
+    expect(at).toBeLessThan(3000);
+    expect(r.characters.find((c) => c.id === 'c_dee')).toEqual({ id: 'c_dee', ok: true });
+    expect(d.crew.log).not.toContain('kill c_dee');
+    expect(d.crew.window('c_dee')?.command).toBe('codex');
+    expect(s.store.state.characters.c_dee.tmux?.paneId).toBe(d.crew.window('c_dee')!.paneId);
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
+  });
+
+  it("counts a resumed Codex whose prompt does not show up once its pane has run Codex through the settle, and says that is all it saw", async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_dee');
     fs.writeFileSync(path.join(s.dst, '.codex/config.toml'), `[projects."${path.join(s.dst, 'work/demo')}"]\ntrust_level = "trusted"\n`);
 
     const { r, at } = await activateBy(d);
@@ -1421,11 +1445,10 @@ describe('destination activate', () => {
     // three seconds of Codex in its pane, and not the minute a SessionStart gets
     expect(at).toBeGreaterThanOrEqual(3000);
     expect(at).toBeLessThanOrEqual(5000);
-    expect(r.characters.find((c) => c.id === 'c_dee')).toEqual({ id: 'c_dee', ok: true });
+    expect(r.characters.find((c) => c.id === 'c_dee')).toEqual({
+      id: 'c_dee', ok: true, notice: "codex has held dee's terminal for 3 s without showing its prompt, so it is counted up on that alone; look there",
+    });
     expect(d.crew.log).not.toContain('kill c_dee');
-    expect(d.crew.window('c_dee')?.command).toBe('codex');
-    expect(s.store.state.characters.c_dee.tmux?.paneId).toBe(d.crew.window('c_dee')!.paneId);
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
   });
 
   it('counts a resumed Codex up at its trust prompt where this machine does not trust its folder, keeps its window, and says the prompt waits there', async () => {
@@ -1500,28 +1523,67 @@ describe('destination activate', () => {
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
-  it('counts a resumed Claude in a folder this machine trusts up after ten silent seconds in its pane, with a notice that it may wait at a prompt, and watches it', async () => {
+  it('fails a resumed Claude in a folder this machine trusts that starts no session within the minute, saying it may wait at a prompt, and lays it dormant with its session', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
-    // stopped at a prompt its folder's trust does not answer, as a project's MCP server or bypass mode asks, and silent until answered
+    // stopped at a prompt its folder's trust does not answer, as a project's MCP server asks, and silent until answered
     d.crew.silent.add('c_bo');
 
     const { r, at } = await activateBy(d);
 
-    // ten seconds of Claude in its pane, and not the minute a SessionStart had
-    expect(at).toBeGreaterThanOrEqual(10_000);
-    expect(at).toBeLessThanOrEqual(11_000);
+    expect(at).toBeGreaterThanOrEqual(60_000);
     const bo = r.characters.find((c) => c.id === 'c_bo')!;
-    expect(bo).toEqual({ id: 'c_bo', ok: true, notice: "claude has not started its session in bo's terminal and may be waiting at a prompt there; answer it there" });
-    expect(d.crew.log).not.toContain('kill c_bo');
-    expect(s.store.state.characters.c_bo.tmux?.paneId).toBe(d.crew.window('c_bo')!.paneId);
-    expect(d.crew.carried('c_bo')).toBe(true);
-    d.crew.started('c_bo', undefined, SID);
-    await settle();
+    expect(bo).toMatchObject({ ok: false, error: `bo's terminal resumed claude session ${SID}, but claude did not start that session within 60 s and may be waiting at a prompt there, so it is dormant again with that session; revive it to see` });
+    expect(d.crew.log).toContain('kill c_bo');
+    expect(s.store.state.characters.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: bo.error });
+    expect(s.store.state.characters.c_bo.tmux).toBeUndefined();
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
-  it('counts a resumed Claude in a folder this machine trusts up by a SessionStart that comes inside those ten seconds, with no notice', async () => {
+  it('fails a resume whose agent starts a session under another id, and lays it dormant with the session it carries', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_bo');
+    const NEW = '99999999-9999-4999-8999-999999999999';
+    const run = d.handover.activate({ transactionId: TX, generation: 5 });
+    await waitFor(() => !!d.crew.window('c_bo'));
+    // the fleet takes the new session into the terminal before it says which session started
+    s.store.update((st) => { st.characters.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    d.crew.started('c_bo', undefined, NEW);
+    let done = false;
+    void run.finally(() => { done = true; });
+    for (let i = 0; i < 4 && !done; i++) await d.clock.advance(500);
+    expect(done).toBe(true);
+    const bo = (await run).characters.find((c) => c.id === 'c_bo')!;
+    expect(bo).toMatchObject({ ok: false, error: `bo's terminal resumed claude session ${SID}, but claude started a new session (${NEW}) in its place, so it is dormant again with ${SID}; revive it to see` });
+    expect(d.crew.log).toContain('kill c_bo');
+    expect(s.store.state.characters.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: bo.error });
+  });
+
+  it("counts a resumed Claude up at its Bypass Permissions warning where this machine's Claude has not accepted bypass mode, keeps its window and says which answer goes on", async () => {
+    const bo = `claude --dangerously-skip-permissions --resume ${SID}`;
+    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const d = daemon(s);
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    d.crew.silent.add('c_bo');
+
+    const { r, at } = await activateBy(d);
+
+    expect(at).toBeLessThanOrEqual(5000);
+    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true, notice: 'claude waits at its Bypass Permissions warning in bo\'s terminal; choose "Yes, I accept" there' });
+    expect(d.crew.log).not.toContain('kill c_bo');
+    expect(d.crew.carried('c_bo')).toBe(true);
+
+    // "No, exit", which that warning preselects
+    d.crew.window('c_bo')!.command = 'bash';
+    await d.clock.advance(5000);
+    expect(s.store.state.characters.c_bo).toMatchObject({
+      agent: { sessionId: SID }, revive: { command: bo },
+      resumeError: expect.stringMatching(/before that session started, .*; revive it and choose "Yes, I accept" at its Bypass Permissions warning$/),
+    });
+  });
+
+  it('counts a resumed Claude in a folder this machine trusts up by its SessionStart, with no notice', async () => {
     const { d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
     d.crew.silent.add('c_bo');
@@ -1532,6 +1594,42 @@ describe('destination activate', () => {
     await d.clock.advance(500);
     const r = await run;
     expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
+  });
+
+  async function opencodeAt() {
+    const s = await scene({ opencode: true });
+    const d = daemon(s, { cli: cliRunner(s.oc.trift) });
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    d.crew.silent.add('c_eve');
+    return { s, d };
+  }
+  const dormantEve = (s: Awaited<ReturnType<typeof opencodeAt>>['s'], error: string) => {
+    expect(s.store.state.characters.c_eve).toMatchObject({ agent: { sessionId: OC }, revive: { command: `opencode -s ${OC}` }, resumeError: error });
+    expect(s.store.state.characters.c_eve.tmux).toBeUndefined();
+  };
+
+  it('fails a resumed OpenCode that starts no session within the minute, and lays it dormant with its session', async () => {
+    const { s, d } = await opencodeAt();
+    const { r, at } = await activateBy(d);
+    expect(at).toBeGreaterThanOrEqual(60_000);
+    const eve = r.characters.find((c) => c.id === 'c_eve')!;
+    expect(eve).toMatchObject({ ok: false, error: `eve's terminal resumed opencode session ${OC}, but opencode did not start that session within 60 s and may be waiting at a prompt there, so it is dormant again with that session; revive it to see` });
+    dormantEve(s, eve.error!);
+  });
+
+  it('fails a resumed OpenCode that starts a session under another id, and lays it dormant with the session it carries', async () => {
+    const { s, d } = await opencodeAt();
+    const NEW = 'ses_9f9f9f9f9f9fZzZzZzZzZzZzZz';
+    const run = d.handover.activate({ transactionId: TX, generation: 5 });
+    await waitFor(() => !!d.crew.window('c_eve'));
+    s.store.update((st) => { st.characters.c_eve.agent = { kind: 'opencode', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    d.crew.started('c_eve', undefined, NEW);
+    let done = false;
+    void run.finally(() => { done = true; });
+    for (let i = 0; i < 4 && !done; i++) await d.clock.advance(500);
+    const eve = (await run).characters.find((c) => c.id === 'c_eve')!;
+    expect(eve).toMatchObject({ ok: false, error: `eve's terminal resumed opencode session ${OC}, but opencode started a new session (${NEW}) in its place, so it is dormant again with ${OC}; revive it to see` });
+    dormantEve(s, eve.error!);
   });
 
   it("keeps watching a Claude counted up at its trust prompt, and lays it dormant again with its carried resume and an error once it exits there", async () => {
@@ -1564,12 +1662,39 @@ describe('destination activate', () => {
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
+  it('lays a Claude watched at its trust prompt dormant again with its carried session once it starts a session under another id', async () => {
+    const bo = `claude --effort 'high' --resume ${SID}`;
+    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const d = daemon(s);
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    d.crew.silent.add('c_bo');
+    const NEW = '99999999-9999-4999-8999-999999999999';
+
+    const { r } = await activateBy(d);
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    // answered, it starts another session, which the fleet takes into the terminal
+    s.store.update((st) => { st.characters.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    d.crew.started('c_bo', undefined, NEW);
+    await d.clock.advance(5000);
+
+    expect(d.crew.log).toContain('kill c_bo');
+    const c = s.store.state.characters.c_bo;
+    expect(c).toMatchObject({
+      agent: { sessionId: SID }, revive: { command: bo },
+      resumeError: `bo's terminal resumed claude session ${SID}, but claude started a new session (${NEW}) in its place, so it is dormant again with ${SID}; revive it to see`,
+    });
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
+    expect(d.crew.carried('c_bo')).toBe(false);
+  });
+
   it('looks at a Claude waiting at its trust prompt less and less often, down to once a minute, and leaves it to the fleet once the handover completes', async () => {
-    const { d, preparedDigest } = await prepared();
+    const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
     d.crew.silent.add('c_bo');
     const { r } = await activateBy(d);
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/may be waiting at a prompt/) });
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt/) });
     let looks = 0;
     const list = d.crew.tmux.listWindows;
     d.crew.tmux.listWindows = (signal) => { looks++; return list(signal); };
@@ -1588,8 +1713,9 @@ describe('destination activate', () => {
   });
 
   it('stops watching a Claude at its trust prompt after an hour while the handover stays open', async () => {
-    const { d, preparedDigest } = await prepared();
+    const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
     d.crew.silent.add('c_bo');
     await activateBy(d);
     for (let t = 0; t < 59; t++) await d.clock.advance(60_000);

@@ -37,8 +37,10 @@ if (args.includes('--help')) {
   process.stdout.write('opencode session import [file]\n\n  --standalone  run a private server\n  --directory   the directory the session belongs to\n');
   process.exit(0);
 }
+// a provider's key from the environment, as `auth list` prints it and as its --format json lists it
 if (args[0] === 'auth') {
-  process.stdout.write('0 credentials\n');
+  const listed = [{ id: 'opencode', name: 'OpenCode Zen', connections: [{ type: 'env', name: 'OPENCODE_API_KEY' }] }];
+  process.stdout.write(args.includes('json') ? `${JSON.stringify(listed)}\n` : 'OpenCode Zen  OPENCODE_API_KEY             environment\n');
   process.exit(0);
 }
 // the private server lives as long as the TUI that holds its stdin

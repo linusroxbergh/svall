@@ -6,9 +6,10 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
   FleetState, Generation, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
-  type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
+  type Agent, type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
   type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
+import { readComposer } from '../agent/composer.js';
 import { NodeFile, mergeConfig, namedGateway, type Config } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
@@ -46,7 +47,7 @@ export type DestinationDeps = {
   config: Config;
   store: Pick<Store, 'state' | 'update' | 'promote' | 'reload'>;
   fleet: Pick<Fleet, 'activate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveCharacter' | 'openSecond' | 'onSessionStart' | 'carries'>;
-  tmux: Pick<Tmux, 'sendLine' | 'listWindows' | 'killWindow' | 'capture'>;
+  tmux: Pick<Tmux, 'sendLine' | 'listWindows' | 'killWindow' | 'capture' | 'screen'>;
   /** This machine's processes, which say what holds a pane an activation finds open. */
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
   /** How to ask the gateway fleet.json names at the time of the call. A fleet no gateway holds cannot be handed to this machine. */
@@ -138,19 +139,21 @@ type Activation = NonNullable<DestinationJournal['activation']>[number];
 type CharacterResult = Result<'handover.activate'>['characters'][number];
 /** What holds a terminal's pane: nothing once its window has gone, its shell at the prompt, its own agent, or another program, perhaps one ctrl+z stopped. */
 type Look = { held: 'gone' | 'shell' | 'agent' } | { held: 'other'; job: string; suspended?: true };
-/** How a resumed agent came up: its SessionStart came, it has run in its pane without one, or why neither happened. */
-type Up = 'started' | 'running' | { failed: string };
-/** The session a terminal resumes, and the command that resumes it again. */
-type Carried = { revive: { command: string }; sessionId: string };
+/**
+ * How a resumed agent came up: its SessionStart came, its pane shows its prompt, it has run in its pane without
+ * either, or why none of that happened, with the session it started in place of its own.
+ */
+type Up = 'started' | 'ready' | 'running' | { failed: string; other?: string };
+/** The agent a terminal resumes, and the command that resumes it again. */
+type Carried = { revive: { command: string }; agent: Agent };
 
 const SESSION_START_MS = 60_000;
 const CONCURRENCY = 4;
 // how long one look at a pane, through tmux and ps, may take
 const LOOK_MS = 10_000;
-// how long an agent must hold its pane without a SessionStart to count as up, and how often the pane is looked at; one
-// that reports its SessionStart as it resumes, in a folder its CLI trusts, is given QUIET_MS, well past the ~2 s that takes
+// how long an agent at a prompt, or one that reports no SessionStart until its first turn and whose prompt line does not
+// show, must hold its pane to count as up, and how often the pane is looked at
 const SETTLE_MS = 3000;
-const QUIET_MS = 10_000;
 const LOOK_EVERY_MS = 500;
 // how often a terminal counted up at a prompt is looked at until its session starts: at first, at most, and for how long
 const WATCH_FIRST_MS = 2000;
@@ -817,7 +820,7 @@ export class DestinationHandover {
     const which = s.term === 2 ? `${c.name}'s second terminal` : `${c.name}'s terminal`;
     const agent = reviveCommand(slot) ? slot.agent : undefined;
     // laying it dormant again builds its resume afresh, without the launch flags it carries, which are put back
-    const carried: Carried | undefined = agent && slot.revive ? { revive: slot.revive, sessionId: agent.sessionId } : undefined;
+    const carried: Carried | undefined = agent && slot.revive ? { revive: slot.revive, agent: structuredClone(agent) } : undefined;
     let held = slot.tmux ? (await this.holding(slot)).held : undefined;
     if (held === 'gone' || (held === 'shell' && agent)) {
       await this.lay(s, carried);
@@ -840,35 +843,38 @@ export class DestinationHandover {
         entry = { ...s, ok: true };
       } else {
         const { adapter } = await this.cli(agent.kind);
-        // an agent asks whether to trust its folder before any hook runs, so one that asks reports nothing until answered
+        // an agent asks whether to trust its folder, or warns of bypass mode, before any hook runs, so one that asks reports nothing until answered
         const folder: ResumeFolder = { kind: agent.kind, ...resumeFolder(c, s.term, expandHome) };
         const trusted = await this.trusted(folder);
+        const bypass = trusted && !!adapter.asksBypass?.(slot.revive?.command ?? '') && !(await this.bypassAccepted(folder));
+        const asks = !trusted || bypass;
         let up: Up = 'running';
-        // one that reports its SessionStart as it resumes, yet holds its pane silent well past that, is at some other prompt
-        let quiet = false;
         if (held !== 'agent') {
           // only a window left open can have started before this wait
           if (!held) this.heard.delete(keyOf(s));
           started = this.waitStart(s, agent.sessionId);
           if (!held) await this.openSlot(s);
-          const reports = adapter.sessionStartOnResume && trusted;
-          up = await this.settles(s, agent.kind, started, reports ? QUIET_MS : SETTLE_MS);
+          // one that reports its SessionStart as it resumes has the whole wait for it; one that reports none until its
+          // first turn is up once its prompt line shows
+          const reports = adapter.sessionStartOnResume && !asks;
+          up = await this.settles(s, agent, started, reports ? Infinity : SETTLE_MS, !adapter.sessionStartOnResume && !asks);
           started.cancel();
-          quiet = reports && up === 'running';
         }
         if (typeof up === 'object') {
-          await this.lay(s, carried);
-          entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with that session; revive it to see` };
+          await this.lay(s, carried, up.other !== undefined);
+          entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with ${up.other ? agent.sessionId : 'that session'}; revive it to see` };
         } else {
           const answer = adapter.trustAnswer ? `choose "${adapter.trustAnswer}"` : 'answer it';
-          const prompt = up === 'running' && !trusted;
-          const notice = prompt ? `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer} there`
-            : quiet ? `${agent.kind} has not started its session in ${which} and may be waiting at a prompt there; answer it there` : undefined;
-          if (prompt) {
+          const waits = up === 'running' && held !== 'agent';
+          const notice = up === 'running' && !trusted ? `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer} there`
+            : up === 'running' && bypass ? `${agent.kind} waits at its Bypass Permissions warning in ${which}; choose "Yes, I accept" there`
+              : waits && !adapter.sessionStartOnResume ? `${agent.kind} has held ${which} for ${SETTLE_MS / 1000} s without showing its prompt, so it is counted up on that alone; look there` : undefined;
+          if (up === 'running' && !trusted) {
             unanswered = `revive it and ${adapter.trustAnswer ? answer : 'trust its folder'} at its "Trust this folder?" prompt`;
             asked = folder;
+          } else if (up === 'running' && bypass) {
+            unanswered = 'revive it and choose "Yes, I accept" at its Bypass Permissions warning';
           }
-          if (quiet) unanswered = 'revive it to see';
           entry = { ...s, ok: true, sessionId: agent.sessionId, ...(notice && { notice }) };
         }
       }
@@ -889,7 +895,8 @@ export class DestinationHandover {
    * Watches a terminal counted up at a prompt until its session starts, or, for an agent that starts none until its
    * first turn, until the folder it was `asked` to trust is trusted, the fleet leaving what it carries alone meanwhile.
    * One whose agent leaves the pane first is left dormant with that session and an error saying `then`, or, once that
-   * folder is trusted and so the agent left at some later prompt, saying to answer that one. It looks less often as it
+   * folder is trusted and so the agent left at some later prompt, saying to answer that one; one that starts a session
+   * under another id is left dormant with the session it carries. It looks less often as it
    * goes, and leaves the terminal to the fleet once the handover completes or an hour has passed.
    */
   private async watch(
@@ -911,6 +918,14 @@ export class DestinationHandover {
         const slot = s.term === 2 ? c?.second : c;
         // a later handover's rest answers for it from then on
         if (heard || slot?.restedBy !== tx || !this.open(tx) || this.clock.now() >= until) return;
+        const other = slot.agent && slot.agent.sessionId !== agent.sessionId ? slot.agent.sessionId : undefined;
+        if (other) {
+          await this.lay(s, carried, true);
+          const error = `${which} resumed ${agent.kind} session ${agent.sessionId}, but ${agent.kind} started a new session (${other}) in its place, so it is dormant again with ${agent.sessionId}; revive it to see`;
+          this.d.log.error(`handover ${tx}: ${error}`);
+          this.recordSlot(tx, { ...s, ok: false, sessionId: agent.sessionId, error });
+          return;
+        }
         const answered = !!asked && (!adapter.trusts || (!!home && adapter.trusts(home, asked)));
         if (answered && !adapter.sessionStartOnResume) return;
         let look: Look;
@@ -947,10 +962,12 @@ export class DestinationHandover {
   }
 
   /**
-   * How a resumed agent comes up: started once its SessionStart comes, running once its pane has held that agent for
-   * `settleMs` on end without one, and otherwise what its pane showed instead.
+   * How a resumed agent comes up: started once its SessionStart comes, ready once its pane shows its empty prompt line
+   * where `prompt` says to look, running once its pane has held that agent for `settleMs` on end without either, and
+   * otherwise what its pane showed instead, or the session it started in place of its own.
    */
-  private async settles(s: Slot, kind: AgentKind, started: { done: Promise<boolean> }, settleMs: number): Promise<Up> {
+  private async settles(s: Slot, agent: { kind: AgentKind; sessionId: string }, started: { done: Promise<boolean> }, settleMs: number, prompt: boolean): Promise<Up> {
+    const { kind } = agent;
     const waitMs = this.d.sessionStartMs ?? SESSION_START_MS;
     const end = this.clock.now() + waitMs;
     let heard = false;
@@ -965,11 +982,16 @@ export class DestinationHandover {
       let look: Look | undefined;
       try { look = slot?.tmux ? await this.holding(slot) : { held: 'gone' }; } catch (e) { seen = `its pane could not be read (${(e as Error).message})`; }
       if (heard) return 'started';
+      // the fleet takes a session its pane starts under another id into the terminal
+      const other = slot?.agent && slot.agent.sessionId !== agent.sessionId ? slot.agent.sessionId : undefined;
+      if (other) return { failed: `but ${kind} started a new session (${other}) in its place`, other };
       const now = this.clock.now();
       if (look?.held === 'agent') {
         since ??= now;
         ran = true;
+        if (prompt && slot?.tmux && await this.prompted(slot.tmux.paneId, kind)) return 'ready';
         if (now - since >= settleMs) return 'running';
+        if (now >= end) return { failed: `but ${kind} did not start that session within ${Math.round(waitMs / 1000)} s and may be waiting at a prompt there` };
       } else {
         since = undefined;
         if (look?.held === 'gone') return { failed: `but its window closed${ran ? '' : ` before ${kind} came up`}` };
@@ -984,19 +1006,25 @@ export class DestinationHandover {
     }
   }
 
-  /** Leaves a terminal dormant with the agent and resume command it carries, its window closed. */
-  private async lay(s: Slot, carried?: Carried): Promise<void> {
+  /** Leaves a terminal dormant with the agent and resume command it carries, its window closed; `restore` puts that agent back in place of another session. */
+  private async lay(s: Slot, carried?: Carried, restore = false): Promise<void> {
     this.heard.delete(keyOf(s));
     const c = this.d.store.state.characters[s.characterId];
     const windowId = (s.term === 2 ? c?.second : c)?.tmux?.windowId;
     // dormant first, so the fleet hears the window close for a terminal that no longer holds it
     this.d.store.update((d) => {
       const cur = d.characters[s.characterId];
-      if (s.term !== 2) { if (cur) { markDormant(cur); delete cur.revive?.interrupted; } } else if (cur?.second) markSlotDormant(cur.second);
       const slot = s.term === 2 ? cur?.second : cur;
-      if (slot && carried && slot.agent?.sessionId === carried.sessionId) slot.revive = { ...carried.revive };
+      if (restore && slot && carried) slot.agent = structuredClone(carried.agent);
+      if (s.term !== 2) { if (cur) { markDormant(cur); delete cur.revive?.interrupted; } } else if (cur?.second) markSlotDormant(cur.second);
+      if (slot && carried && slot.agent?.sessionId === carried.agent.sessionId) slot.revive = { ...carried.revive };
     });
     if (windowId) await boundary('destination.activate.kill', () => this.d.tmux.killWindow(windowId));
+  }
+
+  // whether a pane shows its agent's empty prompt line; a screen that cannot be read shows none
+  private prompted(paneId: string, kind: AgentKind): Promise<boolean> {
+    return this.d.tmux.screen(paneId).then((sc) => readComposer(kind, sc) === 'empty', () => false);
   }
 
   // whether the notice already shows on a pane's screen, typed or run; a screen that cannot be read shows nothing

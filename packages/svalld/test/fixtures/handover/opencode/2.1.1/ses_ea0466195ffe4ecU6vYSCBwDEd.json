@@ -1,0 +1,341 @@
+{
+  "info": {
+    "id": "ses_ea0466195ffe4ecU6vYSCBwDEd",
+    "projectID": "e717f83cd5efed0ba4eb546c9d1491f97a6f07e5",
+    "model": {
+      "id": "openai/gpt-6-luna",
+      "providerID": "vercel",
+      "variant": "default"
+    },
+    "cost": 0.002357525,
+    "tokens": {
+      "input": 2713,
+      "output": 297,
+      "reasoning": 182,
+      "cache": {
+        "read": 31510,
+        "write": 12253
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1792607362682,
+      "updated": 1792607372560,
+      "idle": 1792607372563
+    },
+    "title": "Updating alpha to beta in notes.txt (MARBLE-oc)",
+    "location": {
+      "directory": "/Users/source/work/demo"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_15fb99f4d001XI0m3Odu0Q1Xxx",
+      "time": {
+        "created": 1792607363132
+      },
+      "text": "\"Remember the code word MARBLE-oc. Run pwd, then change the word alpha in notes.txt to beta. Answer in one short line.\"",
+      "files": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_15fb9a048001jx6ZC6PDSHacsc",
+      "time": {
+        "created": 1792607363158,
+        "streamed": 1792607366107,
+        "completed": 1792607366113
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "openai/gpt-6-luna",
+        "providerID": "vercel",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "",
+          "native": {
+            "itemId": "rs_0252eb1801fd879d016ad90485e36c87d2a94ad83dbdd05eb8",
+            "reasoningEncryptedContent": "synthetic-reasoningEncryptedContent"
+          },
+          "time": {
+            "created": 1792607366069,
+            "completed": 1792607366072
+          }
+        },
+        {
+          "type": "tool",
+          "id": "call_OWCxIA8HvLgzZesNqyhfoclb",
+          "name": "shell",
+          "executed": false,
+          "native": {
+            "itemId": "fc_1792607365982_0x6xlwo9d0l"
+          },
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "pwd",
+              "workdir": "/Users/source/work/demo",
+              "timeout": 120000,
+              "background": false
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "/Users/source/work/demo\n"
+              }
+            ],
+            "metadata": {
+              "status": "completed",
+              "truncated": false,
+              "exit": 0
+            }
+          },
+          "time": {
+            "created": 1792607366075,
+            "ran": 1792607366082,
+            "completed": 1792607366111
+          }
+        }
+      ],
+      "finish": "tool-calls",
+      "native": {
+        "responseId": "gen_01M5FVK86GG8ERBJT20BNMK5XV",
+        "serviceTier": "default"
+      },
+      "cost": 0.0012818,
+      "tokens": {
+        "input": 3,
+        "output": 83,
+        "reasoning": 88,
+        "cache": {
+          "read": 0,
+          "write": 9568
+        }
+      }
+    },
+    {
+      "id": "msg_15fb9abed001t4FGHSvvBm5KHA",
+      "metadata": {
+        "notice": "instructions",
+        "instructionSources": [
+          "core/codemode",
+          "core/mcp-guidance"
+        ]
+      },
+      "time": {
+        "created": 1792607366125
+      },
+      "type": "system",
+      "text": "The Code Mode tool catalog has changed. This catalog supersedes the previous Code Mode tool catalog.\n\n# Code Mode\n\nUse the `execute` tool to call the tools listed below. They cannot be called directly [synthetic: 8871 characters left out]",
+      "description": "Instructions updated: core/codemode, core/mcp-guidance"
+    },
+    {
+      "id": "msg_15fb9abf2001aLDfmEJIO36ExO",
+      "time": {
+        "created": 1792607366137,
+        "streamed": 1792607368208,
+        "completed": 1792607368212
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "openai/gpt-6-luna",
+        "providerID": "vercel",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "",
+          "native": {
+            "itemId": "rs_0be192476932cb47016ad90487e99c87d29b139355a71f8774",
+            "reasoningEncryptedContent": "synthetic-reasoningEncryptedContent"
+          },
+          "time": {
+            "created": 1792607368063,
+            "completed": 1792607368199
+          }
+        },
+        {
+          "type": "tool",
+          "id": "call_5kNsraDu1jz2Omhed5kFHU6o",
+          "name": "read",
+          "executed": false,
+          "native": {
+            "itemId": "fc_1792607368163_sgmsnu7apm"
+          },
+          "state": {
+            "status": "completed",
+            "input": {
+              "path": "/Users/source/work/demo/notes.txt",
+              "offset": 0,
+              "limit": 100
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Read file /Users/source/work/demo/notes.txt, lines 1-1\n1: alpha"
+              }
+            ],
+            "metadata": {
+              "truncated": false
+            }
+          },
+          "time": {
+            "created": 1792607368201,
+            "ran": 1792607368204,
+            "completed": 1792607368210
+          }
+        }
+      ],
+      "finish": "tool-calls",
+      "native": {
+        "responseId": "gen_01M5FVKB1WQTBH9QDCG4FD2ME9",
+        "serviceTier": "default"
+      },
+      "cost": 0.00039518,
+      "tokens": {
+        "input": 2160,
+        "output": 80,
+        "reasoning": 29,
+        "cache": {
+          "read": 9568,
+          "write": 232
+        }
+      }
+    },
+    {
+      "id": "msg_15fb9b41b001lUqOlCZdjKMwQD",
+      "time": {
+        "created": 1792607368225,
+        "streamed": 1792607370435,
+        "completed": 1792607370437
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "openai/gpt-6-luna",
+        "providerID": "vercel",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "tool",
+          "id": "call_2QkdtyF4x7mMmO9EGwh7BFB7",
+          "name": "patch",
+          "executed": false,
+          "native": {
+            "itemId": "fc_1792607370132_84vzk6wwb5a"
+          },
+          "state": {
+            "status": "completed",
+            "input": {
+              "patchText": "*** Begin Patch\n*** Update File: /Users/source/work/demo/notes.txt\n@@\n-alpha\n+beta\n*** End Patch"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Success. Updated the following files:\nM notes.txt"
+              }
+            ],
+            "metadata": {
+              "files": [
+                {
+                  "file": "notes.txt",
+                  "patch": "Index: /Users/source/work/demo/notes.txt\n===================================================================\n--- /Users/source/work/demo/notes.txt\n+++ /Users/source/work/demo/notes.txt\n@@ -1,1 +1,1 @@\n-alpha\n+beta\n",
+                  "status": "modified",
+                  "additions": 1,
+                  "deletions": 1
+                }
+              ],
+              "truncated": false
+            }
+          },
+          "time": {
+            "created": 1792607370213,
+            "ran": 1792607370217,
+            "completed": 1792607370223
+          }
+        }
+      ],
+      "finish": "tool-calls",
+      "native": {
+        "responseId": "gen_01M5FVKD9YBNT51DWRJKXTWTTD",
+        "serviceTier": "default"
+      },
+      "cost": 0.00043655,
+      "tokens": {
+        "input": 3,
+        "output": 91,
+        "reasoning": 0,
+        "cache": {
+          "read": 9800,
+          "write": 2342
+        }
+      }
+    },
+    {
+      "id": "msg_15fb9bccb001C7pW15A4wZyj1z",
+      "time": {
+        "created": 1792607370447,
+        "streamed": 1792607372558,
+        "completed": 1792607372560
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "openai/gpt-6-luna",
+        "providerID": "vercel",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "",
+          "native": {
+            "itemId": "rs_06267dd6dbb3d209016ad9048c52c087d29f4fb779208bd84c",
+            "reasoningEncryptedContent": "synthetic-reasoningEncryptedContent"
+          },
+          "time": {
+            "created": 1792607372503,
+            "completed": 1792607372505
+          }
+        },
+        {
+          "type": "text",
+          "text": "Ran `pwd`, changed `notes.txt` from alpha to beta, and noted the code word.",
+          "native": {
+            "itemId": "msg_1792607372429_u1gqir0pgm",
+            "phase": "final_answer"
+          }
+        }
+      ],
+      "finish": "stop",
+      "native": {
+        "responseId": "gen_01M5FVKF94H8Y64BZ2K9FC40NY",
+        "serviceTier": "default"
+      },
+      "cost": 0.000181095,
+      "tokens": {
+        "input": 3,
+        "output": 26,
+        "reasoning": 65,
+        "cache": {
+          "read": 12142,
+          "write": 111
+        }
+      }
+    },
+    {
+      "id": "msg_15fb9c51300168SRdmut5Yo4Ls",
+      "time": {
+        "created": 1792607372563
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

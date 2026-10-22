@@ -199,6 +199,8 @@ export const methods = {
   'char.close': { params: Id, result: z.object({}) },
   'char.sleep': { params: Id, result: z.object({}) },
   'char.revive': { params: Id, result: Character },
+  // starts a dormant terminal's agent in a new session, its first prompt a summary of the one it could not resume
+  'char.fresh': { params: Id.extend({ term: Term }), result: Character },
   'char.seen': { params: Id.extend({ term: Term }), result: Character },
   // starts the character's second terminal when it has none
   'char.second': { params: Id, result: Character },

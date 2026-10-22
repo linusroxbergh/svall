@@ -1,7 +1,9 @@
+import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Character } from '@svall/protocol';
 import type { Client } from '../src/client.js';
 import { agentFor, charCommands, termOf } from '../src/commands/char.js';
+import { statusCommand } from '../src/commands/status.js';
 import { contextOf, stateOf } from '../src/render.js';
 
 const base: Character = {
@@ -150,5 +152,76 @@ describe('Keep on this machine', () => {
     expect(list).not.toMatch(/bo \(kept here\)/);
     expect(await svall(d.connect, 'show', 'ada')).toMatch(/^ada is kept on this machine, so a handover is blocked until that is cleared\n/);
     expect(await svall(d.connect, 'show', 'bo')).toBe('the brief\n');
+  });
+});
+
+describe('a resume that failed', () => {
+  const error = "ada's terminal resumed claude session s, but claude exited back to its shell, so it is dormant again with that session; revive it to see";
+  const dormant = { tmux: undefined, revive: { command: 'claude --resume s' } };
+  const ada: Character = { ...base, id: 'c_ada', name: 'ada', agent: agent('idle'), ...dormant, resumeError: error };
+  const bo: Character = { ...base, id: 'c_bo', name: 'bo', second: { cwd: '/r', unread: false, agent: agent('idle'), revive: { command: 'claude --resume s' }, resumeError: 'gone' } };
+  // a terminal open again keeps no failure worth naming
+  const cy: Character = { ...base, id: 'c_cy', name: 'cy', resumeError: 'stale' };
+  const client = {
+    via: 'trift',
+    call: async (method: string) => (method === 'state.get' ? { characters: { c_ada: ada, c_bo: bo, c_cy: cy }, islands: { i_1: { id: 'i_1', name: 'home' } } } : {}),
+    close: () => undefined,
+  } as unknown as Client;
+
+  async function print(command: Command, ...argv: string[]): Promise<string> {
+    const out: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out.push(String(s)); return true; });
+    try {
+      await command.parseAsync(argv, { from: 'user' });
+    } finally {
+      spy.mockRestore();
+    }
+    return out.join('');
+  }
+
+  it('is named under svall status and char list, for each dormant terminal that holds one', async () => {
+    const lines = [`ada: resume failed: ${error}`, 'bo (second terminal): resume failed: gone'];
+    for (const out of [await print(statusCommand(async () => client, () => false, () => '/h')), await print(charCommands(async () => client, () => false), 'list')]) {
+      expect(out.trimEnd().split('\n').slice(-2)).toEqual(lines);
+      expect(out).not.toMatch(/stale/);
+    }
+  });
+});
+
+describe('char revive', () => {
+  const ada: Character = { ...base, id: 'c_ada', name: 'ada', tmux: undefined };
+  function daemon(held = ada) {
+    const calls: [string, Record<string, unknown>][] = [];
+    const client = {
+      call: async (method: string, params: Record<string, unknown>) => {
+        if (method === 'state.get') return { characters: { c_ada: held }, islands: { i_1: { id: 'i_1', name: 'home' } } };
+        calls.push([method, params]);
+        return ada;
+      },
+      close: () => undefined,
+    };
+    return { calls, connect: async () => client as unknown as Client };
+  }
+  const run = async (d: ReturnType<typeof daemon>, ...argv: string[]) => {
+    let out = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
+    try { await charCommands(d.connect, () => false).parseAsync(['revive', 'ada', ...argv], { from: 'user' }); } finally { spy.mockRestore(); }
+    return out;
+  };
+
+  it('resumes the session, or with --fresh starts a new one from a summary of it, in either terminal', async () => {
+    const d = daemon();
+    await run(d);
+    await run(d, '--fresh');
+    await run(d, '--fresh', '--term', '2');
+    expect(d.calls).toEqual([['char.revive', { id: 'c_ada' }], ['char.fresh', { id: 'c_ada' }], ['char.fresh', { id: 'c_ada', term: 2 }]]);
+    await expect(run(d, '--term', '2')).rejects.toThrow(/--term goes with --fresh/);
+  });
+
+  it('says where the old session stays once a fresh one has started', async () => {
+    const old = { kind: 'codex' as const, sessionId: 'old-1', transcriptPath: '/h/.codex/sessions/r.jsonl', status: 'idle' as const, lastActivityAt: 0 };
+    const d = daemon({ ...ada, agent: old, second: { cwd: '/r', unread: false, agent: { ...old, kind: 'opencode', sessionId: 'ses_old' } } });
+    expect(await run(d, '--fresh')).toBe('c_ada dormant; old session old-1 kept at /h/.codex/sessions/r.jsonl\n');
+    expect(await run(d, '--fresh', '--term', '2')).toBe('c_ada dormant; old session ses_old kept in OpenCode\n');
   });
 });

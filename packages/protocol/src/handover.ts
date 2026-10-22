@@ -141,7 +141,7 @@ export const HandoverIssueCode = z.enum([
   'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
-  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
+  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'codex_sandbox', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
   'too_many_files', 'repository_unused', 'linger_off',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
@@ -364,12 +364,13 @@ export const OwnershipInfo = z.object({
 export type OwnershipInfo = z.infer<typeof OwnershipInfo>;
 
 /**
- * An installed agent CLI, the session adapter that reads its files, where it keeps them, and whether it is
- * logged in with Svall's hooks in. A missing `version` is a CLI that is not installed.
+ * An installed agent CLI, the session adapter that reads its files, where it keeps them, whether it is logged in
+ * with Svall's hooks in, and why it cannot sandbox the commands its agent runs, with the fix. A missing `version`
+ * is a CLI that is not installed.
  */
 export const AgentAdapter = z.object({
   kind: AgentKind, version: z.string().optional(), adapter: z.number().int().nonnegative(), home: z.string().optional(),
-  loggedIn: z.boolean().optional(), hooks: z.boolean().optional(),
+  loggedIn: z.boolean().optional(), hooks: z.boolean().optional(), sandbox: z.string().optional(),
 });
 export type AgentAdapter = z.infer<typeof AgentAdapter>;
 

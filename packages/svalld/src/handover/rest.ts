@@ -399,19 +399,26 @@ async function layToRest(
   }));
   for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
   const byKey = new Map(tracks.map((t) => [t.key, t]));
-  const { transactionId, stoppedTerminals } = sourceJournal(deps.journal);
+  const { transactionId, stoppedTerminals, terminated } = sourceJournal(deps.journal);
   const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
+  const ended = new Set(terminated.map(keyOf));
   // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since; one whose
   // window a rest that died closed has no track, and keeps the launch flags that rest recorded
   const lay = (d: FleetState, t: TerminalRef, closed = false) => {
     const c = d.characters[t.characterId];
     const slot = c && (t.term === 2 ? c.second : c);
     if (!c || !slot?.tmux) return;
-    const { agent, flags } = byKey.get(keyOf(t)) ?? { agent: undefined, flags: stopped.get(keyOf(t))?.flags };
+    const track = byKey.get(keyOf(t));
+    const { agent, flags } = track ?? { agent: undefined, flags: stopped.get(keyOf(t))?.flags };
     if (agent) slot.agent = agent;
     if (closed) slot.restedBy = transactionId;
-    // a rest the handover chose is no crash: the agent resumes as the handover carries it, without the note on what was lost
-    if (t.term !== 2) { markDormant(c, flags); delete c.revive?.interrupted; return; }
+    // only a rest that interrupted or ended the agent cut short its turn and what it ran in the background, which its revive tells it
+    const cut = track?.interruptedAt !== undefined || track?.terminatedAt !== undefined || ended.has(keyOf(t));
+    if (t.term !== 2) {
+      markDormant(c, flags);
+      if (cut && c.revive?.command) c.revive.interrupted = true; else delete c.revive?.interrupted;
+      return;
+    }
     const path = current.get(keyOf(t))?.window.path;
     if (path) slot.cwd = path;
     markSlotDormant(slot, flags);

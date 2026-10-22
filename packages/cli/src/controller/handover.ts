@@ -6,6 +6,7 @@ import {
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
   type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
+import { compareVersions } from '@svall/svalld/agents';
 import { boundary } from '@svall/svalld/handover/failpoints';
 import { graphsHere } from '@svall/svalld/handover/git-import';
 import { canonicalDigest } from '@svall/svalld/handover/hash';
@@ -146,17 +147,21 @@ const transient = (e: unknown): boolean => {
   return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved || e instanceof NoRoute);
 };
 
-/** What differs between the machines in a way the fleet feels: an agent CLI at another release. */
+/**
+ * What differs between the machines in a way the fleet feels: an agent CLI at a newer release on the destination (an
+ * older one is the source's blocker), or one there that cannot sandbox the commands its agent runs.
+ */
 function differences(source: Side, a: SystemInfo, destination: Side, b: SystemInfo, m: TransferManifestV1): Warning[] {
   const kinds = new Set(Object.values(m.snapshot.characters).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]));
-  return a.agentAdapters.flatMap((x): Warning[] => {
+  const confined = b.agentAdapters.flatMap((y): Warning[] => (kinds.has(y.kind) && y.sandbox ? [{ code: 'codex_sandbox', message: `On ${destination.route.name}, ${y.sandbox}` }] : []));
+  return [...confined, ...a.agentAdapters.flatMap((x): Warning[] => {
     const y = b.agentAdapters.find((z) => z.kind === x.kind);
-    if (!kinds.has(x.kind) || !x.version || !y?.version || x.version === y.version) return [];
+    if (!kinds.has(x.kind) || !x.version || !y?.version || compareVersions(y.version, x.version) !== 1) return [];
     return [{
       code: 'config_difference',
-      message: `${x.kind} ${x.version} runs on ${source.route.name} and ${y.version} on ${destination.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
+      message: `${x.kind} on ${destination.route.name} runs ${y.version}, newer than ${x.version} on ${source.route.name}; each keeps its own login, settings, skills and MCP servers, which do not move with the fleet`,
     }];
-  });
+  })];
 }
 
 /** A Linux machine that will run `what` of the fleet, whose account stops its services at logout and starts them again only at a login. */

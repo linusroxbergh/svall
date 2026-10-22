@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, type AgentStatus } from '@svall/protocol';
+import { AgentKind, ApiError, keptSession, type AgentStatus } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
-import { contextOf, stateOf } from '../render.js';
+import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
 import { int, point } from './parse.js';
 import { charId, islandId, NoMatch } from './resolve.js';
@@ -30,11 +30,11 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
   cmd.command('list').description("list every robot, or one island's").option('--island <id>').action((o: { island?: string }) => withFleet(connect, async (_c, state) => {
     const island = o.island ? islandId(state, o.island) : undefined;
     const chars = Object.values(state.characters).filter((ch) => !island || ch.islandId === island);
-    printResult(chars, json(), () => table(chars.map((ch) => ({
+    printResult(chars, json(), () => [table(chars.map((ch) => ({
       id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.keepHere ? `${ch.name} (kept here)` : ch.name, state: stateOf(ch),
       ctx: contextOf(ch), branch: ch.repo?.branch ?? '', cwd: ch.cwd,
       cell: `${ch.cell.x},${ch.cell.y}`,
-    }))));
+    }))), ...chars.flatMap(resumeFailures)].join('\n'));
   }));
 
   cmd.command('new').description('make a robot: a terminal on an island')
@@ -138,15 +138,24 @@ Handing work to a new robot:
     printResult(r, json(), () => (ch.keepHere ? `${ch.name} is kept on this machine, so a handover is blocked until that is cleared\n${r.text}` : r.text));
   }));
 
-  for (const [name, method, what] of [
-    ['seen', 'char.seen', "mark a robot's last turn seen: done turns idle"],
-    ['revive', 'char.revive', "resume a dormant robot's session in a new terminal"],
-  ] as const) {
-    cmd.command(`${name} <id>`).description(what).action((id: string) => withFleet(connect, async (c, state) => {
-      const ch = await c.call(method, { id: charId(state, id) });
-      printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
-    }));
-  }
+  cmd.command('seen <id>').description("mark a robot's last turn seen: done turns idle").action((id: string) => withFleet(connect, async (c, state) => {
+    const ch = await c.call('char.seen', { id: charId(state, id) });
+    printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
+  }));
+
+  cmd.command('revive <id>').description("resume a dormant robot's session in a new terminal")
+    .option('--fresh', "start a new session instead, told what the one that could not resume held; that session's files stay")
+    .option('--term <n>', 'with --fresh, the terminal: 1 (default) or 2')
+    .action((id: string, o: { fresh?: boolean; term?: string }) => {
+      if (o.term !== undefined && !o.fresh) throw new Error('--term goes with --fresh');
+      const term = termOf(o.term);
+      return withFleet(connect, async (c, state) => {
+        const target = charId(state, id);
+        const old = (term === 2 ? state.characters[target]?.second : state.characters[target])?.agent;
+        const ch = o.fresh ? await c.call('char.fresh', { id: target, ...(term && { term }) }) : await c.call('char.revive', { id: target });
+        printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}${o.fresh && old ? `; ${keptSession(old)}` : ''}`);
+      });
+    });
 
   cmd.command('close <id>').description('delete a robot, its terminal and its docs').action((id: string) => withFleet(connect, async (c, state) => {
     await c.call('char.close', { id: charId(state, id) });

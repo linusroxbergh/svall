@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
-import { openSecondTerminal, reviveCharacter } from './actions.js';
+import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
+import { openSecondTerminal, reviveCharacter, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
 import { holdsTerminals } from './handover.js';
 import { useApp } from './hooks.js';
@@ -33,6 +33,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   // One whose window is lost while open, bar a close for idleness, or that fails to wake or to resume after a
   // handover, waits for the button
   const [held, setHeld] = useState(false);
+  const [asked, setAsked] = useState(false);
   const windowId = c?.tmux?.windowId;
   useEffect(() => {
     if (!windowId) return;
@@ -85,10 +86,22 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     // a second terminal with no record yet is still being opened; one with a record is dormant and waits for the button
     if (second && !c.second) return <div className="revive" data-testid="second-starting">Starting the terminal…</div>;
     if (second || held || failed) {
+      const old = failed ? (second ? c.second : c)?.agent : undefined;
       return (
         <div className="revive">
           {failed && <span data-testid="resume-error">{failed}</span>}
-          <button data-testid="revive" onClick={() => (second ? openSecondTerminal(deps(), id) : void reviveCharacter(deps(), id))}>Revive {c.name}</button>
+          {old && asked ? (
+            <>
+              <span data-testid="fresh-ask">Start a new {AGENT_LABEL[old.kind]} session here from a summary of {old.sessionId}? The old session stays where it is.</span>
+              <button data-testid="fresh-go" onClick={() => { setAsked(false); void startFresh(deps(), id, second); }}>Start fresh</button>
+              <button data-testid="fresh-cancel" onClick={() => setAsked(false)}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button data-testid="revive" onClick={() => (second ? openSecondTerminal(deps(), id) : void reviveCharacter(deps(), id))}>Revive {c.name}</button>
+              {old && <button data-testid="fresh" onClick={() => setAsked(true)}>Start fresh from summary</button>}
+            </>
+          )}
         </div>
       );
     }

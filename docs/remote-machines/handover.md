@@ -132,8 +132,11 @@ A handover carries Claude Code sessions from release 2.1.251 on, Codex sessions 
 from 2.0.22 on, with no upper limit: a Claude or Codex session's files are copied byte for byte to the same place on
 the other machine, so a newer release works as long as it keeps its sessions where it did. An OpenCode session travels
 as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
-character resumes. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
-with Svall's hooks, as the daemon finds it. A login never moves; log in on each machine.
+character resumes. Svall's OpenCode plugin reports the session on OpenCode's command line as it loads, so an OpenCode
+that opens a fresh session in its place still counts as up; the checks confirm the import, which leaves that session
+there to resume. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
+with Svall's hooks, as the daemon finds it. The destination's release must also be at least the source's, since an
+older one may not read what the newer wrote; a newer one only warns. A login never moves; log in on each machine.
 
 When a new Claude Code or Codex release comes out:
 
@@ -168,6 +171,11 @@ character, and after the move its row says that it waits.
 
 Svall never writes an agent's own settings to answer these for you.
 
+On a Linux machine whose AppArmor keeps Codex from sandboxing the commands it runs, as Ubuntu 24.04 does until its
+profile for bwrap is installed, a Codex character asks before each command. The checks warn about it
+(`codex_sandbox`) and name the commands that install the profile, or, when `codex sandbox -- true` fails there for
+another reason, what it said.
+
 ## What restarts
 
 Nothing that runs moves; the handover brings each terminal to rest first.
@@ -189,12 +197,22 @@ On the other machine:
 - Each agent terminal the handover rested resumes as a new process in its folder, with `claude --resume <id>`,
   `codex resume <id>` or `opencode --standalone -s <id>` and the launch flags it had, such as its model or permission
   mode. Codex's `-p`/`--profile` and `--local-provider` are dropped, because they name configuration on the machine
-  it came from. It has its whole conversation; an interrupted turn does not go on by itself, so tell it to continue.
+  it came from. It has its whole conversation. An agent the handover interrupted or terminated in a character's main
+  terminal resumes with a note that its turn was cut short and that what it ran in the background was stopped, and
+  carries on; in a second terminal, tell it to continue.
 - A plain shell opens in its folder and prints: *Svall restarted this shell after a handover; whatever ran here
   before did not move.*
 - A character that was dormant before the handover stays dormant.
-- A terminal that does not come up stays dormant with its session, and its card and row say why. Retry it from the
-  row, or open it like any dormant character.
+- A terminal counts as up only once it starts the session it carries. Claude Code and OpenCode report that session
+  as they resume; one that starts another session, or none within a minute, is closed and stays dormant with its own.
+  One waiting to trust its folder or to accept Bypass Permissions mode stays open, and its row says which answer goes
+  on; if it then starts another session, it is closed the same way. Codex reports nothing until its first turn, so it counts once its prompt shows, or else once it has held its
+  terminal for 3 s, which its row then says.
+- A terminal that does not come up stays dormant with its session, and its card and row say why, as do
+  `svall status` and `svall char list` (`resume failed: <why>`). Retry it from the row, or open it like any dormant
+  character. When it will not resume at all, **Start fresh from summary** on its terminal (`svall char revive <id>
+  --fresh`, with `--term 2` for a second terminal) starts a new session in its folder whose first prompt summarises
+  the old one's last turns. The app asks first, and both say where the old session stays; its files are left as they are.
 - Servers, builds and watchers do not restart: start them again. Ports are not forwarded to the Mac in this version.
 
 ## Working on the other machine

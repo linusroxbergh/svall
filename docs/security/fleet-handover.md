@@ -260,7 +260,8 @@ has a new id and never meets them.
 - **The range.** A session adapter has a minimum and no maximum: Claude Code 2.1.251, Codex 0.156.0, OpenCode 2.0.22.
   A handover copies session files byte for byte, so it depends only on where each CLI keeps a session and on its
   resume command; for OpenCode, on `session export`, `session import --directory`, the `Imported session: <id>` line
-  that import prints, and `-s`.
+  that import prints, and `-s`. The destination's release must be at least the source's, since an older one may not
+  read records a newer one wrote.
 - **What a new release can break.** A release that moves a session's files, or changes `--resume` or `resume`, fails
   to resume on the destination. The character stays dormant with its transcript and the error, and ownership stays
   where it moved. An OpenCode release that changes its export or import blocks at prepare with `transcript_missing`,
@@ -272,8 +273,9 @@ has a new id and never meets them.
      machines with the same home;
   3. raise the adapter's minimum only when an older release stops working.
 
-  Until the probe passes, the release is untested with handover, not refused. OpenCode has no fixture or live probe;
-  the integration run's mock follows 2.0.22.
+  Until the probe passes, the release is untested with handover, not refused. OpenCode has an export fixture
+  (`opencode/<version>`) but no live probe; the integration run's mock follows 2.0.22. `pnpm compat` checks each new
+  release's session layout, resume and trust keys, and OpenCode's export, import and login output.
 
 ## Performance and limits
 

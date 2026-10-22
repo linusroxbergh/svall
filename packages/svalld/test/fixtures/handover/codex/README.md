@@ -99,9 +99,14 @@ checks, not as already proven.
 
 ## Versioned rollout fixtures
 
-`0.155.1/` and `0.156.1/` are real `codex exec` rollouts laid out as a Codex home
-(`sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl`). 0.155.1 ran on macOS and 0.156.1 on
-Ubuntu 24.04. Both write `history_mode: "paginated"` and the same record kinds. They were sanitized
-by replacing the home and probe paths with `/Users/source` or `/home/source`, the approved command
-prefixes with two synthetic ones, encrypted reasoning with a placeholder, and any string over 600
-characters with its first 200. `test/handover/sessions.test.ts` checks the session adapter against each.
+`0.155.1/`, `0.156.1/` and `0.162.1/` are real `codex exec` rollouts laid out as a Codex home
+(`sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl`), one made by each of Codex CLI 0.155.1,
+0.156.1 and 0.162.1 in a disposable `work/demo`, asked to run `pwd` and change a word in `notes.txt`.
+0.155.1 and 0.162.1 ran on macOS and 0.156.1 on Ubuntu 24.04. 0.162.1 started from a disposable
+`CODEX_HOME` holding only `auth.json` and a `config.toml` (`model = "gpt-6-luna"`, `approval_policy = "never"`,
+`sandbox_mode = "workspace-write"`), deleted afterwards. All three write `history_mode: "paginated"`
+and the same record kinds, except that 0.162.1's model returned no reasoning item. They were
+sanitized by replacing the home and probe paths with `/Users/source` or `/home/source`, any
+approved command prefixes with two synthetic ones, 0.162.1's `creator_user_id` and `creator_account_id` with
+synthetic ones, encrypted reasoning with a placeholder, and any
+string over 600 characters with its first 200. `test/handover/sessions.test.ts` checks the session adapter against each.

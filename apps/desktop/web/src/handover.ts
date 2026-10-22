@@ -524,6 +524,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return 'The agent CLI versions differ between the two machines.';
     case 'codex_trust':
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
+    case 'codex_sandbox':
+      return `Codex on ${ctx.destination} cannot sandbox the commands it runs, so it asks before each one until you fix what the message names there.`;
     case 'claude_trust':
       return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I trust this folder".`;
     case 'claude_bypass':
@@ -578,7 +580,7 @@ export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'dest
 }
 
 // warnings about what the user meets on the destination, which stay in sight while the rest fold away
-const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'config_difference'];
+const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'codex_sandbox', 'config_difference'];
 export const staysInSight = (w: Warning): boolean => AFTER_MOVE.includes(w.code);
 
 /** The full path a blocker or row is about, when it is about a folder: a root's, or the one a Git message leads with. */

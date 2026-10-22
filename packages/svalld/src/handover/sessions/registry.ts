@@ -7,8 +7,8 @@ import {
   type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
-import { AGENTS, versionOk } from '../../agents.js';
-import { codexPaths } from '../../codex/install.js';
+import { AGENTS, compareVersions, versionOk } from '../../agents.js';
+import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
 import { PRIVATE, profileHome } from '../../profile.js';
@@ -130,21 +130,30 @@ export function placeTranscripts(state: FleetState, sessions: readonly TransferS
   return next;
 }
 
-/** What one machine's agent CLI says about itself: its release, where it keeps its files, its login and whether Svall's hooks are in. */
-export type AgentProbe = { kind: AgentKind; version?: string; home: string; loggedIn: boolean; hooks: boolean };
+/**
+ * What one machine's agent CLI says about itself: its release, where it keeps its files, its login, whether Svall's
+ * hooks are in, and why it cannot sandbox the commands its agent runs, when it cannot.
+ */
+export type AgentProbe = { kind: AgentKind; version?: string; home: string; loggedIn: boolean; hooks: boolean; sandbox?: string };
 
 /** Runs a command to its exit, whatever the code; rejects only when it cannot start. */
-export type AgentRun = (cmd: string, args: string[]) => Promise<{ code: number; stdout: string }>;
+export type AgentRun = (cmd: string, args: string[]) => Promise<{ code: number; stdout: string; stderr?: string }>;
 export type ProbeDeps = { run: AgentRun; read(file: string): Promise<string | undefined>; env: NodeJS.ProcessEnv; homedir: string };
 
 const json = (text: string | undefined): Record<string, unknown> | undefined => {
   try { return text === undefined ? undefined : JSON.parse(text); } catch { return undefined; }
 };
 
+// `opencode auth list --format json` lists a model provider's login or key, or an MCP server's, as an integration
+const providerListed = (text: string): boolean => {
+  const listed: unknown = json(text);
+  return Array.isArray(listed) && listed.some((i: { id?: unknown }) => typeof i.id === 'string' && !i.id.startsWith('mcp_'));
+};
+
 /**
  * Probes this machine's CLI for one agent. Claude Code names its own config folder, which is where its hooks must be;
  * the hooks are the ones setup points at the private fleet's scripts. OpenCode's sessions travel as the logs the
- * private fleet keeps of them, and its hooks are Svall's plugin.
+ * private fleet keeps of them, its login is a model provider's, and its hooks are Svall's plugin.
  */
 export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentProbe> {
   const hooksHome = profileHome(PRIVATE, d.homedir);
@@ -159,20 +168,26 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
     return { kind, version, home: dir, loggedIn: status?.loggedIn === true, hooks: !!settings && hooksInstalled(settings, hooksHome) };
   }
   if (kind === 'opencode') {
-    const login = await d.run('opencode', ['auth', 'list', '--standalone']);
-    return { kind, version, home, loggedIn: login.code === 0, hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
+    const login = await d.run('opencode', ['auth', 'list', '--standalone', '--format', 'json']);
+    return { kind, version, home, loggedIn: login.code === 0 && providerListed(login.stdout), hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
   }
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));
-  return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript) };
+  // AppArmor's restriction denies bwrap a user namespace for each command unless a profile allows it
+  const tried = (await d.read(USERNS_RESTRICTED))?.trim() === '1' ? await d.run('codex', ['sandbox', '--', 'true']) : undefined;
+  const said = tried?.stderr?.trim() ?? '';
+  const sandbox = !tried?.code ? undefined : /bwrap:|namespace|operation not permitted/i.test(said)
+    ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`
+    : `codex sandbox -- true fails there (${said.split('\n').at(-1) || `exit ${tried.code}, nothing said`}): run it there to see why`;
+  return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
 
 /** Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. */
 const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
-  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string') reject(err);
-    else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout) });
+    else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout), stderr: String(stderr) });
   });
 });
 
@@ -230,16 +245,17 @@ export function agentProber(d: ProbeDeps, ttlMs = 60_000, now: () => number = Da
   };
 }
 
-/** What `system.info` says of each installed CLI: its release, the adapter that reads its sessions (0 for none), its login and hooks. */
+/** What `system.info` says of each installed CLI: its release, the adapter that reads its sessions (0 for none), its login, hooks and sandbox. */
 export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => probes.map((p) => ({
   kind: p.kind, ...(p.version && { version: p.version }), adapter: (p.version && adapterFor(p.kind, p.version)?.adapter) || 0, home: p.home,
-  loggedIn: p.loggedIn, hooks: p.hooks,
+  loggedIn: p.loggedIn, hooks: p.hooks, ...(p.sandbox && { sandbox: p.sandbox }),
 }));
 
 /**
  * What stops the agents the fleet runs from resuming on the destination: a CLI that is not there, a release on
- * either machine older than its adapter's minimum or the two read by different adapters, a destination not logged
- * in, or one without Svall's hooks, whose SessionStart is how a resumed agent reports back.
+ * either machine older than its adapter's minimum or the two read by different adapters, a destination release older
+ * than the source's, a destination not logged in, or one without Svall's hooks, whose SessionStart is how a resumed
+ * agent reports back.
  */
 export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[] }): Blocker[] {
   const blockers: Blocker[] = [];
@@ -255,6 +271,9 @@ export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly
       continue;
     }
     if (a && b && a !== b) blockers.push({ code: 'incompatible_adapter', message: `${kind} sessions are read by adapter ${a.adapter} here and ${b.adapter} on the destination` });
+    if (here?.version && compareVersions(there.version, here.version) === -1) {
+      blockers.push({ code: 'incompatible_adapter', message: `the destination's ${kind} ${there.version} is older than this machine's ${here!.version}, which writes sessions it may not read; update ${kind} on the destination` });
+    }
     if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });
     if (!there.hooks) {
       blockers.push({

@@ -38,6 +38,10 @@ export type AgentKind = z.infer<typeof AgentKind>;
 
 export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
+// where a session a fresh start left behind stays: its transcript, or OpenCode's own store, which Svall's log only mirrors
+export const keptSession = (a: { kind: AgentKind; sessionId: string; transcriptPath?: string }): string =>
+  `old session ${a.sessionId} kept ${a.kind === 'opencode' || !a.transcriptPath ? `in ${AGENT_LABEL[a.kind]}` : `at ${a.transcriptPath}`}`;
+
 export const Agent = z.object({
   kind: AgentKind,
   sessionId: z.string(),

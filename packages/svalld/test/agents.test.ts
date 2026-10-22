@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AGENTS, findAgents, mainAgent, onPath, parseVersion, versionOk } from '../src/agents.js';
+import { AGENTS, compareVersions, findAgents, mainAgent, onPath, parseVersion, versionOk } from '../src/agents.js';
 import { sessionAdapter } from '../src/handover/sessions/registry.js';
 
 const exec = (files: string[]) => (f: string) => files.includes(f);
@@ -27,6 +27,18 @@ describe('versions', () => {
     expect(parseVersion('codex-cli 0.142.0-alpha.6')).toEqual([0, 142, 0]);
     expect(parseVersion('2.1.283 (Claude Code)')).toEqual([2, 1, 283]);
     expect(parseVersion('nonsense')).toBeUndefined();
+  });
+  it('orders two version lines as semver does, a release after its prereleases', () => {
+    expect(compareVersions('2.1.280', '2.1.280 (Claude Code)')).toBe(0);
+    expect(compareVersions('codex-cli 0.157.0-alpha.2', '0.157.0-alpha.2')).toBe(0);
+    expect(compareVersions('0.157.0', '0.157.0-alpha.2')).toBe(1);
+    expect(compareVersions('0.157.0-alpha.10', '0.157.0-alpha.2')).toBe(1);
+    expect(compareVersions('0.157.0-beta', '0.157.0-alpha.2')).toBe(1);
+    expect(compareVersions('0.157.0-alpha', '0.157.0-alpha.1')).toBe(-1);
+    expect(compareVersions('0.157.0-alpha.1', '0.157.0-alpha.beta')).toBe(-1);
+    expect(compareVersions('0.156.9', '0.157.0-alpha.1')).toBe(-1);
+    expect(compareVersions('0.157.0-rc.1+build.5', '0.157.0-rc.1')).toBe(0);
+    expect(compareVersions('nonsense', '0.157.0')).toBeUndefined();
   });
   it('holds codex to 0.156, and claude to 2.1.251, the oldest release whose sessions a handover carries', () => {
     expect(versionOk(AGENTS.codex, 'codex-cli 0.156.0')).toBe(true);
