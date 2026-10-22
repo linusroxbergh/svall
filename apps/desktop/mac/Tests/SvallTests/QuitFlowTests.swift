@@ -63,13 +63,13 @@ final class QuitFlowTests: XCTestCase {
             XCTAssertEqual(kills, 0, "elsewhere: \(elsewhere)")
             XCTAssertEqual(answers, [true], "elsewhere: \(elsewhere)")
             // this Mac may be where the fleet is going, and its characters may be at rest for the move
-            XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed."], "elsewhere: \(elsewhere)")
+            XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed. Keep this Mac awake until it finishes."], "elsewhere: \(elsewhere)")
         }
     }
 
     func testUnsavedFilesAreNamedBesideAnOpenHandover() {
         quit(flow(handover: true), unsaved: ["notes.md"], working: 1)
-        XCTAssertEqual(asked, ["Quit with unsaved changes? notes.md has changes that were not saved. Quitting drops them. The handover carries on while Svall is closed."])
+        XCTAssertEqual(asked, ["Quit with unsaved changes? notes.md has changes that were not saved. Quitting drops them. The handover carries on while Svall is closed. Keep this Mac awake until it finishes."])
         XCTAssertEqual(sent, ["quit.ask"])
         XCTAssertEqual(kills, 0)
     }

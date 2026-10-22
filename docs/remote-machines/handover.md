@@ -48,7 +48,8 @@ handover stands, with **Resume** and **Abort** before the commit. After it, resu
 resumes by itself and offers **Retry** only if that stops again.
 
 While the app follows a handover, the Mac stays out of idle sleep, on battery too, unless **keep Mac awake** is off. A
-handover that goes on without the window watching is followed again. With notifications on, a handover that waits for
+handover that goes on without the window watching is followed again. A quit lets go of that hold, which its dialog
+says: keep the Mac awake until the handover finishes. With notifications on, a handover that waits for
 you, is ready to move, finishes or stops while the app is in the background posts a banner, which opens the sheet; a
 stop past the commit that the sheet resumes by itself posts none.
 

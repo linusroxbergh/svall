@@ -132,7 +132,8 @@ final class QuitFlow {
         // a handover may be bringing the fleet to this Mac, or hold its characters at rest for the move
         let handover = handoverOpen()
         let working = elsewhere() ? 0 : working
-        let busy = handover ? "The handover carries on while Svall is closed."
+        // quitting lets go of the app's hold on sleep, which the helper needs until it ends
+        let busy = handover ? "The handover carries on while Svall is closed. Keep this Mac awake until it finishes."
             : working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
         let message: String, detail: String
         if unsaved.isEmpty {
