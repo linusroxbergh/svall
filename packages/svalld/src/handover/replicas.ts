@@ -334,17 +334,31 @@ export class ReplicaStore {
 
   /**
    * Sets aside each .git file archived from `from` to `to` that names a Git directory outside the archive, as a linked
-   * worktree's does, or a submodule's whose Git directory a linked worktree's registration holds. A .git naming no repository
+   * worktree's does, or a submodule's whose Git directory a linked worktree's registration holds: those the walk finds, and
+   * that of each worktree the archive's own registrations place in it, an excluded folder included. A .git naming no repository
    * takes its place, so git there neither changes a live repository nor finds one above; a README says which checkout each was.
    */
   private async detach(to: string, from: string, excludes: readonly string[]): Promise<void> {
     const read = (p: string): string => this.fs.readFile(p).toString('utf8');
     const archived = (p: string): string => (holds(from, p) ? path.join(to, path.relative(from, p)) : p);
+    const registrations = path.join(to, '.git/worktrees');
+    let names: string[] = [];
+    try { names = this.fs.readdir(registrations); } catch (e) {
+      if (!unreachable(e)) throw e;
+    }
+    const registered = names.flatMap((name) => {
+      const gitfile = this.text(path.join(registrations, name, 'gitdir'))?.trim();
+      const at = gitfile && path.resolve(from, '.git/worktrees', name, gitfile);
+      return at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? [path.relative(from, path.dirname(at))] : [];
+    });
     const lines: string[] = [];
-    for (const rel of await this.gitfiles(to, excludeMatcher(excludes))) {
+    for (const rel of new Set([...await this.gitfiles(to, excludeMatcher(excludes)), ...registered])) {
       const gitfile = path.join(to, rel, '.git');
       let text: string;
-      try { text = read(gitfile); } catch (e) {
+      try {
+        if (!this.fs.lstat(gitfile).isFile()) continue;
+        text = read(gitfile);
+      } catch (e) {
         if (unreachable(e)) continue;
         throw e;
       }
@@ -380,12 +394,12 @@ export class ReplicaStore {
     return out;
   }
 
-  /** A file's text, or undefined when nothing is there. */
+  /** A file's text, or undefined when nothing this account can read is there. */
   private text(p: string): string | undefined {
     try {
       return this.fs.readFile(p).toString('utf8');
     } catch (e) {
-      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return undefined;
+      if (unreachable(e)) return undefined;
       throw e;
     }
   }
