@@ -2163,8 +2163,9 @@ withTmux('destination activate on real terminals', () => {
       if (o.dies) return new Promise(() => {});
       // Codex runs its SessionStart hook with the first turn, not as it resumes; one that exits is back at the shell a second later
       if (kind === 'codex' && o.codex) return send(paneId, o.codex === 'silent' ? `exec ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 1`, true);
-      // Claude at its trust prompt holds its pane and runs no hook until the prompt is answered; one told "No, exit" is back at the shell
-      if (kind === 'claude' && o.claude) return send(paneId, o.claude === 'prompt' ? `exec ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 6`, true);
+      // Claude at its trust prompt holds its pane, shows ps a launch flag a resume keeps, and runs no hook until the prompt is
+      // answered; one told "No, exit" is back at the shell
+      if (kind === 'claude' && o.claude) return send(paneId, o.claude === 'prompt' ? `exec -a 'claude --effort high' ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 6`, true);
       await send(paneId, 'exec sleep 600', true);
       const ch = Object.values(store.state.characters).find((x) => x.tmux?.paneId === paneId || x.second?.tmux?.paneId === paneId)!;
       const term = ch.second?.tmux?.paneId === paneId ? 2 as const : undefined;
@@ -2287,6 +2288,9 @@ withTmux('destination activate on real terminals', () => {
     expect(s.store.state.characters.c_bo).toMatchObject({ tmux: bo.tmux, agent: { kind: 'claude', sessionId: SID, transcriptPath, pid: claude!.pid } });
     expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: true, sessionId: SID });
+    // the flags a quit without ps would resume it with are read off this machine's own process
+    await first.fleet.settle();
+    expect(s.store.state.characters.c_bo.agent?.flags).toEqual(['--effort', "'high'"]);
   }, 30_000);
 
   it('leaves a Claude that exits at its trust prompt after Complete dormant again with its carried session and an error, which the fleet does not take from it first', async () => {
