@@ -36,7 +36,7 @@ its terminal, and open it again from **Handover**, which is marked while a decis
 | Continue waiting | an agent still working | Waits for it to finish its turn. |
 | Interrupt and carry | an agent working or waiting on an answer | Sends Escape to each such agent, waits for it to settle, and carries it. It resumes from its transcript on the other machine. |
 | Terminate and carry | a shell running a command, a job suspended with ctrl+z, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in the terminals of each character named. The shell reopens in its folder on the other machine. |
-| Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh; when at most 20 files there differ from what the fleet left, none of them in a repository's `.git`, only those move, and the copy brings the rest up to date, with `README.archived.txt` in the archive naming any file deleted there, which the copy brings back. Nothing is deleted, and the folder's row says where the old copy is kept. Each archived linked worktree, the folder itself or one inside an archived main checkout, keeps its `.git` file as `.git.archived` beside a `.git` that names no repository, so git there leaves the live worktree alone and finds no repository above it; `README.archived.txt` names each one's branch and commit. |
+| Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh; when at most 20 files there differ from what the fleet left, none of them in a repository's `.git`, only those move, and the copy brings the rest up to date, with `README.archived.txt` in the archive naming any file deleted there, which the copy brings back. Nothing is deleted, and the folder's row says where the old copy is kept. Each `.git` file in the archive that names a Git directory outside it is kept as `.git.archived` beside a `.git` that names no repository, so git there leaves the live repository alone and finds no repository above it: an archived linked worktree's and its submodules', and that of each linked worktree an archived main checkout registers in it, in an excluded folder too. Other excluded folders, such as `node_modules/`, are not searched. `README.archived.txt` names each one's checkout, branch and commit. |
 | Carry the folder whole | a terminal in a folder that holds Git repositories no character works in, such as a shell in `~/Developer` | Carries that folder with those repositories. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
@@ -445,8 +445,10 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   Git LFS, git-crypt, nbstripout or another clean filter set up in `~/.gitconfig` reads as changed where git lacks that
   filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file is
   copied: set the same filter up on the other machine first, such as with `git lfs install`. One set up in the
-  repository's own config is found at the checks instead (`git_config_command`), until the other machine's global
-  config sets the same.
+  repository's own config, or in any of its submodules', is found at the checks instead (`git_config_command`), until
+  the other machine's global config sets the same.
+- **An archived `.git` that is a link to a Git directory stays as it is**, so git in that folder of the archive still
+  reaches the repository it leads to; remove the link before you run git there.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the

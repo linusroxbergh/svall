@@ -150,6 +150,30 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     expect(await importGraphs(manifest, { git: here })).toEqual([]);
   });
 
+  it('blocks before git runs a filter that a linked worktree\'s submodule, or a submodule with its .git folder in its checkout, names in its config', async () => {
+    const l = seedHere(made);
+    const d = l.source;
+    const ran = path.join(l.base, 'filter-ran');
+    const subs = [path.join(d.sibling, 'sub'), path.join(d.detached, 'vendor')];
+    git(l.base, d.sibling, 'submodule', 'add', '-q', d.lib, 'sub');
+    git(l.base, d.detached, 'clone', '-q', d.lib, 'vendor');
+    git(l.base, d.detached, 'submodule', 'add', '-q', d.lib, 'vendor');
+    for (const [i, at] of subs.entries()) {
+      git(l.base, at, 'config', `filter.s${i}.clean`, `touch '${ran}'; cat`);
+      fs.writeFileSync(path.join(git(l.base, at, 'rev-parse', '--absolute-git-dir'), 'info/attributes'), `lib.txt filter=s${i}\n`);
+    }
+    const { manifest } = await handed(l);
+    // a file whose stat no longer matches its index entry, which git status reads again through its filter
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    for (const at of subs) fs.utimesSync(path.join(at, 'lib.txt'), hourAgo, hourAgo);
+    fs.rmSync(ran, { force: true });
+    const blockers = await importGraphs(manifest);
+    expect(fs.existsSync(ran)).toBe(false);
+    expect(blockers.filter((b) => b.code === 'git_config_command').map((b) => b.message.slice(0, b.message.indexOf(': ')))).toEqual(
+      [path.join(d.detached, 'vendor/.git'), path.join(d.main, '.git/worktrees/sibling/modules/sub')],
+    );
+  });
+
   it('finds the same graph the second time', async () => {
     const l = seedHere(made);
     const { manifest } = await handed(l);

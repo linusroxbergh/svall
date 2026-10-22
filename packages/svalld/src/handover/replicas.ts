@@ -7,8 +7,8 @@ import { createDurable, realStages, syncDir, writeDurable, type DurableStages } 
 import { diverged, divergenceBlocker, proveReplica, type Divergence } from './divergence.js';
 import { boundary } from './failpoints.js';
 import { byCodeUnit, canonicalDigest } from './hash.js';
-import { CONTROL, rootMatcher, type MachineLocal } from './inventory.js';
-import { scanPath, type ScanFs } from './manifest.js';
+import { CONTROL, excludeMatcher, rootMatcher, type MachineLocal } from './inventory.js';
+import { realScanFs, scanPath, type ScanFs } from './manifest.js';
 import { holds, realPath } from './portable-path.js';
 
 const Base = { version: z.literal(1), fleetId: FleetId, path: z.string() };
@@ -111,6 +111,8 @@ type Blocked = { kind: 'blocked'; blocker: Blocker; divergence?: Divergence };
 type Verdict = { kind: 'reserve' | 'adopt' | 'resume' } | { kind: 'replica'; found: TransferFile[] } | Blocked;
 
 const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+// a name this account cannot reach, so neither can its git
+const unreachable = (e: unknown): boolean => ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(errno(e) ?? '');
 // the most paths an archive sets aside one by one; a root that differs in more is set aside whole
 const FEW = 20;
 // the name rsync gives a file it has not finished writing: `.<name>.` and six characters, beside where the file goes
@@ -131,13 +133,13 @@ export const contentDigest = (files: readonly TransferFile[]): string => canonic
   .sort((a, b) => byCodeUnit(a.path, b.path))
   .map((f) => (f.type === 'file' ? [f.path, 'file', f.size, f.sha256] : [f.path, 'symlink', f.target])));
 
-/** Where a linked worktree's registration says it stands, read from its files: on a branch at a commit, or detached at one. */
-function worktreeHead(registration: string, read: (p: string) => string): string {
+/** Where a Git directory says its checkout stands, read from its files: on a branch at a commit, or detached at one. */
+function checkoutHead(gitDir: string, read: (p: string) => string): string {
   const text = (p: string): string | undefined => { try { return read(p).trim(); } catch { return undefined; } };
-  const head = text(path.join(registration, 'HEAD'));
+  const head = text(path.join(gitDir, 'HEAD'));
   const branch = head && /^ref: refs\/heads\/(.+)$/.exec(head)?.[1];
   if (!branch) return head ? `detached at ${head}` : 'whose HEAD cannot be read';
-  const common = path.resolve(registration, text(path.join(registration, 'commondir')) ?? '../..');
+  const common = path.resolve(gitDir, text(path.join(gitDir, 'commondir')) ?? '.');
   const ref = `refs/heads/${branch}`;
   const commit = text(path.join(common, ref)) ?? text(path.join(common, 'packed-refs'))?.split('\n').find((l) => l.endsWith(` ${ref}`))?.split(' ')[0];
   return commit ? `on branch ${branch} at ${commit}` : `on branch ${branch}, which has no commit`;
@@ -293,7 +295,7 @@ export class ReplicaStore {
         const held = this.read(at);
         if (held.bytes) this.put(at, held.bytes, undefined);
       }
-      if (st.isDirectory()) this.detach(to, at);
+      if (st.isDirectory()) await this.detach(to, at, t.excludes);
       return { path: at, archivedTo: to };
     }
     throw new ReplicaError('conflict', `every archive name beside ${at} is taken`);
@@ -331,46 +333,81 @@ export class ReplicaStore {
   }
 
   /**
-   * Sets aside the .git file of each linked worktree archived from `from` to `to`, the archive itself or one its main
-   * checkout registers under it, as each still names a live registration. A .git naming no repository takes its place, so
-   * git there neither changes the live worktree nor finds a repository above; a README says which worktree each was.
+   * Sets aside each .git file archived from `from` to `to` that names a Git directory outside the archive, as a linked
+   * worktree's does, or a submodule's whose Git directory a linked worktree's registration holds: those the walk finds, and
+   * that of each worktree the archive's own registrations place in it, an excluded folder included. A .git naming no repository
+   * takes its place, so git there neither changes a live repository nor finds one above; a README says which checkout each was.
    */
-  private detach(to: string, from: string): void {
+  private async detach(to: string, from: string, excludes: readonly string[]): Promise<void> {
     const read = (p: string): string => this.fs.readFile(p).toString('utf8');
     const archived = (p: string): string => (holds(from, p) ? path.join(to, path.relative(from, p)) : p);
-    const registered = this.names(path.join(to, '.git/worktrees')).flatMap((name) => {
-      const gitfile = this.text(path.join(to, '.git/worktrees', name, 'gitdir'))?.trim();
+    const registrations = path.join(to, '.git/worktrees');
+    let names: string[] = [];
+    try { names = this.fs.readdir(registrations); } catch (e) {
+      if (!unreachable(e)) throw e;
+    }
+    // a folder the archive reaches through a link lies outside it
+    const inside = (rel: string): boolean => {
+      try { return holds(this.fs.realpath(to), this.fs.realpath(path.join(to, rel))); } catch (e) {
+        if (unreachable(e)) return false;
+        throw e;
+      }
+    };
+    const registered = names.flatMap((name) => {
+      const gitfile = this.text(path.join(registrations, name, 'gitdir'))?.trim();
       const at = gitfile && path.resolve(from, '.git/worktrees', name, gitfile);
-      return at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? [path.relative(from, path.dirname(at))] : [];
+      const rel = at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? path.relative(from, path.dirname(at)) : undefined;
+      return rel !== undefined && inside(rel) ? [rel] : [];
     });
-    const lines = ['', ...registered].flatMap((rel) => {
+    const lines: string[] = [];
+    for (const rel of new Set([...await this.gitfiles(to, excludeMatcher(excludes)), ...registered])) {
       const gitfile = path.join(to, rel, '.git');
-      const text = this.text(gitfile, true);
-      if (text === undefined) return [];
+      let text: string;
+      try {
+        if (!this.fs.lstat(gitfile).isFile()) continue;
+        text = read(gitfile);
+      } catch (e) {
+        if (unreachable(e)) continue;
+        throw e;
+      }
+      const named = /^gitdir: (.*)$/m.exec(text)?.[1];
+      const gitDir = named && path.resolve(to, rel, named);
+      if (!gitDir || holds(to, gitDir)) continue;
       this.fs.rename(gitfile, `${gitfile}.archived`);
       this.fs.writeFile(gitfile, 'gitdir: /nonexistent\n');
-      const registration = /^gitdir: (.*)$/m.exec(text)?.[1];
-      const head = registration ? worktreeHead(archived(path.resolve(from, rel, registration)), read) : 'whose .git file names no registration';
-      return [`- ${rel || '.'} was the linked worktree ${head}`];
-    });
+      const own = archived(gitDir);
+      const head = checkoutHead(own, read);
+      lines.push(this.text(path.join(own, 'commondir')) === undefined ? `- ${rel || '.'} was the checkout of ${gitDir}, ${head}` : `- ${rel || '.'} was the linked worktree ${head}`);
+    }
     if (!lines.length) return;
-    this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each linked worktree here keeps its .git file as .git.archived beside a .git that names no repository, so git there leaves the live worktree alone:\n${lines.join('\n')}\n`);
+    this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each .git file here that named a Git directory outside this folder is kept as .git.archived beside a .git that names no repository, so git there leaves the live repository alone:\n${lines.join('\n')}\n`);
   }
 
-  /** A file's text, or undefined when nothing, or no file when `file` asks for one, is there. */
-  private text(p: string, file = false): string | undefined {
+  /**
+   * Each folder under `dir` that holds a .git file, relative to it and `dir` itself as '', read as a scan reads a root:
+   * into no Git directory, link, excluded folder or folder this account cannot read.
+   */
+  private async gitfiles(dir: string, excluded: (relative: string, dir: boolean) => boolean, rel = ''): Promise<string[]> {
+    const sfs = this.opts.scanFs ?? realScanFs;
+    const skip = (e: unknown): undefined => { if (unreachable(e)) return undefined; throw e; };
+    const names = await sfs.readdir(path.join(dir, rel)).catch(skip) ?? [];
+    const out: string[] = [];
+    for (const name of names.map((n) => n.toString('utf8')).sort(byCodeUnit)) {
+      const at = path.join(rel, name);
+      // a name that is not valid UTF-8 comes back as one no lstat finds
+      const st = await sfs.lstat(path.join(dir, at)).catch(skip);
+      if (name === '.git') { if (st?.isFile()) out.push(rel); }
+      else if (st?.isDirectory() && !excluded(at, true)) out.push(...await this.gitfiles(dir, excluded, at));
+    }
+    return out;
+  }
+
+  /** A file's text, or undefined when nothing this account can read is there. */
+  private text(p: string): string | undefined {
     try {
-      if (file && !this.fs.lstat(p).isFile()) return undefined;
       return this.fs.readFile(p).toString('utf8');
     } catch (e) {
-      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return undefined;
-      throw e;
-    }
-  }
-
-  private names(p: string): string[] {
-    try { return this.fs.readdir(p); } catch (e) {
-      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return [];
+      if (unreachable(e)) return undefined;
       throw e;
     }
   }

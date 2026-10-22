@@ -7,7 +7,7 @@ import type { FleetId, TransferFile } from '@svall/protocol';
 import { resolvePaths } from '../../src/paths.js';
 import { realStages } from '../../src/handover/durable.js';
 import { DEFAULT_EXCLUDES, excludeMatcher } from '../../src/handover/inventory.js';
-import { realScanFs, scanPath } from '../../src/handover/manifest.js';
+import { realScanFs, scanPath, type ScanFs } from '../../src/handover/manifest.js';
 import { ReplicaRecord, ReplicaStore, realReplicaFs, replicaRoots, type ReplicaOptions, type ReplicaRoot } from '../../src/handover/replicas.js';
 
 const made: string[] = [];
@@ -698,7 +698,7 @@ describe('archiving', () => {
     expect(fs.readFileSync(path.join(archivedTo, '.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
     expect(fs.readFileSync(path.join(archivedTo, '.git.archived'), 'utf8')).toBe(`gitdir: ${common}/worktrees/wt\n`);
     expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toBe(
-      `Archived by a Svall handover from ${path.join(real(w.work), 'wt')}. Each linked worktree here keeps its .git file as .git.archived beside a .git that names no repository, so git there leaves the live worktree alone:\n- . was the linked worktree on branch feat at ${commit}\n`,
+      `Archived by a Svall handover from ${path.join(real(w.work), 'wt')}. Each .git file here that named a Git directory outside this folder is kept as .git.archived beside a .git that names no repository, so git there leaves the live repository alone:\n- . was the linked worktree on branch feat at ${commit}\n`,
     );
     expect(fs.readFileSync(path.join(common, 'worktrees/wt/HEAD'), 'utf8')).toBe('ref: refs/heads/feat\n');
 
@@ -713,6 +713,52 @@ describe('archiving', () => {
     const kept = (await w.store().archive(dir(main, 'r_main'), ['r_main'], claimFor(TX))).archivedTo;
     expect(fs.statSync(path.join(kept, '.git')).isDirectory()).toBe(true);
     expect(fs.existsSync(path.join(kept, 'README.archived.txt'))).toBe(false);
+  });
+
+  it('leaves the .git file of a worktree a registration places in it through a link, which lies outside the archive', async () => {
+    const w = world();
+    const main = path.join(real(w.work), 'main');
+    const outside = path.join(real(w.work), 'outside');
+    const gitfile = `gitdir: ${main}/.git/worktrees/x\n`;
+    tree(main, { 'a.txt': 'a', '.git/worktrees/x/gitdir': `${main}/.claude/worktrees/x/.git\n`, '.git/worktrees/x/commondir': '../..\n' });
+    tree(outside, { 'worktrees/x/.git': gitfile });
+    fs.symlinkSync(outside, path.join(main, '.claude'));
+    w.store().seal(dir(main, 'r_main'), sealAs('tx-0', []), 'source');
+    await w.store().archive(dir(main, 'r_main'), ['r_main'], claimFor(TX));
+    expect(fs.readFileSync(path.join(outside, 'worktrees/x/.git'), 'utf8')).toBe(gitfile);
+    expect(fs.existsSync(path.join(outside, 'worktrees/x/.git.archived'))).toBe(false);
+  });
+
+  it('looks for .git files as a scan does, past a name that is not valid UTF-8, and into no excluded folder', async () => {
+    const w = world();
+    const dep = 'gitdir: ../../../main/.git/modules/dep\n';
+    const app = tree(path.join(w.work, 'wt'), {
+      '.git': 'gitdir: ../main/.git/worktrees/wt\n', 'sub/.git': 'gitdir: ../../main/.git/worktrees/wt/modules/sub\n', 'node_modules/dep/.git': dep,
+    });
+    const listed: string[] = [];
+    const scanFs: ScanFs = { ...realScanFs, readdir: async (p) => { listed.push(p); return [...await realScanFs.readdir(p), Buffer.from([0xff])]; } };
+    const { archivedTo } = await w.store({ scanFs }).archive(dir(app), ['r_app'], claimFor(TX));
+    for (const rel of ['.git', 'sub/.git']) expect(fs.readFileSync(path.join(archivedTo, rel), 'utf8')).toBe('gitdir: /nonexistent\n');
+    expect(fs.readFileSync(path.join(archivedTo, 'node_modules/dep/.git'), 'utf8')).toBe(dep);
+    expect(listed).toEqual([archivedTo, path.join(archivedTo, 'sub')]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('sets the .git files aside past a folder or a .git file this account cannot read, which its git cannot enter either', async () => {
+    const w = world();
+    const app = tree(path.join(w.work, 'wt'), { '.git': 'gitdir: ../main/.git/worktrees/wt\n', 'pgdata/base/1': 'x', 'locked/.git': 'gitdir: ../../main/.git/worktrees/wt/modules/locked\n' });
+    const modes = (at: string, folder: number, file: number): void => {
+      if (!fs.existsSync(at)) return;
+      fs.chmodSync(path.join(at, 'pgdata'), folder);
+      fs.chmodSync(path.join(at, 'locked/.git'), file);
+    };
+    modes(app, 0, 0);
+    try {
+      const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
+      expect(fs.readFileSync(path.join(archivedTo, '.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
+      expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toMatch(/:\n- \. was [^\n]*\n$/);
+    } finally {
+      for (const at of [app, `${real(w.work)}/wt.archived-${STAMP}`]) modes(at, 0o755, 0o644);
+    }
   });
 
   it.skipIf(!hasGit)('sets aside the .git file of each linked worktree a main checkout archived whole holds, and git in any archived worktree finds no repository (needs git)', async () => {
@@ -743,6 +789,73 @@ describe('archiving', () => {
 
     const linked = await archived(path.join(w.work, 'wt'), 'r_wt');
     expect(() => run(linked, 'rev-parse', '--show-toplevel')).toThrow();
+  }, 60_000);
+
+  it.skipIf(!hasGit)('sets aside the .git file of an archived linked worktree\'s submodule, whose Git directory the live registration holds, and keeps one whose Git directory the archive holds (needs git)', async () => {
+    const w = world();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    const run = (cwd: string, ...args: string[]): string => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', '-c', 'protocol.file.allow=always', ...args], { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const work = real(w.work);
+    const lib = tree(path.join(work, 'lib'), { 'lib.txt': 'lib' });
+    run(lib, 'init', '-q', '-b', 'main');
+    run(lib, 'add', 'lib.txt');
+    run(lib, 'commit', '-qm', 'lib');
+    const main = tree(path.join(work, 'main'), { 'a.txt': 'a' });
+    run(main, 'init', '-q', '-b', 'main');
+    run(main, 'add', 'a.txt');
+    run(main, 'submodule', 'add', '-q', lib, 'sub');
+    run(main, 'commit', '-qm', 'init');
+    const wt = path.join(work, 'wt');
+    run(main, 'worktree', 'add', '-q', wt, '-b', 'wt');
+    run(wt, 'submodule', 'update', '-q', '--init');
+    const commits = { wt: run(wt, 'rev-parse', 'HEAD'), sub: run(path.join(wt, 'sub'), 'rev-parse', 'HEAD') };
+    // each root as the copy brings it back after the archive moved it aside
+    const archived = async (p: string, id: string): Promise<string> => {
+      const pristine = path.join(w.base, `pristine-${id}`);
+      fs.cpSync(p, pristine, { recursive: true });
+      w.store().seal(dir(p, id), sealAs('tx-0', []), 'source');
+      const to = (await w.store().archive(dir(p, id), [id], claimFor(TX))).archivedTo;
+      fs.cpSync(pristine, p, { recursive: true });
+      return to;
+    };
+
+    const linked = await archived(wt, 'r_wt');
+    expect(run(path.join(wt, 'sub'), 'rev-parse', '--show-toplevel')).toBe(path.join(wt, 'sub'));
+    expect(() => run(path.join(linked, 'sub'), 'rev-parse', '--show-toplevel')).toThrow();
+    expect(fs.readFileSync(path.join(linked, 'sub/.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
+    expect(fs.readFileSync(path.join(linked, 'sub/.git.archived'), 'utf8')).toBe('gitdir: ../../main/.git/worktrees/wt/modules/sub\n');
+    expect(fs.readFileSync(path.join(linked, 'README.archived.txt'), 'utf8')).toBe(
+      `Archived by a Svall handover from ${wt}. Each .git file here that named a Git directory outside this folder is kept as .git.archived beside a .git that names no repository, so git there leaves the live repository alone:\n`
+      + `- . was the linked worktree on branch wt at ${commits.wt}\n- sub was the checkout of ${main}/.git/worktrees/wt/modules/sub, detached at ${commits.sub}\n`,
+    );
+
+    // a main checkout's submodule keeps its Git directory in the archive, which git there reads as it is
+    const whole = await archived(main, 'r_main');
+    expect(run(path.join(whole, 'sub'), 'rev-parse', '--show-toplevel')).toBe(path.join(whole, 'sub'));
+    expect(fs.existsSync(path.join(whole, 'sub/.git.archived'))).toBe(false);
+    expect(fs.existsSync(path.join(whole, 'README.archived.txt'))).toBe(false);
+  }, 60_000);
+
+  it.skipIf(!hasGit)('sets aside the .git file of a linked worktree an archived main checkout registers in a folder the handover excludes (needs git)', async () => {
+    const w = world();
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    const run = (cwd: string, ...args: string[]): string => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const repo = tree(path.join(real(w.work), 'repo'), { 'a.txt': 'a' });
+    run(repo, 'init', '-q', '-b', 'main');
+    run(repo, 'add', 'a.txt');
+    run(repo, 'commit', '-qm', 'init');
+    run(repo, 'worktree', 'add', '-q', '.claude/worktrees/x', '-b', 'x');
+    const commit = run(repo, 'rev-parse', 'HEAD');
+    const pristine = path.join(w.base, 'pristine');
+    fs.cpSync(repo, pristine, { recursive: true });
+    w.store().seal(dir(repo, 'r_repo'), sealAs('tx-0', []), 'source');
+    const { archivedTo } = await w.store().archive(dir(repo, 'r_repo'), ['r_repo'], { ...claimFor(TX), excludes: [...EXCLUDES, '.claude/worktrees/'] });
+    // the copy brings the live registration back
+    fs.cpSync(pristine, repo, { recursive: true });
+    const x = path.join(archivedTo, '.claude/worktrees/x');
+    expect(() => run(x, 'rev-parse', '--show-toplevel')).toThrow();
+    expect(fs.readFileSync(path.join(x, '.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
+    expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toContain(`\n- .claude/worktrees/x was the linked worktree on branch x at ${commit}\n`);
   }, 60_000);
 
   it('moves a file root aside without replacing a file already there', async () => {

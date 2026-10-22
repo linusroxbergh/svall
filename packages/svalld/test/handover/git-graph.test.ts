@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type Character } from '@svall/protocol';
-import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees } from '../../src/handover/git-graph.js';
+import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees, repoCommands } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { handoverGit, runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
 import { char, crew, git, hasGit, seedHere } from './git-fixture.js';
@@ -216,6 +216,64 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     expect(d.warnings.find((w) => w.code === 'git_config_command' && w.entity?.id === graphId(common))?.message).toBe(
       `${common}: its config names commands git runs, and travels with it: core.sshcommand, filter.br.clean, filter.inc.clean, filter.sub.process, filter.wt.smudge`,
     );
+  });
+
+  it('warns of the commands a submodule\'s config names wherever its Git directory lies: in a linked worktree\'s registration, in its own checkout, or in a submodule\'s', async () => {
+    const l = seedHere(made);
+    const s = l.source;
+    const common = path.join(s.main, '.git');
+    const vendor = path.join(s.detached, 'vendor');
+    git(l.base, s.sibling, 'submodule', 'add', '-q', s.lib, 'sub');
+    // a repository already in the checkout stays where it is, its .git a folder
+    git(l.base, s.detached, 'clone', '-q', s.lib, 'vendor');
+    git(l.base, s.detached, 'submodule', 'add', '-q', s.lib, 'vendor');
+    git(l.base, vendor, 'submodule', 'add', '-q', s.lib, 'inner');
+    git(l.base, path.join(s.sibling, 'sub'), 'config', 'filter.wtsub.clean', 'x');
+    git(l.base, vendor, 'config', 'filter.vendor.process', 'x');
+    git(l.base, path.join(vendor, 'inner'), 'config', 'filter.inner.smudge', 'x');
+    const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
+    expect(d.blockers).toEqual([]);
+    expect(d.graphs.find((g) => g.commonDir === common)?.commands).toEqual(expect.arrayContaining([
+      { at: path.join(common, 'worktrees/sibling/modules/sub'), key: 'filter.wtsub.clean', value: 'x' },
+      { at: path.join(vendor, '.git'), key: 'filter.vendor.process', value: 'x' },
+      { at: path.join(vendor, '.git/modules/inner'), key: 'filter.inner.smudge', value: 'x' },
+    ]));
+    expect(d.warnings.find((w) => w.code === 'git_config_command' && w.entity?.id === graphId(common))?.message).toBe(
+      `${common}: its config names commands git runs, and travels with it: filter.inner.smudge, filter.vendor.process, filter.wtsub.clean`,
+    );
+  });
+
+  // a repository whose index names each gitlink, with its own filter, and what `holds` puts at each gitlink's path
+  function gitlinks(holds: Record<string, (at: string) => void>): string {
+    const repo = path.join(scratch(), 'repo');
+    git(path.dirname(repo), path.dirname(repo), 'init', '-q', repo);
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a');
+    git(path.dirname(repo), repo, 'add', 'a.txt');
+    git(path.dirname(repo), repo, 'commit', '-qm', 'a');
+    const head = git(path.dirname(repo), repo, 'rev-parse', 'HEAD');
+    for (const [name, put] of Object.entries(holds)) {
+      git(path.dirname(repo), repo, 'update-index', '--add', '--cacheinfo', `160000,${head},${name}`);
+      put(path.join(repo, name));
+    }
+    git(path.dirname(repo), repo, 'config', 'filter.own.clean', 'x');
+    return repo;
+  }
+
+  it('reads no submodule at a gitlink whose .git git does not take, or that leads back into its checkout', async () => {
+    const repo = gitlinks({
+      empty: (at) => fs.mkdirSync(path.join(at, '.git'), { recursive: true }),
+      loop: (at) => fs.symlinkSync('.', at),
+    });
+    expect(await repoCommands(path.join(repo, '.git'), [{ path: repo, gitDir: path.join(repo, '.git') }], handoverGit)).toEqual([
+      { at: repo, key: 'filter.own.clean', value: 'x', own: false },
+    ]);
+  }, 20_000);
+
+  it('reads nothing at a gitlink whose .git file names no repository, as git there cannot either', async () => {
+    const repo = gitlinks({ nowhere: (at) => { fs.mkdirSync(at); fs.writeFileSync(path.join(at, '.git'), 'gitdir: /nonexistent\n'); } });
+    expect(await repoCommands(path.join(repo, '.git'), [{ path: repo, gitDir: path.join(repo, '.git') }], handoverGit)).toEqual([
+      { at: repo, key: 'filter.own.clean', value: 'x', own: false },
+    ]);
   });
 
   it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {
