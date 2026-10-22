@@ -158,8 +158,7 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
       for (const [at, url] of await origins(read, standing, git, exists)) {
         warnings.push({ code: 'remote_local', message: `${at}: origin ${url} names a place on this machine, and the destination keeps it as it is`, entity });
       }
-      const checkouts = [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees].map((c) => c.path);
-      const found = await repoCommands(commonDir, checkouts, git);
+      const found = await repoCommands(commonDir, [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees], git);
       if (found.length) read.graph.commands = found.map(({ at, key, value }) => ({ at, key, value }));
       const commands = [...new Set(found.map((c) => c.key))].sort(byCodeUnit);
       if (commands.length) warnings.push({ code: 'git_config_command', message: `${commonDir}: its config names commands git runs, and travels with it: ${commands.join(', ')}`, entity });
@@ -266,14 +265,18 @@ function submoduleDirs(modules: string): string[] {
   });
 }
 
-// the Git directory of each submodule a checkout holds, wherever it lies, and of each nested in one, as git status reaches them
-async function submodulesOf(checkout: string, git: GitRunner): Promise<string[]> {
+// the Git directory of each submodule a checkout holds, wherever it lies, and of each nested in one, as git status reaches them;
+// one already in `seen` is not read again: a .git git does not take has it find the checkout's own above, as a link back does
+async function submodulesOf(checkout: string, git: GitRunner, seen: Set<string>): Promise<string[]> {
   const out: string[] = [];
   for (const entry of (await must(git, ['ls-files', '--stage', '-z'], checkout)).split('\0')) {
     if (!entry.startsWith('160000 ')) continue;
     const inner = path.join(checkout, entry.slice(entry.indexOf('\t') + 1));
     if (!fs.existsSync(path.join(inner, '.git'))) continue;
-    out.push((await must(git, ['rev-parse', '--absolute-git-dir'], inner)).replace(/\n$/, ''), ...await submodulesOf(inner, git));
+    const gitDir = (await must(git, ['rev-parse', '--absolute-git-dir'], inner)).replace(/\n$/, '');
+    if (seen.has(gitDir)) continue;
+    seen.add(gitDir);
+    out.push(gitDir, ...await submodulesOf(inner, git, seen));
   }
   return out;
 }
@@ -302,10 +305,13 @@ export const runsHere = (key: string): boolean => key !== 'core.sshcommand';
  * under `commonDir` or in a checkout, read there with the includes that apply, and whether this machine's global or system
  * config sets it the same.
  */
-export async function repoCommands(commonDir: string, checkouts: readonly string[], git: GitRunner): Promise<(GitCommand & { own: boolean })[]> {
+export async function repoCommands(
+  commonDir: string, checkouts: readonly Pick<GitCheckout, 'path' | 'gitDir'>[], git: GitRunner,
+): Promise<(GitCommand & { own: boolean })[]> {
   const gitDirs = new Set(submoduleDirs(path.join(commonDir, 'modules')));
-  for (const at of checkouts) for (const d of await submodulesOf(at, git)) gitDirs.add(d);
-  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((at) => ({ at, cwd: at })), ...[...gitDirs].map((at) => ({ at, cwd: commonDir, gitDir: at }))];
+  const seen = new Set(checkouts.map((c) => c.gitDir));
+  for (const c of checkouts) for (const d of await submodulesOf(c.path, git, seen)) gitDirs.add(d);
+  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((c) => ({ at: c.path, cwd: c.path })), ...[...gitDirs].map((at) => ({ at, cwd: commonDir, gitDir: at }))];
   const found: (GitCommand & { own: boolean })[] = [];
   for (const { at, cwd, gitDir } of places) {
     const all = await settings(git, cwd, gitDir);

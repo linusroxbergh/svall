@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type Character } from '@svall/protocol';
-import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees } from '../../src/handover/git-graph.js';
+import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees, repoCommands } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { handoverGit, runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
 import { char, crew, git, hasGit, seedHere } from './git-fixture.js';
@@ -242,6 +242,32 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
       `${common}: its config names commands git runs, and travels with it: filter.inner.smudge, filter.vendor.process, filter.wtsub.clean`,
     );
   });
+
+  // a repository whose index names each gitlink, with its own filter, and what `holds` puts at each gitlink's path
+  function gitlinks(holds: Record<string, (at: string) => void>): string {
+    const repo = path.join(scratch(), 'repo');
+    git(path.dirname(repo), path.dirname(repo), 'init', '-q', repo);
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a');
+    git(path.dirname(repo), repo, 'add', 'a.txt');
+    git(path.dirname(repo), repo, 'commit', '-qm', 'a');
+    const head = git(path.dirname(repo), repo, 'rev-parse', 'HEAD');
+    for (const [name, put] of Object.entries(holds)) {
+      git(path.dirname(repo), repo, 'update-index', '--add', '--cacheinfo', `160000,${head},${name}`);
+      put(path.join(repo, name));
+    }
+    git(path.dirname(repo), repo, 'config', 'filter.own.clean', 'x');
+    return repo;
+  }
+
+  it('reads no submodule at a gitlink whose .git git does not take, or that leads back into its checkout', async () => {
+    const repo = gitlinks({
+      empty: (at) => fs.mkdirSync(path.join(at, '.git'), { recursive: true }),
+      loop: (at) => fs.symlinkSync('.', at),
+    });
+    expect(await repoCommands(path.join(repo, '.git'), [{ path: repo, gitDir: path.join(repo, '.git') }], handoverGit)).toEqual([
+      { at: repo, key: 'filter.own.clean', value: 'x', own: false },
+    ]);
+  }, 20_000);
 
   it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {
     const l = seedHere(made);
