@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isProfileName, RESERVED } from '@svall/protocol';
+import { HELD_COMMANDS, isProfileName, RESERVED } from '@svall/protocol';
 import { variant, type Variant } from './runtime.js';
 
 export { isProfileName };
 
-// a fleet home's name: a profile's, or one svall keeps for a command, whose fleet no -p reaches but is still a fleet
-export const isFleetName = (name: string): boolean => isProfileName(name) || RESERVED.includes(name);
+// a fleet home's name: a profile's, or a command's an existing fleet's home may hold
+export const isFleetName = (name: string): boolean => isProfileName(name) || HELD_COMMANDS.includes(name);
 
 const release = variant === 'release';
 export const PRIVATE = 'private';
