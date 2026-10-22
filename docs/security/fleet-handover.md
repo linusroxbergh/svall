@@ -113,7 +113,7 @@ under which licences, and which risks are accepted. Tests are named by file unde
 
 ## Secrets
 
-The secrets: the daemon token, the phone key, the VAPID keys, the fleet `.env`, agent logins and ssh keys.
+The secrets: the daemon token, the phone key, the phone pass, the VAPID keys, the fleet `.env`, agent logins and ssh keys.
 
 | Channel | What keeps secrets out | Tests |
 | --- | --- | --- |

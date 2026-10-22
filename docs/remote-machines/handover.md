@@ -102,7 +102,7 @@ listed with what to do about it.
 | Moves | Stays on each machine |
 | --- | --- |
 | Islands, characters, their places on the map, notes, instructions, links, context, agent profile and dormancy | `node.json`: the daemon's port and host, the shell, the phone's https port |
-| `fleet.json`, and the fleet's entity docs and `agent-profiles` folder | The fleet's token, the phone key, push keys and subscriptions, and `owner.json` |
+| `fleet.json`, and the fleet's entity docs and `agent-profiles` folder | The fleet's token, the phone key and pass, push keys and subscriptions, and `owner.json` |
 | Browser tab URLs | Browser cookies and logins, and each Mac's own layout |
 | Every folder a character works in, a file or folder named in its context, and mission control's folder (`home.cwd`), which no other fleet on the same machine may use | Folders left out by the excludes below |
 | Each repository a character works in: its Git directory, the main checkout, every worktree a character uses (one OpenCode made in `~/.local/share/opencode/worktree` too), and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no character uses (its branch and stash still move); the copy deletes no Git object from a repository that keeps one |
