@@ -1344,6 +1344,21 @@ describe('destination activate', () => {
     expect(d.events).toContainEqual({ event: 'handover.entity', data: { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'activate' } });
   });
 
+  it('writes the fleet.json it promotes through a link to the file it names, with the mode that file had', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    const target = path.join(s.base, 'dotfiles/fleet.json');
+    fs.mkdirSync(path.dirname(target));
+    fs.renameSync(s.paths.fleetConfig, target);
+    fs.chmodSync(target, 0o640);
+    fs.symlinkSync(target, s.paths.fleetConfig);
+    d.gateway.commit(preparedDigest);
+
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    expect(fs.lstatSync(s.paths.fleetConfig).isSymbolicLink()).toBe(true);
+    expect(FleetConfig.parse(JSON.parse(fs.readFileSync(target, 'utf8'))).home.cwd).toBe('~/mc');
+    expect(mode(target)).toBe('640');
+  });
+
   it('names a resume that never comes up as its character error, keeps the fleet, and clears it when the session starts after all', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);

@@ -217,6 +217,21 @@ function adopt(config: Config, fleet: FleetConfig): void {
   replaceIn(config, { ...rest, mobile: config.mobile });
 }
 
+// a fleet.json linked elsewhere (stow, home-manager) is written where it points, with the mode it had
+function writeFleet(file: string, fleet: FleetConfig): void {
+  let real = file;
+  let mode = 0o600;
+  try {
+    real = fs.realpathSync(file);
+    mode = fs.statSync(real).mode & 0o777;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+  writeDurable(real, fleet, { mode });
+  // the umask narrows the mode a file is created with
+  fs.chmodSync(real, mode);
+}
+
 /**
  * The machine receiving a fleet: it proves what landed and prepares the state it would run beside the one it
  * runs, then, once the gateway has committed, makes that state active and starts the terminals the handover
@@ -789,7 +804,7 @@ export class DestinationHandover {
 
   /** fleet.json, then the state: each step is safe to repeat, and a rename that landed before a crash is found by its digest. */
   private promote(j: DestinationJournal): void {
-    boundary('destination.promote.fleet', () => writeDurable(this.d.paths.fleetConfig, j.fleet!, { mode: 0o600 }));
+    boundary('destination.promote.fleet', () => writeFleet(this.d.paths.fleetConfig, j.fleet!));
     adopt(this.d.config, j.fleet!);
     const prepared = this.d.paths.preparedState(j.transactionId);
     boundary('destination.promote.state', () => {
