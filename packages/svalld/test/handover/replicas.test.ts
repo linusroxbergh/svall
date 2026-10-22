@@ -7,7 +7,7 @@ import type { FleetId, TransferFile } from '@svall/protocol';
 import { resolvePaths } from '../../src/paths.js';
 import { realStages } from '../../src/handover/durable.js';
 import { DEFAULT_EXCLUDES, excludeMatcher } from '../../src/handover/inventory.js';
-import { realScanFs, scanPath } from '../../src/handover/manifest.js';
+import { realScanFs, scanPath, type ScanFs } from '../../src/handover/manifest.js';
 import { ReplicaRecord, ReplicaStore, realReplicaFs, replicaRoots, type ReplicaOptions, type ReplicaRoot } from '../../src/handover/replicas.js';
 
 const made: string[] = [];
@@ -715,12 +715,18 @@ describe('archiving', () => {
     expect(fs.existsSync(path.join(kept, 'README.archived.txt'))).toBe(false);
   });
 
-  it('sets the .git files aside past a name no lstat finds, as readdir answers one that is not valid UTF-8', async () => {
+  it('looks for .git files as a scan does, past a name that is not valid UTF-8, and into no excluded folder', async () => {
     const w = world();
-    const app = tree(path.join(w.work, 'wt'), { '.git': 'gitdir: ../main/.git/worktrees/wt\n', 'sub/.git': 'gitdir: ../../main/.git/worktrees/wt/modules/sub\n' });
-    const store = w.store({ fs: { readdir: (p) => [...realReplicaFs.readdir(p), '�'] } });
-    const { archivedTo } = await store.archive(dir(app), ['r_app'], claimFor(TX));
+    const dep = 'gitdir: ../../../main/.git/modules/dep\n';
+    const app = tree(path.join(w.work, 'wt'), {
+      '.git': 'gitdir: ../main/.git/worktrees/wt\n', 'sub/.git': 'gitdir: ../../main/.git/worktrees/wt/modules/sub\n', 'node_modules/dep/.git': dep,
+    });
+    const listed: string[] = [];
+    const scanFs: ScanFs = { ...realScanFs, readdir: async (p) => { listed.push(p); return [...await realScanFs.readdir(p), Buffer.from([0xff])]; } };
+    const { archivedTo } = await w.store({ scanFs }).archive(dir(app), ['r_app'], claimFor(TX));
     for (const rel of ['.git', 'sub/.git']) expect(fs.readFileSync(path.join(archivedTo, rel), 'utf8')).toBe('gitdir: /nonexistent\n');
+    expect(fs.readFileSync(path.join(archivedTo, 'node_modules/dep/.git'), 'utf8')).toBe(dep);
+    expect(listed).toEqual([archivedTo, path.join(archivedTo, 'sub')]);
   });
 
   it.skipIf(process.getuid?.() === 0)('sets the .git files aside past a folder or a .git file this account cannot read, which its git cannot enter either', async () => {

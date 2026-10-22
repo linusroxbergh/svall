@@ -543,9 +543,9 @@ Archiving renames the root to a timestamped sibling and reports the recovery pat
 in at most 20 files, none in a Git directory, moves only those into the sibling and keeps the rest as its replica,
 and `README.archived.txt` in the sibling names each file deleted in the replica, which the copy brings back. Each
 `.git` file in the sibling that names a Git directory outside it, as an archived linked worktree's and its submodules'
-do, is kept as `.git.archived` beside a `.git` reading `gitdir: /nonexistent`, so git there neither reaches a live
-repository nor finds one above; `README.archived.txt` names each one's checkout, branch and commit. Handover never
-silently deletes destination-only work.
+do, outside the folders the handover excludes, is kept as `.git.archived` beside a `.git` reading
+`gitdir: /nonexistent`, so git there neither reaches a live repository nor finds one above; `README.archived.txt`
+names each one's checkout, branch and commit. Handover never silently deletes destination-only work.
 
 Rsync runs incrementally over SSH with argv-safe arguments. Rules ahead of the filter file keep `--delete`
 from removing OS or editor noise only the destination holds in a folder the source still has, as perishable
