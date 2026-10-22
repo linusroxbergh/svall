@@ -568,6 +568,14 @@ describe('resolveOwner', () => {
     expect((err as SshError).message).not.toContain(unknown);
   });
 
+  it('says once what ssh said of a gateway it last named as the owner, which answered neither way', async () => {
+    gateway('refused.test');
+    route(GATEWAY, 7);
+    const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
+    expect((err as SshError).message).toContain('gate, which it last named as the owner, did not answer either');
+    expect((err as SshError).message.split('Connection refused')).toHaveLength(2);
+  });
+
   it('refuses an unreachable gateway with nothing cached', async () => {
     gateway('refused.test');
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);

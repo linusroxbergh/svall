@@ -247,8 +247,10 @@ async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile
   // a gateway that refused for good stays the reason wherever the route cannot stand in for it; any
   // other failure, an ssh that could not even be spawned included, is one a later attempt can get past
   const kind: SshErrorKind = cause instanceof SshError && !RETRIED.includes(cause.kind) ? cause.kind : 'unreachable';
+  // a gateway that is also the owner it last named fails the same way twice
+  const said = (cause as Error).message;
   const why = (detail: string, k = kind, on = gateway): SshError =>
-    new OnMachine(k, `the gateway ${gateway.record.name} did not answer, and ${detail}. The gateway said: ${(cause as Error).message}`, on);
+    new OnMachine(k, `the gateway ${gateway.record.name} did not answer, and ${detail}${detail.includes(said) ? '' : `. The gateway said: ${said}`}`, on);
   const route = readRoute(fleetHome);
   if (!route) throw why('it has named no owner here before to go on');
   if (route.ownerMachineId === d.registry.localId) {
