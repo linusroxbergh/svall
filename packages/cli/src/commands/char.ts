@@ -96,7 +96,7 @@ Handing work to a new robot:
       printResult(r, json(), () => r.text);
     }));
 
-  cmd.command('wait <id>').description('wait for a status; exits 0 on a match, 2 on timeout, 3 when the robot is gone').requiredOption('--until <statuses>').option('--timeout <seconds>', '', '600').option('--term <n>', 'terminal to wait on: 1 (default) or 2')
+  cmd.command('wait <id>').description('wait for a status; exits 0 on a match, 2 on timeout, 3 when the robot has no terminal (deleted or dormant)').requiredOption('--until <statuses>').option('--timeout <seconds>', '', '600').option('--term <n>', 'terminal to wait on: 1 (default) or 2')
     .action(async (id: string, o: { until: string; timeout: string; term?: string }) => {
       // the client's own timer takes 31 bits of milliseconds
       const wait = { until: o.until.split(',') as AgentStatus[], timeoutMs: int(o.timeout, '--timeout', { min: 0, max: 2_000_000 }) * 1000, term: termOf(o.term) };

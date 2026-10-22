@@ -61,7 +61,7 @@ class TestClient {
     return c;
   }
   static async phone(port: number, login = 'me@example.com'): Promise<TestClient> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/${PHONE_KEY}/`, { headers: { 'tailscale-user-login': login } });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/${PHONE_KEY}/`, { headers: { 'tailscale-user-login': login, cookie: 'svall-pass=p4ss' } });
     await new Promise((r) => ws.once('open', r));
     return new TestClient(ws);
   }
@@ -82,7 +82,7 @@ describe('startApi', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     try {
       await expect(startApi({
-        host: '127.0.0.1', port: (blocker.address() as net.AddressInfo).port, token: 'secret',
+        host: '127.0.0.1', port: (blocker.address() as net.AddressInfo).port, token: 'secret', pass: 'p4ss',
         store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
         push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
         claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
@@ -117,7 +117,7 @@ runIf('API', () => {
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), log, () => [claude.json], [paths.docs, paths.agentProfiles]);
     const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store, config }) });
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: o.token ?? 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log,
+      host: '127.0.0.1', port: 0, token: o.token ?? 'secret', pass: 'p4ss', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs, ownership, handover, key: () => PHONE_KEY, logins: () => ['me@example.com'],
     });
@@ -205,7 +205,9 @@ runIf('API', () => {
     });
     expect(await open('https://evil.example')).toBe(403);
     expect(await open('http://localhost:8080')).toBe(403);
-    for (const origin of [undefined, 'svall://app', 'http://localhost:5173', 'http://127.0.0.1:5173']) expect(await open(origin)).toBe(101);
+    // the Vite dev server is Svall Dev's; the tests run as the release
+    for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) expect(await open(origin)).toBe(403);
+    for (const origin of [undefined, 'svall://app']) expect(await open(origin)).toBe(101);
   });
 
   it('names its protocol version in the handshake reply', async () => {
@@ -340,8 +342,8 @@ runIf('API', () => {
     // an agent's pane runs something other than a shell, or the poll ends the agent
     const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp', command: 'sleep 600' })) as { result: { id: string } };
     expect(await c.call('char.answer', { id: ch.result.id, answer: 'approve' })).toMatchObject({ error: { code: 'invalid' } });
-    fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
-    fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
+    await fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
+    await fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
     expect((await c.call('state.get')) as { result: { characters: Record<string, { agent?: { prompt?: string } }> } }).toMatchObject({ result: { characters: { [ch.result.id]: { agent: { prompt: 'Bash?' } } } } });
     expect(await c.call('char.answer', { id: ch.result.id, answer: 'deny' })).toMatchObject({ result: {} });
     c.ws.close();

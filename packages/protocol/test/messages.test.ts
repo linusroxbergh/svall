@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Character, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MachineId, PART_BYTES,
+  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Character, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MachineId, MobileStatus, PART_BYTES,
   PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, TRANSFER_SCHEMA_VERSION, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
@@ -150,8 +150,9 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 24 with ownership, handover and the machine\'s cores in the load reading', () => {
-    expect(PROTOCOL_VERSION).toBe(24);
+  it('is 25 with ownership, handover, the pairing link beside the phone address and the machine\'s cores in the load reading', () => {
+    expect(PROTOCOL_VERSION).toBe(25);
+    expect(MobileStatus.parse({ serving: true, url: 'https://m/', pair: 'https://m/#p', port: 443, logins: [], phones: [] }).pair).toBe('https://m/#p');
     const u = { cpu: 1, mem: 2, procs: 3 };
     expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: {} }).success).toBe(false);
     expect(methods['load.get'].result.parse({ at: 1, cores: 8, total: u, app: u, chars: {} }).cores).toBe(8);

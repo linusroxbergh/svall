@@ -18,6 +18,18 @@ describe('Store', () => {
     expect(s.state.islands).toEqual({});
   });
 
+  // prompts, notes and tab urls are in it; a file written before stays readable to the group until the first write
+  it('writes state.json for the user alone, whatever it was before', () => {
+    const file = path.join(makeHome(), 'state.json');
+    fs.writeFileSync(file, JSON.stringify({ version: 7, islands: {}, characters: {} }), { mode: 0o644 });
+    const s = Store.load(file, () => {});
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    fs.chmodSync(file, 0o644);
+    s.update((d) => { d.name = 'x'; });
+    s.flush();
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+
   it('persists updates atomically and emits patch ops', () => {
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});

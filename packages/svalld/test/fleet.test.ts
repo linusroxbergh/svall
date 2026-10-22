@@ -35,7 +35,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; platform?: NodeJS.Platform; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; platform?: NodeJS.Platform; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
     const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -224,7 +224,7 @@ runIf('Fleet', () => {
     await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
     expect(store.state.characters[c.id].second?.revive).toEqual({ command: `claude --resume ${sessionId}` });
     // the end its closing window sends leaves the agent the revive resumes
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionEnd', sessionId } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionEnd', sessionId } });
     expect(store.state.characters[c.id].second?.agent?.sessionId).toBe(sessionId);
     const dir = fs.realpathSync(home);
     store.update((d) => { d.characters[c.id].second!.cwd = dir; });
@@ -389,10 +389,10 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const wait = fleet.waitFor(c.id, ['done'], 5000);
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     expect(store.state.characters[c.id].agent?.status).toBe('idle');
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
     expect(await wait).toBe('done');
     expect(store.state.characters[c.id].unread).toBe(true);
     expect(fleet.markSeen(c.id).agent?.status).toBe('idle');
@@ -424,14 +424,14 @@ runIf('Fleet', () => {
     const seen: unknown[] = [];
     const off = fleet.onSessionStart((...a) => seen.push(a));
     const sid = '11111111-1111-4111-8111-111111111111';
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: sid, transcriptPath: '/t/a.jsonl' } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', term: 2, name: 'SessionStart', sessionId: sid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: sid, transcriptPath: '/t/a.jsonl' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', term: 2, name: 'SessionStart', sessionId: sid } });
     // no session to name, or no character for it to land on
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart' } });
-    fleet.onSocketEvent({ hook: { charId: 'c_nobody', backend: 'claude', name: 'SessionStart', sessionId: sid } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: sid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart' } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_nobody', backend: 'claude', name: 'SessionStart', sessionId: sid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: sid } });
     off();
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: sid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: sid } });
     expect(seen).toEqual([[c.id, undefined, sid], [c.id, 2, sid]]);
   });
 
@@ -441,15 +441,15 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
     await fleet.stop();
     const start = { charId: c.id, backend: 'claude' as const, term: 2 as const, name: 'SessionStart' as const, sessionId: '11111111-1111-4111-8111-111111111111', transcriptPath: '/t/b.jsonl' };
-    fleet.onSocketEvent({ hook: start });
+    await fleet.onSocketEvent({ hook: start });
     expect(store.state.characters[c.id].agent).toBeUndefined();
     expect(store.state.characters[c.id].second).toBeUndefined();
     store.update((d) => { d.characters[c.id].second = { cwd: '/tmp', tmux: { windowId: '@99', paneId: '%99' }, unread: false }; });
-    fleet.onSocketEvent({ hook: start });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'Stop' } });
+    await fleet.onSocketEvent({ hook: start });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'Stop' } });
     expect(store.state.characters[c.id].agent).toBeUndefined();
     expect(store.state.characters[c.id].second).toMatchObject({ unread: true, agent: { status: 'done' } });
-    fleet.onSocketEvent({ status: { charId: c.id, term: 2, contextPct: 41 } });
+    await fleet.onSocketEvent({ status: { charId: c.id, term: 2, contextPct: 41 } });
     expect(store.state.characters[c.id].second?.agent?.contextPct).toBe(41);
     fleet.markSeen(c.id);
     expect(store.state.characters[c.id].second).toMatchObject({ unread: true, agent: { status: 'done' } });
@@ -561,10 +561,10 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ name: 'PreToolUse', toolName: 'Bash' });
-    hook({ name: 'PermissionRequest', toolName: 'Bash' });
-    hook({ notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ name: 'PreToolUse', toolName: 'Bash' });
+    await hook({ name: 'PermissionRequest', toolName: 'Bash' });
+    await hook({ notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
     const screen = vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-permission'));
     await fleet['poll']['tick']();
     expect(store.state.characters[c.id].agent?.status).toBe('blocked');
@@ -577,12 +577,12 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', askedTool: 'Bash' });
     expect(store.state.characters[c.id].agent).not.toHaveProperty('prompt');
     // a subagent's question may be out of view, as may one asked about no tool
-    hook({ name: 'PermissionRequest', agentId: 'a1', toolName: 'Bash' });
-    hook({ notificationType: 'permission_prompt', message: 'may I' });
+    await hook({ name: 'PermissionRequest', agentId: 'a1', toolName: 'Bash' });
+    await hook({ notificationType: 'permission_prompt', message: 'may I' });
     await fleet['poll']['tick']();
     expect(store.state.characters[c.id].agent?.status).toBe('blocked');
-    hook({ name: 'Stop' });
-    hook({ notificationType: 'elicitation_dialog', message: 'fill this in' });
+    await hook({ name: 'Stop' });
+    await hook({ notificationType: 'elicitation_dialog', message: 'fill this in' });
     await fleet['poll']['tick']();
     expect(store.state.characters[c.id].agent?.status).toBe('blocked');
   });
@@ -595,9 +595,9 @@ runIf('Fleet', () => {
       d.characters[c.id].shell.lastOutputAt = 0;
     });
     // a late end from another session leaves the agent, and the shell, as they were
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: 'old' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: 'old' } });
     expect(store.state.characters[c.id].shell.lastOutputAt).toBe(0);
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: 's' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: 's' } });
     expect(store.state.characters[c.id].agent).toBeUndefined();
     expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
   });
@@ -610,12 +610,12 @@ runIf('Fleet', () => {
     fs.mkdirSync(path.join(repo, 'src'));
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await waitFor(() => store.state.characters[c.id].panePath !== undefined);
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: path.join(repo, 'src') } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: path.join(repo, 'src') } });
     await waitFor(() => store.state.characters[c.id].cwd === repo);
     await waitForPolls(fleet, 2);
     expect(store.state.characters[c.id].cwd).toBe(repo);
     // a move within the same checkout keeps the path it has
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: repo } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: repo } });
     await new Promise((r) => setTimeout(r, 300));
     expect(store.state.characters[c.id].cwd).toBe(repo);
   });
@@ -659,19 +659,19 @@ runIf('Fleet', () => {
     const rollout = path.join(home, 'rollout.jsonl');
     const ran = (cwd: string) => fs.appendFileSync(rollout, JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { type: 'CommandExecution', cwd: `file://${cwd}` } } }) + '\n');
     const hook = () => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'PostToolUse', sessionId: '33333333-3333-4333-8333-333333333333', transcriptPath: rollout, cwd: repo } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '33333333-3333-4333-8333-333333333333', transcriptPath: rollout, cwd: repo } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '33333333-3333-4333-8333-333333333333', transcriptPath: rollout, cwd: repo } });
     ran(repo);
     ran(path.join(wt, 'web'));
-    hook();
+    await hook();
     await waitFor(() => store.state.characters[c.id].repo?.root === wt);
     expect(store.state.characters[c.id]).toMatchObject({ cwd: wt, repo: { branch: 'feat', isWorktree: true, mainRoot: repo } });
     // a command run where the session began, as codex does when a call names no directory, does not take it back
     ran(repo);
-    hook();
+    await hook();
     await new Promise((r) => setTimeout(r, 500));
     expect(store.state.characters[c.id].cwd).toBe(wt);
     git('worktree', 'remove', wt);
-    hook();
+    await hook();
     await waitFor(() => store.state.characters[c.id].cwd === repo);
   });
 
@@ -680,10 +680,10 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
     const outer = '11111111-1111-4111-8111-111111111111';
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: outer, pid: process.pid } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: '22222222-2222-4222-8222-222222222222', pid: process.ppid, cwd: home } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: outer, pid: process.pid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: '22222222-2222-4222-8222-222222222222', pid: process.ppid, cwd: home } });
     expect(follow).not.toHaveBeenCalled();
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: outer, pid: process.pid, cwd: home } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: outer, pid: process.pid, cwd: home } });
     expect(follow).toHaveBeenCalledWith(c.id, home);
   });
 
@@ -691,7 +691,7 @@ runIf('Fleet', () => {
     const { fleet, home } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', agentId: 'a95af83797c89a762', cwd: home } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', agentId: 'a95af83797c89a762', cwd: home } });
     expect(follow).not.toHaveBeenCalled();
   });
 
@@ -736,13 +736,15 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot();
     // an agent's pane runs something other than a shell, or the poll ends the agent
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     expect(store.state.characters[c.id].revive).toEqual({ command: 'claude --resume 9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e' });
     await expect(fleet.run(c.id, 'x', false)).rejects.toBeInstanceOf(Dormant);
     await expect(fleet.run(c.id, 'x', false)).rejects.toThrow(`${c.name} is dormant; revive it first`);
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd' } });
+    // a wait reports a dormant character as it does a deleted one: without a terminal, the status will not come
+    expect(await fleet.waitFor(c.id, ['idle'], 100)).toBe('gone');
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd' } });
     store.update((d) => { d.characters[c.id].revive = { command: 'echo revived' }; });
     const r = await fleet.reviveCharacter(c.id);
     expect(r.tmux).toBeDefined();
@@ -805,7 +807,7 @@ runIf('Fleet', () => {
     const pid = Number((await b.tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
     const transcriptPath = path.join(b.home, `${SID}.jsonl`);
     fs.writeFileSync(transcriptPath, '');
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend, name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend, name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
     b.procs.push({ pid, ppid: 1, pgid: pid, args });
     return { c, pid, transcriptPath };
   }
@@ -827,7 +829,7 @@ runIf('Fleet', () => {
     // the sweep returns once the agent itself has gone, so no revive runs beside it
     expect(() => process.kill(pid, 0)).toThrow();
     // the end the closing window sends leaves the agent the revive resumes
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: SID } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: SID } });
     expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
     // as does a daemon start's reconcile
     await fleet.reconcileNow();
@@ -862,7 +864,7 @@ runIf('Fleet', () => {
     // the stop returns once the agent itself has gone, so a resume right after runs alone
     expect(() => process.kill(pid, 0)).toThrow();
     // the end the closing window sends leaves the agent the revive resumes
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: SID } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: SID } });
     expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
     // the lost control client brings no server back, and a page still open on the character does not wake it
     await new Promise((r) => setTimeout(r, 1500));
@@ -870,10 +872,42 @@ runIf('Fleet', () => {
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
   });
 
+  it('resumes an agent with the flags remembered at its start when ps fails the quit', async () => {
+    let failing = false;
+    const errors: string[] = [];
+    const b = await boot({ processes: async () => { if (failing) throw new Error('ps timed out'); return b.procs; }, log: { info() {}, error: (m) => { errors.push(m); } } });
+    const { c } = await withAgent(b, 'claude --effort xhigh --dangerously-skip-permissions');
+    await waitFor(() => !!b.store.state.characters[c.id].agent?.flags);
+    failing = true;
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --dangerously-skip-permissions --resume ${SID}` });
+    expect(errors.some((m) => m.startsWith('quit: ps failed'))).toBe(true);
+  });
+
+  it('has a settle wait for the launch flags a session start reads off its process', async () => {
+    // the server check on the start passes; the read of its flags waits until released
+    const gate: { calls: number; held?: Promise<void> } = { calls: 0 };
+    const b = await boot({ pollMs: 60_000, processes: async () => { if (gate.held && gate.calls++ > 0) await gate.held; return b.procs; } });
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const pid = Number((await b.tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
+    b.procs.push({ pid, ppid: 1, pgid: pid, args: 'claude --effort xhigh' });
+    let release!: () => void;
+    gate.held = new Promise<void>((r) => { release = r; });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid, transcriptPath: '/nope' } });
+    let settled = false;
+    const settling = b.fleet.settle().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(settled).toBe(false);
+    expect(b.store.state.characters[c.id].agent?.flags).toBeUndefined();
+    release();
+    await settling;
+    expect(b.store.state.characters[c.id].agent?.flags).toEqual(['--effort', "'xhigh'"]);
+  });
+
   it('resumes an agent a quit stopped mid-turn as the fleet starts again, telling it what was lost', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
     await b.fleet.stopAll();
     expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
 
@@ -891,7 +925,7 @@ runIf('Fleet', () => {
   it('resumes an interrupted agent a closed handover once rested, and leaves one an open handover carries', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
     await b.fleet.stopAll();
     const state = structuredClone(b.store.state);
     state.characters[c.id].restedBy = 'tx-old';
@@ -979,8 +1013,8 @@ runIf('Fleet', () => {
   it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet and while an open handover carries it', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b1' } });
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: SID, backgroundTasks: 1, backgroundShells: ['b1'] } });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b1' } });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: SID, backgroundTasks: 1, backgroundShells: ['b1'] } });
     expect(b.store.state.characters[c.id].agent).toMatchObject({ status: 'done', monitors: ['b1'] });
     await b.fleet.stopAll();
     expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
@@ -1125,11 +1159,13 @@ runIf('Fleet', () => {
     // the agent's pid and args reach the fleet through the same list the sweep reads; nothing the sleep ends is signalled
     const live = (ps: Proc[]): LiveProc[] => ps.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args }));
     const ended = { kills: 0, waits: 0, gate: Promise.resolve() };
-    const sleepBoot = () => {
+    const reading = { hold: Promise.resolve() };
+    const sleepBoot = (extra: { pollMs?: number } = {}) => {
       return boot({
-        readProcs: async () => { await procsRef.onRead?.(); return live(procsRef.list); },
+        ...extra,
+        readProcs: async () => { await reading.hold; await procsRef.onRead?.(); return live(procsRef.list); },
         endOpts: { kill: () => { ended.kills++; }, wait: async () => { ended.waits++; await ended.gate; } },
-      }).then((x) => { procsRef.list = x.procs; procsRef.onRead = undefined; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); return x; });
+      }).then((x) => { procsRef.list = x.procs; procsRef.onRead = undefined; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); reading.hold = Promise.resolve(); return x; });
     };
     const procsRef: { list: Proc[]; onRead?: () => Promise<void> } = { list: [] };
     it('puts a working robot to sleep without marking it interrupted', async () => {
@@ -1150,6 +1186,19 @@ runIf('Fleet', () => {
       const { c } = await withAgent(b);
       const second = (await b.fleet.openSecond(c.id)).second!.tmux!.windowId;
       await b.fleet.sleepCharacter(c.id);
+      expect(b.store.state.characters[c.id].second).toBeUndefined();
+      expect(await b.tmux.hasWindow(second)).toBe(false);
+    });
+
+    it('closes a second terminal opened while it read the processes', async () => {
+      const b = await sleepBoot({ pollMs: 60_000 });
+      const { c } = await withAgent(b);
+      let release!: () => void;
+      reading.hold = new Promise<void>((r) => { release = r; });
+      const sleeping = b.fleet.sleepCharacter(c.id);
+      const second = (await b.fleet.openSecond(c.id)).second!.tmux!.windowId;
+      release();
+      await sleeping;
       expect(b.store.state.characters[c.id].second).toBeUndefined();
       expect(await b.tmux.hasWindow(second)).toBe(false);
     });
@@ -1239,15 +1288,17 @@ runIf('Fleet', () => {
       expect(ended.waits - waits).toBe(1);
     });
 
-    it('leaves a second terminal that ran an agent dormant with the session it resumes, and closes its window', async () => {
+    it('leaves a second terminal that ran an agent dormant with the session it resumes and its launch flags, and closes its window', async () => {
       const b = await sleepBoot();
       const { c } = await withAgent(b);
-      const second = (await b.fleet.openSecond(c.id)).second!.tmux!.windowId;
+      const { windowId: second, paneId } = (await b.fleet.openSecond(c.id)).second!.tmux!;
+      const pid = Number((await b.tmux.run('display', '-p', '-t', paneId, '#{pane_pid}')).trim());
+      b.procs.push({ pid, ppid: 1, pgid: pid, args: 'claude --effort xhigh' });
       const sessionId = '11111111-1111-4111-8111-111111111111';
-      b.store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+      b.store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath: '/t', status: 'idle', lastActivityAt: 1, pid }; });
       await b.fleet.sleepCharacter(c.id);
       expect(b.store.state.characters[c.id].second?.tmux).toBeUndefined();
-      expect(b.store.state.characters[c.id].second?.revive).toEqual({ command: `claude --resume ${sessionId}` });
+      expect(b.store.state.characters[c.id].second?.revive).toEqual({ command: `claude --effort 'xhigh' --resume ${sessionId}` });
       expect(await b.tmux.hasWindow(second)).toBe(false);
     });
 
@@ -1339,6 +1390,17 @@ runIf('Fleet', () => {
     fs.rmSync(transcriptPath);
     await fleet['endIdleAgents']();
     expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('leaves an agent with a second terminal open', async () => {
+    const b = await boot();
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    await fleet.openSecond(c.id);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    expect(store.state.characters[c.id].second).toBeDefined();
   });
 
   it('leaves an agent with a prompt held for it', async () => {
@@ -1492,7 +1554,7 @@ runIf('Fleet', () => {
     await waitFor(() => Object.keys(store.state.characters).length === 1 && typed.length === 1);
     const id = Object.keys(store.state.characters)[0];
     await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-    fleet.onSocketEvent({ hook: { charId: id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     expect((await created).runSent).toBe(false);
     expect(typed).toEqual(['sleep 600']);
   });
@@ -1612,6 +1674,88 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].second).toBeUndefined();
   });
 
+  it('does not adopt the windows of a character closed during a reconcile listing', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const crew = Object.keys(store.state.characters).length;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the listing a recovery reconciles against is handed back only after the close has landed
+    const poll = holdListing(tmux);
+    const reconciling = fleet.reconcileNow();
+    await poll.listed;
+    await fleet.closeCharacter(c.id);
+    poll.release();
+    await reconciling;
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+  });
+
+  it('does not adopt the windows of a character whose close is reading the processes', async () => {
+    const reading = { hold: Promise.resolve() };
+    const { fleet, store } = await boot({ pollMs: 60_000, readProcs: async () => { await reading.hold; return []; } });
+    const crew = Object.keys(store.state.characters).length;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the close holds its windows until it has read what runs in them; a recovery reconciles meanwhile
+    let release!: () => void;
+    reading.hold = new Promise<void>((r) => { release = r; });
+    const closing = fleet.closeCharacter(c.id);
+    await waitFor(() => !store.state.characters[c.id]);
+    await fleet.reconcileNow();
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+    release();
+    await closing;
+    expect(Object.keys(store.state.characters)).toHaveLength(crew);
+  });
+
+  it('keeps an agent that reported in while a poll listed its pane at a shell', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const pid = Number((await tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
+    // the last poll found the agent at a shell prompt too; this one would let it go
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    fleet['poll']['shellStreak'].set(c.id, 1);
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid } });
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
+    expect(fleet['poll']['shellStreak'].has(c.id)).toBe(false);
+  });
+
+  it('keeps the revive of a character whose resume could not be started', async () => {
+    const b = await boot({ pollMs: 60_000 });
+    const { fleet, store, tmux, home } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { markDormant(d.characters[c.id]); });
+    await tmux.killWindow(c.tmux!.windowId);
+    // the prompt file the resume takes its first prompt from cannot be written
+    fs.mkdirSync(path.join(home, `${c.id}.prompt`));
+    await expect(fleet.reviveCharacter(c.id, 'go on')).rejects.toThrow('EISDIR');
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+    expect(store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
+    expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
+  });
+
+  it('keeps the failed resume and its session of a terminal whose fresh start could not be started, to start afresh again', async () => {
+    const b = await boot({ pollMs: 60_000 });
+    const { fleet, store, tmux } = b;
+    const { c } = await withAgent(b);
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    const revive = { command: `claude --resume ${SID}`, interrupted: true as const };
+    store.update((d) => { d.characters[c.id].revive = revive; d.characters[c.id].resumeError = 'it did not come up'; });
+    // the new session's command never reaches the pane
+    vi.spyOn(tmux, 'sendLine').mockRejectedValueOnce(new Error('pane gone')).mockResolvedValue();
+    await expect(fleet.startFresh(c.id)).rejects.toThrow('pane gone');
+    expect(store.state.characters[c.id]).toMatchObject({ revive, resumeError: 'it did not come up', agent: { sessionId: SID } });
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+    expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
+    expect((await fleet.startFresh(c.id)).tmux).toBeDefined();
+  });
+
   it('kills the window of a revive whose character was closed meanwhile', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
@@ -1698,7 +1842,7 @@ runIf('Fleet', () => {
   it('stops waiting when the character goes dormant', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope.jsonl' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope.jsonl' } });
     const wait = fleet.waitFor(c.id, ['done'], 30_000);
     await tmux.killWindow(c.tmux!.windowId);
     expect(await wait).toBe('gone');
@@ -1743,8 +1887,8 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
     expect(store.state.characters[c.id].agent?.status).toBe('done');
     store.update((d) => { d.characters[c.id].revive = { command: 'echo revived' }; });
     const r = await fleet.reviveCharacter(c.id);
@@ -1757,11 +1901,11 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
     await fleet.run(c.id, 'x', true);
     expect(store.state.characters[c.id].agent?.status).toBe('working');
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
     await fleet.run(c.id, 'y', false);
     expect(store.state.characters[c.id].agent?.status).toBe('done');
   });
@@ -1770,7 +1914,7 @@ runIf('Fleet', () => {
     // no poll runs: the pane sits at a shell prompt, where a poll drops the agent
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     tmux.sendLine = async () => {
       store.update((d) => { d.characters[c.id].agent!.status = 'blocked'; });
@@ -1783,7 +1927,7 @@ runIf('Fleet', () => {
   it('keeps the unread a Stop set while the prompt was still being sent', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     let sent!: () => void;
     let sending!: () => void;
@@ -1792,8 +1936,8 @@ runIf('Fleet', () => {
     const run = fleet.run(c.id, 'go', true);
     await typing;
     // the agent takes the prompt and finishes the turn before the send returns
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
     sent();
     await run;
     expect(store.state.characters[c.id]).toMatchObject({ agent: { status: 'done' }, unread: true });
@@ -1803,8 +1947,8 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const hook = (name: HookEvent['name']) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name, sessionId: 'sess', transcriptPath: '/nope' } });
-    hook('SessionStart');
-    hook('Stop');
+    await hook('SessionStart');
+    await hook('Stop');
     vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     // a fast agent: the turn ends before the Enter's paste returns, leaving the status it had before
     vi.spyOn(tmux, 'sendLine').mockImplementation(async () => { await new Promise((r) => setTimeout(r, 5)); hook('UserPromptSubmit'); hook('Stop'); });
@@ -1816,7 +1960,7 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
     vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     tmux.sendLine = async () => { hook({ notificationType: 'permission_prompt', message: 'and may I' }); };
     await fleet.run(c.id, 'no', true);
@@ -1834,7 +1978,7 @@ runIf('Fleet', () => {
       const b = await boot({ pollMs: 60_000 });
       const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
       const hook = (h: Partial<HookEvent>) => b.fleet.onSocketEvent({ hook: { charId: c.id, backend: kind, name: 'Notification', sessionId: 'sess', ...h } });
-      hook({ name: 'SessionStart', transcriptPath: '/nope' });
+      await hook({ name: 'SessionStart', transcriptPath: '/nope' });
       const screen = vi.spyOn(b.tmux, 'screen').mockResolvedValue(pane(`${SCREENS[kind]}-empty${kind === 'opencode' ? '-session' : ''}`));
       const typed: string[] = [];
       vi.spyOn(b.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
@@ -1844,15 +1988,15 @@ runIf('Fleet', () => {
     it.each(kinds)('is refused while %s waits on an answer', async (kind) => {
       const { fleet, c, hook, screen, typed } = await agentPane(kind);
       screen.mockResolvedValue(pane(DIALOG[kind]));
-      if (kind === 'claude') hook({ notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
-      else hook({ name: 'PermissionRequest', toolName: 'shell' });
+      if (kind === 'claude') await hook({ notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+      else await hook({ name: 'PermissionRequest', toolName: 'shell' });
       await expect(fleet.run(c.id, '1', true)).rejects.toMatchObject({ code: 'blocked', message: expect.stringContaining(`${c.name} is waiting on an answer`) });
       expect(typed).toEqual([]);
     });
 
     it('is refused in the seconds Claude Code shows its dialog before it notifies of it', async () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
-      hook({ name: 'PermissionRequest', toolName: 'Bash' });
+      await hook({ name: 'PermissionRequest', toolName: 'Bash' });
       screen.mockResolvedValue(pane('claude-permission'));
       // Svall has no question to answer yet, so the terminal is where it is answered
       await expect(fleet.run(c.id, 'go', true)).rejects.toMatchObject({ code: 'blocked', message: `${c.name} is waiting on an answer (Bash); answer it in its terminal, then send again` });
@@ -1874,14 +2018,14 @@ runIf('Fleet', () => {
       await waitFor(() => typed.length === 1);
       await new Promise((r) => setTimeout(r, 1200));
       expect(typed).toEqual(['first']);
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       await waitFor(() => typed.length === 2);
       expect(typed).toEqual(['first', 'second']);
     });
 
     it.each(kinds)('goes in at once while %s works, as the agent queues it itself', async (kind) => {
       const { fleet, store, c, hook, screen, typed } = await agentPane(kind);
-      hook({ name: 'UserPromptSubmit' });
+      await hook({ name: 'UserPromptSubmit' });
       screen.mockResolvedValue(pane(`${SCREENS[kind]}-working`));
       expect(store.state.characters[c.id].agent?.status).toBe('working');
       expect(await fleet.run(c.id, 'also this', true)).toBe('delivered');
@@ -1890,7 +2034,7 @@ runIf('Fleet', () => {
 
     it('keeps a wait from taking the end of the turn before a held prompt for its own', async () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'go', true)).toBe('queued');
       let status: string | undefined;
@@ -1898,7 +2042,7 @@ runIf('Fleet', () => {
       screen.mockResolvedValue(pane('claude-empty'));
       await waitFor(() => typed.length === 1);
       expect(status).toBeUndefined();
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       await waited;
       expect(status).toBe('done');
     });
@@ -1907,7 +2051,7 @@ runIf('Fleet', () => {
       const { fleet, c, hook, screen } = await agentPane('claude');
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      hook({ notificationType: 'permission_prompt' });
+      await hook({ notificationType: 'permission_prompt' });
       expect(await fleet.waitFor(c.id, ['done', 'blocked'], 1000)).toBe('blocked');
     });
 
@@ -2005,8 +2149,8 @@ runIf('Fleet', () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      hook({ name: 'SessionEnd' });
-      hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
+      await hook({ name: 'SessionEnd' });
+      await hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
       screen.mockResolvedValue(pane('claude-empty'));
       await new Promise((r) => setTimeout(r, 1200));
       expect(typed).toEqual([]);
@@ -2016,13 +2160,13 @@ runIf('Fleet', () => {
       const { fleet, store, tmux, c, screen, typed } = await agentPane('claude');
       const second = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionStart', sessionId: 's2', transcriptPath: '/nope', ...h } });
       await fleet.openSecond(c.id);
-      second({});
+      await second({});
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'go', true, 2)).toBe('queued');
       await tmux.killWindow(store.state.characters[c.id].second!.tmux!.windowId);
       await waitFor(() => !store.state.characters[c.id].second?.tmux);
       await fleet.openSecond(c.id);
-      second({ backend: 'codex', sessionId: 's3' });
+      await second({ backend: 'codex', sessionId: 's3' });
       screen.mockResolvedValue(pane('codex-empty'));
       await new Promise((r) => setTimeout(r, 1200));
       expect(typed).toEqual([]);
@@ -2030,28 +2174,28 @@ runIf('Fleet', () => {
 
     it("waits out the user's own turn, so a wait takes the end of the held prompt's turn", async () => {
       const { fleet, c, hook, screen, typed } = await agentPane('codex');
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       screen.mockResolvedValue(pane('codex-draft'));
       expect(await fleet.run(c.id, 'go', true)).toBe('queued');
       let status: string | undefined;
       const waited = fleet.waitFor(c.id, ['done'], 10_000).then((s) => { status = s; });
       // the user sends their draft, and the agent works on it with its prompt line empty
-      hook({ name: 'UserPromptSubmit' });
+      await hook({ name: 'UserPromptSubmit' });
       screen.mockResolvedValue(pane('codex-working'));
       await new Promise((r) => setTimeout(r, 1200));
       expect(typed).toEqual([]);
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       screen.mockResolvedValue(pane('codex-empty'));
       await waitFor(() => typed.length === 1);
       expect(status).toBeUndefined();
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       await waited;
       expect(status).toBe('done');
     });
 
     it('wakes a wait once the held prompts are in, though the agent did not change', async () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
-      hook({ name: 'Stop' });
+      await hook({ name: 'Stop' });
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'note', false)).toBe('queued');
       const waited = fleet.waitFor(c.id, ['done'], 3000);
@@ -2066,7 +2210,7 @@ runIf('Fleet', () => {
       screen.mockImplementation(() => new Promise((r) => { shown = () => r(pane('claude-empty')); }));
       const run = fleet.run(c.id, 'go', true);
       await waitFor(() => shown !== undefined);
-      hook({ notificationType: 'permission_prompt', message: 'may I' });
+      await hook({ notificationType: 'permission_prompt', message: 'may I' });
       shown!();
       await expect(run).rejects.toMatchObject({ code: 'blocked' });
       expect(typed).toEqual([]);
@@ -2117,7 +2261,7 @@ runIf('Fleet', () => {
       const { fleet, store, c, hook, screen, typed } = await silentPane();
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      hook({});
+      await hook({});
       screen.mockResolvedValue(pane('claude-empty'));
       await waitFor(() => typed.length === 1);
       expect(store.state.characters[c.id].agent).toMatchObject({ sessionId: 'sess', status: 'working' });
@@ -2157,7 +2301,7 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot();
     // an agent's pane runs something other than a shell, or the poll ends the agent
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     const sent = vi.spyOn(tmux, 'sendBytes');
     const block = () => store.update((d) => { d.characters[c.id].agent!.status = 'blocked'; });
     block();
@@ -2176,10 +2320,10 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ notificationType: 'permission_prompt', message: 'may I' });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ notificationType: 'permission_prompt', message: 'may I' });
     const first = store.state.characters[c.id].agent!.promptId!;
-    hook({ notificationType: 'permission_prompt', message: 'and may I' });
+    await hook({ notificationType: 'permission_prompt', message: 'and may I' });
     const second = store.state.characters[c.id].agent!.promptId!;
     expect(second).not.toBe(first);
     const sent = vi.spyOn(tmux, 'sendBytes');
@@ -2206,12 +2350,12 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ notificationType: 'permission_prompt' });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ notificationType: 'permission_prompt' });
     let typed = () => {};
     vi.spyOn(tmux, 'sendBytes').mockImplementationOnce(() => new Promise((r) => { typed = r; }));
     const answering = fleet.answerPrompt(c.id, 'approve');
-    hook({ notificationType: 'permission_prompt', message: 'the next one' });
+    await hook({ notificationType: 'permission_prompt', message: 'the next one' });
     typed();
     await answering;
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'the next one' });
@@ -2221,21 +2365,21 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'opencode', name: 'PermissionRequest', sessionId: OSID, ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ message: 'rm -rf build' });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ message: 'rm -rf build' });
     const sent = vi.spyOn(tmux, 'sendBytes');
     // Esc on a subagent's question asks for a reason before it turns the question down
     await fleet.answerPrompt(c.id, 'deny');
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
     await new Promise((r) => setTimeout(r, 1100));
     await expect(fleet.answerPrompt(c.id, 'deny')).rejects.toThrow('already in');
-    hook({ message: 'which file?' });
+    await hook({ message: 'which file?' });
     await fleet.answerPrompt(c.id, 'approve');
     await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('already in');
     // Enter on a question of several parts moves on to the next, which takes an answer of its own
     await new Promise((r) => setTimeout(r, 1100));
     await fleet.answerPrompt(c.id, 'approve');
-    hook({ name: 'PreToolUse' });
+    await hook({ name: 'PreToolUse' });
     expect(store.state.characters[c.id].agent!.status).toBe('working');
     expect(sent).toHaveBeenCalledTimes(3);
   });
@@ -2244,9 +2388,9 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 });
-    hook({ notificationType: 'worker_permission_prompt' });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 });
+    await hook({ notificationType: 'worker_permission_prompt' });
     await fleet.answerPrompt(c.id, 'deny');
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', background: true });
   });
@@ -2264,7 +2408,7 @@ runIf('Fleet', () => {
   it('drops an agent whose pane returned to a shell without a SessionEnd', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     await waitFor(() => store.state.characters[c.id].agent === undefined, 3000);
   });
 
@@ -2275,7 +2419,7 @@ runIf('Fleet', () => {
     let carried = true;
     fleet.carries(() => carried);
     for (const term of [undefined, 2 as const]) {
-      fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: `sess-${term ?? 1}`, transcriptPath: '/nope', ...(term && { term }) } });
+      await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: `sess-${term ?? 1}`, transcriptPath: '/nope', ...(term && { term }) } });
     }
     // a window its activation opened before the daemon that opened it could record it: the poll leaves it to the
     // handover, and the reconcile an activation runs finds it
@@ -2333,7 +2477,7 @@ runIf('Fleet', () => {
   it('leaves a terminal whose ordinary revive exits back to its shell at that shell, and drops its agent', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     // a resume of a session that is gone, as Claude's is once it has cleaned up the transcript
@@ -2351,7 +2495,7 @@ runIf('Fleet', () => {
   it('lays a revived terminal dormant again with its session and resume when its agent leaves before that session starts, and not once it has', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     // a Retry of a terminal a handover could not resume, whose resume runs a moment and exits, as a Claude without its login does
@@ -2369,7 +2513,7 @@ runIf('Fleet', () => {
     // one whose session started is an agent that ended, and leaves its shell
     const back = await fleet.reviveCharacter(c.id);
     expect(back.resumeError).toBeUndefined();
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await waitFor(() => store.state.characters[c.id].agent === undefined, 5000);
     expect(store.state.characters[c.id].tmux).toBeDefined();
   });
@@ -2377,7 +2521,7 @@ runIf('Fleet', () => {
   it('lays a revived terminal whose agent never comes up dormant again with its session once the wait for it runs out', async () => {
     const { fleet, store, tmux } = await boot({ resumeMs: 1000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     const revive = { command: `: --resume ${SID}` };
@@ -2535,32 +2679,32 @@ runIf('Fleet', () => {
     const { fleet } = await boot();
     const island = fleet.createIsland({ name: 'x', instructions: 'ship small' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    const start = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t.jsonl' } });
+    const start = await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t.jsonl' } });
     expect(start).toContain('Island instructions: ship small');
     expect(fleet.char(c.id).agent?.brief).toBe(start);
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
     fleet.updateCharacter(c.id, { instructions: 'in Spanish' });
-    const diff = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
+    const diff = await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
     expect(diff).toContain('+ Robot instructions: in Spanish');
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
   });
 
   it('gives a character its agent profile from its first SessionStart, and the whole new one when it changes', async () => {
     const { fleet, home } = await boot();
     const profiles = resolvePaths(home).agentProfiles;
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', agentProfile: 'reviewer' });
-    const start = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: 's' } });
+    const start = await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: 's' } });
     expect(start).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
     fleet.updateCharacter(c.id, { agentProfile: 'verifier' });
-    const switched = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } });
+    const switched = await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } });
     expect(switched).toContain('Your agent profile changed; follow this one instead of any before:\nAgent profile: verifier');
     expect(switched).toContain('Report:');
     // an edit to the file reaches the session with its next prompt
     fs.appendFileSync(path.join(profiles, 'verifier.md'), '\nNever trust a green check alone.\n');
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } })).toContain('Never trust a green check alone.\n(end of agent profile)');
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } })).toContain('Never trust a green check alone.\n(end of agent profile)');
     // gone from disk, it leaves the brief, and the character keeps its name for the side card to say so
     fs.rmSync(path.join(profiles, 'verifier.md'));
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } })).toContain('Your agent profile was removed');
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } })).toContain('Your agent profile was removed');
     expect(fleet.char(c.id).agentProfile).toBe('verifier');
     expect(() => fleet.updateCharacter(c.id, { agentProfile: 'verifier' })).toThrow(/no agent profile verifier/);
     expect(fleet.updateCharacter(c.id, { agentProfile: '' }).agentProfile).toBeUndefined();
@@ -2572,12 +2716,12 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x', instructions: 'ship small' }).id, cwd: '/tmp' });
     const outer = '11111111-1111-4111-8111-111111111111';
     const nested = '22222222-2222-4222-8222-222222222222';
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: outer, pid: process.pid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: outer, pid: process.pid } });
     fleet.updateCharacter(c.id, { instructions: 'in Spanish' });
     // two live processes: the agent is this test, the nested claude its parent
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: nested, pid: process.ppid } })).toBeUndefined();
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: nested, pid: process.ppid } })).toBeUndefined();
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: outer, pid: process.pid } }))
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: nested, pid: process.ppid } })).toBeUndefined();
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: nested, pid: process.ppid } })).toBeUndefined();
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: outer, pid: process.pid } }))
       .toContain('+ Robot instructions: in Spanish');
   });
 
@@ -2597,11 +2741,11 @@ runIf('Fleet', () => {
     await waitFor(() => fleet.char(c.id).hint === 'codex-silent');
     // an agent that comes and goes between two polls leaves the silence as it was
     await waitForPolls(fleet, 2);
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-0000-7b00-ad02-80c4930f7426' } });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionEnd', sessionId: '019eefb3-0000-7b00-ad02-80c4930f7426' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-0000-7b00-ad02-80c4930f7426' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionEnd', sessionId: '019eefb3-0000-7b00-ad02-80c4930f7426' } });
     expect(fleet.char(c.id).hint).toBeUndefined();
     await waitFor(() => fleet.char(c.id).hint === 'codex-silent');
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426' } });
     expect(fleet.char(c.id).hint).toBeUndefined();
     // with an agent on record the silence is over, however long the window keeps running codex
     await waitForPolls(fleet, 4);
@@ -2626,38 +2770,35 @@ runIf('Fleet', () => {
   });
 
   it('drops hooks from codex\'s shared server and the runs its sessions start, whose terminal they do not name', async () => {
-    const { fleet } = await boot();
+    const { fleet, procs } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    // a stand-in server and a run under it: ps shows the command line the server was started under
-    const server = spawn('sh', ['-c', 'sleep 60 & echo $!; wait'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: ['ignore', 'pipe', 'ignore'] });
-    cleanup.push(async () => { server.kill(); });
-    const nested = Number(await new Promise<string>((r) => server.stdout!.once('data', (d: Buffer) => r(d.toString()))));
-    cleanup.push(async () => { try { process.kill(nested); } catch { /* gone */ } });
-    await waitFor(() => /codex app-server/.test(execFileSync('ps', ['-o', 'args=', '-p', String(server.pid)], { encoding: 'utf8' })));
+    // the server and a claude -p run under it, as ps lists them
+    const server = 900_001;
+    const nested = 900_002;
+    procs.push({ pid: server, ppid: 1, pgid: server, args: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon' }, { pid: nested, ppid: server, pgid: nested, args: 'claude -p' });
     // the server started from this terminal, so the sessions of every terminal on it report as this one
     for (const sessionId of ['019eefb3-8d5c-7b00-ad02-80c4930f7426', '019eefb3-9999-7b00-ad02-80c4930f7426']) {
       for (const name of ['SessionStart', 'UserPromptSubmit'] as const) {
-        expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name, sessionId, pid: server.pid } })).toBeUndefined();
+        expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name, sessionId, pid: server } })).toBeUndefined();
       }
     }
     // as does a claude -p one of those sessions runs
-    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', pid: nested } })).toBeUndefined();
+    expect(await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', pid: nested } })).toBeUndefined();
     expect(fleet.char(c.id).agent).toBeUndefined();
     // a codex that runs its own server is heard
     const own = '019eefb3-1111-7b00-ad02-80c4930f7426';
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: own, pid: process.pid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: own, pid: process.pid } });
     expect(fleet.char(c.id).agent).toMatchObject({ kind: 'codex', sessionId: own, pid: process.pid });
   });
 
   it('lets go of an agent the shared server held, whose end would be dropped', async () => {
-    const { fleet, store } = await boot();
+    const { fleet, store, procs } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    const server = spawn('sleep', ['60'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: 'ignore' });
-    cleanup.push(async () => { server.kill(); });
-    await waitFor(() => /codex app-server/.test(execFileSync('ps', ['-o', 'args=', '-p', String(server.pid)], { encoding: 'utf8' })));
+    const server = 900_001;
+    procs.push({ pid: server, ppid: 1, pgid: server, args: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon' });
     // what a build that took the server's events left on record
-    store.update((d) => { d.characters[c.id].agent = { kind: 'codex', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426', status: 'working', lastActivityAt: Date.now(), pid: server.pid }; });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'Stop', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426', pid: server.pid } });
+    store.update((d) => { d.characters[c.id].agent = { kind: 'codex', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426', status: 'working', lastActivityAt: Date.now(), pid: server }; });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'Stop', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426', pid: server } });
     expect(fleet.char(c.id).agent).toBeUndefined();
   });
 
@@ -2694,9 +2835,9 @@ runIf('Fleet', () => {
     const outer = '019eefb3-8d5c-7b00-ad02-80c4930f7426';
     const nested = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
     // two live processes: codex is this test, the nested claude its parent
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: outer, pid: process.pid } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: outer, pid: process.pid } });
     for (const name of ['SessionStart', 'Stop', 'SessionEnd'] as const) {
-      fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name, sessionId: nested, pid: process.ppid } });
+      await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name, sessionId: nested, pid: process.ppid } });
     }
     await waitForPolls(fleet, 4);
     expect(fleet.char(c.id)).toMatchObject({ agent: { kind: 'codex', sessionId: outer, status: 'idle' }, unread: false });
@@ -2709,9 +2850,9 @@ runIf('Fleet', () => {
     fs.copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/rollout.jsonl'), rollout);
     const SID = '019eefb3-8d5c-7b00-ad02-80c4930f7426';
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: SID } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: SID } });
     expect(fleet.char(c.id).agent?.contextPct).toBeUndefined();
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'Stop', sessionId: SID, transcriptPath: rollout } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'Stop', sessionId: SID, transcriptPath: rollout } });
     expect(fleet.char(c.id).agent).toMatchObject({ kind: 'codex', contextPct: 19, status: 'done' });
     expect(fleet.readTranscript(c.id, 5)).toContain('AGENT: [tool: shell] Here are the ideas.');
     expect(fleet.readPrompts(c.id, 5)).toEqual(['recommend me any features to add']);
@@ -2724,10 +2865,10 @@ runIf('Fleet', () => {
       JSON.stringify({ type: 'user', origin: { kind: 'human' }, promptId, timestamp: new Date().toISOString(), message: { content } }) + '\n';
     fs.writeFileSync(transcriptPath, entry('p1', 'plant the flag'));
     const c = await fleet.createCharacter({ islandId: 'home', cwd: '/tmp' });
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath } });
     expect(fleet.readPrompts(c.id, 10)).toEqual(['plant the flag']);
 
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', prompt: { id: 'p2', text: 'raise the sail' } } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', prompt: { id: 'p2', text: 'raise the sail' } } });
     expect(fleet.readPrompts(c.id, 10)).toEqual(['raise the sail', 'plant the flag']);
     fs.appendFileSync(transcriptPath, entry('p2', 'raise the sail'));
     expect(fleet.readPrompts(c.id, 10)).toEqual(['raise the sail', 'plant the flag']);
@@ -2841,7 +2982,7 @@ runIf('Fleet', () => {
     await waitFor(() => Object.keys(store.state.characters).length === 1);
     const id = Object.keys(store.state.characters)[0];
     vi.spyOn(fleet, 'run').mockRejectedValue(new Dormant(`character ${id} has no window`));
-    fleet.onSocketEvent({ hook: { charId: id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath } });
+    await fleet.onSocketEvent({ hook: { charId: id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath } });
     const c = await created;
     expect(c.runSent).toBe(false);
     expect(c.agent).toBeDefined();
@@ -2990,7 +3131,7 @@ runIf('Fleet', () => {
     expect(fleet['poll']['shellStreak'].has(`${c.id}-2`)).toBe(false);
     expect(fleet['scribe']['seen'].has(c.id)).toBe(false);
     // nor does the end its agent sends as the window goes
-    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', cwd: '/tmp' } });
+    await fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', cwd: '/tmp' } });
     expect(fleet['agentEvents']['hookCwd'].has(c.id)).toBe(false);
   });
 

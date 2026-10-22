@@ -22,10 +22,12 @@ export function mobileCommand(connect: () => Promise<Client>, json: () => boolea
       const status = await set(true);
       // a caller reading json wants no terminal drawing either
       if (json()) { printResult(status, true); return; }
-      const qr = await QRCode.toString(status.url, { type: 'terminal', small: true });
+      // the link with the pass is the one a phone pairs by
+      const link = status.pair ?? status.url;
+      const qr = await QRCode.toString(link, { type: 'terminal', small: true });
       printResult(status, false, () => [
         qr,
-        status.url,
+        link,
         status.logins.length ? `only ${status.logins.join(', ')} may drive the fleet; to let others in, list them and yourself in mobile.logins in fleet.json and restart the daemon` : 'no login may drive the fleet until mobile.logins in fleet.json names one and the daemon restarts',
         ...(status.pageMissing ? [isRelease() ? 'this release carries no phone page' : 'the phone page is missing: pnpm --filter @svall/desktop-web build:mobile'] : []),
         'On the phone: open the link, then Share → Add to Home Screen.',

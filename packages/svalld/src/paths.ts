@@ -63,6 +63,7 @@ export function resolvePaths(home: string = svallHome()) {
     log: path.join(home, 'svalld.log'),
     hooksSock: path.join(home, 'hooks.sock'),
     mobileKey: path.join(home, 'mobile-key'),
+    mobilePass: path.join(home, 'mobile-pass'),
     tmuxSock: path.join(home, 'tmux.sock'),
     tmuxConf: path.join(home, 'tmux.conf'),
     hookScript: path.join(home, 'hooks', HOOK_SCRIPT),
@@ -81,7 +82,7 @@ export function resolvePaths(home: string = svallHome()) {
 export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.env, p.vapid, p.push];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push];
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

@@ -1,5 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { isCodexServer, onSharedServer, underCodexServer } from '../src/codex/server.js';
 import type { Proc } from '../src/dormancy.js';
 
@@ -54,19 +53,16 @@ describe('onSharedServer', () => {
 });
 
 describe('underCodexServer', () => {
-  const kill: (() => void)[] = [];
-  afterEach(() => { for (const k of kill.splice(0)) k(); });
+  it('knows the server and a run one of its sessions started, and nothing else', () => {
+    const procs = [proc(1, 0, '/sbin/launchd'), proc(100, 1, '-zsh'), proc(300, 1, DAEMON), proc(310, 300, '/bin/sh -c claude -p'), proc(320, 310, 'claude -p'), proc(400, 100, 'codex --no-daemon')];
+    expect(underCodexServer(300, procs)).toBe(true);
+    expect(underCodexServer(320, procs)).toBe(true);
+    expect(underCodexServer(400, procs)).toBe(false);
+    expect(underCodexServer(100, procs)).toBe(false);
+    expect(underCodexServer(999_999, procs)).toBe(false);
+  });
 
-  it('knows the server and a run one of its sessions started, and nothing else', async () => {
-    // a stand-in server whose child is the run: ps shows the command line each was started under
-    const server = spawn('sh', ['-c', 'sleep 60 & echo $!; wait'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: ['ignore', 'pipe', 'ignore'] });
-    kill.push(() => server.kill());
-    const child = Number(await new Promise<string>((r) => server.stdout!.once('data', (d: Buffer) => r(d.toString()))));
-    kill.push(() => { try { process.kill(child); } catch { /* gone */ } });
-    expect(execFileSync('ps', ['-o', 'args=', '-p', String(server.pid)], { encoding: 'utf8' })).toMatch(/codex app-server/);
-    expect(underCodexServer(server.pid!)).toBe(true);
-    expect(underCodexServer(child)).toBe(true);
-    expect(underCodexServer(process.pid)).toBe(false);
-    expect(underCodexServer(999_999)).toBe(false);
+  it('gives up on a parent chain that loops', () => {
+    expect(underCodexServer(10, [proc(10, 11, 'a'), proc(11, 10, 'b')])).toBe(false);
   });
 });

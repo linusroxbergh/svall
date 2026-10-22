@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { runsAgent, type Proc } from '../dormancy.js';
 
 /** Whether `args`, as ps prints them, run Codex's app-server: the shared one a plain `codex` attaches to, or an IDE's.
@@ -28,13 +27,10 @@ export function onSharedServer(panePid: number, procs: Proc[]): boolean {
 
 /** Whether `pid` is a Codex app-server or runs under one, as a `claude -p` a session on the server starts does: either
  *  carries the environment of whichever terminal started the server. */
-export function underCodexServer(pid: number): boolean {
-  for (let p = pid, hops = 0; p > 1 && hops < 32; hops++) {
-    let row: RegExpExecArray | null;
-    try { row = /^\s*(\d+)\s+(.*)$/.exec(execFileSync('ps', ['-o', 'ppid=,args=', '-p', String(p)], { encoding: 'utf8', timeout: 1000 }).trim()); } catch { return false; }
-    if (!row) return false;
-    if (isCodexServer(row[2])) return true;
-    p = Number(row[1]);
+export function underCodexServer(pid: number, procs: Pick<Proc, 'pid' | 'ppid' | 'args'>[]): boolean {
+  const byPid = new Map(procs.map((p) => [p.pid, p]));
+  for (let p = byPid.get(pid), hops = 0; p && p.pid > 1 && hops < 32; p = byPid.get(p.ppid), hops++) {
+    if (isCodexServer(p.args)) return true;
   }
   return false;
 }

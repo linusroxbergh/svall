@@ -69,6 +69,9 @@ export const PATH_FIELDS: Record<string, PathField> = {
   'FleetState.characters.*.second.agent.monitors': FORBIDDEN,
   'FleetState.characters.*.agent.subagents': FORBIDDEN,
   'FleetState.characters.*.second.agent.subagents': FORBIDDEN,
+  // the launch flags ps showed the session's process, which can name this machine's own config
+  'FleetState.characters.*.agent.flags': FORBIDDEN,
+  'FleetState.characters.*.second.agent.flags': FORBIDDEN,
   // what a live window shows: codex running there without a hook, and whether on Codex's shared server
   'FleetState.characters.*.hint': FORBIDDEN,
   'FleetState.characters.*.codexDaemon': FORBIDDEN,

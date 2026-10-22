@@ -72,10 +72,10 @@ describe('following a hook into another checkout', () => {
     expect(store.state.characters.c_a.cwd).toBe(two);
   });
 
-  it('ignores a hook from the second terminal', () => {
+  it('ignores a hook from the second terminal', async () => {
     const { fleet, store, one, two } = setup();
     const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd');
-    fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
     expect(follow).not.toHaveBeenCalled();
     expect(store.state.characters.c_a.cwd).toBe(one);
   });
@@ -112,7 +112,7 @@ describe('following a hook into another checkout', () => {
     const errors: string[] = [];
     const { fleet, two } = setup({ info() {}, error: (m) => errors.push(m) });
     vi.mocked(resolveRepo).mockRejectedValueOnce(new Error('git went away'));
-    fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
     await waitFor(() => errors.length > 0);
     expect(errors).toEqual([`follow c_a to ${two}: Error: git went away`]);
   });
@@ -210,7 +210,7 @@ describe('char.wait over a socket', () => {
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
+      host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
       workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs, ownership, handover,
     });

@@ -26,6 +26,23 @@ function reloadOnce(s: Status): void {
 
 const PROBE_MS = 5000;
 
+// the link from the QR code carries the pass in its fragment, which stays in the browser; the daemon turns it into a
+// cookie the socket and the worker's answers carry from then on. The manifest is asked for only once that is done, so
+// a Home Screen app made from this page opens with the pass too
+function pair(then: () => void): void {
+  const done = () => {
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = '/manifest.webmanifest';
+    link.crossOrigin = 'use-credentials';
+    document.head.append(link);
+    then();
+  };
+  const pass = location.hash.slice(1);
+  if (pass) void fetch('/pair', { method: 'POST', body: pass }).catch(() => {}).then(done);
+  else done();
+}
+
 function createPhone(): PhoneContext {
   const store = createAppStore(localAppStorage());
   const api = new Api({ url: socketUrl() });
@@ -39,7 +56,7 @@ function createPhone(): PhoneContext {
     if (e.event === 'state.patch') fleet.patch(e.data.ops);
   };
   api.onOpen = fleet.load;
-  api.start();
+  pair(() => api.start());
 
   // a network change can leave the socket open here and dead at the Mac: back in view or online, one that hears
   // nothing soon is dropped for a fresh one. Terminal output counts, since the answer can queue behind it

@@ -1009,7 +1009,7 @@ describe('restTerminals', () => {
 
     // the first window is gone and its record says so, so the exit hook its agent sends next finds nothing to take
     const fleet = new Fleet({ store, tmux: new Tmux(paths.tmuxSock, paths.tmuxConf), paths, config: Config.parse({ id: fleetId }), ownership, log: silentLogger });
-    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'claude', name: 'SessionEnd', sessionId: SID } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'claude', name: 'SessionEnd', sessionId: SID } });
     expect(store.state.characters.c_ada.tmux).toBeUndefined();
     expect(store.state.characters.c_ada.agent?.sessionId).toBe(SID);
     expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
@@ -1186,9 +1186,9 @@ describe('a frozen fleet', () => {
     });
     await ownership.freeze(tx);
 
-    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'claude', name: 'SessionEnd', sessionId: SID } });
-    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'codex', name: 'SessionEnd', sessionId: SID2, term: 2 } });
-    fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'claude', name: 'Stop', sessionId: SID2 } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'claude', name: 'SessionEnd', sessionId: SID } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'codex', name: 'SessionEnd', sessionId: SID2, term: 2 } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'claude', name: 'Stop', sessionId: SID2 } });
 
     expect(store.state.characters.c_ada.agent?.sessionId).toBe(SID);
     expect(store.state.characters.c_ada.second?.agent?.sessionId).toBe(SID2);
@@ -1207,9 +1207,9 @@ describe('a frozen fleet', () => {
     });
     await ownership.freeze(tx);
 
-    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'opencode', name: 'Interrupt', sessionId: OSID } });
-    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'opencode', name: 'SessionStart', sessionId: other } });
-    fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'opencode', name: 'Stop', sessionId: other } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'opencode', name: 'Interrupt', sessionId: OSID } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'opencode', name: 'SessionStart', sessionId: other } });
+    await fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'opencode', name: 'Stop', sessionId: other } });
 
     expect(store.state.characters.c_ada.agent).toMatchObject({ sessionId: OSID, status: 'idle' });
     expect(store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });

@@ -158,6 +158,7 @@ export class Store {
     }
   }
 
+  // prompts, notes and tab urls are the user's alone
   private persist(state: FleetState): void {
     writeDurable(this.file, state, { mode: 0o600 });
     clearTimeout(this.writing);

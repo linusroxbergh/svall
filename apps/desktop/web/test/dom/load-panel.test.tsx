@@ -112,7 +112,7 @@ test('a read waits on the one before it, however slow its reply', async () => {
 
 test('a reading from before a pause is never shown once reading starts again', async () => {
   function Probe() {
-    const at = useLoad(useApp((s) => s.active))?.at;
+    const at = useLoad(useApp((s) => s.active)).load?.at;
     return <i data-testid="probe">{at ?? 'none'}</i>;
   }
   snap.at = 7;
@@ -122,4 +122,23 @@ test('a reading from before a pause is never shown once reading starts again', a
   act(() => store.getState().setActive(false));
   act(() => store.getState().setActive(true));
   expect(screen.getByTestId('probe').textContent).toBe('none');
+});
+
+test('a daemon that cannot read the load says so, and a read that fails later keeps the last reading beside it', async () => {
+  vi.useFakeTimers();
+  call.mockImplementation(() => Promise.reject(new Error('ps: not found')));
+  render(<LoadPanel />);
+  await act(async () => {});
+  expect(screen.getByTestId('load-error').textContent).toBe('ps: not found');
+  expect(screen.queryByTestId('load-app')).toBeNull();
+
+  call.mockImplementation(answer);
+  await act(() => vi.advanceTimersByTimeAsync(4000));
+  expect(screen.queryByTestId('load-error')).toBeNull();
+  expect(screen.getByTestId('load-app')).toBeTruthy();
+
+  call.mockImplementation(() => Promise.reject(new Error('ps: not found')));
+  await act(() => vi.advanceTimersByTimeAsync(4000));
+  expect(screen.getByTestId('load-error').textContent).toBe('ps: not found');
+  expect(screen.getByTestId('load-app')).toBeTruthy();
 });

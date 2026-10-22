@@ -622,8 +622,8 @@ State schema v9 makes both terminal slots explicitly resumable. A terminal recor
 optional live tmux ids, optional agent, and optional revive command. A second terminal does not
 disappear merely because its tmux window is absent.
 
-Before export, all `tmux.windowId`, `paneId`, `panePath`, `hint`, `codexDaemon`, agent pid, monitor and
-`agent.subagents` fields are removed. For a supported agent, `revive.command` is `claude --resume <id>`,
+Before export, all `tmux.windowId`, `paneId`, `panePath`, `hint`, `codexDaemon`, agent pid, `agent.flags`,
+monitor and `agent.subagents` fields are removed. For a supported agent, `revive.command` is `claude --resume <id>`,
 `codex resume <id>` or `opencode -s <id>` (launched with `--standalone`) with the launch flags an idle close
 keeps, whether the handover rested the terminal or it was already dormant, less the Codex flags whose values
 name the source's own config (`-p`/`--profile`, `--local-provider`). A plain shell has no command and reopens

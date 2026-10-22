@@ -5,7 +5,7 @@ import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { keyLabel } from './keys.js';
 import { shortPath } from './resources/model.js';
-import { SETTINGS_KEY, TOUR_KEY, type AppState } from './store/index.js';
+import { scopedKey, SETTINGS_KEY, TOUR_KEY, type AppState } from './store/index.js';
 
 const GAP = 14;
 type Side = 'top' | 'bottom' | 'left' | 'right';
@@ -43,11 +43,16 @@ const STEPS: Step[] = [
   },
 ];
 
-// a machine with settings of its own is past its first run, so the tour is only ever offered on the first
-const readStep = (): number => {
-  const v = localStorage.getItem(TOUR_KEY);
-  if (v === null) return localStorage.getItem(SETTINGS_KEY) === null ? 0 : STEPS.length;
-  return v === 'done' ? STEPS.length : Number(v) || 0;
+// a machine with settings of its own, under its fleet's key or the unscoped one, is past its first run, so
+// the tour is only ever offered on the first; a store switched off offers it never
+export const readStep = (): number => {
+  try {
+    const v = localStorage.getItem(TOUR_KEY);
+    if (v === null) return localStorage.getItem(SETTINGS_KEY) === null && localStorage.getItem(scopedKey(SETTINGS_KEY, window.__svallHome)) === null ? 0 : STEPS.length;
+    return v === 'done' ? STEPS.length : Number(v) || 0;
+  } catch {
+    return STEPS.length;
+  }
 };
 
 // the oldest character off mission control: the shell a new fleet starts with
@@ -92,7 +97,7 @@ export function Tour() {
   const at = cur?.at({ id: first, islandId, cardOpen });
   const selector = at?.sel;
   const go = (next: number) => {
-    localStorage.setItem(TOUR_KEY, next >= STEPS.length ? 'done' : String(next));
+    try { localStorage.setItem(TOUR_KEY, next >= STEPS.length ? 'done' : String(next)); } catch { /* remembered, not required */ }
     setStep(next);
   };
 

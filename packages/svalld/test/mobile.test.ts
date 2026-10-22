@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import http, { type IncomingMessage } from 'node:http';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { PROTOCOL_VERSION, type Event, type PhoneSession } from '@svall/protocol';
-import { identityOf, originAllowed, startApi, stripKey } from '../src/api/server.js';
+import { cookieOf, identityOf, originAllowed, startApi, stripKey } from '../src/api/server.js';
 import { brand, resolveFile, serveBundle } from '../src/api/static.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
@@ -34,6 +34,15 @@ describe('origins', () => {
   });
 
   // a page whose own name was made to resolve to 127.0.0.1 sends its name as both origin and host
+  it('admits the Vite dev server from a checkout, and never from the app', async () => {
+    const as = async (v: string) => { vi.resetModules(); vi.stubEnv('SVALL_VARIANT', v); return (await import('../src/api/server.js')).originAllowed; };
+    const vite = req({ origin: 'http://localhost:5173', host: '127.0.0.1:47800' });
+    try {
+      expect((await as('release'))(vite)).toBe(false);
+      expect((await as('dev'))(vite)).toBe(true);
+    } finally { vi.unstubAllEnvs(); vi.resetModules(); }
+  });
+
   it('admits a page on its own host only on loopback, or on the name the proxy answered on', () => {
     for (const host of ['127.0.0.1:47800', 'localhost:47800', '[::1]:47800'])
       expect(originAllowed(req({ origin: `http://${host}`, host }))).toBe(true);
@@ -52,6 +61,15 @@ describe('identity', () => {
   it('takes no one while the fleet names no login', () => {
     expect(identityOf(req({ 'tailscale-user-login': 'me@example.com' }))).toBeUndefined();
     expect(identityOf(req({ 'tailscale-user-login': 'me@example.com' }), [])).toBeUndefined();
+  });
+});
+
+describe('phone pass', () => {
+  it('reads one cookie among the others, as sent', () => {
+    expect(cookieOf(req({ cookie: 'a=1; svall-pass=abc=; b' }), 'svall-pass')).toBe('abc=');
+    expect(cookieOf(req({ cookie: 'svall-pass=abc' }), 'svall-pass')).toBe('abc');
+    expect(cookieOf(req({ cookie: 'svall-passx=abc; a=1' }), 'svall-pass')).toBeUndefined();
+    expect(cookieOf(req({}), 'svall-pass')).toBeUndefined();
   });
 });
 
@@ -99,8 +117,10 @@ describe('bundle paths', () => {
 
   it('names the fleet in the page title and the manifest, and leaves everything else alone', () => {
     expect(brand('/d/index.html', '<title>Svall</title><p>Svall</p>', 'work')).toBe('<title>Svall work</title><p>Svall</p>');
+    expect(brand('/d/index.html', '<title>Svall</title>', undefined, '/#p')).toBe('<title>Svall</title>');
     const manifest = JSON.parse(brand('/d/manifest.webmanifest', '{"name":"Svall","short_name":"Svall","id":"/"}', 'work'));
     expect(manifest).toEqual({ name: 'Svall work', short_name: 'svall work', id: '/' });
+    expect(JSON.parse(brand('/d/manifest.webmanifest', '{"name":"Svall","id":"/","start_url":"/"}', undefined, '/#p'))).toEqual({ name: 'Svall', id: '/', start_url: '/#p' });
   });
 });
 
@@ -108,6 +128,8 @@ const runIf = hasTmux() ? describe : describe.skip;
 
 runIf('phone sockets', () => {
   const key = 'c0ffee'.repeat(8);
+  const pass = 'pa55'.repeat(12);
+  const PAIRED = { cookie: `svall-pass=${pass}` };
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
@@ -135,7 +157,7 @@ runIf('phone sockets', () => {
     const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl, log,
-      origins: () => [], logins: () => current.logins, dist, key: () => current.key, fleetName,
+      origins: () => [], logins: () => current.logins, dist, key: () => current.key, pass, fleetName,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), ownership, handover,
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
     });
@@ -191,7 +213,7 @@ runIf('phone sockets', () => {
     const errors: string[] = [];
     const api = await boot(undefined, stubMobile, { info() {}, error: (m) => errors.push(m) });
     const open = (login: string) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': login } });
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': login, ...PAIRED } });
       cleanup.push(async () => ws.close());
       return ws;
     };
@@ -203,11 +225,56 @@ runIf('phone sockets', () => {
     expect(errors).toEqual(['api: refused a phone socket from tailnet login them@example.com']);
   });
 
+  // the key is in the serve command's arguments, which other users on the Mac read: a login header behind it proves nothing alone
+  it('tells a phone behind the key without the pass to pair, with its own code, and takes one with the pass', async () => {
+    const api = await boot();
+    const open = (cookie?: string) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...(cookie ? { cookie } : {}) } });
+      cleanup.push(async () => ws.close());
+      return ws;
+    };
+    await expect(hello(open())).rejects.toThrow(/closed 4402/);
+    await expect(hello(open('svall-pass=not-the-pass'))).rejects.toThrow(/closed 4402/);
+    await expect(hello(open(`svall-pass=${pass.slice(1)}`))).rejects.toThrow(/closed 4402/);
+    expect((await hello(open(`other=1; svall-pass=${pass}`))).protocol).toBe(PROTOCOL_VERSION);
+    const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
+    const post = (cookie?: string) => fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com', ...(cookie ? { cookie } : {}) } });
+    expect((await post()).status).toBe(401);
+    expect((await post(`svall-pass=${pass}`)).status).toBe(200);
+  });
+
+  it('hands the pass back as a cookie to a phone that posts it from the link, and to nobody else', async () => {
+    const api = await boot();
+    const me = { 'Tailscale-User-Login': 'me@example.com' };
+    const post = (path: string, body: string, headers: Record<string, string> = me) => fetch(`http://127.0.0.1:${api.port}${path}`, { method: 'POST', body, headers });
+    const paired = await post(`/${key}/pair`, pass);
+    expect(paired.status).toBe(204);
+    expect(paired.headers.get('set-cookie')).toBe(`svall-pass=${pass}; Path=/; Max-Age=34560000; Secure; HttpOnly; SameSite=Strict`);
+    for (const wrong of ['not-the-pass', pass.slice(1), '']) {
+      const res = await post(`/${key}/pair`, wrong);
+      expect([res.status, res.headers.get('set-cookie')]).toEqual([403, null]);
+    }
+    expect((await post('/pair', pass)).status).toBe(401);
+    expect((await post(`/${key}/pair`, pass, {})).status).toBe(401);
+    expect((await post(`/${key}/pair`, pass, { 'Tailscale-User-Login': 'them@example.com' })).status).toBe(401);
+    expect((await post(`/${key}/pair`, pass, { ...me, origin: 'https://evil.example' })).status).toBe(403);
+  });
+
+  // a Home Screen app opens at the manifest's start_url, with none of the page's storage
+  it('leads a Home Screen app back in with the pass through a paired page\'s manifest, and through no other', async () => {
+    const api = await boot(() => 'work');
+    const manifest = async (path: string, headers: Record<string, string>) => JSON.parse(await (await fetch(`http://127.0.0.1:${api.port}${path}`, { headers })).text());
+    expect(await manifest(`/${key}/manifest.webmanifest`, PAIRED)).toEqual({ name: 'Svall work', short_name: 'svall work', start_url: `/#${pass}` });
+    expect(await manifest(`/${key}/manifest.webmanifest`, {})).toEqual({ name: 'Svall work', short_name: 'svall work' });
+    expect(await manifest(`/${key}/manifest.webmanifest`, { cookie: 'svall-pass=not-the-pass' })).toEqual({ name: 'Svall work', short_name: 'svall work' });
+    expect(await manifest('/manifest.webmanifest', PAIRED)).toEqual({ name: 'Svall work', short_name: 'svall work' });
+  });
+
   // the Mac's own login is learned from tailscale after the server is up
   it('takes a phone by the logins the fleet accepts as it connects, and none while it accepts none', async () => {
     const api = await boot();
     const open = (login: string) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': login } });
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': login, ...PAIRED } });
       cleanup.push(async () => ws.close());
       return ws;
     };
@@ -227,13 +294,13 @@ runIf('phone sockets', () => {
     });
     api.current.logins = [];
     const open = () => {
-      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
       cleanup.push(async () => ws.close());
       return ws;
     };
     const refused = [open(), open(), open()].map((ws) => expect(hello(ws)).rejects.toThrow(/closed 4403/));
     const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
-    const post = fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com' } });
+    const post = fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
     expect((await post).status).toBe(401);
     await Promise.all(refused);
     expect(looks).toBe(1);
@@ -251,7 +318,7 @@ runIf('phone sockets', () => {
     });
     api.current.logins = ['before@example.com'];
     const open = () => {
-      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
       cleanup.push(async () => ws.close());
       return ws;
     };
@@ -263,7 +330,7 @@ runIf('phone sockets', () => {
 
   it('takes a phone only behind the key it holds now', async () => {
     const api = await boot();
-    const me = { 'Tailscale-User-Login': 'me@example.com' };
+    const me = { 'Tailscale-User-Login': 'me@example.com', ...PAIRED };
     const open = (k: string) => { const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${k}/`, { headers: me }); cleanup.push(async () => ws.close()); return ws; };
     expect((await hello(open(key))).protocol).toBe(PROTOCOL_VERSION);
     api.current.key = 'f00d'.repeat(12);
@@ -284,7 +351,7 @@ runIf('phone sockets', () => {
     app.send(JSON.stringify({ token: 'secret' }));
     await hi;
     for (const [id, enabled] of [[1, false], [2, true]] as const) {
-      const phone = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+      const phone = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
       cleanup.push(async () => phone.close());
       await hello(phone);
       const closed = new Promise<number | string>((r) => { phone.once('close', (code) => r(code)); setTimeout(() => r('still open'), 2000); });
@@ -298,7 +365,7 @@ runIf('phone sockets', () => {
 
   it('closes a phone socket at its next call once the fleet no longer lists its login', async () => {
     const api = await boot();
-    const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+    const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
     cleanup.push(async () => ws.close());
     await hello(ws);
     api.current.logins = ['them@example.com'];
@@ -311,7 +378,7 @@ runIf('phone sockets', () => {
   it('holds a login header without the key to the token like any other socket', async () => {
     const api = await boot();
     for (const path of ['/', `/${'d'.repeat(48)}/`]) {
-      const ws = new WebSocket(`ws://127.0.0.1:${api.port}${path}`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}${path}`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
       cleanup.push(async () => ws.close());
       await new Promise((r) => ws.once('open', r));
       ws.send(JSON.stringify({ token: 'not the token' }));
@@ -327,7 +394,7 @@ runIf('phone sockets', () => {
 
   it('takes the page on the tailnet name only behind the key, where the proxy vouches for the name', async () => {
     const api = await boot();
-    const tailnet = { origin: 'https://mac.tail.ts.net', headers: { host: 'mac.tail.ts.net', 'Tailscale-User-Login': 'me@example.com' } };
+    const tailnet = { origin: 'https://mac.tail.ts.net', headers: { host: 'mac.tail.ts.net', 'Tailscale-User-Login': 'me@example.com', ...PAIRED } };
     const phone = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, tailnet);
     cleanup.push(async () => phone.close());
     expect((await hello(phone)).protocol).toBe(PROTOCOL_VERSION);
@@ -352,7 +419,7 @@ runIf('phone sockets', () => {
     });
     desktop.send(JSON.stringify({ token: 'secret' }));
 
-    const phone = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+    const phone = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
     cleanup.push(async () => phone.close());
     await hello(phone);
     await waitFor(() => told.length === 1);
@@ -368,8 +435,8 @@ runIf('phone sockets', () => {
     const api = await boot();
     // an agent's pane runs something other than a shell, or the poll ends the agent
     const c = await api.fleet.createCharacter({ islandId: api.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
-    api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
+    await api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
+    await api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
     expect(api.store.state.characters[c.id].agent?.status).toBe('blocked');
     // a tap comes seconds later, after the fleet has polled the pane several times
     await waitForPolls(api.fleet, 3);
@@ -377,7 +444,7 @@ runIf('phone sockets', () => {
       const body = JSON.stringify({ id: 1, method: 'char.answer', params: { id: c.id, answer: 'approve' } });
       const req = http.request({
         host: '127.0.0.1', port: api.port, path: `/${key}/rpc`, method: 'POST',
-        headers: { host: 'mac.tail.ts.net', origin: 'https://mac.tail.ts.net', 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json' },
+        headers: { host: 'mac.tail.ts.net', origin: 'https://mac.tail.ts.net', 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json', ...PAIRED },
       }, (res) => { let text = ''; res.on('data', (d) => { text += d; }); res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(text || '{}') })); });
       req.on('error', reject);
       req.end(body);
@@ -392,7 +459,7 @@ runIf('phone sockets', () => {
     const api = await boot();
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
       fetch(`http://127.0.0.1:${api.port}${path}`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', ...headers } });
-    const me = { 'Tailscale-User-Login': 'me@example.com' };
+    const me = { 'Tailscale-User-Login': 'me@example.com', ...PAIRED };
     const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
     const ok = await post(`/${key}/rpc`, call, me);
     expect(ok.status).toBe(200);
@@ -406,7 +473,7 @@ runIf('phone sockets', () => {
 
   it('reads a POST body whole, a character split across its chunks and all, and lets a dropped one go', async () => {
     const api = await boot();
-    const headers = { 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json' };
+    const headers = { 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json', ...PAIRED };
     const body = Buffer.from(JSON.stringify({ id: 1, method: 'char.answer', params: { id: 'c_ö', answer: 'approve' } }));
     const split = body.indexOf(Buffer.from('ö')) + 1;
     const answer = await new Promise<string>((resolve, reject) => {

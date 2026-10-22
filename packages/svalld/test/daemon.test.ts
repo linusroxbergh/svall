@@ -213,7 +213,7 @@ runIf('startDaemon', () => {
     const again = d2.store.state.characters[c.id];
     expect(again.tmux).toEqual(c.tmux);
     expect(await d2.fleet.readScreen(c.id, 20)).toContain('persist-me');
-    d2.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
+    await d2.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
     await d2.stop();
 
     await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();
@@ -302,8 +302,9 @@ runIf('startDaemon', () => {
     const logged: string[] = [];
     const d = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
     const sockets: WebSocket[] = [];
+    const pass = fs.readFileSync(paths.mobilePass, 'utf8').trim();
     const open = (key?: string) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${d.port}/${key ?? ''}`, key ? { headers: { 'Tailscale-User-Login': 'me@example.com' } } : {});
+      const ws = new WebSocket(`ws://127.0.0.1:${d.port}/${key ?? ''}`, key ? { headers: { 'Tailscale-User-Login': 'me@example.com', cookie: `svall-pass=${pass}` } } : {});
       sockets.push(ws);
       return ws;
     };

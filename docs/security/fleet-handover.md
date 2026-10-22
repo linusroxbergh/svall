@@ -113,7 +113,7 @@ under which licences, and which risks are accepted. Tests are named by file unde
 
 ## Secrets
 
-The secrets: the daemon token, the phone key, the VAPID keys, the fleet `.env`, agent logins and ssh keys.
+The secrets: the daemon token, the phone key, the phone pass, the VAPID keys, the fleet `.env`, agent logins and ssh keys.
 
 | Channel | What keeps secrets out | Tests |
 | --- | --- | --- |
@@ -207,7 +207,7 @@ Every delete, rename and archive a handover or its install makes, with the recor
   only. They run as the user with `Restart=always`. Their logs are in `~/.local/share/svall/log`, at 0700.
   (`linux-setup.test.ts` "keeps the units' logs in a folder only this account opens…")
 - **Fleet home** 0700, made so at every daemon start. Its contents:
-  - `token`, `mobile-key`, `vapid.json` and `push.json` at 0600;
+  - `token`, `mobile-key`, `mobile-pass`, `vapid.json` and `push.json` at 0600;
   - `hooks.sock` at 0600;
   - tmux's socket, inside the 0700 home.
 

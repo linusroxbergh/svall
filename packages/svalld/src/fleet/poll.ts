@@ -127,6 +127,8 @@ export class Poll {
   private async tick(): Promise<void> {
     if (!this.deps.writable()) return;
     const before = snapshot(this.deps.store.state);
+    const activeAt = new Map(Object.values(this.deps.store.state.characters)
+      .flatMap((c) => [[c.id, c.agent?.lastActivityAt], [secondName(c.id), c.second?.agent?.lastActivityAt]]));
     const live = await this.deps.listWindows();
     // a stop while tmux answered has ended what the listing shows, and a freeze leaves the fleet to the handover
     if (this.stopped || !this.deps.writable()) return;
@@ -147,6 +149,8 @@ export class Poll {
       const resume = resuming.get(key);
       const shell = isShellCommand(command, this.deps.config.shell);
       if (resume && !shell) resume.ran = true;
+      // an agent that reported in while tmux answered is not the one the listing shows at a shell
+      if (slot.agent && slot.agent.lastActivityAt !== activeAt.get(key)) { this.shellStreak.delete(key); return; }
       if (slot.agent && shell && !carried && !suspended.has(slot.agent.pid ?? 0)) {
         const n = (this.shellStreak.get(key) ?? 0) + 1;
         this.shellStreak.set(key, n);
@@ -242,8 +246,8 @@ export class Poll {
   // a plain `codex` on Codex's shared server is heard as the terminal that started the server, so its events are
   // dropped; any other codex is silent for its hooks' sake
   private async markSilent(silent: { id: string; pid: number }[]): Promise<void> {
-    const procs = await this.deps.processes();
-    if (this.stopped || !this.deps.writable()) return;
+    const procs = await this.deps.processes().catch((e) => { this.deps.log.error(`codex silent: ${String(e)}`); return undefined; });
+    if (!procs || this.stopped || !this.deps.writable()) return;
     this.deps.store.update((d) => {
       for (const { id, pid } of silent) {
         const c = d.characters[id];

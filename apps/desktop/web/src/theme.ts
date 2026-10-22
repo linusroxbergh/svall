@@ -23,6 +23,7 @@ export const theme = {
   // a toast offering to take something back stands long enough to be read and acted on
   toastActionMs: 9000,
   docSaveMs: 800,                 // a doc is written this long after the last edit
+  resourcesFreshMs: 3000,         // a listing read this recently serves the next ask
   card: { margin: 26, easeMs: 160 },
   // the little box that asks where a link should open, kept clear of the window's own edges
   linkAsk: { width: 200, height: 112, gap: 6, margin: 8 },

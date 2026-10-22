@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
-import { LOGIN_REFUSED, PROTOCOL_VERSION } from '@svall/protocol';
+import { LOGIN_REFUSED, PROTOCOL_VERSION, UNPAIRED } from '@svall/protocol';
 import { Api, ApiError, type Status } from '../src/api.js';
 
 type Server = { wss: WebSocketServer; port: number; close(): Promise<void> };
@@ -251,6 +251,27 @@ describe('Api', () => {
     await until(() => statuses.filter((s) => s === 'refused').length >= 2);
     expect(statuses.slice(1).every((s) => s === 'refused')).toBe(true);
     accepted = true;
+    await until(() => statuses.at(-1) === 'online');
+  });
+
+  // the page holds no pass yet; one opened from the QR code pairs and comes in
+  it('reports an unpaired phone as such across retries, and comes online once paired', async () => {
+    let paired = false;
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    cleanup.push(() => new Promise<void>((r) => { for (const c of wss.clients) c.terminate(); wss.close(() => r()); }));
+    wss.on('connection', (ws) => {
+      if (paired) ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+      else ws.close(UNPAIRED, 'phone not paired');
+    });
+    const api = new Api({ url: `ws://127.0.0.1:${(wss.address() as { port: number }).port}` }, { WS: WebSocket as unknown as typeof globalThis.WebSocket, minDelay: 20, maxDelay: 50 });
+    cleanup.push(() => api.stop());
+    const statuses: Status[] = [];
+    api.onStatus = (s) => statuses.push(s);
+    api.start();
+    await until(() => statuses.filter((s) => s === 'unpaired').length >= 2);
+    expect(statuses.slice(1).every((s) => s === 'unpaired')).toBe(true);
+    paired = true;
     await until(() => statuses.at(-1) === 'online');
   });
 

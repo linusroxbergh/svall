@@ -2,7 +2,7 @@ import { frontmatter } from '@svall/protocol';
 import { getBuffer, isDirty, subscribeBuffer, type Buffer } from '../ide/buffers.js';
 import { onSaved, saveFile } from '../ide/files.js';
 import { theme } from '../theme.js';
-import { loadResources, type ResourcesDeps } from './load.js';
+import { reloadResources, type ResourcesDeps } from './load.js';
 import { isAgentProfiles } from './model.js';
 
 const key = (id: string, path: string): string => `${id}\0${path}`;
@@ -53,7 +53,7 @@ function noticeSave(d: ResourcesDeps, id: string, path: string): void {
   const now = frontmatter(b.saved.toString()).description;
   if (now === lastDescription.get(k) && !isAgentProfiles(d.store.getState().resources, id)) return;
   lastDescription.set(k, now);
-  void loadResources(d);
+  void reloadResources(d);
 }
 onSaved(noticeSave);
 
