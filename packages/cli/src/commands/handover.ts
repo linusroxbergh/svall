@@ -498,8 +498,11 @@ export async function runAttach(c: Ctx): Promise<number> {
   return 0;
 }
 
-/** `--forget`: drops this controller's journal of a handover nothing can drive any more, and nothing else. */
-export async function runForget(c: Ctx): Promise<number> {
+/**
+ * `--forget`: drops this controller's journal of a handover nothing can drive any more, and nothing else. `source`:
+ * also of one whose source, which does not answer, is all that is left.
+ */
+export async function runForget(c: Ctx, o: { source?: boolean } = {}): Promise<number> {
   const w = words(c);
   const view = viewFor(c);
   const out = output(c, view);
@@ -516,18 +519,18 @@ export async function runForget(c: Ctx): Promise<number> {
     return 1;
   }
   try {
-    return await forget(c, paths, w, out);
+    return await forget(c, paths, w, out, o.source);
   } finally {
     release();
   }
 }
 
-async function forget(c: Ctx, paths: HelperPaths, w: Words, out: Out): Promise<number> {
+async function forget(c: Ctx, paths: HelperPaths, w: Words, out: Out, source = false): Promise<number> {
   const tx = c.deps.connect({ fleetHome: c.fleetHome, profile: c.profile, record: () => undefined, decide: async () => 'cancel' });
   const scrubbed = (v: Verdict): Verdict => JSON.parse(redact(JSON.stringify(v), tx.secrets())) as Verdict;
   try {
     const { observation, verdict } = await tx.handover.status();
-    const may = forgettable(observation, verdict);
+    const may = forgettable(observation, verdict, source);
     if (!may.ok) {
       const safe = verdict.safe.map((s) => `\`${w.svall(`handover --${s}`)}\``).join(' or ');
       out.note(redact(`Not forgotten: ${may.reason}.${safe ? ` ${safe} is the way on.` : ''}`, tx.secrets()));
@@ -538,7 +541,10 @@ async function forget(c: Ctx, paths: HelperPaths, w: Words, out: Out): Promise<n
     fileStore(paths.dir).clear(id);
     // a later attach would otherwise replay the run the gateway moved past
     fs.rmSync(paths.events, { force: true });
-    out.note(`Forgot this controller's journal of ${id ?? 'a handover that never began'}; the daemons' journals and the gateway's record are as they were.`);
+    const left = source && observation.source?.ok === false ? observation.controller?.source.name : undefined;
+    out.note(left
+      ? `Forgot this controller's journal of ${id}. ${left} did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and \`${w.svall('handover --resume')}\` finishes that side if it answers again before \`${w.svall('host remove')}\` drops it.`
+      : `Forgot this controller's journal of ${id ?? 'a handover that never began'}; the daemons' journals and the gateway's record are as they were.`);
     if (c.json) out.event({ event: 'handover.status', data: scrubbed((await tx.handover.status()).verdict) });
     return 0;
   } catch (e) {
@@ -565,7 +571,7 @@ export function realDeps(): CliDeps {
 
 type Flags = {
   interruptAfter?: string; terminateShells?: boolean; archive: string[]; carryUnused?: boolean;
-  resume?: boolean; abort?: boolean; forget?: boolean; detach?: boolean; helper?: boolean; check?: boolean;
+  resume?: boolean; abort?: boolean; forget?: boolean; source?: boolean; detach?: boolean; helper?: boolean; check?: boolean;
 };
 
 function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
@@ -575,6 +581,7 @@ function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
     throw new Error('--interrupt-after, --terminate-shells, --archive, --carry-unused and --check go with the machine a handover starts to');
   }
   if (f.forget && f.detach) throw new Error('--forget runs in the foreground only');
+  if (f.source && !f.forget) throw new Error('--source goes with --forget');
   if (f.forget) return 'forget';
   if (f.resume) return { kind: 'resume' };
   if (f.abort) return { kind: 'abort' };
@@ -616,6 +623,7 @@ export function handoverCommand(o: {
     .option('--resume', 'go the one safe way on with the handover left open')
     .option('--abort', 'take the fleet back to the machine it came from; before the commit only')
     .option('--forget', "drop this controller's journal of a handover the gateway has moved past")
+    .option('--source', "with --forget, give up the source's side of a handover the destination finished, while the source does not answer")
     .option('--detach', 'leave the handover to a background helper and print where it runs; `svall handover attach` follows it')
     .addOption(new Flag('--helper').hideHelp())
     .action(async (machine: string | undefined, f: Flags) => {
@@ -631,7 +639,7 @@ export function handoverCommand(o: {
         return;
       }
       const c = ctx();
-      if (job === 'forget') { guard(); exit(await runForget(c)); return; }
+      if (job === 'forget') { guard(); exit(await runForget(c, { source: f.source })); return; }
       if (f.detach && !f.helper) { exit(await launchHelper(job, c)); return; }
       if (f.helper) guard();
       const ran = await (o.run ?? runHandover)(job, { ...c, helper: f.helper === true });

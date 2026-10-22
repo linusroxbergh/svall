@@ -21,7 +21,7 @@ import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } fro
 import { entryEvent, namesOf, Observer } from './events.js';
 import { redact } from './process.js';
 import { ProgressJournal, transactionDir } from './progress.js';
-import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen } from './recovery.js';
+import { assess, SOURCE_MISSES, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen } from './recovery.js';
 import { SshError } from './ssh.js';
 import { farRsync, transfer as runTransfer, type Master, type RootEntry, type SessionEntry, type TransferOptions, type TransferResult } from './transfer.js';
 
@@ -783,14 +783,20 @@ export class Handover {
       const landed = this.journal.landedDigest ? this.d.store.landed(transactionId, this.journal.landedDigest) : undefined;
       // a source this controller has no route to finishes its side from its own controller
       let unrouted = false;
+      let misses = 0;
+      const name = this.journal.source.name;
       try {
         const source = await this.side(this.journal.source.machineId);
         await this.retrying('complete', () => source.daemon.call('handover.complete', { transactionId, generation, ...(landed && { landed }) }));
       } catch (e) {
         unrouted = e instanceof NoRoute;
         pending.push('source');
-        const name = this.journal.source.name;
         said.push(`${name}: ${messageOf(e)}${unrouted ? `; svall handover --resume on ${name} finishes its side` : ''}`);
+        // a refusal is the source answering
+        if (!unrouted && !(e instanceof Refused)) {
+          misses = (this.journal.sourceMisses ?? 0) + 1;
+          this.save({ sourceMisses: misses });
+        }
       }
       try {
         const record = await this.retrying('complete', () => this.d.gateway.complete({ transactionId, generation: generation + 1 }));
@@ -803,6 +809,7 @@ export class Handover {
           said.push(`the gateway: ${messageOf(e)}`);
         }
       }
+      if (misses >= SOURCE_MISSES && pending.length === 1) said.push(`${name} has not answered ${misses} resumes; if it is gone for good, svall handover --forget --source gives up its side`);
       const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, characters };
       // the journal stays open, so a resume finishes what is pending, unless that is only a source no resume here reaches
       if (pending.length && !(unrouted && pending.length === 1)) return { ...done, pending, error: this.scrub(said.join('; ')) };
@@ -911,16 +918,28 @@ export class Handover {
     if (v.standing === 'unknown') {
       return v.fromMachineId ? plain('gateway_unknown', 'the gateway could not say whether this handover committed, so nothing is safe until it answers') : { ...base, error: reason, stop: 'gateway_unknown' };
     }
+    // past the commit on a source with no route to the destination: it goes on only there
+    if ((v.standing === 'committed' || v.standing === 'moved') && v.fromMachineId === this.d.local && v.toMachineId && !this.routes(v.toMachineId)) {
+      return { ...base, error: reason, stop: 'elsewhere' };
+    }
     if (v.standing === 'committed' || v.standing === 'moved') {
       return plain('journal_lost', `${this.nameOf(v.toMachineId)}'s handover journal could not be read, so nothing is safe until it is put back or the fleet is recovered`);
     }
     if (v.standing === 'superseded') return plain('superseded', "the gateway has moved this fleet on past this handover; svall handover --forget drops this controller's journal of it");
-    return { ...base, error: reason, stop: 'unexpected' };
+    // open with nothing safe here: it goes on only from the machine that began it
+    return { ...base, error: reason, stop: v.standing === 'open' ? 'elsewhere' : 'unexpected' };
   }
 
   private nameOf(id: MachineId | undefined): string {
     if (!id) return 'the destination';
     try { return this.d.route(id).name; } catch { return id; }
+  }
+
+  private routes(id: MachineId): boolean {
+    try { this.d.route(id); return true; } catch (e) {
+      if (e instanceof NoRoute) return false;
+      throw e;
+    }
   }
 
   /** Blockers go to the user, whose new choices try the step again; without an answer, or with Cancel, the handover aborts. */
@@ -1071,9 +1090,15 @@ export class Handover {
     const gateway = await this.seen(() => this.retrying('begin', () => this.d.gateway.get()));
     const tx = gateway.ok ? gateway.value.transaction : undefined;
     const drives = tx?.controllerId;
-    const local = { local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) } }) };
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
+    // the machine that drives the handover and the one it goes to, named when this one routes to them
+    const reach = (...ids: (MachineId | undefined)[]) => {
+      const named = [...new Set(ids.filter((id): id is MachineId => id !== undefined))];
+      const unrouted = named.filter((id) => !this.routes(id));
+      const names = Object.fromEntries(named.filter((id) => !unrouted.includes(id)).map((id) => [id, this.nameOf(id)]));
+      return { local: this.d.local, ...(Object.keys(names).length && { names }), ...(unrouted.length && { unrouted }) };
+    };
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
     const owned = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('ownership.get', {}));
     type Status = Seen<Result<'handover.status'>>;
@@ -1087,14 +1112,15 @@ export class Handover {
     };
     if (from && to) {
       const [s, d] = await Promise.all([source(from), destination(to)]);
-      return { ...local, controller, gateway, source: s, destination: d };
+      return { ...reach(drives, to), controller, gateway, source: s, destination: d };
     }
     // no journal names the machines: a daemon that holds a handover says which side of it it is
     const held = await Promise.all(this.d.machines.map(async (id) => ({ id, s: await status(id) })));
     const on = (side: 'fromMachineId' | 'toMachineId') => held.find((x) => x.s.ok && x.s.value.transaction?.[side] === x.id);
     const [f, t] = [on('fromMachineId'), on('toMachineId')];
     const [s, d] = await Promise.all([f && source(f.id, f.s), t && destination(t.id, t.s)]);
-    return { ...local, controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
+    const went = f?.s.ok ? f.s.value.transaction?.toMachineId : undefined;
+    return { ...reach(drives, went), controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
   }
 
   /** The journal a resume or abort acts on: the controller's own, or one rebuilt from the other three. */
@@ -1116,7 +1142,8 @@ export class Handover {
         if (!(e instanceof NoRoute)) throw e;
         // once committed, only the destination goes on, and the source finishes its own side
         if (role === 'source' && (v.standing === 'committed' || v.standing === 'moved')) return { machineId: id, name: 'the machine the fleet came from' };
-        throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run svall handover --resume or --abort there`, [], 'elsewhere');
+        const way = v.standing === 'committed' || v.standing === 'moved' ? 'svall handover --resume' : 'svall handover --resume or --abort';
+        throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run ${way} there`, [], 'elsewhere');
       }
     };
     const [source, destination] = [routed(v.fromMachineId, 'source'), routed(v.toMachineId, 'destination')];

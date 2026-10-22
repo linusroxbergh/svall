@@ -8,9 +8,9 @@ final class QuitFlowTests: XCTestCase {
     private var holds = 0
     private var answers: [Bool] = []
 
-    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false) -> QuitFlow {
+    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false, following: Bool = false, running: Bool = false) -> QuitFlow {
         QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
-                 elsewhere: { elsewhere }, handoverOpen: { handover },
+                 elsewhere: { elsewhere }, handoverOpen: { handover }, handoverFollowed: { following }, handoverRunning: { running || following },
                  confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); return true },
                  kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 })
     }
@@ -58,18 +58,46 @@ final class QuitFlowTests: XCTestCase {
     func testAnOpenHandoverKeepsThisMacsDaemonOnEitherRoute() {
         for elsewhere in [false, true] {
             sent = []; asked = []; kills = 0; answers = []
-            quit(flow(elsewhere: elsewhere, handover: true), working: 2)
+            quit(flow(elsewhere: elsewhere, handover: true, following: true), working: 2)
             XCTAssertEqual(sent, ["quit.ask"], "elsewhere: \(elsewhere)")
             XCTAssertEqual(kills, 0, "elsewhere: \(elsewhere)")
             XCTAssertEqual(answers, [true], "elsewhere: \(elsewhere)")
             // this Mac may be where the fleet is going, and its characters may be at rest for the move
-            XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed."], "elsewhere: \(elsewhere)")
+            XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed. Keep this Mac awake until it finishes."], "elsewhere: \(elsewhere)")
         }
     }
 
+    func testAHandoverNoHelperOfThisWindowRunsAsksNoOneToKeepTheMacAwake() {
+        quit(flow(handover: true), working: 2)
+        XCTAssertEqual(asked, ["Quit Svall? The open handover waits in the Handover sheet until you open Svall again."])
+        XCTAssertEqual(sent, ["quit.ask"])
+        XCTAssertEqual(kills, 0)
+        // one started from a terminal, or not yet attached to, runs on without this window
+        asked = []
+        quit(flow(handover: true, running: true))
+        XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed."])
+    }
+
+    func testAHandoverRunsWhileALiveProcessHoldsItsLock() throws {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-quit-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let lock = home.appendingPathComponent("controller/handover.lock")
+        try FileManager.default.createDirectory(at: lock.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
+        try Data("\(ProcessInfo.processInfo.processIdentifier)\n".utf8).write(to: lock)
+        XCTAssertTrue(SvallHome.handoverRunning(at: home.path))
+        // a holder that is gone, as after a kill -9
+        let gone = Process()
+        gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try gone.run()
+        gone.waitUntilExit()
+        try Data("\(gone.processIdentifier)\n".utf8).write(to: lock)
+        XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
+    }
+
     func testUnsavedFilesAreNamedBesideAnOpenHandover() {
-        quit(flow(handover: true), unsaved: ["notes.md"], working: 1)
-        XCTAssertEqual(asked, ["Quit with unsaved changes? notes.md has changes that were not saved. Quitting drops them. The handover carries on while Svall is closed."])
+        quit(flow(handover: true, following: true), unsaved: ["notes.md"], working: 1)
+        XCTAssertEqual(asked, ["Quit with unsaved changes? notes.md has changes that were not saved. Quitting drops them. The handover carries on while Svall is closed. Keep this Mac awake until it finishes."])
         XCTAssertEqual(sent, ["quit.ask"])
         XCTAssertEqual(kills, 0)
     }

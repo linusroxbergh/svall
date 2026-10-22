@@ -331,6 +331,30 @@ describe('what the sheet offers', () => {
     expect(headline(theirs, 'studio')).toBe('Stopped at Checks: this machine is neither the source studio nor the destination spare of the handover; run it on studio or spare');
   });
 
+  it('reads the status once when the helper it followed ends without saying how the run went', () => {
+    // attach exits 0 when the helper dies part way
+    const died = endFollow(play(through('transfer')), 0);
+    expect(asksStatus(died)).toBe(true);
+    expect(asksStatus(endFollow(followRun('studio'), 0))).toBe(true);
+    // the shell could not run or follow it, which its error says
+    expect(asksStatus(endFollow(play(through('transfer')), 1))).toBe(false);
+    expect(asksStatus(endFollow(play(through('transfer')), 0, 'spawn failed'))).toBe(false);
+    // the look it took, which heard nothing either, is not taken again
+    expect(asksStatus(endFollow({ ...followRun('studio'), checking: true, stopped: died }, 0))).toBe(false);
+    const status: HandoverEvent = { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: tx, phase: 'transfer', safe: ['resume', 'abort'], reason: 'it can go on' } };
+    const read = endFollow(play([...through('transfer'), status], followRun()), 0);
+    expect(asksStatus(read)).toBe(false);
+    expect(actionsOf(read)).toMatchObject({ resume: 'Resume', abort: true });
+    expect(headline(read, 'studio')).toBe('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
+  });
+
+  it('says so when its own look at where the handover stands heard nothing, and offers Check again', () => {
+    const silent = endFollow({ ...followRun('studio'), checking: true, stopped: endFollow(play(through('transfer')), 0) }, 0);
+    expect(headline(silent, 'studio')).toBe('Could not read where the handover stands.');
+    expect(actionsOf(silent)).toMatchObject({ follow: true });
+    expect(headline({ ...followRun('studio'), checking: true }, 'studio')).toBe('Asking where the handover stands…');
+  });
+
   it('says why what is left to finish is left once the fleet has moved', () => {
     const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, characters: [], pending: ['source'], error: "mac: the Mac's daemon is restarting" })]);
     expect(headline(moved, 'studio')).toContain("source has not heard that it finished (mac: the Mac's daemon is restarting); Retry tells it.");
@@ -367,7 +391,8 @@ describe('who stops for a handover, and how', () => {
       a: chr('a', 'i', { x: 0, y: 0 }, { name: 'ada', agent: agent('idle') }),
       b: chr('b', 'i', { x: 0, y: 0 }, { name: 'bo', agent: agent('working') }),
       c: chr('c', 'i', { x: 0, y: 0 }, { name: 'cy', agent: agent('blocked') }),
-      d: chr('d', 'i', { x: 0, y: 0 }, { name: 'di', agent: agent('done', { background: true }) }),
+      // the reducer marks background work only on an agent it keeps working
+      d: chr('d', 'i', { x: 0, y: 0 }, { name: 'di', agent: agent('working', { background: true }) }),
       e: chr('e', 'i', { x: 0, y: 0 }, { name: 'ed' }),
       f: chr('f', 'i', { x: 0, y: 0 }, { name: 'fi', tmux: undefined, agent: agent('idle') }),
       g: chr('g', 'i', { x: 0, y: 0 }, { name: 'gu', agent: agent('done') }),

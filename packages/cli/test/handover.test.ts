@@ -551,6 +551,29 @@ describe('svall handover', () => {
     expect(answered).toEqual({ archiveRoots: ['r_app'], interruptAfterMs: 0, terminateShells: ['c_ada'] });
   });
 
+  it('cancels at once a blocker asked after the terminal\'s input ended', async () => {
+    const h = harness({ tty: true });
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    let answered: HandoverChoices | 'cancel' | undefined;
+    let rest: (() => void) | undefined;
+    h.tx.script = async () => {
+      h.tx.record(changed('freeze'));
+      await new Promise<void>((r) => { rest = r; });
+      h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
+      answered = await h.tx.decide(working, 'freeze');
+      return { status: 'blocked', transactionId: 'tx-1', phase: 'freeze', blockers: working };
+    };
+    const run = runHandover(start(), h.ctx);
+    await waitFor(() => rest !== undefined);
+    // Ctrl-D while the characters rest, with no question asked
+    h.stdin.end();
+    await new Promise((r) => setTimeout(r, 50));
+    rest!();
+    await waitFor(() => answered !== undefined, 1000);
+    expect(answered).toBe('cancel');
+    expect(await run).toEqual({ code: 1 });
+  });
+
   it('on Ctrl-C before the commit aborts, says so and what comes next', async () => {
     const h = harness();
     h.tx.script = async () => {
@@ -714,6 +737,25 @@ describe('svall handover', () => {
     expect(fs.existsSync(h.paths.events)).toBe(false);
     expect(fs.existsSync(path.join(h.paths.dir, 'route.json'))).toBe(true);
     expect(fs.existsSync(path.join(h.home, 'fleet.json'))).toBe(true);
+  });
+
+  it('gives up the source\'s side with --forget --source only while it is all that is left and does not answer, saying what stays there', async () => {
+    const h = harness();
+    const journal = path.join(h.paths.dir, 'handover.json');
+    fs.mkdirSync(h.paths.dir, { recursive: true });
+    fs.writeFileSync(journal, '{}');
+    const ctrl = { transactionId: 'tx-1', source: { machineId: TRIFT, name: 'trift' } } as ControllerJournal;
+    h.tx.verdict = { ...NONE, standing: 'moved', transactionId: 'tx-1', safe: ['resume'], action: 'finish', reason: 'what tx-1 left open is only to be finished' };
+    const done = { controller: ctrl, gateway: { ok: true as const, value: h.tx.owned }, destination: { ok: true as const, value: { status: {} } } };
+    h.tx.observation = { ...done, source: { ok: true, value: { status: { transaction: { id: 'tx-1', fromMachineId: TRIFT, toMachineId: h.registry.localId, phase: 'commit', startedAt: 1 } }, ownership: { ...h.tx.owned, frozen: true } } } };
+    expect(await runForget(h.ctx, { source: true })).toBe(1);
+    expect(h.out()).toContain('the source answers, so `svall handover --resume` finishes its side');
+    h.tx.observation = { ...done, source: { ok: false, error: 'trift did not answer' } };
+    expect(await runForget(h.ctx)).toBe(1);
+    expect(fs.existsSync(journal)).toBe(true);
+    expect(await runForget(h.ctx, { source: true })).toBe(0);
+    expect(fs.existsSync(journal)).toBe(false);
+    expect(h.out()).toContain("Forgot this controller's journal of tx-1. trift did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and `svall handover --resume` finishes that side if it answers again before `svall host remove` drops it.");
   });
 
   it('reads status without changing anything, naming the helper that runs it and --forget for a superseded journal', async () => {
@@ -1405,6 +1447,7 @@ describe('svall handover arguments', () => {
     await expect(parse(h, '--resume', '--terminate-shells')).rejects.toThrow();
     await expect(parse(h, '--resume', '--carry-unused')).rejects.toThrow();
     await expect(parse(h, '--resume', '--check')).rejects.toThrow();
+    await expect(parse(h, '--resume', '--source')).rejects.toThrow(/--source goes with --forget/);
   });
 
   it('answers bad arguments with a handover.result under --json or --detach, and starts nothing', async () => {

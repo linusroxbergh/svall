@@ -72,7 +72,8 @@ The first published release supports:
   its `extended-keys-format`, and Ubuntu 24.04 ships 3.4;
 - rsync 3.2.3 or newer on both machines. Ubuntu 22.04 and later ship it; macOS ships openrsync,
   which cannot protect remote arguments or report byte progress, so the desktop release bundles
-  its own rsync and the system binary is only a fallback the doctor flags;
+  its own rsync, and a Mac without it has none a handover runs: only Linux falls back to the
+  system rsync;
 - Claude Code, Codex and OpenCode CLI at or above each session adapter's minimum version.
 
 The Mac app is distributed as a signed and notarized direct download. Mac App Store distribution,
@@ -765,7 +766,11 @@ At or after Commit:
 - the source remains fenced even if it missed the commit response;
 - restart checks the gateway and learns the committed generation;
 - activation is retried only on the destination;
-- characters that fail to resume remain dormant with their transcript and a visible error.
+- characters that fail to resume remain dormant with their transcript and a visible error;
+- a source that does not answer once the destination and the gateway completed is finished by a later resume; after
+  three resumes that could not reach it, status offers `svall handover --forget --source`, which drops the
+  controller's journal and leaves that side frozen for a resume to finish if it answers again before the
+  registry drops it.
 
 If the controller disappears, the sheet and CLI reconstruct status from the three journals.
 `svall handover status` says whether Abort or Resume is safe. A stale pre-commit transaction may be
@@ -773,7 +778,9 @@ aborted after confirming that the authority still names the source at the expect
 resume or abort runs only on the source or the destination: rsync runs on the controller, so one
 started from a third machine stops before anything moves and names the two it can run on. Before the
 commit, a resume runs only on the machine whose controller began the handover, which status names;
-an abort, and a resume after the commit, run from either end.
+an abort runs there too, or from the other end only with a route to it, which the Linux machine has
+not to the Mac. A resume after the commit runs on the destination, and from the source only with a
+route to it.
 
 Concurrent handovers are rejected by the authority compare-and-swap, and a second controller on one
 handover by the gateway at Begin and by the destination at claim and prepare. A force-owner recovery is a

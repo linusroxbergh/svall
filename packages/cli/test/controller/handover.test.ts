@@ -1619,6 +1619,46 @@ describe('a far machine that is down', () => {
     expect(settledOn(w)).toBe('destination');
   });
 
+  it('counts the resumes that could not tell the source it finished, and from the third names how to give its side up', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.down.add('trift');
+    const said: string[] = [];
+    for (const n of [1, 2, 3]) {
+      const out = await controller(w, eager(w)).resume();
+      expect(out, `${n}`).toMatchObject({ status: 'complete', pending: ['source'] });
+      expect(w.store.j?.sourceMisses, `${n}`).toBe(n);
+      said.push(out.status === 'complete' ? out.error ?? '' : '');
+    }
+    expect(said.slice(0, 2).join(' ')).not.toContain('--forget');
+    expect(said[2]).toContain('trift has not answered 3 resumes; if it is gone for good, svall handover --forget --source gives up its side');
+    w.down.delete('trift');
+    const last = await controller(w, eager(w)).resume();
+    expect(last).toMatchObject({ status: 'complete' });
+    expect(last).not.toHaveProperty('pending');
+    expect(w.store.j).toBeUndefined();
+  });
+
+  it('counts no miss for a source that answers with a refusal, so it never names the give up for one', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.source.answers['handover.complete'] = () => { throw new Refused('authority_unreachable', 'the gateway did not answer'); };
+    for (const n of [1, 2, 3]) {
+      const out = await controller(w, eager(w)).resume();
+      expect(out, `${n}`).toMatchObject({ status: 'complete', pending: ['source'] });
+      expect(out.status === 'complete' && out.error, `${n}`).not.toContain('--forget');
+      expect(w.store.j?.sourceMisses, `${n}`).toBeUndefined();
+    }
+  });
+
   // a push whose controller died at `op` and whose journal is gone, as when it ran on the other machine
   const lostAt = async (op: string): Promise<World> => {
     const probe = new World();
@@ -1710,14 +1750,56 @@ describe('a far machine that is down', () => {
       const ops = w.ops.length;
       const c = controller(w, unrouted(w));
       const out = await (act === 'resume' ? c.resume() : c.abort());
-      expect(out, act).toMatchObject(act === 'resume'
-        ? { status: 'interrupted', safe: ['abort'], error: expect.stringContaining(`it goes on from ${mac}, whose controller began it`) }
-        : { status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
+      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining('it goes on from the Mac that began it: run `svall handover --resume` or `--abort` there') });
+      // the Mac is in no registry here, so its id would say nothing
+      expect(out.status === 'interrupted' && out.error, act).not.toContain(mac);
       expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
       expect(w.store.j, act).toBeUndefined();
       await recover(w, act);
       expect(settledOn(w), act).toBe(act === 'abort' ? 'source' : 'destination');
     }
+  });
+
+  it('on the source with no route to the destination, offers nothing after the commit and names where it goes on, changing nothing', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    w.store.j = undefined;
+    w.store.files.clear();
+    await w.heal();
+    const ops = w.ops.length;
+    const c = controller(w, unrouted(w));
+    const { verdict } = await c.status();
+    expect(verdict).toMatchObject({ standing: 'committed', safe: [], reason: expect.stringContaining('it goes on only from the Mac it went to: run `svall handover --resume` there') });
+    expect(verdict.reason).not.toContain('--abort');
+    const out = await c.resume();
+    expect(out).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining('run `svall handover --resume` there') });
+    expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
+  });
+
+  it('on the source with no route to the destination, offers nothing for a moved handover that only its own journal still holds', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.down.add('trift');
+    expect(await controller(w, eager(w)).resume()).toMatchObject({ status: 'complete', pending: ['source'] });
+    w.down.delete('trift');
+    w.store.j = undefined;
+    w.store.files.clear();
+    const ops = w.ops.length;
+    const c = controller(w, unrouted(w));
+    expect((await c.status()).verdict).toMatchObject({ standing: 'moved', safe: [], reason: expect.stringContaining('it goes on only from the Mac it went to: run `svall handover --resume` there') });
+    expect(await c.resume()).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere' });
+    expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
   });
 
   it('with no journal here, after the destination completed, still finishes a committed handover while the source is down and nothing says how far it got', async () => {

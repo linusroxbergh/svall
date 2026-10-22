@@ -47,7 +47,9 @@ Everything for another machine in the app waits on one setting per fleet: Settin
 character's card a **keep on this machine** switch, without reopening the app. It stays on while the fleet names a
 gateway, and is set where the fleet runs. The switch runs `svall handover on` (or `off`), which writes
 `"handover": { "enabled": true }` into the fleet's `fleet.json`, keeping the other keys, so the setting moves with the
-fleet; set by hand there, it takes effect when the app opens again.
+fleet; set by hand there, it takes effect when the app opens again. While the fleet runs on another machine the
+switch is greyed out, as the app reads this Mac's copy of `fleet.json`: `svall handover on` in a terminal on the Mac
+turns it on there, from the next time the app opens.
 
 The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
 

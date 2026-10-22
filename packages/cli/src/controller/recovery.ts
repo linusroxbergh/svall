@@ -38,6 +38,8 @@ export const ControllerJournal = z.object({
   preparedDigest: Sha256.optional(),
   // the gateway's record of this handover committed, which the destination takes when it cannot ask the gateway itself
   committed: OwnerRecord.optional(),
+  // the resumes since the commit that could not reach the source to tell it the handover finished
+  sourceMisses: z.number().int().positive().optional(),
   startedAt: z.number(),
   updatedAt: z.number(),
 });
@@ -108,10 +110,14 @@ export function fileStore(dir: string): ControllerStore {
 export type Seen<T> = { ok: true; value: T } | { ok: false; error: string };
 
 /** The four journals: the controller's own, the gateway's record, and what each daemon holds. */
-/** `local`: the machine this controller runs on; `names`: what the registry calls a machine the verdict may name. */
+/**
+ * `local`: the machine this controller runs on; `names`: what the registry calls a machine the verdict may name;
+ * `unrouted`: one of those the registry has no route to, and so no name for.
+ */
 export type Observation = {
   local?: MachineId;
   names?: Partial<Record<MachineId, string>>;
+  unrouted?: MachineId[];
   controller?: ControllerJournal;
   gateway: Seen<OwnerRecord>;
   source?: Seen<{ status: Result<'handover.status'>; ownership: OwnershipInfo }>;
@@ -119,6 +125,16 @@ export type Observation = {
 };
 
 type Found = { transactionId?: string; generation?: number; fromMachineId: MachineId; toMachineId: MachineId };
+
+/** The resumes that could not reach the source before status offers to give its side up. */
+export const SOURCE_MISSES = 3;
+
+const holds = (t: { id: string } | undefined, tx: string | undefined): boolean => t !== undefined && t.id === tx;
+const idle = (s: Observation['source'] | Observation['destination'], tx: string | undefined): boolean => s?.ok === true && !holds(s.value.status.transaction, tx);
+
+/** Only the source's side is left of `tx`: the gateway and the destination are done with it, and the source does not answer. */
+const onlySourceLeft = (o: Observation, tx: string | undefined): boolean =>
+  !!tx && o.gateway.ok && !holds(o.gateway.value.transaction, tx) && idle(o.destination, tx) && o.source?.ok === false;
 
 /** The transaction the journals are about: the controller's, else the gateway's, else whichever daemon still holds one. */
 function found(o: Observation, record: OwnerRecord | undefined): Found | undefined {
@@ -181,14 +197,25 @@ export function assess(o: Observation): Verdict {
   }
   const lost = (standing: Standing): Verdict => verdict(standing, 'none', [],
     `${f.transactionId} moved this fleet to ${f.toMachineId}, whose handover journal could not be read and was moved to ${unread}: on that machine, repair it and put it back at ${unread?.replace(/\.broken-\d+$/, '')}, then restart the fleet's daemon there and resume; or \`svall fleet recover --force-owner <machine>\` names the machine to run the fleet, from the state it holds`);
+  // after the commit only the destination goes on, so the source does only with a route to it, which the Linux machine has not to the Mac
+  const stranded = o.local === f.fromMachineId && !!o.unrouted?.includes(f.toMachineId);
+  // a machine with no route from here is the Mac, which no Linux registry holds
+  const went = o.names?.[f.toMachineId];
+  const onlyThere = `; it goes on only from ${went ? `${went}, where it went` : 'the Mac it went to'}: run \`svall handover --resume\` there`;
   if (tx?.id === f.transactionId) {
     if (tx.phase === 'committed') {
       if (unread) return lost('committed');
-      return verdict('committed', 'continue', ['resume'], `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`);
+      const said = `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`;
+      return stranded ? verdict('committed', 'none', [], `${said}${onlyThere}`) : verdict('committed', 'continue', ['resume'], said);
     }
-    // before the commit only the controller that began it goes on, since the destination takes claim and prepare from it alone
+    // before the commit only the controller that began it goes on, since the destination takes claim and prepare from it
+    // alone; an abort reaches both ends only with a route to that machine, which the Linux machine has not to the Mac
     if (tx.controllerId && o.local && tx.controllerId !== o.local && (o.local === f.fromMachineId || o.local === f.toMachineId)) {
-      return verdict('open', 'none', ['abort'], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${o.names?.[tx.controllerId] ?? tx.controllerId}, whose controller began it, or is aborted back to ${f.fromMachineId}`);
+      const by = o.names?.[tx.controllerId];
+      if (o.unrouted?.includes(tx.controllerId)) {
+        return verdict('open', 'none', [], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${by ? `${by}, whose controller began it` : 'the Mac that began it'}: run \`svall handover --resume\` or \`--abort\` there`);
+      }
+      return verdict('open', 'none', ['abort'], `${tx.id} is ${tx.phase} and has not committed; it goes on from ${by ?? tx.controllerId}, whose controller began it, or is aborted back to ${f.fromMachineId}`);
     }
     const said = `${tx.id} is ${tx.phase} and has not committed; it can go on, or be aborted back to ${f.fromMachineId}`;
     return verdict('open', 'continue', ['resume', 'abort'], sourceUnread
@@ -200,7 +227,11 @@ export function assess(o: Observation): Verdict {
       return verdict('superseded', 'none', [], `${f.transactionId} was aborted, and the gateway has since moved this fleet to ${record.ownerMachineId} at generation ${record.generation}`);
     }
     if (unread) return lost('moved');
-    return verdict('moved', 'finish', ['resume'], `the gateway has moved this fleet to ${record.ownerMachineId} at generation ${record.generation}; what ${f.transactionId} left open is only to be finished`);
+    if (stranded) return verdict('moved', 'none', [], `the gateway has moved this fleet to ${record.ownerMachineId} at generation ${record.generation}; what ${f.transactionId} left open is only to be finished${onlyThere}`);
+    const misses = o.controller?.sourceMisses ?? 0;
+    const giveUp = misses >= SOURCE_MISSES && onlySourceLeft(o, f.transactionId)
+      ? `; ${o.controller!.source.name} has not answered ${misses} resumes; if it is gone for good, \`svall handover --forget --source\` gives up its side` : '';
+    return verdict('moved', 'finish', ['resume'], `the gateway has moved this fleet to ${record.ownerMachineId} at generation ${record.generation}; what ${f.transactionId} left open is only to be finished${giveUp}`);
   }
   if (record.generation === g && record.ownerMachineId === f.fromMachineId) {
     return verdict('returned', 'finish-abort', ['abort'], `the gateway no longer holds ${f.transactionId}, and the fleet is ${f.fromMachineId}'s at generation ${g}; its abort is only to be finished`);
@@ -210,14 +241,15 @@ export function assess(o: Observation): Verdict {
 
 /**
  * Whether this controller's journal may only be dropped: the gateway has moved on past it, or neither the gateway
- * nor either daemon still holds its transaction, so no resume or abort has anything left to drive.
+ * nor either daemon still holds its transaction, so no resume or abort has anything left to drive. With `source`,
+ * also when only the source's side is left and the source does not answer.
  */
-export function forgettable(o: Observation, v: Verdict): { ok: true } | { ok: false; reason: string } {
+export function forgettable(o: Observation, v: Verdict, source = false): { ok: true } | { ok: false; reason: string } {
   if (!o.controller) return { ok: false, reason: 'this controller keeps no journal of a handover' };
   if (v.standing === 'superseded') return { ok: true };
   const tx = v.transactionId;
-  const holds = (t: { id: string } | undefined): boolean => t !== undefined && t.id === tx;
-  const idle = (s: Observation['source'] | Observation['destination']): boolean => s?.ok === true && !holds(s.value.status.transaction);
-  if (tx && o.gateway.ok && !holds(o.gateway.value.transaction) && idle(o.source) && idle(o.destination)) return { ok: true };
+  if (tx && o.gateway.ok && !holds(o.gateway.value.transaction, tx) && idle(o.source, tx) && idle(o.destination, tx)) return { ok: true };
+  if (source && onlySourceLeft(o, tx)) return { ok: true };
+  if (source && o.source?.ok) return { ok: false, reason: 'the source answers, so `svall handover --resume` finishes its side' };
   return { ok: false, reason: v.reason };
 }

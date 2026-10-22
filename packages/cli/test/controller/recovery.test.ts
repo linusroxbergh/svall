@@ -50,6 +50,11 @@ const cases: Case[] = [
     want: { standing: 'open', action: 'none', safe: ['abort'], reason: expect.stringContaining('goes on from trift') },
   },
   {
+    name: 'an open transaction a machine this one has no route to drives goes on or is aborted only there, as on Linux for one the Mac began',
+    o: { local: trift, unrouted: [mac], gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: mac }) } },
+    want: { standing: 'open', action: 'none', safe: [], reason: expect.stringContaining('goes on from the Mac that began it: run `svall handover --resume` or `--abort` there') },
+  },
+  {
     name: 'an open transaction this machine\'s controller drives can go on or be aborted',
     o: { local: mac, controller: journal(), gateway: { ok: true, value: at(4, mac, { ...tx('ready-to-commit'), controllerId: mac }) } },
     want: { standing: 'open', action: 'continue', safe: ['resume', 'abort'] },
@@ -58,6 +63,16 @@ const cases: Case[] = [
     name: 'a committed transaction goes forward from either end, whichever controller began it',
     o: { local: mac, controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, { ...tx('committed'), controllerId: trift }) } },
     want: { standing: 'committed', action: 'continue', safe: ['resume'] },
+  },
+  {
+    name: 'a committed transaction goes forward from the source only with a route to the destination',
+    o: { local: mac, unrouted: [trift], names: { [trift]: 'trift' }, controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) } },
+    want: { standing: 'committed', action: 'none', safe: [], reason: expect.stringContaining('it goes on only from trift, where it went: run `svall handover --resume` there') },
+  },
+  {
+    name: 'a moved transaction is finished from the source only with a route to the destination',
+    o: { local: mac, unrouted: [trift], controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) } },
+    want: { standing: 'moved', action: 'none', safe: [] },
   },
   {
     name: 'a committed transaction only goes forward, whatever the controller last wrote',
@@ -167,6 +182,15 @@ describe('assess', () => {
     expect(source.reason).toMatch(/moved to \/Users\/ada\/\.svall\/handover\/journal\.json\.broken-2.*abort takes the fleet back to .* and reopens the terminals the handover rested there/);
   });
 
+  it('offers to give up the source\'s side once three resumes since the commit could not tell it and it does not answer now', () => {
+    const left = (sourceMisses?: number, source: Observation['source'] = { ok: false, error: 'unreachable' }): Observation => ({
+      controller: journal({ phase: 'complete', ...(sourceMisses && { sourceMisses }) }), gateway: { ok: true, value: at(5, trift) }, source, destination: { ok: true, value: { status: status() } },
+    });
+    expect(assess(left(3))).toMatchObject({ standing: 'moved', action: 'finish', safe: ['resume'], reason: expect.stringContaining('mac has not answered 3 resumes; if it is gone for good, `svall handover --forget --source` gives up its side') });
+    expect(assess(left(2)).reason).not.toContain('--forget');
+    expect(assess(left(3, { ok: true, value: { status: status('complete'), ownership: { fleetId, generation: 4, ownerMachineId: mac, frozen: true } } })).reason).not.toContain('--forget');
+  });
+
   it('never offers an abort once the gateway has moved the fleet', () => {
     for (const record of [at(5, trift, tx('committed')), at(5, trift)]) {
       for (const phase of ['freeze', 'transfer', 'prepare', 'ready', 'commit', 'activate', 'complete'] as const) {
@@ -196,6 +220,19 @@ describe('forgettable', () => {
     expect(judge({ controller: journal(), gateway: { ok: false, error: 'ssh: connect to host gate port 22: Connection refused' }, ...daemons() })).toBe(false);
     expect(judge({ controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) }, source: { ok: false, error: 'unreachable' }, destination: { ok: true, value: { status: status() } } })).toBe(false);
     expect(judge({ gateway: { ok: true, value: at(4, mac) } })).toBe(false);
+  });
+
+  it('gives up the source\'s side only when asked, once the gateway and the destination are done with it and the source does not answer', () => {
+    const left: Observation = { controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) }, source: { ok: false, error: 'unreachable' }, destination: { ok: true, value: { status: status() } } };
+    const givesUp = (o: Observation) => forgettable(o, assess(o), true).ok;
+    expect(givesUp(left)).toBe(true);
+    expect(judge(left)).toBe(false);
+    // a source that answers finishes its side on a resume
+    expect(givesUp({ ...left, ...daemons(status('complete')) })).toBe(false);
+    expect(givesUp({ ...left, destination: { ok: true, value: { status: status('activate') } } })).toBe(false);
+    expect(givesUp({ ...left, destination: { ok: false, error: 'unreachable' } })).toBe(false);
+    expect(givesUp({ ...left, gateway: { ok: true, value: at(5, trift, tx('committed')) } })).toBe(false);
+    expect(forgettable({ ...left, ...daemons(status('complete')) }, assess({ ...left, ...daemons(status('complete')) }), true)).toEqual({ ok: false, reason: 'the source answers, so `svall handover --resume` finishes its side' });
   });
 });
 

@@ -48,7 +48,8 @@ handover stands, with **Resume** and **Abort** before the commit. After it, resu
 resumes by itself and offers **Retry** only if that stops again.
 
 While the app follows a handover, the Mac stays out of idle sleep, on battery too, unless **keep Mac awake** is off. A
-handover that goes on without the window watching is followed again. With notifications on, a handover that waits for
+handover that goes on without the window watching is followed again. A quit lets go of that hold, which its dialog
+says: keep the Mac awake until the handover finishes. With notifications on, a handover that waits for
 you, is ready to move, finishes or stops while the app is in the background posts a banner, which opens the sheet; a
 stop past the commit that the sheet resumes by itself posts none.
 
@@ -66,11 +67,15 @@ svall handover --resume                       # go on with an open handover
 svall handover --abort                        # take the fleet back, before the commit only
 svall handover attach                         # follow the handover running in the background
 svall handover --forget                       # drop this Mac's journal of a handover the gateway has moved past
+svall handover --forget --source              # give up the side of a finished handover the source never closed
 ```
 
 - `-p <fleet>` moves another fleet, and `--json` prints one event per line ([the events](errors.md#events)).
+- `svall handover <machine>` runs the checks and, with nothing in the way, goes straight on to rest and move the
+  fleet. `--check` stops after the checks, as the app's first look does.
 - In a terminal, a decision shows as a short menu. It starts from the choices the run already holds, on a `--resume`
   too. While characters rest, type `i` and Enter to interrupt and carry the agents still working, or `c` to cancel.
+  Ctrl-D cancels the decision on screen, or the next one asked; in `attach` it stops following.
 - Ctrl-C before the commit aborts the handover, and the fleet stays where it was. After the commit the move goes on;
   a second Ctrl-C stops watching, and `svall handover --resume` finishes it.
 - `--detach` leaves the handover to a background helper and prints its pid; `svall handover attach` follows it, and
@@ -254,7 +259,7 @@ four to say what is safe:
 
 | Status says | Do |
 | --- | --- |
-| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet, on the machine that started the handover; on the other one, status names that machine and offers only Abort. `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
+| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet, on the machine that started the handover; on the other one, status names that machine, where both run, and offers neither. `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
 | Resume only | After the commit. `svall handover --resume` activates the fleet on the machine it went to. The machine it came from never takes it back by itself. |
 | Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again; if it is gone for good, see [When the gateway is lost](#when-the-gateway-is-lost). A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
 | Forget | The gateway has moved on past this handover. `svall handover --forget` drops this Mac's journal of it. |
@@ -262,8 +267,8 @@ four to say what is safe:
 What else to know:
 
 - **Killing the app** stops nothing, since the helper runs on. **Killing the helper** (or a foreground `svall
-  handover`) leaves the handover where it stopped. The journals say where that is, the sheet rebuilds from them when
-  the app opens, and `status` says what to do.
+  handover`) leaves the handover where it stopped. The journals say where that is: a sheet that was following the
+  helper reads them at once, and one opened later rebuilds from them, and `status` says what to do.
 - **Starting while a handover is open here** stops and offers only `svall handover --resume`, which goes the one safe
   way on; `svall handover status` says whether `--abort` is safe too.
 - **The Mac sleeping** suspends the helper and drops its link. Before the commit the fleet stays frozen on the machine
@@ -282,7 +287,8 @@ What else to know:
   handover status` names the file.
 - **On the Linux machine**, `svall handover --resume` in a terminal there finishes a committed handover that moved the
   fleet to it, though it has no route to the Mac: the Mac finishes its own side when `svall handover --resume` (or
-  Retry) runs there. Before the commit, resume and abort run only on the Mac that started the handover.
+  Retry) runs there. A handover that moved the fleet from it to the Mac finishes only on the Mac, and before the
+  commit, resume and abort run only on the Mac that started the handover.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the
@@ -291,6 +297,11 @@ What else to know:
   cover every folder at once, before the first is copied.
 - **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
+- **The fleet's daemon on the machine it came from no longer answering** once the destination finished, such as
+  after that fleet's home was removed there, leaves this Mac's journal open: the app resumes it again at each launch,
+  and `svall host remove` refuses that machine. Once three resumes have not reached it, status offers `svall handover
+  --forget --source`, which drops the journal. What is left of the fleet there stays frozen with its record of the
+  handover, and `svall handover --resume` finishes that side if it answers again before `svall host remove` drops it.
 
 ## When the gateway is lost
 

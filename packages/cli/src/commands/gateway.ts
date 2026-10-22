@@ -52,7 +52,8 @@ export function gatewayCommands(): Command {
 
   gateway.command('owner')
     .description('one ownership operation on this machine\'s authority, answered as one JSON line')
-    .argument('<op>', 'get, create, begin, ready, commit, abort, complete or force')
+    // force is the controller's half of `svall fleet recover --force-owner`, whose person gate stands before it
+    .argument('<op>', 'get, create, begin, ready, commit, abort or complete')
     .requiredOption('--fleet <id>', 'the fleet the operation is about')
     .option('--params <json>', 'the rest of the operation\'s parameters, as one JSON object')
     .action((op: string, o: { fleet: string; params?: string }) => owner(op, o));

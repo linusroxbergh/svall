@@ -210,12 +210,14 @@ const STATUS_SAYS: (StopReason | undefined)[] = [undefined, 'superseded', 'runni
 const OPEN_ELSEWHERE: string[] = ['transaction_open', 'generation_mismatch', 'identity_mismatch'];
 
 /**
- * A run whose status the sheet then reads: the checks stopped it for a handover that may already be open, or a resume or
- * abort found nothing safe, which its error says in the controller's ids.
+ * A run whose status the sheet then reads: the checks stopped it for a handover that may already be open, a resume or
+ * abort found nothing safe, which its error says in the controller's ids, or the helper it followed ended with no result.
  */
 export function asksStatus(run: HandoverRun | undefined): boolean {
   if (!run || run.following || run.status || run.checking) return false;
   const r = run.result;
+  // a look the sheet took itself that heard nothing is not taken again
+  if (!r) return !run.error && !run.stopped;
   return r?.status === 'blocked' ? r.blockers.some((b) => OPEN_ELSEWHERE.includes(b.code)) : r?.status === 'interrupted' && !r.safe.length && STATUS_SAYS.includes(r.stop);
 }
 
@@ -374,7 +376,7 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
     case 'interrupted': return { ...none, resume: resume(r.safe), abort: r.safe.includes('abort'), follow: r.safe.length === 0 };
     case 'detached': return { ...none, follow: true };
     // a resume the sheet started by itself that never said how it went is still the only way on
-    default: return run.goingOn ? { ...none, resume: 'Retry' } : { ...none, start: true, follow: !!run.error };
+    default: return run.goingOn ? { ...none, resume: 'Retry' } : { ...none, start: true, follow: !!run.error || !!run.stopped };
   }
 }
 
@@ -406,8 +408,9 @@ function restOf(c: Character): RestHow {
   const a = c.agent;
   if (!a) return 'shell';
   if (a.status === 'blocked') return 'answer';
-  if (a.status === 'working') return 'wait';
-  return a.background ? 'background' : 'resume';
+  // a turn that ended with background work out stays working
+  if (a.background) return 'background';
+  return a.status === 'working' ? 'wait' : 'resume';
 }
 
 /** Who stops for a handover and how, by name: the groups that have anyone in them, in the order the sheet lists them. */
@@ -808,7 +811,7 @@ export function headline(run: HandoverRun, destination: string): string {
     const n = run.decision!.blockers.length;
     return `${n === 1 ? 'One thing' : `${n} things`} to decide before the fleet goes on.`;
   }
-  if (!live(run)) return '';
+  if (!live(run)) return run.stopped ? 'Could not read where the handover stands.' : '';
   if (run.aborting) return 'Stopping: the fleet goes back to where it was…';
   if (run.checking) return 'Asking where the handover stands…';
   if (!run.phase && !run.preflight) return run.to ? 'Starting…' : 'Looking for a handover…';

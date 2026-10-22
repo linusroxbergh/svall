@@ -7,8 +7,10 @@ final class QuitFlow {
     private let hideWindow: () -> Void
     // whether the fleet runs on another machine, where a quit here leaves it running
     private let elsewhere: () -> Bool
-    // whether a handover of this fleet is open on this Mac
+    // whether a handover of this fleet is open on this Mac, whether a helper the window follows runs it, and whether any run does
     private let handoverOpen: () -> Bool
+    private let handoverFollowed: () -> Bool
+    private let handoverRunning: () -> Bool
     private let confirm: (_ message: String, _ detail: String) -> Bool
     private let kill: (@escaping () -> Void) -> Void
     private let holdStarts: () -> Void
@@ -27,7 +29,8 @@ final class QuitFlow {
     private var killing = false
 
     init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void,
-         elsewhere: @escaping () -> Bool = { false }, handoverOpen: @escaping () -> Bool = { false },
+         elsewhere: @escaping () -> Bool = { false }, handoverOpen: @escaping () -> Bool = { false }, handoverFollowed: @escaping () -> Bool = { false },
+         handoverRunning: @escaping () -> Bool = { false },
          confirm: @escaping (_ message: String, _ detail: String) -> Bool = QuitFlow.alert,
          kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill, holdStarts: @escaping () -> Void = FleetDaemon.holdStarts) {
         self.send = send
@@ -35,6 +38,8 @@ final class QuitFlow {
         self.hideWindow = hideWindow
         self.elsewhere = elsewhere
         self.handoverOpen = handoverOpen
+        self.handoverFollowed = handoverFollowed
+        self.handoverRunning = handoverRunning
         self.confirm = confirm
         self.kill = kill
         self.holdStarts = holdStarts
@@ -132,7 +137,10 @@ final class QuitFlow {
         // a handover may be bringing the fleet to this Mac, or hold its characters at rest for the move
         let handover = handoverOpen()
         let working = elsewhere() ? 0 : working
-        let busy = handover ? "The handover carries on while Svall is closed."
+        // quitting lets go of the app's hold on sleep, which the helper it follows needs until it ends
+        let busy = handover && handoverFollowed() ? "The handover carries on while Svall is closed. Keep this Mac awake until it finishes."
+            : handover && handoverRunning() ? "The handover carries on while Svall is closed."
+            : handover ? "The open handover waits in the Handover sheet until you open Svall again."
             : working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
         let message: String, detail: String
         if unsaved.isEmpty {
