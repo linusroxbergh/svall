@@ -118,6 +118,14 @@ describe('normalizeHook', () => {
     expect(hook('Stop', SID, kept)).toBe(kept);
     // only a session's start is looked up: its later hooks name the file it writes
     expect(hook('Stop', SID, moved)).toBe(moved);
+    // of two copies of the session, the one Claude still writes is the newer, whichever folder a listing gives first
+    for (const old of ['-a-old', '-z-old']) {
+      const stale = path.join(projects, old, `${SID}.jsonl`);
+      fs.mkdirSync(path.dirname(stale));
+      fs.writeFileSync(stale, '{}\n');
+      fs.utimesSync(stale, new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
+    }
+    expect(hook('SessionStart', SID, moved)).toBe(kept);
     // a new session has written nothing yet, and Claude writes it where it says
     const fresh = '7c1e4a2b-9d3f-4b6a-8e5c-2f1a0b9c8d7e';
     expect(hook('SessionStart', fresh, path.join(projects, '-src-beta', `${fresh}.jsonl`))).toBe(path.join(projects, '-src-beta', `${fresh}.jsonl`));
