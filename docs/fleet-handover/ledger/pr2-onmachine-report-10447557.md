@@ -374,3 +374,61 @@ OpenAI). They were revived from dormant on the Mac at 08:36Z. Each turn went thr
    the sheet, the banner, re-attach in the app, and Cmd-Q.
 3. **Step 6 is still owed.** Step 3 has to be repeated at the merged head, with a fresh login copy. The owner's Claude
    token had about 158 minutes left at the copy, and the script refuses with under 90.
+
+## 7. Step 6: step 3 repeated at the merged head `18082655`
+
+`origin/worktree-port-pr-1` moved to `18082655` (main `637588ee` merged in, PR #222). Logs are `logs/rebuild-18082655.out`
+and `logs/y-*`. Status: **PASS**, with B1 and B2 reproduced.
+
+- **Rebuild** (`rebuild.sh 18082655`, 09:32:56–09:35:21Z).
+  - Release `18082655`: app 0.13.0 (CFBundleVersion 1004), protocol **25**, stateSchema 9, transferSchema 1,
+    authoritySchema 2, unsigned.
+  - All 3 archives scanned `ok`, and the app's x64 companion is identical to release-build's.
+  - On the Mac, the daemon answered `18082655 protocol 25 stateSchema 9`, with ownership g12 on the Mac.
+  - The before/after compare is 2 DIFF on the Mac: setup rewrote `.svall/home/.claude/rules/svall.md` and
+    `.svall/home/AGENTS.md`. It is 0 DIFF on Linux.
+- **`host upgrade m4`** came back `ready` in 14 s. Both units run `18082655` (svalld 1520198, gateway 1520208), with
+  `10447557` kept.
+  - `host doctor m4` reported "ready for handover; 6 warnings", the same six as at 10447557.
+  - The 4 test-HOME apps LaunchServices had registered were unregistered.
+- **Logins.** Copied at 09:35:44Z, with 98 minutes left on Claude's token. Deleted at 09:38:46Z, leaving 0 files and
+  0 OpenCode rows on either machine.
+- **Mac turns** (09:36Z): `OSPREY R18-MAC1`, `MANGO R18-MAC1`, `LYNX R18-MAC1`.
+- **B1, reproduced on the way out.**
+  - The rebuild's health snapshots, and this run's last one, ran `git status` on m4. That left
+    `src/alpha/.git/index`, `src/beta/.git/index`, `dev/gamma/.git/index` and `dev/delta/.git/index` at **664**
+    (rewritten 09:04:15Z).
+  - So `--check --carry-unused` (`y-check-1`) was blocked with three `destination_diverged`:
+    - "/Users/Shared/svall-m4/src/alpha changed while this machine did not own the fleet: 2 changed (.git/index,
+      .git/worktrees/feat/index). Recover the changes by hand, or archive it to continue";
+    - "/Users/Shared/svall-m4/src/beta changed … 2 changed (.git/index, .git/worktrees/beta-wt1/index) …";
+    - "/Users/Shared/svall-m4/dev changed … 2 changed (delta/.git/index, gamma/.git/index) …".
+  - `chmod 644` on the six index files on m4 cleared all three.
+- **Mac → Linux** (`y-m2l`, 09:36:37Z): complete at **g13** (`f57ef447-…`) in **17.9 s**, 4/4 characters `ok`.
+  - Phases: begin +4.3 s, freeze +4.4, transfer +8.0, verify +12.8, prepare +12.9, ready +14.9, commit +15.1,
+    activate +15.3, complete +16.8.
+  - m4 then ran claude, codex and opencode on their sessions. `resumeError` was absent on all three.
+- **B2, reproduced.**
+  - Straight after the resume, claude-r's `transcriptPath` read
+    `…/-Users-Shared-svall-m4-src-alpha--wt-react-boilerplate/2d38c2d0-….jsonl`.
+  - `--check local` (`y-check-2`) was blocked with `transcript_missing`: "/Users/Shared/svall-m4/.claude/projects/-Users-Shared-svall-m4-src-alpha--wt-react-boilerplate/2d38c2d0-a6ab-4128-a21e-5193af95ae31.jsonl
+    is not there".
+  - Claude's turn on Linux cleared it.
+- **Linux turns** (09:37Z): `OSPREY R18-LINUX`, `MANGO R18-LINUX`, `LYNX R18-LINUX`.
+- **Linux → Mac** (`y-l2m`, 09:37:47Z): complete at **g14** (`6eae3710-…`) in **15.8 s**, 4/4 `ok`.
+  - Warnings: `env_file` and `symlink_dangling`.
+  - There was no B1 this way: on the Mac (umask 022) a `git status` keeps 644.
+  - Afterwards m4 had no tmux server and no agent. On the Mac, `resumeError` was absent on all three.
+- **Mac turns** (09:38Z): `OSPREY R18-MAC2`, `MANGO R18-MAC2`, `LYNX R18-MAC2`.
+  - Session ids were unchanged throughout: `2d38c2d0-…`, `01a13415-…` and `ses_ecbe1aa1…`.
+  - Codex's pid read `null` after each resume until its turn (M5).
+- **Compare** across the round trip (`cmp-y-r-before-mac--y-r-after-mac`, 53 DIFF): only `owner.json`, the replica
+  records, `restedBy`, `lastPrompt`, agent status and the session files. Git fields and files are equal.
+- **Controller events files:** `logs/y-m2l.controller-events.ndjson` and `logs/y-l2m.controller-events.ndjson`.
+- **End state.**
+  - **The Mac owns at g14**, and no handover is open.
+  - svalld 65525 runs on `18082655`; tmux runs `_keep` and shell `c_jal5kh`.
+  - The three agents are dormant with their `revive`.
+  - m4 has no tmux server and no agent, and its index files are 644.
+  - No login copy is left. The owner's `known_hosts` is unchanged, and 0 test-HOME apps are registered.
+  - The stale socket file `$TH/tmp/svall-502/48958-51b29d693167` is still there.
