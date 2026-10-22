@@ -72,7 +72,8 @@ The first published release supports:
   its `extended-keys-format`, and Ubuntu 24.04 ships 3.4;
 - rsync 3.2.3 or newer on both machines. Ubuntu 22.04 and later ship it; macOS ships openrsync,
   which cannot protect remote arguments or report byte progress, so the desktop release bundles
-  its own rsync and the system binary is only a fallback the doctor flags;
+  its own rsync, and a Mac without it has none a handover runs: only Linux falls back to the
+  system rsync;
 - Claude Code, Codex and OpenCode CLI at or above each session adapter's minimum version.
 
 The Mac app is distributed as a signed and notarized direct download. Mac App Store distribution,

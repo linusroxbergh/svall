@@ -71,6 +71,8 @@ svall handover --forget --source              # give up the side of a finished h
 ```
 
 - `-p <fleet>` moves another fleet, and `--json` prints one event per line ([the events](errors.md#events)).
+- `svall handover <machine>` runs the checks and, with nothing in the way, goes straight on to rest and move the
+  fleet. `--check` stops after the checks, as the app's first look does.
 - In a terminal, a decision shows as a short menu. It starts from the choices the run already holds, on a `--resume`
   too. While characters rest, type `i` and Enter to interrupt and carry the agents still working, or `c` to cancel.
   Ctrl-D cancels the decision on screen, or the next one asked; in `attach` it stops following.
