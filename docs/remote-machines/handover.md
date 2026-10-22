@@ -431,6 +431,8 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   copied: set the same filter up on the other machine first, such as with `git lfs install`. One set up in the
   repository's own config, or in any of its submodules', is found at the checks instead (`git_config_command`), until
   the other machine's global config sets the same.
+- **An archived `.git` that is a link to a Git directory stays as it is**, so git in that folder of the archive still
+  reaches the repository it leads to; remove the link before you run git there.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
