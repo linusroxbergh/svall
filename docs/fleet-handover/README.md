@@ -8,14 +8,15 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 
 ## Status
 
-- **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6. Every
-  task was reviewed, M1–M3 each got a deep review, fix wave and on-machine pass, and the whole branch got a
-  final review (`ledger/final-review.md`) with one fix wave, then a PR review (`ledger/pr-review-2026-09-29.md`)
-  with its own fix wave. The fault suites (`pnpm test:faults`) crash
-  every one of 94 failpoints and fault every controller request; the container harness
-  (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
-  and arm64; real Claude and Codex sessions resumed both ways on linus-vault, and the spec's manual
-  acceptance passed there from release artifacts (`ledger/task-39b-report.md`).
+- **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6, then
+  the svall port (PR #2 on `worktree-port-pr-1`, main merged, protocol 24) and two fix waves on it, each a set
+  of sub-PRs reviewed and re-reviewed before integration (`ledger/progress.md` from "2026-10-21"): the sheet's
+  recovery states, the connection banner and Machines panel, controller recovery paths, flag-off inertness,
+  agent-session honesty, transfer safety, the split-brain guard, and the review step, Machines list and
+  switch. The fault suites crash every failpoint and fault every controller request; the container harness
+  (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux and passed at the wave-1 head; a release
+  installs fresh on x86-64 and arm64; real Claude, Codex and OpenCode sessions resumed both ways on
+  linus-vault at a84bf57d and one way at 4c11f026.
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
@@ -45,21 +46,24 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 
 ## Owed before this can ship
 
-- **The by-eye pass in the built app:** Add Machine, the handover sheet (including the sheet rebuilding
-  after a relaunch), terminal re-attach after an SSH drop. `ledger/m3b-env.md` has the steps and how to
-  open the test build against the test HOME without touching the owner's own app or fleet.
-- **A round trip on the real machines after the PR review's fix wave.** The last one ran at release d0602dc,
-  before it; the fix wave changed claims, aborts, the transport's process groups and Linux setup.
+- **The by-eye pass in the built app at the final head:** Add Machine, the Machines list and switch, the
+  review step and Move, the sheet rebuilding after a relaunch, terminal re-attach after an SSH drop, and a
+  round trip both ways on linus-vault. `ledger/pr2-onmachine-env.md` and `/Users/Shared/svall-m4/kit/STEPS.md`
+  have the steps and how to open the test build against the test HOME without touching the owner's own app.
+- **A notarized `pnpm release` dry run.** Merging puts the companion into the next public DMG whatever the
+  flag says; Gatekeeper, the carried rsync and node have not been through notarization.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
   needs `--allow-unsigned`; a release tag stops at once when the committed signers don't pin its key.
-- **CI.** Actions jobs do not start on this repo because of billing. `ci.yml`'s integration and Swift jobs
-  and `release.yml` have run only as the same scripts on this Mac.
+- **CI.** Actions jobs do not start on this repo because of billing. `ci.yml` has no Playwright step, and its
+  integration and Swift jobs and `release.yml` have run only as the same scripts on this Mac.
 - **Licence decisions** (`docs/security/fleet-handover.md`): GhosttyKit's dependency licence texts, the
   statically linked LGPL libintl, and the Flaticon art shipped as files.
 - **A published download** would need the app to install its bundled release on first launch; the app
-  ships from source today (`pnpm desktop:install`).
-- **Follow-ups** the final review deferred: `ledger/final-review.md` ("Deferred as follow-ups"), the
-  triage's follow-up rows in `ledger/final-review-triage.md`, and `minor (deferred)` lines in the ledger.
+  ships from source today (`pnpm desktop:install`). No arm64 companion is carried.
+- **Follow-ups** still open after the two fix waves: `docs/fleet-handover/deferred.md` at a84bf57d (the
+  MinimalPlans board "svall remote machines" mirrors it), minus what the ledger marks fixed; plus the
+  pre-commit resume canary, the nightly live resume test, and GitHub Support purging the pre-rewrite
+  commit of `fix4-sessions`.
 
 ## How the work was run
 
