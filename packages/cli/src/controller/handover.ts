@@ -915,12 +915,20 @@ export class Handover {
       return plain('journal_lost', `${this.nameOf(v.toMachineId)}'s handover journal could not be read, so nothing is safe until it is put back or the fleet is recovered`);
     }
     if (v.standing === 'superseded') return plain('superseded', "the gateway has moved this fleet on past this handover; svall handover --forget drops this controller's journal of it");
-    return { ...base, error: reason, stop: 'unexpected' };
+    // open with nothing safe here: it goes on only from the machine that began it
+    return { ...base, error: reason, stop: v.standing === 'open' ? 'elsewhere' : 'unexpected' };
   }
 
   private nameOf(id: MachineId | undefined): string {
     if (!id) return 'the destination';
     try { return this.d.route(id).name; } catch { return id; }
+  }
+
+  private routes(id: MachineId): boolean {
+    try { this.d.route(id); return true; } catch (e) {
+      if (e instanceof NoRoute) return false;
+      throw e;
+    }
   }
 
   /** Blockers go to the user, whose new choices try the step again; without an answer, or with Cancel, the handover aborts. */
@@ -1071,7 +1079,7 @@ export class Handover {
     const gateway = await this.seen(() => this.retrying('begin', () => this.d.gateway.get()));
     const tx = gateway.ok ? gateway.value.transaction : undefined;
     const drives = tx?.controllerId;
-    const local = { local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) } }) };
+    const local = { local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) }, ...(!this.routes(drives) && { unrouted: [drives] }) }) };
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));

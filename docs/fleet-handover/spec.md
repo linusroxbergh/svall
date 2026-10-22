@@ -773,7 +773,8 @@ aborted after confirming that the authority still names the source at the expect
 resume or abort runs only on the source or the destination: rsync runs on the controller, so one
 started from a third machine stops before anything moves and names the two it can run on. Before the
 commit, a resume runs only on the machine whose controller began the handover, which status names;
-an abort, and a resume after the commit, run from either end.
+an abort runs there too, or from the other end only with a route to it, which the Linux machine has
+not to the Mac. A resume after the commit runs from either end.
 
 Concurrent handovers are rejected by the authority compare-and-swap, and a second controller on one
 handover by the gateway at Begin and by the destination at claim and prepare. A force-owner recovery is a

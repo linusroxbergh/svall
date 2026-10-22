@@ -1710,9 +1710,7 @@ describe('a far machine that is down', () => {
       const ops = w.ops.length;
       const c = controller(w, unrouted(w));
       const out = await (act === 'resume' ? c.resume() : c.abort());
-      expect(out, act).toMatchObject(act === 'resume'
-        ? { status: 'interrupted', safe: ['abort'], error: expect.stringContaining(`it goes on from ${mac}, whose controller began it`) }
-        : { status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
+      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining(`it goes on from ${mac}, whose controller began it: run \`svall handover --resume\` or \`--abort\` there`) });
       expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
       expect(w.store.j, act).toBeUndefined();
       await recover(w, act);
