@@ -5,6 +5,7 @@ import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
 import { characterKeyEnv } from '@svall/svalld/claude';
 import { configuredMainAgent, fleetMainAgent, peekConfig } from '@svall/svalld/config';
 import { unitPath } from '@svall/svalld/linux/setup';
+import { OPENCODE_LOGIN } from '@svall/svalld/handover/sessions/registry';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { SHIM } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
@@ -63,9 +64,11 @@ const exitCode = (e: unknown): unknown => (e as { code?: unknown }).code;
 
 async function signedIn(d: PreflightDeps, kind: AgentKind): Promise<boolean | undefined> {
   const a = AGENTS[kind];
+  // OpenCode's is the model provider's login a handover's checks ask the destination for
+  const login = kind === 'opencode' ? OPENCODE_LOGIN : { args: a.loginArgs, loggedIn: a.loggedIn };
   try {
     // the fleet's API keys ride along, as they do into a character's shell
-    return a.loggedIn(await d.run(a.bin, a.loginArgs, { path: d.agentPath, env: d.keys }));
+    return login.loggedIn(await d.run(a.bin, login.args, { path: d.agentPath, env: d.keys }));
   } catch (e) {
     return exitCode(e) === 1 ? false : undefined;
   }

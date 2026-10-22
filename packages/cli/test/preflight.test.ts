@@ -46,6 +46,17 @@ describe('preflight of an agent CLI below its version floor', () => {
   });
 });
 
+describe('preflight of OpenCode', () => {
+  it("says it is signed in only when auth list names a model provider's login, as the handover's checks read it", async () => {
+    const opencode = async (listed: object[]) => (await preflight(deps({
+      'opencode --version': 'opencode v2.0.27\n', 'opencode auth list --standalone --format json': `${JSON.stringify(listed)}\n`,
+    }))).find((c) => c.name === 'opencode');
+    expect(await opencode([])).toEqual({ name: 'opencode', status: 'warn', detail: 'opencode v2.0.27, not signed in: opencode auth login' });
+    expect((await opencode([{ id: 'mcp_linear' }]))?.status).toBe('warn');
+    expect(await opencode([{ id: 'openai' }])).toEqual({ name: 'opencode', status: 'ok', detail: 'opencode v2.0.27, signed in' });
+  });
+});
+
 describe('realPreflightDeps', () => {
   it('counts a fleet as handing over once fleet.json names a gateway or turns handover on, and any fleet on Linux', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-pre-'));

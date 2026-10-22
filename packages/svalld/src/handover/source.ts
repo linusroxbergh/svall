@@ -31,6 +31,7 @@ import { ProcessTable } from './processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
 import { classifyTerminals, launchFlags, restChoices, restTerminals, serversGone, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
 import type { HandoverService } from './service.js';
+import { opencodeAnswered } from './sessions/opencode.js';
 import { agentBlockers, cliRunner, sessionAdapter, type AgentProbe } from './sessions/registry.js';
 import { SessionError, type CliRun } from './sessions/types.js';
 
@@ -232,7 +233,7 @@ export class SourceHandover {
 
   async preflight(p: ParsedParams<'handover.preflight'>): Promise<Result<'handover.preflight'>> {
     const state = this.d.store.state;
-    const { blockers, inventory } = await this.check(p.toMachineId, p, state);
+    const { blockers, warnings, inventory } = await this.check(p.toMachineId, p, state);
     // Freeze asks the gateway on its own, with no one to answer a prompt: asked here first, read-only
     const authority = this.d.authority?.();
     if (authority) await authority.get(this.fleet().id).catch((e: unknown) => { blockers.push(unasked(e)); });
@@ -260,7 +261,7 @@ export class SourceHandover {
     return {
       manifestSummary: crowd ? { ...summarize(manifest), ...names.listed } : summarize(built.manifest),
       blockers: settle([...blockers, ...built.blockers, ...(p.choices.carryUnused ? [] : built.unused), ...big]),
-      warnings: settle([...built.warnings, ...platformWarnings(built.manifest, p.destination.info.platform)]),
+      warnings: settle([...warnings, ...built.warnings, ...platformWarnings(built.manifest, p.destination.info.platform)]),
       manifest,
     };
   }
@@ -444,16 +445,18 @@ export class SourceHandover {
   }
 
   /** What stops the move before any terminal is touched: identities, releases, agent CLIs, characters kept here, platforms and paths. */
-  private async check(toMachineId: MachineId, p: HandoverMachines, state: FleetState): Promise<{ blockers: Blocker[]; inventory: Inventory }> {
+  private async check(toMachineId: MachineId, p: HandoverMachines, state: FleetState): Promise<{ blockers: Blocker[]; warnings: Warning[]; inventory: Inventory }> {
     const { info } = p.destination;
     const blockers: Blocker[] = [];
+    const warnings: Warning[] = [];
     const mismatch = (message: string) => blockers.push({ code: 'identity_mismatch', message });
     if (!this.d.authority?.()) mismatch('this fleet names no gateway, so no other machine can be handed it');
     if (toMachineId === this.ownership.machineId) mismatch('the destination is this machine, which already runs this fleet');
     if (info.machineId !== toMachineId) mismatch(`the destination described is ${info.machineId}, not ${toMachineId}`);
     blockers.push(...compatibility(info));
     const kinds = Object.values(state.characters).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]).filter((k): k is AgentKind => k !== undefined);
-    blockers.push(...agentBlockers({ kinds, source: await this.agents(), destination: info.agentAdapters.map(probeOf) }));
+    const agents = { kinds, source: await this.agents(), destination: info.agentAdapters.map(probeOf), opencodeAnswered: opencodeAnswered(state) };
+    blockers.push(...agentBlockers(agents, warnings));
     for (const c of Object.values(state.characters)) {
       if (c.keepHere) blockers.push({ code: 'character_pinned', message: `${c.name} is kept on this machine`, entity: { kind: 'character', id: c.id } });
     }
@@ -461,7 +464,7 @@ export class SourceHandover {
     blockers.push(...await this.exportSessions(inventory, true));
     blockers.push(...await platformBlockers(inventory.roots, info.platform, this.d.scanFs ?? realScanFs));
     blockers.push(...await this.gitBlockers(inventory, info));
-    return { blockers: [...blockers, ...inventory.blockers], inventory };
+    return { blockers: [...blockers, ...inventory.blockers], warnings, inventory };
   }
 
   /**

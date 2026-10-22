@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession } from '@svall/protocol';
+import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession, type Warning } from '@svall/protocol';
 import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
@@ -1085,6 +1085,18 @@ describe('agent preflight', () => {
     expect(fleet(oc())).toEqual([]);
     expect(fleet(oc({ version: '2.0.21' }))).toEqual(['incompatible_adapter']);
     expect(fleet(oc({ loggedIn: false }))).toEqual(['agent_logged_out']);
+    // an OpenCode that answers here with no provider's login, as on OpenCode Zen's free models, only warns of none there
+    const zen = (source: AgentProbe, opencodeAnswered: boolean) => {
+      const warnings: Warning[] = [];
+      const blockers = agentBlockers({ kinds: ['opencode'], source: [source], destination: [oc({ loggedIn: false })], opencodeAnswered }, warnings);
+      return { blockers: blockers.map((b) => b.code), warnings };
+    };
+    expect(zen(oc({ loggedIn: false }), true)).toEqual({ blockers: [], warnings: [{
+      code: 'agent_logged_out',
+      message: "opencode is not logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models; for a provider's model, run opencode auth login there",
+    }] });
+    expect(zen(oc({ loggedIn: false }), false)).toEqual({ blockers: ['agent_logged_out'], warnings: [] });
+    expect(zen(oc(), true)).toEqual({ blockers: ['agent_logged_out'], warnings: [] });
     expect(fleet(oc({ hooks: false }))).toEqual(['agent_hooks_missing']);
     expect(agentBlockers({ kinds: ['opencode'], source: [oc()], destination: [oc({ hooks: false })] })[0].message)
       .toBe(`Svall's plugin is not installed for OpenCode on the destination (${opencodePaths({}, '~').plugin}, or under its XDG_CONFIG_HOME): run svall setup there`);

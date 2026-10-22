@@ -87,8 +87,9 @@ and never copies a login, so these are yours:
 - Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out, and a
   handover to the machine stops at its checks until it is on.
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
-  `opencode auth login`. OpenCode runs its free model with no login, but a handover to the machine needs it to hold a
-  model provider's login or key there, as `opencode auth list` shows.
+  `opencode auth login`. OpenCode runs OpenCode Zen's free models with no login. A handover to the machine needs a
+  model provider's login or key there, as `opencode auth list` shows, unless OpenCode on the machine the fleet comes
+  from has none either and its agent has answered there: then the checks only warn.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
   them with `/hooks`.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
