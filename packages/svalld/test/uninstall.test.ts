@@ -83,6 +83,14 @@ describe('fleetHomes', () => {
     fs.writeFileSync(path.join(u, '.svall-work', 'config.json.bak'), '{}');
     expect(fleetHomes(u)).toEqual([path.join(u, '.svall-work')]);
   });
+
+  it('lists a fleet whose home is named for a command svall keeps, which no -p reaches but uninstall still stops', () => {
+    const u = makeHome();
+    for (const d of ['.svall-host', '.svall-fleet', '.svall-work', '.svall-gateway']) fs.mkdirSync(path.join(u, d));
+    for (const d of ['.svall-host', '.svall-fleet', '.svall-work']) fs.writeFileSync(path.join(u, d, 'fleet.json'), '{}');
+    expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall-fleet', '.svall-host', '.svall-work']);
+    expect(fleetData({ homedir: u, appDests: [], fromApp: true })).toEqual(fleetHomes(u));
+  });
 });
 
 describe('runUninstall', () => {
