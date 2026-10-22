@@ -115,6 +115,12 @@ describe('gateway owner', () => {
     expect(frame).toMatchObject({ error: { code: 'invalid_request' } });
   });
 
+  it('keeps force, the controller\'s own interface to a recovery a person confirmed, out of its help', () => {
+    const owner = gatewayCommands().commands.find((c) => c.name() === 'owner')!;
+    expect(owner.helpInformation()).toMatch(/get, create, begin, ready, commit, abort or complete/);
+    expect(owner.helpInformation()).not.toMatch(/force/);
+  });
+
   it('refuses an operation the authority has no name for without reaching it', async () => {
     const { frame, code } = await svall('owner', 'seize', '--fleet', FLEET);
     expect(code).not.toBe(0);
