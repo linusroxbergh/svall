@@ -641,6 +641,13 @@ describe('svall handover', () => {
     expect(h.tx.cancelled).toBe(1);
   });
 
+  it('ends the ssh masters a killed helper left behind as it runs, so a --resume after a kill -9 holds only its own', async () => {
+    const h = harness({ json: true });
+    let swept = 0;
+    expect(await runHandover({ kind: 'resume' }, { ...h.ctx, deps: { ...h.deps, sweep: async () => { swept++; } } })).toEqual({ code: 0 });
+    expect(swept).toBe(1);
+  });
+
   it('refuses --resume and --abort on a journal the gateway has superseded, naming --forget', async () => {
     for (const kind of ['resume', 'abort'] as const) {
       const h = harness({ json: true });

@@ -11,7 +11,7 @@ import type { Handover } from '../controller/handover.js';
 import { connectHandover, type Connected } from '../controller/reach.js';
 import { connectHelper, helperPaths, HelperServer, Live, lockHolder, probe, readPid, takeLock, type HelperPaths } from '../controller/helper.js';
 import { redact } from '../controller/process.js';
-import { closeMastersOnSignal } from '../controller/ssh.js';
+import { closeMastersOnSignal, sweepMasters } from '../controller/ssh.js';
 import { fileStore, forgettable } from '../controller/recovery.js';
 import { MachineRegistry } from '../controller/registry.js';
 import type { Target } from '../target.js';
@@ -37,6 +37,8 @@ export type CliDeps = {
   argv(): string[];
   tmpdir?: string;
   launchTimeoutMs?: number;
+  /** ends the ssh masters of processes that are gone, as a helper killed where no handler ran leaves them */
+  sweep?(): Promise<void>;
 };
 
 /** `check`: preflight alone, which begins nothing. */
@@ -177,6 +179,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
     return refuse(e instanceof Live ? stopped(await refusal(e, paths, w), 'running') : stopped(messageOf(e), 'unexpected'));
   }
   const record = (e: HandoverEvent): void => out.line(server.record(e));
+  void c.deps.sweep?.();
 
   const held: HandoverChoices = job.kind === 'start' ? { ...job.choices } : {};
   const decisions = new Decisions();
@@ -556,6 +559,7 @@ export function realDeps(): CliDeps {
     // node and whatever loads this CLI, then its entry script, as this process was started
     launch: (args, log) => spawnHelper(process.execPath, [...process.execArgv, process.argv[1]], args, log),
     argv: () => process.argv.slice(2),
+    sweep: () => sweepMasters(),
   };
 }
 
