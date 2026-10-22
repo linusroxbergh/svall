@@ -384,7 +384,8 @@ describe('who stops for a handover, and how', () => {
       a: chr('a', 'i', { x: 0, y: 0 }, { name: 'ada', agent: agent('idle') }),
       b: chr('b', 'i', { x: 0, y: 0 }, { name: 'bo', agent: agent('working') }),
       c: chr('c', 'i', { x: 0, y: 0 }, { name: 'cy', agent: agent('blocked') }),
-      d: chr('d', 'i', { x: 0, y: 0 }, { name: 'di', agent: agent('done', { background: true }) }),
+      // the reducer marks background work only on an agent it keeps working
+      d: chr('d', 'i', { x: 0, y: 0 }, { name: 'di', agent: agent('working', { background: true }) }),
       e: chr('e', 'i', { x: 0, y: 0 }, { name: 'ed' }),
       f: chr('f', 'i', { x: 0, y: 0 }, { name: 'fi', tmux: undefined, agent: agent('idle') }),
       g: chr('g', 'i', { x: 0, y: 0 }, { name: 'gu', agent: agent('done') }),

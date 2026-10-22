@@ -408,8 +408,9 @@ function restOf(c: Character): RestHow {
   const a = c.agent;
   if (!a) return 'shell';
   if (a.status === 'blocked') return 'answer';
-  if (a.status === 'working') return 'wait';
-  return a.background ? 'background' : 'resume';
+  // a turn that ended with background work out stays working
+  if (a.background) return 'background';
+  return a.status === 'working' ? 'wait' : 'resume';
 }
 
 /** Who stops for a handover and how, by name: the groups that have anyone in them, in the order the sheet lists them. */
