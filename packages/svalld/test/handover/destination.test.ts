@@ -1389,14 +1389,38 @@ describe('destination activate', () => {
     const target = path.join(s.base, 'dotfiles/fleet.json');
     fs.mkdirSync(path.dirname(target));
     fs.renameSync(s.paths.fleetConfig, target);
-    fs.chmodSync(target, 0o640);
+    fs.chmodSync(target, 0o660);
     fs.symlinkSync(target, s.paths.fleetConfig);
     d.gateway.commit(preparedDigest);
 
     await d.handover.activate({ transactionId: TX, generation: 5 });
     expect(fs.lstatSync(s.paths.fleetConfig).isSymbolicLink()).toBe(true);
     expect(FleetConfig.parse(JSON.parse(fs.readFileSync(target, 'utf8'))).home.cwd).toBe('~/mc');
-    expect(mode(target)).toBe('640');
+    expect(mode(target)).toBe('660');
+  });
+
+  it.skipIf(process.getuid?.() === 0)('replaces a fleet.json linked into a store it cannot write with a file of its own, and says so', async () => {
+    const lines: string[] = [];
+    const s = await scene();
+    const d = daemon(s, { log: { info: (m) => { lines.push(m); }, error: (m) => { lines.push(m); } } });
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    const store = path.join(s.base, 'nix-store');
+    const target = path.join(store, 'fleet.json');
+    fs.mkdirSync(store);
+    fs.renameSync(s.paths.fleetConfig, target);
+    fs.chmodSync(target, 0o444);
+    fs.chmodSync(store, 0o555);
+    fs.symlinkSync(target, s.paths.fleetConfig);
+    const before = fs.readFileSync(target, 'utf8');
+    d.gateway.commit(preparedDigest);
+    try {
+      await d.handover.activate({ transactionId: TX, generation: 5 });
+    } finally { fs.chmodSync(store, 0o755); }
+    expect(fs.lstatSync(s.paths.fleetConfig).isSymbolicLink()).toBe(false);
+    expect(FleetConfig.parse(JSON.parse(fs.readFileSync(s.paths.fleetConfig, 'utf8'))).home.cwd).toBe('~/mc');
+    expect(mode(s.paths.fleetConfig)).toBe('600');
+    expect(fs.readFileSync(target, 'utf8')).toBe(before);
+    expect(lines).toContainEqual(expect.stringContaining(`${s.paths.fleetConfig} links to ${target}`));
   });
 
   it('names a resume that never comes up as its character error, keeps the fleet, and clears it when the session starts after all', async () => {

@@ -217,8 +217,9 @@ function adopt(config: Config, fleet: FleetConfig): void {
   replaceIn(config, { ...rest, mobile: config.mobile });
 }
 
-// a fleet.json linked elsewhere (stow, home-manager) is written where it points, with the mode it had
-function writeFleet(file: string, fleet: FleetConfig): void {
+// a fleet.json linked elsewhere (stow, home-manager) is written where it points, with the mode it had; a link into a
+// store this account cannot write gives way to a file of the fleet's own
+function writeFleet(file: string, fleet: FleetConfig, log: Logger): void {
   let real = file;
   let mode = 0o600;
   try {
@@ -227,9 +228,16 @@ function writeFleet(file: string, fleet: FleetConfig): void {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
   }
-  writeDurable(real, fleet, { mode });
-  // the umask narrows the mode a file is created with
-  fs.chmodSync(real, mode);
+  try {
+    writeDurable(real, fleet, { mode });
+    // the umask narrows the mode a file is created with
+    fs.chmodSync(real, mode);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (real === file || !['EACCES', 'EROFS', 'EPERM'].includes(code ?? '')) throw e;
+    log.info(`${file} links to ${real}, which could not be written (${code}), so a file of its own replaces the link`);
+    writeDurable(file, fleet, { mode: 0o600 });
+  }
 }
 
 /**
@@ -798,7 +806,7 @@ export class DestinationHandover {
 
   /** fleet.json, then the state: each step is safe to repeat, and a rename that landed before a crash is found by its digest. */
   private promote(j: DestinationJournal): void {
-    boundary('destination.promote.fleet', () => writeFleet(this.d.paths.fleetConfig, j.fleet!));
+    boundary('destination.promote.fleet', () => writeFleet(this.d.paths.fleetConfig, j.fleet!, this.d.log));
     adopt(this.d.config, j.fleet!);
     const prepared = this.d.paths.preparedState(j.transactionId);
     boundary('destination.promote.state', () => {

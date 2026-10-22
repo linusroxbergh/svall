@@ -217,7 +217,8 @@ Every delete, rename and archive a handover or its install makes, with the recor
   - ownership (`owner.json`) and the daemon journal;
   - replica records, prepared state, seals and manifests;
   - `fleet.json` and `node.json`; a change to an existing `fleet.json` keeps its mode and writes through a link to
-    the file it names;
+    the file it names, except that the one a handover promotes replaces a link it cannot write through, as into a
+    read-only Nix store, with a file of its own at 0600, and logs that;
   - the gateway's records (folder 0700);
   - the controller's journal and progress (folder 0700);
   - the registry `machines.json` and `machine.json` (folder 0700).
