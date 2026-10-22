@@ -346,10 +346,18 @@ export class ReplicaStore {
     try { names = this.fs.readdir(registrations); } catch (e) {
       if (!unreachable(e)) throw e;
     }
+    // a folder the archive reaches through a link lies outside it
+    const inside = (rel: string): boolean => {
+      try { return holds(this.fs.realpath(to), this.fs.realpath(path.join(to, rel))); } catch (e) {
+        if (unreachable(e)) return false;
+        throw e;
+      }
+    };
     const registered = names.flatMap((name) => {
       const gitfile = this.text(path.join(registrations, name, 'gitdir'))?.trim();
       const at = gitfile && path.resolve(from, '.git/worktrees', name, gitfile);
-      return at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? [path.relative(from, path.dirname(at))] : [];
+      const rel = at && path.basename(at) === '.git' && holds(from, path.dirname(at)) ? path.relative(from, path.dirname(at)) : undefined;
+      return rel !== undefined && inside(rel) ? [rel] : [];
     });
     const lines: string[] = [];
     for (const rel of new Set([...await this.gitfiles(to, excludeMatcher(excludes)), ...registered])) {

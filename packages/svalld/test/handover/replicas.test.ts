@@ -715,6 +715,20 @@ describe('archiving', () => {
     expect(fs.existsSync(path.join(kept, 'README.archived.txt'))).toBe(false);
   });
 
+  it('leaves the .git file of a worktree a registration places in it through a link, which lies outside the archive', async () => {
+    const w = world();
+    const main = path.join(real(w.work), 'main');
+    const outside = path.join(real(w.work), 'outside');
+    const gitfile = `gitdir: ${main}/.git/worktrees/x\n`;
+    tree(main, { 'a.txt': 'a', '.git/worktrees/x/gitdir': `${main}/.claude/worktrees/x/.git\n`, '.git/worktrees/x/commondir': '../..\n' });
+    tree(outside, { 'worktrees/x/.git': gitfile });
+    fs.symlinkSync(outside, path.join(main, '.claude'));
+    w.store().seal(dir(main, 'r_main'), sealAs('tx-0', []), 'source');
+    await w.store().archive(dir(main, 'r_main'), ['r_main'], claimFor(TX));
+    expect(fs.readFileSync(path.join(outside, 'worktrees/x/.git'), 'utf8')).toBe(gitfile);
+    expect(fs.existsSync(path.join(outside, 'worktrees/x/.git.archived'))).toBe(false);
+  });
+
   it('looks for .git files as a scan does, past a name that is not valid UTF-8, and into no excluded folder', async () => {
     const w = world();
     const dep = 'gitdir: ../../../main/.git/modules/dep\n';
