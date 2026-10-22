@@ -84,6 +84,7 @@ describe('machine registry', () => {
     const fallback = process.platform === 'linux' ? 'linux' : 'mac';
     expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: '42' }).localMachine().name).toBe(fallback);
     expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'local' }).localMachine().name).toBe(fallback);
+    expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'status' }).localMachine().name).toBe(fallback);
     expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: "Linus's MacBook Pro.lan" }).localMachine().name).toBe('linus-s-macbook-pro');
   });
 
@@ -128,6 +129,14 @@ describe('machine registry', () => {
     expect(registry.get('local')).toEqual({ id: registry.localId, record: registry.localMachine() });
     expect(() => registry.add({ ...trift, name: 'local' })).toThrow(/local/);
     expect(() => registry.rename('kolvik', 'local')).toThrow(/local/);
+  });
+
+  it("refuses the words svall handover takes as its own as a machine's name", () => {
+    const registry = MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'kolvik' });
+    for (const word of ['on', 'off', 'status', 'attach']) {
+      expect(() => registry.add({ ...trift, name: word })).toThrow(new RegExp(`${word} is a word svall handover`));
+      expect(() => registry.rename('kolvik', word)).toThrow(new RegExp(word));
+    }
   });
 
   it('refuses a duplicate name, an invalid record and losing the local machine', () => {

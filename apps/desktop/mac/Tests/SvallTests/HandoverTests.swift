@@ -116,6 +116,10 @@ final class HandoverTests: XCTestCase {
         XCTAssertNil(HandoverCommand.start(to: "elsewhere", choices: nil, gateway: "studio", profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "studio", choices: nil, gateway: nil, profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "--resume", choices: nil, gateway: "--resume", profile: nil))
+        // svall handover reads these as its own words, so a gateway by one of these names is never a destination
+        for word in ["on", "off", "status", "attach"] {
+            XCTAssertNil(HandoverCommand.start(to: word, choices: nil, gateway: word, profile: nil), word)
+        }
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(archiveRoots: ["--delete"]), gateway: "studio", profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(archiveRoots: ["relative/path"]), gateway: "studio", profile: nil))
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(interruptAfterMs: -1), gateway: "studio", profile: nil))

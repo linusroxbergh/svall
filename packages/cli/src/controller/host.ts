@@ -24,7 +24,7 @@ import {
 } from './install.js';
 import { redact } from './process.js';
 import { MIN_RSYNC, rsyncVersion } from './rsync.js';
-import { MachineRegistry, type MachineEntry } from './registry.js';
+import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
 import { fileStore } from './recovery.js';
 import { cachedOwner, readRoute } from './route.js';
 import { SshError, type SshMaster } from './ssh.js';
@@ -314,6 +314,8 @@ const remotePaths = (home: string, version: string) => ({
 function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered | undefined> {
   const name = MachineRecord.shape.name.safeParse(o.name);
   if (!name.success) throw new StepError(`${o.name} is not a machine name: ${name.error.issues[0].message}`);
+  const reserved = reservedName(o.name);
+  if (reserved) throw new StepError(reserved);
   const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
   if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
   const held = registry.get(o.name);
