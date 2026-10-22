@@ -267,6 +267,23 @@ describe('a freeze asked again that refuses', () => {
   });
 });
 
+describe('a prepare asked again after a crash at its last flush', () => {
+  const world = worlds();
+
+  for (const edge of ['before', 'after'] as const) {
+    it(`flushes what landed again, and finishes the move after a crash ${edge} that flush`, async () => {
+      const w = world();
+      w.targets = [{ name: 'destination.prepare.sync', edge: 'before', nth: 1 }, { name: 'destination.verify.sync', edge, nth: 2 }];
+      await play(w, 'move');
+      const said = await w.recover('resume');
+      const why = () => `${said.join(' ')}\n${w.violations.join('\n')}\n${w.trace.join(' | ')}`;
+      expect(w.struck, why()).toEqual(['destination.prepare.sync:before#1', `destination.verify.sync:${edge}#2`]);
+      expect(w.violations, why()).toEqual([]);
+      expect(settledOn(w), why()).toBe('destination');
+    });
+  }
+});
+
 describe('a handover after a cancelled one', () => {
   const world = worlds();
 
