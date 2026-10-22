@@ -8,9 +8,9 @@ final class QuitFlowTests: XCTestCase {
     private var holds = 0
     private var answers: [Bool] = []
 
-    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false) -> QuitFlow {
+    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false, following: Bool = false) -> QuitFlow {
         QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
-                 elsewhere: { elsewhere }, handoverOpen: { handover },
+                 elsewhere: { elsewhere }, handoverOpen: { handover }, handoverFollowed: { following },
                  confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); return true },
                  kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 })
     }
@@ -58,7 +58,7 @@ final class QuitFlowTests: XCTestCase {
     func testAnOpenHandoverKeepsThisMacsDaemonOnEitherRoute() {
         for elsewhere in [false, true] {
             sent = []; asked = []; kills = 0; answers = []
-            quit(flow(elsewhere: elsewhere, handover: true), working: 2)
+            quit(flow(elsewhere: elsewhere, handover: true, following: true), working: 2)
             XCTAssertEqual(sent, ["quit.ask"], "elsewhere: \(elsewhere)")
             XCTAssertEqual(kills, 0, "elsewhere: \(elsewhere)")
             XCTAssertEqual(answers, [true], "elsewhere: \(elsewhere)")
@@ -67,8 +67,15 @@ final class QuitFlowTests: XCTestCase {
         }
     }
 
+    func testAHandoverLeftOpenWithNoHelperFollowedAsksNoOneToKeepTheMacAwake() {
+        quit(flow(handover: true), working: 2)
+        XCTAssertEqual(asked, ["Quit Svall? The handover left open waits in Handover for when you open Svall again."])
+        XCTAssertEqual(sent, ["quit.ask"])
+        XCTAssertEqual(kills, 0)
+    }
+
     func testUnsavedFilesAreNamedBesideAnOpenHandover() {
-        quit(flow(handover: true), unsaved: ["notes.md"], working: 1)
+        quit(flow(handover: true, following: true), unsaved: ["notes.md"], working: 1)
         XCTAssertEqual(asked, ["Quit with unsaved changes? notes.md has changes that were not saved. Quitting drops them. The handover carries on while Svall is closed. Keep this Mac awake until it finishes."])
         XCTAssertEqual(sent, ["quit.ask"])
         XCTAssertEqual(kills, 0)

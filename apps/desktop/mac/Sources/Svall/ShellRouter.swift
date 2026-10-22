@@ -39,7 +39,8 @@ final class ShellRouter {
                                              guard let route = self?.remote.route, case .remote = route else { return false }
                                              return true
                                          },
-                                         handoverOpen: { [weak self] in self?.handover?.isFollowing == true || SvallHome.handoverOpen() })
+                                         handoverOpen: { [weak self] in self?.handover?.isFollowing == true || SvallHome.handoverOpen() },
+                                         handoverFollowed: { [weak self] in self?.handover?.isFollowing == true })
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
