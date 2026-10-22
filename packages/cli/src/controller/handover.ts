@@ -21,7 +21,7 @@ import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } fro
 import { entryEvent, namesOf, Observer } from './events.js';
 import { redact } from './process.js';
 import { ProgressJournal, transactionDir } from './progress.js';
-import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen } from './recovery.js';
+import { assess, SOURCE_MISSES, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen } from './recovery.js';
 import { SshError } from './ssh.js';
 import { farRsync, transfer as runTransfer, type Master, type RootEntry, type SessionEntry, type TransferOptions, type TransferResult } from './transfer.js';
 
@@ -783,14 +783,19 @@ export class Handover {
       const landed = this.journal.landedDigest ? this.d.store.landed(transactionId, this.journal.landedDigest) : undefined;
       // a source this controller has no route to finishes its side from its own controller
       let unrouted = false;
+      let misses = 0;
+      const name = this.journal.source.name;
       try {
         const source = await this.side(this.journal.source.machineId);
         await this.retrying('complete', () => source.daemon.call('handover.complete', { transactionId, generation, ...(landed && { landed }) }));
       } catch (e) {
         unrouted = e instanceof NoRoute;
         pending.push('source');
-        const name = this.journal.source.name;
         said.push(`${name}: ${messageOf(e)}${unrouted ? `; svall handover --resume on ${name} finishes its side` : ''}`);
+        if (!unrouted) {
+          misses = (this.journal.sourceMisses ?? 0) + 1;
+          this.save({ sourceMisses: misses });
+        }
       }
       try {
         const record = await this.retrying('complete', () => this.d.gateway.complete({ transactionId, generation: generation + 1 }));
@@ -803,6 +808,7 @@ export class Handover {
           said.push(`the gateway: ${messageOf(e)}`);
         }
       }
+      if (misses >= SOURCE_MISSES && pending.length === 1) said.push(`${name} has not answered ${misses} resumes; if it is gone for good, svall handover --forget --source gives up its side`);
       const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, characters };
       // the journal stays open, so a resume finishes what is pending, unless that is only a source no resume here reaches
       if (pending.length && !(unrouted && pending.length === 1)) return { ...done, pending, error: this.scrub(said.join('; ')) };

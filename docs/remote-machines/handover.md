@@ -67,6 +67,7 @@ svall handover --resume                       # go on with an open handover
 svall handover --abort                        # take the fleet back, before the commit only
 svall handover attach                         # follow the handover running in the background
 svall handover --forget                       # drop this Mac's journal of a handover the gateway has moved past
+svall handover --forget --source              # give up the side of a finished handover the source never closed
 ```
 
 - `-p <fleet>` moves another fleet, and `--json` prints one event per line ([the events](errors.md#events)).
@@ -288,6 +289,11 @@ What else to know:
   cover every folder at once, before the first is copied.
 - **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
+- **The fleet's daemon on the machine it came from no longer answering** once the destination finished, such as
+  after that fleet's home was removed there, leaves this Mac's journal open: the app resumes it again at each launch,
+  and `svall host remove` refuses that machine. Once three resumes have not reached it, status offers `svall handover
+  --forget --source`, which drops the journal. What is left of the fleet there stays frozen with its record of the
+  handover, and `svall handover --resume` finishes that side if it answers again.
 
 ## When the gateway is lost
 

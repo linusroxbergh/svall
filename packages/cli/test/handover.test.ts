@@ -732,6 +732,25 @@ describe('svall handover', () => {
     expect(fs.existsSync(path.join(h.home, 'fleet.json'))).toBe(true);
   });
 
+  it('gives up the source\'s side with --forget --source only while it is all that is left and does not answer, saying what stays there', async () => {
+    const h = harness();
+    const journal = path.join(h.paths.dir, 'handover.json');
+    fs.mkdirSync(h.paths.dir, { recursive: true });
+    fs.writeFileSync(journal, '{}');
+    const ctrl = { transactionId: 'tx-1', source: { machineId: TRIFT, name: 'trift' } } as ControllerJournal;
+    h.tx.verdict = { ...NONE, standing: 'moved', transactionId: 'tx-1', safe: ['resume'], action: 'finish', reason: 'what tx-1 left open is only to be finished' };
+    const done = { controller: ctrl, gateway: { ok: true as const, value: h.tx.owned }, destination: { ok: true as const, value: { status: {} } } };
+    h.tx.observation = { ...done, source: { ok: true, value: { status: { transaction: { id: 'tx-1', fromMachineId: TRIFT, toMachineId: h.registry.localId, phase: 'commit', startedAt: 1 } }, ownership: { ...h.tx.owned, frozen: true } } } };
+    expect(await runForget(h.ctx, { source: true })).toBe(1);
+    expect(h.out()).toContain('the source answers, so `svall handover --resume` finishes its side');
+    h.tx.observation = { ...done, source: { ok: false, error: 'trift did not answer' } };
+    expect(await runForget(h.ctx)).toBe(1);
+    expect(fs.existsSync(journal)).toBe(true);
+    expect(await runForget(h.ctx, { source: true })).toBe(0);
+    expect(fs.existsSync(journal)).toBe(false);
+    expect(h.out()).toContain("Forgot this controller's journal of tx-1. trift did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and `svall handover --resume` finishes that side once it answers again.");
+  });
+
   it('reads status without changing anything, naming the helper that runs it and --forget for a superseded journal', async () => {
     const h = harness({ json: true });
     h.tx.verdict = { ...NONE, standing: 'superseded', transactionId: 'tx-1', reason: 'the gateway holds this fleet for trift at generation 7, past tx-1' };
@@ -1398,6 +1417,7 @@ describe('svall handover arguments', () => {
     await expect(parse(h, '--resume', '--terminate-shells')).rejects.toThrow();
     await expect(parse(h, '--resume', '--carry-unused')).rejects.toThrow();
     await expect(parse(h, '--resume', '--check')).rejects.toThrow();
+    await expect(parse(h, '--resume', '--source')).rejects.toThrow(/--source goes with --forget/);
   });
 
   it('answers bad arguments with a handover.result under --json or --detach, and starts nothing', async () => {

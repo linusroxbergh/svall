@@ -1619,6 +1619,30 @@ describe('a far machine that is down', () => {
     expect(settledOn(w)).toBe('destination');
   });
 
+  it('counts the resumes that could not tell the source it finished, and from the third names how to give its side up', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.down.add('trift');
+    const said: string[] = [];
+    for (const n of [1, 2, 3]) {
+      const out = await controller(w, eager(w)).resume();
+      expect(out, `${n}`).toMatchObject({ status: 'complete', pending: ['source'] });
+      expect(w.store.j?.sourceMisses, `${n}`).toBe(n);
+      said.push(out.status === 'complete' ? out.error ?? '' : '');
+    }
+    expect(said.slice(0, 2).join(' ')).not.toContain('--forget');
+    expect(said[2]).toContain('trift has not answered 3 resumes; if it is gone for good, svall handover --forget --source gives up its side');
+    w.down.delete('trift');
+    const last = await controller(w, eager(w)).resume();
+    expect(last).toMatchObject({ status: 'complete' });
+    expect(last).not.toHaveProperty('pending');
+    expect(w.store.j).toBeUndefined();
+  });
+
   // a push whose controller died at `op` and whose journal is gone, as when it ran on the other machine
   const lostAt = async (op: string): Promise<World> => {
     const probe = new World();

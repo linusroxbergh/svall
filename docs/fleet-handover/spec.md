@@ -765,7 +765,10 @@ At or after Commit:
 - the source remains fenced even if it missed the commit response;
 - restart checks the gateway and learns the committed generation;
 - activation is retried only on the destination;
-- characters that fail to resume remain dormant with their transcript and a visible error.
+- characters that fail to resume remain dormant with their transcript and a visible error;
+- a source that does not answer once the destination and the gateway completed is finished by a later resume; after
+  three resumes that could not reach it, status offers `svall handover --forget --source`, which drops the
+  controller's journal and leaves that side frozen for a resume to finish if it answers again.
 
 If the controller disappears, the sheet and CLI reconstruct status from the three journals.
 `svall handover status` says whether Abort or Resume is safe. A stale pre-commit transaction may be
