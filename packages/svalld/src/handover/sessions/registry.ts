@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
+  type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession, type Warning,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
 import { AGENTS, compareVersions, versionOk } from '../../agents.js';
+import { characterKeyEnv } from '../../claude.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
@@ -144,11 +145,6 @@ const json = (text: string | undefined): Record<string, unknown> | undefined => 
   try { return text === undefined ? undefined : JSON.parse(text); } catch { return undefined; }
 };
 
-// `opencode auth list --format json` lists a model provider's login or key, or an MCP server's, as an integration
-const providerListed = (text: string): boolean => {
-  const listed: unknown = json(text);
-  return Array.isArray(listed) && listed.some((i: { id?: unknown }) => typeof i.id === 'string' && !i.id.startsWith('mcp_'));
-};
 
 /**
  * Probes this machine's CLI for one agent. Claude Code names its own config folder, which is where its hooks must be;
@@ -168,8 +164,8 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
     return { kind, version, home: dir, loggedIn: status?.loggedIn === true, hooks: !!settings && hooksInstalled(settings, hooksHome) };
   }
   if (kind === 'opencode') {
-    const login = await d.run('opencode', ['auth', 'list', '--standalone', '--format', 'json']);
-    return { kind, version, home, loggedIn: login.code === 0 && providerListed(login.stdout), hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
+    const login = await d.run('opencode', AGENTS.opencode.loginArgs);
+    return { kind, version, home, loggedIn: login.code === 0 && AGENTS.opencode.loggedIn(login.stdout), hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
   }
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));
@@ -182,9 +178,12 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
 
-/** Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. */
-const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
-  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+/**
+ * Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. `keys` are
+ * added to this daemon's env.
+ */
+const runAgent = (keys: () => Record<string, string>, timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
+  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, env: { ...process.env, ...keys() } }, (err, stdout, stderr) => {
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string') reject(err);
     else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout), stderr: String(stderr) });
@@ -225,8 +224,9 @@ export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_
   });
 });
 
-export const realProbeDeps = (): ProbeDeps => ({
-  run: runAgent(), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
+// each CLI is asked with the fleet's .env keys, as a resumed character and doctor have them
+export const realProbeDeps = (envFile: string): ProbeDeps => ({
+  run: runAgent(() => characterKeyEnv(envFile)), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
 });
 
 /** How to ask this machine's agent CLIs: as they last answered, or `fresh`. */
@@ -255,9 +255,11 @@ export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => 
  * What stops the agents the fleet runs from resuming on the destination: a CLI that is not there, a release on
  * either machine older than its adapter's minimum or the two read by different adapters, a destination release older
  * than the source's, a destination not logged in, or one without Svall's hooks, whose SessionStart is how a resumed
- * agent reports back.
+ * agent reports back. An OpenCode logged in on neither machine whose agent has answered here only warns, into `warnings`.
  */
-export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[] }): Blocker[] {
+export function agentBlockers(
+  o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[]; opencodeAnswered?: boolean }, warnings: Warning[] = [],
+): Blocker[] {
   const blockers: Blocker[] = [];
   for (const kind of new Set(o.kinds)) {
     if (!HANDOVER_KINDS.includes(kind)) { blockers.push({ code: 'incompatible_adapter', message: `a handover carries no ${kind} sessions` }); continue; }
@@ -274,7 +276,10 @@ export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly
     if (here?.version && compareVersions(there.version, here.version) === -1) {
       blockers.push({ code: 'incompatible_adapter', message: `the destination's ${kind} ${there.version} is older than this machine's ${here!.version}, which writes sessions it may not read; update ${kind} on the destination` });
     }
-    if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });
+    // one answering here with no provider's login runs on a model that needs none, as OpenCode Zen's free ones do
+    if (!there.loggedIn && kind === 'opencode' && here?.loggedIn === false && o.opencodeAnswered) {
+      warnings.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models; for a provider's model, run opencode auth login there` });
+    } else if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });
     if (!there.hooks) {
       blockers.push({
         code: 'agent_hooks_missing',

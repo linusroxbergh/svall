@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { FleetState } from '@svall/protocol';
+import { readTail } from '../../agent/transcript.js';
 import { AGENTS } from '../../agents.js';
 import { shq } from '../../text.js';
 import { writeDurable } from '../durable.js';
@@ -69,6 +71,10 @@ async function heldCopy(sessionId: string, file: string, to: string, cwd: string
   }
   return true;
 }
+
+/** Whether an OpenCode agent of the fleet has answered a turn on this machine, in the log Svall's plugin keeps of it. */
+export const opencodeAnswered = (state: FleetState): boolean => Object.values(state.characters).some((c) => [c.agent, c.second?.agent].some((a) =>
+  a?.kind === 'opencode' && !!a.transcriptPath && /^\{"kind":"agent"/m.test(readTail(a.transcriptPath, 1024 * 1024))));
 
 export const opencodeAdapter: SessionAdapter = {
   kind: 'opencode',

@@ -138,6 +138,15 @@ describe('compareReplica on Git state', () => {
     expect(unread.removed.preview).toEqual(['.git/refs/tags/v1']);
   });
 
+  it('reads an index a status rewrote under a group-writable umask as no change, and an edit or a staged change written so as one', () => {
+    const g = (f: TransferFile): TransferFile => (f.type === 'file' ? { ...f, mode: 0o664 } : f);
+    const baseline = [...repo('.git'), file('lib.txt'), index('.git/worktrees/w/index', 'a', 'f'), file('.git/worktrees/w/HEAD')];
+    const refreshed = [file('.git/HEAD'), file('.git/refs/heads/main'), g(index('.git/index', 'b', 'e')), file('.git/logs/HEAD'), file('lib.txt'), g(index('.git/worktrees/w/index', 'c', 'f')), file('.git/worktrees/w/HEAD')];
+    expect(diverged(compareReplica([baseline], refreshed))).toBe(false);
+    const edited = compareReplica([baseline], [...refreshed.filter((f) => f.path !== 'lib.txt' && f.path !== '.git/index'), g(file('lib.txt', 'b')), g(index('.git/index', 'b', 'f'))]);
+    expect(edited.changed.preview).toEqual(['.git/index', 'lib.txt']);
+  });
+
   it('compares an index by its bytes when either side does not name its staged entries', () => {
     const d = compareReplica([[file('.git/HEAD'), index('.git/index', 'a', undefined)]], [file('.git/HEAD'), index('.git/index', 'b', 'e')]);
     expect(d.changed.preview).toEqual(['.git/index']);

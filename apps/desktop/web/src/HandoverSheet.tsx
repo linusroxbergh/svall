@@ -60,7 +60,7 @@ function More({ label, children, testid }: { label: string; children: ReactNode;
 function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx: HintContext; run: HandoverRun; warning?: boolean; blockers?: Blocker[] }) {
   const names = run.preflight?.names;
   const choice = warning ? undefined : choiceFor(b);
-  const hint = blockerHint(b, ctx);
+  const hint = blockerHint(b, ctx, warning);
   const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
   const path = entityPath(b.entity, names, b.message);
   const upgrade = upgradeAsked(b, ctx);

@@ -641,6 +641,13 @@ describe('svall handover', () => {
     expect(h.tx.cancelled).toBe(1);
   });
 
+  it('ends the ssh masters a killed helper left behind as it runs, so a --resume after a kill -9 holds only its own', async () => {
+    const h = harness({ json: true });
+    let swept = 0;
+    expect(await runHandover({ kind: 'resume' }, { ...h.ctx, deps: { ...h.deps, sweep: async () => { swept++; } } })).toEqual({ code: 0 });
+    expect(swept).toBe(1);
+  });
+
   it('refuses --resume and --abort on a journal the gateway has superseded, naming --forget', async () => {
     for (const kind of ['resume', 'abort'] as const) {
       const h = harness({ json: true });
@@ -735,6 +742,29 @@ describe('svall handover', () => {
     const ungated = harness({ gateway: false, json: true });
     expect(await runStatus(ungated.ctx)).toBe(0);
     expect(ungated.events()).toEqual([{ event: 'handover.status', data: expect.objectContaining({ standing: 'none', reason: expect.stringContaining('svall host enable') }) }]);
+  });
+
+  it('says where the handover stands naming each machine as the registry does, and the handover once', async () => {
+    const tx = 'a65ce1d7-ab5f-4068-b6fe-832f84f683e9';
+    const said = async (verdict: (local: MachineId) => Verdict): Promise<{ out: string; local: string }> => {
+      const h = harness();
+      h.tx.verdict = verdict(h.registry.localId);
+      expect(await runStatus(h.ctx)).toBe(0);
+      return { out: h.out(), local: h.registry.localMachine().name };
+    };
+    const open = (await said(() => ({
+      standing: 'open', transactionId: tx, phase: 'transfer', fromMachineId: TRIFT, journals: { source: 'freeze' }, safe: ['resume', 'abort'], action: 'continue',
+      reason: `${tx} is preparing and has not committed; it can go on, or be aborted back to ${TRIFT}`,
+    }))).out;
+    expect(open).toContain(`Handover ${tx} open, at transfer: it is preparing and has not committed; it can go on, or be aborted back to trift.`);
+    expect(open.split(tx).length).toBe(2);
+    expect(open).not.toContain(TRIFT);
+    const committed = await said((local) => ({
+      standing: 'committed', transactionId: tx, phase: 'activate', journals: {}, safe: ['resume'], action: 'continue',
+      reason: `${tx} is committed: the fleet belongs to ${local} at generation 10, and only its activation can go on`,
+    }));
+    expect(committed.out).toContain(`committed, at activate: it is committed: the fleet belongs to ${committed.local} at generation 10`);
+    expect((await said(() => NONE)).out).toBe('No handover of this fleet is open anywhere.\n');
   });
 
   it('keeps a token out of what status and attach say when the journals cannot be read', async () => {

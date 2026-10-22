@@ -1756,6 +1756,23 @@ runIf('Fleet', () => {
     expect((await fleet.startFresh(c.id)).tmux).toBeDefined();
   });
 
+  it('keeps the failed resume and its session of a second terminal whose fresh start could not be started, to start afresh again', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const OLD = 'ses_0123456789abCDEFGHIJKLMNop';
+    const revive = { command: `opencode -s ${OLD}` };
+    store.update((d) => {
+      d.characters[c.id].second = { cwd: '/tmp', unread: false, agent: { kind: 'opencode', sessionId: OLD, status: 'idle', lastActivityAt: 0 }, revive, resumeError: 'it did not come up' };
+    });
+    // the new session's command never reaches the pane
+    vi.spyOn(tmux, 'sendLine').mockRejectedValueOnce(new Error('pane gone')).mockResolvedValue();
+    await expect(fleet.startFresh(c.id, 2)).rejects.toThrow('pane gone');
+    expect(store.state.characters[c.id].second).toMatchObject({ revive, resumeError: 'it did not come up', agent: { sessionId: OLD } });
+    expect(store.state.characters[c.id].second?.tmux).toBeUndefined();
+    expect((await tmux.listWindows()).filter((w) => w.name === `${c.id}-2`)).toEqual([]);
+    expect((await fleet.startFresh(c.id, 2)).second?.tmux).toBeDefined();
+  });
+
   it('kills the window of a revive whose character was closed meanwhile', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

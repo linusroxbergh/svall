@@ -13,9 +13,10 @@ export type Divergence = { added: PathList; removed: PathList; changed: PathList
 
 type Role = 'volatile' | 'index' | 'ref' | 'bytes';
 
-// content and mode decide, as rsync would restore both; an mtime alone changes nothing, and a Git index is what it stages
+// content and mode decide, as rsync would restore both, though not the group and other bits each machine's umask sets;
+// an mtime alone changes nothing, and a Git index is what it stages
 const same = (a: TransferFile, b: TransferFile, role: Role): boolean => (a.type === 'file'
-  ? b.type === 'file' && a.mode === b.mode && (a.sha256 === b.sha256 || (role === 'index' && a.gitIndex !== undefined && a.gitIndex === b.gitIndex))
+  ? b.type === 'file' && (a.mode & ~0o077) === (b.mode & ~0o077) && (a.sha256 === b.sha256 || (role === 'index' && a.gitIndex !== undefined && a.gitIndex === b.gitIndex))
   : b.type === 'symlink' && a.target === b.target);
 
 // what a fetch, a prefetch or a repack changes in a Git directory: nothing a branch, HEAD, the index or a stash holds

@@ -210,7 +210,7 @@ async function start(opts: Options): Promise<Daemon> {
     return named ? opts.authority ?? { get: (id) => fleetAuthority({ gatewayMachineId: named, machineId: me }).get(id) } : undefined;
   };
   const handover = new HandoverService({
-    ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps()), fleet, setGateway: (id) => setGateway(paths, config, id),
+    ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps(paths.env)), fleet, setGateway: (id) => setGateway(paths, config, id),
     ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
     authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
     source: {

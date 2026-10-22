@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession } from '@svall/protocol';
+import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession, type Warning } from '@svall/protocol';
 import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
@@ -13,7 +13,7 @@ import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { codexAdapter } from '../../src/handover/sessions/codex.js';
 import { opencodeAdapter } from '../../src/handover/sessions/opencode.js';
 import {
-  HANDOVER_KINDS, adapterFor, agentAdapters, agentBlockers, cliRunner, installSession, placeTranscripts, probeAgent, realInstallFs,
+  HANDOVER_KINDS, adapterFor, agentAdapters, agentBlockers, cliRunner, installSession, placeTranscripts, probeAgent, realInstallFs, realProbeDeps,
   type AgentProbe, type AgentRun, type InstallFs,
 } from '../../src/handover/sessions/registry.js';
 import { repairBrief } from '../../src/handover/sessions/repair.js';
@@ -1021,6 +1021,25 @@ describe('agent preflight', () => {
     expect(await probeAgent('opencode', { ...deps(0, [], {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
   });
 
+  it("asks an agent's login with the fleet's .env keys, as a resumed character has them", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-probe-'));
+    const bin = path.join(dir, 'bin');
+    fs.mkdirSync(bin);
+    // an OpenCode that lists the provider whose key its environment holds
+    fs.writeFileSync(path.join(bin, 'opencode'), '#!/bin/sh\n[ "$1" = --version ] && { echo 2.0.22; exit 0; }\n[ -n "$ANTHROPIC_API_KEY" ] && echo \'[{"id":"anthropic"}]\' || echo \'[]\'\n', { mode: 0o755 });
+    const envFile = path.join(dir, '.env');
+    const PATH = process.env.PATH;
+    process.env.PATH = `${bin}:${PATH}`;
+    try {
+      expect((await probeAgent('opencode', realProbeDeps(envFile))).loggedIn).toBe(false);
+      fs.writeFileSync(envFile, 'ANTHROPIC_API_KEY=sk-ant-test\n');
+      expect((await probeAgent('opencode', realProbeDeps(envFile))).loggedIn).toBe(true);
+    } finally {
+      process.env.PATH = PATH;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("says when AppArmor keeps Codex from sandboxing its commands, as only Linux's restriction of user namespaces can", async () => {
     const codexHooksAt = { '/home/t/.codex/hooks.json': codexHooks };
     const denied = 'bwrap: setting up uid map: Permission denied\nbwrap: No permissions to create new namespace';
@@ -1085,6 +1104,18 @@ describe('agent preflight', () => {
     expect(fleet(oc())).toEqual([]);
     expect(fleet(oc({ version: '2.0.21' }))).toEqual(['incompatible_adapter']);
     expect(fleet(oc({ loggedIn: false }))).toEqual(['agent_logged_out']);
+    // an OpenCode that answers here with no provider's login, as on OpenCode Zen's free models, only warns of none there
+    const zen = (source: AgentProbe, opencodeAnswered: boolean) => {
+      const warnings: Warning[] = [];
+      const blockers = agentBlockers({ kinds: ['opencode'], source: [source], destination: [oc({ loggedIn: false })], opencodeAnswered }, warnings);
+      return { blockers: blockers.map((b) => b.code), warnings };
+    };
+    expect(zen(oc({ loggedIn: false }), true)).toEqual({ blockers: [], warnings: [{
+      code: 'agent_logged_out',
+      message: "opencode is not logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models; for a provider's model, run opencode auth login there",
+    }] });
+    expect(zen(oc({ loggedIn: false }), false)).toEqual({ blockers: ['agent_logged_out'], warnings: [] });
+    expect(zen(oc(), true)).toEqual({ blockers: ['agent_logged_out'], warnings: [] });
     expect(fleet(oc({ hooks: false }))).toEqual(['agent_hooks_missing']);
     expect(agentBlockers({ kinds: ['opencode'], source: [oc()], destination: [oc({ hooks: false })] })[0].message)
       .toBe(`Svall's plugin is not installed for OpenCode on the destination (${opencodePaths({}, '~').plugin}, or under its XDG_CONFIG_HOME): run svall setup there`);

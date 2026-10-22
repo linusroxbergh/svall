@@ -126,7 +126,8 @@ the handover rather than overwrite it: copy the changes back by hand, or archive
 writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml` and `.vscode/*.log` files) never counts as a
 change, and neither does Git packing a repository's refs. Such a file moves like any other and replaces the other
 machine's, but a copy never deletes one only the other machine has, unless the folder holding it is gone from the
-machine the fleet is on. Once a folder's first copy pass is done, whatever a later pass replaces or deletes there is moved into a sibling
+machine the fleet is on. A file whose group or other permission bits alone changed, as a `git status` under another
+umask rewrites an index, is no change either, and the copy gives it the source's mode. Once a folder's first copy pass is done, whatever a later pass replaces or deletes there is moved into a sibling
 folder named `<folder>.overwritten-<handover id>`, a subfolder for each pass, and the folder's row and the result name
 those files, twenty at most and a count of the rest.
 
@@ -182,6 +183,10 @@ On a Linux machine whose AppArmor keeps Codex from sandboxing the commands it ru
 profile for bwrap is installed, a Codex character asks before each command. The checks warn about it
 (`codex_sandbox`) and name the commands that install the profile, or, when `codex sandbox -- true` fails there for
 another reason, what it said.
+
+A resumed Codex reports its process only with its first turn, as it runs its SessionStart hook then: until that turn,
+`svall char list` shows its `pid` as null while it runs, idle dormancy leaves that terminal be, and a sleep refuses
+it, as both find the agent by its pid.
 
 ## What restarts
 

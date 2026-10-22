@@ -105,6 +105,31 @@ describe('normalizeHook', () => {
     expect(hook(`/${'x'.repeat(1000)}.jsonl`)?.transcriptPath).toBe(`/${'x'.repeat(1000)}.jsonl`);
     expect(hook(`/${'x'.repeat(5000)}.jsonl`)?.transcriptPath).toBeUndefined();
   });
+  it("names a resumed Claude session's transcript where it is when its SessionStart names the project of the folder it resumed in", () => {
+    const projects = path.join(makeHome(), '.claude', 'projects');
+    const kept = path.join(projects, '-src-alpha', `${SID}.jsonl`);
+    fs.mkdirSync(path.dirname(kept), { recursive: true });
+    fs.writeFileSync(kept, '{}\n');
+    fs.mkdirSync(path.join(projects, '-src-beta'));
+    const hook = (name: string, session_id: string, transcript_path: string) =>
+      normalizeHook({ charId: 'c_1', hook: { hook_event_name: name, session_id, transcript_path } })?.transcriptPath;
+    const moved = path.join(projects, '-src-alpha--wt-react-boilerplate', `${SID}.jsonl`);
+    expect(hook('SessionStart', SID, moved)).toBe(kept);
+    expect(hook('Stop', SID, kept)).toBe(kept);
+    // only a session's start is looked up: its later hooks name the file it writes
+    expect(hook('Stop', SID, moved)).toBe(moved);
+    // of two copies of the session, the one Claude still writes is the newer, whichever folder a listing gives first
+    for (const old of ['-a-old', '-z-old']) {
+      const stale = path.join(projects, old, `${SID}.jsonl`);
+      fs.mkdirSync(path.dirname(stale));
+      fs.writeFileSync(stale, '{}\n');
+      fs.utimesSync(stale, new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
+    }
+    expect(hook('SessionStart', SID, moved)).toBe(kept);
+    // a new session has written nothing yet, and Claude writes it where it says
+    const fresh = '7c1e4a2b-9d3f-4b6a-8e5c-2f1a0b9c8d7e';
+    expect(hook('SessionStart', fresh, path.join(projects, '-src-beta', `${fresh}.jsonl`))).toBe(path.join(projects, '-src-beta', `${fresh}.jsonl`));
+  });
   it('keeps an absolute cwd only', () => {
     const hook = (cwd: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PreToolUse', cwd } });
     expect(hook('/repo/.claude/worktrees/x')?.cwd).toBe('/repo/.claude/worktrees/x');

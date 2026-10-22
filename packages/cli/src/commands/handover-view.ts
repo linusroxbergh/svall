@@ -12,6 +12,7 @@ const HEADINGS: Record<HandoverPhase, string> = {
 };
 
 const REST = new Set(['agent_working', 'agent_blocked']);
+const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g;
 
 const unique = (xs: string[]): string[] => [...new Set(xs)];
 const union = (held: HandoverChoices['terminateShells'] | string[] | undefined, more: string[]): string[] =>
@@ -263,9 +264,13 @@ export class View {
     // a live helper is named without the journals being read, and a gateway that could not be asked names no handover
     if (v.standing === 'unknown' && !v.transactionId && (v.helper || !v.fromMachineId)) return [`${v.reason[0].toUpperCase()}${v.reason.slice(1)}.`];
     if (v.standing === 'none' && !v.transactionId) {
-      return [`No handover of this fleet is open: ${v.reason}.`, ...(v.safe.includes('abort') ? [`\`${svall('handover --abort')}\` clears what is left of it.`] : [])];
+      const none = v.reason.startsWith('no handover') ? `${v.reason[0].toUpperCase()}${v.reason.slice(1)}.` : `No handover of this fleet is open: ${v.reason}.`;
+      return [none, ...(v.safe.includes('abort') ? [`\`${svall('handover --abort')}\` clears what is left of it.`] : [])];
     }
-    const lines = [`Handover ${v.transactionId ?? '(Begin never answered)'} ${v.standing}${v.phase ? `, at ${v.phase}` : ''}: ${v.reason}.`];
+    // the reason names machines by id, and leads with the handover the line already names
+    const named = v.reason.replace(UUID, (id) => (id === v.transactionId ? id : machine(id)));
+    const reason = v.transactionId && named.startsWith(`${v.transactionId} `) ? `it ${named.slice(v.transactionId.length + 1)}` : named;
+    const lines = [`Handover ${v.transactionId ?? '(Begin never answered)'} ${v.standing}${v.phase ? `, at ${v.phase}` : ''}: ${reason}.`];
     if (v.fromMachineId || v.toMachineId) lines.push(`  from ${machine(v.fromMachineId)} to ${machine(v.toMachineId)}${v.generation === undefined ? '' : `, generation ${v.generation}`}`);
     lines.push(`  source journal: ${v.journals.source ?? 'none'}; destination journal: ${v.journals.destination ?? 'none'}`);
     if (v.helper) lines.push(`  running here as pid ${v.helper.pid}; \`${svall('handover attach')}\` follows it`);

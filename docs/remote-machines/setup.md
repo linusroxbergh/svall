@@ -70,9 +70,9 @@ Both run the same steps and show each as it finishes:
    Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
 4. **Running Svall there.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
-   0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
-   Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's own
-   `svall doctor` finds them.
+   0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
+   and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
+   own `svall doctor` finds them.
 6. **Trying it out.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **This Mac's list of machines.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
@@ -87,8 +87,9 @@ and never copies a login, so these are yours:
 - Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out, and a
   handover to the machine stops at its checks until it is on.
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
-  `opencode auth login`. OpenCode runs its free model with no login, but a handover to the machine needs it to hold a
-  model provider's login or key there, as `opencode auth list` shows.
+  `opencode auth login`. OpenCode runs OpenCode Zen's free models with no login. A handover to the machine needs a
+  model provider's login or key there, as `opencode auth list` shows, unless OpenCode on the machine the fleet comes
+  from has none either and its agent has answered there: then the checks only warn.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
   them with `/hooks`.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
@@ -104,10 +105,11 @@ Adding the same machine again runs every check again and changes nothing that is
 
 ### An API key in your shell
 
-A handover checks each agent's login in the Svall daemon's systemd environment, not in your shell. An agent's
-terminal starts your shell, so an API key exported only in `~/.bashrc` or `~/.profile` (such as `ANTHROPIC_API_KEY` or
-`OPENAI_API_KEY`) works for the agent while the check says it is not logged in. Put the key in
-`~/.config/environment.d/agents.conf` as well, as `NAME=value` lines, then run `systemctl --user daemon-reload` and
+A handover checks each agent's login in the Svall daemon's systemd environment, with the fleet's `.env` keys
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) added as a character gets them, not in your shell. An agent's terminal starts
+your shell, so an API key exported only in `~/.bashrc` or `~/.profile` works for the agent while the check says it is
+not logged in. Put the key in the fleet's `.env`, which the checks read each time, or in
+`~/.config/environment.d/agents.conf` as `NAME=value` lines and then run `systemctl --user daemon-reload` and
 `systemctl --user restart svall-svalld@private`.
 
 ### The companion release

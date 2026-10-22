@@ -274,12 +274,12 @@ const blockersOf = (r: { data: Record<string, unknown> }): { code: string; messa
  * A fleet whose ada left an OpenCode session dormant, logged where Svall's plugin logs it, beside bo's running Claude,
  * on a machine whose `opencode` is the double, and a destination that has OpenCode too.
  */
-function opencodeBoot() {
+function opencodeBoot(loggedIn = true) {
   let logs = '';
   const b = boot({
     probes: [
       { kind: 'claude', version: '2.1.280', home: '/home/linus/.claude', loggedIn: true, hooks: true },
-      { kind: 'opencode', version: '2.0.22', home: '/home/linus/.svall/transcripts/opencode', loggedIn: true, hooks: true },
+      { kind: 'opencode', version: '2.0.22', home: '/home/linus/.svall/transcripts/opencode', loggedIn, hooks: true },
     ],
     characters: (work) => {
       logs = path.join(work, '.svall/transcripts/opencode');
@@ -529,6 +529,18 @@ describe('source preflight', () => {
     expect(await codes({ agentAdapters: [{ ...claude, version: '2.1.200' }] })).toEqual(['incompatible_adapter']);
     // a fleet running no Codex does not care how Codex is there
     expect(await codes({ agentAdapters: [claude, { kind: 'codex', adapter: 0 }] })).toEqual([]);
+  });
+
+  it('warns of an OpenCode logged in on neither machine whose agent answers here, and blocks one that has not answered', async () => {
+    const b = opencodeBoot(false);
+    const preflight = async () => {
+      const zen = { ...b.info, agentAdapters: b.info.agentAdapters.map((a) => (a.kind === 'opencode' ? { ...a, loggedIn: false } : a)) };
+      const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: zen }) });
+      return { blockers: r.blockers.map((x) => x.code), warnings: r.warnings.map((x) => x.code) };
+    };
+    expect(await preflight()).toMatchObject({ blockers: expect.arrayContaining(['agent_logged_out']), warnings: expect.not.arrayContaining(['agent_logged_out']) });
+    fs.appendFileSync(path.join(b.logs, `${OC}.jsonl`), `${JSON.stringify({ kind: 'agent', text: 'PELICAN-42' })}\n`);
+    expect(await preflight()).toMatchObject({ blockers: expect.not.arrayContaining(['agent_logged_out']), warnings: expect.arrayContaining(['agent_logged_out']) });
   });
 
   it('blocks an OpenCode session its CLI does not hold, at preflight and at freeze before any terminal rests', async () => {

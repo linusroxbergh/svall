@@ -20,7 +20,7 @@ describe('test isolation', () => {
   });
 
   it('gives claude, codex and opencode doubles of a supported release, logged in, and claude and codex ones that hold no session to resume', async () => {
-    const probes = await Promise.all(HANDOVER_KINDS.map((kind) => probeAgent(kind, realProbeDeps())));
+    const probes = await Promise.all(HANDOVER_KINDS.map((kind) => probeAgent(kind, realProbeDeps('/nonexistent/.env'))));
     expect(agentAdapters(probes)).toEqual([
       expect.objectContaining({ kind: 'claude', version: '2.1.283', adapter: 1, loggedIn: true }),
       expect.objectContaining({ kind: 'codex', version: '0.156.1', adapter: 1, loggedIn: true }),
