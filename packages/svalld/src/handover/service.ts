@@ -1,11 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   handoverError,
-  type AgentAdapter, type Event, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result,
+  type AgentAdapter, type Event, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result, type SystemInfo,
 } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import { AuthorityFailure } from '../gateway/authority.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { runGit } from '../links/git.js';
+import { handoverGit } from '../links/git.js';
 import { DestinationHandover, type DestinationDeps } from './destination.js';
 import { unreached } from './git-import.js';
 import { handoverGeneration, type HandoverJournal, type JournalFile, type JournalState } from './journal.js';
@@ -17,6 +19,8 @@ export type HandoverDeps = {
   journal: JournalFile;
   /** This machine's agent CLIs as they last answered, or asked afresh; none when not given. */
   agents?: AgentProber;
+  /** Whether this machine's account lingers, asked of loginctl on Linux; none on a Mac. */
+  linger?(): Promise<NonNullable<SystemInfo['linger']>>;
   /** What the source phases run on. */
   source: SourceDeps;
   /** What the destination phases run on. */
@@ -31,6 +35,22 @@ export type HandoverDeps = {
 
 // the failures in which no gateway answered, as against one that answered with a refusal
 const UNANSWERED = new Set(['disconnected', 'timeout']);
+
+// how long the audit `svall fleet recover` writes vouches for the record it then hands this daemon
+const AUDIT_MS = 10 * 60_000;
+
+/** Whether the fleet home holds the audit of `record` run alone, with no gateway, written in the last ten minutes. */
+function audited(home: string, record: OwnerRecord, now: number): boolean {
+  let text: string;
+  try { text = fs.readFileSync(path.join(home, 'controller', 'recoveries.ndjson'), 'utf8'); } catch { return false; }
+  return text.split('\n').some((line) => {
+    let a: { at?: unknown; gatewayMachineId?: unknown; after?: Partial<OwnerRecord> };
+    try { a = JSON.parse(line); } catch { return false; }
+    const at = typeof a.at === 'string' ? Date.parse(a.at) : NaN;
+    return a.gatewayMachineId === null && a.after?.fleetId === record.fleetId && a.after.generation === record.generation
+      && a.after.ownerMachineId === record.ownerMachineId && Math.abs(now - at) <= AUDIT_MS;
+  });
+}
 
 // after this the fleet has moved, and nothing on either machine may take it back
 const COMMITTED = new Set<HandoverPhase>(['commit', 'activate', 'complete']);
@@ -65,6 +85,11 @@ export class HandoverService {
     return agentAdapters(await this.agents(true));
   }
 
+  /** What `system.info` says of this machine's lingering: nothing where it cannot be read. */
+  async linger(): Promise<SystemInfo['linger']> {
+    return this.deps.linger?.().catch(() => undefined);
+  }
+
   /** The journal as this daemon read it, which is what decides how the daemon starts. */
   journalState(): JournalState {
     return this.state;
@@ -96,9 +121,10 @@ export class HandoverService {
 
   /**
    * A record `svall fleet recover` relays. The gateway it names is asked here, and its answer is what is taken; the
-   * relayed record stands in only when that gateway cannot be asked. The gateway is renamed once its record is taken.
+   * relayed record stands in only when that gateway cannot be asked, and then only to make this machine let the fleet
+   * go, since any holder of the fleet token can relay one. The gateway is renamed once its record is taken.
    * A record that names no gateway is this machine's to run alone, taken only while the gateway fleet.json names does
-   * not answer, and once taken, fleet.json names none.
+   * not answer and the fleet home holds that command's audit of it, and once taken, fleet.json names none.
    */
   async relay(p: { record: OwnerRecord; gatewayMachineId?: MachineId }): Promise<Result<'ownership.adopt'>> {
     let record = p.record;
@@ -112,15 +138,24 @@ export class HandoverService {
         (e instanceof AuthorityFailure && (UNANSWERED.has(e.code) || e.data?.unrouted) ? undefined : `failed as no gateway out of reach does (${e instanceof Error ? e.message : String(e)})`));
       if (said) throw Object.assign(new Error(`the gateway this fleet names ${said}, so it is not known lost and this machine does not run the fleet alone`), { code: 'invalid_params' });
     }
+    // no daemon can tell a person from a token holder, so it runs the fleet alone only on what the terminal-gated command wrote
+    if (!p.gatewayMachineId && !audited(this.deps.source.paths.home, record, Date.now())) {
+      throw Object.assign(new Error('this machine runs the fleet alone only on a record svall fleet recover audited here in the last ten minutes'), { code: 'invalid_params' });
+    }
     const gateway = p.gatewayMachineId ? this.deps.authorityFor?.(p.gatewayMachineId) : undefined;
+    let answered = false;
     if (gateway) {
       try {
         record = await gateway.get(this.deps.ownership.record().fleetId);
+        answered = true;
       } catch (e) {
         if (e instanceof AuthorityFailure && !UNANSWERED.has(e.code)) {
           throw Object.assign(new Error(`the gateway ${p.gatewayMachineId} would not name this fleet's owner: ${e.message}`), { code: e.code });
         }
       }
+    }
+    if (p.gatewayMachineId && !answered && record.ownerMachineId === this.deps.ownership.machineId) {
+      throw Object.assign(new Error(`the gateway ${p.gatewayMachineId} did not answer, so this machine does not take a record that makes it the owner; run the recovery again once the gateway answers`), { code: 'invalid_params' });
     }
     const r = await this.adopt(record);
     if (r.adopted) this.deps.setGateway?.(p.gatewayMachineId);
@@ -226,7 +261,7 @@ export class HandoverService {
 
   /** Which of these commits no ref of this machine's repositories reaches: a destination that keeps a worktree asks it of its source. */
   async reaches(p: ParsedParams<'handover.reaches'>): Promise<Result<'handover.reaches'>> {
-    const git = this.deps.source?.git ?? runGit;
+    const git = this.deps.source?.git ?? handoverGit;
     const unreachable: Result<'handover.reaches'>['unreached'] = [];
     for (const dir of new Set(p.commits.map((c) => c.commonDir))) {
       const asked = p.commits.filter((c) => c.commonDir === dir).map((c) => c.commit);

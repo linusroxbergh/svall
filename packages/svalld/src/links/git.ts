@@ -12,12 +12,16 @@ export type GitRunner = (args: readonly string[], cwd: string) => Promise<GitRes
 // variables that would point git at another repository than the one around cwd
 const REDIRECTS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE'];
 
-/** git as a reader beside the user's own: messages in English, and no index refresh that takes its lock. */
-export function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM'): GitRunner {
+/**
+ * git as a reader beside the user's own: messages in English, and no index refresh that takes its lock. `config` is set
+ * for every command, ahead of what the repository says.
+ */
+export function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', config: readonly string[] = []): GitRunner {
   const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
   for (const k of REDIRECTS) delete env[k];
+  const settings = config.flatMap((c) => ['-c', c]);
   return (args, cwd) => new Promise((resolve) => {
-    const child = spawn('git', args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal });
+    const child = spawn('git', [...settings, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on('data', (c: Buffer) => out.push(c));
@@ -32,6 +36,9 @@ export function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIG
 }
 
 export const runGit: GitRunner = gitRunner();
+
+/** git for a handover, whose repositories may carry another machine's config: it runs no fsmonitor or hook that config names. */
+export const handoverGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
 
 /** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
 export type GitDirs = { root: string; commonDir: string; gitDir: string };

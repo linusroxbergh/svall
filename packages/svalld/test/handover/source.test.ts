@@ -768,6 +768,24 @@ describe('source freeze', () => {
     expect((await refusal(alone.handover.freeze(alone.freezeParams()))).code).toBe('transaction_mismatch');
   });
 
+  it('reads at freeze only the root files whose stat changed since its preflight read them', async () => {
+    const b = boot();
+    fs.writeFileSync(path.join(b.work, 'ada/big.bin'), 'x'.repeat(4096));
+    // each stat as it reads once the files have sat for a while, so a hash of them is kept
+    const older = <T extends { ctimeMs?: number }>(st: T): T => Object.assign(st, { ctimeMs: (st.ctimeMs ?? 0) - 10_000 });
+    const aged = { ...realScanFs, stat: async (p: string) => older(await realScanFs.stat(p)), lstat: async (p: string) => older(await realScanFs.lstat(p)) };
+    b.deps.scanFs = aged;
+    await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
+    fs.writeFileSync(path.join(b.work, 'bo/index.ts'), 'export const changed = 1;\n');
+    const reads: string[] = [];
+    b.deps.scanFs = { ...aged, read: (p) => { reads.push(p); return realScanFs.read(p); } };
+    b.gateway.begin();
+    const { manifest } = await b.handover.freeze(b.freezeParams());
+    expect(reads.filter((p) => p.startsWith(path.join(b.work, 'ada')) || p.startsWith(path.join(b.work, 'bo')))).toEqual([path.join(b.work, 'bo/index.ts')]);
+    const big = manifest.roots.flatMap((r) => r.files).find((f) => f.path === 'big.bin');
+    expect(big).toMatchObject({ size: 4096, sha256: crypto.createHash('sha256').update('x'.repeat(4096)).digest('hex') });
+  });
+
   it('fences the fleet, rests its terminals and has the surrender and journal on disk before it answers the manifest it kept', async () => {
     const b = boot();
     b.gateway.begin();
@@ -1499,5 +1517,17 @@ describe("this machine's agent CLIs", () => {
       { kind: 'codex', adapter: 0, home: '/home/t/.codex', loggedIn: false, hooks: false },
       { kind: 'opencode', adapter: 0, home: path.join(profileHome(PRIVATE, '/home/t'), 'transcripts/opencode'), loggedIn: false, hooks: false },
     ]);
+  });
+});
+
+describe("this machine's lingering", () => {
+  it('is what system.info says where loginctl answers, and nothing on a Mac or where it does not', async () => {
+    const paths = resolvePaths(makeHome());
+    const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
+    const info = (linger?: () => Promise<{ user: string; on: boolean }>) =>
+      handlers['system.info']({}, { ownership, handover: new HandoverService({ ownership, journal: openJournal(paths), ...(linger && { linger }), ...idleSides(paths) }) } as Ctx);
+    expect((await info(async () => ({ user: 'linus', on: false }))).linger).toEqual({ user: 'linus', on: false });
+    expect((await info(async () => { throw new Error('loginctl is not installed'); })).linger).toBeUndefined();
+    expect((await info()).linger).toBeUndefined();
   });
 });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { OwnerRecord, handoverError, type FleetId, type MachineId, type TransactionRecord } from '@svall/protocol';
 import { DurableJson } from '../handover/durable.js';
 import type { Logger } from '../log.js';
+import { copiedRemedy } from '../machine.js';
 import type { Paths } from '../paths.js';
 
 /** The gateway's record as an owner keeps it, plus the two marks only this machine writes. */
@@ -15,22 +16,25 @@ export type OwnerCache = z.infer<typeof OwnerCache>;
 // no machine: what a record too broken to read leaves behind, so nothing here can be mutated
 const NO_OWNER = '00000000-0000-0000-0000-000000000000' as MachineId;
 
-/** `standalone`: no gateway is configured, so no machine but this one can own the fleet; otherwise only the gateway can name its owner. */
-export type OwnershipDeps = { paths: Paths; fleetId: FleetId; machineId: MachineId; log: Logger; standalone?: boolean };
+/**
+ * `standalone`: no gateway is configured, so no machine but this one can own the fleet; otherwise only the gateway can
+ * name its owner. `copied`: the machine.json this machine shares with another, so no record naming its id is its own.
+ */
+export type OwnershipDeps = { paths: Paths; fleetId: FleetId; machineId: MachineId; log: Logger; standalone?: boolean; copied?: string };
 
 /** Whether this machine may change this fleet, and the record that says so. */
 export class OwnershipState {
   private listeners = new Set<(record: OwnerCache) => void>();
   private held?: string;
 
-  private constructor(private file: DurableJson<OwnerCache>, private cache: OwnerCache, readonly machineId: MachineId) {}
+  private constructor(private file: DurableJson<OwnerCache>, private cache: OwnerCache, readonly machineId: MachineId, private copied?: string) {}
 
-  static load({ paths, fleetId, machineId, log, standalone = false }: OwnershipDeps): OwnershipState {
+  static load({ paths, fleetId, machineId, log, standalone = false, copied }: OwnershipDeps): OwnershipState {
     const file = new DurableJson(OwnerCache, paths.owner, { mode: 0o600 });
     const read = file.read();
     // without a gateway no other machine can have been handed this fleet, so a record naming one is stale
     const foreign = read.ok && standalone && read.value.ownerMachineId !== machineId;
-    if (read.ok && !foreign) return new OwnershipState(file, read.value, machineId);
+    if (read.ok && !foreign) return new OwnershipState(file, read.value, machineId, copied);
     if (read.ok) {
       log.error(`owner.json names ${read.value.ownerMachineId}, and no gateway can have handed this fleet over; this machine takes it back at generation 0.`);
     } else if (read.reason === 'malformed') {
@@ -46,7 +50,7 @@ export class OwnershipState {
     if (!standalone && !read.ok && read.reason === 'missing') log.info('owner.json is missing and a gateway holds this fleet, so this machine owns nothing of it until the gateway names its owner');
     const record: OwnerCache = { fleetId, generation: 0, ownerMachineId: standalone ? machineId : NO_OWNER };
     file.write(record);
-    return new OwnershipState(file, record, machineId);
+    return new OwnershipState(file, record, machineId, copied);
   }
 
   record(): OwnerCache {
@@ -63,7 +67,7 @@ export class OwnershipState {
   }
 
   isOwner(): boolean {
-    return this.cache.ownerMachineId === this.machineId;
+    return !this.copied && this.cache.ownerMachineId === this.machineId;
   }
 
   isFrozen(): boolean {
@@ -85,7 +89,14 @@ export class OwnershipState {
     return this.isOwner() && !this.isFrozen();
   }
 
+  /** Refuses a machine that shares another's id anything that would run the fleet, a handover or a recovery included. */
+  assertOwnId(): void {
+    const { ownerMachineId, generation } = this.cache;
+    if (this.copied) throw handoverError({ code: 'not_owner', message: `this machine cannot run this fleet: ${copiedRemedy(this.copied)}`, ownerMachineId, generation });
+  }
+
   assertOwner(kind: 'mutation' | 'terminal'): void {
+    this.assertOwnId();
     const what = kind === 'terminal' ? 'open a terminal in' : 'change';
     const { transaction: tx, generation } = this.cache;
     // a committed handover is final, and explains the refusal better than the freeze it left behind

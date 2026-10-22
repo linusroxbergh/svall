@@ -29,12 +29,19 @@ export const OWNER_PARAMS = {
   'owner.get': z.object({ fleetId: FleetId }),
   // a fleet that ran before it had a gateway starts its record at the generation its owner holds
   'owner.create': z.object({ fleetId: FleetId, initialOwnerMachineId: MachineId, generation: Generation.optional() }),
-  'owner.begin': z.object({ fleetId: FleetId, expectedGeneration: Generation, fromMachineId: MachineId, toMachineId: MachineId }),
+  // the machine whose controller drives the handover, and a nonce the same each time this Begin is sent
+  'owner.begin': z.object({
+    fleetId: FleetId, expectedGeneration: Generation, fromMachineId: MachineId, toMachineId: MachineId, controllerId: MachineId.optional(), nonce: z.guid().optional(),
+  }),
   // the freeze and the digest are the proof ready is granted on: the source is fenced, and the
   // destination has written the state it would activate
   'owner.ready': z.object({ fleetId: FleetId, transactionId: TransactionId, expectedGeneration: Generation, sourceFrozen: z.literal(true), preparedDigest: Sha256 }),
   'owner.commit': z.object({ fleetId: FleetId, transactionId: TransactionId, expectedGeneration: Generation }),
-  'owner.abort': z.object({ fleetId: FleetId, transactionId: TransactionId, expectedGeneration: Generation }),
+  'owner.abort': z.union([
+    z.object({ fleetId: FleetId, transactionId: TransactionId, expectedGeneration: Generation }),
+    // a Begin no answer was seen to, by its nonce
+    z.object({ fleetId: FleetId, nonce: z.guid() }),
+  ]),
   'owner.complete': z.object({ fleetId: FleetId, transactionId: TransactionId, generation: Generation }),
   // disaster recovery: swapped against the record the user was shown, or its absence, and audited
   'owner.force': z.object({
@@ -63,6 +70,14 @@ export class AuthorityFailure extends Error {
   }
 }
 
+/**
+ * Whether asking the gateway failed with no answer at all, as against a refusal it answered: out of reach or silent,
+ * a socket here that nothing listens on, or a registry with no route to it, which leaves it as unasked as one away.
+ */
+export const unanswered = (e: unknown): boolean => (e instanceof AuthorityFailure
+  ? e.code === 'disconnected' || e.code === 'timeout' || e.data?.unrouted === true
+  : (e as NodeJS.ErrnoException | undefined)?.syscall === 'connect');
+
 export type Transition = { record: OwnerRecord } | { error: AuthorityError };
 
 const fail = (code: AuthorityErrorCode, message: string, data?: Record<string, unknown>): Transition =>
@@ -88,6 +103,12 @@ const without = (record: OwnerRecord): OwnerRecord => {
   const { transaction: _cleared, ...rest } = record;
   return rest;
 };
+
+// how many nonces of Begins let go a record keeps
+const RETIRED = 16;
+
+const retire = (record: OwnerRecord, nonce: string | undefined): OwnerRecord =>
+  (!nonce || record.retiredNonces?.includes(nonce) ? record : { ...record, retiredNonces: [...(record.retiredNonces ?? []), nonce].slice(-RETIRED) });
 
 /**
  * The compare-and-swap itself: what the record becomes, or why it may not. A request a caller repeats
@@ -119,6 +140,7 @@ export function transition(
     case 'owner.begin': {
       const p = params as OwnerParamsOf<'owner.begin'>;
       if (p.fromMachineId === p.toMachineId) return fail('invalid_request', 'a fleet cannot be handed to the machine that already holds it');
+      if (p.nonce && record.retiredNonces?.includes(p.nonce)) return fail('transaction_mismatch', 'that Begin belongs to a handover already let go', { nonce: p.nonce });
       if (record.generation !== p.expectedGeneration) return staleGeneration(p.expectedGeneration, record.generation);
       if (record.ownerMachineId !== p.fromMachineId) {
         return fail('not_owner', `this fleet is owned by ${record.ownerMachineId}, not ${p.fromMachineId}`,
@@ -129,10 +151,20 @@ export function transition(
         if (tx.fromMachineId !== p.fromMachineId || tx.toMachineId !== p.toMachineId) {
           return fail('transaction_mismatch', `this fleet is already in handover ${tx.id}`, { actual: tx.id });
         }
+        // the same Begin again, or the controller that drives it resuming; one opened by no known controller answers any
+        if (tx.controllerId && tx.controllerId !== p.controllerId) {
+          return fail('transaction_mismatch', `this fleet is already in handover ${tx.id}, which the controller on ${tx.controllerId} drives`, { actual: tx.id, controllerId: tx.controllerId });
+        }
         return tx.phase === 'preparing' ? { record } : wrongPhase(tx, 'preparing');
       }
       return {
-        record: { ...record, transaction: { id: newTransactionId(), fromMachineId: p.fromMachineId, toMachineId: p.toMachineId, phase: 'preparing', startedAt: now } },
+        record: {
+          ...record,
+          transaction: {
+            id: newTransactionId(), fromMachineId: p.fromMachineId, toMachineId: p.toMachineId, phase: 'preparing', startedAt: now,
+            ...(p.controllerId && { controllerId: p.controllerId }), ...(p.nonce && { nonce: p.nonce }),
+          },
+        },
       };
     }
 
@@ -163,11 +195,16 @@ export function transition(
 
     case 'owner.abort': {
       const p = params as OwnerParamsOf<'owner.abort'>;
-      if (record.generation !== p.expectedGeneration) return staleGeneration(p.expectedGeneration, record.generation);
-      if (!tx) return { record };
-      if (tx.id !== p.transactionId) return otherHandover(tx, p.transactionId);
+      // what a Begin no answer was seen to opened goes, and that Begin opens nothing should it arrive later
+      if ('nonce' in p) {
+        if (tx?.nonce !== p.nonce) return { record: retire(record, p.nonce) };
+      } else {
+        if (record.generation !== p.expectedGeneration) return staleGeneration(p.expectedGeneration, record.generation);
+        if (!tx) return { record };
+        if (tx.id !== p.transactionId) return otherHandover(tx, p.transactionId);
+      }
       if (tx.phase === 'committed') return isCommitted(tx, record);
-      return { record: without(record) };
+      return { record: retire(without(record), tx.nonce) };
     }
 
     case 'owner.complete': {

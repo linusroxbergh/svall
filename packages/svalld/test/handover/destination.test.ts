@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,6 +14,7 @@ import { startApi } from '../../src/api/server.js';
 import { Config, loadConfig } from '../../src/config.js';
 import { docFolders, docsDir, fleetDir, repoSlug } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
+import { AuthorityFailure } from '../../src/gateway/authority.js';
 import { armFailpoints } from '../../src/handover/failpoints.js';
 import { DestinationJournal, openJournal, type HandoverJournal } from '../../src/handover/journal.js';
 import { SealRecord, syncRoots, type DestinationDeps } from '../../src/handover/destination.js';
@@ -91,6 +92,8 @@ const mode = (file: string): string => (fs.statSync(file).mode & 0o777).toString
 /** The gateway as this daemon asks it. */
 class Gateway implements Authority {
   down = false;
+  /** what asking it fails with, when that is not a gateway that is down */
+  fails?: Error;
   /** holds the next answer back until it resolves */
   gate?: Promise<void>;
   record: OwnerRecord = { fleetId, generation: 4, ownerMachineId: mac, transaction: { id: TX, fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 1 } };
@@ -99,6 +102,7 @@ class Gateway implements Authority {
     this.gate = undefined;
     await gate;
     if (this.down) throw new Error('connect ECONNREFUSED /home/linus/.local/share/svall/gateway/authority.sock');
+    if (this.fails) throw this.fails;
     if (id !== this.record.fleetId) throw new Error(`asked about ${id}`);
     return structuredClone(this.record);
   }
@@ -674,6 +678,21 @@ describe('destination prepare', () => {
     expect(tree(s.home)).toEqual(written);
   });
 
+  it('journals the controller its first prepare came from, and refuses a prepare from any other, one asked again included', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    const first = await d.handover.prepare(params(s, { controllerId: mac }));
+    expect(journalOf(s.paths).controllerId).toBe(mac);
+    const written = tree(s.home);
+    for (const controllerId of [elsewhere, undefined]) {
+      const r = await refusal(d.handover.prepare(params(s, { controllerId, landed: [] })));
+      expect(r.code, controllerId).toBe('transaction_mismatch');
+      expect(r.message).toContain(`the controller on ${mac}`);
+    }
+    expect(tree(s.home)).toEqual(written);
+    expect(await d.handover.prepare(params(s, { controllerId: mac, landed: [] }))).toEqual(first);
+  });
+
   it('refuses a prepare meant for another machine, fleet, generation, transaction or manifest, and writes nothing', async () => {
     const s = await scene();
     const other = (m: Partial<TransferManifestV1>): Partial<Prepare> => {
@@ -1214,6 +1233,62 @@ describe('destination activate', () => {
     expect(journalOf(s.paths).phase).toBe('prepare');
     expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
     expect(d.ownership.writable()).toBe(false);
+  });
+
+  it('takes the commit the controller holds only while the gateway gives no answer, and only one that shows this handover committed here on this state', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    const before = fs.readFileSync(s.paths.state);
+    d.gateway.commit(preparedDigest);
+    const held = d.gateway.record;
+    const tx = held.transaction!;
+    const activate = (committed: OwnerRecord) => refusal(d.handover.activate({ transactionId: TX, generation: 5, committed }));
+
+    // a gateway that answers decides, a refusal included
+    d.gateway.record = { ...held, generation: 4, ownerMachineId: mac, transaction: { ...tx, phase: 'ready-to-commit' } };
+    expect((await activate(held)).code).toBe('not_ready');
+    d.gateway.record = held;
+    d.gateway.fails = new AuthorityFailure('authority_corrupt', 'the record for this fleet is unreadable');
+    expect((await activate(held)).code).toBe('authority_unreachable');
+
+    d.gateway.fails = new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+    const mismatches: [OwnerRecord, string][] = [
+      [{ ...held, fleetId: FleetId.parse(crypto.randomUUID()) }, 'the record is for fleet'],
+      [{ ...held, ownerMachineId: elsewhere }, `names ${elsewhere} as this fleet's owner`],
+      [{ ...held, generation: 6 }, 'generation 6, not 5'],
+      [{ ...held, transaction: { ...tx, id: 'tx-2' } }, 'committed handover tx-2'],
+      [{ ...held, transaction: { ...tx, phase: 'ready-to-commit' as const } }, 'has not committed it'],
+      [{ ...held, transaction: { ...tx, toMachineId: elsewhere } }, `to ${elsewhere}`],
+      [{ ...held, transaction: { ...tx, preparedDigest: 'd'.repeat(64) } }, `prepared state ${'d'.repeat(64)}`],
+      [{ fleetId, generation: 5, ownerMachineId: trift }, `no record of handover ${TX} committing`],
+    ];
+    for (const [record, why] of mismatches) {
+      const r = await activate(record);
+      expect(r.code, why).toBe('authority_unreachable');
+      expect(r.message, why).toContain('ssh trift exited 255');
+      // what the commit the controller kept says otherwise
+      expect(r.message, why).toMatch(new RegExp(`the commit the controller kept does not stand in for it: .*${why.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    }
+    expect((await refusal(d.handover.activate({ transactionId: TX, generation: 5 }))).code).toBe('authority_unreachable');
+
+    expect(fs.readFileSync(s.paths.state)).toEqual(before);
+    expect(journalOf(s.paths).phase).toBe('prepare');
+    expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
+    expect(d.ownership.writable()).toBe(false);
+  });
+
+  it('activates on the commit the controller holds when the gateway gives no answer', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    const held = d.gateway.record;
+    d.gateway.fails = new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer');
+
+    const r = await d.handover.activate({ transactionId: TX, generation: 5, committed: held });
+
+    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(journalOf(s.paths).phase).toBe('activate');
+    expect(JSON.parse(fs.readFileSync(s.paths.owner, 'utf8'))).toMatchObject({ generation: 5, ownerMachineId: trift });
+    expect(d.ownership.writable()).toBe(true);
+    expect(d.crew.log.slice(0, 2)).toEqual(['activate', 'reconcile']);
   });
 
   it('promotes the prepared state and fleet.json, then starts every terminal a few at a time', async () => {
@@ -2418,6 +2493,22 @@ describe('destination claim', () => {
     expect(tree(s.base)).toEqual(before);
   });
 
+  it('takes a claim only from the controller the gateway says drives the handover, and from any where it names none', async () => {
+    const s = await scene({ land: false });
+    const before = tree(s.base);
+    const d = daemon(s);
+    d.gateway.record.transaction!.controllerId = mac;
+    for (const controllerId of [elsewhere, undefined]) {
+      const r = await refusal(d.handover.claim(claimParams(s, { controllerId })));
+      expect(r.code, controllerId).toBe('transaction_mismatch');
+      expect(r.message).toContain(`the controller on ${mac}`);
+    }
+    expect(tree(s.base)).toEqual(before);
+    expect((await d.handover.claim(claimParams(s, { controllerId: mac }))).roots.every((x) => x.check.ok)).toBe(true);
+    delete d.gateway.record.transaction!.controllerId;
+    expect((await d.handover.claim(claimParams(s, { controllerId: elsewhere }))).roots.every((x) => x.check.ok)).toBe(true);
+  });
+
   it('refuses a claim whose roots a link on this machine leads elsewhere, before it reserves or creates anything', async () => {
     const s = await scene({
       land: false,
@@ -2505,6 +2596,42 @@ describe('destination claim', () => {
 });
 
 describe('destination inspect', () => {
+  it('names each command a carried repository would have git run here that this machine\'s global config does not set the same, and no ssh command', async () => {
+    const s = await scene({ land: false });
+    const global = path.join(s.base, 'global.gitconfig');
+    execFileSync('git', ['config', '--file', global, 'filter.lfs.clean', 'git-lfs clean -- %f']);
+    const git: GitRunner = (args, cwd) => new Promise((resolve) => execFile('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: global } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
+    const d = daemon(s, { git });
+    const commands = [
+      { at: '/r/app', key: 'filter.lfs.clean', value: 'git-lfs clean -- %f' }, { at: '/r/app', key: 'filter.crypt.clean', value: 'git-crypt clean' },
+      { at: '/r/app', key: 'core.sshcommand', value: 'ssh -i ~/.ssh/work' }, { at: '/r/wt', key: 'filter.lfs.clean', value: 'lfs-other' },
+    ];
+    const r = await d.handover.inspect({ roots: [], excludes: [], folders: [], git: [{ id: 'g_app', commonDir: path.join(s.base, 'nowhere/.git'), carried: [], tips: [], commands }] });
+    expect(r.commands).toEqual([{ graph: 'g_app', at: '/r/app', keys: ['filter.crypt.clean'] }, { graph: 'g_app', at: '/r/wt', keys: ['filter.lfs.clean'] }]);
+  });
+
+  it('reads the global config inside a repository already here, where a conditional include on its path applies, and says when it could not', async () => {
+    const s = await scene({ land: false });
+    const repos = path.join(fs.realpathSync(s.base), 'repos');
+    const held = path.join(repos, 'app');
+    fs.mkdirSync(held, { recursive: true });
+    execFileSync('git', ['init', '-q', held]);
+    const global = path.join(s.base, 'global.gitconfig');
+    const work = path.join(s.base, 'work.gitconfig');
+    execFileSync('git', ['config', '--file', work, 'filter.crypt.clean', 'git-crypt clean']);
+    execFileSync('git', ['config', '--file', global, `includeIf.gitdir:${repos}/.path`, work]);
+    const git: GitRunner = (args, cwd) => new Promise((resolve) => execFile('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: global } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, stdout, stderr })));
+    const d = daemon(s, { git });
+    const crypt = (at: string) => ({ at, key: 'filter.crypt.clean', value: 'git-crypt clean' });
+    const r = await d.handover.inspect({
+      roots: [], excludes: [], folders: [], git: [{ id: 'g_app', commonDir: path.join(held, '.git'), carried: [], tips: [], commands: [crypt(held), crypt(path.join(repos, 'new'))] }],
+    });
+    // the repository here reads the filter its path includes; one not here yet reads the global config as '/' does
+    expect(r.commands).toEqual([{ graph: 'g_app', at: path.join(repos, 'new'), keys: ['filter.crypt.clean'], conditional: true }]);
+  });
+
   it('says whether each root could be taken and what each folder it is asked about is good for, and writes no record', async () => {
     const s = await scene({ land: false });
     const d = daemon(s);

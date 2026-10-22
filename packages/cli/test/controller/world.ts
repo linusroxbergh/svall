@@ -542,8 +542,10 @@ const landedOf = (w: World): LandedRoot[] => w.destination.landedSeen ?? [];
 /** Where the fleet ended up: back on the source with nothing left open, or on the destination with everything completed. */
 export function settledOn(w: World): 'source' | 'destination' {
   expect(w.violations).toEqual([]);
-  if (w.record.generation === G) {
-    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: w.source.id });
+  // the nonces of the Begins let go stay on the record
+  const { retiredNonces: _retired, ...record } = w.record;
+  if (record.generation === G) {
+    expect(record).toEqual({ fleetId, generation: G, ownerMachineId: w.source.id });
     expect(w.source.running).toBe(true);
     expect(w.source.journal).toBeUndefined();
     expect(w.destination.journal).toBeUndefined();
@@ -551,7 +553,7 @@ export function settledOn(w: World): 'source' | 'destination' {
     expect(w.store.j).toBeUndefined();
     return 'source';
   }
-  expect(w.record).toEqual({ fleetId, generation: G + 1, ownerMachineId: w.destination.id });
+  expect(record).toEqual({ fleetId, generation: G + 1, ownerMachineId: w.destination.id });
   expect(w.destination.activated).toBe(true);
   expect(w.destination.sealed).toBe(true);
   expect(w.destination.journal).toBeUndefined();

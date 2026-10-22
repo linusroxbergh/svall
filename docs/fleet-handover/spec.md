@@ -111,6 +111,16 @@ FleetId   = UUID
 Names such as `trift` and `local` are presentation and routing aliases. Ownership records contain
 only ids. Renaming a host cannot change ownership.
 
+`machine.json` also records the hardware it was made on: the Mac's IOPlatformUUID, or Linux's
+`/etc/machine-id`, kept as an HMAC-SHA256 keyed by that id over `svall`, as machine-id(5) asks. A copy on other hardware, as a backup restore or Migration Assistant makes, shares
+another machine's id. Its daemon then runs no fleet a gateway holds: it starts read-only, asks the
+gateway nothing and refuses every handover and recovery call until the file is moved aside and a new
+id minted, which owns a fleet once the gateway names it, as a forced recovery naming it does. While no
+fleet on the machine names a gateway, the daemon binds the file to its hardware. After the machine's
+own hardware changes, `svall doctor --rebind`, run by a person at a terminal, binds the file to it. A
+virtual machine cloned with its `/etc/machine-id` keeps its source's hardware id, so the copy goes
+unnoticed there.
+
 The controller's machine registry lives at `~/.config/svall/machines.json` and contains no
 fleet API tokens:
 
@@ -189,13 +199,23 @@ type OwnerRecord = {
     toMachineId: string;
     phase: 'preparing' | 'ready-to-commit' | 'committed';
     startedAt: number;
+    controllerId?: string;
+    nonce?: string;
   };
+  retiredNonces?: string[];
 };
 ```
 
 Every owner stores a cached copy beside its fleet state. The gateway changes the record only with a
 compare-and-swap over the expected generation and owner. There is at most one open transaction per
 fleet.
+
+Begin carries the controller's machine id and a nonce the controller journals before its first send.
+While a preparing transaction between the same machines is open, a Begin from the controller it names
+gets that transaction back, and one from another controller is refused, naming it. An abort retires
+the transaction's nonce, and an abort by nonce lets go what that Begin opened, or retires the nonce
+alone; the record keeps the last 16 and refuses a Begin that carries one. The destination takes claim
+and prepare only from the transaction's controller.
 
 An owner may continue at its cached generation while the gateway is temporarily unreachable only
 when it has no unresolved local handover journal. Freeze durably marks the local ownership
@@ -205,15 +225,33 @@ gateway is unreachable, even if its cached owner record is old. When there is no
 other machine can commit without both the gateway and a durable source freeze.
 
 On daemon start, a reachable gateway record wins when its generation is above the daemon's cached
-one, or equal and naming another owner while no handover journal is open there. A lower generation
+one, or equal and naming another owner while no handover journal is open there. A running daemon
+asks again every five minutes and soon after its machine wakes, and after an ask that fails, the one at
+start among them, 15 s later and then twice as long each time up to five minutes, over one ssh connection to the gateway it keeps
+between asks, and takes such a record only when it names another owner: the one naming it
+waits for its next start or the recovery that wrote it. Letting go ends the fleet's tmux server on
+that machine, so its agents stop where they are, without the rest a handover gives them. A lower generation
 is ignored, so a stale gateway never rolls ownership back. A fleet whose `fleet.json` names a
 gateway and that has no cached record owns nothing until the gateway names its owner. If the
 gateway is permanently lost, recovery requires `svall fleet recover --force-owner <machine>` and
-presents the generations and risks before writing a new authority; it is never automatic.
+presents the generations and risks before writing a new authority; it is never automatic, and it
+writes only once a person at a terminal outside any fleet's agents and tmux panes types the fleet id.
 
-On app or CLI launch, the controller asks the gateway for the current owner, then opens either the
-local direct connection or the owner's SSH route. If the gateway is temporarily unavailable, it may
-use a cached route only when that route's daemon reports the same cached generation.
+A daemon cannot tell a person from any holder of the fleet token, so it guards what a recovery hands
+it by what the record does. A record relayed through a gateway that does not answer is taken only when
+it names another owner, letting this machine go. A record that names no gateway, to run the fleet here
+alone, is taken only while the gateway `fleet.json` names does not answer and the fleet home's
+`controller/recoveries.ndjson` holds the command's audit of exactly that record, written in the last
+ten minutes.
+
+On app or CLI launch, the controller opens the local direct connection without asking the gateway
+when the local cached owner record names this machine, carries no freeze, surrender or transaction
+but the committed one that brought the fleet here, no handover journal is open here, and the cached
+route names no other machine at that generation or above; the app's connection helper then refreshes
+its cached route from the gateway in the background. Otherwise the controller asks the gateway for the current owner,
+then opens either the local direct connection or the owner's SSH route. If the gateway is
+temporarily unavailable, it may use a cached route only when that route's daemon reports the same
+cached generation.
 
 The owner check covers every mutating operation, including:
 
@@ -241,9 +279,11 @@ ssh -M -S <short-control-socket> -N \
   -L 127.0.0.1:<local-port>:127.0.0.1:<remote-port> <ssh-destination>
 ```
 
-The app and CLI then connect to `ws://127.0.0.1:<local-port>`. The control socket is a hash under a
-mode-0700 directory in `$TMPDIR`, keeping it below the Unix socket path limit. Commands are spawned
-with argv arrays, never interpolated through a shell.
+The app and CLI then connect to `ws://127.0.0.1:<local-port>`. The control socket is the owning
+process's pid and a hash of the destination under a mode-0700 directory in `$TMPDIR`, keeping it
+below the Unix socket path limit. The connection helper, as it starts, ends the master on every
+socket there whose process is gone and removes the socket. Commands are spawned with argv arrays,
+never interpolated through a shell.
 
 `term.attach` continues to return only `{ socket, session }`. The Mac native layer already knows
 whether the active connection is remote and builds either:
@@ -352,7 +392,9 @@ Setup finishes with either **Ready for handover** or a list of concrete remainin
 setup is idempotent. `svall host doctor trift`, `svall host upgrade trift` and
 `svall host remove trift` expose diagnosis, version upgrade/rollback and uninstall.
 `svall host upgrade trift --rollback [release]` puts the machine back on the release before, or a
-kept one it names, and probes it as an upgrade does. `svall uninstall` run on a machine refuses
+kept one it names, and probes it as an upgrade does. It refuses before anything changes while a
+fleet's `state.json` there is at a newer state schema than that release's `svall version --json`
+names, or, where it names none, newer than the oldest schema any release has read. `svall uninstall` run on a machine refuses
 while it holds a handover journal, runs a fleet for its gateway or keeps gateway records;
 `--force` passes all of it, and `--force-fleet <id>` only the gateway record of that fleet.
 `svall host remove` checks the fleets this controller knows of, then runs it with `--force-fleet`
@@ -375,7 +417,10 @@ Connection and handover negotiate:
 
 Ordinary remote viewing may allow a documented compatible version range. A handover requires an
 exact companion release match and a supported agent-session adapter. The app offers to upgrade the
-companion before preflight; it never starts a transfer across an incompatible pair.
+companion before preflight; it never starts a transfer across an incompatible pair. While another
+machine runs one of its fleets, the Mac app holds back the first update the user asks for, which
+could leave that fleet out of reach until the machine runs the same release, and says so; asking
+again installs it.
 
 ---
 
@@ -433,9 +478,16 @@ build/
 target/
 .next/
 *.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 ```
 
-Excluded platform caches stay destination-local and are never used in source verification.
+Excluded platform caches stay destination-local and are never used in source verification. Files an
+OS or editor writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml`, `.vscode/*.log`)
+transfer, since a repository may track them, but no comparison counts them as a change and no copy
+deletes one the destination alone holds in a folder the source still has; a Git
+directory's refs are compared by what they resolve to, so packing them is no change either.
 
 ## Git repository graphs
 
@@ -486,17 +538,30 @@ nothing. Changes made while that machine did not own the fleet block the handove
 - cancel and recover the changes manually; or
 - explicitly archive the divergent destination root and continue.
 
-Archiving renames the root to a timestamped sibling and reports the recovery path. Handover never
+Archiving renames the root to a timestamped sibling and reports the recovery path; a root that differs
+in at most 20 files, none in a Git directory, moves only those into the sibling and keeps the rest as its replica,
+and `README.archived.txt` in the sibling names each file deleted in the replica, which the copy brings back. Each
+archived linked worktree, the root itself or one that an archived main checkout registers under it, keeps its `.git`
+file as `.git.archived` beside a `.git` reading `gitdir: /nonexistent`, so git there neither reaches the live
+registration nor finds a repository above; `README.archived.txt` names each one's branch and commit. Handover never
 silently deletes destination-only work.
 
-Rsync runs incrementally over SSH with argv-safe arguments. A partial transfer leaves an inactive,
+Rsync runs incrementally over SSH with argv-safe arguments. Rules ahead of the filter file keep `--delete`
+from removing OS or editor noise only the destination holds in a folder the source still has, as perishable
+receiver-side excludes that let a folder the source dropped go whole, and any object in the object store of a Git
+directory whose worktrees the destination keeps, as protect rules. A partial transfer leaves an inactive,
 transaction-marked replica which `--resume` can continue cheaply. The source remains authoritative
 until ownership commits.
 
 After the main pass, the controller re-scans source state and file manifests and runs a verification
 pass. App/API writes and background jobs are frozen, but external editors cannot be locked; detected
 source changes cause another pass. After three unstable passes the handover stops and asks the user
-to close the external writer. A claim asked again also accepts each root as a pass verified it, as
+to close the external writer. Every pass after a root's first runs with `--backup` into
+`<root>.overwritten-<transaction>/<run>-pass<N>/`, a sibling of the root, so what it replaces or deletes there is
+kept; after each such pass, and in each pass of a resume, the controller lists that folder, and the root's row and the
+result name its files, twenty at most and a count of the rest. A resume compares and copies by checksum from its first
+pass. The first pass writes over what the claim proved, and the claim proves every root before the first is copied, so
+a file saved in a root after the claim and before that root's first pass is lost. A claim asked again also accepts each root as a pass verified it, as
 the controller's progress journal kept it; a root that kept changing holds a copy no pass verified,
 and goes on only once archived.
 
@@ -576,6 +641,9 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - release, protocol, state or transfer schema, the gateway's authority schema or agent adapters are
   incompatible;
 - a required agent CLI is absent, logged out or missing hooks;
+- the destination, or the source while it is the fleet's gateway, is a Linux machine whose account
+  does not linger (`linger_off`), so the fleet or its gateway would stop at logout and stay down
+  after a restart until a login;
 - the destination's home path differs from the source's, or a transfer root's parent is missing
   there;
 - a character is marked **Keep on this machine**;
@@ -663,7 +731,13 @@ The controller executes these durable steps:
    the point of no automatic return.
 7. **Activate.** Destination confirms the committed authority record, atomically promotes the
    prepared file to `state.json`, replaces the in-memory Store, then starts terminal windows with
-   bounded concurrency and reports each result. Source records itself inactive.
+   bounded concurrency and reports each result. Source records itself inactive. The controller
+   journals the gateway's committed record before it asks for activation and sends it along; the
+   destination takes it only while the gateway gives no answer at all, and only when it names this
+   fleet at `g + 1`, the destination as owner and as target, this transaction committed and the
+   prepared digest the destination journaled. The record is unsigned: the controller, which holds the
+   fleet token, vouches for it, and a refusal of it names the field that does not match. A registry
+   with no route to the gateway counts as no answer.
 8. **Complete.** Gateway clears the transaction while retaining owner and generation. Replica
    manifests are sealed at generation `g + 1`, and the source stops its fleet, tmux server
    included, so a later handover back starts it afresh.
@@ -696,9 +770,12 @@ If the controller disappears, the sheet and CLI reconstruct status from the thre
 `svall handover status` says whether Abort or Resume is safe. A stale pre-commit transaction may be
 aborted after confirming that the authority still names the source at the expected generation. A
 resume or abort runs only on the source or the destination: rsync runs on the controller, so one
-started from a third machine stops before anything moves and names the two it can run on.
+started from a third machine stops before anything moves and names the two it can run on. Before the
+commit, a resume runs only on the machine whose controller began the handover, which status names;
+an abort, and a resume after the commit, run from either end.
 
-Concurrent handovers are rejected by the authority compare-and-swap. A force-owner recovery is a
+Concurrent handovers are rejected by the authority compare-and-swap, and a second controller on one
+handover by the gateway at Begin and by the destination at claim and prepare. A force-owner recovery is a
 separate, deliberately alarming disaster-recovery command and never part of ordinary retry.
 
 ---
@@ -824,8 +901,8 @@ system.info            {} -> { machineId, release, protocol, stateSchema,
 ownership.get          {} -> { fleetId, generation, ownerMachineId, frozen, transaction? }
 handover.preflight     { toMachineId } -> { manifestSummary, blockers, warnings }
 handover.freeze        { transactionId, generation, choices } -> { manifest }
-handover.prepare       { transactionId, generation, snapshot, manifestDigest } -> {}
-handover.activate      { transactionId, generation } -> { characters: [...] }
+handover.prepare       { transactionId, generation, snapshot, manifestDigest, controllerId? } -> {}
+handover.activate      { transactionId, generation, committed? } -> { characters: [...] }
 handover.abort         { transactionId, generation } -> {}
 handover.status        {} -> { transaction?, quarantined? }
 ```
@@ -836,10 +913,10 @@ or its local Unix socket:
 ```text
 owner.get       { fleetId }
 owner.create    { fleetId, initialOwnerMachineId }
-owner.begin     { fleetId, expectedGeneration, fromMachineId, toMachineId }
+owner.begin     { fleetId, expectedGeneration, fromMachineId, toMachineId, controllerId?, nonce? }
 owner.ready     { fleetId, transactionId, expectedGeneration }
 owner.commit    { fleetId, transactionId, expectedGeneration }
-owner.abort     { fleetId, transactionId, expectedGeneration }
+owner.abort     { fleetId, transactionId, expectedGeneration } | { fleetId, nonce }
 owner.complete  { fleetId, transactionId, generation }
 ```
 
@@ -974,7 +1051,9 @@ honest remapped URL when its preferred local port is occupied.
 - Killing the controller before and after commit reconstructs the correct sheet on relaunch.
 - A failed destination agent login before freeze blocks; a resume failure after commit leaves one
   dormant, retryable character without reactivating the source.
-- A destination file edited while inactive is never overwritten without explicit archive approval.
+- A destination file edited while inactive is never overwritten without explicit archive approval;
+  OS and editor noise is no edit, and a copy may replace it, or remove a folder the source dropped with it, but
+  deletes it nowhere else.
 
 ## Release gate
 

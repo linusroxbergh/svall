@@ -1,10 +1,10 @@
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shq } from '@svall/svalld/text';
 import { redact, runProcess } from '../../src/controller/process.js';
-import { classifyExit, classifySsh, SshError, SshMaster } from '../../src/controller/ssh.js';
+import { classifyExit, classifySsh, SshError, SshMaster, sweepMasters } from '../../src/controller/ssh.js';
 import { waitFor } from '../../../svalld/test/helpers.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 
@@ -82,6 +82,11 @@ describe('classifySsh', () => {
     expect(classifySsh('Connection closed by authenticating user linus 192.0.2.7 port 22 [preauth]')).toBe('auth');
     expect(classifySsh('Connection closed by invalid user admin 192.0.2.7 port 22 [preauth]')).toBe('auth');
   });
+
+  it('reads Tailscale SSH waiting on a check in the browser as auth', () => {
+    expect(classifySsh('# Tailscale SSH requires an additional check.\n# To authenticate, visit: https://login.tailscale.com/a/1a2b3c4d5e\n')).toBe('auth');
+    expect(classifySsh('# To authenticate, visit: https://login.tailscale.com/a/1a2b3c4d5e')).toBe('auth');
+  });
 });
 
 describe('classifyExit', () => {
@@ -114,7 +119,7 @@ describe('SshMaster', () => {
     ]]);
     expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'check', '--', 'svall-remote.invalid']);
     expect(path.dirname(master.socket)).toBe(ssh.socketDir);
-    expect(path.basename(master.socket)).toMatch(/^[0-9a-f]{12}$/);
+    expect(path.basename(master.socket)).toMatch(new RegExp(`^${process.pid}-[0-9a-f]{12}$`));
     expect(fs.statSync(ssh.socketDir).mode & 0o777).toBe(0o700);
     await master.close();
   });
@@ -270,6 +275,27 @@ describe('SshMaster', () => {
     }
   });
 
+  it('reads a master still waiting on a Tailscale check when it gives up as auth, and names ssh as the way past it', async () => {
+    // only Date is faked, so the master's own clock reaches its timeout when the test says
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const opening = open('check.test').catch((e: unknown) => e);
+      await waitFor(() => fs.readdirSync(path.join(ssh.dir, 'state')).some((f) => f.endsWith('.waiting')));
+      // a whole check after the banner was written, so its stderr has been read
+      const checks = () => ssh.calls().filter((c) => c.includes('check')).length;
+      const seen = checks();
+      await waitFor(() => checks() > seen + 1);
+      vi.setSystemTime(Date.now() + 21_000);
+      const err = await opening;
+      expect(err).toBeInstanceOf(SshError);
+      expect((err as SshError).kind).toBe('auth');
+      expect((err as SshError).message).toContain('https://login.tailscale.com/a/1a2b3c4d5e');
+      expect((err as SshError).message).toContain('run ssh check.test once in a terminal');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   const live = process.env.SVALL_TEST_SSH;
   it.skipIf(!live)('opens a master against a real sshd (set SVALL_TEST_SSH=<destination> to run)', async () => {
     // the fake ssh is first on PATH for every other test in this describe; a real master needs the real one
@@ -284,5 +310,77 @@ describe('SshMaster', () => {
     } finally {
       process.env.PATH = fake;
     }
+  });
+});
+
+describe('sweepMasters', () => {
+  let ssh: FakeSsh;
+
+  beforeEach(() => { ssh = installFakeSsh(); });
+  afterEach(() => ssh.clean());
+
+  it('ends the master of a process that is gone and removes its socket, and leaves every other socket alone', async () => {
+    const gone = spawn('true');
+    await new Promise((resolve) => { gone.on('close', resolve); });
+    const running = spawn('sleep', ['30']);
+    // the detached ssh -M the process that is gone left running
+    const orphan = spawn('sleep', ['30']);
+    const named = (pid: number | undefined): string => `${pid}-0123456789ab`;
+    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
+    // pid 1 is another user's, which a signal check is refused for
+    const kept = [named(running.pid), named(process.pid), named(1), 'handover-0123456789abcdef.sock'];
+    for (const name of [named(gone.pid), ...kept]) fs.writeFileSync(path.join(ssh.socketDir, name), '');
+    fs.writeFileSync(path.join(ssh.dir, 'state', `${named(gone.pid)}.master`), String(orphan.pid));
+
+    await sweepMasters(ssh.socketDir);
+
+    expect(ssh.calls()).toEqual([['-S', path.join(ssh.socketDir, named(gone.pid)), '-o', 'BatchMode=yes', '-O', 'exit', '--', 'svall-remote.invalid']]);
+    expect(fs.readdirSync(ssh.socketDir).sort()).toEqual(kept.sort());
+    await waitFor(() => !alive(orphan.pid as number));
+    running.kill();
+  });
+
+  it('ends the master on a socket named before the pid led it once its parent is gone, and leaves one whose parent runs', async () => {
+    // a master left behind is launchd's or init's child, as a shell's background job is once the shell exits
+    const sh = spawn('sh', ['-c', 'sleep 30 >/dev/null 2>&1 & echo $!'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const orphan = Number(await new Promise<string>((resolve) => { sh.stdout.on('data', (b: Buffer) => resolve(b.toString().trim())); }));
+    await new Promise((resolve) => { sh.on('close', resolve); });
+    const owned = spawn('sleep', ['30']);
+    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
+    const [left, held, stale] = ['0123456789ab', 'ba9876543210', 'aaaaaaaaaaaa'];
+    for (const name of [left, held, stale]) fs.writeFileSync(path.join(ssh.socketDir, name), '');
+    fs.writeFileSync(path.join(ssh.dir, 'state', `${left}.master`), String(orphan));
+    fs.writeFileSync(path.join(ssh.dir, 'state', `${held}.master`), String(owned.pid));
+    await sweepMasters(ssh.socketDir);
+    expect(fs.readdirSync(ssh.socketDir)).toEqual([held]);
+    await waitFor(() => !alive(orphan));
+    expect(alive(owned.pid as number)).toBe(true);
+    owned.kill();
+  });
+
+  it('keeps the socket of a master that would not exit, and removes one no master listens on', async () => {
+    const gone = spawn('true');
+    await new Promise((resolve) => { gone.on('close', resolve); });
+    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
+    const stuck = `${gone.pid}-0123456789ab`;
+    const stale = `${gone.pid}-ba9876543210`;
+    for (const [name, held] of [[stuck, 'stuck'], [stale, 'stale']]) {
+      fs.writeFileSync(path.join(ssh.socketDir, name), '');
+      fs.writeFileSync(path.join(ssh.dir, 'state', `${name}.master`), held);
+    }
+    await sweepMasters(ssh.socketDir);
+    expect(fs.readdirSync(ssh.socketDir)).toEqual([stuck]);
+  });
+
+  it('leaves a socket directory another user could reach alone, and never throws', async () => {
+    const gone = spawn('true');
+    await new Promise((resolve) => { gone.on('close', resolve); });
+    fs.mkdirSync(ssh.socketDir, { mode: 0o755 });
+    fs.chmodSync(ssh.socketDir, 0o755);
+    const planted = path.join(ssh.socketDir, `${gone.pid}-0123456789ab`);
+    fs.writeFileSync(planted, '');
+    await expect(sweepMasters(ssh.socketDir)).resolves.toBeUndefined();
+    expect(ssh.calls()).toEqual([]);
+    expect(fs.existsSync(planted)).toBe(true);
   });
 });

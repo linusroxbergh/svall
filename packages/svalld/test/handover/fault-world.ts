@@ -293,6 +293,8 @@ export class World {
   transactions = new Set<string>();
   /** the gateway is out of reach, as against dead: nothing restarts it until a test brings it back */
   away = false;
+  /** the machines whose daemon gets no answer from the gateway, though a controller does */
+  blind = new Set<'mac' | 'trift'>();
   /** each flush a destination asked of the roots that landed, and why the next one fails, when it does */
   synced: string[][] = [];
   syncFails?: Error;
@@ -559,7 +561,9 @@ export class World {
         now: () => this.now,
         sleep: (ms, signal) => new Promise((r) => setImmediate(() => { if (!signal?.aborted) { this.now += ms; r(); } })),
       };
-      const authority = () => ({ get: (id: FleetId) => this.authorityGet(id) });
+      const authority = () => ({
+        get: (id: FleetId) => (this.blind.has(m.name) ? Promise.reject(new AuthorityFailure('disconnected', `ssh from ${m.name} to the gateway exited 255 without an answer`)) : this.authorityGet(id)),
+      });
       const handover = new HandoverService({
         ownership, journal: new MortalJournal(paths, life), fleet,
         agents: async () => [
@@ -825,7 +829,8 @@ export const entries = (dir: string): string[] => (fs.existsSync(dir) ? (fs.read
  * and only the terminals the handover stopped running.
  */
 export function settledOn(w: World): 'source' | 'destination' {
-  const record = w.record();
+  // the nonces of the Begins let go stay on the record
+  const { retiredNonces: _retired, ...record } = w.record();
   const where = record.generation === G ? 'source' : 'destination';
   const [owner, other] = where === 'source' ? [w.mac, w.trift] : [w.trift, w.mac];
   expect(record).toEqual({ fleetId, generation: where === 'source' ? G : G + 1, ownerMachineId: owner.id });

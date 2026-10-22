@@ -13,7 +13,7 @@ import { Client } from '../client.js';
 import { localOwner, remoteOwner } from './authority.js';
 import { redact } from './process.js';
 import { LOCAL, MachineRegistry, type MachineEntry } from './registry.js';
-import { cachedOwner, readRoute, writeRoute } from './route.js';
+import { cachedOwner, heldHere, readRoute, rememberOwner, writeRoute } from './route.js';
 import { classifyExit, SshError, SshMaster, type SshErrorKind } from './ssh.js';
 
 const MAX_ATTEMPTS = 5;
@@ -279,7 +279,21 @@ async function fromCachedRoute(fleetHome: string, o: { fleetId: FleetId; profile
  */
 export type GatewayMemo = { refused?: Error; onRefused?(err: Error): void };
 
-/** Which machine runs this fleet: what its gateway holds, or the route it last answered. */
+/** Asks the gateway behind a local answer, only to keep the cached route current: nothing waits on it or hears it fail. */
+function refreshRoute(fleetHome: string, fleetId: FleetId, gateway: MachineEntry, d: OwnerDeps, memo: GatewayMemo): void {
+  if (memo.refused) return;
+  void askGateway(fleetId, gateway, d).then(
+    (answer) => { if ('record' in answer) rememberOwner(fleetHome, answer.record, d.now()); },
+    (err: unknown) => {
+      if (err instanceof SshError && !retryable(err)) {
+        memo.refused = err;
+        memo.onRefused?.(err);
+      }
+    },
+  );
+}
+
+/** Which machine runs this fleet: this one while its daemon holds it with nothing under way, else what its gateway holds, or the route it last answered. */
 export async function resolveOwner(fleetHome: string, o: { profile?: string; deps?: OwnerDeps; memo?: GatewayMemo } = {}): Promise<typeof LOCAL | MachineEntry> {
   const config = fleetConfig(fleetHome);
   const gatewayId = config?.gatewayMachineId;
@@ -289,6 +303,12 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   if (!gateway) throw new SshError('other', `${resolvePaths(fleetHome).fleetConfig} names gateway ${gatewayId}, which is not a machine in the registry${d.registry.setAside()}`);
 
   const cached = { fleetId: config.id, profile: o.profile };
+  // the daemon asks the gateway every five minutes and lets the fleet go on a record naming another owner, which keeps owner.json
+  // honest; only a caller that resolves again and again refreshes the route behind it, as a one-shot command would wait on that ssh
+  if (heldHere(fleetHome, d.registry.localId)) {
+    if (o.memo) refreshRoute(fleetHome, config.id, gateway, d, o.memo);
+    return LOCAL;
+  }
   if (o.memo?.refused) return await fromCachedRoute(fleetHome, cached, d, gateway, o.memo.refused);
   let answer: OwnerAnswer;
   try {

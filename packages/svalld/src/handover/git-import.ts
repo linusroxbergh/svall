@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
-import { DIRS_ARGS, parseDirs, runGit, type GitRunner } from '../links/git.js';
-import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, said, type WorktreeEntry } from './git-graph.js';
+import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
+import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, runsHere, said, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 
 /** What `git init` probes of the filesystem a Git directory sits on; `precomposeUnicode` only where git probes it, on macOS. */
@@ -33,7 +33,10 @@ export function graphsHere(m: Pick<TransferManifestV1, 'git'>): ReceivedGraph[] 
   return (m.git ?? []).map((g): ReceivedGraph => {
     const checkouts = [...(g.main ? [g.main] : []), ...g.worktrees];
     const heads = checkouts.flatMap((c) => (c.head ? [c.head] : []));
-    return { id: g.id, commonDir: g.commonDir, carried: g.worktrees.map((w) => path.basename(w.gitDir)), tips: [...new Set([...(g.tips ?? []), ...heads, ...g.stash])] };
+    return {
+      id: g.id, commonDir: g.commonDir, carried: g.worktrees.map((w) => path.basename(w.gitDir)), tips: [...new Set([...(g.tips ?? []), ...heads, ...g.stash])],
+      ...(g.commands && { commands: g.commands }),
+    };
   });
 }
 
@@ -56,7 +59,7 @@ async function reaches(tips: readonly string[], commit: string, at: string, git:
  * can tell, is unproven: the tips it does not know may reach it, and only the source can say.
  */
 export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'git'> = {}): Promise<{ kept: KeptWorktree[]; unproven: KeptCommit[] }> {
-  const git = deps.git ?? runGit;
+  const git = deps.git ?? handoverGit;
   const registrations = path.join(g.commonDir, 'worktrees');
   let ids: string[] = [];
   try { ids = fs.readdirSync(registrations); } catch { return { kept: [], unproven: [] }; }
@@ -81,7 +84,7 @@ export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'gi
  * On the source: which of `commits` no ref of the repository at `commonDir` reaches, one it does not hold at all
  * included. What a ref reaches is what the copy it sends holds.
  */
-export async function unreached(commonDir: string, commits: readonly string[], git: GitRunner = runGit): Promise<string[]> {
+export async function unreached(commonDir: string, commits: readonly string[], git: GitRunner = handoverGit): Promise<string[]> {
   const out: string[] = [];
   for (const commit of commits) {
     const r = await git(['rev-list', '-n', '1', commit, '--not', '--all', '--'], commonDir);
@@ -119,7 +122,7 @@ const unresolved = (e: Error, entity: HandoverEntity): Blocker => ({ code: 'work
  * carried nor kept here goes while its branch stays. Then git has to read the graph as the source left it.
  */
 async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  const git = deps.git ?? runGit;
+  const git = deps.git ?? handoverGit;
   const common = graph.commonDir;
   try {
     // a config carried as a link would be written through to wherever it leads
@@ -159,12 +162,18 @@ function described(e: WorktreeEntry): string {
  * and the stash holds the same entries.
  */
 export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git'> & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
-  const git = deps.git ?? runGit;
+  const run = deps.git ?? handoverGit;
+  // the copy keeps each file's size and whole-second mtime, not its inode or ctime, so git trusts its index here as the source did
+  const git: GitRunner = (args, cwd) => run(['-c', 'core.checkStat=minimal', '-c', 'core.trustctime=false', ...args], cwd);
   const entity: HandoverEntity = { kind: 'git', id: graph.id };
   const common = graph.commonDir;
   const differs: string[] = [];
   try {
     const checkouts = [...(graph.main ? [graph.main] : []), ...graph.worktrees];
+    // read from what landed, whatever the source said of it, before any git here could run a command it names
+    const foreign = new Map<string, string[]>();
+    for (const c of await repoCommands(common, checkouts.map((x) => x.path), git)) if (!c.own && runsHere(c.key)) foreign.set(c.at, [...(foreign.get(c.at) ?? []), c.key]);
+    if (foreign.size) return [...foreign].map(([at, keys]) => ({ code: 'git_config_command', entity, message: `${at}: its repository's own config names commands git would run here, which this machine's global config does not set the same: ${keys.join(', ')}. Set each up the same with git config --global, or remove it from the repository's config where the fleet is and hand over again` }));
     for (const c of checkouts) {
       const dirs = parseDirs(await must(git, DIRS_ARGS, c.path));
       if (dirs.root !== c.path || dirs.commonDir !== common || dirs.gitDir !== c.gitDir) {

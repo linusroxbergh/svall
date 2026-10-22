@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_EXCLUDES, excludeMatcher, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES } from '@svall/svalld/handover/inventory';
 import { scanPath } from '../../../svalld/src/handover/manifest.js';
 import {
-  bundledRsync, exitKind, filterRules, parseLine, probeRsync, remoteShell, remoteSpec, resolveRsync, rsyncArgv, runRsync,
+  bundledRsync, exitKind, filterRules, keptObjectStores, parseLine, probeRsync, remoteShell, remoteSpec, resolveRsync, rsyncArgv, runRsync,
 } from '../../src/controller/rsync.js';
 import { SshMaster } from '../../src/controller/ssh.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
@@ -119,6 +119,29 @@ describe('rsyncArgv', () => {
     expect(dry).not.toContain('--info=progress2');
     expect(rsyncArgv({ ...job, checksum: true })).toEqual(expect.arrayContaining(['--checksum', '--info=progress2']));
     expect(real).not.toContain('--checksum');
+    expect(rsyncArgv({ ...job, dryRun: true, checksum: false })).not.toContain('--checksum');
+  });
+
+  it('keeps what a copy replaces or deletes in the backup folder it names, and nothing on a dry run', () => {
+    expect(rsyncArgv({ ...job, delete: true, backupDir: '/dst.overwritten-tx' })).toEqual(expect.arrayContaining(['--backup', '--backup-dir=/dst.overwritten-tx']));
+    expect(rsyncArgv({ ...job, dryRun: true, backupDir: '/dst.overwritten-tx' }).some((a) => a.startsWith('--backup'))).toBe(false);
+    expect(rsyncArgv(job).some((a) => a.startsWith('--backup'))).toBe(false);
+  });
+
+  it('protects OS and editor noise and each object store it names from --delete, ahead of the filter file', () => {
+    const argv = rsyncArgv({ ...job, delete: true, filterFile: '/state/r.rules', protect: ['.git/objects', 'objects'] });
+    expect(argv.filter((a) => a.startsWith('--filter=') || a.startsWith('--exclude-from='))).toEqual([
+      '--filter=-rp .DS_Store', '--filter=-rp ._*', '--filter=-rp .idea/workspace.xml', '--filter=-rp .vscode/*.log',
+      '--filter=P /.git/objects/**', '--filter=P /objects/**', '--exclude-from=/state/r.rules',
+    ]);
+    expect(rsyncArgv(job).some((a) => a.startsWith('--filter='))).toBe(false);
+  });
+});
+
+describe('keptObjectStores', () => {
+  it('names the object store of each Git directory whose worktrees the destination keeps', () => {
+    expect(keptObjectStores(['.git/worktrees/stay', '.git/worktrees/other', 'sub/.git/worktrees/x', 'worktrees/y', 'notes'])).toEqual(['.git/objects', 'sub/.git/objects', 'objects']);
+    expect(keptObjectStores([])).toEqual([]);
   });
 });
 

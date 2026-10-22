@@ -60,6 +60,17 @@ describe('the controller transaction', () => {
     expect(row('verified').data).toMatchObject({ phase: 'verify', verified: true });
   });
 
+  it('says on a transfer row which files a pass after the first kept aside, and where, naming twenty at most', () => {
+    const row = (paths: string[]) => entryEvent('tx-1', {
+      id: 'r_app', kind: 'root', state: 'verified', pass: 2, done: 2, total: 2, bytes: 64, totalBytes: 64, items: 2, overwritten: { keptAt: '/Users/ada/app.overwritten-tx-1', paths }, updatedAt: 0,
+    }).data;
+    expect(row(['r-pass2/a.txt', 'r-pass2/notes/b.md'])).toMatchObject({ notice: '2 files the copy replaced or deleted after its first pass are kept at /Users/ada/app.overwritten-tx-1: r-pass2/a.txt, r-pass2/notes/b.md' });
+    const many = Array.from({ length: 30_000 }, (_, i) => `r-pass2/f${i}`);
+    const notice = (row(many) as { notice: string }).notice;
+    expect(notice).toMatch(/^30000 files the copy .*: r-pass2\/f0, .*r-pass2\/f19, and 29980 more$/);
+    expect(notice.length).toBeLessThan(1000);
+  });
+
   it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {
     const w = new World();
     const notice = 'codex waits at its "Trust this folder?" prompt in bo\'s terminal; answer it there';
@@ -304,6 +315,35 @@ describe('preflight', () => {
     expect(r.warnings.filter((x) => x.code === 'config_difference')).toEqual([]);
   });
 
+  it('blocks a Linux destination whose account does not linger, naming the machine and what to run there', async () => {
+    const w = new World();
+    const lingering = async () => (await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'linger_off');
+    w.infos[trift] = { linger: { user: 'ada', on: false } };
+    expect(await lingering()).toEqual([{
+      code: 'linger_off',
+      message: 'lingering is off for ada on trift, so the fleet with its gateway stops there when you log out and stays down after a restart until you log in; ssh trift, then loginctl enable-linger ada',
+    }]);
+    w.infos[trift] = { linger: { user: 'ada', on: true } };
+    expect(await lingering()).toEqual([]);
+  });
+
+  it('blocks a move to the Mac while the Linux source, the fleet\'s gateway, does not linger, and asks nothing of the Mac', async () => {
+    const lingering = async (gateway: MachineId) => {
+      const w = new World({ pull: true });
+      w.infos[trift] = { linger: { user: 'ada', on: false } };
+      const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+      w.source.answers['handover.preflight'] = ((p: unknown) => {
+        const r = preflight(p);
+        r.manifest.fleet.gatewayMachineId = gateway;
+        return r;
+      }) as never;
+      return (await controller(w).preflight(mac, {})).blockers.filter((b) => b.code === 'linger_off').map((b) => b.message);
+    };
+    expect(await lingering(trift)).toEqual([expect.stringMatching(/^lingering is off for ada on trift, so the fleet's gateway stops there .*; ssh trift, then loginctl enable-linger ada$/)]);
+    // a source that is not the gateway runs nothing of the fleet once it has moved
+    expect(await lingering(mac)).toEqual([]);
+  });
+
   it('names a few of a root\'s names that differ only by case, each with the names it clashes with, and counts the rest, however many there are', async () => {
     const w = new World();
     w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };
@@ -324,6 +364,24 @@ describe('preflight', () => {
       expect(names).toHaveLength(2);
       expect(names[0].toLowerCase()).toBe(names[1].toLowerCase());
     }
+  });
+
+  it('blocks two roots apart here that a destination folding case would put in one folder', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      const app = r.manifest.roots.find((x) => x.id === 'r_app')!;
+      app.files = app.files.filter((f) => f.path !== 'Readme.md');
+      r.manifest.roots.push({ id: 'r_App', kind: 'context', entry: 'dir', path: at('App'), files: [file('b.txt')] });
+      return r;
+    }) as never;
+    expect((await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'path_collision')).toEqual([]);
+    w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };
+    expect((await controller(w).preflight(trift, {})).blockers.filter((b) => b.code === 'path_collision')).toEqual([{
+      code: 'path_collision', entity: { kind: 'root', id: 'r_app' },
+      message: `${at('App')} and ${at('app')} differ only by case or Unicode normalization, which trift does not tell apart, so they would land in one folder there`,
+    }]);
   });
 
   it('asks the destination nothing about roots once the source refused a manifest too large to answer with its file lists', async () => {
@@ -394,6 +452,22 @@ describe('preflight', () => {
     expect((await trust()).map((x) => x.code)).toEqual(['codex_trust']);
   });
 
+  it('blocks at the checks a carried repository naming a command git would run on the destination, whose global config does not set it the same', async () => {
+    const w = new World();
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: unknown) => ({
+      ...inspect(p), commands: [{ graph: 'g_app', at: '/Users/ada/app', keys: ['filter.crypt.clean'] }, { graph: 'g_app', at: '/Users/ada/new', keys: ['filter.crypt.clean'], conditional: true }],
+    })) as never;
+    const { blockers } = await controller(w).preflight(trift, {});
+    expect(blockers).toContainEqual({
+      code: 'git_config_command', entity: { kind: 'git', id: 'g_app' },
+      message: '/Users/ada/app: its repository\'s own config names commands git would run on trift, whose global config does not set them the same: filter.crypt.clean; set each up the same there with git config --global, or remove it from the repository\'s config',
+    });
+    expect(blockers).toContainEqual(expect.objectContaining({
+      message: expect.stringMatching(/^\/Users\/ada\/new: .*; trift's global config has conditional includes, which the checks cannot apply to a repository not there yet, and prepare checks again once it lands$/),
+    }));
+  });
+
   it('warns that Claude warns about bypass mode with "No, exit" preselected where a carried resume asks for it and the destination\'s Claude has not accepted it', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
@@ -459,6 +533,8 @@ describe('preflight', () => {
       w.gateway.begin = () => w.call('gateway', 'begin', () => { throw new Refused(refused, said[refused]); });
       const out = await controller(w).start(trift, {});
       expect(out, refused).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code, message: expect.stringMatching(says) }] });
+      // a Begin answered, if with a refusal, opened nothing to let go
+      expect(w.ops, refused).not.toContain('gateway:abort');
       expect(settledOn(w)).toBe('source');
     }
   });
@@ -1171,6 +1247,25 @@ describe('cancellation', () => {
     expect(settledOn(w)).toBe('source');
   });
 
+  it('asked while a Begin that never reached the gateway waits, lets its nonce go there, so that Begin opens nothing should it arrive late', async () => {
+    const w = new World();
+    const c = controller(w);
+    const begin = w.gateway.begin;
+    let late: (() => unknown) | undefined;
+    w.gateway.begin = async (p) => {
+      w.gateway.begin = begin;
+      late = () => w.cas('owner.begin', p);
+      c.cancel();
+      throw new Error('ssh: the connection to trift closed before the request went out');
+    };
+    const out = await c.start(trift, {});
+    expect(out).toMatchObject({ status: 'aborted', phase: 'begin' });
+    expect(w.ops.slice(-3)).toEqual(['gateway:get', 'gateway:abort', 'store:clear']);
+    expect(late).toThrow('that Begin belongs to a handover already let go');
+    expect(w.record.transaction).toBeUndefined();
+    expect(settledOn(w)).toBe('source');
+  });
+
   it('asked while a Begin whose answer was lost waits, and the gateway cannot then say whether it opened it, keeps its journal for the abort', async () => {
     const w = new World();
     const c = controller(w);
@@ -1338,6 +1433,59 @@ describe('cancellation', () => {
   });
 });
 
+describe('the controller a handover answers to', () => {
+  it('sends its Begin as this machine\'s controller with one nonce, journaled before the first send and the same on every retry', async () => {
+    const w = new World();
+    const sent: { nonce?: string; controllerId?: string; journaled?: string }[] = [];
+    const begin = w.gateway.begin;
+    w.gateway.begin = async (p) => {
+      sent.push({ nonce: p.nonce, controllerId: p.controllerId, journaled: w.store.j?.nonce });
+      const r = await begin(p);
+      if (sent.length === 1) throw new Error('ssh: the connection to trift closed before the answer');
+      return r;
+    };
+    expect((await controller(w).start(trift, {})).status).toBe('complete');
+    const nonce = sent[0].nonce;
+    expect(nonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(sent).toEqual([{ nonce, controllerId: mac, journaled: nonce }, { nonce, controllerId: mac, journaled: nonce }]);
+    expect(settledOn(w)).toBe('destination');
+  });
+
+  it('names itself to the destination in each claim and prepare', async () => {
+    const w = new World();
+    const named: string[] = [];
+    for (const method of ['handover.claim', 'handover.prepare'] as const) {
+      const answer = w.destination.answers[method];
+      w.destination.answers[method] = ((p: { controllerId?: string }) => { named.push(`${method} ${p.controllerId}`); return answer(p as never); }) as never;
+    }
+    expect((await controller(w).start(trift, {})).status).toBe('complete');
+    expect(named).toEqual([`handover.claim ${mac}`, `handover.prepare ${mac}`]);
+  });
+});
+
+describe('the commit the controller holds', () => {
+  it('is journaled as the gateway answered it before the destination is asked to activate, and goes with every activation, a resume\'s included', async () => {
+    const probe = new World();
+    await controller(probe).start(trift, {});
+    const w = new World();
+    w.fault = { at: opIndex(probe, 'trift:handover.activate'), kind: 'death' };
+    const sent: { committed?: OwnerRecord; journaled?: OwnerRecord }[] = [];
+    const activate = w.destination.answers['handover.activate'];
+    w.destination.answers['handover.activate'] = ((p: { committed?: OwnerRecord }) => {
+      sent.push({ committed: p.committed, journaled: w.store.j?.committed });
+      return activate(p as never);
+    }) as never;
+
+    expect((await controller(w).start(trift, {})).status).toBe('interrupted');
+    await recover(w);
+
+    expect(settledOn(w)).toBe('destination');
+    expect(sent).toHaveLength(2);
+    const committed = { fleetId, generation: G + 1, ownerMachineId: trift, transaction: expect.objectContaining({ id: 'tx-1', phase: 'committed', toMachineId: trift }) };
+    for (const s of sent) expect(s).toEqual({ committed, journaled: committed });
+  });
+});
+
 describe('an unknown commit', () => {
   it('asks the gateway, and goes forward when it committed', async () => {
     const w = new World();
@@ -1360,6 +1508,18 @@ describe('an unknown commit', () => {
     w.gateway.commit = commit;
     await recover(w);
     expect(settledOn(w)).toBe('destination');
+  });
+
+  it('journals the record a re-read shows committed, and hands it to the activation', async () => {
+    const w = new World();
+    const commit = w.gateway.commit;
+    w.gateway.commit = async (p) => { await commit(p); throw new Error('ssh: the connection to trift closed'); };
+    const sent: (OwnerRecord | undefined)[] = [];
+    const activate = w.destination.answers['handover.activate'];
+    w.destination.answers['handover.activate'] = ((p: { committed?: OwnerRecord }) => { sent.push(p.committed); return activate(p as never); }) as never;
+    expect((await controller(w).start(trift, {})).status).toBe('complete');
+    expect(w.store.written.find((j) => j.committed)?.phase).toBe('commit');
+    expect(sent).toEqual([expect.objectContaining({ generation: G + 1, ownerMachineId: trift, transaction: expect.objectContaining({ id: 'tx-1', phase: 'committed' }) })]);
   });
 
   it('refuses an abort asked once the gateway has committed, and only goes forward', async () => {
@@ -1417,7 +1577,7 @@ describe('a far machine that is down', () => {
     w.down.add('trift');
     const out = await controller(w, eager(w)).abort();
     expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
-    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac, retiredNonces: [expect.any(String)] });
     expect(w.source.running).toBe(true);
     expect(w.destination.journal).toBeDefined();
     expect(w.store.j).toMatchObject({ phase: 'aborted' });
@@ -1459,7 +1619,7 @@ describe('a far machine that is down', () => {
     w.down.add('trift');
     const out = await controller(w, eager(w)).abort();
     expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
-    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac, retiredNonces: [expect.any(String)] });
     expect(w.source.running).toBe(true);
     expect(w.store.j).toMatchObject({ transactionId: 'tx-1', phase: 'aborted' });
     await recover(w, 'abort');
@@ -1489,11 +1649,11 @@ describe('a far machine that is down', () => {
     expect(settledOn(w)).toBe('source');
   });
 
-  it('with no journal here, stops a resume while the source is down and nothing says how far it got, so a later abort still lets the source go', async () => {
+  it('with no journal here, stops a resume before the commit on the destination, whose controller did not begin it, so a later abort still lets the source go', async () => {
     const w = await lostAt('mac:handover.freeze');
     w.down.add('mac');
     const out = await controller(w, { ...eager(w), local: trift }).resume();
-    expect(out).toMatchObject({ status: 'interrupted', error: expect.stringContaining('the source did not say how far it got') });
+    expect(out).toMatchObject({ status: 'interrupted', safe: ['abort'], error: expect.stringContaining('it goes on from mac, whose controller began it') });
     expect(w.store.j).toBeUndefined();
     await recover(w, 'abort');
     expect(settledOn(w)).toBe('source');
@@ -1532,7 +1692,9 @@ describe('a far machine that is down', () => {
       const ops = w.ops.length;
       const c = controller(w, unrouted(w));
       const out = await (act === 'resume' ? c.resume() : c.abort());
-      expect(out, act).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
+      expect(out, act).toMatchObject(act === 'resume'
+        ? { status: 'interrupted', safe: ['abort'], error: expect.stringContaining(`it goes on from ${mac}, whose controller began it`) }
+        : { status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringMatching(new RegExp(`no route to ${mac}.*run svall handover --resume or --abort there`)) });
       expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op)), act).toEqual([]);
       expect(w.store.j, act).toBeUndefined();
       await recover(w, act);

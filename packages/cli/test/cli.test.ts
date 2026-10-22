@@ -534,7 +534,8 @@ describe('svall connect', () => {
     fs.writeFileSync(path.join(home, 'port'), '4711');
     fs.writeFileSync(path.join(home, 'token'), 'local-token\n');
 
-    const child = spawn(tsx, [main, 'connect', '--json'], { env: { ...process.env, SVALL_HOME: home } });
+    // the helper sweeps the ssh sockets of its temp folder as it starts, so it gets one of its own
+    const child = spawn(tsx, [main, 'connect', '--json'], { env: { ...process.env, SVALL_HOME: home, TMPDIR: home } });
     let out = '';
     child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
     child.stdin.end();

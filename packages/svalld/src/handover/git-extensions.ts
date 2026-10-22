@@ -1,5 +1,5 @@
 import type { Blocker, HandoverEntity } from '@svall/protocol';
-import { runGit, type GitRunner } from '../links/git.js';
+import { handoverGit, type GitRunner } from '../links/git.js';
 
 // the first git that opens a repository using each extension; one missing here needs the git that opened it on the source
 const INTRODUCED: Record<string, string> = {
@@ -24,13 +24,13 @@ function older(a: string, b: string): boolean {
 }
 
 /** `git --version`'s number, or nothing where git cannot run. */
-export async function gitVersion(git: GitRunner = runGit): Promise<string | undefined> {
+export async function gitVersion(git: GitRunner = handoverGit): Promise<string | undefined> {
   const r = await git(['--version'], '/');
   return r.code === 0 ? /(\d+\.\d+(?:\.\d+)?)/.exec(r.stdout)?.[1] : undefined;
 }
 
 /** What a repository's own config file says about the git that can open it. */
-export async function readExtensions(commonDir: string, git: GitRunner = runGit): Promise<Pick<GraphExtensions, 'version' | 'extensions'>> {
+export async function readExtensions(commonDir: string, git: GitRunner = handoverGit): Promise<Pick<GraphExtensions, 'version' | 'extensions'>> {
   // exit 1 is a config that sets none of them
   const r = await git(['config', '--file', 'config', '--get-regexp', '^(core\\.repositoryformatversion|extensions\\..*)$'], commonDir);
   const read = { version: 0, extensions: {} as Record<string, string> };

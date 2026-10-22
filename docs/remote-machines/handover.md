@@ -8,7 +8,7 @@ not resume waiting to be retried. It never leaves both running.
 
 Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and run `svall host doctor <name>`
 (**Check** in the app): no check should fail (✗). A warning (!) about `tmux`, `gh` or `path` does not stop a handover;
-an agent your fleet runs that is missing or not logged in there does.
+an agent your fleet runs that is missing or not logged in there does, and so does `linger` off.
 
 ## From the app
 
@@ -32,7 +32,7 @@ its terminal, and open it again from **Handover**, which is marked while a decis
 | Continue waiting | an agent still working | Waits for it to finish its turn. |
 | Interrupt and carry | an agent working or waiting on an answer | Sends Escape to each such agent, waits for it to settle, and carries it. It resumes from its transcript on the other machine. |
 | Terminate and carry | a shell running a command, a job suspended with ctrl+z, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in the terminals of each character named. The shell reopens in its folder on the other machine. |
-| Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh. Nothing is deleted, and the folder's row says where the old copy is kept. |
+| Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh; when at most 20 files there differ from what the fleet left, none of them in a repository's `.git`, only those move, and the copy brings the rest up to date, with `README.archived.txt` in the archive naming any file deleted there, which the copy brings back. Nothing is deleted, and the folder's row says where the old copy is kept. Each archived linked worktree, the folder itself or one inside an archived main checkout, keeps its `.git` file as `.git.archived` beside a `.git` that names no repository, so git there leaves the live worktree alone and finds no repository above it; `README.archived.txt` names each one's branch and commit. |
 | Carry the folder whole | a terminal in a folder that holds Git repositories no character works in, such as a shell in `~/Developer` | Carries that folder with those repositories. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
@@ -98,13 +98,14 @@ listed with what to do about it.
 | `fleet.json`, and the fleet's entity docs and `agent-profiles` folder | The fleet's token, the phone key, push keys and subscriptions, and `owner.json` |
 | Browser tab URLs | Browser cookies and logins, and each Mac's own layout |
 | Every folder a character works in, a file or folder named in its context, and mission control's folder (`home.cwd`), which no other fleet on the same machine may use | Folders left out by the excludes below |
-| Each repository a character works in: its Git directory, the main checkout, every worktree a character uses (one OpenCode made in `~/.local/share/opencode/worktree` too), and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no character uses (its branch and stash still move) |
+| Each repository a character works in: its Git directory, the main checkout, every worktree a character uses (one OpenCode made in `~/.local/share/opencode/worktree` too), and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no character uses (its branch and stash still move); the copy deletes no Git object from a repository that keeps one |
 | Each agent's session: Claude Code's transcript with the session's own folder (subagents and saved tool output), Codex's rollout file, OpenCode's session export with Svall's log of it | Agent logins, user-wide settings, skills, MCP servers and hooks; Claude's file history, which `/rewind` uses, and session environment; OpenCode's own folders (`~/.local/share/opencode`, `~/.config/opencode`, `~/.local/state/opencode`, `~/.cache/opencode`) but for its worktrees, its undo snapshots, subagent sessions, and shell and tool-output files |
 | `.env` files inside the folders that move | The fleet's own `.env`, unless `handover.transferFleetEnv` is on in `fleet.json` |
 | | Every running process, its pid, its tmux window and its scrollback |
 
-Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `target/` and `.next/`, and
-`*.tsbuildinfo` files, are left out by default, and each machine keeps its own. `handover.exclude` in `fleet.json`
+Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `target/`, `.next/`, `.pytest_cache/`,
+`.ruff_cache/` and `.mypy_cache/`, and `*.tsbuildinfo` files, are left out by default, and each
+machine keeps its own. `handover.exclude` in `fleet.json`
 adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A folder a terminal is in moves whole, so a
 shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in
 until you choose Carry the folder whole (`--carry-unused`), move the terminal, or leave them out.
@@ -114,8 +115,13 @@ either. A repository's `origin` that names a path on the Mac travels as it is, a
 
 A folder the fleet left on a machine stays there as a replica of what was last carried. Moving back copies only what
 changed. If something on that replica changed while the machine did not own the fleet, the checks before the copy stop
-the handover rather than overwrite it: copy the changes back by hand, or archive the replica. A change made there once
-the copy has started is overwritten.
+the handover rather than overwrite it: copy the changes back by hand, or archive the replica. What an OS or editor
+writes on its own (`.DS_Store`, `._*`, `.idea/workspace.xml` and `.vscode/*.log` files) never counts as a
+change, and neither does Git packing a repository's refs. Such a file moves like any other and replaces the other
+machine's, but a copy never deletes one only the other machine has, unless the folder holding it is gone from the
+machine the fleet is on. Once a folder's first copy pass is done, whatever a later pass replaces or deletes there is moved into a sibling
+folder named `<folder>.overwritten-<handover id>`, a subfolder for each pass, and the folder's row and the result name
+those files, twenty at most and a count of the rest.
 
 A repository can say where it runs with `.svall/handover.json`, such as `{ "platforms": ["darwin"] }`, which
 blocks a move to Linux while a character works in it. An Xcode project in a folder moving to Linux is only a warning.
@@ -236,7 +242,7 @@ four to say what is safe:
 
 | Status says | Do |
 | --- | --- |
-| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet; `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
+| Resume or Abort | Before the commit. `svall handover --resume` carries on, copying only what is not there yet, on the machine that started the handover; on the other one, status names that machine and offers only Abort. `svall handover --abort` gives the fleet back to the machine it came from and reopens only the terminals the handover stopped. |
 | Resume only | After the commit. `svall handover --resume` activates the fleet on the machine it went to. The machine it came from never takes it back by itself. |
 | Nothing is safe | The gateway cannot say whether the commit landed: wait until it is reachable and ask again; if it is gone for good, see [When the gateway is lost](#when-the-gateway-is-lost). A journal that could not be read, a handover between other machines, or another run already going also stop here; the message says which, and [what to do](errors.md#why-nothing-is-safe). |
 | Forget | The gateway has moved on past this handover. `svall handover --forget` drops this Mac's journal of it. |
@@ -268,7 +274,9 @@ What else to know:
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the
-  handover until you copy the changes back or archive it. One made while the copy runs is lost.
+  handover until you copy the changes back or archive it. What a pass after a folder's first replaces there is kept
+  aside; only a file saved there after the checks and before the folder's first pass reaches it is lost, and the checks
+  cover every folder at once, before the first is copied.
 - **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
 
@@ -284,13 +292,16 @@ svall fleet recover --force-owner local --gateway spare       # another registry
 
 1. It shows what the gateway and every machine hold, this Mac's journal and cached route, every generation it saw,
    the record it would write (at a generation above all of them) and the risks.
-2. It writes only after you type the fleet id; without a terminal, `--confirm <fleet id>` does that.
+2. It writes only after you type the fleet id at its prompt, in a terminal of your own outside any fleet's agents and
+   tmux panes. Any other run shows the same and writes nothing.
 3. It records the write in `controller/recoveries.ndjson` in the fleet home, and with a gateway also in the gateway's
    `recoveries.ndjson`, then tells every machine that answers: the one it names runs the fleet, and the others let go
-   and close their terminals.
-4. A machine it could not reach is listed under **next**. This Mac, and the gateway's own machine unless `--gateway`
-   replaced it, take the record when their daemon next starts; any other has to be stopped, then the command run
-   again once it answers.
+   and close their terminals. Each asks the gateway itself; one that cannot reach it lets the fleet go on the record
+   it is told of, and never takes one that makes it the owner.
+4. A machine it could not reach, or the one it names that could not reach the gateway, is listed under **next**.
+   This Mac, and the gateway's own machine unless `--gateway` replaced it, take the record when their daemon next
+   starts, and while it runs let the fleet go within five minutes of a record naming another machine, which stops
+   its agents where they are; any other has to be stopped, then the command run again once it answers.
 
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
 carried. A machine that prepared a handover it never ran drops what it prepared, and the risks name it. `--gateway`
@@ -386,15 +397,18 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   background server, whose hooks Svall ignores, so its terminal has no agent: the checks show `shell_busy` (*is running
   codex*), and Terminate and carry leaves its session on the machine the fleet left. Type `codex --no-daemon` there
   instead; a character's own zsh and the agents Svall starts add it already.
-- **An edit on the other machine while the copy runs is lost.** The checks compare each folder there with what was
-  last carried before the copy starts; a change made there after that is overwritten. Leave the other machine's copies
-  alone until the handover ends.
-- **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
-  both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
-  it once. On one Mac, the second start is refused.
-- **A late Begin can leave an open handover behind.** When the gateway receives a start only after its handover was
-  aborted, it holds a handover nobody drives. `svall handover status` shows it open, and `svall handover --abort`
-  closes it.
+- **An edit on the other machine before the copy reaches it can be lost.** The checks compare every folder there with
+  what was last carried, all at once, just before the copy starts. Folders are then copied one after another, and every
+  pass after a folder's first keeps aside what it replaces, but a file saved in a folder after the checks and before
+  that folder's first pass reaches it is overwritten. For each folder, that span takes in the copy and verification of
+  every folder ahead of it. Leave the other machine's copies alone until the handover ends.
+- **A worktree the other machine keeps can lose its branch name.** The copy keeps the Git objects such a worktree
+  needs there, but not its branch once the machine the fleet is on no longer has that branch: the copy deletes the
+  ref and replaces `packed-refs` whole. Its HEAD then names a branch that is gone: `git reflog` in that worktree names its commit, and
+  `git branch <name> <commit>` names it again.
+- **A folder whose parent cannot be written on the other machine**, such as `/srv/app` with `/srv` owned by root,
+  stops the copy with an rsync error once a pass after its first has something to keep aside, since
+  `<folder>.overwritten-<handover id>` goes beside it.
 - **Saved tool output can name the other machine's folder.** A Claude transcript names each full tool output it
   saved by path. They move to the same path when both machines keep Claude's files in the same folder (`~/.claude`,
   unless `CLAUDE_CONFIG_DIR` says otherwise). Where they differ, the agent sees only each output's preview; running
@@ -404,16 +418,17 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`): half the heap
   at 8 KiB a file, such as 68,832 files when one machine has 2 GB of memory. Leave generated folders out with
   `handover.exclude`.
-- **A Git clean filter set up on one machine only is found after the copy.** A repository that uses Git LFS,
-  git-crypt, nbstripout or another clean filter, usually set up in `~/.gitconfig`, reads as changed where git lacks
-  that filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file
-  is copied. Nothing checks this sooner: set the same filter up on the other machine first, such as with `git lfs
-  install`.
+- **A Git clean filter set up in one machine's global config only is found after the copy.** A repository that uses
+  Git LFS, git-crypt, nbstripout or another clean filter set up in `~/.gitconfig` reads as changed where git lacks that
+  filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file is
+  copied: set the same filter up on the other machine first, such as with `git lfs install`. One set up in the
+  repository's own config is found at the checks instead (`git_config_command`), until the other machine's global
+  config sets the same.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the
-  Linux machine, so does `svall handover --resume` there. A move to this Mac also waits to confirm the commit with
-  the gateway, so it starts only once the link is back.
+  Linux machine, so does `svall handover --resume` there. The machine the fleet went to confirms the commit with the
+  gateway; when it cannot reach the gateway, it takes the gateway's answer to the commit that the controller kept.
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
   The character waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,
@@ -427,7 +442,11 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A Codex terminal a handover reopened with its session, or one you open again after a handover could not resume
   it, and quit before its first prompt** goes dormant again, its window closed, saying Codex exited before that
   session started: Codex reports a session only once it takes a turn. The session is kept; open the terminal again.
-- **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops.
+- **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops, or the
+  app's connection helper next starts and ends it.
+- **A copy of `machine.json` made before Svall tied it to the hardware goes unnoticed.** The first machine to read
+  a file that names no hardware binds it to its own, so two machines that held copies of it before then each bind
+  theirs, and both pass as that machine. Move one aside so it mints its own id.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
 - **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a
   single character or island, forward ports, keep a phone URL across machines, or move from one Linux machine to

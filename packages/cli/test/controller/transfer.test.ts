@@ -66,10 +66,15 @@ async function session(o: { id?: string; home: string; stage: string; files: str
 type Answer = { lines?: string[]; code?: number; stderr?: string; hang?: boolean };
 
 /** An rsync that answers from a script: `dry` for the verification compare, `real` for a copy. */
-function fakeRsync(answer: (argv: string[], n: { real: number; dry: number }) => Answer = () => ({})) {
+// a listing of what a copy kept aside answers `listing`, and lists nothing unless it says so
+function fakeRsync(answer: (argv: string[], n: { real: number; dry: number }) => Answer = () => ({}), listing: (n: { real: number; dry: number }) => string[] = () => []) {
   const calls: string[][] = [];
   const n = { real: 0, dry: 0 };
   const run: RunRsync = async (_exe, argv, o) => {
+    if (argv.includes('--list-only')) {
+      for (const line of listing(n)) o.onLine(line);
+      return { code: 0, signal: null, stderr: '' };
+    }
     calls.push(argv);
     if (argv.includes('--dry-run')) n.dry++; else n.real++;
     const a = answer(argv, n);
@@ -111,6 +116,9 @@ const options = (o: Partial<TransferOptions> & Pick<TransferOptions, 'entries' |
 });
 
 const sha = (text: string): string => crypto.createHash('sha256').update(text).digest('hex');
+// a run's start, which names the folders its later passes keep what they replace in
+const NOW = Date.UTC(2026, 9, 21, 20, 15, 0);
+const RUN = '2026-10-21T201500Z';
 
 describe('transfer with a scripted rsync', () => {
   it('writes a root only where its claim says, with --delete and its claim\'s excludes, and a session\'s listed files with neither', async () => {
@@ -171,6 +179,16 @@ describe('transfer with a scripted rsync', () => {
     expect(r.entries).toEqual([{ id: 'r_git', status: 'verified', passes: 1, files }]);
     const filter = rsync.real()[0].find((a) => a.startsWith('--exclude-from='))!.slice('--exclude-from='.length);
     expect(fs.readFileSync(filter, 'utf8')).toBe(filterRules(excludes, 'gitdir'));
+  });
+
+  it('compares a push by size and time, which the destination re-hashes at prepare, and a pull by checksum, which nothing re-hashes', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    const push = fakeRsync();
+    await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: push.run } }));
+    expect(push.dry()[0]).not.toContain('--checksum');
+    const pull = fakeRsync();
+    await transfer(options({ roles: PULL, entries: [await root({ source: '/far/app', claimed: src, scanned: src })], stateDir: tmp(), deps: { run: pull.run } }));
+    expect(pull.dry()[0]).toContain('--checksum');
   });
 
   it('pulls into the claimed local copy, and reads that copy against the manifest', async () => {
@@ -461,7 +479,7 @@ describe('transfer with a scripted rsync', () => {
   it('verifies once a passing writer settles, and counts a vanished file as a changing source', async () => {
     const src = tree(tmp(), { 'a.txt': 'a' });
     const state = tmp();
-    const swap = path.join(src, '.a.txt.swp');
+    const swap = path.join(src, '.a.txt.tmp');
     const rsync = fakeRsync((argv, n) => {
       if (argv.includes('--dry-run')) return {};
       if (n.real === 1) { fs.writeFileSync(swap, 'swap'); return {}; }
@@ -478,6 +496,16 @@ describe('transfer with a scripted rsync', () => {
     const rsync = fakeRsync((argv) => (argv.includes('--dry-run') ? { lines: ['.L...p..... link -> a.txt'] } : {}));
     const r = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: rsync.run } }));
     expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+  });
+
+  it('verifies a copy whose compare differs only in OS or editor noise, and still counts a file named like none', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', '.DS_Store': 'finder' });
+    const noisy = fakeRsync((argv) => (argv.includes('--dry-run') ? { lines: ['>fcst...... .DS_Store', '>f+++++++++ sub/._a.txt', '*deleting   .idea/workspace.xml'] } : {}));
+    const r = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: noisy.run } }));
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    const real = fakeRsync((argv) => (argv.includes('--dry-run') ? { lines: ['>fcst...... .DS_Store.txt'] } : {}));
+    const blocked = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), deps: { run: real.run } }));
+    expect(blocked.blockers).toEqual([expect.objectContaining({ code: 'external_writer' })]);
   });
 
   it('still counts a link whose target or times the compare itemizes as changed', async () => {
@@ -497,6 +525,53 @@ describe('transfer with a scripted rsync', () => {
     const r = await transfer(options({ roles: PULL, entries: [await root({ source: '/far/app', claimed: copy, scanned: copy })], stateDir: state, deps: { run: rsync.run } }));
     expect(r.blockers).toEqual([expect.objectContaining({ code: 'external_writer', message: expect.stringMatching(/^the source \/far\/app kept changing through 3 passes \(a\.txt\)/) })]);
     expect(rsync.real()).toHaveLength(3);
+  });
+
+  it('compares content in a resume, which an edit of the same size within the same second would pass by', async () => {
+    const state = tmp();
+    const entry = await root({ source: tree(tmp(), { 'a.txt': 'a' }), claimed: '/far/app' });
+    const failing = fakeRsync(() => ({ code: 23 }));
+    await transfer(options({ roles: PUSH, entries: [entry], stateDir: state, deps: { run: failing.run } }));
+    expect(failing.real()[0]).not.toContain('--checksum');
+    const resumed = fakeRsync();
+    expect((await transfer(options({ roles: PUSH, entries: [entry], stateDir: state, deps: { run: resumed.run } }))).entries).toMatchObject([{ status: 'verified', passes: 1 }]);
+    expect(resumed.real()[0]).toContain('--checksum');
+    expect(resumed.dry()[0]).toContain('--checksum');
+    // a copy verified already is compared by content before it counts as settled, so a Try again after prepare finds what differs
+    const again = fakeRsync();
+    expect((await transfer(options({ roles: PUSH, entries: [entry], stateDir: state, deps: { run: again.run } }))).entries).toMatchObject([{ status: 'verified', passes: 0 }]);
+    expect(again.dry()[0]).toContain('--checksum');
+  });
+
+  it('keeps aside and lists what a later pass replaces in a copy that changed after the first, and backs up nothing in the first', async () => {
+    const copy = tree(tmp(), { 'a.txt': 'a' });
+    const state = tmp();
+    const rsync = fakeRsync((argv, n) => {
+      if (argv.includes('--dry-run')) return {};
+      // something edits the pulled copy and adds a file there once the first pass wrote it
+      if (n.real === 1) { fs.writeFileSync(path.join(copy, 'a.txt'), 'edited here'); fs.writeFileSync(path.join(copy, 'new.txt'), 'mine'); return {}; }
+      if (n.real > 2) return {};
+      fs.writeFileSync(path.join(copy, 'a.txt'), 'a');
+      fs.rmSync(path.join(copy, 'new.txt'));
+      return { lines: ['>fcst...... a.txt', '*deleting   new.txt'] };
+    }, (n) => {
+      const at = `${path.basename(copy)}.overwritten-tx-1`;
+      const line = (type: string, p: string) => `${type}rw-r--r--          4 2026/10/21 22:00:00 ${at}${p}`;
+      return n.real < 2 ? [] : [line('d', ''), line('d', `/${RUN}-pass2`), line('-', `/${RUN}-pass2/a.txt`), line('l', `/${RUN}-pass2/l`), line('-', `/${RUN}-pass2/new.txt`), line('d', `/${RUN}-pass2/old`)];
+    });
+    const entry = await root({ source: '/far/app', claimed: copy, scanned: copy });
+    const r = await transfer(options({ roles: PULL, entries: [entry], stateDir: state, deps: { run: rsync.run, now: () => NOW } }));
+    const keptAt = `${copy}.overwritten-tx-1`;
+    const paths = [`${RUN}-pass2/a.txt`, `${RUN}-pass2/l`, `${RUN}-pass2/new.txt`];
+    // the pass that put the copy back reads as one more change, which the third pass finds settled
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 3, overwritten: { keptAt, paths } }]);
+    const [first, second, third] = rsync.real();
+    expect(first.some((a) => a.startsWith('--backup'))).toBe(false);
+    expect(second).toEqual(expect.arrayContaining(['--backup', `--backup-dir=${keptAt}/${RUN}-pass2`]));
+    expect(third).toContain(`--backup-dir=${keptAt}/${RUN}-pass3`);
+    // a resume that finds the copy still verified hands back what earlier passes kept aside
+    const again = await transfer(options({ roles: PULL, entries: [entry], stateDir: state, deps: { run: fakeRsync().run } }));
+    expect(again.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 0, overwritten: { keptAt, paths } }]);
   });
 
   it('names the local copy when something writes into it while it is compared', async () => {
@@ -659,6 +734,41 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(fs.readFileSync(path.join(claimed, '.git/worktrees/stay/index'), 'utf8')).toBe('idx');
   });
 
+  it('keeps the objects a kept worktree may stage from, where the source packed them away, and verifies', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', '.git/HEAD': 'ref: refs/heads/main\n', '.git/objects/pack/new.pack': 'packed' });
+    const claimed = tree(path.join(tmp(), 'app'), {
+      '.git/HEAD': 'ref: refs/heads/main\n', '.git/objects/ab/cdef': 'only the kept index stages this', '.git/objects/pack/old.pack': 'old',
+      '.git/worktrees/stay/HEAD': 'ref: refs/heads/stay\n', 'stale.txt': 'gone from the source',
+    });
+    const entry = await root({ source: src, claimed });
+    const r = await transfer({ transactionId: 'tx-o', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [{ ...entry, claim: { ...entry.claim, keep: ['.git/worktrees/stay'] } }] });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    expect(fs.readFileSync(path.join(claimed, '.git/objects/ab/cdef'), 'utf8')).toBe('only the kept index stages this');
+    expect(fs.existsSync(path.join(claimed, '.git/objects/pack/old.pack'))).toBe(true);
+    expect(fs.existsSync(path.join(claimed, 'stale.txt'))).toBe(false);
+
+    // with no worktree kept there, the copy mirrors the object store like any folder
+    const plain = tree(path.join(tmp(), 'app'), { '.git/HEAD': 'ref: refs/heads/main\n', '.git/objects/ab/cdef': 'unused' });
+    const again = await transfer({ transactionId: 'tx-p', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed: plain })] });
+    expect(again.entries).toMatchObject([{ id: 'r_app', status: 'verified' }]);
+    expect(fs.existsSync(path.join(plain, '.git/objects/ab'))).toBe(false);
+  });
+
+  it('never deletes OS or editor noise only the far side has in a folder that stays, deletes a folder the source dropped whole, and verifies', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', '.idea/misc.xml': 'm' });
+    const claimed = tree(path.join(tmp(), 'app'), {
+      '.DS_Store': 'finder', '.idea/workspace.xml': 'layout', 'gone/._x': 'fork', 'gone/x.txt': 'gone from the source',
+      // a folder Finder browsed two levels down
+      'old/.DS_Store': 'finder', 'old/sub/.DS_Store': 'finder',
+    });
+    const r = await transfer({ transactionId: 'tx-n', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })] });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    expect(fs.readFileSync(path.join(claimed, '.DS_Store'), 'utf8')).toBe('finder');
+    expect(fs.readFileSync(path.join(claimed, '.idea/workspace.xml'), 'utf8')).toBe('layout');
+    expect(fs.existsSync(path.join(claimed, 'gone'))).toBe(false);
+    expect(fs.existsSync(path.join(claimed, 'old'))).toBe(false);
+  });
+
   it('carries a Git directory on its own whole, where an exclude names one of Git\'s entries', async () => {
     const gitdir = tree(tmp(), { HEAD: 'ref: refs/heads/main\n', 'logs/HEAD': 'log', 'objects/ab/cd': 'o', 'build/out.o': 'built' });
     const excludes = [...EXCLUDES, 'logs/'];
@@ -771,13 +881,109 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(content(landed)).toEqual(content(await scan(claimed)));
   });
 
+  it('moves an edit made in the far copy after the first pass aside before the next pass replaces it', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', 'notes.md': 'v0' });
+    const claimed = tmp();
+    let edited = false;
+    const run: RunRsync = async (exe, argv, o) => {
+      const r = await runRsync(exe, argv, o);
+      if (!argv.includes('--dry-run') && !edited) { fs.writeFileSync(path.join(claimed, 'notes.md'), 'my edit'); fs.writeFileSync(path.join(claimed, 'mine.md'), 'mine'); edited = true; }
+      return r;
+    };
+    const r = await transfer({ transactionId: 'tx-d', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run, now: () => NOW } });
+    const keptAt = `${claimed}.overwritten-tx-d`;
+    temps.push(keptAt);
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 2, overwritten: { keptAt, paths: [`${RUN}-pass2/mine.md`, `${RUN}-pass2/notes.md`] } }]);
+    expect(fs.readFileSync(path.join(claimed, 'notes.md'), 'utf8')).toBe('v0');
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/notes.md`), 'utf8')).toBe('my edit');
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/mine.md`), 'utf8')).toBe('mine');
+  });
+
+  it('lists a file the far copy holds where the source has a folder or a link once a later pass replaced it', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a', 'sub/b.txt': 'b' });
+    fs.symlinkSync('a.txt', path.join(src, 'l'));
+    const claimed = tmp();
+    let edited = false;
+    const run: RunRsync = async (exe, argv, o) => {
+      const r = await runRsync(exe, argv, o);
+      if (argv.includes('--list-only') || argv.includes('--dry-run') || edited) return r;
+      for (const p of ['sub', 'l']) fs.rmSync(path.join(claimed, p), { recursive: true });
+      fs.writeFileSync(path.join(claimed, 'sub'), 'a file of mine');
+      fs.writeFileSync(path.join(claimed, 'l'), 'another');
+      edited = true;
+      return r;
+    };
+    const r = await transfer({ transactionId: 'tx-f', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run, now: () => NOW } });
+    const keptAt = `${claimed}.overwritten-tx-f`;
+    temps.push(keptAt);
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 2, overwritten: { keptAt, paths: [`${RUN}-pass2/l`, `${RUN}-pass2/sub`] } }]);
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/sub`), 'utf8')).toBe('a file of mine');
+  });
+
+  it('keeps what a pass kept aside when its listing fails, stops rather than verify, and the resume names it', async () => {
+    const src = tree(tmp(), { 'notes.md': 'v0' });
+    const claimed = tmp();
+    const stateDir = tmp();
+    const entry = await root({ source: src, claimed });
+    let copies = 0;
+    const run: RunRsync = async (exe, argv, o) => {
+      // the link drops as the second pass's kept files are listed
+      if (argv.includes('--list-only')) return { code: 12, signal: null, stderr: 'rsync: connection unexpectedly closed' };
+      const r = await runRsync(exe, argv, o);
+      if (!argv.includes('--dry-run') && ++copies === 1) fs.writeFileSync(path.join(claimed, 'notes.md'), 'my edit');
+      return r;
+    };
+    const keptAt = `${claimed}.overwritten-tx-l`;
+    temps.push(keptAt);
+    const failed = await transfer({ transactionId: 'tx-l', roles: PUSH, master, rsync: RSYNC, stateDir, entries: [entry], deps: { run, now: () => NOW } });
+    expect(failed.entries).toMatchObject([{ id: 'r_app', status: 'failed', error: expect.stringContaining('connection unexpectedly closed') }]);
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/notes.md`), 'utf8')).toBe('my edit');
+    const resumed = await transfer({ transactionId: 'tx-l', roles: PUSH, master, rsync: RSYNC, stateDir, entries: [entry], deps: { now: () => NOW + 60_000 } });
+    expect(resumed.entries).toMatchObject([{ id: 'r_app', status: 'verified', overwritten: { keptAt, paths: [`${RUN}-pass2/notes.md`] } }]);
+    expect(fs.readFileSync(path.join(claimed, 'notes.md'), 'utf8')).toBe('v0');
+  });
+
+  it('lists what a run that ended mid-pass kept, on the resume', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    const claimed = tmp();
+    const stateDir = tmp();
+    const entry = await root({ source: src, claimed });
+    const keptAt = `${claimed}.overwritten-tx-m`;
+    temps.push(keptAt);
+    // the earlier run's second pass kept a file and the controller went before it said so
+    new ProgressJournal('tx-m', transactionDir('tx-m', stateDir)).put({ id: 'r_app', kind: 'root', state: 'transferring', pass: 2, done: 0, total: 0, bytes: 0, totalBytes: 1, items: 0 });
+    tree(keptAt, { '20261020T000000Z-pass2/mine.md': 'mine' });
+    const r = await transfer({ transactionId: 'tx-m', roles: PUSH, master, rsync: RSYNC, stateDir, entries: [entry], deps: { now: () => NOW } });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1, overwritten: { keptAt, paths: ['20261020T000000Z-pass2/mine.md'] } }]);
+  });
+
+  it('keeps what each later pass replaced apart, so a third pass never replaces what the second kept', async () => {
+    const src = tree(tmp(), { 'notes.md': 'v0' });
+    const claimed = tmp();
+    let copies = 0;
+    const run: RunRsync = async (exe, argv, o) => {
+      const r = await runRsync(exe, argv, o);
+      if (argv.includes('--dry-run')) return r;
+      // an edit on the far copy after the first pass, then the source moving after the second
+      if (++copies === 1) fs.writeFileSync(path.join(claimed, 'notes.md'), 'my edit');
+      if (copies === 2) fs.writeFileSync(path.join(src, 'notes.md'), 'v1');
+      return r;
+    };
+    const r = await transfer({ transactionId: 'tx-3', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run, now: () => NOW } });
+    const keptAt = `${claimed}.overwritten-tx-3`;
+    temps.push(keptAt);
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 3, overwritten: { keptAt, paths: [`${RUN}-pass2/notes.md`, `${RUN}-pass3/notes.md`] } }]);
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass2/notes.md`), 'utf8')).toBe('my edit');
+    expect(fs.readFileSync(path.join(keptAt, `${RUN}-pass3/notes.md`), 'utf8')).toBe('v0');
+  });
+
   it('stops after three passes of a source an outside writer keeps changing', async () => {
     const src = tree(tmp(), { 'a.txt': 'a', 'notes.md': 'v0' });
     const claimed = tmp();
     let edits = 0;
     const run: RunRsync = async (exe, argv, o) => {
       const r = await runRsync(exe, argv, o);
-      if (!argv.includes('--dry-run')) fs.writeFileSync(path.join(src, 'notes.md'), `v${++edits}`);
+      if (!argv.includes('--dry-run') && !argv.includes('--list-only')) fs.writeFileSync(path.join(src, 'notes.md'), `v${++edits}`);
       return r;
     };
     const r = await transfer({ transactionId: 'tx-w', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [await root({ source: src, claimed })], deps: { run } });

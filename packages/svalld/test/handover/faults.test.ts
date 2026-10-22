@@ -71,8 +71,11 @@ describe('the failpoint registry', () => {
  * crash that has to come first for the step to run at all, with what changes while that party is down. A failpoint
  * without an entry here does not typecheck.
  */
-/** `resumes`: a crash there that is resumed has to finish the move, as a step that is idempotent does. */
-type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void; resumes?: true };
+/**
+ * `resumes`: a crash there that is resumed has to finish the move, as a step that is idempotent does. `resumeOnly`: only a
+ * resume after the crash `after` names reaches the step, as an abort never gets that far.
+ */
+type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void; resumes?: true; resumeOnly?: true };
 const REACH: Record<Failpoint, Reach> = {
   'source.freeze.journal': { scenario: 'move', times: 1 },
   'source.freeze.surrender': { scenario: 'move', times: 1 },
@@ -102,6 +105,16 @@ const REACH: Record<Failpoint, Reach> = {
   'destination.claim.seal': { scenario: 'move', times: 1 },
   'destination.claim.root': { scenario: 'move', times: 7 },
   'destination.claim.archive': { scenario: 'move', times: 1 },
+  'destination.archive.moveout': { scenario: 'move', times: 1 },
+  // cy, whose record says while trift is down that it held Git's records it no longer does, is moved aside whole
+  'destination.archive.aside': {
+    scenario: 'move', times: 0, after: { name: 'destination.claim.archive', edge: 'before', nth: 1 }, resumeOnly: true,
+    setup: (w) => {
+      const file = w.trift.paths.replicaRecord(fleetId, fs.realpathSync(w.cy));
+      const record = JSON.parse(fs.readFileSync(file, 'utf8')) as { baseline: { path: string }[] };
+      fs.writeFileSync(file, JSON.stringify({ ...record, baseline: record.baseline.map((f) => ({ ...f, path: '.git/HEAD' })) }));
+    },
+  },
   'destination.verify.journal': { scenario: 'move', times: 1 },
   'destination.verify.landed': { scenario: 'move', times: 1 },
   'destination.verify.record': { scenario: 'move', times: 1 },
@@ -138,7 +151,7 @@ const REACH: Record<Failpoint, Reach> = {
   'gateway.abort.write': { scenario: 'abort', times: 1 },
   'gateway.complete.write': { scenario: 'move', times: 1 },
   'gateway.commit.respond': { scenario: 'move', times: 1 },
-  'controller.journal': { scenario: 'move', times: 14 },
+  'controller.journal': { scenario: 'move', times: 16 },
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
@@ -158,7 +171,9 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
 // a move run's crash before the gateway holds its Begin or the controller has journaled one leaves nothing to resume
-const UNRESUMABLE = new Set(['gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1']);
+const UNRESUMABLE = new Set([
+  'gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1', 'controller.journal:before#2', 'controller.journal:after#2',
+]);
 
 describe('the guard on steps outside every failpoint', () => {
   const world = worlds();
@@ -205,6 +220,7 @@ describe('a crash at every failpoint', () => {
 
   for (const k of CASES) {
     for (const [prefer, heal] of [['resume', 'crashed'], ['abort', 'all']] as const) {
+      if (k.resumeOnly && prefer === 'abort') continue;
       it(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
         const w = world();
         w.targets = [...(k.after ? [k.after] : []), { name: k.name, edge: k.edge, nth: k.nth }];
@@ -431,9 +447,10 @@ describe('the gateway lost', () => {
       when: 'after Ready', at: 'controller.commit:before', first: { status: 'interrupted', phase: 'commit' }, source: false, destination: false,
       settles: { resume: 'destination', abort: 'source' },
     },
+    // the destination activates on the commit's answer the controller hands it
     {
-      when: 'after Commit', at: 'gateway.commit.respond:after', first: { status: 'interrupted', phase: 'activate' }, source: false, destination: false,
-      settles: { resume: 'destination', abort: 'destination' },
+      when: 'after Commit', at: 'gateway.commit.respond:after', first: { status: 'complete', pending: ['source', 'gateway'] } as Partial<Outcome>,
+      source: false, destination: true, settles: { resume: 'destination', abort: 'destination' },
     },
     {
       when: 'during Complete', at: 'destination.complete.journal:after', first: { status: 'complete', pending: ['source', 'gateway'] } as Partial<Outcome>,

@@ -22,7 +22,7 @@ not `handover.enabled` is on.
 - **The checks come first.** Nothing moves until they pass, and each blocker says what to do: finish or interrupt a
   working agent, end a busy shell's command, archive a folder in the way, carry a terminal's folder whole when it
   holds repositories no character works in. A folder changed on the other machine while it did not own the fleet stops
-  the handover before the copy starts; one changed there while the copy runs is overwritten.
+  the handover before the copy starts; what a later copy pass replaces there is kept aside and listed.
 - **A handover survives interruptions.** It carries on while the app is closed, with this Mac's daemon and terminals
   left running for it. A dropped link or a killed process leaves it where it stopped, and the sheet or
   `svall handover status` says whether Resume or Abort is safe. Before the commit an abort gives the fleet back; after

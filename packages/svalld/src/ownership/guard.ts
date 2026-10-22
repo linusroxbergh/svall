@@ -100,5 +100,6 @@ export function guardMethod(ownership: OwnershipState, method: MethodName, calle
   if ((kind === 'recovery' || kind === 'transaction' || method === 'handover.inspect') && caller !== 'app') {
     throw Object.assign(new Error(`${method} answers only a client that holds this fleet's token`), { code: 'unauthorized' });
   }
+  if (kind === 'recovery' || kind === 'transaction') ownership.assertOwnId();
   if (kind === 'mutation' || kind === 'terminal') ownership.assertOwner(kind);
 }
