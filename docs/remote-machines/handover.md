@@ -257,8 +257,8 @@ four to say what is safe:
 What else to know:
 
 - **Killing the app** stops nothing, since the helper runs on. **Killing the helper** (or a foreground `svall
-  handover`) leaves the handover where it stopped. The journals say where that is, the sheet rebuilds from them when
-  the app opens, and `status` says what to do.
+  handover`) leaves the handover where it stopped. The journals say where that is: a sheet that was following the
+  helper reads them at once, and one opened later rebuilds from them, and `status` says what to do.
 - **Starting while a handover is open here** stops and offers only `svall handover --resume`, which goes the one safe
   way on; `svall handover status` says whether `--abort` is safe too.
 - **The Mac sleeping** suspends the helper and drops its link. Before the commit the fleet stays frozen on the machine

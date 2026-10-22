@@ -210,12 +210,14 @@ const STATUS_SAYS: (StopReason | undefined)[] = [undefined, 'superseded', 'runni
 const OPEN_ELSEWHERE: string[] = ['transaction_open', 'generation_mismatch', 'identity_mismatch'];
 
 /**
- * A run whose status the sheet then reads: the checks stopped it for a handover that may already be open, or a resume or
- * abort found nothing safe, which its error says in the controller's ids.
+ * A run whose status the sheet then reads: the checks stopped it for a handover that may already be open, a resume or
+ * abort found nothing safe, which its error says in the controller's ids, or the helper it followed ended with no result.
  */
 export function asksStatus(run: HandoverRun | undefined): boolean {
   if (!run || run.following || run.status || run.checking) return false;
   const r = run.result;
+  // a look the sheet took itself that heard nothing is not taken again
+  if (!r) return !run.error && !run.stopped;
   return r?.status === 'blocked' ? r.blockers.some((b) => OPEN_ELSEWHERE.includes(b.code)) : r?.status === 'interrupted' && !r.safe.length && STATUS_SAYS.includes(r.stop);
 }
 
