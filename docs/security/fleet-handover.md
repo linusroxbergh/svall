@@ -318,7 +318,9 @@ of the manifest and of what landed, not read off the wire.
   ctime was within 2 s of that read, as git treats a racy-clean index entry, then again in the controller's verify when the controller runs there. The destination
   hashes a replica at preflight, again at the claim, then what landed at prepare, and once more after the Git import
   each root that holds or lies in a carried Git directory. The seal is what landed, with only what the import writes
-  taken from that last read: each carried graph's `config`, and the worktree registrations it removes. rsync's
+  taken from that last read: each carried graph's `config`, and the worktree registrations it removes. Prepare flushes
+  what landed before it records having proved it, and one asked again once the seal is written hashes what landed once
+  more, bar what the import rewrites. rsync's
   compare reads both sides by checksum in a pull; in a push it compares sizes and times, since prepare re-hashes the
   copy against the source's read, except in a resume, whose compares and first pass go by checksum so a retry after
   prepare finds a file of the same size and second that differs. Each of the destination's proofs guards a different moment (before any write, before

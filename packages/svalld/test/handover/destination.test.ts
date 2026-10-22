@@ -454,7 +454,7 @@ describe('destination prepare', () => {
     expect(d.ownership.writable()).toBe(false);
   });
 
-  it('flushes every root that landed to disk before it journals the prepared state, and journals none while that fails', async () => {
+  it('flushes every root that landed to disk before it records having proved it, and records nothing while that fails', async () => {
     const s = await scene();
     const synced: string[][] = [];
     const flushed: string[][] = [];
@@ -468,12 +468,27 @@ describe('destination prepare', () => {
     expect(files.length).toBeGreaterThan(0);
     expect([...flushed[0]].sort()).toEqual(files.sort());
     expect(journalOf(s.paths)).toMatchObject({ phase: 'verify' });
-    expect(journalOf(s.paths).preparedDigest).toBeUndefined();
+    expect(journalOf(s.paths).landedDigest).toBeUndefined();
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
     fails = undefined;
     const { preparedDigest } = await d.handover.prepare(params(s));
     expect(journalOf(s.paths)).toMatchObject({ phase: 'prepare', preparedDigest });
-    expect(synced).toHaveLength(2);
+    // what landed, then what the Git import wrote, of which this fleet's roots hold nothing
+    expect(flushed.slice(1).map((f) => [...f].sort())).toEqual([files, []]);
+  });
+
+  it('proves what landed again when asked again after recording that proof, and journals no prepare over a file a power cut emptied', async () => {
+    const s = await scene();
+    let flushes = 0;
+    // the power goes before the import's writes reach the disk
+    const d = daemon(s, { syncRoots: async () => { if (++flushes === 2) throw new Error('EIO: i/o error, syncfs'); } });
+    await expect(d.handover.prepare(params(s))).rejects.toThrow(/could not be flushed to disk: EIO/);
+    expect(journalOf(s.paths).landedDigest).toBeDefined();
+    fs.truncateSync(path.join(s.dst, 'work/bo/index.ts'));
+    const r = await refusal(d.handover.prepare(params(s)));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'destination_diverged', message: expect.stringContaining('index.ts') }));
+    expect(journalOf(s.paths)).toMatchObject({ phase: 'verify' });
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
   });
 
   it('flushes the filesystems that hold a set of roots with the sync this platform has', async () => {
@@ -841,11 +856,13 @@ describe('destination prepare', () => {
       return { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
     };
     const d = daemon(s, { git });
-    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+    const codes = async () => blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code);
+    expect(await codes()).toContain('worktree_unresolved');
+    // asked again with what landed, as a prepare whose answer was lost is, it proves that again, bar the config its import wrote
+    expect(await codes()).toEqual(['worktree_unresolved']);
     fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here\n');
     fs.writeFileSync(path.join(s.dst, 'work/bo/mine.txt'), 'written here\n');
-    // asked again with what landed, as a prepare whose answer was lost is, it does not prove that again
-    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+    expect(await codes()).toContain('destination_diverged');
 
     const r = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
     const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;

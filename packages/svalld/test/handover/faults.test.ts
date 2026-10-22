@@ -117,6 +117,7 @@ const REACH: Record<Failpoint, Reach> = {
   },
   'destination.verify.journal': { scenario: 'move', times: 1 },
   'destination.verify.landed': { scenario: 'move', times: 1 },
+  'destination.verify.sync': { scenario: 'move', times: 1, resumes: true },
   'destination.verify.record': { scenario: 'move', times: 1 },
   'destination.prepare.seal': { scenario: 'move', times: 1 },
   'destination.prepare.delete': { scenario: 'move', times: 2, resumes: true },

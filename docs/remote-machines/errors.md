@@ -38,7 +38,7 @@ What `handover.changed` and `status` report, in order.
 | `freeze` | Resting characters | The source fences every change, rests its terminals and writes the manifest. | Resume or Abort. |
 | `transfer` | Transferring files and sessions | The destination claims each folder, then rsync copies folders and sessions. | Resume or Abort; a resume copies only what changed. |
 | `verify` | Verifying | The copy is checked against the source. | Resume or Abort. |
-| `prepare` | Verifying | The destination proves what landed, imports Git, places the sessions, flushes what landed to disk and writes the state it would run. | Resume or Abort. |
+| `prepare` | Verifying | The destination proves what landed and flushes it to disk, imports Git, places the sessions, flushes what the import wrote and writes the state it would run. Asked again after its Git import, it proves what landed again, bar what the import rewrote. | Resume or Abort. |
 | `ready` | Verifying | The gateway records that the source is frozen and the destination prepared. | Resume or Abort. |
 | `commit` | Committing | The gateway moves the fleet to the destination at the next generation. | Only the gateway knows whether it landed: `status` once it answers. |
 | `activate` | Resuming characters | The destination runs the fleet and resumes the terminals the handover rested. | Resume (Retry). |
