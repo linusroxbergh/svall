@@ -185,7 +185,8 @@ profile for bwrap is installed, a Codex character asks before each command. The 
 another reason, what it said.
 
 A resumed Codex reports its process only with its first turn, as it runs its SessionStart hook then: until that turn,
-`svall char list` shows its `pid` as null while it runs.
+`svall char list` shows its `pid` as null while it runs, idle dormancy leaves that terminal be, and a sleep refuses
+it, as both find the agent by its pid.
 
 ## What restarts
 
