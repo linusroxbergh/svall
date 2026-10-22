@@ -1781,6 +1781,27 @@ describe('a far machine that is down', () => {
     expect(settledOn(w)).toBe('destination');
   });
 
+  it('on the source with no route to the destination, offers nothing for a moved handover that only its own journal still holds', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.down.add('trift');
+    expect(await controller(w, eager(w)).resume()).toMatchObject({ status: 'complete', pending: ['source'] });
+    w.down.delete('trift');
+    w.store.j = undefined;
+    w.store.files.clear();
+    const ops = w.ops.length;
+    const c = controller(w, unrouted(w));
+    expect((await c.status()).verdict).toMatchObject({ standing: 'moved', safe: [], reason: expect.stringContaining('it goes on only from the Mac it went to: run `svall handover --resume` there') });
+    expect(await c.resume()).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere' });
+    expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
+  });
+
   it('with no journal here, after the destination completed, still finishes a committed handover while the source is down and nothing says how far it got', async () => {
     const w = await lostAt('trift:handover.complete');
     w.down.add('mac');

@@ -1092,10 +1092,13 @@ export class Handover {
     const drives = tx?.controllerId;
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
-    const named = [...new Set([drives, to].filter((id): id is MachineId => id !== undefined))];
-    const unrouted = named.filter((id) => !this.routes(id));
-    const names = Object.fromEntries(named.filter((id) => !unrouted.includes(id)).map((id) => [id, this.nameOf(id)]));
-    const local = { local: this.d.local, ...(Object.keys(names).length && { names }), ...(unrouted.length && { unrouted }) };
+    // the machine that drives the handover and the one it goes to, named when this one routes to them
+    const reach = (...ids: (MachineId | undefined)[]) => {
+      const named = [...new Set(ids.filter((id): id is MachineId => id !== undefined))];
+      const unrouted = named.filter((id) => !this.routes(id));
+      const names = Object.fromEntries(named.filter((id) => !unrouted.includes(id)).map((id) => [id, this.nameOf(id)]));
+      return { local: this.d.local, ...(Object.keys(names).length && { names }), ...(unrouted.length && { unrouted }) };
+    };
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
     const owned = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('ownership.get', {}));
     type Status = Seen<Result<'handover.status'>>;
@@ -1109,14 +1112,15 @@ export class Handover {
     };
     if (from && to) {
       const [s, d] = await Promise.all([source(from), destination(to)]);
-      return { ...local, controller, gateway, source: s, destination: d };
+      return { ...reach(drives, to), controller, gateway, source: s, destination: d };
     }
     // no journal names the machines: a daemon that holds a handover says which side of it it is
     const held = await Promise.all(this.d.machines.map(async (id) => ({ id, s: await status(id) })));
     const on = (side: 'fromMachineId' | 'toMachineId') => held.find((x) => x.s.ok && x.s.value.transaction?.[side] === x.id);
     const [f, t] = [on('fromMachineId'), on('toMachineId')];
     const [s, d] = await Promise.all([f && source(f.id, f.s), t && destination(t.id, t.s)]);
-    return { ...local, controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
+    const went = f?.s.ok ? f.s.value.transaction?.toMachineId : undefined;
+    return { ...reach(drives, went), controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
   }
 
   /** The journal a resume or abort acts on: the controller's own, or one rebuilt from the other three. */
