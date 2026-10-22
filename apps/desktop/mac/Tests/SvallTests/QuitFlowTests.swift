@@ -8,9 +8,9 @@ final class QuitFlowTests: XCTestCase {
     private var holds = 0
     private var answers: [Bool] = []
 
-    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false, following: Bool = false) -> QuitFlow {
+    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false, following: Bool = false, running: Bool = false) -> QuitFlow {
         QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
-                 elsewhere: { elsewhere }, handoverOpen: { handover }, handoverFollowed: { following },
+                 elsewhere: { elsewhere }, handoverOpen: { handover }, handoverFollowed: { following }, handoverRunning: { running || following },
                  confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); return true },
                  kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 })
     }
@@ -67,11 +67,32 @@ final class QuitFlowTests: XCTestCase {
         }
     }
 
-    func testAHandoverLeftOpenWithNoHelperFollowedAsksNoOneToKeepTheMacAwake() {
+    func testAHandoverNoHelperOfThisWindowRunsAsksNoOneToKeepTheMacAwake() {
         quit(flow(handover: true), working: 2)
-        XCTAssertEqual(asked, ["Quit Svall? The handover left open waits in Handover for when you open Svall again."])
+        XCTAssertEqual(asked, ["Quit Svall? The open handover waits in the Handover sheet until you open Svall again."])
         XCTAssertEqual(sent, ["quit.ask"])
         XCTAssertEqual(kills, 0)
+        // one started from a terminal, or not yet attached to, runs on without this window
+        asked = []
+        quit(flow(handover: true, running: true))
+        XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed."])
+    }
+
+    func testAHandoverRunsWhileALiveProcessHoldsItsLock() throws {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-quit-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let lock = home.appendingPathComponent("controller/handover.lock")
+        try FileManager.default.createDirectory(at: lock.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
+        try Data("\(ProcessInfo.processInfo.processIdentifier)\n".utf8).write(to: lock)
+        XCTAssertTrue(SvallHome.handoverRunning(at: home.path))
+        // a holder that is gone, as after a kill -9
+        let gone = Process()
+        gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try gone.run()
+        gone.waitUntilExit()
+        try Data("\(gone.processIdentifier)\n".utf8).write(to: lock)
+        XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
     }
 
     func testUnsavedFilesAreNamedBesideAnOpenHandover() {

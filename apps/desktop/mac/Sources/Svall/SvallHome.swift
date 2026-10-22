@@ -45,6 +45,13 @@ enum SvallHome {
         ["/controller/handover.json", "/handover/journal.json"].contains { FileManager.default.fileExists(atPath: home + $0) }
     }
 
+    /// Whether a handover run holds this fleet's lock: a helper, or `svall handover` in a terminal, still alive under the pid it wrote.
+    static func handoverRunning(at home: String = path) -> Bool {
+        guard let text = try? String(contentsOfFile: home + "/controller/handover.lock", encoding: .utf8),
+              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0 else { return false }
+        return kill(pid, 0) == 0 || errno == EPERM
+    }
+
     /// Where this Mac keeps its machine id and the registry of the machines it reaches.
     static var configDir: String {
         ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"

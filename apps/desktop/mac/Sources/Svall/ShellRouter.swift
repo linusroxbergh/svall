@@ -40,7 +40,8 @@ final class ShellRouter {
                                              return true
                                          },
                                          handoverOpen: { [weak self] in self?.handover?.isFollowing == true || SvallHome.handoverOpen() },
-                                         handoverFollowed: { [weak self] in self?.handover?.isFollowing == true })
+                                         handoverFollowed: { [weak self] in self?.handover?.isFollowing == true },
+                                         handoverRunning: { SvallHome.handoverRunning() })
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
