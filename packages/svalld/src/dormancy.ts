@@ -180,10 +180,10 @@ export async function processes(): Promise<Proc[]> {
   });
 }
 
-/** Remembers on `c`'s agent the launch flags a resume repeats, read off its process among `procs`, for a dormancy
+/** Remembers on `t`'s agent the launch flags a resume repeats, read off its process among `procs`, for a dormancy
  *  that finds no process to read them from. */
-export function rememberFlags(c: Character, procs: Proc[]): void {
-  const a = c.agent;
+export function rememberFlags(t: TerminalSlot, procs: Proc[]): void {
+  const a = t.agent;
   const proc = a && procs.find((p) => p.pid === a.pid);
   if (!a || !proc) return;
   const flags = startFlags(proc.args, a.kind);

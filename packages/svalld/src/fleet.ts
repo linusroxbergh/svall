@@ -978,15 +978,18 @@ export class Fleet extends EventEmitter<Events> {
       const c = this.deps.store.state.characters[charId];
       if (sessionId && (term === 2 ? c?.second : c)?.agent?.sessionId === sessionId) this.emit('session-start', charId, term, sessionId);
       // only a start the character took: one dropped as a server's or a nested run's reads nothing
-      if (pid && term !== 2 && c?.agent?.pid === pid) this.track(this.rememberFlags(charId, pid), `flags ${charId}`);
+      if (pid && (term === 2 ? c?.second : c)?.agent?.pid === pid) this.track(this.rememberFlags(charId, term, pid), `flags ${charId}`);
     }
     return reply;
   }
 
   // the flags a quit resumes the agent with when ps fails it, read while the process that started the session is known
-  private async rememberFlags(id: string, pid: number): Promise<void> {
+  private async rememberFlags(id: string, term: 2 | undefined, pid: number): Promise<void> {
     const procs = await this.sleep.processes().catch((e) => { this.deps.log.error(`flags ${id}: ${String(e)}`); return undefined; });
     if (!procs || this.stopped) return;
-    this.deps.store.update((d) => { const c = d.characters[id]; if (c?.agent?.pid === pid) rememberFlags(c, procs); });
+    this.deps.store.update((d) => {
+      const t = term === 2 ? d.characters[id]?.second : d.characters[id];
+      if (t?.agent?.pid === pid) rememberFlags(t, procs);
+    });
   }
 }

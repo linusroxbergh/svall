@@ -904,6 +904,30 @@ runIf('Fleet', () => {
     expect(b.store.state.characters[c.id].agent?.flags).toEqual(['--effort', "'xhigh'"]);
   });
 
+  it('revives a second terminal whose window closed, or that a quit without ps stopped, with the flags remembered at its start', async () => {
+    let failing = false;
+    const b = await boot({ processes: async () => { if (failing) throw new Error('ps timed out'); return b.procs; } });
+    const { c } = await withAgent(b);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const revive = { command: `claude --effort 'xhigh' --resume ${sessionId}` };
+    const start = async () => {
+      const { windowId, paneId } = (await b.fleet.openSecond(c.id)).second!.tmux!;
+      const pid = Number((await b.tmux.run('display', '-p', '-t', paneId, '#{pane_pid}')).trim());
+      b.procs.push({ pid, ppid: 1, pgid: pid, args: 'claude --effort xhigh' });
+      await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionStart', sessionId, pid, transcriptPath: '/t' } });
+      await b.fleet.settle();
+      expect(b.store.state.characters[c.id].second?.agent?.flags).toEqual(['--effort', "'xhigh'"]);
+      return windowId;
+    };
+    await b.tmux.killWindow(await start());
+    await waitFor(() => !b.store.state.characters[c.id].second?.tmux);
+    expect(b.store.state.characters[c.id].second?.revive).toEqual(revive);
+    await start();
+    failing = true;
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].second?.revive).toEqual(revive);
+  });
+
   it('resumes an agent a quit stopped mid-turn as the fleet starts again, telling it what was lost', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
