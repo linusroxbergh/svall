@@ -884,6 +884,26 @@ runIf('Fleet', () => {
     expect(errors.some((m) => m.startsWith('quit: ps failed'))).toBe(true);
   });
 
+  it('has a settle wait for the launch flags a session start reads off its process', async () => {
+    // the server check on the start passes; the read of its flags waits until released
+    const gate: { calls: number; held?: Promise<void> } = { calls: 0 };
+    const b = await boot({ pollMs: 60_000, processes: async () => { if (gate.held && gate.calls++ > 0) await gate.held; return b.procs; } });
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const pid = Number((await b.tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
+    b.procs.push({ pid, ppid: 1, pgid: pid, args: 'claude --effort xhigh' });
+    let release!: () => void;
+    gate.held = new Promise<void>((r) => { release = r; });
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid, transcriptPath: '/nope' } });
+    let settled = false;
+    const settling = b.fleet.settle().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(settled).toBe(false);
+    expect(b.store.state.characters[c.id].agent?.flags).toBeUndefined();
+    release();
+    await settling;
+    expect(b.store.state.characters[c.id].agent?.flags).toEqual(['--effort', "'xhigh'"]);
+  });
+
   it('resumes an agent a quit stopped mid-turn as the fleet starts again, telling it what was lost', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
