@@ -20,7 +20,7 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
   source). The fault suites crash every failpoint and fault every controller request; the container harness
   (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux and passes at every integrated head; a
   release installs fresh on x86-64 and arm64; real Claude, Codex and OpenCode sessions resumed both ways on
-  linus-vault at 10447557 and 18082655 (`ledger/pr2-onmachine-report-10447557.md`).
+  linus-vault at 10447557, 18082655 and 14377218 (`ledger/pr2-onmachine-report-10447557.md`).
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote

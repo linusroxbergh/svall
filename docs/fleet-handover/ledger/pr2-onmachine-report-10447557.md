@@ -432,3 +432,66 @@ and `logs/y-*`. Status: **PASS**, with B1 and B2 reproduced.
   - m4 has no tmux server and no agent, and its index files are 644.
   - No login copy is left. The owner's `known_hosts` is unchanged, and 0 test-HOME apps are registered.
   - The stale socket file `$TH/tmp/svall-502/48958-51b29d693167` is still there.
+
+## 8. Step 3 again at `14377218` (the fixes for B1–B3 and the minors), with no chmod
+
+`origin/worktree-port-pr-1` at `14377218` (PR #226 merged in). Logs are `logs/rebuild-14377218.out` and `logs/z-*`.
+Status: **PASS**. B1, B2, B3, M1, M2 and M4 are fixed. M5 is not.
+
+- **Rebuild** (14:33–14:35Z).
+  - Release `14377218`: app 0.13.0 (CFBundleVersion 1068), protocol 25, stateSchema 9, transferSchema 1,
+    authoritySchema 2, unsigned.
+  - All 3 archives scanned `ok`.
+  - The compare is 0 DIFF on both sides.
+- **`host upgrade m4`** came back `ready` in 15 s; both units now run `14377218`.
+- **Logins.** Copied at 14:35:36Z, with 275 minutes left on Claude's token. Deleted at 14:39:19Z, leaving 0 files and
+  0 OpenCode rows on either machine.
+- **B3 fixed.**
+  - With no provider row (`opencode auth list` printed `[]`), `host doctor m4` said "! opencode opencode v2.0.27, not
+    signed in: opencode auth login". That makes 7 warnings.
+  - `--check` (`z-check-0`) listed `agent_logged_out` for opencode as a warning, not a blocker: "opencode is not
+    logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models;
+    for a provider's model, run opencode auth login there".
+  - Doctor and Checks agree. Only claude and codex blocked, being truly logged out.
+- **B1 fixed.**
+  - The rebuild's snapshots ran `git status` on m4 at 14:33:05Z, leaving `src/alpha/.git/index`,
+    `.git/worktrees/feat/index`, `src/beta/.git/index` and `dev/gamma/.git/index` at **664**. No chmod was run.
+  - `--check --carry-unused` (`z-check-1`) came back `ready`, and Mac → Linux ran without `destination_diverged`.
+  - `git status` was also run in the Mac's fenced copies before the return. It left them at 644 and rewrote none.
+    Linux → Mac was not blocked either.
+- **Mac → Linux** (`z-m2l`, 14:36:18Z): complete at **g15** in **14.1 s**, 4/4 `ok`, with no `resumeError`.
+- **B2 fixed.**
+  - Straight after the resume, claude-r's `transcriptPath` read `…/-Users-Shared-svall-m4-src-alpha/2d38c2d0-….jsonl`,
+    the real file.
+  - `--check local` (`z-check-2`), run before any turn, came back `ready`.
+  - The same held after the kill and `--resume` below (`z-check-4` was `ready`).
+- **Linux → Mac** (`z-l2m`, 14:37:21Z): complete at **g16** in **13.7 s**, 4/4 `ok`, with no `resumeError`.
+  - The compare across the round trip (`cmp-z-r-before-mac--z-r-after-mac`) is 53 DIFF, all of them expected fields.
+    Git and files are equal.
+- **Turns.** `OSPREY`, `MANGO` and `LYNX` each answered with R14-MAC1 on the Mac, R14-LINUX on Linux, then R14-MAC2
+  and R14-MAC3 on the Mac. Session ids were unchanged throughout.
+- **Helper killed, then `--resume`** (`z-kill-*`, Mac → Linux).
+  - `--detach`, then `kill -9` of the helper (pid 75182) at transfer. Its `ssh -M` (pid 75188) was alive after the
+    kill.
+  - `handover status` printed:
+
+    ```
+    Handover 65b95047-e748-43d2-b5d4-d13116108725 open, at transfer: it is preparing and has not committed; it can go on, or be aborted back to linuss-macbook-pro.
+      from linuss-macbook-pro to m4, generation 16
+      source journal: freeze; destination journal: none
+    Safe: `svall handover --resume` or `svall handover --abort`.
+    ```
+
+    That names the machine, and the transaction once (M2 fixed).
+  - `--resume` completed at **g17** in 9.2 s. Afterwards no `ssh -M` of the test HOME ran, and `$TH/tmp/svall-502/`
+    was empty, including the stale socket from §6 (M1 fixed).
+- **Back to the Mac** (`z-l2m-2`): complete at **g18**.
+  - `handover status` now reads "No handover of this fleet is open anywhere." (M2's doubled line fixed).
+  - `svall handover --help` lists `on` and `off` (M4 fixed).
+- **Not fixed (M5).** codex-r's pid is still `null` after every resume until its first turn.
+- **End state.**
+  - **The Mac owns at g18**, and no handover is open.
+  - svalld 77564 runs on `14377218`; tmux runs `_keep` and shell `c_jal5kh`.
+  - The three agents are dormant with their `revive`. m4 runs no agent.
+  - No login copy is left and no `ssh -M` or helper runs. 0 test-HOME apps are registered with LaunchServices.
+  - The owner's `known_hosts` (md5 `1f403c13…`) and launchd job (their own plist) are unchanged.
