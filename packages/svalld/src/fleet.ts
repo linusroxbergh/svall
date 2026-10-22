@@ -891,8 +891,23 @@ export class Fleet extends EventEmitter<Events> {
       if (second.agent) { settle(second.agent, 'idle'); second.unread = false; }
       cur.second = second;
     });
-    if (resuming && command) this.resuming.set(secondName(id), resuming); else this.resuming.delete(secondName(id));
-    if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
+    try {
+      if (resuming && command) this.resuming.set(secondName(id), resuming); else this.resuming.delete(secondName(id));
+      if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
+    } catch (e) {
+      // as a revive's: the window goes, and a failed resume and its session stay, for a fresh start to retry
+      this.resuming.delete(secondName(id));
+      this.deps.store.update((d) => {
+        const second = d.characters[id]?.second;
+        if (second?.tmux?.windowId !== w.windowId) return;
+        delete second.tmux;
+        if (c.second?.revive) second.revive = c.second.revive;
+        if (c.second?.resumeError) second.resumeError = c.second.resumeError;
+        if (c.second?.agent && !second.agent) second.agent = c.second.agent;
+      });
+      await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`open ${secondName(id)}: ${String(k)}`));
+      throw e;
+    }
     return this.char(id);
   }
 
