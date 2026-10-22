@@ -2,13 +2,17 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, type MachineRecord, type OwnerRecord, type OwnershipInfo } from '@svall/protocol';
 import { FleetAuthority, gatewayPaths, type OwnerOp, type OwnerParams } from '@svall/svalld/gateway/authority';
 import { resolvePaths } from '@svall/svalld/paths';
-import { recoverFleet, render, unattended, type DaemonPort, type GatewayPort, type RecoverEvent, type RecoverOptions } from '../src/commands/fleet-recover.js';
+import { fleetCommands, recoverFleet, render, unattended, type DaemonPort, type GatewayPort, type RecoverEvent, type RecoverOptions } from '../src/commands/fleet-recover.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { readRoute, writeRoute } from '../src/controller/route.js';
+import { ask } from '../src/prompt.js';
+
+// the command's own prompt, which no run here is to reach
+vi.mock('../src/prompt.js', () => ({ ask: vi.fn(async () => '') }));
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -277,6 +281,39 @@ describe('fleet recover --force-owner', () => {
         expect(result.message, what).not.toMatch(/SVALL|CHAR_ID|TMUX|--|\$|env/);
         await untouched(w, held);
       }
+    }
+  });
+
+  it('refuses, as the command runs it, a run by a character or with no terminal, and asks nothing', async () => {
+    const fleetHome = tmp();
+    const config = JSON.stringify({ id: fleetId, gatewayMachineId: TRIFT });
+    fs.writeFileSync(resolvePaths(fleetHome).fleetConfig, config);
+    vi.stubEnv('SVALL_CONFIG_DIR', tmp());
+    const streams = [process.stdin, process.stdout];
+    const isTTY = streams.map((x) => x.isTTY);
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    const recover = async (tty: boolean, env: Record<string, string>) => {
+      for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+      for (const x of streams) Object.defineProperty(x, 'isTTY', { value: tty, configurable: true });
+      out.length = 0;
+      const target = () => { throw new Error('no target'); };
+      await fleetCommands(() => fleetHome, () => true, () => undefined, target).parseAsync(['recover', '--force-owner', 'local'], { from: 'user' });
+      return out.map((l) => JSON.parse(l) as RecoverEvent).find((e) => e.event === 'recover.result')?.data;
+    };
+    try {
+      for (const [tty, env, why] of [[true, { SVALL_CHAR_ID: 'c-1' }, "is a character's"], [false, {}, 'has no terminal']] as const) {
+        expect(await recover(tty, env), why).toMatchObject({ result: 'refused', message: expect.stringMatching(new RegExp(`^nothing was written: .* this run ${why}$`)) });
+        expect(process.exitCode, why).toBe(1);
+      }
+      expect(ask).not.toHaveBeenCalled();
+      expect(fs.readFileSync(resolvePaths(fleetHome).fleetConfig, 'utf8')).toBe(config);
+      expect(fs.existsSync(path.join(fleetHome, 'controller', 'recoveries.ndjson'))).toBe(false);
+    } finally {
+      write.mockRestore();
+      streams.forEach((x, i) => Object.defineProperty(x, 'isTTY', { value: isTTY[i], configurable: true }));
+      vi.unstubAllEnvs();
+      process.exitCode = 0;
     }
   });
 
