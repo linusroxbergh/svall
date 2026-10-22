@@ -1288,15 +1288,17 @@ runIf('Fleet', () => {
       expect(ended.waits - waits).toBe(1);
     });
 
-    it('leaves a second terminal that ran an agent dormant with the session it resumes, and closes its window', async () => {
+    it('leaves a second terminal that ran an agent dormant with the session it resumes and its launch flags, and closes its window', async () => {
       const b = await sleepBoot();
       const { c } = await withAgent(b);
-      const second = (await b.fleet.openSecond(c.id)).second!.tmux!.windowId;
+      const { windowId: second, paneId } = (await b.fleet.openSecond(c.id)).second!.tmux!;
+      const pid = Number((await b.tmux.run('display', '-p', '-t', paneId, '#{pane_pid}')).trim());
+      b.procs.push({ pid, ppid: 1, pgid: pid, args: 'claude --effort xhigh' });
       const sessionId = '11111111-1111-4111-8111-111111111111';
-      b.store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+      b.store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath: '/t', status: 'idle', lastActivityAt: 1, pid }; });
       await b.fleet.sleepCharacter(c.id);
       expect(b.store.state.characters[c.id].second?.tmux).toBeUndefined();
-      expect(b.store.state.characters[c.id].second?.revive).toEqual({ command: `claude --resume ${sessionId}` });
+      expect(b.store.state.characters[c.id].second?.revive).toEqual({ command: `claude --effort 'xhigh' --resume ${sessionId}` });
       expect(await b.tmux.hasWindow(second)).toBe(false);
     });
 
