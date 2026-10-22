@@ -429,8 +429,8 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   Git LFS, git-crypt, nbstripout or another clean filter set up in `~/.gitconfig` reads as changed where git lacks that
   filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file is
   copied: set the same filter up on the other machine first, such as with `git lfs install`. One set up in the
-  repository's own config is found at the checks instead (`git_config_command`), until the other machine's global
-  config sets the same.
+  repository's own config, or in any of its submodules', is found at the checks instead (`git_config_command`), until
+  the other machine's global config sets the same.
 - **A committed handover can run nowhere for a while.** If the controller stops right after the commit (the link
   drops, the Mac sleeps, or the helper is killed), the machine the fleet went to holds it read-only until a resume
   activates it, so the fleet runs on neither machine. Retry (`svall handover --resume`) starts it; for a move to the

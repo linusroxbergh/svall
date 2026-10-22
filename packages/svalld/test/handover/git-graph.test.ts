@@ -218,6 +218,31 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     );
   });
 
+  it('warns of the commands a submodule\'s config names wherever its Git directory lies: in a linked worktree\'s registration, in its own checkout, or in a submodule\'s', async () => {
+    const l = seedHere(made);
+    const s = l.source;
+    const common = path.join(s.main, '.git');
+    const vendor = path.join(s.detached, 'vendor');
+    git(l.base, s.sibling, 'submodule', 'add', '-q', s.lib, 'sub');
+    // a repository already in the checkout stays where it is, its .git a folder
+    git(l.base, s.detached, 'clone', '-q', s.lib, 'vendor');
+    git(l.base, s.detached, 'submodule', 'add', '-q', s.lib, 'vendor');
+    git(l.base, vendor, 'submodule', 'add', '-q', s.lib, 'inner');
+    git(l.base, path.join(s.sibling, 'sub'), 'config', 'filter.wtsub.clean', 'x');
+    git(l.base, vendor, 'config', 'filter.vendor.process', 'x');
+    git(l.base, path.join(vendor, 'inner'), 'config', 'filter.inner.smudge', 'x');
+    const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
+    expect(d.blockers).toEqual([]);
+    expect(d.graphs.find((g) => g.commonDir === common)?.commands).toEqual(expect.arrayContaining([
+      { at: path.join(common, 'worktrees/sibling/modules/sub'), key: 'filter.wtsub.clean', value: 'x' },
+      { at: path.join(vendor, '.git'), key: 'filter.vendor.process', value: 'x' },
+      { at: path.join(vendor, '.git/modules/inner'), key: 'filter.inner.smudge', value: 'x' },
+    ]));
+    expect(d.warnings.find((w) => w.code === 'git_config_command' && w.entity?.id === graphId(common))?.message).toBe(
+      `${common}: its config names commands git runs, and travels with it: filter.inner.smudge, filter.vendor.process, filter.wtsub.clean`,
+    );
+  });
+
   it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {
     const l = seedHere(made);
     const s = l.source;

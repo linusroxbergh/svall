@@ -266,6 +266,18 @@ function submoduleDirs(modules: string): string[] {
   });
 }
 
+// the Git directory of each submodule a checkout holds, wherever it lies, and of each nested in one, as git status reaches them
+async function submodulesOf(checkout: string, git: GitRunner): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of (await must(git, ['ls-files', '--stage', '-z'], checkout)).split('\0')) {
+    if (!entry.startsWith('160000 ')) continue;
+    const inner = path.join(checkout, entry.slice(entry.indexOf('\t') + 1));
+    if (!fs.existsSync(path.join(inner, '.git'))) continue;
+    out.push((await must(git, ['rev-parse', '--absolute-git-dir'], inner)).replace(/\n$/, ''), ...await submodulesOf(inner, git));
+  }
+  return out;
+}
+
 type Setting = { scope: string; key: string; value: string };
 
 /** Every setting git reads in `cwd`, or for the Git directory `gitDir`, with its scope; each include that applies there is followed. */
@@ -286,11 +298,14 @@ const COMMAND = new RegExp(COMMAND_KEYS);
 export const runsHere = (key: string): boolean => key !== 'core.sshcommand';
 
 /**
- * Each command setting a repository's own or worktree config holds for a checkout, or a submodule's Git directory under
- * `commonDir`, read there with the includes that apply, and whether this machine's global or system config sets it the same.
+ * Each command setting a repository's own or worktree config holds for a checkout, or for the Git directory of a submodule
+ * under `commonDir` or in a checkout, read there with the includes that apply, and whether this machine's global or system
+ * config sets it the same.
  */
 export async function repoCommands(commonDir: string, checkouts: readonly string[], git: GitRunner): Promise<(GitCommand & { own: boolean })[]> {
-  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((at) => ({ at, cwd: at })), ...submoduleDirs(path.join(commonDir, 'modules')).map((at) => ({ at, cwd: commonDir, gitDir: at }))];
+  const gitDirs = new Set(submoduleDirs(path.join(commonDir, 'modules')));
+  for (const at of checkouts) for (const d of await submodulesOf(at, git)) gitDirs.add(d);
+  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((at) => ({ at, cwd: at })), ...[...gitDirs].map((at) => ({ at, cwd: commonDir, gitDir: at }))];
   const found: (GitCommand & { own: boolean })[] = [];
   for (const { at, cwd, gitDir } of places) {
     const all = await settings(git, cwd, gitDir);
