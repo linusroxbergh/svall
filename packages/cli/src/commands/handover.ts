@@ -540,7 +540,7 @@ async function forget(c: Ctx, paths: HelperPaths, w: Words, out: Out, source = f
     fs.rmSync(paths.events, { force: true });
     const left = source && observation.source?.ok === false ? observation.controller?.source.name : undefined;
     out.note(left
-      ? `Forgot this controller's journal of ${id}. ${left} did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and \`${w.svall('handover --resume')}\` finishes that side once it answers again.`
+      ? `Forgot this controller's journal of ${id}. ${left} did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and \`${w.svall('handover --resume')}\` finishes that side if it answers again before \`${w.svall('host remove')}\` drops it.`
       : `Forgot this controller's journal of ${id ?? 'a handover that never began'}; the daemons' journals and the gateway's record are as they were.`);
     if (c.json) out.event({ event: 'handover.status', data: scrubbed((await tx.handover.status()).verdict) });
     return 0;

@@ -748,7 +748,7 @@ describe('svall handover', () => {
     expect(fs.existsSync(journal)).toBe(true);
     expect(await runForget(h.ctx, { source: true })).toBe(0);
     expect(fs.existsSync(journal)).toBe(false);
-    expect(h.out()).toContain("Forgot this controller's journal of tx-1. trift did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and `svall handover --resume` finishes that side once it answers again.");
+    expect(h.out()).toContain("Forgot this controller's journal of tx-1. trift did not answer, so its side stays as the handover left it: the fleet stays frozen there with its record of the handover, and `svall handover --resume` finishes that side if it answers again before `svall host remove` drops it.");
   });
 
   it('reads status without changing anything, naming the helper that runs it and --forget for a superseded journal', async () => {

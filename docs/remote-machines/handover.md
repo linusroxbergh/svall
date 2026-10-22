@@ -296,7 +296,7 @@ What else to know:
   after that fleet's home was removed there, leaves this Mac's journal open: the app resumes it again at each launch,
   and `svall host remove` refuses that machine. Once three resumes have not reached it, status offers `svall handover
   --forget --source`, which drops the journal. What is left of the fleet there stays frozen with its record of the
-  handover, and `svall handover --resume` finishes that side if it answers again.
+  handover, and `svall handover --resume` finishes that side if it answers again before `svall host remove` drops it.
 
 ## When the gateway is lost
 

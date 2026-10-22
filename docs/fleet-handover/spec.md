@@ -769,7 +769,8 @@ At or after Commit:
 - characters that fail to resume remain dormant with their transcript and a visible error;
 - a source that does not answer once the destination and the gateway completed is finished by a later resume; after
   three resumes that could not reach it, status offers `svall handover --forget --source`, which drops the
-  controller's journal and leaves that side frozen for a resume to finish if it answers again.
+  controller's journal and leaves that side frozen for a resume to finish if it answers again before the
+  registry drops it.
 
 If the controller disappears, the sheet and CLI reconstruct status from the three journals.
 `svall handover status` says whether Abort or Resume is safe. A stale pre-commit transaction may be
