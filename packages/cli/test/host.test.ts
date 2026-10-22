@@ -113,7 +113,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.156.1\n' });
   ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
   ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
-  ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: 'Credentials ~/.local/share/opencode/auth.json\n' });
+  ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone', '--format', 'json'], { stdout: '[{"id":"openai"}]\n' });
 }
 
 /** A daemon on the far side of the forward, so the end-to-end probe has something to answer it: from `release`, while it `accepts`. */
@@ -257,6 +257,17 @@ describe('host add', () => {
     healthy({ agents: false });
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
     ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stderr: 'Error: no credentials\n', code: 1 });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.22, not logged in', action: 'ssh trift.test, then opencode auth login' });
+  });
+
+  it("names an OpenCode whose auth list names no model provider as not logged in, as doctor and the handover's checks do", async () => {
+    healthy({ agents: false });
+    ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
+    ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: '[]\n' });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
