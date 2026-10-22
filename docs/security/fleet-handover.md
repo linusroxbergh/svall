@@ -427,6 +427,9 @@ can share a Docker host. The last run took under four minutes, the companion bui
 - **The phone page's package list is the web app's whole production closure** (161 packages), not only what Vite
   inlined. Listing more than was bundled is harmless in a NOTICE; a list from the Vite build would need `dist-mobile`
   rebuilt before every release build.
+- **The hardware tie of `machine.json` fails open**: where the hardware id cannot be read (no `ioreg` answer, no
+  `/etc/machine-id`), the daemon takes the file's id unchecked, as the tie is there to catch a copy a backup restore or
+  Migration Assistant made by mistake, and refusing would leave such a machine read-only for good.
 - **`svall setup` replaces `~/.local/bin/svall`** whatever it was. It is setup's own name.
 - **An upgrade restarts a fleet daemon the user disabled but whose unit file remains.** A rollback must not leave a
   failed daemon down, so it restarts every unit.
