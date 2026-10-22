@@ -475,7 +475,7 @@ export type HintContext = { destination: string; source: string; pull: boolean; 
 const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Za-z]{14}) past the copy coming in$/;
 
 /** What a blocker or warning means for the user, beside what the helper said. */
-export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
+export function blockerHint(b: Blocker, ctx: HintContext, warning = false): string | undefined {
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
   // the Linux machine, by the name svall host knows it by
   const linux = ctx.pull ? ctx.source : ctx.destination;
@@ -573,7 +573,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     case 'agent_cli_missing':
       return "Install it on the machine the message names, where Svall's daemon finds it, then try again.";
     case 'agent_logged_out':
-      return `Log it in on ${ctx.destination}, in a terminal there. A login never moves with the fleet.`;
+      // as a warning, the agent answers with no login on the source too, and its message says when one is needed
+      return warning ? undefined : `Log it in on ${ctx.destination}, in a terminal there. A login never moves with the fleet.`;
     case 'agent_hooks_missing':
       return `Run svall setup on ${ctx.destination}, then try again.`;
     case 'path_unsupported':

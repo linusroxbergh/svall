@@ -209,6 +209,14 @@ test('the warnings that bite once the fleet has moved stay in sight, and only th
   expect(screen.getByTestId('handover-warning-env_file').closest('details')).not.toBeNull();
 });
 
+test('an OpenCode warned of as logged in on neither machine is not told to log in there', () => {
+  render(<HandoverSheet />);
+  say({ event: 'handover.preflight', data: { summary, blockers: [], warnings: [
+    { code: 'agent_logged_out', message: "opencode is not logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models; for a provider's model, run opencode auth login there" },
+  ], names } });
+  expect(screen.getByTestId('handover-warning-agent_logged_out').textContent).not.toMatch(/Log it in/);
+});
+
 test('Show in Finder is offered only for a folder on this Mac while the fleet runs here; elsewhere the path is named with its machine', () => {
   render(<HandoverSheet />);
   const linked = (message: string): HandoverEvent => ({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [{ code: 'path_symlinked', message, entity: { kind: 'root', id: 'r_1' } }] } });
