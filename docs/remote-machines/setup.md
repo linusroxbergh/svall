@@ -105,10 +105,11 @@ Adding the same machine again runs every check again and changes nothing that is
 
 ### An API key in your shell
 
-A handover checks each agent's login in the Svall daemon's systemd environment, not in your shell. An agent's
-terminal starts your shell, so an API key exported only in `~/.bashrc` or `~/.profile` (such as `ANTHROPIC_API_KEY` or
-`OPENAI_API_KEY`) works for the agent while the check says it is not logged in. Put the key in
-`~/.config/environment.d/agents.conf` as well, as `NAME=value` lines, then run `systemctl --user daemon-reload` and
+A handover checks each agent's login in the Svall daemon's systemd environment, with the fleet's `.env` keys
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) added as a character gets them, not in your shell. An agent's terminal starts
+your shell, so an API key exported only in `~/.bashrc` or `~/.profile` works for the agent while the check says it is
+not logged in. Put the key in the fleet's `.env`, which the checks read each time, or in
+`~/.config/environment.d/agents.conf` as `NAME=value` lines and then run `systemctl --user daemon-reload` and
 `systemctl --user restart svall-svalld@private`.
 
 ### The companion release

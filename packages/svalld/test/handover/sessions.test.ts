@@ -13,7 +13,7 @@ import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { codexAdapter } from '../../src/handover/sessions/codex.js';
 import { opencodeAdapter } from '../../src/handover/sessions/opencode.js';
 import {
-  HANDOVER_KINDS, adapterFor, agentAdapters, agentBlockers, cliRunner, installSession, placeTranscripts, probeAgent, realInstallFs,
+  HANDOVER_KINDS, adapterFor, agentAdapters, agentBlockers, cliRunner, installSession, placeTranscripts, probeAgent, realInstallFs, realProbeDeps,
   type AgentProbe, type AgentRun, type InstallFs,
 } from '../../src/handover/sessions/registry.js';
 import { repairBrief } from '../../src/handover/sessions/repair.js';
@@ -1019,6 +1019,25 @@ describe('agent preflight', () => {
     expect(await probeAgent('opencode', deps(0, [], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
     expect(await probeAgent('opencode', deps(1, [openai], {}))).toEqual({ kind: 'opencode', version: '2.0.22', home: logs, loggedIn: false, hooks: false });
     expect(await probeAgent('opencode', { ...deps(0, [], {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
+  });
+
+  it("asks an agent's login with the fleet's .env keys, as a resumed character has them", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-probe-'));
+    const bin = path.join(dir, 'bin');
+    fs.mkdirSync(bin);
+    // an OpenCode that lists the provider whose key its environment holds
+    fs.writeFileSync(path.join(bin, 'opencode'), '#!/bin/sh\n[ "$1" = --version ] && { echo 2.0.22; exit 0; }\n[ -n "$ANTHROPIC_API_KEY" ] && echo \'[{"id":"anthropic"}]\' || echo \'[]\'\n', { mode: 0o755 });
+    const envFile = path.join(dir, '.env');
+    const PATH = process.env.PATH;
+    process.env.PATH = `${bin}:${PATH}`;
+    try {
+      expect((await probeAgent('opencode', realProbeDeps(envFile))).loggedIn).toBe(false);
+      fs.writeFileSync(envFile, 'ANTHROPIC_API_KEY=sk-ant-test\n');
+      expect((await probeAgent('opencode', realProbeDeps(envFile))).loggedIn).toBe(true);
+    } finally {
+      process.env.PATH = PATH;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("says when AppArmor keeps Codex from sandboxing its commands, as only Linux's restriction of user namespaces can", async () => {

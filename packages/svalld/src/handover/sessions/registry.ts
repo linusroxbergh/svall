@@ -8,6 +8,7 @@ import {
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
 import { AGENTS, compareVersions, versionOk } from '../../agents.js';
+import { characterKeyEnv } from '../../claude.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
@@ -188,9 +189,12 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
 
-/** Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. */
-const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
-  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+/**
+ * Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. `keys` are
+ * added to this daemon's env.
+ */
+const runAgent = (keys: () => Record<string, string>, timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
+  execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, env: { ...process.env, ...keys() } }, (err, stdout, stderr) => {
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string') reject(err);
     else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout), stderr: String(stderr) });
@@ -231,8 +235,9 @@ export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_
   });
 });
 
-export const realProbeDeps = (): ProbeDeps => ({
-  run: runAgent(), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
+// each CLI is asked with the fleet's .env keys, as a resumed character and doctor have them
+export const realProbeDeps = (envFile: string): ProbeDeps => ({
+  run: runAgent(() => characterKeyEnv(envFile)), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
 });
 
 /** How to ask this machine's agent CLIs: as they last answered, or `fresh`. */
