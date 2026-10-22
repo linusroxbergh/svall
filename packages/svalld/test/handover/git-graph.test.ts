@@ -269,6 +269,13 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     ]);
   }, 20_000);
 
+  it('reads nothing at a gitlink whose .git file names no repository, as git there cannot either', async () => {
+    const repo = gitlinks({ nowhere: (at) => { fs.mkdirSync(at); fs.writeFileSync(path.join(at, '.git'), 'gitdir: /nonexistent\n'); } });
+    expect(await repoCommands(path.join(repo, '.git'), [{ path: repo, gitDir: path.join(repo, '.git') }], handoverGit)).toEqual([
+      { at: repo, key: 'filter.own.clean', value: 'x', own: false },
+    ]);
+  });
+
   it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {
     const l = seedHere(made);
     const s = l.source;

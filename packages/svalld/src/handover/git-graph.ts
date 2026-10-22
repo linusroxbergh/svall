@@ -265,16 +265,17 @@ function submoduleDirs(modules: string): string[] {
   });
 }
 
-// the Git directory of each submodule a checkout holds, wherever it lies, and of each nested in one, as git status reaches them;
-// one already in `seen` is not read again: a .git git does not take has it find the checkout's own above, as a link back does
+// the Git directory of each submodule a checkout holds, wherever it lies, and of each nested in one, as git status reaches them.
+// A .git git does not take, or a link back, finds one already `seen` above; a .git file naming no repository gives none
 async function submodulesOf(checkout: string, git: GitRunner, seen: Set<string>): Promise<string[]> {
   const out: string[] = [];
   for (const entry of (await must(git, ['ls-files', '--stage', '-z'], checkout)).split('\0')) {
     if (!entry.startsWith('160000 ')) continue;
     const inner = path.join(checkout, entry.slice(entry.indexOf('\t') + 1));
     if (!fs.existsSync(path.join(inner, '.git'))) continue;
-    const gitDir = (await must(git, ['rev-parse', '--absolute-git-dir'], inner)).replace(/\n$/, '');
-    if (seen.has(gitDir)) continue;
+    const r = await git(['rev-parse', '--absolute-git-dir'], inner);
+    const gitDir = r.stdout.replace(/\n$/, '');
+    if (r.code !== 0 || seen.has(gitDir)) continue;
     seen.add(gitDir);
     out.push(gitDir, ...await submodulesOf(inner, git, seen));
   }
