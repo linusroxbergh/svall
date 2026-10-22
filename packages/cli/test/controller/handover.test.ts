@@ -1742,6 +1742,27 @@ describe('a far machine that is down', () => {
     }
   });
 
+  it('on the source with no route to the destination, offers nothing after the commit and names where it goes on, changing nothing', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    w.store.j = undefined;
+    w.store.files.clear();
+    await w.heal();
+    const ops = w.ops.length;
+    const c = controller(w, unrouted(w));
+    const { verdict } = await c.status();
+    expect(verdict).toMatchObject({ standing: 'committed', safe: [], reason: expect.stringContaining(`it goes on only from ${mac}, where it went: run \`svall handover --resume\` there`) });
+    expect(verdict.reason).not.toContain('--abort');
+    const out = await c.resume();
+    expect(out).toMatchObject({ status: 'interrupted', safe: [], stop: 'elsewhere', error: expect.stringContaining('run `svall handover --resume` there') });
+    expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
+  });
+
   it('with no journal here, after the destination completed, still finishes a committed handover while the source is down and nothing says how far it got', async () => {
     const w = await lostAt('trift:handover.complete');
     w.down.add('mac');

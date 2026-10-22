@@ -65,6 +65,16 @@ const cases: Case[] = [
     want: { standing: 'committed', action: 'continue', safe: ['resume'] },
   },
   {
+    name: 'a committed transaction goes forward from the source only with a route to the destination',
+    o: { local: mac, unrouted: [trift], names: { [trift]: 'trift' }, controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) } },
+    want: { standing: 'committed', action: 'none', safe: [], reason: expect.stringContaining('it goes on only from trift, where it went: run `svall handover --resume` there') },
+  },
+  {
+    name: 'a moved transaction is finished from the source only with a route to the destination',
+    o: { local: mac, unrouted: [trift], controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) } },
+    want: { standing: 'moved', action: 'none', safe: [] },
+  },
+  {
     name: 'a committed transaction only goes forward, whatever the controller last wrote',
     o: { controller: journal({ phase: 'commit' }), gateway: { ok: true, value: at(5, trift, tx('committed')) } },
     want: { standing: 'committed', action: 'continue', safe: ['resume'] },

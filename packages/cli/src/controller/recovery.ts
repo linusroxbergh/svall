@@ -197,10 +197,14 @@ export function assess(o: Observation): Verdict {
   }
   const lost = (standing: Standing): Verdict => verdict(standing, 'none', [],
     `${f.transactionId} moved this fleet to ${f.toMachineId}, whose handover journal could not be read and was moved to ${unread}: on that machine, repair it and put it back at ${unread?.replace(/\.broken-\d+$/, '')}, then restart the fleet's daemon there and resume; or \`svall fleet recover --force-owner <machine>\` names the machine to run the fleet, from the state it holds`);
+  // after the commit only the destination goes on, so the source does only with a route to it, which the Linux machine has not to the Mac
+  const stranded = o.local === f.fromMachineId && !!o.unrouted?.includes(f.toMachineId);
+  const onlyThere = `; it goes on only from ${o.names?.[f.toMachineId] ?? f.toMachineId}, where it went: run \`svall handover --resume\` there`;
   if (tx?.id === f.transactionId) {
     if (tx.phase === 'committed') {
       if (unread) return lost('committed');
-      return verdict('committed', 'continue', ['resume'], `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`);
+      const said = `${tx.id} is committed: the fleet belongs to ${record.ownerMachineId} at generation ${record.generation}, and only its activation can go on`;
+      return stranded ? verdict('committed', 'none', [], `${said}${onlyThere}`) : verdict('committed', 'continue', ['resume'], said);
     }
     // before the commit only the controller that began it goes on, since the destination takes claim and prepare from it
     // alone; an abort reaches both ends only with a route to that machine, which the Linux machine has not to the Mac
@@ -221,6 +225,7 @@ export function assess(o: Observation): Verdict {
       return verdict('superseded', 'none', [], `${f.transactionId} was aborted, and the gateway has since moved this fleet to ${record.ownerMachineId} at generation ${record.generation}`);
     }
     if (unread) return lost('moved');
+    if (stranded) return verdict('moved', 'none', [], `the gateway has moved this fleet to ${record.ownerMachineId} at generation ${record.generation}; what ${f.transactionId} left open is only to be finished${onlyThere}`);
     const misses = o.controller?.sourceMisses ?? 0;
     const giveUp = misses >= SOURCE_MISSES && onlySourceLeft(o, f.transactionId)
       ? `; ${o.controller!.source.name} has not answered ${misses} resumes; if it is gone for good, \`svall handover --forget --source\` gives up its side` : '';

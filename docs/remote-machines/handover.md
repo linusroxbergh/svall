@@ -282,7 +282,8 @@ What else to know:
   handover status` names the file.
 - **On the Linux machine**, `svall handover --resume` in a terminal there finishes a committed handover that moved the
   fleet to it, though it has no route to the Mac: the Mac finishes its own side when `svall handover --resume` (or
-  Retry) runs there. Before the commit, resume and abort run only on the Mac that started the handover.
+  Retry) runs there. A handover that moved the fleet from it to the Mac finishes only on the Mac, and before the
+  commit, resume and abort run only on the Mac that started the handover.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the

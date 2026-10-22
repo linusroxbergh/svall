@@ -917,6 +917,10 @@ export class Handover {
     if (v.standing === 'unknown') {
       return v.fromMachineId ? plain('gateway_unknown', 'the gateway could not say whether this handover committed, so nothing is safe until it answers') : { ...base, error: reason, stop: 'gateway_unknown' };
     }
+    // past the commit on a source with no route to the destination: it goes on only there
+    if ((v.standing === 'committed' || v.standing === 'moved') && v.fromMachineId === this.d.local && v.toMachineId && !this.routes(v.toMachineId)) {
+      return { ...base, error: reason, stop: 'elsewhere' };
+    }
     if (v.standing === 'committed' || v.standing === 'moved') {
       return plain('journal_lost', `${this.nameOf(v.toMachineId)}'s handover journal could not be read, so nothing is safe until it is put back or the fleet is recovered`);
     }
@@ -1085,9 +1089,13 @@ export class Handover {
     const gateway = await this.seen(() => this.retrying('begin', () => this.d.gateway.get()));
     const tx = gateway.ok ? gateway.value.transaction : undefined;
     const drives = tx?.controllerId;
-    const local = { local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) }, ...(!this.routes(drives) && { unrouted: [drives] }) }) };
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
+    const named = [...new Set([drives, to].filter((id): id is MachineId => id !== undefined))];
+    const unrouted = named.filter((id) => !this.routes(id));
+    const local = {
+      local: this.d.local, ...(drives && { names: { [drives]: this.nameOf(drives) } }), ...(unrouted.length && { unrouted }),
+    };
     const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
     const owned = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('ownership.get', {}));
     type Status = Seen<Result<'handover.status'>>;
@@ -1130,7 +1138,8 @@ export class Handover {
         if (!(e instanceof NoRoute)) throw e;
         // once committed, only the destination goes on, and the source finishes its own side
         if (role === 'source' && (v.standing === 'committed' || v.standing === 'moved')) return { machineId: id, name: 'the machine the fleet came from' };
-        throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run svall handover --resume or --abort there`, [], 'elsewhere');
+        const way = v.standing === 'committed' || v.standing === 'moved' ? 'svall handover --resume' : 'svall handover --resume or --abort';
+        throw new Stopped(v.phase ?? 'begin', `this machine has no route to ${id}, the ${role} of ${v.transactionId ?? 'this handover'}, so it goes on only from the machine that started it: run ${way} there`, [], 'elsewhere');
       }
     };
     const [source, destination] = [routed(v.fromMachineId, 'source'), routed(v.toMachineId, 'destination')];
