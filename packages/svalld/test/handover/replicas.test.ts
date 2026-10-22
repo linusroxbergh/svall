@@ -723,6 +723,24 @@ describe('archiving', () => {
     for (const rel of ['.git', 'sub/.git']) expect(fs.readFileSync(path.join(archivedTo, rel), 'utf8')).toBe('gitdir: /nonexistent\n');
   });
 
+  it.skipIf(process.getuid?.() === 0)('sets the .git files aside past a folder or a .git file this account cannot read, which its git cannot enter either', async () => {
+    const w = world();
+    const app = tree(path.join(w.work, 'wt'), { '.git': 'gitdir: ../main/.git/worktrees/wt\n', 'pgdata/base/1': 'x', 'locked/.git': 'gitdir: ../../main/.git/worktrees/wt/modules/locked\n' });
+    const modes = (at: string, folder: number, file: number): void => {
+      if (!fs.existsSync(at)) return;
+      fs.chmodSync(path.join(at, 'pgdata'), folder);
+      fs.chmodSync(path.join(at, 'locked/.git'), file);
+    };
+    modes(app, 0, 0);
+    try {
+      const { archivedTo } = await w.store().archive(dir(app), ['r_app'], claimFor(TX));
+      expect(fs.readFileSync(path.join(archivedTo, '.git'), 'utf8')).toBe('gitdir: /nonexistent\n');
+      expect(fs.readFileSync(path.join(archivedTo, 'README.archived.txt'), 'utf8')).toMatch(/:\n- \. was [^\n]*\n$/);
+    } finally {
+      for (const at of [app, `${real(w.work)}/wt.archived-${STAMP}`]) modes(at, 0o755, 0o644);
+    }
+  });
+
   it.skipIf(!hasGit)('sets aside the .git file of each linked worktree a main checkout archived whole holds, and git in any archived worktree finds no repository (needs git)', async () => {
     const w = world();
     const run = (cwd: string, ...args: string[]): string => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();

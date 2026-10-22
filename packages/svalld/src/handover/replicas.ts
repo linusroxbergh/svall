@@ -111,6 +111,8 @@ type Blocked = { kind: 'blocked'; blocker: Blocker; divergence?: Divergence };
 type Verdict = { kind: 'reserve' | 'adopt' | 'resume' } | { kind: 'replica'; found: TransferFile[] } | Blocked;
 
 const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
+// a name this account cannot reach, so neither can its git
+const unreachable = (e: unknown): boolean => ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(errno(e) ?? '');
 // the most paths an archive sets aside one by one; a root that differs in more is set aside whole
 const FEW = 20;
 // the name rsync gives a file it has not finished writing: `.<name>.` and six characters, beside where the file goes
@@ -340,7 +342,12 @@ export class ReplicaStore {
     const archived = (p: string): string => (holds(from, p) ? path.join(to, path.relative(from, p)) : p);
     const lines = this.gitfiles(to).flatMap((rel) => {
       const gitfile = path.join(to, rel, '.git');
-      const named = /^gitdir: (.*)$/m.exec(read(gitfile))?.[1];
+      let text: string;
+      try { text = read(gitfile); } catch (e) {
+        if (unreachable(e)) return [];
+        throw e;
+      }
+      const named = /^gitdir: (.*)$/m.exec(text)?.[1];
       const gitDir = named && path.resolve(to, rel, named);
       if (!gitDir || holds(to, gitDir)) return [];
       this.fs.rename(gitfile, `${gitfile}.archived`);
@@ -353,13 +360,13 @@ export class ReplicaStore {
     this.fs.writeFile(path.join(to, 'README.archived.txt'), `Archived by a Svall handover from ${from}. Each .git file here that named a Git directory outside this folder is kept as .git.archived beside a .git that names no repository, so git there leaves the live repository alone:\n${lines.join('\n')}\n`);
   }
 
-  /** Each folder under `dir` that holds a .git file, relative to it and `dir` itself as '', looking into no Git directory and through no link. */
+  /** Each folder under `dir` that holds a .git file, relative to it and `dir` itself as '', looking into no Git directory, no link and no folder this account cannot read. */
   private gitfiles(dir: string, rel = ''): string[] {
     return this.names(path.join(dir, rel)).sort(byCodeUnit).flatMap((name) => {
       let st: fs.Stats;
       // a name that is not valid UTF-8 comes back from readdir as one no lstat finds
       try { st = this.fs.lstat(path.join(dir, rel, name)); } catch (e) {
-        if (errno(e) === 'ENOENT') return [];
+        if (unreachable(e)) return [];
         throw e;
       }
       if (name === '.git') return st.isFile() ? [rel] : [];
@@ -379,7 +386,7 @@ export class ReplicaStore {
 
   private names(p: string): string[] {
     try { return this.fs.readdir(p); } catch (e) {
-      if (errno(e) === 'ENOENT' || errno(e) === 'ENOTDIR') return [];
+      if (unreachable(e)) return [];
       throw e;
     }
   }
