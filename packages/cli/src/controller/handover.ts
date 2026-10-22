@@ -792,7 +792,8 @@ export class Handover {
         unrouted = e instanceof NoRoute;
         pending.push('source');
         said.push(`${name}: ${messageOf(e)}${unrouted ? `; svall handover --resume on ${name} finishes its side` : ''}`);
-        if (!unrouted) {
+        // a refusal is the source answering
+        if (!unrouted && !(e instanceof Refused)) {
           misses = (this.journal.sourceMisses ?? 0) + 1;
           this.save({ sourceMisses: misses });
         }

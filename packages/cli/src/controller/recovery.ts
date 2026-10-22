@@ -38,7 +38,7 @@ export const ControllerJournal = z.object({
   preparedDigest: Sha256.optional(),
   // the gateway's record of this handover committed, which the destination takes when it cannot ask the gateway itself
   committed: OwnerRecord.optional(),
-  // the resumes since the commit that could not tell the source the handover finished
+  // the resumes since the commit that could not reach the source to tell it the handover finished
   sourceMisses: z.number().int().positive().optional(),
   startedAt: z.number(),
   updatedAt: z.number(),

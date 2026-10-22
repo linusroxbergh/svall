@@ -1643,6 +1643,22 @@ describe('a far machine that is down', () => {
     expect(w.store.j).toBeUndefined();
   });
 
+  it('counts no miss for a source that answers with a refusal, so it never names the give up for one', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.source.answers['handover.complete'] = () => { throw new Refused('authority_unreachable', 'the gateway did not answer'); };
+    for (const n of [1, 2, 3]) {
+      const out = await controller(w, eager(w)).resume();
+      expect(out, `${n}`).toMatchObject({ status: 'complete', pending: ['source'] });
+      expect(out.status === 'complete' && out.error, `${n}`).not.toContain('--forget');
+      expect(w.store.j?.sourceMisses, `${n}`).toBeUndefined();
+    }
+  });
+
   // a push whose controller died at `op` and whose journal is gone, as when it ran on the other machine
   const lostAt = async (op: string): Promise<World> => {
     const probe = new World();
