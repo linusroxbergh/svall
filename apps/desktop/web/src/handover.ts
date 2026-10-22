@@ -376,7 +376,7 @@ export function actionsOf(run: HandoverRun | undefined): Actions {
     case 'interrupted': return { ...none, resume: resume(r.safe), abort: r.safe.includes('abort'), follow: r.safe.length === 0 };
     case 'detached': return { ...none, follow: true };
     // a resume the sheet started by itself that never said how it went is still the only way on
-    default: return run.goingOn ? { ...none, resume: 'Retry' } : { ...none, start: true, follow: !!run.error };
+    default: return run.goingOn ? { ...none, resume: 'Retry' } : { ...none, start: true, follow: !!run.error || !!run.stopped };
   }
 }
 
@@ -810,7 +810,7 @@ export function headline(run: HandoverRun, destination: string): string {
     const n = run.decision!.blockers.length;
     return `${n === 1 ? 'One thing' : `${n} things`} to decide before the fleet goes on.`;
   }
-  if (!live(run)) return '';
+  if (!live(run)) return run.stopped ? 'Could not read where the handover stands.' : '';
   if (run.aborting) return 'Stopping: the fleet goes back to where it was…';
   if (run.checking) return 'Asking where the handover stands…';
   if (!run.phase && !run.preflight) return run.to ? 'Starting…' : 'Looking for a handover…';

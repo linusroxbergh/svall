@@ -348,6 +348,13 @@ describe('what the sheet offers', () => {
     expect(headline(read, 'studio')).toBe('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
   });
 
+  it('says so when its own look at where the handover stands heard nothing, and offers Check again', () => {
+    const silent = endFollow({ ...followRun('studio'), checking: true, stopped: endFollow(play(through('transfer')), 0) }, 0);
+    expect(headline(silent, 'studio')).toBe('Could not read where the handover stands.');
+    expect(actionsOf(silent)).toMatchObject({ follow: true });
+    expect(headline({ ...followRun('studio'), checking: true }, 'studio')).toBe('Asking where the handover stands…');
+  });
+
   it('says why what is left to finish is left once the fleet has moved', () => {
     const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, characters: [], pending: ['source'], error: "mac: the Mac's daemon is restarting" })]);
     expect(headline(moved, 'studio')).toContain("source has not heard that it finished (mac: the Mac's daemon is restarting); Retry tells it.");
