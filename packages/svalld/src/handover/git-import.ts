@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
@@ -113,14 +114,15 @@ async function adaptRules(common: string, rules: FsRules, git: GitRunner): Promi
     changes.push([key, String(value)]);
   }
   if (!changes.length) return;
-  // git renames its edit into place unflushed, so it edits a copy, which replaces the config only once on disk
-  const copy = `${config}.svall-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
-  fs.copyFileSync(config, copy, fs.constants.COPYFILE_EXCL);
+  // git renames its edit into place unflushed, so it edits a copy outside the root, which replaces the config only once on disk
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-config-'));
+  const copy = path.join(dir, 'config');
   try {
+    fs.copyFileSync(config, copy);
     for (const [key, value] of changes) await must(git, ['config', '--file', copy, key, value], common);
     writeDurable(config, fs.readFileSync(copy), { mode: fs.statSync(config).mode & 0o777 });
   } finally {
-    fs.rmSync(copy, { force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 

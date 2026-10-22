@@ -482,7 +482,7 @@ export class DestinationHandover {
   /**
    * Checks everything it can before its first write, journals, proves each root holds what the transfer
    * verified under this handover's claim and flushes it to disk, imports the Git graphs, places the sessions, and
-   * only then writes the prepared state. Asked again, it proves each root again, bar what the import rewrites there.
+   * only then writes the prepared state. Asked again, it proves each root again, against the seal or what landed.
    */
   private async runPrepare(p: Prepare): Promise<Result<'handover.prepare'>> {
     const m = p.manifest;

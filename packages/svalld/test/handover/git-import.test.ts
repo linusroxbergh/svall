@@ -198,7 +198,7 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     expect(configs.map(read)).toEqual(before);
   });
 
-  it('has git change a copy of the config beside it, flushed and renamed into place, so a power cut leaves one or the other whole', async () => {
+  it('has git change a copy of the config outside the root, flushed and renamed into place, so a power cut leaves one or the other whole', async () => {
     const l = seedHere(made);
     const s = l.source;
     git(l.base, s.main, 'config', 'core.ignorecase', 'true');
@@ -215,8 +215,8 @@ real(`a real repository graph moved to another machine with the same home${hasGi
       expect(fsync).toHaveBeenCalled();
     } finally { fsync.mockRestore(); }
     expect(edited.length).toBeGreaterThan(0);
-    // each graph's own copy, never a config itself
-    expect(edited.filter((f) => !/\/config\.svall-\d+-[0-9a-f]{8}$/.test(f))).toEqual([]);
+    // each graph's own copy, outside every root, and gone once it has replaced the config
+    expect(edited.filter((f) => f.startsWith(`${l.base}/`) || fs.existsSync(path.dirname(f)))).toEqual([]);
     expect(read(config)).toContain('\tignorecase = false');
     expect(fs.readdirSync(path.dirname(config)).filter((f) => f.startsWith('config.'))).toEqual([]);
   });
