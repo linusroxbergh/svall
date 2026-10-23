@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
+import { theme } from '../src/theme.js';
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 
 test('the side card arrows cycle the portrait', async ({ page, svall }) => {
@@ -227,9 +228,10 @@ test('a card lists its docs as the agent is told of them, and a row opens the sh
   await page.getByTestId('side-docs-new').click();
   await expect(page.getByTestId('resources-new-doc-name')).toBeFocused();
 
-  // a doc written to disk after the card opened still shows once the card is asked again
+  // a doc written to disk after the card opened still shows once the card is asked again, past the listing's fresh window
   await page.getByTestId('resources-close').click();
   fs.writeFileSync(path.join(dir, 'another.md'), '---\ndescription: Written after the card opened.\n---\n# Another\n');
+  await page.waitForTimeout(theme.resourcesFreshMs);
   await page.getByTestId(`island-label-${other.id}`).click();
   await page.getByTestId(`island-label-${island.id}`).click();
   await expect(page.getByTestId('side-doc-another')).toContainText('Written after the card opened.');
