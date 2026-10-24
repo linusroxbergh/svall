@@ -27,7 +27,7 @@ describe('the OpenCode plugin file', () => {
   });
 });
 
-describe("a character's OpenCode config dir", () => {
+describe("a robot's OpenCode config dir", () => {
   const setup = () => {
     const home = makeHome();
     const o = opencodePaths({ XDG_CONFIG_HOME: path.join(home, 'config'), XDG_DATA_HOME: path.join(home, 'data') });
@@ -74,13 +74,13 @@ describe("a character's OpenCode config dir", () => {
     expect(fs.lstatSync(path.join(dir, 'service.json.tmp'), { throwIfNoEntry: false })).toBeUndefined();
     expect(read(o.dir, 'service.json.tmp')).toBe('{"password":"p"}');
 
-    save(path.join(dir, 'cli.json'), '{"char":1}', 1000);
-    fs.writeFileSync(path.join(dir, 'cli.json.tmp'), '{"char":2}');
+    save(path.join(dir, 'cli.json'), '{"robot":1}', 1000);
+    fs.writeFileSync(path.join(dir, 'cli.json.tmp'), '{"robot":2}');
     expect(linkOpencodeConfig(dir, o, replaced)).toEqual([]);
     expect(read(o.dir, 'cli.json')).toBe('{"user":1}');
-    expect(read(replaced, 'cli.json')).toBe('{"char":1}');
+    expect(read(replaced, 'cli.json')).toBe('{"robot":1}');
     expect(fs.readlinkSync(path.join(dir, 'cli.json'))).toBe(path.join(o.dir, 'cli.json'));
-    expect(read(dir, 'cli.json.tmp')).toBe('{"char":2}');
+    expect(read(dir, 'cli.json.tmp')).toBe('{"robot":2}');
     expect(fs.existsSync(path.join(o.dir, 'cli.json.tmp'))).toBe(false);
   });
 

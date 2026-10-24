@@ -69,7 +69,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
   const names = namesOn(run.preflight?.names, side);
   const choice = warning ? undefined : choiceFor(b);
   const hint = blockerHint(b, ctx, warning);
-  const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
+  const who = b.entity?.kind === 'robot' ? b.entity.id : undefined;
   const path = entityPath(b.entity, names, b.message);
   const upgrade = upgradeAsked(b, ctx);
   // the shell opens a folder only on this Mac, and only while the fleet runs here
@@ -113,7 +113,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
 }
 
 function EntityRow({ row, ctx, run }: { row: Row; ctx: HintContext; run: HandoverRun }) {
-  const c = useApp((s) => (row.kind === 'character' ? s.fleet.characters[row.id] : undefined));
+  const c = useApp((s) => (row.kind === 'robot' ? s.fleet.robots[row.id] : undefined));
   // the page reaches the destination's daemon only once the fleet has loaded from it
   const reached = useApp((s) => s.status === 'online' && !s.handover?.awaitingOwner);
   // until the fleet has loaded from its new owner, the old owner's word on a terminal says nothing
@@ -125,7 +125,7 @@ function EntityRow({ row, ctx, run }: { row: Row; ctx: HintContext; run: Handove
   const f = row.section === 'transfer' ? fraction(row) : undefined;
   const retry = () => {
     const api = app.api();
-    api.call('char.revive', { id: row.id }).then(() => (c?.second && !c.second.tmux ? api.call('char.second', { id: row.id }) : undefined))
+    api.call('robot.revive', { id: row.id }).then(() => (c?.second && !c.second.tmux ? api.call('robot.second', { id: row.id }) : undefined))
       .catch((e: Error) => store().showToast(e.message));
   };
   return (
@@ -158,8 +158,8 @@ const REST_TEXT: Record<RestHow, (one: boolean, to: string) => string> = {
 
 /** Before anything is rested: who stops for the move, and how each comes back on the other machine. */
 function RestPlan({ ctx }: { ctx: HintContext }) {
-  const characters = useApp((s) => s.fleet.characters);
-  return restPlan(characters).map(({ how, names }) => (
+  const robots = useApp((s) => s.fleet.robots);
+  return restPlan(robots).map(({ how, names }) => (
     <div key={how} className="host-step" data-testid={`handover-rest-${how}`}>
       <span className="host-mark" />
       <span className="host-said">{names.join(', ')} {REST_TEXT[how](names.length === 1, ctx.destination)}</span>
@@ -254,7 +254,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
             <>
               {loud.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
               <div className="host-step"><span className="host-mark" /><span className="host-said">
-                <More label={`${plural(quiet.length, 'character')} at rest`} testid="handover-rest-rows">
+                <More label={`${plural(quiet.length, 'robot')} at rest`} testid="handover-rest-rows">
                   {quiet.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
                 </More>
               </span></div>
@@ -339,7 +339,7 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
     const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet` : ''].filter(Boolean);
     return { tone: 'stop', sub: parts.length ? `${parts.join(', ')}.\nMove to ${ctx.destination} runs the checks again.` : `All settled: Move to ${ctx.destination} runs the checks again and goes on.` };
   }
-  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} checks once more, then rests the characters above.\nUntil the commit, Abort gives the fleet back.` };
+  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} checks once more, then rests the robots above.\nUntil the commit, Abort gives the fleet back.` };
   const a = actionsOf(run);
   if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped.${a.abort ? `\nAbort gives the fleet back to ${ctx.source}.` : ''}` };
   if (a.resume === 'Retry') return { tone: 'stop', sub: `Retry finishes resuming on ${ctx.destination}; nothing goes back from here.` };
@@ -398,7 +398,7 @@ export function HandoverSheet() {
   const gateway = useApp((s) => s.shell?.gateway);
   const runsOn = useApp((s) => s.connection?.owner);
   const owner = runsOn ?? 'local';
-  const characters = useApp((s) => s.fleet.characters);
+  const robots = useApp((s) => s.fleet.robots);
   const home = useApp((s) => accountHome(s.shell?.home));
   const svall = useApp((s) => svallFor(s.shell?.profile));
   const shut = useRef<HTMLButtonElement>(null);
@@ -436,7 +436,7 @@ export function HandoverSheet() {
   const destination = destinationName(to);
   const ctx: HintContext = {
     destination, source: to === 'local' ? gateway ?? 'the gateway' : to ? 'This Mac' : 'the machine it came from', pull: to === 'local', home, svall, gateway,
-    name: (id) => characters[id]?.name ?? run?.preflight?.names?.characters[id] ?? id,
+    name: (id) => robots[id]?.name ?? run?.preflight?.names?.robots[id] ?? id,
   };
   const close = () => store().toggleHandover(false);
   const shown = !!run && !!(run.phase || run.preflight || run.result || run.status?.phase) && !picking;
@@ -456,7 +456,7 @@ export function HandoverSheet() {
             <div className="host-note" data-testid="handover-intro">
               <span>A handover moves this whole fleet to another machine.<span className="ho-sub">The checks run first; nothing moves until you choose Move again.</span></span>
               <More label="What moves" testid="handover-what-moves">
-                <span>Islands, characters, repositories and agent sessions.</span>
+                <span>Islands, robots, repositories and agent sessions.</span>
                 <span>Agents resume from their transcripts.</span>
                 <span>Shells reopen in their folders; a command still running does not move.</span>
               </More>

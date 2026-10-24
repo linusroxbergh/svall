@@ -57,7 +57,7 @@ describe('localAppStorage', () => {
     s.setHalfCard({ w: 0.4, h: 0.6 });
     s.setResourceGroups(['island']);
     s.setFilesTree({ open: false, width: 320 });
-    s.setSections({ 'character.note': { height: 140 }, 'character.details': { shut: true } });
+    s.setSections({ 'robot.note': { height: 140 }, 'robot.details': { shut: true } });
     s.setSettings({ ...DEFAULT_SETTINGS, zoom: 1.25 });
     const r = store();
     expect(r.getFocus()).toBe('c1');
@@ -66,7 +66,7 @@ describe('localAppStorage', () => {
     expect(r.getHalfCard()).toEqual({ w: 0.4, h: 0.6 });
     expect(r.getResourceGroups()).toEqual(['island']);
     expect(r.getFilesTree()).toEqual({ open: false, width: 320 });
-    expect(r.getSections()).toEqual({ 'character.note': { height: 140 }, 'character.details': { shut: true } });
+    expect(r.getSections()).toEqual({ 'robot.note': { height: 140 }, 'robot.details': { shut: true } });
     expect(r.getSettings()?.zoom).toBe(1.25);
   });
 
@@ -102,7 +102,7 @@ describe('localAppStorage', () => {
     mem.setItem('svall.resources.tiers', '["global","nowhere"]');
     mem.setItem('svall.side.widths', 'null');
     mem.setItem('svall.files.tree', '{"open":"yes","width":"wide"}');
-    mem.setItem('svall.side.sections', '{"character.note":{"height":"tall"}}');
+    mem.setItem('svall.side.sections', '{"robot.note":{"height":"tall"}}');
     mem.setItem(SETTINGS_KEY, '{');
     const s = store();
     expect(s.getView()).toBeUndefined();
@@ -113,7 +113,7 @@ describe('localAppStorage', () => {
     expect(s.getFilesTree()).toBeUndefined();
     expect(s.getSections()).toBeUndefined();
     expect(s.getSettings()).toBeUndefined();
-    mem.setItem('svall.side.sections', '{"character.note":{"height":-5},"island.docs":{"height":1e400}}');
+    mem.setItem('svall.side.sections', '{"robot.note":{"height":-5},"island.docs":{"height":1e400}}');
     expect(store().getSections()).toBeUndefined();
   });
 

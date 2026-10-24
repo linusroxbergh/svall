@@ -4,13 +4,13 @@ import type { EntryProgress } from './progress.js';
 
 /** What a blocker or a row points at, for a person, as `Names` says. */
 export function namesOf(m: TransferManifestV1): Names {
-  const characters: Record<string, string> = Object.fromEntries(Object.values(m.snapshot.characters).map((c) => [c.id, c.name]));
+  const robots: Record<string, string> = Object.fromEntries(Object.values(m.snapshot.robots).map((c) => [c.id, c.name]));
   const landing = destinationView(m).roots.filter((r, i) => r.path !== m.roots[i].path);
   return {
-    characters,
+    robots,
     roots: Object.fromEntries(m.roots.map((r) => [r.id, r.path])),
     ...(landing.length && { landing: Object.fromEntries(landing.map((r) => [r.id, r.path])) }),
-    sessions: Object.fromEntries(m.sessions.map((s, i) => [`s${i}`, characters[s.characterId] ?? s.characterId])),
+    sessions: Object.fromEntries(m.sessions.map((s, i) => [`s${i}`, robots[s.robotId] ?? s.robotId])),
   };
 }
 

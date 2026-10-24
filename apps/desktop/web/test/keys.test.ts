@@ -7,10 +7,10 @@ const ev = (key: string, o: Partial<{ metaKey: boolean; shiftKey: boolean; ctrlK
 describe('keys', () => {
   it('binds the spec chords', () => {
     const b = resolve();
-    expect(b['cmd+t']).toEqual({ type: 'newCharacter' });
-    expect(b['cmd+w']).toEqual({ type: 'closeCharacter' });
-    expect(b['cmd+k']).toEqual({ type: 'prevCharacter' });
-    expect(b['cmd+j']).toEqual({ type: 'nextCharacter' });
+    expect(b['cmd+t']).toEqual({ type: 'newRobot' });
+    expect(b['cmd+w']).toEqual({ type: 'closeRobot' });
+    expect(b['cmd+k']).toEqual({ type: 'prevRobot' });
+    expect(b['cmd+j']).toEqual({ type: 'nextRobot' });
     expect(b['cmd+m']).toEqual({ type: 'toggleView' });
     expect(b['cmd+i']).toEqual({ type: 'toggleSideCard' });
     expect(b['cmd+shift+s']).toEqual({ type: 'toggleSides' });
@@ -65,17 +65,17 @@ describe('keys', () => {
 
 describe('overrides', () => {
   it('puts an action on the chord the user chose, and off the one it shipped with', () => {
-    const b = resolve({ newCharacter: 'cmd+n' });
-    expect(b['cmd+n']).toEqual({ type: 'newCharacter' });
+    const b = resolve({ newRobot: 'cmd+n' });
+    expect(b['cmd+n']).toEqual({ type: 'newRobot' });
     expect(b['cmd+t']).toBeUndefined();
-    expect(chordFor('newCharacter', { newCharacter: 'cmd+n' })).toBe('cmd+n');
+    expect(chordFor('newRobot', { newRobot: 'cmd+n' })).toBe('cmd+n');
   });
   it('leaves an action unbound when its chord is declined', () => {
     const b = resolve({ quit: null });
     expect(b['cmd+q']).toBeUndefined();
     expect(chordFor('quit', { quit: null })).toBeNull();
     // the rest keep theirs
-    expect(b['cmd+t']).toEqual({ type: 'newCharacter' });
+    expect(b['cmd+t']).toEqual({ type: 'newRobot' });
   });
   it('carries the layout aliases only while the action sits on its shipped chord', () => {
     expect(resolve()['cmd+shift++']).toEqual({ type: 'zoom', steps: 1 });
@@ -85,24 +85,24 @@ describe('overrides', () => {
     expect(moved['cmd+shift++']).toBeUndefined();
   });
   it('names the action holding a chord, so an override can say what it takes it from', () => {
-    expect(holderOf('cmd+t')).toBe('newCharacter');
+    expect(holderOf('cmd+t')).toBe('newRobot');
     expect(holderOf('cmd+n')).toBeUndefined();
-    expect(holderOf('cmd+t', { newCharacter: 'cmd+n' })).toBeUndefined();
-    expect(holderOf('cmd+n', { newCharacter: 'cmd+n' })).toBe('newCharacter');
+    expect(holderOf('cmd+t', { newRobot: 'cmd+n' })).toBeUndefined();
+    expect(holderOf('cmd+n', { newRobot: 'cmd+n' })).toBe('newRobot');
     // a layout alias answers the key too, so the action carrying it is what an override takes it from
     expect(holderOf('cmd++')).toBe('zoomIn');
     expect(holderOf('cmd++', { zoomIn: 'cmd+y' })).toBeUndefined();
   });
   it('lets a chosen chord keep a key a layout alias would otherwise answer', () => {
-    const b = resolve({ newCharacter: 'cmd++' });
-    expect(b['cmd++']).toEqual({ type: 'newCharacter' });
+    const b = resolve({ newRobot: 'cmd++' });
+    expect(b['cmd++']).toEqual({ type: 'newRobot' });
     // zooming keeps the chord it answers to by name, and its other alias
     expect(b['cmd+=']).toEqual({ type: 'zoom', steps: 1 });
     expect(b['cmd+shift++']).toEqual({ type: 'zoom', steps: 1 });
   });
   it('leaves alone the chords the user spends in their own Ghostty config', () => {
     const b = declineTaken({ 'cmd+t': 'new_split:right', 'cmd+z': 'text:hi' });
-    expect(b.newCharacter).toBeNull();
+    expect(b.newRobot).toBeNull();
     expect(resolve(b)['cmd+t']).toBeUndefined();
     // untouched actions are not written down at all, so they follow the shipped set as it changes
     expect('quit' in b).toBe(false);
@@ -115,8 +115,8 @@ describe('overrides', () => {
     expect(resolve(b)['cmd+=']).toBeUndefined();
   });
   it('measures collisions against the chord in force, not the one shipped', () => {
-    expect(declineTaken({ 'cmd+t': 'x' }, { newCharacter: 'cmd+n' }).newCharacter).toBe('cmd+n');
-    expect(declineTaken({ 'cmd+n': 'x' }, { newCharacter: 'cmd+n' }).newCharacter).toBeNull();
+    expect(declineTaken({ 'cmd+t': 'x' }, { newRobot: 'cmd+n' }).newRobot).toBe('cmd+n');
+    expect(declineTaken({ 'cmd+n': 'x' }, { newRobot: 'cmd+n' }).newRobot).toBeNull();
   });
 });
 

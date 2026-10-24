@@ -144,7 +144,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
   background: var(--glass-hi); border: 1px solid var(--line-strong); box-shadow: 0 3px 0 var(--shade-2); transition: translate .1s, box-shadow .1s; }
 .keycap[data-on="true"] kbd { translate: 0 2px; box-shadow: 0 1px 0 var(--shade-2); }
 
-/* one character in four views, shown one at a time; a view fades in over the last */
+/* one robot in four views, shown one at a time; a view fades in over the last */
 .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
   background: var(--glass); border: 1px solid var(--line-soft); }
 .tabs button { padding: 7px 14px; border: 0; border-radius: 9px; background: none; cursor: pointer;
@@ -214,9 +214,9 @@ span.src { color: var(--ink-3); }
 .brief pre > span { display: block; padding-left: 10px; border-left: 2px solid var(--c); transition: opacity .2s var(--ease); }
 .shelf[data-hl] .brief pre > span { opacity: .3; }
 .shelf[data-hl="global"] .brief [data-tier="global"], .shelf[data-hl="fleet"] .brief [data-tier="fleet"], .shelf[data-hl="repo"] .brief [data-tier="repo"],
-.shelf[data-hl="island"] .brief [data-tier="island"], .shelf[data-hl="character"] .brief [data-tier="character"] { opacity: 1; }
+.shelf[data-hl="island"] .brief [data-tier="island"], .shelf[data-hl="robot"] .brief [data-tier="robot"] { opacity: 1; }
 [data-tier="global"] { --c: var(--ink-cool); } [data-tier="fleet"] { --c: var(--pt-coral); } [data-tier="repo"] { --c: var(--pt-sky); }
-[data-tier="island"] { --c: var(--pt-moss); } [data-tier="character"] { --c: var(--pt-sun); }
+[data-tier="island"] { --c: var(--pt-moss); } [data-tier="robot"] { --c: var(--pt-sun); }
 .tier i { color: var(--c); }
 
 .close { text-align: center; }
@@ -300,8 +300,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1" style="--dwell: 8s">Phone</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <img class="on" src="shots/browser.avif?v=41ebe118" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
-    <img src="shots/files.avif?v=2459eb7b" loading="lazy" alt="Claude Code on the left, the character's files on the right">
+    <img class="on" src="shots/browser.avif?v=41ebe118" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
+    <img src="shots/files.avif?v=2459eb7b" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
     <img src="shots/markdown.avif?v=da41ad8b" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
     <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
       <img src="shots/phone.avif?v=6e4dd86e" loading="lazy" alt="">
@@ -315,9 +315,9 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <section class="sec wrap" aria-labelledby="flow-h">
   <div class="sec-head">
     <h2 id="flow-h">One prompt sets up a whole island.</h2>
-    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code, Codex or OpenCode.</p>
+    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its robots with the <code>svall</code> CLI, and each one starts your own Claude Code, Codex or OpenCode.</p>
   </div>
-  <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
+  <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review robots land on it and start working."><div class="scene-map" inert></div></div>
 </section>
 
 <section class="sec wrap ctx" aria-labelledby="ctx-h">
@@ -325,7 +325,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <div class="sec-head">
       <h2 id="ctx-h">Easy overview of context &amp; docs.</h2>
       <ul>
-        <li>Instructions and links for each fleet, repo, island and character, and notes agents leave for the next one.</li>
+        <li>Instructions and links for each fleet, repo, island and robot, and notes agents leave for the next one.</li>
         <li>An agent gets what applies to it when it starts, and an update when something changes.</li>
       </ul>
     </div>
@@ -351,10 +351,10 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
         <button class="tier src" type="button" data-tier="island" aria-pressed="false"><i>▲</i>storefront reviews<span class="n">3</span></button>
         <span class="src"><i>▲</i>storefront<span class="n">1</span></span>
       </div>
-      <button class="tier" type="button" data-tier="character" aria-pressed="false"><b>▾</b><i>●</i>Characters<span class="n">2</span></button>
+      <button class="tier" type="button" data-tier="robot" aria-pressed="false"><b>▾</b><i>●</i>Robots<span class="n">2</span></button>
       <div class="kids">
         <span class="grp">storefront reviews</span>
-        <button class="tier src" type="button" data-tier="character" aria-pressed="false"><i>●</i>#10 review search<span class="n">3</span></button>
+        <button class="tier src" type="button" data-tier="robot" aria-pressed="false"><i>●</i>#10 review search<span class="n">3</span></button>
         <span class="grp">storefront</span>
         <span class="src"><i>●</i>checkout redesign<span class="n">3</span></span>
       </div>
@@ -366,7 +366,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
         <span data-tier="fleet"><i class="lvl"><b>◆</b><span>Fleet</span> demo</i><i class="in">ticket-tracking<em data-k="doc">doc</em></i></span>
         <span data-tier="repo"><i class="lvl"><b>▣</b><span>Repo</span> storefront</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">e2e-flakes<em data-k="doc">doc</em></i></span>
         <span data-tier="island"><i class="lvl"><b>▲</b><span>Island</span> storefront reviews</i><i class="in">comment, never push<em data-k="instructions">instructions</em></i><i class="in">GH storefront<em data-k="link">link</em></i><i class="in">review-checklist<em data-k="doc">doc</em></i></span>
-        <span data-tier="character"><i class="lvl"><b>●</b><span>Character</span> #10 review search</i><i class="in">reviewer<em data-k="profile">profile</em></i><i class="in">PR #10<em data-k="link">link</em></i><i class="in">focus on ranking<em data-k="note">note</em></i></span>
+        <span data-tier="robot"><i class="lvl"><b>●</b><span>Robot</span> #10 review search</i><i class="in">reviewer<em data-k="profile">profile</em></i><i class="in">PR #10<em data-k="link">link</em></i><i class="in">focus on ranking<em data-k="note">note</em></i></span>
       </pre>
     </div>
   </div>
@@ -379,7 +379,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <ul>
     <li>Claude Code, Codex and OpenCode report to Svall through hooks, so a card changes the moment its agent starts, asks or finishes.</li>
     <li>Each agent runs in its own tmux window.</li>
-    <li>Quitting stops the agents. Opening a character again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
+    <li>Quitting stops the agents. Opening a robot again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
     <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex and its plugin to OpenCode, and <code>svall uninstall</code> takes them out.</li>
     <li>Setup, the <code>svall</code> CLI and every file Svall writes are covered in the README on <a href="https://github.com/linusroxbergh/svall">GitHub</a>.</li>
   </ul>

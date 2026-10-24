@@ -8,9 +8,9 @@ import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { theme } from './theme.js';
 
-export function followLink(item: ContextItem, charId: string | undefined, at: { x: number; y: number }): void {
-  if (!charId || !opensInside(item)) { openItem(app.bridge, item); return; }
-  app.store.getState().askLink({ url: item.ref, charId, x: at.x, y: at.y });
+export function followLink(item: ContextItem, robotId: string | undefined, at: { x: number; y: number }): void {
+  if (!robotId || !opensInside(item)) { openItem(app.bridge, item); return; }
+  app.store.getState().askLink({ url: item.ref, robotId, x: at.x, y: at.y });
 }
 
 // a link from a terminal took its keys, and they go back once the link is answered
@@ -41,7 +41,7 @@ export function LinkAsk() {
   }, [ask]);
 
   if (!ask) return null;
-  const here = () => { openBeside(app.store, app.browser(), ask.charId, ask.url); app.store.getState().closeLinkAsk(); giveBack(ask.surface); };
+  const here = () => { openBeside(app.store, app.browser(), ask.robotId, ask.url); app.store.getState().closeLinkAsk(); giveBack(ask.surface); };
   const outside = () => { openUrl(app.bridge, ask.url); app.store.getState().closeLinkAsk(); giveBack(ask.surface); };
 
   return (

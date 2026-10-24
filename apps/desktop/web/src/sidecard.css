@@ -40,7 +40,7 @@
 .side-branch .badge { flex: none; }
 .side-hint { color: var(--danger); font-size: var(--text-sm); }
 .side-portrait { position: relative; flex: none; }
-.side-portrait .side-robot { display: block; box-sizing: border-box; width: var(--disc-side); height: var(--disc-side); padding: calc(var(--disc-side) * .08);
+.side-portrait .side-figure { display: block; box-sizing: border-box; width: var(--disc-side); height: var(--disc-side); padding: calc(var(--disc-side) * .08);
   object-fit: contain; object-position: center bottom; }
 /* the steppers lie over the portrait's edges and show on hover */
 .side-portrait .pnav { position: absolute; z-index: 1; top: 50%; transform: translateY(-50%); width: var(--ctl-sm); height: var(--ctl-sm); padding: 0; border-radius: 50%;

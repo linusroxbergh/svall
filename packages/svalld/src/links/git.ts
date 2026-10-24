@@ -50,7 +50,7 @@ export function parseDirs(stdout: string): GitDirs {
   return { root, commonDir, gitDir };
 }
 
-// every character in the fleet asks this, so a git that hangs is killed after ten seconds
+// every robot in the fleet asks this, so a git that hangs is killed after ten seconds
 const quickGit: GitRunner = gitRunner(10_000, 'SIGKILL');
 
 export async function resolveRepo(cwd: string, git: GitRunner = quickGit): Promise<Repo | undefined> {

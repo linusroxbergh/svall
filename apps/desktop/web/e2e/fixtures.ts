@@ -32,9 +32,9 @@ export const test = base.extend<{ svall: Svall }>({
       ...info,
       api: await NodeClient.connect(info.port, info.token),
       uniq: (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 7)}`,
-      cellOf: async (id) => (await svall.api.call('state.get', {})).characters[id].cell,
+      cellOf: async (id) => (await svall.api.call('state.get', {})).robots[id].cell,
       open: async (view: 'board' | 'map' = 'board', opts?: { firstRun?: boolean; tour?: boolean }) => {
-        // the first-run tour selects a character and covers the map, so only the spec about it sees it
+        // the first-run tour selects a robot and covers the map, so only the spec about it sees it
         if (!opts?.tour) await page.addInitScript((key) => { try { localStorage.setItem(key, 'done'); } catch { /* seeded where there is a store */ } }, TOUR_KEY);
         // the settings window opens by itself on a machine with no settings of its own, and would stand over the map
         if (!opts?.firstRun) {
@@ -73,7 +73,7 @@ export const test = base.extend<{ svall: Svall }>({
     // every spec starts with home and nothing else: the map fits the whole world above theme.scale.min, so islands
     // left behind by an earlier spec push this spec's own islands out of the window
     const state = await svall.api.call('state.get', {});
-    for (const id of Object.keys(state.characters)) await svall.api.call('char.close', { id });
+    for (const id of Object.keys(state.robots)) await svall.api.call('robot.close', { id });
     for (const [id, island] of Object.entries(state.islands)) if (island.kind !== 'home') await svall.api.call('island.delete', { id });
     // answers a new fleet's scribe question, which would otherwise cover the page
     await svall.api.call('scribe.set', { enabled: false });

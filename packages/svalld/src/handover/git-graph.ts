@@ -113,10 +113,10 @@ const hostLocal = (url: string): boolean => /^(\/|\.\.?\/|~|file:)/.test(url);
 export type GitDiscovery = { graphs: GitGraph[]; blockers: Blocker[]; warnings: Warning[] };
 export type DiscoverOptions = { excludes: readonly string[]; git?: GitRunner; exists?: (p: string) => boolean };
 
-type Slot = { characterId: string; dirs: GitDirs };
+type Slot = { robotId: string; dirs: GitDirs };
 
 /**
- * The repository graph around every character terminal that stands in Git: each common directory once,
+ * The repository graph around every robot terminal that stands in Git: each common directory once,
  * with its main checkout whether or not anyone stands in it, the linked worktrees the crew uses, and the
  * registrations it does not. What cannot be read faithfully blocks.
  */
@@ -126,8 +126,8 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
   const blockers: Blocker[] = [];
   const warnings: Warning[] = [];
   const byCommon = new Map<string, Slot[]>();
-  for (const c of Object.values(state.characters).sort((a, b) => byCodeUnit(a.id, b.id))) {
-    const entity: HandoverEntity = { kind: 'character', id: c.id };
+  for (const c of Object.values(state.robots).sort((a, b) => byCodeUnit(a.id, b.id))) {
+    const entity: HandoverEntity = { kind: 'robot', id: c.id };
     for (const [cwd, recorded] of [[c.cwd, c.repo], [c.second?.cwd, undefined]] as const) {
       if (!cwd) continue;
       if (!exists(cwd)) {
@@ -140,7 +140,7 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
         continue;
       }
       const dirs = parseDirs(r.stdout);
-      byCommon.set(dirs.commonDir, [...(byCommon.get(dirs.commonDir) ?? []), { characterId: c.id, dirs }]);
+      byCommon.set(dirs.commonDir, [...(byCommon.get(dirs.commonDir) ?? []), { robotId: c.id, dirs }]);
     }
   }
   const standing = new Set([...byCommon.values()].flat().map((s) => s.dirs.root));
@@ -180,7 +180,7 @@ async function readGraph(commonDir: string, slots: Slot[], git: GitRunner): Prom
   const anchor = slots[0].dirs.root;
   const [listed, ...linked] = await readWorktrees(anchor, git, commonDir);
   if (listed?.path !== listedMain(commonDir)) throw new GitFailure(`${commonDir}: git lists its main worktree at ${listed?.path}`);
-  const crewOf = (root: string): string[] => [...new Set(slots.filter((s) => s.dirs.root === root).map((s) => s.characterId))].sort(byCodeUnit);
+  const crewOf = (root: string): string[] => [...new Set(slots.filter((s) => s.dirs.root === root).map((s) => s.robotId))].sort(byCodeUnit);
   const tracked = new Map<string, string[]>();
   const submodules = new Map<string, string[]>();
 
@@ -191,7 +191,7 @@ async function readGraph(commonDir: string, slots: Slot[], git: GitRunner): Prom
     submodules.set(at, entries.filter((e) => e.startsWith('160000 ')).map((e) => e.slice(e.indexOf('\t') + 1)));
     return {
       path: at, gitDir, head: entry.head, branch: entry.branch, ...(entry.locked !== undefined && { locked: entry.locked }),
-      status, index: sha256Hex(staged), characters: crewOf(at),
+      status, index: sha256Hex(staged), robots: crewOf(at),
     };
   };
 
@@ -220,7 +220,7 @@ async function readGraph(commonDir: string, slots: Slot[], git: GitRunner): Prom
 async function mainOf(commonDir: string, git: GitRunner): Promise<string> {
   if (path.basename(commonDir) === '.git') return path.dirname(commonDir);
   const r = await git(['rev-parse', '--path-format=absolute', '--show-toplevel'], commonDir);
-  if (r.code !== 0) throw new GitFailure(`${commonDir}: no character stands in its main checkout, and git cannot say where it is`);
+  if (r.code !== 0) throw new GitFailure(`${commonDir}: no robot stands in its main checkout, and git cannot say where it is`);
   return r.stdout.replace(/\n$/, '');
 }
 
@@ -385,12 +385,12 @@ async function unusedWork(graph: GitGraph, git: GitRunner, exists: (p: string) =
   for (const u of graph.unused) {
     const here = exists(u.path);
     if (!here && u.locked !== undefined) {
-      held.set(u.path, 'a locked worktree no character uses is not there, so what it holds cannot be read; mount it, or unlock or remove the worktree');
+      held.set(u.path, 'a locked worktree no robot uses is not there, so what it holds cannot be read; mount it, or unlock or remove the worktree');
     } else if (here && parseStatus(await must(git, ['status', '--porcelain=v2', '-z', '--untracked-files=normal'], u.path)).length) {
-      held.set(u.path, 'a worktree no character uses holds changes git status reports, which a handover back would leave without their registration; commit or stash them there, or remove the worktree');
+      held.set(u.path, 'a worktree no robot uses holds changes git status reports, which a handover back would leave without their registration; commit or stash them there, or remove the worktree');
     } else if (!u.branch && u.head && !(await must(git, ['for-each-ref', '--contains', u.head, '--count=1', '--format=%(refname)'], at)).trim()) {
       const commit = u.head.slice(0, 12);
-      held.set(u.path, `a worktree no character uses is detached at ${commit}, which no branch or tag reaches; name it with git branch <name> ${commit}, or remove the worktree`);
+      held.set(u.path, `a worktree no robot uses is detached at ${commit}, which no branch or tag reaches; name it with git branch <name> ${commit}, or remove the worktree`);
     }
   }
   return held;
@@ -402,7 +402,7 @@ function unusedMessage(commonDir: string, unused: GitRegistration[]): string {
     const lock = u.locked === undefined ? [] : [u.locked ? `locked: ${u.locked}` : 'locked'];
     return `${u.path} (${[at, ...lock, ...(u.prunable ? ['missing'] : [])].join(', ')})`;
   });
-  return `${commonDir}: worktrees no character uses are not registered on the destination, though their branches travel: ${items.join('; ')}`;
+  return `${commonDir}: worktrees no robot uses are not registered on the destination, though their branches travel: ${items.join('; ')}`;
 }
 
 /**

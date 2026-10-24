@@ -1,20 +1,20 @@
 import { useEffect, useRef } from 'react';
-import { sleepCharacter } from './actions.js';
+import { sleepRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
 
 // a working robot loses the turn it is on, so its sleep asks once more; a reflex Enter keeps it
 export function ConfirmSleep() {
-  const id = useApp((s) => s.sleepingCharacter);
-  const name = useApp((s) => (s.sleepingCharacter ? s.fleet.characters[s.sleepingCharacter]?.name : undefined));
+  const id = useApp((s) => s.sleepingRobot);
+  const name = useApp((s) => (s.sleepingRobot ? s.fleet.robots[s.sleepingRobot]?.name : undefined));
   const keep = useRef<HTMLButtonElement>(null);
 
   useEffect(() => { if (id) keep.current?.focus(); }, [id]);
 
   if (!id) return null;
-  const cancel = () => app.store.getState().setSleepingCharacter(undefined);
-  const confirm = () => { cancel(); void sleepCharacter(deps(), id); };
+  const cancel = () => app.store.getState().setSleepingRobot(undefined);
+  const confirm = () => { cancel(); void sleepRobot(deps(), id); };
 
   return (
     <div className="modal-back" data-testid="confirm-sleep-dialog" onPointerDown={cancel}>

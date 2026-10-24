@@ -49,7 +49,7 @@ final class QuitFlow {
     var pending: Bool { quitAnswer != nil }
 
     /// Asks the page to save its docs and name the files a quit would drop, then the user when `confirm` or a file would be lost,
-    /// then stops the fleet: every character sleeps until it is opened again.
+    /// then stops the fleet: every robot sleeps until it is opened again.
     func ask(confirm: Bool, answer: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
         guard quitAnswer == nil else { return .terminateNow }
         // a page that is not up has nothing to save and no daemon to ask
@@ -105,7 +105,7 @@ final class QuitFlow {
         answer(ok)
     }
 
-    // the page has the daemon put every character to sleep and exit; what it cannot reach is ended from here, as is this
+    // the page has the daemon put every robot to sleep and exit; what it cannot reach is ended from here, as is this
     // Mac's daemon alone for a fleet that runs elsewhere. An open handover needs this Mac's daemon, so it is left running
     private func stopFleet() {
         if handoverOpen() { return finishQuit(true) }
@@ -134,19 +134,19 @@ final class QuitFlow {
     }
 
     private func confirmQuit(unsaved: [String], working: Int) -> Bool {
-        // a handover may be bringing the fleet to this Mac, or hold its characters at rest for the move
+        // a handover may be bringing the fleet to this Mac, or hold its robots at rest for the move
         let handover = handoverOpen()
         let working = elsewhere() ? 0 : working
         // quitting lets go of the app's hold on sleep, which the helper it follows needs until it ends
         let busy = handover && handoverFollowed() ? "The handover carries on while Svall is closed. Keep this Mac awake until it finishes."
             : handover && handoverRunning() ? "The handover carries on while Svall is closed."
             : handover ? "The open handover waits in the Handover sheet until you open Svall again."
-            : working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
+            : working == 0 ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
         let message: String, detail: String
         if unsaved.isEmpty {
             message = "Quit Svall?"
-            detail = handover ? busy : elsewhere() ? "Your characters keep working on the machine this fleet runs on."
-                : working == 0 ? "Your characters stop and pick up where they left off when you open Svall again."
+            detail = handover ? busy : elsewhere() ? "Your robots keep working on the machine this fleet runs on."
+                : working == 0 ? "Your robots stop and pick up where they left off when you open Svall again."
                 : busy + " Everything picks up where it left off when you open Svall again."
         } else {
             message = "Quit with unsaved changes?"

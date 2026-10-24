@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
-import { openSecondTerminal, reviveCharacter, startFresh } from './actions.js';
+import { openSecondTerminal, reviveRobot, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
 import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
@@ -9,16 +9,16 @@ import { secondKey } from './terminals.js';
 
 // the fleet only closes an agent left idle past its limit; one that ends sooner was ended by hand
 const closedForIdleness = (f: FleetState, id: string): boolean => {
-  const a = f.characters[id]?.agent;
+  const a = f.robots[id]?.agent;
   const hours = f.dormantAfterHours ?? DORMANT_AFTER_HOURS;
   return !!a && hours > 0 && Date.now() - a.lastActivityAt >= hours * 3_600_000;
 };
 
 export function TerminalArea({ id, opacity, second, aside }: { id: string; opacity?: number; second?: boolean; aside?: boolean }) {
-  const c = useApp((s) => s.fleet.characters[id]);
+  const c = useApp((s) => s.fleet.robots[id]);
   const key = second ? secondKey(id) : id;
   const error = useApp((s) => s.terminalErrors[key]);
-  const failed = useApp((s) => resumeErrorOf(s, second ? s.fleet.characters[id]?.second : s.fleet.characters[id]));
+  const failed = useApp((s) => resumeErrorOf(s, second ? s.fleet.robots[id]?.second : s.fleet.robots[id]));
   const veiled = useApp(isVeiled);
   // the fleet is between machines: its terminals were rested at the source and reopen where it lands
   const resting = useApp((s) => holdsTerminals(s.handover));
@@ -30,7 +30,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const alpha = useRef(opacity);
   alpha.current = opacity;
 
-  // opening a dormant character wakes it once it has stayed in view a moment, so passing by wakes nothing.
+  // opening a dormant robot wakes it once it has stayed in view a moment, so passing by wakes nothing.
   // One whose window is lost while open, bar a close for idleness, or that fails to wake or to resume after a
   // handover, waits for the button
   const [held, setHeld] = useState(false);
@@ -45,8 +45,8 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   useEffect(() => {
     if (second || !dormant || held || failed || resting || !active) return;
     const t = setTimeout(() => {
-      const cur = app.store.getState().fleet.characters[id];
-      if (cur && !cur.tmux) void reviveCharacter(deps(), id).then((ok) => { if (!ok) setHeld(true); });
+      const cur = app.store.getState().fleet.robots[id];
+      if (cur && !cur.tmux) void reviveRobot(deps(), id).then((ok) => { if (!ok) setHeld(true); });
     }, 1000);
     return () => clearTimeout(t);
   }, [id, second, dormant, held, failed, resting, active]);
@@ -101,7 +101,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
             </>
           ) : (
             <>
-              <button data-testid="revive" onClick={() => (second ? openSecondTerminal(deps(), id) : void reviveCharacter(deps(), id))}>Revive {c.name}</button>
+              <button data-testid="revive" onClick={() => (second ? openSecondTerminal(deps(), id) : void reviveRobot(deps(), id))}>Revive {c.name}</button>
               {old && <button data-testid="fresh" onClick={() => setAsked(true)}>Start fresh from summary</button>}
             </>
           )}
@@ -111,7 +111,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     return <div className="revive" data-testid="resuming">{c.revive?.command ? 'Resuming the session…' : 'Starting the terminal…'}</div>;
   }
   return (
-    <div ref={ref} className="surface" data-testid="surface" data-char={id} data-term={key}>
+    <div ref={ref} className="surface" data-testid="surface" data-robot={id} data-term={key}>
       {!app.bridge.present && <span>terminal{second ? ' 2' : ''} · {c.name}</span>}
     </div>
   );

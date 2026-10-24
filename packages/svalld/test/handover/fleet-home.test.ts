@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, type Character, type ContextItem, type MachineId } from '@svall/protocol';
+import { emptyState, FleetConfig, type Robot, type ContextItem, type MachineId } from '@svall/protocol';
 import { buildInventory } from '../../src/handover/inventory.js';
 import { silentLogger } from '../../src/log.js';
 import { startDaemon } from '../../src/main.js';
@@ -16,7 +16,7 @@ type Handling = 'manifest' | 'root' | 'machine-local';
 /**
  * Every entry a fleet home holds, by its name at the top of the home, and what a handover does with it. `manifest`
  * and `root` travel: the state and fleet.json in the manifest, the rest as a root at the same path in the
- * destination's fleet home. `machine-local` stays on its machine. A `*` stands for any run of characters.
+ * destination's fleet home. `machine-local` stays on its machine. A `*` stands for any run of robots.
  */
 const ENTRIES: Record<string, Handling> = {
   'state.json': 'manifest',
@@ -55,10 +55,10 @@ const ENTRIES: Record<string, Handling> = {
   version: 'machine-local',
   trash: 'machine-local',
   'quit-quietly': 'machine-local',
-  // links to this machine's OpenCode config for its character shells, and the copies of it a saved setting replaced
+  // links to this machine's OpenCode config for its robot shells, and the copies of it a saved setting replaced
   'opencode-config': 'machine-local',
   'opencode-config-replaced': 'machine-local',
-  // the ZDOTDIR a character's zsh starts from, written again for each window
+  // the ZDOTDIR a robot's zsh starts from, written again for each window
   zsh: 'machine-local',
 };
 
@@ -151,7 +151,7 @@ describe('the entries of a fleet home', () => {
     const behind = Object.entries({ ...ENTRIES, ...BESIDE }).filter(([, h]) => h !== 'root').map(([n]) => sample(n));
     const state = emptyState();
     const context: ContextItem[] = behind.map((ref) => ({ kind: 'folder', ref, label: '', source: 'manual' }));
-    state.characters.c1 = { id: 'c1', islandId: 'i1', cell: { x: 0, y: 0 }, name: 'c1', note: '', portrait: 'fox', instructions: '', cwd: home, context, shell: { lastOutputAt: 0 }, unread: false } satisfies Character;
+    state.robots.c1 = { id: 'c1', islandId: 'i1', cell: { x: 0, y: 0 }, name: 'c1', note: '', portrait: 'fox', instructions: '', cwd: home, context, shell: { lastOutputAt: 0 }, unread: false } satisfies Robot;
     const fleet = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', handover: { transferFleetEnv: true } });
     const mac = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
     const trift = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;

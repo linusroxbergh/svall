@@ -221,7 +221,7 @@ suite(`Linked worktree handover${hasGit ? '' : ' (skipped: git is not on PATH)'}
     const sub = path.join(fixture.source.main, 'sub');
     const gitlink = git(fixture.source.main, 'ls-files', '-s', 'sub');
     const head = git(sub, 'rev-parse', 'HEAD');
-    // a character working in here is its own repository graph: git dir and common dir are the same
+    // a robot working in here is its own repository graph: git dir and common dir are the same
     // path under the superproject's .git/modules, and the toplevel is the submodule itself
     expect(discoverGraph(sub)).toEqual({
       root: sub,

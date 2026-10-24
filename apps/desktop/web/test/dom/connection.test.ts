@@ -91,13 +91,13 @@ test('a patch the mirror cannot apply asks for a fresh snapshot, which replaces 
   deliver({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } });
   deliver({ id: snapshots()[0].id, result: fleet() });
   await vi.advanceTimersByTimeAsync(0);
-  expect(Object.keys(store.getState().fleet.characters)).toHaveLength(3);
+  expect(Object.keys(store.getState().fleet.robots)).toHaveLength(3);
 
-  deliver({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/characters/gone/name', value: 'x' }] } });
+  deliver({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/gone/name', value: 'x' }] } });
   expect(snapshots()).toHaveLength(2);
   const fresh = fleet();
-  delete fresh.characters.c0;
+  delete fresh.robots.c0;
   deliver({ id: snapshots()[1].id, result: fresh });
   await vi.advanceTimersByTimeAsync(0);
-  expect(store.getState().fleet.characters.c0).toBeUndefined();
+  expect(store.getState().fleet.robots.c0).toBeUndefined();
 });

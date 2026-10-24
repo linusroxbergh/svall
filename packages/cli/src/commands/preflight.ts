@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
-import { characterKeyEnv } from '@svall/svalld/claude';
+import { robotKeyEnv } from '@svall/svalld/claude';
 import { configuredMainAgent, fleetMainAgent, peekConfig } from '@svall/svalld/config';
 import { unitPath } from '@svall/svalld/linux/setup';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
@@ -22,7 +22,7 @@ export type PreflightDeps = {
   /** where the daemon finds the agent CLIs, when that is not this shell's PATH */
   agentPath?: string;
   shimDir: string;
-  // the fleet's .env API keys, as a character's shell gets them
+  // the fleet's .env API keys, as a robot's shell gets them
   keys: Record<string, string>;
   mainAgent?: AgentKind;
   platform: NodeJS.Platform;
@@ -64,7 +64,7 @@ const exitCode = (e: unknown): unknown => (e as { code?: unknown }).code;
 async function signedIn(d: PreflightDeps, kind: AgentKind): Promise<boolean | undefined> {
   const a = AGENTS[kind];
   try {
-    // the fleet's API keys ride along, as they do into a character's shell
+    // the fleet's API keys ride along, as they do into a robot's shell
     return a.loggedIn(await d.run(a.bin, a.loginArgs, { path: d.agentPath, env: d.keys }));
   } catch (e) {
     return exitCode(e) === 1 ? false : undefined;
@@ -144,7 +144,7 @@ export function realPreflightDeps(home: string, platform: NodeJS.Platform = proc
     pathEnv: process.env.PATH ?? '',
     ...(platform === 'linux' && { agentPath: unitAgentPath() }),
     shimDir: userPaths().shimDir,
-    keys: characterKeyEnv(resolvePaths(home).env),
+    keys: robotKeyEnv(resolvePaths(home).env),
     mainAgent,
     platform,
     handover,

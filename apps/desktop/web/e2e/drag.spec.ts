@@ -25,52 +25,52 @@ async function dragTo(page: Page, from: { x: number; y: number }, to: { x: numbe
   await page.mouse.move(b.x, b.y, { steps: 4 });
   await page.mouse.up();
 }
-const charOf = async (svall: Svall, id: string) => (await svall.api.call('state.get', {})).characters[id];
+const robotOf = async (svall: Svall, id: string) => (await svall.api.call('state.get', {})).robots[id];
 
-test('moves a character by drag, swaps on an occupied cell, makes an island on water', async ({ page, svall }) => {
+test('moves a robot by drag, swaps on an occupied cell, makes an island on water', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('drag'), seed: 4, position: { x: 0, y: 40 } });
   const cells = spacedCells(island.size, 3);
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a', cell: cells[0] });
-  const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b', cell: cells[1] });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a', cell: cells[0] });
+  const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'b', cell: cells[1] });
   await svall.open('map');
   await expect(page.getByTestId(`token-${a.id}`)).toBeVisible();
   const world = (c: { x: number; y: number }) => ({ x: island.position.x + c.x, y: island.position.y + c.y });
 
   const target = cells[2];
   await dragTo(page, world(a.cell), world(target));
-  await expect.poll(() => charOf(svall, a.id).then((c) => c.cell)).toEqual(target);
+  await expect.poll(() => robotOf(svall, a.id).then((c) => c.cell)).toEqual(target);
 
   await dragTo(page, world(target), world(b.cell));
-  await expect.poll(() => charOf(svall, a.id).then((c) => c.cell)).toEqual(b.cell);
-  expect((await charOf(svall, b.id)).cell).toEqual(target);
+  await expect.poll(() => robotOf(svall, a.id).then((c) => c.cell)).toEqual(b.cell);
+  expect((await robotOf(svall, b.id)).cell).toEqual(target);
 
   // footprints grown by a cell must stay clear, so the drop is far enough right that the new 6-wide island misses this one
   const water = { x: island.position.x + island.size.w + 6, y: island.position.y };
   await dragTo(page, world(b.cell), water);
-  await expect.poll(async () => (await charOf(svall, a.id)).islandId).not.toBe(island.id);
+  await expect.poll(async () => (await robotOf(svall, a.id)).islandId).not.toBe(island.id);
   const state = await svall.api.call('state.get', {});
-  const created = state.islands[(await charOf(svall, a.id)).islandId];
+  const created = state.islands[(await robotOf(svall, a.id)).islandId];
   expect(created.name).toMatch(/^tmp/);
   await expect(page.getByTestId(`island-label-${created.id}`)).toBeVisible();
 });
 
-test('an occupied map drop exchanges characters across islands', async ({ page, svall }) => {
+test('an occupied map drop exchanges robots across islands', async ({ page, svall }) => {
   const left = await svall.api.call('island.create', { name: svall.uniq('swap-left'), position: { x: 0, y: 40 } });
   const right = await svall.api.call('island.create', { name: svall.uniq('swap-right'), position: { x: 11, y: 40 } });
-  const a = await svall.api.call('char.create', { islandId: left.id, cwd: '/tmp', name: 'a' });
-  const b = await svall.api.call('char.create', { islandId: right.id, cwd: '/tmp', name: 'b' });
+  const a = await svall.api.call('robot.create', { islandId: left.id, cwd: '/tmp', name: 'a' });
+  const b = await svall.api.call('robot.create', { islandId: right.id, cwd: '/tmp', name: 'b' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${a.id}`)).toBeVisible();
   const world = (island: typeof left, c: typeof a) => ({ x: island.position.x + c.cell.x, y: island.position.y + c.cell.y });
   await dragTo(page, world(left, a), world(right, b));
-  await expect.poll(() => charOf(svall, a.id).then((c) => c.islandId)).toBe(right.id);
-  expect((await charOf(svall, b.id)).islandId).toBe(left.id);
+  await expect.poll(() => robotOf(svall, a.id).then((c) => c.islandId)).toBe(right.id);
+  expect((await robotOf(svall, b.id)).islandId).toBe(left.id);
 });
 
 test('islands move by label and resize by handle', async ({ page, svall }) => {
   const left = await svall.api.call('island.create', { name: svall.uniq('l'), seed: 1, position: { x: 0, y: 60 } });
   const right = await svall.api.call('island.create', { name: svall.uniq('r'), seed: 1, position: { x: 11, y: 60 } });
-  const c = await svall.api.call('char.create', { islandId: left.id, cwd: '/tmp', name: 'c' });
+  const c = await svall.api.call('robot.create', { islandId: left.id, cwd: '/tmp', name: 'c' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
   const label = page.getByTestId(`island-label-${right.id}`);
@@ -154,7 +154,7 @@ test('Escape cancels a sub-cell island drag without moving the fleet', async ({ 
 
 test('an island and its cards follow the pointer before snapping, without an unnecessary refit', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('smooth'), seed: 1, position: { x: 0, y: 60 } });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'on board' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'on board' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
   await settleMap(page);
@@ -184,15 +184,15 @@ test('an island and its cards follow the pointer before snapping, without an unn
 test('a drop in the gap between two islands lands clear of both', async ({ page, svall }) => {
   const left = await svall.api.call('island.create', { name: svall.uniq('gl'), seed: 1, position: { x: 0, y: 200 } });
   const right = await svall.api.call('island.create', { name: svall.uniq('gr'), seed: 1, position: { x: 7, y: 200 } });
-  const c = await svall.api.call('char.create', { islandId: left.id, cwd: '/tmp', name: 'g' });
+  const c = await svall.api.call('robot.create', { islandId: left.id, cwd: '/tmp', name: 'g' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
 
   // the one-cell gap cannot hold an island, so it slides clear instead of refusing the drop
   await dragTo(page, { x: left.position.x + c.cell.x, y: left.position.y + c.cell.y }, { x: 6, y: 200 });
-  await expect.poll(async () => (await charOf(svall, c.id)).islandId).not.toBe(left.id);
+  await expect.poll(async () => (await robotOf(svall, c.id)).islandId).not.toBe(left.id);
   const state = await svall.api.call('state.get', {});
-  const made = state.islands[(await charOf(svall, c.id)).islandId];
+  const made = state.islands[(await robotOf(svall, c.id)).islandId];
   const clear = (a: typeof made, b: typeof made) =>
     a.position.x + a.size.w < b.position.x || b.position.x + b.size.w < a.position.x ||
     a.position.y + a.size.h < b.position.y || b.position.y + b.size.h < a.position.y;
@@ -321,53 +321,53 @@ test('an island moved towards mission control closes the gap instead of refittin
   await expect.poll(async () => (await drawnAt(page, mid.id))?.y).toBe(20);
 });
 
-test('the sidebar moves a character to another island, then reorders its new crew', async ({ page, svall }) => {
+test('the sidebar moves a robot to another island, then reorders its new crew', async ({ page, svall }) => {
   const from = await svall.api.call('island.create', { name: svall.uniq('sba'), position: { x: 0, y: 300 } });
   const to = await svall.api.call('island.create', { name: svall.uniq('sbb'), position: { x: 11, y: 300 } });
-  const a = await svall.api.call('char.create', { islandId: from.id, cwd: '/tmp', name: 'sa' });
-  const b = await svall.api.call('char.create', { islandId: to.id, cwd: '/tmp', name: 'sb' });
+  const a = await svall.api.call('robot.create', { islandId: from.id, cwd: '/tmp', name: 'sa' });
+  const b = await svall.api.call('robot.create', { islandId: to.id, cwd: '/tmp', name: 'sb' });
   await svall.open('map');
-  await expect(page.getByTestId(`sb-char-${a.id}`)).toBeVisible();
+  await expect(page.getByTestId(`sb-robot-${a.id}`)).toBeVisible();
 
-  await page.getByTestId(`sb-char-${a.id}`).dragTo(page.getByTestId(`sb-island-${to.id}`));
-  await expect.poll(() => charOf(svall, a.id).then((c) => c.islandId)).toBe(to.id);
+  await page.getByTestId(`sb-robot-${a.id}`).dragTo(page.getByTestId(`sb-island-${to.id}`));
+  await expect.poll(() => robotOf(svall, a.id).then((c) => c.islandId)).toBe(to.id);
 
-  const landed = (await charOf(svall, a.id)).cell;
-  const target = page.getByTestId(`sb-char-${a.id}`);
+  const landed = (await robotOf(svall, a.id)).cell;
+  const target = page.getByTestId(`sb-robot-${a.id}`);
   const height = (await target.boundingBox())!.height;
-  await page.getByTestId(`sb-char-${b.id}`).dragTo(target, { targetPosition: { x: 20, y: height - 3 } });
-  await expect.poll(() => charOf(svall, b.id).then((c) => c.cell)).toEqual(landed);
-  expect((await charOf(svall, a.id)).cell).not.toEqual(landed);
+  await page.getByTestId(`sb-robot-${b.id}`).dragTo(target, { targetPosition: { x: 20, y: height - 3 } });
+  await expect.poll(() => robotOf(svall, b.id).then((c) => c.cell)).toEqual(landed);
+  expect((await robotOf(svall, a.id)).cell).not.toEqual(landed);
 });
 
-test('a sidebar drop inserts a character and shifts the rows between it and the target', async ({ page, svall }) => {
+test('a sidebar drop inserts a robot and shifts the rows between it and the target', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('reorder'), position: { x: 0, y: 300 } });
-  const chars = await Promise.all(['one', 'two', 'three'].map((name) => svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name })));
+  const robots = await Promise.all(['one', 'two', 'three'].map((name) => svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name })));
   await svall.open('map');
   const order = async () => {
     const state = await svall.api.call('state.get', {});
-    return Object.values(state.characters).filter((c) => c.islandId === island.id)
+    return Object.values(state.robots).filter((c) => c.islandId === island.id)
       .sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x).map((c) => c.id);
   };
   const before = await order();
   const [first, middle, last] = before;
-  await page.getByTestId(`sb-char-${last}`).dragTo(page.getByTestId(`sb-char-${first}`), { targetPosition: { x: 20, y: 4 } });
+  await page.getByTestId(`sb-robot-${last}`).dragTo(page.getByTestId(`sb-robot-${first}`), { targetPosition: { x: 20, y: 4 } });
   await expect.poll(order).toEqual([last, first, middle]);
-  await expect(page.getByTestId(`sb-folder-${island.id}`).locator('.sb-child')).toHaveCount(chars.length);
+  await expect(page.getByTestId(`sb-folder-${island.id}`).locator('.sb-child')).toHaveCount(robots.length);
 });
 
-test('a sidebar drop on a character in another island moves without displacing the target', async ({ page, svall }) => {
+test('a sidebar drop on a robot in another island moves without displacing the target', async ({ page, svall }) => {
   const from = await svall.api.call('island.create', { name: svall.uniq('move-from'), position: { x: 0, y: 300 } });
   const to = await svall.api.call('island.create', { name: svall.uniq('move-to'), position: { x: 11, y: 300 } });
-  const moving = await svall.api.call('char.create', { islandId: from.id, cwd: '/tmp', name: 'moving' });
-  const target = await svall.api.call('char.create', { islandId: to.id, cwd: '/tmp', name: 'target' });
+  const moving = await svall.api.call('robot.create', { islandId: from.id, cwd: '/tmp', name: 'moving' });
+  const target = await svall.api.call('robot.create', { islandId: to.id, cwd: '/tmp', name: 'target' });
   await svall.open('map');
-  await page.getByTestId(`sb-char-${moving.id}`).dragTo(page.getByTestId(`sb-char-${target.id}`), { targetPosition: { x: 20, y: 4 } });
-  await expect.poll(() => charOf(svall, moving.id).then((c) => c.islandId)).toBe(to.id);
-  expect((await charOf(svall, target.id)).islandId).toBe(to.id);
+  await page.getByTestId(`sb-robot-${moving.id}`).dragTo(page.getByTestId(`sb-robot-${target.id}`), { targetPosition: { x: 20, y: 4 } });
+  await expect.poll(() => robotOf(svall, moving.id).then((c) => c.islandId)).toBe(to.id);
+  expect((await robotOf(svall, target.id)).islandId).toBe(to.id);
   const state = await svall.api.call('state.get', {});
-  expect(state.characters[moving.id].cell.y < state.characters[target.id].cell.y ||
-    (state.characters[moving.id].cell.y === state.characters[target.id].cell.y && state.characters[moving.id].cell.x < state.characters[target.id].cell.x)).toBe(true);
+  expect(state.robots[moving.id].cell.y < state.robots[target.id].cell.y ||
+    (state.robots[moving.id].cell.y === state.robots[target.id].cell.y && state.robots[moving.id].cell.x < state.robots[target.id].cell.x)).toBe(true);
 });
 
 test('the sidebar reorders islands by drag, and mission control stays last', async ({ page, svall }) => {

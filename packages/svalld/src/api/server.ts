@@ -34,7 +34,7 @@ const HEARTBEAT_MS = 30_000;
 // how often a refused phone may send the daemon to ask tailscale who owns this Mac
 const LOOK_MS = 10_000;
 // what a worker may do with one POST: answer the prompt a notification carried
-const RPC_METHODS = new Set(['char.answer']);
+const RPC_METHODS = new Set(['robot.answer']);
 const MAX_RPC_BODY = 64 * 1024;
 // the packaged app, and in a checkout the Vite dev server
 const APP_ORIGINS = new Set(['svall://app', ...(variant === 'dev' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [])]);

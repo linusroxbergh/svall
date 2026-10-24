@@ -16,11 +16,11 @@ Developers on a Mac who run several Claude Code, Codex or OpenCode agents at onc
 
 ## Product Purpose
 
-Svall is a macOS map of your coding agents. Every terminal is a character on an island, so one glance shows which agents are working, blocked or done. Success is a developer running many agents without tab-hunting or losing sessions.
+Svall is a macOS map of your coding agents. Every terminal is a robot on an island, so one glance shows which agents are working, blocked or done. Success is a developer running many agents without tab-hunting or losing sessions.
 
 ## Positioning
 
-The fleet is a place, not a list: islands per project, characters per terminal, status you read from across the room. Sessions live in tmux under a daemon that runs while the app is open; quitting stops them, and opening a character resumes its agent's conversation, as after a reboot.
+The fleet is a place, not a list: islands per project, robots per terminal, status you read from across the room. Sessions live in tmux under a daemon that runs while the app is open; quitting stops them, and opening a robot resumes its agent's conversation, as after a reboot.
 
 ## Operating Context
 
@@ -28,7 +28,7 @@ Runs on macOS 15+ on Apple silicon. Wraps the Claude Code, Codex and OpenCode CL
 
 ## Capabilities and Constraints
 
-- Islands group characters; each card shows status, context use, model, PR and ticket links.
+- Islands group robots; each card shows status, context use, model, PR and ticket links.
 - Terminals are tmux windows; revive resumes with `claude --resume`, `codex resume` or `opencode -s`.
 - Briefs carry instructions, links and agents' notes into every new session.
 - Browser, file editor and working-tree diff beside each terminal.
@@ -51,5 +51,5 @@ Runs on macOS 15+ on Apple silicon. Wraps the Claude Code, Codex and OpenCode CL
 ## Product Principles
 
 - Glanceable over exhaustive: status first, detail on demand.
-- Nothing is lost: a character resumes its agent's conversation after a quit or a reboot.
+- Nothing is lost: a robot resumes its agent's conversation after a quit or a reboot.
 - Bring your own agents: wrap the CLIs people already trust.

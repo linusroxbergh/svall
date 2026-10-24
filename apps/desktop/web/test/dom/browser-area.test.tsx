@@ -19,7 +19,7 @@ test('the reload button stops a page while it loads', () => {
   store = createAppStore();
   setAppStore(store);
   const f = fleet();
-  f.characters.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { browser: { tabs: [{ id: 't_1', url: 'https://a.test/', title: '' }], active: 't_1' } });
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { browser: { tabs: [{ id: 't_1', url: 'https://a.test/', title: '' }], active: 't_1' } });
   store.getState().setFleet(f);
   store.getState().webviewOpened('t_1', { x: 0, y: 0, width: 0, height: 0 });
   render(<BrowserArea id="c0" />);

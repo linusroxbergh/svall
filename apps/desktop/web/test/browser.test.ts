@@ -24,7 +24,7 @@ function fakes() {
   } as unknown as Api;
   const store = createAppStore();
   const f = fleet();
-  f.characters.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { browser: tabs });
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { browser: tabs });
   store.getState().setFleet(f);
   return { sent, calls, bridge, api, store, manager: createBrowserManager(api, bridge, store) };
 }
@@ -58,15 +58,15 @@ describe('browser manager', () => {
     expect(store.getState().webviews.t_1.error).toBe('The server cannot be found.');
   });
 
-  it('registers a popup the shell opened under the character of the tab it came from, and frees it with its tab', async () => {
+  it('registers a popup the shell opened under the robot of the tab it came from, and frees it with its tab', async () => {
     const { bridge, calls, sent, store } = fakes();
     bridge.emit({ type: 'browser.opened', from: 't_2', tab: 't_pop00001', url: 'https://login.test/' });
     await new Promise((r) => setTimeout(r, 0));
     expect(calls.at(-1)).toEqual({ method: 'browser.open', params: { id: 'c0', tab: 't_pop00001', url: 'https://login.test/' } });
     // the view is on record even though no pane has placed it, so a tab closed before it was ever shown still frees it
     expect(store.getState().webviews.t_pop00001).toBeDefined();
-    store.getState().applyPatch([{ op: 'add', path: '/characters/c0/browser/tabs/-', value: { id: 't_pop00001', url: 'https://login.test/', title: '' } }]);
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0/browser/tabs/2' }]);
+    store.getState().applyPatch([{ op: 'add', path: '/robots/c0/browser/tabs/-', value: { id: 't_pop00001', url: 'https://login.test/', title: '' } }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/browser/tabs/2' }]);
     expect(sent.at(-1)).toEqual({ type: 'browser.close', tab: 't_pop00001' });
     expect(store.getState().webviews.t_pop00001).toBeUndefined();
   });
@@ -89,19 +89,19 @@ describe('browser manager', () => {
     expect(store.getState().webviews.t_1).toBeUndefined();
     expect(calls.filter((k) => k.method === 'browser.close')).toEqual([{ method: 'browser.close', params: { id: 'c0', tab: 't_1' } }]);
     // svalld drops the tab in answer; the patch finds no view left, so nothing bounces back to the shell
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0/browser/tabs/0' }, { op: 'replace', path: '/characters/c0/browser/active', value: 't_2' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/browser/tabs/0' }, { op: 'replace', path: '/robots/c0/browser/active', value: 't_2' }]);
     expect(sent).toEqual([]);
     expect(calls.filter((k) => k.method === 'browser.close')).toHaveLength(1);
   });
 
-  it('frees the view of a tab that left the fleet, and every view of a character that left', () => {
+  it('frees the view of a tab that left the fleet, and every view of a robot that left', () => {
     const { sent, store, manager } = fakes();
     manager.show('c0', 't_1', rect);
     manager.show('c0', 't_2', rect);
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0/browser/tabs/0' }, { op: 'replace', path: '/characters/c0/browser/active', value: 't_2' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/browser/tabs/0' }, { op: 'replace', path: '/robots/c0/browser/active', value: 't_2' }]);
     expect(sent.at(-1)).toEqual({ type: 'browser.close', tab: 't_1' });
     expect(store.getState().webviews.t_1).toBeUndefined();
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0' }]);
     expect(sent.at(-1)).toEqual({ type: 'browser.close', tab: 't_2' });
     expect(store.getState().webviews).toEqual({});
   });
@@ -109,15 +109,15 @@ describe('browser manager', () => {
   it('asks by the pointer where a link followed in a terminal opens, and opens nothing yet', () => {
     const { bridge, calls, store } = fakes();
     bridge.emit({ type: 'term.openUrl', id: 'c0-2', url: 'https://ticket.test/1', x: 120, y: 340 });
-    expect(store.getState().linkAsk).toEqual({ url: 'https://ticket.test/1', charId: 'c0', x: 120, y: 340, surface: 'c0-2' });
+    expect(store.getState().linkAsk).toEqual({ url: 'https://ticket.test/1', robotId: 'c0', x: 120, y: 340, surface: 'c0-2' });
     expect(calls.filter((k) => k.method === 'browser.open')).toEqual([]);
   });
 
-  it('sends a link the browser cannot hold, and one of a character that is gone, out of the app', () => {
+  it('sends a link the browser cannot hold, and one of a robot that is gone, out of the app', () => {
     const { bridge, calls, sent, store } = fakes();
     bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'mailto:a@b.test', x: 0, y: 0 });
     expect(sent.at(-1)).toEqual({ type: 'openUrl', url: 'mailto:a@b.test' });
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0' }]);
     bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'https://ticket.test/1', x: 0, y: 0 });
     expect(sent.at(-1)).toEqual({ type: 'openUrl', url: 'https://ticket.test/1' });
     expect(store.getState().linkAsk).toBeUndefined();

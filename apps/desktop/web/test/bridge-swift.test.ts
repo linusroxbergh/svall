@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { charOfKey, secondKey } from '@svall/protocol';
+import { robotOfKey, secondKey } from '@svall/protocol';
 
 // the shell decodes and encodes each message by hand, so a name changed on one side alone only shows up here
 const ts = fs.readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8');
@@ -68,11 +68,11 @@ describe('bridge between the page and the shell', () => {
 
 // the banner's click and the phone's notification tag spell the second terminal's key out themselves
 describe('a second terminal\'s key outside the protocol', () => {
-  it('the shell reads the character back off it as the protocol does', () => {
+  it('the shell reads the robot back off it as the protocol does', () => {
     const notifier = fs.readFileSync(new URL('../../mac/Sources/Svall/Notifier.swift', import.meta.url), 'utf8');
-    const [, suffix, cut] = notifier.match(/func charId\(_ key: String\) -> String \{ key\.hasSuffix\("([^"]+)"\) \? String\(key\.dropLast\((\d+)\)\) : key \}/)!;
+    const [, suffix, cut] = notifier.match(/func robotId\(_ key: String\) -> String \{ key\.hasSuffix\("([^"]+)"\) \? String\(key\.dropLast\((\d+)\)\) : key \}/)!;
     expect(`c_1${suffix}`).toBe(secondKey('c_1'));
-    expect(`c_1${suffix}`.slice(0, -Number(cut))).toBe(charOfKey(secondKey('c_1')));
+    expect(`c_1${suffix}`.slice(0, -Number(cut))).toBe(robotOfKey(secondKey('c_1')));
   });
 
   it('the service worker tags a second terminal\'s notification with it', () => {

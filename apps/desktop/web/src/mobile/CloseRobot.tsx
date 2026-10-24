@@ -1,18 +1,18 @@
 import { useState, type JSX } from 'react';
-import type { Character } from '@svall/protocol';
+import type { Robot } from '@svall/protocol';
 import { useApp } from '../hooks.js';
 import { phone } from './boot.js';
 import { Sheet } from './Sheet.js';
 
-/** What closing a character costs and the button that closes it, with a refusal told beside them. */
-export function CloseConfirm({ c, onClosed }: { c: Character; onClosed(): void }): JSX.Element {
+/** What closing a robot costs and the button that closes it, with a refusal told beside them. */
+export function CloseConfirm({ c, onClosed }: { c: Robot; onClosed(): void }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
   const close = async () => {
     if (busy) return;
     setBusy(true);
-    try { await phone.api().call('char.close', { id: c.id }); onClosed(); } catch (e) { setError((e as Error).message); setBusy(false); }
+    try { await phone.api().call('robot.close', { id: c.id }); onClosed(); } catch (e) { setError((e as Error).message); setBusy(false); }
   };
 
   return (
@@ -24,8 +24,8 @@ export function CloseConfirm({ c, onClosed }: { c: Character; onClosed(): void }
   );
 }
 
-export function CloseCharacter({ id, onClose }: { id: string; onClose(): void }): JSX.Element | null {
-  const c = useApp((s) => s.fleet.characters[id]);
+export function CloseRobot({ id, onClose }: { id: string; onClose(): void }): JSX.Element | null {
+  const c = useApp((s) => s.fleet.robots[id]);
   if (!c) return null;
   return (
     <Sheet title={c.name} onClose={onClose}>

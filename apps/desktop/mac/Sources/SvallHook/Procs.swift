@@ -8,11 +8,13 @@ private func decoded(_ b: ArraySlice<UInt8>) -> JSON {
     return .string(t)
 }
 
-private let charPrefix = Array("SVALL_CHAR_ID=".utf8)
+private let robotPrefix = Array("SVALL_ROBOT_ID=".utf8)
+// a session an older svalld started carries SVALL_CHAR_ID
+private let oldRobotPrefix = Array("SVALL_CHAR_ID=".utf8)
 private let homePrefix = Array("SVALL_HOME=".utf8)
 
-/// A process's argv joined by spaces, with the values of `SVALL_CHAR_ID` and `SVALL_HOME` from its environment.
-private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice<UInt8>, char: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?)? {
+/// A process's argv joined by spaces, with the values of `SVALL_ROBOT_ID` and `SVALL_HOME` from its environment.
+private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice<UInt8>, robot: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?)? {
     var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
     var size = buf.count
     guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > 4 else { return nil }
@@ -30,16 +32,17 @@ private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice
         args += buf[s..<i]
         i += 1
     }
-    var char: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?
+    var robot: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?
     while i < size && buf[i] != 0 {
         let s = i
         while i < size && buf[i] != 0 { i += 1 }
         let entry = buf[s..<i]
-        if entry.starts(with: charPrefix) { char = entry.dropFirst(charPrefix.count) }
+        if entry.starts(with: robotPrefix) { robot = entry.dropFirst(robotPrefix.count) }
+        if robot == nil && entry.starts(with: oldRobotPrefix) { robot = entry.dropFirst(oldRobotPrefix.count) }
         if entry.starts(with: homePrefix) { home = entry.dropFirst(homePrefix.count) }
         i += 1
     }
-    return (args[...], char, home)
+    return (args[...], robot, home)
 }
 
 private func find(_ hay: ArraySlice<UInt8>, _ needle: Bytes) -> Int? {
@@ -84,7 +87,7 @@ func procs() -> Never {
         let pathLen = max(0, Int(proc_pidpath(pid, &path, UInt32(path.count))))
         // svalld ignores the marks of apps and never reads their args, and reading them is the costliest step
         // a process whose arguments can't be read stays, so its descendants keep their place in the tree
-        let marks = (isApp(path[..<pathLen]) ? nil : argsAndMarks(pid, &argBuf)) ?? (args: ArraySlice<UInt8>(), char: nil, home: nil)
+        let marks = (isApp(path[..<pathLen]) ? nil : argsAndMarks(pid, &argBuf)) ?? (args: ArraySlice<UInt8>(), robot: nil, home: nil)
 
         let ticks = Double(usage.ri_user_time &+ usage.ri_system_time)
         var row: [(key: Text, value: JSON)] = [
@@ -97,7 +100,7 @@ func procs() -> Never {
         if let responsible { row.append((text("resp"), .number(Double(responsible(pid))))) }
         row.append((text("path"), decoded(path[..<pathLen])))
         row.append((text("args"), decoded(marks.args)))
-        if let c = marks.char { row.append((text("char"), decoded(c))) }
+        if let c = marks.robot { row.append((text("robot"), decoded(c))) }
         if let h = marks.home { row.append((text("home"), decoded(h))) }
         rows.append(.object(row))
     }

@@ -14,7 +14,7 @@ describe('svall fleet provision', () => {
   it('exits with its own code on a refusal, saying why, so the controller tells it from any other failure', async () => {
     const said: string[] = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => { said.push(String(chunk)); return true; });
-    const why = '/home/linus/.svall holds fleet 47a74455-7dbc-46c0-8076-30d830cf4f72, and it holds 3 characters, so it is not this fleet\'s to replace';
+    const why = '/home/linus/.svall holds fleet 47a74455-7dbc-46c0-8076-30d830cf4f72, and it holds 3 robots, so it is not this fleet\'s to replace';
     const refused = provisionCommand(() => ({ name: 'private', home: '/home/linus/.svall', managed: true }), () => true, 'linux', async () => { throw new ProvisionRefused(why); });
     await refused.parseAsync(['--id', FLEET, '--gateway', GATEWAY], { from: 'user' });
     expect(process.exitCode).toBe(REFUSED);

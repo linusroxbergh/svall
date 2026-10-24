@@ -4,37 +4,37 @@
 > **Alpha**: early and changing fast. Expect rough edges.
 
 A macOS map of your Claude Code, Codex and OpenCode agents. Every terminal is a
-character on an island, so you can see at a glance which agents are working,
+robot on an island, so you can see at a glance which agents are working,
 waiting on you or done.
 
-![The map: islands of characters, the islands panel and the phone's QR code on the left, and a phone showing the same fleet as a list](assets/svall_overview.jpg)
+![The map: islands of robots, the islands panel and the phone's QR code on the left, and a phone showing the same fleet as a list](assets/svall_overview.jpg)
 
-![A character's Claude Code session on the left and its browser on a GitHub issue on the right](assets/svall_browser.jpg)
+![A robot's Claude Code session on the left and its browser on a GitHub issue on the right](assets/svall_browser.jpg)
 
-- Islands group your characters, say one per project, on a map or a board.
+- Islands group your robots, say one per project, on a map or a board.
   Each card shows its agent's status, context use, model and links such as its
   PR and ticket.
 - Each terminal is a tmux window. Quitting a fleet's window stops its
-  terminals; opening a character again resumes its session with
+  terminals; opening a robot again resumes its session with
   `claude --resume`, `codex resume` or `opencode -s`.
-- Give an island or character instructions, links, files or folders, and
+- Give an island or robot instructions, links, files or folders, and
   agents leave notes for the next agent. Each session starts with a short brief
   of all of it, plus its repository, PR and ticket, and gets
   a diff when any of it changes. The brief also tells the agent when to hand
-  work to a new character.
+  work to a new robot.
 - Resources lists the instructions, skills, subagents, commands, MCP servers,
   plugins, hooks and settings that Claude Code and Codex give your agents, and
   opens each in an editor.
 - Every terminal has a browser, a file editor and the working tree's changes
   beside it.
-- The scribe names each character and keeps its note up to date.
+- The scribe names each robot and keeps its note up to date.
 - Mission control's buttons start a helper agent that updates or reports on
   the fleet.
 - A macOS banner tells you when an agent is blocked or done. A blocked one has
   Approve and Deny on it.
 - Your phone gets the fleet and any terminal over Tailscale, with push
   notifications.
-- The `svall` CLI scripts the fleet: make characters, send prompts, wait for
+- The `svall` CLI scripts the fleet: make robots, send prompts, wait for
   them.
 
 ## Quickstart
@@ -67,10 +67,10 @@ CLIs.
    `~/.local/bin` isn't on your PATH, it shows the line to add to your shell
    profile so the `svall` command works.
 
-4. A new fleet opens with Island 1 holding one character, a shell in your
+4. A new fleet opens with Island 1 holding one robot, a shell in your
    projects folder, and a short tour of the map. The shell becomes an agent
    when you type `claude`, `codex` or `opencode`. `+ New island` on the sandbar
-   at the bottom makes another island, and Cmd+T another character. With more
+   at the bottom makes another island, and Cmd+T another robot. With more
    than one CLI installed, the app asks which one the scribe and mission
    control run. Change it later in Settings or with `svall agent codex`.
 
@@ -91,27 +91,27 @@ fleet's `.env` (another fleet's is `~/.svall-<fleet>/.env`):
     nano ~/.svall/.env
 
 Add `ANTHROPIC_API_KEY=your-key` on its own line, and keep the key out of this
-repository and your shell history. New character shells and the Claude scribe
+repository and your shell history. New robot shells and the Claude scribe
 read it, and it signs Claude Code in; `svall doctor` shows whether it did. A
 shell that is already running keeps its old environment, so after changing the
-file, create a new character or revive a dormant one. Claude Code may ask once
+file, create a new robot or revive a dormant one. Claude Code may ask once
 before it uses the key; see its
 [environment variable reference](https://code.claude.com/docs/en/env-vars).
 
 For Codex, sign the CLI in with an
 [OpenAI API key](https://platform.openai.com/api-keys) before you start a Codex
-character. With `OPENAI_API_KEY` set in your normal terminal, run:
+robot. With `OPENAI_API_KEY` set in your normal terminal, run:
 
     printenv OPENAI_API_KEY | codex login --with-api-key
     codex login status
 
-An `OPENAI_API_KEY` in the fleet's `.env` reaches new character shells, but
+An `OPENAI_API_KEY` in the fleet's `.env` reaches new robot shells, but
 Codex doesn't log in from it. See the
 [Codex authentication guide](https://learn.chatgpt.com/docs/auth).
 
 For OpenCode, sign in to a provider with `opencode auth login`. An
 `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the fleet's `.env` also reaches new
-character shells, but not the OpenCode scribe.
+robot shells, but not the OpenCode scribe.
 
 The scribe and mission control run the main agent's CLI, so a Codex-only
 install needs no Claude login. The Usage panel shows Claude and Codex plan
@@ -122,7 +122,7 @@ limits, not API spending.
 Svall checks for updates on its own. When one is out, the private fleet's window
 shows a blue dot on the sidebar's Settings button, and Settings ends with an
 Update button. In that window, Svall → Check for Updates… checks now. Installing
-quits every Svall window, which stops each fleet; a character picks up where it
+quits every Svall window, which stops each fleet; a robot picks up where it
 left off when you open it.
 
 ### Uninstalling
@@ -150,7 +150,7 @@ daemon's log, `~/.svall/svalld.log`. Send its output, and what you were doing,
 as an issue on
 [linusroxbergh/svall](https://github.com/linusroxbergh/svall/issues).
 
-If a new character's terminal takes seconds to show its prompt, zsh is usually
+If a new robot's terminal takes seconds to show its prompt, zsh is usually
 rebuilding its completion cache. Homebrew's `brew shellenv` exports `FPATH`, so
 shells that Claude Code starts rewrite `~/.zcompdump`. Add this line to the end
 of `~/.zshrc`:
@@ -162,7 +162,7 @@ typeset +x FPATH
 ### Migrating from Herdr
 
 Ask your agent to move your Herdr workspaces into Svall. Each workspace becomes
-an island, and each Claude, Codex or OpenCode pane a character in the same
+an island, and each Claude, Codex or OpenCode pane a robot in the same
 directory. `herdr --skill` and `svall <command> --help` tell it how.
 
 ## Build from source (Svall Dev)
@@ -230,16 +230,16 @@ The first build takes several minutes and about 1.5 GB of disk.
   private fleet, and `svall work` opens a separate fleet named `work`, offering
   to create it the first time. File → Open Fleet… (Cmd+Shift+O) does the same
   from the app, and Settings renames a fleet.
-- **Island**: a group of characters. Mission control is the fixed one at the
+- **Island**: a group of robots. Mission control is the fixed one at the
   bottom.
-- **Character**: one terminal. Type `claude`, `codex` or `opencode` in it and
+- **Robot**: one terminal. Type `claude`, `codex` or `opencode` in it and
   the map tracks the agent: `working`, `idle`, `blocked` (waiting on you) or
   `done`. An agent idle or done for 12 hours is closed to free its memory and
   resumes when you open its terminal; Settings → close idle agents after
   changes the wait or turns it off.
 - **Scribe**: about a minute after an agent stops with new work, and every ten
   minutes or so while it keeps working, a headless `claude -p`, `codex exec`
-  or `opencode run` writes the character's name, note and links, and the
+  or `opencode run` writes the robot's name, note and links, and the
   island's description. Notes you wrote stay, and a name you gave only gains a PR or
   ticket id. Passes start at most once a minute, so a busy fleet can run 60 an
   hour, and each costs money on an API key. A new fleet asks before turning the
@@ -252,17 +252,17 @@ The first build takes several minutes and about 1.5 GB of disk.
   swap them, or onto water to make a new island. Drag an island's label to move
   it and its corner to resize it. On mission control, `arrange` packs the fleet
   into the window, and `update info` and `status` start a helper agent.
-- **Board** (Cmd+M): islands as a folder tree, with the selected character's
-  terminal beside it. Drag characters and islands to move or reorder them.
-  A starred character also stands in Starred at the top, newest first; drag
+- **Board** (Cmd+M): islands as a folder tree, with the selected robot's
+  terminal beside it. Drag robots and islands to move or reorder them.
+  A starred robot also stands in Starred at the top, newest first; drag
   there to star one at a spot or to reorder.
-- **Side card** (Cmd+I): the character's note, agent profile, instructions,
+- **Side card** (Cmd+I): the robot's note, agent profile, instructions,
   context, docs, last prompts, model, directory and context use.
 - **Browser** (Cmd+2): tabs survive a relaunch, and the agent sees their
   addresses. Sign in once per fleet by importing Chrome's cookies, or fill
   logins from 1Password with Cmd+Shift+P once you turn it on in Settings and
   install the 1Password CLI.
-- **Files** (Cmd+3): an editor for the character's directory. A file the agent
+- **Files** (Cmd+3): an editor for the robot's directory. A file the agent
   rewrites reloads unless you have changed it.
 - **Changes** (Cmd+4): each file's diff against HEAD, or against the point
   where the branch left main.
@@ -283,8 +283,8 @@ Svall first launches stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
 | --- | --- | --- | --- |
-| Cmd+T | New robot | Cmd+W | Close the card or character |
-| Cmd+J | Next character | Cmd+K | Previous character |
+| Cmd+T | New robot | Cmd+W | Close the card or robot |
+| Cmd+J | Next robot | Cmd+K | Previous robot |
 | Cmd+Shift+J | Next island | Cmd+M | Map or board |
 | Cmd+I | Side card | Cmd+Enter | Card size |
 | Cmd+1 to 4 | Terminal, browser, files, changes | Cmd+B | Browser beside the terminal |
@@ -295,29 +295,29 @@ Svall first launches stays with Ghostty until you claim it there.
 | Cmd+Shift+O | Open a fleet | Cmd+Q | Quit |
 | Cmd+Shift+S | Sidebar and side card | | |
 
-Ctrl+click on a link asks whether to open it in the character's browser or
+Ctrl+click on a link asks whether to open it in the robot's browser or
 yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
 `initial-command` and `input` are ignored.
 
 ## The `svall` CLI
 
-    svall status                                  # every island and character
+    svall status                                  # every island and robot
     svall island create feature
-    svall char new --island feature --cwd ~/repo --claude
-    svall char run <id> "review the failing tests in src/api"
-    svall char wait <id> --until done,blocked     # exits 0 on a match, 2 on timeout, 3 when it has no terminal
-    svall char read <id> --transcript --lines 20
-    svall char revive <id>                        # a dormant character, resumed
-    svall char show <id>                          # the brief its agent gets
+    svall robot new --island feature --cwd ~/repo --claude
+    svall robot run <id> "review the failing tests in src/api"
+    svall robot wait <id> --until done,blocked     # exits 0 on a match, 2 on timeout, 3 when it has no terminal
+    svall robot read <id> --transcript --lines 20
+    svall robot revive <id>                        # a dormant robot, resumed
+    svall robot show <id>                          # the brief its agent gets
 
 - A name works wherever an id does. `--json` prints machine-readable output,
-  `-p <fleet>` targets another fleet, and `--term 2` a split character's second
+  `-p <fleet>` targets another fleet, and `--term 2` a split robot's second
   terminal.
-- `island create`, `island update` and `char update` take `--instructions`,
+- `island create`, `island update` and `robot update` take `--instructions`,
   for the agent only, such as "merge without asking", and
   `--context "<url or ~/path>[ label]"`, which sets the links, files or folders
   it gets; `--pin <ref>` marks one to read first.
-- `--agent-profile <name>` gives a character's agent a role from the fleet's
+- `--agent-profile <name>` gives a robot's agent a role from the fleet's
   `agent-profiles` folder. Six ship with a new fleet (architect, debugger,
   explorer, planner, reviewer, verifier); edit them or add your own in
   Resources.
@@ -329,8 +329,8 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
     svall mobile off
 
 - Open the link on your phone, then choose Share → Add to Home Screen. You get
-  every island and character as a list, the starred ones also first, and a
-  character's terminal full screen with Esc, Tab, Ctrl-C and arrow keys above
+  every island and robot as a list, the starred ones also first, and a
+  robot's terminal full screen with Esc, Tab, Ctrl-C and arrow keys above
   the keyboard.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
@@ -372,10 +372,10 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 | --- | --- | --- |
 | `name` | `fleet.json` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
 | `port`, `host` | `node.json` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Absent, a free port stands in while another program holds `47800`; a port set here that is taken keeps the daemon from starting. Any address off loopback sends the API token in plain text. |
-| `defaultCwd` | `fleet.json` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
+| `defaultCwd` | `fleet.json` | Where a new robot starts when no robot beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
 | `shell` | `node.json` | The shell a terminal runs, if not your login shell. |
 | `linear` | `fleet.json` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
+| `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall robot new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
 | `agentsOff` | `node.json` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
 | `integrations` | `node.json` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
 | `home` | `fleet.json` | Mission control: `cwd` for its crew (`~/.svall/home` unless set; a new profile fleet in `~/.svall-<name>` gets `~/.svall-<name>/home` here), the `command` that starts an agent (default the main agent's: `claude --model opus`, `codex` or `opencode`), `model`, a model for each CLI, as `{ "claude": "sonnet" }` (default `opus` for Claude, Codex's own; OpenCode's TUI takes none; set in Settings), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
@@ -402,9 +402,9 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
   fleet in `~/.svall-work`. Its crew already open keeps working in the old
   folder, so copy over any notes you want in the new one.
 - The daemon runs under launchd, without your shell's environment. The fleet's
-  `.env` gives the Claude scribe every value in it, and gives new character
+  `.env` gives the Claude scribe every value in it, and gives new robot
   shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
-- Character shells start Claude Code in its fullscreen renderer
+- Robot shells start Claude Code in its fullscreen renderer
   (`CLAUDE_CODE_NO_FLICKER=1`), which keeps its own scrollback through a resize,
   even where Claude Code turned fullscreen off after failed starts. A `tui` key
   in your Claude Code `settings.json`, such as `"tui": "default"`, keeps the
@@ -412,36 +412,36 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 
 ### Codex
 
-A Codex character gets the same status, context gauge, revive, brief and scribe
+A Codex robot gets the same status, context gauge, revive, brief and scribe
 as a Claude Code one. Codex runs only hooks you trust: choose "Trust all and
 continue" on its startup dialog, or trust the hook later with `/hooks`, and do
-so again whenever it changes. Until then the character stays a plain shell with
+so again whenever it changes. Until then the robot stays a plain shell with
 a warning. `svall doctor` says whether the hook is trusted.
 
 A plain `codex` runs on Codex's shared background server, whose hooks carry the
-terminal that started that server, so Svall ignores them. A character's zsh
+terminal that started that server, so Svall ignores them. A robot's zsh
 starts from `~/.svall/zsh`, which hands startup back to your own files and makes
 `codex` mean `codex --no-daemon`; the agents Svall starts and revives get the
-flag too. In bash, fish, or a zsh started inside the character, type
+flag too. In bash, fish, or a zsh started inside the robot, type
 `codex --no-daemon` yourself, or the card asks for it.
 
 ### OpenCode
 
-An OpenCode character gets the same status, context gauge, revive, brief and
+An OpenCode robot gets the same status, context gauge, revive, brief and
 scribe as a Claude Code one. OpenCode has no hooks; Svall's plugin in
 `~/.config/opencode/plugins` reports to it, needs no trust step, and does
-nothing outside a character. The brief rides along as system text. OpenCode
+nothing outside a robot. The brief rides along as system text. OpenCode
 reports no plan limits, so the Usage panel shows none for it.
 
-A character's terminals run OpenCode with `OPENCODE_CONFIG_DIR` set to
+A robot's terminals run OpenCode with `OPENCODE_CONFIG_DIR` set to
 `~/.svall/opencode-config`: links to your config beside a `service.json` that
 turns OpenCode's shared background server off, so a plain `opencode` reports
 too. A setting OpenCode saves there moves to `~/.config/opencode` when the next
-character window opens, and the copy it replaces, or the older one when yours
+robot window opens, and the copy it replaces, or the older one when yours
 is newer, is kept in `~/.svall/opencode-config-replaced`. Run `opencode service`
-and `opencode pair` outside a character. Session tabs are off in a character,
+and `opencode pair` outside a robot. Session tabs are off in a robot,
 since every OpenCode in a folder shares one tab strip; `/sessions` still
-switches. Change the tab mode outside a character: set in one, it is saved but
+switches. Change the tab mode outside a robot: set in one, it is saved but
 has no effect there.
 
 ## What setup changes
@@ -454,7 +454,7 @@ one you turn off it takes them out:
 - `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, on Linux
   the one your login shell sets): a hook on Claude Code's session, prompt,
   tool, permission, notification, subagent and stop events, which exits before
-  starting Node outside a character, and a statusline wrapper that keeps your
+  starting Node outside a robot, and a statusline wrapper that keeps your
   own statusline running inside it.
 - `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`): the same hook.
 - `~/.config/opencode/plugins/svall.js` (or under `$XDG_CONFIG_HOME`): Svall's
@@ -483,26 +483,26 @@ send:
 
 - The scribe sends the end of each agent's transcript to Claude, Codex or
   OpenCode's provider on your login or API key, with the names, notes, links,
-  directories and branches of its island's characters, and the names of the
-  fleet's other characters.
+  directories and branches of its island's robots, and the names of the
+  fleet's other robots.
 - Mission control's buttons start the main agent, and the Usage panel asks
   Claude Code for your plan's limits. The Claude scribe and the Usage panel get
   every value in the fleet's `.env`.
-- For each character in a repository, the daemon runs `gh pr view` to find its
+- For each robot in a repository, the daemon runs `gh pr view` to find its
   branch's PR.
 - `svall mobile` serves the fleet to your tailnet with `tailscale serve`. The
   key the proxy reaches the daemon by is on that command's line, where other
   users on the Mac can read it in `ps` while it runs, and in the serve config.
   It opens nothing by itself: a phone also has to hold the pass from the QR
   code, which stays in a cookie on the phone.
-- A character's browser starts on google.com, and `svall doctor` runs
+- A robot's browser starts on google.com, and `svall doctor` runs
   `gh auth status`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
   svall.dev your IP address and the version you run. Svall Dev doesn't.
 - A handover copies the fleet's folders and agent sessions over ssh to the
   Linux machine you added.
 - Push notifications go through your phone's push service: Apple's, Google's
-  or Mozilla's. The character's name and prompt are encrypted for your phone;
+  or Mozilla's. The robot's name and prompt are encrypted for your phone;
   the service sees when a push is sent, and the page's address unless
   `mobile.pushContact` names another contact.
 
@@ -512,7 +512,7 @@ to every site the Chrome profile is signed in to.
 ## How it works
 
 - A daemon, `svalld`, runs each fleet while its window is open. It owns one
-  private tmux server holding every character's terminals, follows their output
+  private tmux server holding every robot's terminals, follows their output
   over a single control-mode client and is the only writer of the fleet's
   `state.json`.
 - The app, the CLI and the phone talk to the daemon over one loopback
@@ -521,10 +521,10 @@ to every site the Chrome profile is signed in to.
   its login, and holds the pass the QR code gave it in a cookie.
 - Agent status comes from hooks writing to the fleet's `hooks.sock`, and
   Claude Code's context use and model come from its statusline. Both do
-  nothing without the `SVALL_CHAR_ID` a character sets, so `claude` run
+  nothing without the `SVALL_ROBOT_ID` a robot sets, so `claude` run
   elsewhere is unaffected.
 - On start, the daemon matches `state.json` against the live tmux windows.
-  Characters whose window is gone turn dormant, ready to revive.
+  Robots whose window is gone turn dormant, ready to revive.
 
 ## Development
 

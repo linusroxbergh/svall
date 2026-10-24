@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
-import { robotOf, robotUrl, stepRobot } from '../../src/portraits.js';
+import { figureOf, figureUrl, stepFigure } from '../../src/portraits.js';
 import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
 import { bridge, call, freshStore, store } from './harness.js';
@@ -15,7 +15,7 @@ Element.prototype.hasPointerCapture ??= function () { return true; };
 let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
-  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'char.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {});
+  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {});
 });
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -32,7 +32,7 @@ const { followQuit } = await import('../../src/quit.js');
 
 // the side card as App mounts it: no key, the id from the map's selection
 function Side() {
-  const id = useApp((s) => (s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
+  const id = useApp((s) => (s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   return id ? <SideCard id={id} /> : null;
 }
 // the board shows a card of its own
@@ -45,7 +45,7 @@ function IslandSide() {
   return id ? <IslandCard id={id} /> : null;
 }
 
-const updates = () => calls().filter(([m]) => m === 'char.update' || m === 'island.update');
+const updates = () => calls().filter(([m]) => m === 'robot.update' || m === 'island.update');
 const field = (testId: string) => screen.getByTestId(testId) as HTMLTextAreaElement;
 const type = (el: HTMLTextAreaElement, value: string) => { el.focus(); fireEvent.change(el, { target: { value } }); };
 
@@ -55,43 +55,43 @@ beforeEach(() => {
   store.getState().select('c0', true);
 });
 
-test('a draft in one character\'s instructions never shows or saves on the next one', () => {
+test('a draft in one robot\'s instructions never shows or saves on the next one', () => {
   render(<Side />);
   type(field('side-instructions'), 'run the tests first');
   // the selection moves without the field hearing a blur, as a removed field in WebKit never does
   act(() => store.getState().select('c1', true));
   expect(field('side-instructions').value).toBe('');
   fireEvent.blur(field('side-instructions'));
-  expect(updates()).not.toContainEqual(['char.update', { id: 'c1', instructions: 'run the tests first' }]);
+  expect(updates()).not.toContainEqual(['robot.update', { id: 'c1', instructions: 'run the tests first' }]);
 });
 
-test('walking the sidebar across characters reads the docs listing once', async () => {
+test('walking the sidebar across robots reads the docs listing once', async () => {
   render(<Side />);
   for (const id of ['c1', 'c2', 'c0', 'c1']) await act(async () => store.getState().select(id, true));
   expect(calls().filter(([m]) => m === 'resources.get')).toHaveLength(1);
 });
 
-test('the star beside the name stars the character, and unstars it once starred', () => {
+test('the star beside the name stars the robot, and unstars it once starred', () => {
   render(<Side />);
   const button = () => screen.getByTestId('side-star');
   expect(button().getAttribute('aria-pressed')).toBe('false');
   fireEvent.click(button());
-  expect(calls()).toContainEqual(['char.star', { id: 'c0' }]);
-  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c0/star', value: 0 }]));
+  expect(calls()).toContainEqual(['robot.star', { id: 'c0' }]);
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/star', value: 0 }]));
   expect(button().getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(button());
-  expect(calls()).toContainEqual(['char.unstar', { id: 'c0' }]);
+  expect(calls()).toContainEqual(['robot.unstar', { id: 'c0' }]);
 });
 
-test('the portrait is the character\'s robot, and its steppers page through the robots', () => {
+test('the portrait is the robot\'s robot, and its steppers page through the robots', () => {
   const src = () => screen.getByTestId('side-portrait').querySelector('img')!.getAttribute('src');
   render(<Side />);
-  const robot = robotOf({ portrait: 'fox' });
-  expect(src()).toBe(robotUrl(robot));
+  const figure = figureOf({ portrait: 'fox' });
+  expect(src()).toBe(figureUrl(figure));
   fireEvent.click(screen.getByTestId('portrait-prev'));
-  expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', robot: stepRobot(robot, -1) }]);
+  expect(updates().at(-1)).toEqual(['robot.update', { id: 'c0', figure: stepFigure(figure, -1) }]);
   fireEvent.click(screen.getByTestId('portrait-next'));
-  expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', robot: stepRobot(robot, 1) }]);
+  expect(updates().at(-1)).toEqual(['robot.update', { id: 'c0', figure: stepFigure(figure, 1) }]);
 });
 
 test('a draft in one island\'s instructions never shows or saves on the next one', () => {
@@ -104,7 +104,7 @@ test('a draft in one island\'s instructions never shows or saves on the next one
   expect(updates()).not.toContainEqual(['island.update', { id: 'i_b', instructions: 'merge without asking' }]);
 });
 
-test('a press on another token saves the rename to the character it was typed for', async () => {
+test('a press on another token saves the rename to the robot it was typed for', async () => {
   render(<><Map /><Side /></>);
   await act(async () => {});
   type(field('side-name'), 'auth fix');
@@ -113,16 +113,16 @@ test('a press on another token saves the rename to the character it was typed fo
     fireEvent.pointerDown(screen.getByTestId('token-c1'), { pointerId: 1 });
     fireEvent.pointerUp(screen.getByTestId('map'), { pointerId: 1 });
   });
-  expect(updates()).toEqual([['char.update', { id: 'c0', name: 'auth fix' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', name: 'auth fix' }]]);
   expect(store.getState().selectedId).toBe('c1');
 });
 
-test('the next-character key saves the draft to the character it was typed for', async () => {
+test('the next-robot key saves the draft to the robot it was typed for', async () => {
   render(<Side />);
   type(field('side-instructions'), 'never push to main');
-  await act(() => dispatchKey({ type: 'nextCharacter' }, { store, api: { call } as never, bridge }));
+  await act(() => dispatchKey({ type: 'nextRobot' }, { store, api: { call } as never, bridge }));
   expect(store.getState().selectedId).toBe('c1');
-  expect(updates()).toEqual([['char.update', { id: 'c0', instructions: 'never push to main' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', instructions: 'never push to main' }]]);
 });
 
 // the shell swallows the chord, so the field is removed without the blur a click would have sent
@@ -131,7 +131,7 @@ test.each(['toggleSideCard', 'toggleView'] as const)('%s saves the draft before 
   type(field('side-instructions'), 'never push to main');
   await act(() => dispatchKey({ type: chord }, { store, api: { call } as never, bridge }));
   expect(screen.queryByTestId('side-instructions')).toBeNull();
-  expect(updates()).toEqual([['char.update', { id: 'c0', instructions: 'never push to main' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', instructions: 'never push to main' }]]);
 });
 
 // the shell asks before it quits, and nothing blurs the field on the way out
@@ -145,12 +145,12 @@ test('a quit saves the draft before it answers', async () => {
     onMessage: (h) => { ask = h; return () => {}; },
   } });
   await act(async () => { ask({ type: 'quit.ask' }); });
-  expect(updates()).toEqual([['char.update', { id: 'c0', instructions: 'never push to main' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', instructions: 'never push to main' }]]);
   expect(savedFirst).toBe(true);
   stop();
 });
 
-test('a link half typed for one character is not offered to the next', () => {
+test('a link half typed for one robot is not offered to the next', () => {
   render(<Side />);
   fireEvent.change(screen.getByTestId('context-ref'), { target: { value: 'https://example.com/for-c0' } });
   act(() => store.getState().select('c1', true));
@@ -170,33 +170,33 @@ test('a link half typed for one island is not offered to the next', () => {
 
 test('the last command is read again for a new prompt, a turn\'s end and a new session, not for every hook event', async () => {
   const f = fleet();
-  f.characters.c0.agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1, transcriptPath: '/tmp/t.jsonl' };
+  f.robots.c0.agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1, transcriptPath: '/tmp/t.jsonl' };
   store.getState().setFleet(f);
   render(<Side />);
   await act(async () => {});
-  const reads = () => calls().filter(([m]) => m === 'char.prompts').length;
+  const reads = () => calls().filter(([m]) => m === 'robot.prompts').length;
   expect(reads()).toBe(1);
-  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/lastActivityAt', value: 2 }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/agent/lastActivityAt', value: 2 }]));
   await act(async () => {});
   expect(reads()).toBe(1);
-  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c0/agent/lastPrompt', value: { id: 'p1', text: 'go', at: 3 } }]));
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/agent/lastPrompt', value: { id: 'p1', text: 'go', at: 3 } }]));
   await act(async () => {});
   expect(reads()).toBe(2);
   // a prompt sent mid-turn reports the id of the turn's first
-  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/lastPrompt', value: { id: 'p1', text: 'and this', at: 4 } }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/agent/lastPrompt', value: { id: 'p1', text: 'and this', at: 4 } }]));
   await act(async () => {});
   expect(reads()).toBe(3);
   // a permission ask and its answer leave the turn running
-  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'blocked' }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/agent/status', value: 'blocked' }]));
   await act(async () => {});
-  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'working' }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/agent/status', value: 'working' }]));
   await act(async () => {});
   expect(reads()).toBe(3);
   // a turn Claude Code opened by itself is known for what it was only once its entry is written
-  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'done' }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/agent/status', value: 'done' }]));
   await act(async () => {});
   expect(reads()).toBe(4);
-  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent', value: { kind: 'codex', sessionId: 's2', status: 'done', lastActivityAt: 4 } }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/agent', value: { kind: 'codex', sessionId: 's2', status: 'done', lastActivityAt: 4 } }]));
   await act(async () => {});
   expect(reads()).toBe(5);
 });
@@ -205,7 +205,7 @@ test('last activity counts on while no patch arrives', async () => {
   vi.useFakeTimers({ now: 1_000_000, toFake: ['Date', 'setInterval', 'clearInterval'] });
   try {
     const f = fleet();
-    f.characters.c0.agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1_000_000, transcriptPath: '/tmp/t.jsonl' };
+    f.robots.c0.agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1_000_000, transcriptPath: '/tmp/t.jsonl' };
     store.getState().setFleet(f);
     render(<Side />);
     await act(async () => {});
@@ -218,20 +218,20 @@ test('last activity counts on while no patch arrives', async () => {
 });
 
 test('a refused rename is reported, stays in the field, and the next blur sends it again', async () => {
-  refuse = (m, p) => (m === 'char.update' && p.name ? `another character is already called ${String(p.name)}` : undefined);
+  refuse = (m, p) => (m === 'robot.update' && p.name ? `another robot is already called ${String(p.name)}` : undefined);
   render(<Side />);
   const name = field('side-name');
   type(name, 'C1');
   fireEvent.keyDown(name, { key: 'Enter' });
   await act(async () => {});
-  expect(store.getState().toast?.text).toBe('another character is already called C1');
+  expect(store.getState().toast?.text).toBe('another robot is already called C1');
   expect(name.value).toBe('C1');
   name.focus();
   name.blur();
-  expect(updates()).toEqual([['char.update', { id: 'c0', name: 'C1' }], ['char.update', { id: 'c0', name: 'C1' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', name: 'C1' }], ['robot.update', { id: 'c0', name: 'C1' }]]);
 });
 
-const writeNote = (value: string) => act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/note', value }]));
+const writeNote = (value: string) => act(() => store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/note', value }]));
 
 // WebKit blurs the focused field when a native terminal takes the keys and focuses it again on the way back,
 // leaving it the active element in between, so a fleet write meanwhile is not shown in it
@@ -258,7 +258,7 @@ test('an edit the fleet took is not sent again over a later write', () => {
   writeNote('newer');
   fireEvent.focus(note);
   note.blur();
-  expect(updates()).toEqual([['char.update', { id: 'c0', note: 'mine' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', note: 'mine' }]]);
   expect(note.value).toBe('newer');
 });
 
@@ -300,24 +300,24 @@ test('a note written while svalld is away stays in the field, and the next blur 
   refuse = undefined;
   note.focus();
   note.blur();
-  expect(updates()).toEqual([['char.update', { id: 'c0', note: 'a long note' }], ['char.update', { id: 'c0', note: 'a long note' }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', note: 'a long note' }], ['robot.update', { id: 'c0', note: 'a long note' }]]);
 });
 
-test('the fleet summary counts one character on one island in the singular', () => {
-  store.getState().setFleet({ ...fleet(), islands: { i_a: isl('i_a', 'alpha', 0) }, characters: { c2: chr('c2', 'i_a', { x: 1, y: 1 }) } });
+test('the fleet summary counts one robot on one island in the singular', () => {
+  store.getState().setFleet({ ...fleet(), islands: { i_a: isl('i_a', 'alpha', 0) }, robots: { c2: chr('c2', 'i_a', { x: 1, y: 1 }) } });
   render(<FleetSummary />);
-  expect(screen.getByRole('heading').textContent).toMatch(/^1 character\s*on 1 island$/);
+  expect(screen.getByRole('heading').textContent).toMatch(/^1 robot\s*on 1 island$/);
 });
 
-test('Delete character asks first, naming the unsaved files, and moves the selection on before the character goes', async () => {
+test('Delete robot asks first, naming the unsaved files, and moves the selection on before the robot goes', async () => {
   store.getState().markFile('c0', '/tmp/a.ts', { dirty: true });
   render(<><Side /><ConfirmClose /></>);
   fireEvent.click(screen.getByTestId('side-close'));
   expect(screen.getByTestId('confirm-close-note').textContent).toContain('1 unsaved file goes with it');
-  expect(calls().filter(([m]) => m === 'char.close')).toEqual([]);
+  expect(calls().filter(([m]) => m === 'robot.close')).toEqual([]);
   fireEvent.click(screen.getByTestId('confirm-close-delete'));
   await act(async () => {});
-  expect(calls().filter(([m]) => m === 'char.close')).toEqual([['char.close', { id: 'c0' }]]);
+  expect(calls().filter(([m]) => m === 'robot.close')).toEqual([['robot.close', { id: 'c0' }]]);
   expect(store.getState().selectedId).toBe('c1');
 });
 
@@ -350,7 +350,7 @@ test('the island delete dialog veils the terminals and closes when the island go
   render(<><IslandSide /><ConfirmDeleteIsland /></>);
   fireEvent.click(screen.getByTestId('side-island-delete'));
   expect(isVeiled(store.getState())).toBe(true);
-  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c9', value: chr('c9', 'i_e', { x: 1, y: 1 }) }]));
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c9', value: chr('c9', 'i_e', { x: 1, y: 1 }) }]));
   expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
   act(() => store.getState().setFleet(fleet()));
   fireEvent.click(screen.getByTestId('side-island-delete'));

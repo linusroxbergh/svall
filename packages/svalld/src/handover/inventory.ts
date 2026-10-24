@@ -16,7 +16,7 @@ export type MachineMaps = { source: MachineMap; destination: MachineMap };
 export type InventoryConfigs = { fleet: FleetConfig };
 
 export type InventoryRoot = Pick<TransferRoot, 'id' | 'kind' | 'entry' | 'path' | 'foldedInto'>;
-export type InventorySession = Pick<TransferSession, 'characterId' | 'term' | 'agent' | 'sessionId' | 'sourcePath' | 'destinationHome'>;
+export type InventorySession = Pick<TransferSession, 'robotId' | 'term' | 'agent' | 'sessionId' | 'sourcePath' | 'destinationHome'>;
 
 /** What a handover would carry and from where to where, before a byte of it is read. */
 export type Inventory = {
@@ -143,12 +143,12 @@ const RANK: Kind[] = ['repo', 'worktree', 'gitdir', 'docs', 'profiles', 'home', 
 
 // what each field makes of the path it names; `repo.root` is a root of its own only in a linked worktree
 const ROOT_OF: Record<string, Kind> = {
-  'FleetState.characters.*.repo.mainRoot': 'repo',
-  'FleetState.characters.*.repo.root': 'worktree',
-  'FleetState.characters.*.cwd': 'cwd',
-  'FleetState.characters.*.second.cwd': 'cwd',
-  'FleetState.characters.*.context[].ref': 'context',
-  'FleetState.characters.*.browser.tabs[].url': 'context',
+  'FleetState.robots.*.repo.mainRoot': 'repo',
+  'FleetState.robots.*.repo.root': 'worktree',
+  'FleetState.robots.*.cwd': 'cwd',
+  'FleetState.robots.*.second.cwd': 'cwd',
+  'FleetState.robots.*.context[].ref': 'context',
+  'FleetState.robots.*.browser.tabs[].url': 'context',
   'FleetState.islands.*.context[].ref': 'context',
   'FleetConfig.home.cwd': 'home',
 };
@@ -218,8 +218,8 @@ function entryOf(p: string): InventoryRoot['entry'] {
   try { return fs.statSync(p).isDirectory() ? 'dir' : 'file'; } catch { return 'dir'; }
 }
 
-const characterOf = (v: PathValue): HandoverEntity | undefined =>
-  (v.field.startsWith('FleetState.characters.') ? { kind: 'character', id: String(v.pointer[1]) } : undefined);
+const robotOf = (v: PathValue): HandoverEntity | undefined =>
+  (v.field.startsWith('FleetState.robots.') ? { kind: 'robot', id: String(v.pointer[1]) } : undefined);
 
 /**
  * Everything a handover carries from `source` to `destination`: each working root once, at its path here, which lands
@@ -264,9 +264,9 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   for (const v of portablePathValues({ FleetState: snapshot, FleetConfig: fleet }, home)) {
     if (v.form === 'transcript') continue;
     let kind: Kind | undefined = ROOT_OF[v.field];
-    if (kind === 'worktree' && !snapshot.characters[String(v.pointer[1])].repo?.isWorktree) kind = undefined;
+    if (kind === 'worktree' && !snapshot.robots[String(v.pointer[1])].repo?.isWorktree) kind = undefined;
     if (git && (kind === 'repo' || kind === 'worktree')) kind = undefined;
-    if (kind && real(v.path, characterOf(v))) offer(v.path, kind);
+    if (kind && real(v.path, robotOf(v))) offer(v.path, kind);
   }
   for (const g of graphs) {
     const entity: HandoverEntity = { kind: 'git', id: g.id };
@@ -327,10 +327,10 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   }
 
   const sessions: InventorySession[] = [];
-  for (const c of Object.values(snapshot.characters)) {
+  for (const c of Object.values(snapshot.robots)) {
     for (const [term, slot] of [[undefined, c], [2, c.second]] as const) {
       if (!slot?.agent) continue;
-      const entity: HandoverEntity = { kind: 'character', id: c.id };
+      const entity: HandoverEntity = { kind: 'robot', id: c.id };
       const { kind: agent, sessionId, transcriptPath } = slot.agent;
       if (!transcriptPath) {
         blockers.push({ code: 'transcript_missing', message: `${c.name}'s ${term ? 'second ' : ''}${agent} session has recorded no transcript`, entity });
@@ -338,7 +338,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
         blockers.push({ code: 'path_unsupported', message: `the transcript ${JSON.stringify(transcriptPath)} cannot be carried`, entity });
       } else {
         const destinationHome = destination.agentHomes?.[agent];
-        sessions.push({ characterId: c.id, ...(term && { term }), agent, sessionId, sourcePath: transcriptPath, ...(destinationHome && { destinationHome }) });
+        sessions.push({ robotId: c.id, ...(term && { term }), agent, sessionId, sourcePath: transcriptPath, ...(destinationHome && { destinationHome }) });
       }
     }
   }
@@ -352,7 +352,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
     snapshot,
     excludes,
     roots: roots.sort((a, b) => byCodeUnit(a.path, b.path)),
-    sessions: sessions.sort((a, b) => byCodeUnit(a.characterId, b.characterId) || (a.term ?? 1) - (b.term ?? 1)),
+    sessions: sessions.sort((a, b) => byCodeUnit(a.robotId, b.robotId) || (a.term ?? 1) - (b.term ?? 1)),
     git: graphs,
     blockers: settle(blockers),
     warnings: settle(git?.warnings ?? []),
@@ -406,12 +406,12 @@ function gitLeft(dir: string, from: string, excluded: (relative: string, dir: bo
 }
 
 /**
- * A blocker for each terminal in `root` when that folder, outside any repository, holds Git repositories no character
+ * A blocker for each terminal in `root` when that folder, outside any repository, holds Git repositories no robot
  * works in. `found`: the folders under it that hold a `.git`; one inside another counts with it.
  */
 export function unusedRepositories(inventory: Pick<Inventory, 'home' | 'snapshot' | 'roots'>, root: InventoryRoot, found: readonly string[]): Blocker[] {
   const git = inventory.roots.filter((r) => isGit(r.kind)).map((r) => r.path);
-  // with `/` read as the lowest character, a folder sorts right before everything inside it
+  // with `/` read as the lowest robot, a folder sorts right before everything inside it
   const order = (p: string): string => p.replaceAll('/', '\0');
   const outer: string[] = [];
   for (const rel of [...found].sort((a, b) => byCodeUnit(order(a), order(b)))) {
@@ -420,14 +420,14 @@ export function unusedRepositories(inventory: Pick<Inventory, 'home' | 'snapshot
   }
   if (!outer.length) return [];
   const shown = outer.slice(0, 5).join(', ') + (outer.length > 5 ? `, and ${outer.length - 5} more` : '');
-  const held = `${outer.length} Git ${outer.length === 1 ? 'repository' : 'repositories'} no character works in (${shown})`;
+  const held = `${outer.length} Git ${outer.length === 1 ? 'repository' : 'repositories'} no robot works in (${shown})`;
   const terminals = portablePathValues({ FleetState: inventory.snapshot }, inventory.home).filter((v) => ROOT_OF[v.field] === 'cwd' && v.path === root.path);
   return terminals.map((v) => {
     const id = String(v.pointer[1]);
-    const { name } = inventory.snapshot.characters[id];
-    const terminal = v.field === 'FleetState.characters.*.second.cwd' ? 'second terminal' : 'terminal';
+    const { name } = inventory.snapshot.robots[id];
+    const terminal = v.field === 'FleetState.robots.*.second.cwd' ? 'second terminal' : 'terminal';
     return {
-      code: 'repository_unused', entity: { kind: 'character', id },
+      code: 'repository_unused', entity: { kind: 'robot', id },
       message: `${name}'s ${terminal} is in ${root.path}, which holds ${held}, so the handover would carry them too; cd it to ~ or into the repository it works on, `
         + `close ${name}, or leave them out with handover.exclude in fleet.json, such as /${outer[0]}/`,
     };

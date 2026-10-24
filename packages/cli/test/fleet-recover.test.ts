@@ -256,7 +256,7 @@ describe('fleet recover --force-owner', () => {
     fs.writeFileSync(resolvePaths(fleet).fleetConfig, JSON.stringify({ id: fleetId }));
     const runs: [string, NodeJS.ProcessEnv, boolean][] = [
       ['no terminal', {}, false],
-      ['a character', { SVALL_CHAR_ID: 'c-1' }, true],
+      ['a robot', { SVALL_ROBOT_ID: 'c-1' }, true],
       ['a fleet\'s tmux pane', { TMUX: `${resolvePaths(fleet).tmuxSock},4242,0` }, true],
     ];
     for (const [what, env, tty] of runs) {
@@ -278,13 +278,13 @@ describe('fleet recover --force-owner', () => {
         expect(result, what).toMatchObject({
           result: 'refused', message: expect.stringMatching(/^nothing was written: forcing ownership needs a person at a terminal outside any fleet's agents and tmux panes, and this run /), actions: [],
         });
-        expect(result.message, what).not.toMatch(/SVALL|CHAR_ID|TMUX|--|\$|env/);
+        expect(result.message, what).not.toMatch(/SVALL|ROBOT_ID|TMUX|--|\$|env/);
         await untouched(w, held);
       }
     }
   });
 
-  it('refuses, as the command runs it, a run by a character or with no terminal, and asks nothing', async () => {
+  it('refuses, as the command runs it, a run by a robot or with no terminal, and asks nothing', async () => {
     const fleetHome = tmp();
     const config = JSON.stringify({ id: fleetId, gatewayMachineId: TRIFT });
     fs.writeFileSync(resolvePaths(fleetHome).fleetConfig, config);
@@ -302,7 +302,7 @@ describe('fleet recover --force-owner', () => {
       return out.map((l) => JSON.parse(l) as RecoverEvent).find((e) => e.event === 'recover.result')?.data;
     };
     try {
-      for (const [tty, env, why] of [[true, { SVALL_CHAR_ID: 'c-1' }, "is a character's"], [false, {}, 'has no terminal']] as const) {
+      for (const [tty, env, why] of [[true, { SVALL_ROBOT_ID: 'c-1' }, "is a robot's"], [false, {}, 'has no terminal']] as const) {
         expect(await recover(tty, env), why).toMatchObject({ result: 'refused', message: expect.stringMatching(new RegExp(`^nothing was written: .* this run ${why}$`)) });
         expect(process.exitCode, why).toBe(1);
       }

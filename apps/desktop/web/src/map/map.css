@@ -1,4 +1,4 @@
-/* the map's sea, islands, character cards, mission control and lighthouse, shared by the app and the landing page */
+/* the map's sea, islands, robot cards, mission control and lighthouse, shared by the app and the landing page */
 /* only tokens and an island's own children take pointer events, so the island's three-cell padding stays sea */
 .map-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
 /* the world's map, card and label scales change every frame of a zoom; not inherited, they restyle only the islands,
@@ -66,7 +66,7 @@
 .map-world .island[data-hot="true"] .inew,.map-world .island[data-hot="true"] .ihandle,
 .map-world .island[data-selected="true"] .inew,.map-world .island[data-selected="true"] .ihandle{opacity:1;pointer-events:auto}
 
-/* character cards */
+/* robot cards */
 .tok{position:absolute;z-index:20;cursor:pointer;
   transform:translate(-50%,-48%);filter:brightness(var(--map-tone, 1))}
 /* cards keep their screen size whatever the map zoom, so they rasterise crisp */
@@ -175,10 +175,10 @@
 .tok.bot .stage::after{content:'';position:absolute;left:50%;bottom:calc(var(--tok)*.04);transform:translateX(-50%);
   width:calc(var(--tok)*1.3);height:calc(var(--tok)*.14);border-radius:50%;
   background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
-.tok .portrait.robot{position:absolute;z-index:1;left:50%;bottom:calc(var(--tok)*.08);transform:translateX(-50%);
+.tok .portrait.figure{position:absolute;z-index:1;left:50%;bottom:calc(var(--tok)*.08);transform:translateX(-50%);
   width:auto;height:92%;max-width:88%;object-fit:contain;object-position:center bottom}
 /* the inline robot lets its arms swing past its frame, and leaves the pointer to the card */
-.tok svg.portrait.robot{overflow:visible;pointer-events:none}
+.tok svg.portrait.figure{overflow:visible;pointer-events:none}
 /* marks on the card's corners, on a layer over the card that lifts with it and lets clicks through */
 .tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
 .tok:hover .corner{transform:translateY(-6px)}

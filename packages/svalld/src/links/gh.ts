@@ -4,13 +4,13 @@ import type { ContextItem, PrState } from '@svall/protocol';
 
 const execP = promisify(execFile);
 // how long a reading stands, give or take SPREAD: each entry gets its own deadline, so the
-// characters that filled the cache together do not all go back to the network together
+// robots that filled the cache together do not all go back to the network together
 const TTL = 300_000;
 const SPREAD = 0.4;
 // a lookup that failed is asked again this much later, not at every refresh
 const RETRY = 60_000;
 const cache = new Map<string, { until: number; link?: ContextItem; failed?: unknown }>();
-// characters that share a checkout and branch miss together, and wait on the one lookup
+// robots that share a checkout and branch miss together, and wait on the one lookup
 const inflight = new Map<string, Promise<ContextItem | undefined>>();
 
 type GhPr = { url: string; number: number; state: string; isDraft: boolean; reviewDecision: string };
@@ -52,7 +52,7 @@ export async function lookupPr(cwd: string, branch: string, deps: Deps = default
 }
 
 async function readPr(key: string, cwd: string, now: number, deps: Deps): Promise<ContextItem | undefined> {
-  // a character that is gone leaves its reading behind, so every miss sweeps the readings that have run out
+  // a robot that is gone leaves its reading behind, so every miss sweeps the readings that have run out
   for (const [k, v] of cache) if (now >= v.until) cache.delete(k);
   let link: ContextItem | undefined;
   try {

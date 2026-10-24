@@ -2,11 +2,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, type Character } from '@svall/protocol';
+import { emptyState, type Robot } from '@svall/protocol';
 import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees, repoCommands } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { handoverGit, runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
-import { char, crew, git, hasGit, seedHere } from './git-fixture.js';
+import { robot, crew, git, hasGit, seedHere } from './git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -27,9 +27,9 @@ const DIRS = 'rev-parse --path-format=absolute --show-toplevel --git-common-dir 
 const NO_Z: GitResult = { code: 129, stdout: '', stderr: "error: unknown switch `z'\nusage: git worktree list [<options>]\n" };
 const withoutZ = (git: GitRunner): GitRunner => async (args, cwd) => (args[0] === 'worktree' && args.includes('-z') ? NO_Z : git(args, cwd));
 
-function crewOf(characters: Record<string, Partial<Character>>) {
+function crewOf(robots: Record<string, Partial<Robot>>) {
   const state = emptyState();
-  state.characters = Object.fromEntries(Object.entries(characters).map(([id, o]) => [id, char(id, o)]));
+  state.robots = Object.fromEntries(Object.entries(robots).map(([id, o]) => [id, robot(id, o)]));
   return state;
 }
 
@@ -111,20 +111,20 @@ describe('discoverGit, when git or the disk refuses', () => {
     expect(d).toEqual({ graphs: [], blockers: [], warnings: [] });
   });
 
-  it('blocks a character recorded in a checkout whose folder is gone, and passes over a plain folder that is gone', async () => {
+  it('blocks a robot recorded in a checkout whose folder is gone, and passes over a plain folder that is gone', async () => {
     const state = crewOf({
       a: { cwd: '/gone', repo: { root: '/gone', mainRoot: '/r', branch: 'w', isWorktree: true } },
       b: { cwd: '/gone' },
     });
     const d = await discoverGit(state, { excludes: DEFAULT_EXCLUDES, git: fakeGit({}), exists: here });
-    expect(d.blockers).toEqual([{ code: 'worktree_unresolved', message: 'a was working in the Git checkout /gone, and /gone no longer exists', entity: { kind: 'character', id: 'a' } }]);
+    expect(d.blockers).toEqual([{ code: 'worktree_unresolved', message: 'a was working in the Git checkout /gone, and /gone no longer exists', entity: { kind: 'robot', id: 'a' } }]);
     expect(d.graphs).toEqual([]);
   });
 
   it('blocks a checkout git will not read, with what git said', async () => {
     const git = fakeGit({ [`/r: ${DIRS}`]: { code: 128, stderr: "fatal: detected dubious ownership in repository at '/r'\n" } });
     const d = await discoverGit(crewOf({ a: { cwd: '/r' } }), { excludes: DEFAULT_EXCLUDES, git, exists: here });
-    expect(d.blockers).toEqual([{ code: 'worktree_unresolved', message: "/r: fatal: detected dubious ownership in repository at '/r'", entity: { kind: 'character', id: 'a' } }]);
+    expect(d.blockers).toEqual([{ code: 'worktree_unresolved', message: "/r: fatal: detected dubious ownership in repository at '/r'", entity: { kind: 'robot', id: 'a' } }]);
   });
 
   it('blocks a graph whose worktrees git will not list, and keeps no half-read graph', async () => {
@@ -142,7 +142,7 @@ const real = hasGit ? describe : describe.skip;
 
 // each seeds a real fixture with dozens of git commands, which a loaded machine takes its time over
 real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { timeout: 120_000 }, () => {
-  it('records the main checkout no character stands in, every used worktree with its crew, and the unused ones', async () => {
+  it('records the main checkout no robot stands in, every used worktree with its crew, and the unused ones', async () => {
     const l = seedHere(made);
     const s = l.source;
     const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
@@ -152,10 +152,10 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
       [graphId(path.join(s.main, '.git/modules/sub')), path.join(s.main, '.git/modules/sub')],
     ]);
     const [demo, sub] = d.graphs;
-    expect(demo.main).toMatchObject({ path: s.main, gitDir: path.join(s.main, '.git'), head: git(l.base, s.main, 'rev-parse', 'HEAD'), branch: 'refs/heads/main', characters: [] });
+    expect(demo.main).toMatchObject({ path: s.main, gitDir: path.join(s.main, '.git'), head: git(l.base, s.main, 'rev-parse', 'HEAD'), branch: 'refs/heads/main', robots: [] });
     expect(demo.main!.locked).toBeUndefined();
     const registration = (name: string): string => path.join(s.main, '.git/worktrees', name);
-    expect(demo.worktrees.map((w) => [w.path, w.gitDir, w.branch, w.locked, w.characters])).toEqual([
+    expect(demo.worktrees.map((w) => [w.path, w.gitDir, w.branch, w.locked, w.robots])).toEqual([
       [s.nested, registration('nested'), 'refs/heads/nested-branch', undefined, ['nested']],
       [s.detached, registration('detached'), null, undefined, ['det']],
       [s.locked, registration('locked'), 'refs/heads/locked-branch', 'on the desk', ['lock']],
@@ -169,8 +169,8 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
       { path: s.unused, head: first, branch: 'refs/heads/unused-branch', prunable: false },
     ]);
     expect(demo.stash).toEqual([git(l.base, s.main, 'rev-parse', 'refs/stash')]);
-    // a submodule a character works in is a graph of its own, its git dir and common dir one folder
-    expect(sub.main).toMatchObject({ path: s.sub, gitDir: sub.commonDir, branch: 'refs/heads/main', characters: ['sub'] });
+    // a submodule a robot works in is a graph of its own, its git dir and common dir one folder
+    expect(sub.main).toMatchObject({ path: s.sub, gitDir: sub.commonDir, branch: 'refs/heads/main', robots: ['sub'] });
     expect(sub).toMatchObject({ worktrees: [], unused: [], stash: [] });
   });
 
@@ -309,7 +309,7 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     const demo = d.graphs[0];
     expect(d.warnings).toEqual([
       { code: 'remote_local', message: `${s.sub}: origin ${s.lib} names a place on this machine, and the destination keeps it as it is`, entity: { kind: 'git', id: d.graphs[1].id } },
-      { code: 'worktree_unused', message: expect.stringContaining(`${path.join(s.main, '.git')}: worktrees no character uses are not registered on the destination`), entity: { kind: 'git', id: demo.id } },
+      { code: 'worktree_unused', message: expect.stringContaining(`${path.join(s.main, '.git')}: worktrees no robot uses are not registered on the destination`), entity: { kind: 'git', id: demo.id } },
     ]);
     const unused = d.warnings[1].message;
     expect(unused).toContain(`${s.gone} (on gone-branch, missing)`);
@@ -346,10 +346,10 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     const demo = graphId(path.join(s.main, '.git'));
     const blocked = (at: string, message: string) => ({ code: 'worktree_unused', message: `${at}: ${message}`, entity: { kind: 'git', id: demo } });
     expect(d.blockers).toEqual([
-      blocked(away, 'a locked worktree no character uses is not there, so what it holds cannot be read; mount it, or unlock or remove the worktree'),
-      blocked(lost, `a worktree no character uses is detached at ${lostHead.slice(0, 12)}, which no branch or tag reaches; name it with git branch <name> ${lostHead.slice(0, 12)}, or remove the worktree`),
-      blocked(stray, `a worktree no character uses is detached at ${g(stray, 'rev-parse', 'HEAD').slice(0, 12)}, which no branch or tag reaches; name it with git branch <name> ${g(stray, 'rev-parse', 'HEAD').slice(0, 12)}, or remove the worktree`),
-      blocked(s.unused, 'a worktree no character uses holds changes git status reports, which a handover back would leave without their registration; commit or stash them there, or remove the worktree'),
+      blocked(away, 'a locked worktree no robot uses is not there, so what it holds cannot be read; mount it, or unlock or remove the worktree'),
+      blocked(lost, `a worktree no robot uses is detached at ${lostHead.slice(0, 12)}, which no branch or tag reaches; name it with git branch <name> ${lostHead.slice(0, 12)}, or remove the worktree`),
+      blocked(stray, `a worktree no robot uses is detached at ${g(stray, 'rev-parse', 'HEAD').slice(0, 12)}, which no branch or tag reaches; name it with git branch <name> ${g(stray, 'rev-parse', 'HEAD').slice(0, 12)}, or remove the worktree`),
+      blocked(s.unused, 'a worktree no robot uses holds changes git status reports, which a handover back would leave without their registration; commit or stash them there, or remove the worktree'),
     ]);
     // the manifest still records every unused registration as it is; only those holding no work are warned of
     expect(d.graphs[0].unused.map((u) => u.path)).toEqual([away, s.gone, lost, safe, stray, s.unused]);
@@ -368,14 +368,14 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     expect((await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES })).blockers).toEqual([]);
     fs.writeFileSync(path.join(s.unused, 'notes.txt'), 'kept nowhere else');
     expect((await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES })).blockers).toEqual([
-      expect.objectContaining({ code: 'worktree_unused', message: expect.stringContaining(`${s.unused}: a worktree no character uses holds changes`) }),
+      expect.objectContaining({ code: 'worktree_unused', message: expect.stringContaining(`${s.unused}: a worktree no robot uses holds changes`) }),
     ]);
   });
 
-  it('lists a character once when both its terminals stand in one checkout', async () => {
+  it('lists a robot once when both its terminals stand in one checkout', async () => {
     const l = seedHere(made);
     const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
-    expect(d.graphs[0].worktrees.find((w) => w.path === l.source.sibling)!.characters).toEqual(['sib']);
+    expect(d.graphs[0].worktrees.find((w) => w.path === l.source.sibling)!.robots).toEqual(['sib']);
   });
 
   it('blocks tracked files the excludes would leave behind', async () => {
@@ -407,7 +407,7 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     const d = await discoverGit(crewOf({ a: { cwd: wt } }), { excludes: DEFAULT_EXCLUDES });
     expect(d.blockers).toEqual([]);
     expect(d.graphs).toEqual([{
-      id: graphId(bare), commonDir: bare, worktrees: [expect.objectContaining({ path: wt, gitDir: path.join(bare, 'worktrees/wt'), branch: 'refs/heads/feature', characters: ['a'] })],
+      id: graphId(bare), commonDir: bare, worktrees: [expect.objectContaining({ path: wt, gitDir: path.join(bare, 'worktrees/wt'), branch: 'refs/heads/feature', robots: ['a'] })],
       unused: [], stash: [], tips: [git(base, bare, 'rev-parse', 'refs/heads/main')],
     }]);
   });

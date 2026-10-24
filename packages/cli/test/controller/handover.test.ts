@@ -25,7 +25,7 @@ import type { RunRsync } from '../../src/controller/rsync.js';
 import { transfer as runTransfer, type RootEntry, type SessionEntry, type TransferOptions } from '../../src/controller/transfer.js';
 import { cleanHomes, makeHome } from '../../../svalld/test/helpers.js';
 import {
-  CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, char, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
+  CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, robot, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
   type Probe,
 } from './world.js';
 
@@ -37,18 +37,18 @@ describe('the controller transaction', () => {
 
     expect(out).toEqual({
       status: 'complete', transactionId: 'tx-1', generation: G + 1,
-      characters: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: false, error: expect.stringContaining('SessionStart') }],
+      robots: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: false, error: expect.stringContaining('SessionStart') }],
     });
     const order = ['gateway:begin', 'mac:handover.freeze', 'trift:handover.claim', 'transfer:run', 'trift:handover.prepare', 'gateway:ready', 'gateway:commit',
       'trift:handover.activate', 'trift:handover.complete', 'mac:handover.complete', 'gateway:complete'].map((op) => opIndex(w, op));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(phases(w)).toEqual(['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete']);
-    // rows for the sheet: each root and session file as it lands, each character as it comes up
+    // rows for the sheet: each root and session file as it lands, each robot as it comes up
     const entity = (id: string) => w.events.find((e) => e.event === 'handover.entity' && e.data.id === id);
     expect(entity('r_app')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'r_app', phase: 'verify', done: 2, total: 2, bytes: 64, totalBytes: 64, verified: true } });
     expect(entity('s0')).toMatchObject({ data: { kind: 'session', phase: 'verify' } });
-    expect(entity('c_bo')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', error: expect.stringContaining('SessionStart') } });
+    expect(entity('c_bo')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_bo', phase: 'activate', error: expect.stringContaining('SessionStart') } });
     expect(w.events[0]).toMatchObject({ event: 'handover.preflight', data: { blockers: [], summary: { roots: 2 } } });
     expect(w.events[0]).not.toHaveProperty('data.names.landing');
     expect(settledOn(w)).toBe('destination');
@@ -73,19 +73,19 @@ describe('the controller transaction', () => {
     expect(notice.length).toBeLessThan(1000);
   });
 
-  it('carries what a character that came up still waits on in its terminal into its row and the result', async () => {
+  it('carries what a robot that came up still waits on in its terminal into its row and the result', async () => {
     const w = new World();
     const notice = 'codex waits at its "Trust this folder?" prompt in bo\'s terminal; answer it there';
     const activate = w.destination.answers['handover.activate'] as (p: unknown) => object;
     w.destination.answers['handover.activate'] = ((p: unknown) => {
       activate(p);
-      return { characters: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] };
+      return { robots: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] };
     }) as never;
     const out = await controller(w).start(trift, {});
 
-    expect(out).toMatchObject({ status: 'complete', characters: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] });
+    expect(out).toMatchObject({ status: 'complete', robots: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] });
     const row = w.events.find((e) => e.event === 'handover.entity' && e.data.id === 'c_bo');
-    expect(row).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', notice } });
+    expect(row).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_bo', phase: 'activate', notice } });
   });
 
   it('stops before Begin with nothing open when its checks could not reach the gateway', async () => {
@@ -266,7 +266,7 @@ describe('one home on both machines', () => {
 describe('preflight', () => {
   it('stops before Begin with the source\'s blockers, and touches nothing', async () => {
     const w = new World();
-    w.source.preflightBlockers = [{ code: 'shell_busy', message: 'ada\'s terminal is running npm run dev', entity: { kind: 'character', id: 'c_ada' } }];
+    w.source.preflightBlockers = [{ code: 'shell_busy', message: 'ada\'s terminal is running npm run dev', entity: { kind: 'robot', id: 'c_ada' } }];
     const out = await controller(w).start(trift, {});
     expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: w.source.preflightBlockers });
     expect(w.ops.filter((op) => !/^(gateway:get|mac:|trift:)(system\.info|ownership\.get|handover\.(preflight|inspect|status)|get)?/.test(op))).toEqual([]);
@@ -287,7 +287,7 @@ describe('preflight', () => {
     expect(clear.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
 
     const busy = new World();
-    busy.source.preflightBlockers = [{ code: 'shell_busy', message: 'ada\'s terminal is running npm run dev', entity: { kind: 'character', id: 'c_ada' } }];
+    busy.source.preflightBlockers = [{ code: 'shell_busy', message: 'ada\'s terminal is running npm run dev', entity: { kind: 'robot', id: 'c_ada' } }];
     expect(await controller(busy).check(trift, {})).toEqual({ status: 'blocked', phase: 'begin', blockers: busy.source.preflightBlockers });
     expect([...busy.ops].sort()).toEqual(reads);
   });
@@ -317,7 +317,7 @@ describe('preflight', () => {
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
     w.source.answers['handover.preflight'] = ((p: unknown) => {
       const r = preflight(p);
-      r.manifest.snapshot.characters.c_cy = char('c_cy', 'cy', at('app'), {
+      r.manifest.snapshot.robots.c_cy = robot('c_cy', 'cy', at('app'), {
         agent: { kind: 'opencode', sessionId: 'ses_0123456789abcdefghijABCDEFGH', status: 'idle', lastActivityAt: 0 },
       });
       return r;
@@ -449,8 +449,8 @@ describe('preflight', () => {
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
     w.source.answers['handover.preflight'] = ((p: unknown) => {
       const r = preflight(p);
-      r.manifest.snapshot.characters.c_bo.cwd = '/Users/ada/app/.claude/worktrees/x';
-      r.manifest.snapshot.characters.c_bo.repo = { root: '/Users/ada/app/.claude/worktrees/x', mainRoot: '/Users/ada/app', branch: 'x', isWorktree: true };
+      r.manifest.snapshot.robots.c_bo.cwd = '/Users/ada/app/.claude/worktrees/x';
+      r.manifest.snapshot.robots.c_bo.repo = { root: '/Users/ada/app/.claude/worktrees/x', mainRoot: '/Users/ada/app', branch: 'x', isWorktree: true };
       return r;
     }) as never;
     let asked: unknown;
@@ -458,7 +458,7 @@ describe('preflight', () => {
     w.destination.answers['handover.inspect'] = ((p: { resumes?: unknown }) => { asked = p.resumes; return inspect(p); }) as never;
     const trust = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'codex_trust');
 
-    expect(await trust()).toEqual([expect.objectContaining({ entity: { kind: 'character', id: 'c_bo' }, message: expect.stringContaining('bo resumes on trift') })]);
+    expect(await trust()).toEqual([expect.objectContaining({ entity: { kind: 'robot', id: 'c_bo' }, message: expect.stringContaining('bo resumes on trift') })]);
     expect(asked).toEqual([
       { kind: 'claude', cwd: '/Users/ada/app' },
       { kind: 'codex', cwd: '/Users/ada/app/.claude/worktrees/x', repo: '/Users/ada/app', root: '/Users/ada/app/.claude/worktrees/x' },
@@ -472,7 +472,7 @@ describe('preflight', () => {
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
     w.source.answers['handover.preflight'] = ((p: unknown) => {
       const r = preflight(p);
-      r.manifest.snapshot.characters.c_ada.repo = { root: '/Users/ada/app', mainRoot: '/Users/ada/app', branch: 'main', isWorktree: false };
+      r.manifest.snapshot.robots.c_ada.repo = { root: '/Users/ada/app', mainRoot: '/Users/ada/app', branch: 'main', isWorktree: false };
       return r;
     }) as never;
     let asked: unknown;
@@ -482,10 +482,10 @@ describe('preflight', () => {
 
     expect(await trust()).toEqual([
       {
-        code: 'claude_trust', entity: { kind: 'character', id: 'c_ada' },
+        code: 'claude_trust', entity: { kind: 'robot', id: 'c_ada' },
         message: 'Claude asks whether to trust its folder the first time ada resumes on trift, with "No, exit" preselected; choose "Yes, I trust this folder" in that terminal',
       },
-      expect.objectContaining({ code: 'codex_trust', entity: { kind: 'character', id: 'c_bo' } }),
+      expect.objectContaining({ code: 'codex_trust', entity: { kind: 'robot', id: 'c_bo' } }),
     ]);
     expect(asked).toEqual(expect.arrayContaining([{ kind: 'claude', cwd: '/Users/ada/app', repo: '/Users/ada/app', root: '/Users/ada/app' }]));
     w.destination.trusted.add('claude /Users/ada/app');
@@ -501,7 +501,7 @@ describe('preflight', () => {
 
     expect(await hooks()).toEqual([{
       code: 'codex_hooks',
-      message: 'Codex on trift has not trusted Svall\'s hooks yet, so a Codex character resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks',
+      message: 'Codex on trift has not trusted Svall\'s hooks yet, so a Codex robot resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks',
     }]);
     untrusted = undefined;
     expect(await hooks()).toEqual([]);
@@ -528,7 +528,7 @@ describe('preflight', () => {
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
     w.source.answers['handover.preflight'] = ((p: unknown) => {
       const r = preflight(p);
-      r.manifest.snapshot.characters.c_ada.revive = { command: `claude --dangerously-skip-permissions --resume ${SID}` };
+      r.manifest.snapshot.robots.c_ada.revive = { command: `claude --dangerously-skip-permissions --resume ${SID}` };
       return r;
     }) as never;
     let asked: unknown;
@@ -537,7 +537,7 @@ describe('preflight', () => {
     const bypass = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'claude_bypass');
 
     expect(await bypass()).toEqual([{
-      code: 'claude_bypass', entity: { kind: 'character', id: 'c_ada' },
+      code: 'claude_bypass', entity: { kind: 'robot', id: 'c_ada' },
       message: 'Claude warns that ada resumes in Bypass Permissions mode on trift, with "No, exit" preselected; choose "Yes, I accept" in that terminal',
     }]);
     expect(asked).toEqual(expect.arrayContaining([{ kind: 'claude', cwd: '/Users/ada/app', bypass: true }, expect.not.objectContaining({ bypass: true })]));
@@ -797,7 +797,7 @@ describe('preflight', () => {
     expect(lost.asked.reaches).toEqual([{ commits: [{ commonDir: '/Users/ada/app/.git', commit: lost.commit }] }]);
     expect(out).toEqual({
       status: 'blocked', phase: 'begin',
-      blockers: [{ code: 'worktree_unused', entity: { kind: 'git', id: 'g_app' }, message: expect.stringMatching(/^\/Users\/ada\/stay is a worktree no character uses that stays on trift, at ffffffffffff, which nothing mac sends back reaches/) }],
+      blockers: [{ code: 'worktree_unused', entity: { kind: 'git', id: 'g_app' }, message: expect.stringMatching(/^\/Users\/ada\/stay is a worktree no robot uses that stays on trift, at ffffffffffff, which nothing mac sends back reaches/) }],
     });
     expect(lost.w.ops).not.toContain('gateway:begin');
 
@@ -866,15 +866,15 @@ describe('preflight', () => {
     expect(entries.find((e) => e.id === 'r_git')!.claim.keep).toBeUndefined();
   });
 
-  it('names each character and where each root lands, so what a blocker points at can be read', async () => {
+  it('names each robot and where each root lands, so what a blocker points at can be read', async () => {
     const w = new World();
     await controller(w).preflight(trift, {});
     const pre = w.events.find((e) => e.event === 'handover.preflight');
     expect(pre?.data).toMatchObject({
       names: {
-        characters: { c_ada: 'ada', c_bo: 'bo' },
+        robots: { c_ada: 'ada', c_bo: 'bo' },
         roots: { r_app: '/Users/ada/app', r_wt: '/Users/ada/app/.claude/worktrees/x', r_git: '/Users/ada/app.git' },
-        // a session row is named by the character whose session it carries
+        // a session row is named by the robot whose session it carries
         sessions: { s0: 'ada', s1: 'bo' },
       },
     });
@@ -900,9 +900,9 @@ describe('preflight', () => {
     expect(w.destination.archived).toEqual(['r_app']);
   });
 
-  it('stops before Begin at a folder that holds repositories no character works in, asking no one, and carries it whole once chosen', async () => {
+  it('stops before Begin at a folder that holds repositories no robot works in, asking no one, and carries it whole once chosen', async () => {
     const w = new World();
-    const unused: Blocker = { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in", entity: { kind: 'character', id: 'c_ada' } };
+    const unused: Blocker = { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no robot works in", entity: { kind: 'robot', id: 'c_ada' } };
     const preflight = w.source.answers['handover.preflight'] as (p: { choices: HandoverChoices }) => object;
     w.source.answers['handover.preflight'] = ((p: { choices: HandoverChoices }) => ({ ...preflight(p), blockers: p.choices.carryUnused ? [] : [unused] })) as never;
     const decided: Blocker[][] = [];
@@ -944,7 +944,7 @@ describe('preflight', () => {
   it('blocks a destination with another home that still holds a place a carried graph moves from', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
-    const checkout = (p: string, gitDir: string) => ({ path: p, gitDir, head: null, branch: null, status: [], index: 'a'.repeat(64), characters: [] });
+    const checkout = (p: string, gitDir: string) => ({ path: p, gitDir, head: null, branch: null, status: [], index: 'a'.repeat(64), robots: [] });
     w.source.answers['handover.preflight'] = ((p: unknown) => {
       const r = preflight(p);
       r.manifest.destinationHome = '/home/ada';
@@ -970,7 +970,7 @@ describe('preflight', () => {
       const r = preflight(p);
       r.manifest.destinationHome = '/home/ada';
       for (const x of r.manifest.sessions) x.destinationHome = x.destinationHome!.replace(HOME, '/home/ada');
-      r.manifest.snapshot.characters.c_cy = char('c_cy', 'cy', at('app'), { islandId: 'i_work' });
+      r.manifest.snapshot.robots.c_cy = robot('c_cy', 'cy', at('app'), { islandId: 'i_work' });
       const [{ from, to }] = docsRenames(r.manifest);
       r.manifest.roots.push({ id: 'r_docs', kind: 'docs', entry: 'dir', path: at('.svall/docs'), files: [file(`${from}/a.md`), file(`${to}/b.md`)] });
       return r;
@@ -1076,7 +1076,7 @@ describe('rest choices and blockers after Begin', () => {
     let asked = 0;
     const freeze = w.source.answers['handover.freeze'];
     w.source.answers['handover.freeze'] = ((p: never) => {
-      if (asked++ === 0) throw new Refused('blocked', 'bo is waiting on an answer', { blockers: [{ code: 'agent_blocked', entity: { kind: 'character', id: 'c_bo' } }] });
+      if (asked++ === 0) throw new Refused('blocked', 'bo is waiting on an answer', { blockers: [{ code: 'agent_blocked', entity: { kind: 'robot', id: 'c_bo' } }] });
       return (freeze as (x: never) => unknown)(p);
     }) as never;
     const decided: Blocker[][] = [];
@@ -1543,7 +1543,7 @@ describe('cancellation', () => {
     const w = new World();
     const recorded: HandoverEvent[] = [];
     const c = controller(w, { record: (e) => recorded.push(e) });
-    const row: HandoverEvent = { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_ada', phase: 'freeze' } };
+    const row: HandoverEvent = { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_ada', phase: 'freeze' } };
     c.relay(row);
     expect(w.events).toEqual([row]);
     expect(recorded).toEqual([row]);
@@ -1974,7 +1974,7 @@ describe('resuming a handover the destination may have finished', () => {
     // a later handover took the fleet on to G + 2 on the destination
     w.record = { fleetId, generation: G + 2, ownerMachineId: trift };
     const out = await controller(w).resume();
-    expect(out).toEqual({ status: 'complete', transactionId: 'tx-1', generation: G + 1, characters: [] });
+    expect(out).toEqual({ status: 'complete', transactionId: 'tx-1', generation: G + 1, robots: [] });
     expect(w.store.j).toBeUndefined();
   });
 
@@ -2430,7 +2430,7 @@ describe('the real adapters', () => {
     const authority = await startAuthorityServer({ prefix });
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));
-    const row = { transactionId: 'tx-9', kind: 'character', id: 'c_ada', phase: 'freeze' };
+    const row = { transactionId: 'tx-9', kind: 'robot', id: 'c_ada', phase: 'freeze' };
     wss.on('connection', (ws) => {
       let authed = false;
       ws.on('message', (raw) => {

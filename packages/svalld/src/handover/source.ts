@@ -42,7 +42,7 @@ export type Authority = { get(fleetId: FleetId): Promise<OwnerRecord> };
 export type SourceDeps = {
   paths: Paths;
   store: RestDeps['store'];
-  fleet: Pick<Fleet, 'settle' | 'activate' | 'deactivate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveCharacter' | 'openSecond'>;
+  fleet: Pick<Fleet, 'settle' | 'activate' | 'deactivate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveRobot' | 'openSecond'>;
   tmux: RestDeps['tmux'] & Pick<Tmux, 'ensureServer'>;
   viewers: RestDeps['viewers'];
   processes?: NonNullable<RestDeps['processes']>;
@@ -244,7 +244,7 @@ export class SourceHandover {
     blockers.push(...unapproved(state, terminals, restChoices(p.choices)));
     // each running agent carries the revive its rest will record, so the destination is asked about the flags it resumes with
     for (const t of terminals) {
-      const c = inventory.snapshot.characters[t.characterId];
+      const c = inventory.snapshot.robots[t.robotId];
       const slot = t.term === 2 ? c?.second : c;
       if (slot?.agent) slot.revive = { command: reviveCommand(slot, launchFlags(t)) };
     }
@@ -337,7 +337,7 @@ export class SourceHandover {
     const crowd = this.crowded(names.listed.files, p.destination.info);
     const before = [...found.blockers, ...names.blockers, ...(p.choices.carryUnused ? [] : names.unused), ...(crowd ? [crowd] : [])];
     if (before.length) return this.refuse(tx.id, before);
-    const ids = Object.keys(this.d.store.state.characters);
+    const ids = Object.keys(this.d.store.state.robots);
     for (const id of ids) this.progress(tx.id, id);
     const { store, tmux, viewers, kill, clock } = this.d;
     const rested = await restTerminals(
@@ -353,7 +353,7 @@ export class SourceHandover {
     const built = await buildManifest(inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs, true, this.hashes);
     this.hashes = built.hashes;
     const big = this.limits(built.manifest, p.destination.info);
-    // the rest records where each second terminal stands, which can be a folder holding repositories no character works in,
+    // the rest records where each second terminal stands, which can be a folder holding repositories no robot works in,
     // or ones the checks before it never read
     const unused = p.choices.carryUnused ? [] : built.unused;
     const git = await this.gitBlockers(inventory, p.destination.info);
@@ -366,7 +366,7 @@ export class SourceHandover {
     });
     boundary('source.freeze.digest', () => this.journal.write({ ...this.open(tx.id)!, manifestDigest, updatedAt: this.now() }));
     for (const id of ids) {
-      const n = rested.terminals.filter((t) => t.characterId === id).length;
+      const n = rested.terminals.filter((t) => t.robotId === id).length;
       this.progress(tx.id, id, { done: n, total: n });
     }
     return { manifest: named(built.manifest, tx.id) };
@@ -447,7 +447,7 @@ export class SourceHandover {
     return crowded(files, this.d.heapLimit ?? v8.getHeapStatistics().heap_size_limit, destination.heapLimit);
   }
 
-  /** What stops the move before any terminal is touched: identities, releases, agent CLIs, characters kept here, platforms and paths. */
+  /** What stops the move before any terminal is touched: identities, releases, agent CLIs, robots kept here, platforms and paths. */
   private async check(toMachineId: MachineId, p: HandoverMachines, state: FleetState): Promise<{ blockers: Blocker[]; warnings: Warning[]; inventory: Inventory }> {
     const { info } = p.destination;
     const blockers: Blocker[] = [];
@@ -457,11 +457,11 @@ export class SourceHandover {
     if (toMachineId === this.ownership.machineId) mismatch('the destination is this machine, which already runs this fleet');
     if (info.machineId !== toMachineId) mismatch(`the destination described is ${info.machineId}, not ${toMachineId}`);
     blockers.push(...compatibility(info));
-    const kinds = Object.values(state.characters).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]).filter((k): k is AgentKind => k !== undefined);
+    const kinds = Object.values(state.robots).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]).filter((k): k is AgentKind => k !== undefined);
     const agents = { kinds, source: await this.agents(), destination: info.agentAdapters.map(probeOf), opencodeAnswered: opencodeAnswered(state) };
     blockers.push(...agentBlockers(agents, warnings));
-    for (const c of Object.values(state.characters)) {
-      if (c.keepHere) blockers.push({ code: 'character_pinned', message: `${c.name} is kept on this machine`, entity: { kind: 'character', id: c.id } });
+    for (const c of Object.values(state.robots)) {
+      if (c.keepHere) blockers.push({ code: 'robot_pinned', message: `${c.name} is kept on this machine`, entity: { kind: 'robot', id: c.id } });
     }
     const inventory = await this.inventory(state, p);
     blockers.push(...await this.exportSessions(inventory, true));
@@ -484,7 +484,7 @@ export class SourceHandover {
         if (e instanceof SessionError) continue;
         throw e;
       }
-      const c = inventory.snapshot.characters[s.characterId];
+      const c = inventory.snapshot.robots[s.robotId];
       // a dry export is read, then removed
       const checking = dry ? fs.mkdtempSync(path.join(os.tmpdir(), 'svall-export-')) : undefined;
       try {
@@ -493,7 +493,7 @@ export class SourceHandover {
         await adapter.exportSession(s.sessionId, file, this.d.cli ?? cliRunner(), expandHome(cwd));
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
-        blockers.push({ code: e.code, message: `${c?.name ?? s.characterId}: ${e.message}`, entity: { kind: 'character', id: s.characterId } });
+        blockers.push({ code: e.code, message: `${c?.name ?? s.robotId}: ${e.message}`, entity: { kind: 'robot', id: s.robotId } });
       } finally {
         if (checking) fs.rmSync(checking, { recursive: true, force: true });
       }
@@ -515,7 +515,7 @@ export class SourceHandover {
     ];
   }
 
-  /** The inventory of `state`, with every repository graph a character stands in read from Git. */
+  /** The inventory of `state`, with every repository graph a robot stands in read from Git. */
   private async inventory(state: FleetState, p: HandoverMachines): Promise<Inventory> {
     const fleet = this.fleet();
     const git = await discoverGit(state, { excludes: expandExcludes(fleet.handover).excludes, git: this.d.git });
@@ -582,7 +582,7 @@ export class SourceHandover {
     const found = settle(blockers);
     await this.revive(transactionId, this.open(transactionId)?.stoppedTerminals ?? [], 'freeze');
     await this.release(transactionId);
-    for (const b of found) if (b.entity?.kind === 'character') this.progress(transactionId, b.entity.id, { error: b.message });
+    for (const b of found) if (b.entity?.kind === 'robot') this.progress(transactionId, b.entity.id, { error: b.message });
     throw handoverError({ code: 'blocked', message: found.map((b) => b.message).join('; '), blockers: found });
   }
 
@@ -597,16 +597,16 @@ export class SourceHandover {
     // could not be read names no server
     if (this.open(transactionId)) {
       await serversGone({ store, journal: this.journal, processes: this.processes, kill, clock }, this.d.rest ?? {}, (t) => {
-        const c = store.state.characters[t.characterId];
+        const c = store.state.robots[t.robotId];
         const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
         return !window || !live.has(window);
       });
     }
     // only an agent the rest terminated had its turn cut short, which its revive tells it
-    const ended = (this.open(transactionId)?.terminated ?? []).filter((x) => x.term !== 2).map((x) => x.characterId);
+    const ended = (this.open(transactionId)?.terminated ?? []).filter((x) => x.term !== 2).map((x) => x.robotId);
     this.d.store.update((d) => {
       for (const t of stopped) {
-        const c = d.characters[t.characterId];
+        const c = d.robots[t.robotId];
         const slot = t.term === 2 ? c?.second : c;
         if (!c || !slot?.tmux || live.has(slot.tmux.windowId)) continue;
         if (t.term === 2) markSlotDormant(slot, t.flags);
@@ -617,10 +617,10 @@ export class SourceHandover {
       }
     });
     for (const t of stopped) {
-      const c = this.d.store.state.characters[t.characterId];
+      const c = this.d.store.state.robots[t.robotId];
       if (!c || (t.term === 2 && !c.second)) continue;
       try {
-        await boundary('source.revive', () => (t.term === 2 ? this.d.fleet.openSecond(c.id) : this.d.fleet.reviveCharacter(c.id)));
+        await boundary('source.revive', () => (t.term === 2 ? this.d.fleet.openSecond(c.id) : this.d.fleet.reviveRobot(c.id)));
         this.progress(transactionId, c.id, {}, phase);
       } catch (e) {
         this.d.log.error(`handover ${transactionId}: ${c.name}'s ${t.term === 2 ? 'second ' : ''}terminal did not reopen: ${(e as Error).message}`);
@@ -631,9 +631,9 @@ export class SourceHandover {
 
   /** The terminals whose slot names this handover as the one that rested it. */
   private restedBy(transactionId: string): SourceJournal['stoppedTerminals'] {
-    return Object.values(this.d.store.state.characters).flatMap((c) => [
-      ...(c.restedBy === transactionId ? [{ characterId: c.id }] : []),
-      ...(c.second?.restedBy === transactionId ? [{ characterId: c.id, term: 2 as const }] : []),
+    return Object.values(this.d.store.state.robots).flatMap((c) => [
+      ...(c.restedBy === transactionId ? [{ robotId: c.id }] : []),
+      ...(c.second?.restedBy === transactionId ? [{ robotId: c.id, term: 2 as const }] : []),
     ]);
   }
 
@@ -676,7 +676,7 @@ export class SourceHandover {
   }
 
   private progress(transactionId: string, id: string, more: { done?: number; total?: number; error?: string } = {}, phase: HandoverPhase = 'freeze'): void {
-    this.journal.emitEntity({ transactionId, kind: 'character', id, phase, ...more });
+    this.journal.emitEntity({ transactionId, kind: 'robot', id, phase, ...more });
   }
 
   private processes = (signal?: AbortSignal): Promise<ProcessTable> =>

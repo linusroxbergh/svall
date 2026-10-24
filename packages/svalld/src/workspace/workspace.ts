@@ -124,10 +124,10 @@ export class Workspace {
     return { text: buf.toString('utf8'), mtimeMs: st.mtimeMs, root: this.rootOf(id) };
   }
 
-  // root is the one the file was read under: the text never lands in another checkout the character has moved to since
+  // root is the one the file was read under: the text never lands in another checkout the robot has moved to since
   write(id: string, rel: string, text: string, mtimeMs: number, root?: string): { mtimeMs: number; conflict?: true } {
     const now = this.rootOf(id);
-    if (root !== undefined && root !== now) throw new WorkspaceError('invalid', `${rel} was opened in ${root}; the character is now in ${now}`);
+    if (root !== undefined && root !== now) throw new WorkspaceError('invalid', `${rel} was opened in ${root}; the robot is now in ${now}`);
     const abs = this.at(id, rel);
     const st = statOf(rel, abs);
     // a rename would put a file in place of a socket or a pipe
@@ -280,11 +280,11 @@ export class Workspace {
     w.viewers.add(viewer);
   }
 
-  /** After the fleet changed: a watch follows its character to a new root, and ends with a character that is gone. */
+  /** After the fleet changed: a watch follows its robot to a new root, and ends with a robot that is gone. */
   retarget(): void {
     for (const [id, w] of [...this.watches]) {
       let root: string | undefined;
-      try { root = this.rootOf(id); } catch { /* the character is gone */ }
+      try { root = this.rootOf(id); } catch { /* the robot is gone */ }
       if (root === undefined) { this.stopWatch(id); continue; }
       if (root === w.root) continue;
       this.parkWatch(w);

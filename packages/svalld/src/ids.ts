@@ -9,4 +9,4 @@ export function newId(prefix: 'c' | 'i' | 't'): string {
   return `${prefix}_${s}`;
 }
 
-export const isCharId = (s: string): boolean => /^c_[a-z0-9]{6}$/.test(s);
+export const isRobotId = (s: string): boolean => /^c_[a-z0-9]{6}$/.test(s);

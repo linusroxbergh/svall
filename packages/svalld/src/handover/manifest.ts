@@ -46,7 +46,7 @@ const stamp = (file: string, st: Stat): string | undefined =>
 export type ManifestHeader = { transactionId?: string; generation: number };
 /**
  * `listed`: the carried files and their bytes as the walk found them, read or not. `unused`: what blocks unless the
- * choices carry the Git repositories no character works in.
+ * choices carry the Git repositories no robot works in.
  */
 export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed; hashes: Hashes };
 type Listed = { files: number; bytes: number };
@@ -261,7 +261,7 @@ async function scanRoots(
  * Without `read` its files are only found to be there.
  */
 async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[]; listed: Listed }> {
-  const entity: HandoverEntity = { kind: 'character', id: session.characterId };
+  const entity: HandoverEntity = { kind: 'robot', id: session.robotId };
   const counted: Listed = { files: 0, bytes: 0 };
   let adapter: SessionAdapter;
   let found: FoundSession;

@@ -1,4 +1,4 @@
-import type { Agent, AgentStatus, Character, FleetState, MobileStatus } from '@svall/protocol';
+import type { Agent, AgentStatus, Robot, FleetState, MobileStatus } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AWAKE_WINDOW_MS, awakeHold, followAwake, needOf, type Need } from '../src/awake.js';
 import type { ToShell } from '../src/bridge.js';
@@ -7,9 +7,9 @@ import { fleet } from './fixtures.js';
 
 const T0 = 1_000_000_000;
 const agent = (status: AgentStatus, extra: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 0, ...extra });
-const patch = (f: FleetState, id: string, p: Partial<Character>): FleetState =>
-  ({ ...f, characters: { ...f.characters, [id]: { ...f.characters[id]!, ...p } } });
-const second = (status: AgentStatus, extra: Partial<Agent> = {}): Character['second'] => ({ cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status, extra), unread: false });
+const patch = (f: FleetState, id: string, p: Partial<Robot>): FleetState =>
+  ({ ...f, robots: { ...f.robots, [id]: { ...f.robots[id]!, ...p } } });
+const second = (status: AgentStatus, extra: Partial<Agent> = {}): Robot['second'] => ({ cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status, extra), unread: false });
 const phone = (login: string, since = 1) => ({ login, since });
 const need = (o: Partial<Need> = {}): Need => ({ working: 0, shells: 0, waiting: 0, phones: 0, since: 0, ...o });
 const mobile = (phones: { login: string; since: number }[]): MobileStatus => ({ serving: true, url: '', port: 1, logins: [], phones });
@@ -27,7 +27,7 @@ describe('needOf', () => {
     expect(needOf(f, [])).toMatchObject({ working: 1, shells: 1 });
   });
 
-  it('counts the characters blocked or done and unread, and the phones on the fleet', () => {
+  it('counts the robots blocked or done and unread, and the phones on the fleet', () => {
     let f = patch(fleet(), 'c0', { agent: agent('blocked') });
     f = patch(f, 'c1', { agent: agent('done'), unread: true });
     f = patch(f, 'c2', { agent: agent('done') });
@@ -55,7 +55,7 @@ describe('awakeHold', () => {
   it('holds a shell left running for the window in either mode, and a wait or a phone only while set to need you', () => {
     const until = T0 + AWAKE_WINDOW_MS;
     expect(awakeHold(need({ shells: 1, since: T0 }), { mode: 'working', now: T0 })).toEqual({ reason: '1 agent with a shell running', until });
-    expect(awakeHold(need({ waiting: 2, shells: 1, phones: 1, since: T0 }), { mode: 'needs', now: T0 })).toEqual({ reason: '2 characters waiting on you', until });
+    expect(awakeHold(need({ waiting: 2, shells: 1, phones: 1, since: T0 }), { mode: 'needs', now: T0 })).toEqual({ reason: '2 robots waiting on you', until });
     expect(awakeHold(need({ phones: 1, since: T0 }), { mode: 'needs', now: T0 })).toEqual({ reason: '1 phone connected', until });
     expect(awakeHold(need({ waiting: 1, phones: 1, since: T0 }), { mode: 'working', now: T0 })).toBeUndefined();
     expect(awakeHold(need({ since: T0 }), { mode: 'needs', now: T0 })).toBeUndefined();
@@ -111,11 +111,11 @@ describe('followAwake', () => {
     const reloaded = setup(done);
     reloaded.store.getState().setStatus('online');
     vi.advanceTimersByTime(10 * 60_000 - 1);
-    expect(holds()).toEqual([null, '1 agent working', '1 character waiting on you']);
-    expect(reloaded.holds()).toEqual([null, '1 character waiting on you']);
+    expect(holds()).toEqual([null, '1 agent working', '1 robot waiting on you']);
+    expect(reloaded.holds()).toEqual([null, '1 robot waiting on you']);
     vi.advanceTimersByTime(1);
-    expect(holds()).toEqual([null, '1 agent working', '1 character waiting on you', null]);
-    expect(reloaded.holds()).toEqual([null, '1 character waiting on you', null]);
+    expect(holds()).toEqual([null, '1 agent working', '1 robot waiting on you', null]);
+    expect(reloaded.holds()).toEqual([null, '1 robot waiting on you', null]);
     stop();
     reloaded.stop();
   });
@@ -177,9 +177,9 @@ describe('followAwake', () => {
     const { store, holds, stop } = setup(patch(fleet(), 'c0', { agent: agent('blocked', { lastActivityAt: T0 }) }));
     store.getState().setStatus('online');
     vi.setSystemTime(T0 + AWAKE_WINDOW_MS + 60 * 60_000);
-    expect(holds()).toEqual([null, '1 character waiting on you']);
+    expect(holds()).toEqual([null, '1 robot waiting on you']);
     vi.advanceTimersByTime(60_000);
-    expect(holds()).toEqual([null, '1 character waiting on you', null]);
+    expect(holds()).toEqual([null, '1 robot waiting on you', null]);
     stop();
   });
 });

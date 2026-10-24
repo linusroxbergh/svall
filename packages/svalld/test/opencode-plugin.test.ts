@@ -94,7 +94,7 @@ beforeEach(async () => {
   got = [];
   brief = 'BRIEF';
   vi.stubEnv('SVALL_HOME', home);
-  vi.stubEnv('SVALL_CHAR_ID', 'c_1');
+  vi.stubEnv('SVALL_ROBOT_ID', 'c_1');
   await listen();
 });
 afterEach(async () => { await receiver.close(); vi.unstubAllEnvs(); cleanHomes(); });
@@ -110,10 +110,10 @@ describe('the OpenCode plugin', () => {
     expect((await import(release)).default.id).toBe('svall');
   });
 
-  it('does nothing outside a character, for the other build\'s fleet, or in the shared background service', async () => {
-    vi.stubEnv('SVALL_CHAR_ID', '');
+  it('does nothing outside a robot, for the other build\'s fleet, or in the shared background service', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', '');
     expect((await load()).hooks).toEqual({});
-    vi.stubEnv('SVALL_CHAR_ID', 'c_1');
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_1');
     vi.stubEnv('SVALL_HOME', '/u/.svall');
     expect((await load()).hooks).toEqual({});
     vi.stubEnv('SVALL_HOME', home);
@@ -122,9 +122,9 @@ describe('the OpenCode plugin', () => {
     try { expect((await load()).hooks).toEqual({}); } finally { process.argv = argv; }
   });
 
-  it("takes OpenCode's worktree_create from a character's agent, so its worktrees are made inside the repository", async () => {
+  it("takes OpenCode's worktree_create from a robot's agent, so its worktrees are made inside the repository", async () => {
     expect((await load()).removed).toEqual(['opencode_worktree_create']);
-    vi.stubEnv('SVALL_CHAR_ID', '');
+    vi.stubEnv('SVALL_ROBOT_ID', '');
     expect((await load()).removed).toEqual([]);
   });
 
@@ -136,7 +136,7 @@ describe('the OpenCode plugin', () => {
       const said = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       try {
         const { hooks: h } = await load(f);
-        expect(said.mock.calls.map(([line]) => line)).toEqual([`svall: OpenCode kept opencode_worktree_create for this character's agent: ${why}\n`]);
+        expect(said.mock.calls.map(([line]) => line)).toEqual([`svall: OpenCode kept opencode_worktree_create for this robot's agent: ${why}\n`]);
         await prompt(h, SID, 'go');
         await waitFor(() => names().includes('UserPromptSubmit'));
         expect(await system(h, SID)).toEqual(['BRIEF']);
@@ -164,7 +164,7 @@ describe('the OpenCode plugin', () => {
     expect(start.hook).toMatchObject({ backend: 'opencode', pid: process.ppid, sessionId: SID, cwd: '/repo', model: 'big-pickle', transcriptPath: path.join(home, 'transcripts/opencode', `${SID}.jsonl`) });
     expect(submitted.hook).toMatchObject({ prompt: { id: 'msg_u1', text: 'fix the flaky test' }, model: 'big-pickle' });
     expect(tool.hook).toMatchObject({ toolName: 'shell', cwd: '/repo/wt' });
-    expect(got[4]).toEqual({ status: { charId: 'c_1', sessionId: SID, contextPct: 10, model: 'big-pickle' } });
+    expect(got[4]).toEqual({ status: { robotId: 'c_1', sessionId: SID, contextPct: 10, model: 'big-pickle' } });
     expect(condenseTurnsOpencode(fs.readFileSync(path.join(home, 'transcripts/opencode', `${SID}.jsonl`), 'utf8'), 10))
       .toBe('USER: fix the flaky test\nAGENT: [tool: shell] fixed');
   });
@@ -314,7 +314,7 @@ describe('the OpenCode plugin', () => {
     }
   });
 
-  it("shows the question OpenCode's TUI shows, and keeps the character blocked while one is open", async () => {
+  it("shows the question OpenCode's TUI shows, and keeps the robot blocked while one is open", async () => {
     const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
     const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID, [OTHER]: SID }));
     await emit('session.created', { sessionID: SID });
@@ -336,7 +336,7 @@ describe('the OpenCode plugin', () => {
       .toMatchObject([{ sessionId: SID, message: '/etc/*', toolName: 'external_directory' }, { sessionId: SID, message: 'ls' }, { sessionId: SID, message: 'which file?' }]);
   });
 
-  it('leaves the character working through a question OpenCode answers at once, as with --auto, and a refusal that answers several', async () => {
+  it('leaves the robot working through a question OpenCode answers at once, as with --auto, and a refusal that answers several', async () => {
     const { emit } = await load();
     await emit('session.created', { sessionID: SID });
     await emit('permission.asked', { id: 'per_1', sessionID: SID, action: 'external_directory', resources: ['/etc/*'] });
@@ -352,7 +352,7 @@ describe('the OpenCode plugin', () => {
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
   });
 
-  it('blocks the character on the web search picker until it is answered, and not on an MCP server\'s form', async () => {
+  it('blocks the robot on the web search picker until it is answered, and not on an MCP server\'s form', async () => {
     const { emit } = await load();
     await emit('session.created', { sessionID: SID });
     await emit('form.created', { form: { id: 'frm_m', sessionID: 'global', title: 'Login', metadata: { kind: 'mcp-elicitation' }, fields: [] } });
@@ -364,7 +364,7 @@ describe('the OpenCode plugin', () => {
     expect((got[1] as { hook: { message: string } }).hook.message).toBe('Allow OpenCode to search the web?');
   });
 
-  it("lets a subagent's questions block the character, under the top-level session, and nothing else of its turn", async () => {
+  it("lets a subagent's questions block the robot, under the top-level session, and nothing else of its turn", async () => {
     const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
     await emit('session.created', { sessionID: SID });
     await emit('session.created', { sessionID: CHILD, parentID: SID });

@@ -22,7 +22,7 @@ The Mac's bundled rsync is the one a handover uses; `svall doctor` checks it.
 
 ## Home paths
 
-The Linux account's home need not be your home on the Mac. A fleet records full paths everywhere: each character's
+The Linux account's home need not be your home on the Mac. A fleet records full paths everywhere: each robot's
 folder, its Git worktrees, its agent's transcript, its browser tabs' `file:` URLs. A handover moves each path under the
 home it leaves to the same place under the home it lands in, so `/Users/ada/app` on the Mac is `/home/ada/app` on
 Linux, and `/Users/ada/app` again once the fleet comes back. Git worktrees are repaired to their new places, and an
@@ -40,7 +40,7 @@ lives under it and a Unix socket path holds at most 107. `svall host add` checks
 
 Everything for another machine in the app waits on one setting per fleet: Settings → The fleet → **remote machines
 (experimental)**. Turned on, Settings gains a **Machines** section, the sidebar's foot a **Handover** button, and each
-character's card a **keep on this machine** switch, without reopening the app. It stays on while the fleet names a
+robot's card a **keep on this machine** switch, without reopening the app. It stays on while the fleet names a
 gateway, and is set where the fleet runs. The switch runs `svall handover on` (or `off`), which writes
 `"handover": { "enabled": true }` into the fleet's `fleet.json`, keeping the other keys, so the setting moves with the
 fleet; set by hand there, it takes effect when the app opens again. While the fleet runs on another machine the
@@ -96,7 +96,7 @@ nothing typed. From a terminal on the Mac, each action names the command and the
 - Lingering the system would not turn on: `ssh ada@studio, then sudo loginctl enable-linger ada`. Svall turns it on
   itself where polkit lets an account do so, as on Ubuntu Server; a machine without polkit refuses. Without it the
   fleet stops when you log out, and a handover to the machine stops at its checks until it is on.
-- An agent not installed that no fleet on this Mac runs, as a character's, mission control's or the scribe's agent,
+- An agent not installed that no fleet on this Mac runs, as a robot's, mission control's or the scribe's agent,
   is only noted, once every fleet here has started at least once.
 - An agent not installed or not logged in: `ssh ada@studio`, install it with its vendor's command and run
   `svall setup`, which writes Svall's hooks for an agent installed since, then `claude auth login`, `codex login` or
@@ -113,7 +113,7 @@ nothing typed. From a terminal on the Mac, each action names the command and the
   the same for Codex and OpenCode. An update goes to the latest release, so the other machine may then be behind.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
   `svall doctor` says to do there.
-- Codex's sandbox kept from starting by AppArmor, as on Ubuntu 24.04, where a Codex character would ask before each
+- Codex's sandbox kept from starting by AppArmor, as on Ubuntu 24.04, where a Codex robot would ask before each
   command: the action installs the AppArmor profile that lets `bwrap` make its user namespace,
   `sudo apt install bubblewrap apparmor-profiles`, then
   `sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/` and
@@ -126,7 +126,7 @@ Adding the same machine again runs every check again and changes nothing that is
 ### An API key in your shell
 
 A handover checks each agent's login in the Svall daemon's systemd environment, with the fleet's `.env` keys
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) added as a character gets them, not in your shell. An agent's terminal starts
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) added as a robot gets them, not in your shell. An agent's terminal starts
 your shell, so an API key exported only in `~/.bashrc` or `~/.profile` works for the agent while the check says it is
 not logged in. Put the key in the fleet's `.env`, which the checks read each time, or in
 `~/.config/environment.d/agents.conf` as `NAME=value` lines and then run `systemctl --user daemon-reload` and

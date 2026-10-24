@@ -54,8 +54,9 @@ function inUse(paths: Paths): string | undefined {
   if (record && record.generation > 0) return `it has been handed over, to generation ${record.generation}`;
   const state = readJson(paths.state);
   if (state.broken) return `its ${paths.state} cannot be read`;
-  const n = Object.keys((state.value?.characters as object | undefined) ?? {}).length;
-  return n ? `it holds ${n} ${n === 1 ? 'character' : 'characters'}` : undefined;
+  // a state an older svalld wrote keeps them under characters
+  const n = Object.keys((state.value?.robots ?? state.value?.characters) as object | undefined ?? {}).length;
+  return n ? `it holds ${n} ${n === 1 ? 'robot' : 'robots'}` : undefined;
 }
 
 // whether two paths hold the same names, each a folder or a file with the same bytes

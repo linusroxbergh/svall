@@ -9,8 +9,8 @@ Change nothing except your own note.
 
 1. `svall status` lists every id, name, island and state.
 2. For each robot that is `blocked`, `done`, or otherwise seems to want
-   something, run `svall char read <name>`, and
-   `svall char read <name> --transcript --lines 30` when the screen is not
+   something, run `svall robot read <name>`, and
+   `svall robot read <name> --transcript --lines 30` when the screen is not
    enough.
 3. Print a one-line count, then these sections in this order, skipping empty
    ones. Plain text, no markdown: the report is also your card note.
@@ -31,12 +31,12 @@ Change nothing except your own note.
    PRs waiting on the user, failures only the user can fix. Working: one line
    each only when notable, else one comma list. Quiet: one count line.
 4. Save the whole report as your own note, so it shows on your card. Your id is
-   the `c_…` in the `svall char show` line that ends your Svall context.
-   Write the id out: a command holding `$SVALL_CHAR_ID` waits for the user's
+   the `c_…` in the `svall robot show` line that ends your Svall context.
+   Write the id out: a command holding `$SVALL_ROBOT_ID` waits for the user's
    approval. The quoted heredoc keeps quotes and backticks copied from other
    agents intact:
 
-       svall char update c_abc123 --note-file /dev/stdin <<'EOF'
+       svall robot update c_abc123 --note-file /dev/stdin <<'EOF'
        3 robots: 1 needs you, 1 to review, 1 quiet
 
        Needs you

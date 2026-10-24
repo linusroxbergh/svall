@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import jsonpatch, { type Operation } from 'fast-json-patch';
-import { Character, FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@svall/protocol';
+import { Robot, FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@svall/protocol';
 import { readJsonOrQuarantine } from './jsonfile.js';
 import { sinkHome, trimHome } from './layout.js';
 import { cleanupDurableTemps, syncDir, writeDurable } from './handover/durable.js';
@@ -72,11 +72,11 @@ export class Store {
     trimHome(next);
     const ops = jsonpatch.compare(this.current, next);
     if (ops.length === 0) return ops;
-    // a character without what the schema requires breaks whatever reads the fleet, so none is written
-    const touched = new Set(ops.filter((o) => o.path.startsWith('/characters/')).map((o) => jsonpatch.unescapePathComponent(o.path.split('/')[2])));
+    // a robot without what the schema requires breaks whatever reads the fleet, so none is written
+    const touched = new Set(ops.filter((o) => o.path.startsWith('/robots/')).map((o) => jsonpatch.unescapePathComponent(o.path.split('/')[2])));
     for (const id of touched) {
-      const bad = next.characters[id] && Character.safeParse(next.characters[id]).error;
-      if (bad) throw new Error(`character ${id} would not be valid: ${bad.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+      const bad = next.robots[id] && Robot.safeParse(next.robots[id]).error;
+      if (bad) throw new Error(`robot ${id} would not be valid: ${bad.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
     }
     if (!this.batching()) {
       this.commit(next, ops);

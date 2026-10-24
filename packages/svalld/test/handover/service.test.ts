@@ -25,7 +25,7 @@ const digest = 'a'.repeat(64);
 const config = Config.parse({ id: fleetId });
 // a manifest these calls are refused before they read
 const manifest = {
-  version: 2 as const, transactionId: 'tx-1', generation: 4, fromMachineId: other, toMachineId: me,
+  version: 3 as const, transactionId: 'tx-1', generation: 4, fromMachineId: other, toMachineId: me,
   home: '/Users/linus', destinationHome: '/Users/linus',
   fleet: FleetConfig.parse({ id: fleetId }), snapshot: emptyState(), excludes: [], roots: [], sessions: [],
 };
@@ -44,7 +44,7 @@ const dataOf = (e: unknown): Record<string, unknown> => (e as { data?: Record<st
 
 const source = (over: Partial<SourceJournal> = {}): SourceJournal => SourceJournal.parse({
   role: 'source', transactionId: 'tx-1', generation: 4, fleetId, fromMachineId: me, toMachineId: other,
-  phase: 'transfer', stoppedTerminals: [{ characterId: 'c_1' }, { characterId: 'c_1', term: 2 }],
+  phase: 'transfer', stoppedTerminals: [{ robotId: 'c_1' }, { robotId: 'c_1', term: 2 }],
   updatedAt: 10, ...over,
 });
 
@@ -177,7 +177,7 @@ describe('HandoverService', () => {
   it('reports the destination journal it holds', () => {
     const { handover } = boot({
       record: { generation: 5, ownerMachineId: me },
-      journal: destination({ phase: 'activate', activation: [{ characterId: 'c_1', ok: false, error: 'no tmux' }] }),
+      journal: destination({ phase: 'activate', activation: [{ robotId: 'c_1', ok: false, error: 'no tmux' }] }),
     });
     const status = handover.status();
     expect(status).toEqual({ transaction: expect.objectContaining({ id: 'tx-1', phase: 'activate' }) });

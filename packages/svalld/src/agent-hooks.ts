@@ -163,14 +163,14 @@ const ifOtherVariant = (script: string, then: string): string =>
     ? `case \${SVALL_HOME##*/} in .svall-dev|.svall-dev-*) ${then};; esac`
     : `case \${SVALL_HOME##*/} in .svall-dev|.svall-dev-*) ;; .svall|.svall-[a-z]*) ${then};; esac`;
 
-// every Claude session on the machine runs the statusline, so outside a character, or once the script
+// every Claude session on the machine runs the statusline, so outside a robot, or once the script
 // is gone, the one the user had runs on its own; inside one, the helper wraps it, or node where there is none
 export const statusWrapper = (node: string, script: string): string => {
   const helper = helperBeside(script);
-  return `svall_status() { svall_c=$SVALL_CHAR_ID; ${ifOtherVariant(script, 'svall_c=')}; if [ -n "$svall_c" ] && [ -x ${helper} ]; then shift; ${helper} status "$@"; elif [ -n "$svall_c" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
+  return `svall_status() { svall_c=$SVALL_ROBOT_ID; ${ifOtherVariant(script, 'svall_c=')}; if [ -n "$svall_c" ] && [ -x ${helper} ]; then shift; ${helper} status "$@"; elif [ -n "$svall_c" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
 };
 
-// outside a character the shell exits before anything starts, as every session on the machine runs this hook;
+// outside a robot the shell exits before anything starts, as every session on the machine runs this hook;
 // $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
   `${HOOK_GUARD} { ${ifOtherVariant(script, 'exit 0')}; ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;

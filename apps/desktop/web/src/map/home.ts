@@ -1,7 +1,7 @@
-import { HOME_ISLAND, HOME_ROW, SPACING, homeSlots, type Cell, type Character, type FleetState, type Island, type Size } from '@svall/protocol';
-import { charactersOf, homeIsland } from '../selectors.js';
+import { HOME_ISLAND, HOME_ROW, SPACING, homeSlots, type Cell, type Robot, type FleetState, type Island, type Size } from '@svall/protocol';
+import { robotsOf, homeIsland } from '../selectors.js';
 import { theme } from '../theme.js';
-import { cardScale, characterAt, fitAll, roomOf, type Below, type Block, type Crew, type Layout } from './layout.js';
+import { cardScale, robotAt, fitAll, roomOf, type Below, type Block, type Crew, type Layout } from './layout.js';
 import { ISLET, placeIslet } from './resources.js';
 import type { Drag } from './types.js';
 
@@ -29,7 +29,7 @@ export function homeSlotAt(island: Island, b: HomeBox, p: { x: number }, joining
 
 // every slot is taken by someone other than this card, so it joins only by widening the row
 export const homeFull = (fleet: FleetState, island: Island, id: string): boolean =>
-  homeSlots(island.size.w).every((x) => { const o = characterAt(fleet, island.id, { x, y: HOME_ROW }); return o !== undefined && o.id !== id; });
+  homeSlots(island.size.w).every((x) => { const o = robotAt(fleet, island.id, { x, y: HOME_ROW }); return o !== undefined && o.id !== id; });
 
 // map px of a home cell's top-left corner
 export const homeCellToScreen = (b: HomeBox, cell: Cell): { x: number; y: number } =>
@@ -90,12 +90,12 @@ export function fitWithHome(islands: Island[], crew: Crew, host: Size, home: Isl
 }
 
 // home's crew, minus one being dragged away, plus a visitor while it hovers over home
-export function homeCrew(f: FleetState, drag: Drag | undefined): Character[] {
+export function homeCrew(f: FleetState, drag: Drag | undefined): Robot[] {
   if (!homeIsland(f)) return [];
   const overHome = drag?.kind === 'figure' && drag.over?.islandId === HOME_ISLAND ? drag : undefined;
-  const visitor = overHome ? f.characters[overHome.id] : undefined;
+  const visitor = overHome ? f.robots[overHome.id] : undefined;
   return [
-    ...charactersOf(f, HOME_ISLAND).filter((c) => !(drag?.kind === 'figure' && drag.id === c.id && !overHome)),
+    ...robotsOf(f, HOME_ISLAND).filter((c) => !(drag?.kind === 'figure' && drag.id === c.id && !overHome)),
     ...(visitor && visitor.islandId !== HOME_ISLAND ? [visitor] : []),
   ];
 }

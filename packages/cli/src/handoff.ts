@@ -5,7 +5,7 @@ import { userPaths } from '@svall/svalld/paths';
 import { OTHER_SHIM, variantOf } from '@svall/svalld/profile';
 import { variant } from '@svall/svalld/runtime';
 
-// a character's agent types `svall` whichever build runs its fleet; the fleet's own build answers it
+// a robot's agent types `svall` whichever build runs its fleet; the fleet's own build answers it
 export const handoffTarget = (env: NodeJS.ProcessEnv, shimDir: string): string | undefined => {
   const owner = env.SVALL_HOME ? variantOf(env.SVALL_HOME) : undefined;
   return owner && owner !== variant ? path.join(shimDir, OTHER_SHIM) : undefined;

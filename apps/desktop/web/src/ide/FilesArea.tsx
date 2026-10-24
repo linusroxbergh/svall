@@ -20,7 +20,7 @@ function TreeGrip() {
 export function FilesArea({ id }: { id: string }) {
   const active = useApp((s) => s.ide[id]?.active);
   const tree = useApp((s) => s.filesTree);
-  const root = useApp((s) => { const c = s.fleet.characters[id]; return c?.repo?.root ?? c?.cwd ?? ''; });
+  const root = useApp((s) => { const c = s.fleet.robots[id]; return c?.repo?.root ?? c?.cwd ?? ''; });
   const [tick, setTick] = useState(0);
 
   // the root is watched while the tab shows; a change refreshes the open folders and checks the open files.

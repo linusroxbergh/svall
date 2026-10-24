@@ -9,7 +9,7 @@ import { ProcessTable, bootId, killGroup, suspended, type PaneProcesses, type Pr
 import type { SourceJournal } from './journal.js';
 import type { HandoverService } from './service.js';
 
-export type TerminalRef = { characterId: string; term?: 2 };
+export type TerminalRef = { robotId: string; term?: 2 };
 
 /** A live terminal as its agent's hooks and its process tree show it together. */
 export type TerminalClass = 'agent-ready' | 'agent-working' | 'agent-blocked' | 'shell-ready' | 'foreground';
@@ -72,21 +72,21 @@ const ESCAPE = Buffer.from('\x1b');
 // OpenCode interrupts on a second Escape within 5 s, and reads two in one write as one
 const ESCAPE_GAP_MS = 200;
 
-/** A protocol choice that names a character covers both of its terminals. */
+/** A protocol choice that names a robot covers both of its terminals. */
 export function restChoices(c: HandoverChoices): RestChoices {
   const terminate = Array.isArray(c.terminateShells)
-    ? c.terminateShells.flatMap((characterId) => [{ characterId }, { characterId, term: 2 as const }])
+    ? c.terminateShells.flatMap((robotId) => [{ robotId }, { robotId, term: 2 as const }])
     : c.terminateShells;
   return { ...(c.interruptAfterMs !== undefined && { interruptAfterMs: c.interruptAfterMs }), ...(terminate !== undefined && { terminate }) };
 }
 
 const slotOf = (state: FleetState, t: TerminalRef): TerminalSlot | undefined => {
-  const c = state.characters[t.characterId];
+  const c = state.robots[t.robotId];
   return t.term === 2 ? c?.second : c;
 };
 
-const keyOf = (t: TerminalRef): string => (t.term === 2 ? `${t.characterId}-2` : t.characterId);
-const refOf = (t: TerminalRef): TerminalRef => ({ characterId: t.characterId, ...(t.term && { term: t.term }) });
+const keyOf = (t: TerminalRef): string => (t.term === 2 ? `${t.robotId}-2` : t.robotId);
+const refOf = (t: TerminalRef): TerminalRef => ({ robotId: t.robotId, ...(t.term && { term: t.term }) });
 
 function classOf(agent: Agent | undefined, p: PaneProcesses): TerminalClass {
   // an agent whose shell is back at its prompt has exited, whatever its last hook said
@@ -98,12 +98,12 @@ function classOf(agent: Agent | undefined, p: PaneProcesses): TerminalClass {
   return 'agent-ready';
 }
 
-/** Both terminals of every character that still has a window and a process in it. */
+/** Both terminals of every robot that still has a window and a process in it. */
 export function classifyTerminals(state: FleetState, live: LiveWindow[], table: ProcessTable): Classified[] {
   const byWindow = new Map(live.map((w) => [w.windowId, w]));
   const out: Classified[] = [];
-  for (const characterId of Object.keys(state.characters)) {
-    for (const t of [{ characterId }, { characterId, term: 2 as const }]) {
+  for (const robotId of Object.keys(state.robots)) {
+    for (const t of [{ robotId }, { robotId, term: 2 as const }]) {
       const slot = slotOf(state, t);
       const window = slot?.tmux && byWindow.get(slot.tmux.windowId);
       const processes = window && !window.dead ? table.pane(window.panePid) : undefined;
@@ -138,9 +138,9 @@ const terminates = (t: TerminalRef, choices: RestChoices): boolean =>
   choices.terminate === true || (Array.isArray(choices.terminate) && choices.terminate.some((r) => keyOf(r) === keyOf(t)));
 
 function blocker(code: HandoverIssueCode, c: TerminalRef, state: FleetState, what: string): { blocker: Blocker } {
-  const name = state.characters[c.characterId]?.name ?? c.characterId;
+  const name = state.robots[c.robotId]?.name ?? c.robotId;
   const where = c.term === 2 ? `${name}'s second terminal` : `${name}'s terminal`;
-  return { blocker: { code, message: `${where} ${what}`, entity: { kind: 'character', id: c.characterId } } };
+  return { blocker: { code, message: `${where} ${what}`, entity: { kind: 'robot', id: c.robotId } } };
 }
 
 const job = (c: Classified): string =>
@@ -217,7 +217,7 @@ function recordJournal(journal: RestDeps['journal'], now: number, change: (j: So
 
 /**
  * Brings every live terminal of a frozen fleet to rest and closes its window, leaving both slots of
- * every character dormant. It rechecks each terminal before touching any, and returns blockers
+ * every robot dormant. It rechecks each terminal before touching any, and returns blockers
  * without closing a window when one is not at rest and the choices do not cover it.
  */
 export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<SettleResult> {
@@ -340,7 +340,7 @@ export async function serversGone(
   const after = await until((t) => !groups.some((g) => t.alive(g)));
   const stuck = doomed.filter(({ p }) => after.alive(p.pgid));
   if (!stuck.length) return;
-  const name = (t: TerminalRef) => `${deps.store.state.characters[t.characterId]?.name ?? t.characterId}'s ${t.term === 2 ? 'second ' : ''}terminal`;
+  const name = (t: TerminalRef) => `${deps.store.state.robots[t.robotId]?.name ?? t.robotId}'s ${t.term === 2 ? 'second ' : ''}terminal`;
   const terminals = [...new Map(stuck.map(({ t }) => [keyOf(t), t])).values()];
   throw new Error(terminals.map((t) => `${name(t)}: ${stuck.filter((s) => keyOf(s.t) === keyOf(t)).map(({ p }) => p.args).join(', ')} still runs after SIGKILL`).join('; '));
 }
@@ -397,7 +397,7 @@ async function layToRest(
     const added = open.filter(({ t }) => !keys.has(t.key)).map(({ t, c }) => ({ ...refOf(t), ...(t.flags?.length && { flags: t.flags }), ...server(c.processes.agent?.server) }));
     return { stoppedTerminals: [...known, ...added] };
   }));
-  for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
+  for (const id of new Set(open.map(({ t }) => t.robotId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
   const byKey = new Map(tracks.map((t) => [t.key, t]));
   const { transactionId, stoppedTerminals, terminated } = sourceJournal(deps.journal);
   const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
@@ -405,7 +405,7 @@ async function layToRest(
   // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since; one whose
   // window a rest that died closed has no track, and keeps the launch flags that rest recorded
   const lay = (d: FleetState, t: TerminalRef, closed = false) => {
-    const c = d.characters[t.characterId];
+    const c = d.robots[t.robotId];
     const slot = c && (t.term === 2 ? c.second : c);
     if (!c || !slot?.tmux) return;
     const track = byKey.get(keyOf(t));
@@ -428,14 +428,14 @@ async function layToRest(
     await boundary('source.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
     // a kill tmux refused leaves the terminal running: the rest stops there, and an abort or a resume finds it live
     if ((await bounded('tmux list-panes', windows(deps))).some((w) => w.windowId === c.window.windowId && !w.dead)) {
-      const name = deps.store.state.characters[t.characterId]?.name ?? t.characterId;
+      const name = deps.store.state.robots[t.robotId]?.name ?? t.robotId;
       throw new Error(`${name}'s ${t.term === 2 ? 'second ' : ''}terminal is still open after tmux was asked to close its window ${c.window.windowId}`);
     }
     deps.store.update((d) => lay(d, t, true));
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
   deps.store.update((d) => {
-    for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
+    for (const id of Object.keys(d.robots)) for (const t of [{ robotId: id }, { robotId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });
   await gone();
   return { ok: true, terminals: open.map(({ t }) => refOf(t)) };

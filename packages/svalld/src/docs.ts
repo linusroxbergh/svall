@@ -1,18 +1,18 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { frontmatter, HOME_ISLAND, type Character, type Island } from '@svall/protocol';
+import { frontmatter, HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
 import type { Logger } from './log.js';
 import { expandHome } from './paths.js';
 
 // the fleet's own folder stands above the rest and names no entity, so it alone has no id
-type EntityTier = 'repo' | 'island' | 'character';
+type EntityTier = 'repo' | 'island' | 'robot';
 export type DocTier = 'fleet' | EntityTier;
 // name is the filename without .md; a frontmatter name never replaces it
 export type DocEntry = { name: string; path: string; description?: string; modifiedAt?: number; error?: string };
 export type DocFolder = { tier: DocTier; dir: string; docs: DocEntry[] };
 
-const TREE: Record<EntityTier, string> = { repo: 'repos', island: 'islands', character: 'characters' };
+const TREE: Record<EntityTier, string> = { repo: 'repos', island: 'islands', robot: 'robots' };
 // only the frontmatter at a doc's head is read, so a long doc costs every prompt no more than a short one
 const HEAD_MAX = 64 * 1024;
 
@@ -25,11 +25,18 @@ export const repoSlug = (mainRoot: string): string =>
 
 export const docsDir = (docs: string, tier: EntityTier, id: string): string => path.join(docs, TREE[tier], id);
 
+/** Moves the robots' notes out of docs/characters, where an older svalld kept them. */
+export function liftRobotDocs(docs: string): void {
+  const from = path.join(docs, 'characters');
+  const to = path.join(docs, TREE.robot);
+  if (fs.existsSync(from) && !fs.existsSync(to)) fs.renameSync(from, to);
+}
+
 /**
- * The main root a character's repository docs hang off, a worktree counted as its repository, with `~` read against
+ * The main root a robot's repository docs hang off, a worktree counted as its repository, with `~` read against
  * `home`; mission control's crew has none.
  */
-export const repoRootOf = (c: Character, home?: string): string | undefined =>
+export const repoRootOf = (c: Robot, home?: string): string | undefined =>
   (c.islandId === HOME_ISLAND ? undefined : c.repo?.mainRoot ?? expandHome(c.cwd, home));
 
 function readHead(file: string): string {
@@ -55,16 +62,16 @@ export function listDocs(dir: string): DocEntry[] {
   });
 }
 
-/** The doc folders in scope, broad to narrow: the fleet, a character's repository, its island, itself; an island has the fleet's and its own. */
-export function docFolders(docs: string, island: Island, character?: Character): DocFolder[] {
+/** The doc folders in scope, broad to narrow: the fleet, a robot's repository, its island, itself; an island has the fleet's and its own. */
+export function docFolders(docs: string, island: Island, robot?: Robot): DocFolder[] {
   const at = (tier: EntityTier, id: string): DocFolder => { const dir = docsDir(docs, tier, id); return { tier, dir, docs: listDocs(dir) }; };
-  const repo = character && repoRootOf(character);
+  const repo = robot && repoRootOf(robot);
   const fleet: DocFolder = { tier: 'fleet', dir: fleetDir(docs), docs: listDocs(fleetDir(docs)) };
-  return [fleet, ...(repo ? [at('repo', repoSlug(repo))] : []), at('island', island.id), ...(character ? [at('character', character.id)] : [])];
+  return [fleet, ...(repo ? [at('repo', repoSlug(repo))] : []), at('island', island.id), ...(robot ? [at('robot', robot.id)] : [])];
 }
 
 /** Removes a deleted entity's docs. A failure is logged and goes no further: a locked file must not keep an island from being deleted. */
-export function removeDocs(docs: string, tier: 'island' | 'character', id: string, log: Pick<Logger, 'error'>): void {
+export function removeDocs(docs: string, tier: 'island' | 'robot', id: string, log: Pick<Logger, 'error'>): void {
   const dir = path.resolve(docsDir(docs, tier, id));
   if (path.dirname(dir) !== path.join(path.resolve(docs), TREE[tier])) { log.error(`docs: ${id} names no folder of its own`); return; }
   // rm takes a link away without following it

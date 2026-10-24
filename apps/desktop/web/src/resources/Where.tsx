@@ -33,7 +33,7 @@ function SourceNode({ s, count, on, qualifier }: { s: ResourceSource; count: num
   );
 }
 
-/** The tree: one folder a tier, its sources under it, characters headed by island. */
+/** The tree: one folder a tier, its sources under it, robots headed by island. */
 export function Where() {
   const sources = useApp((s) => s.resources);
   const fleet = useApp((s) => s.fleet);

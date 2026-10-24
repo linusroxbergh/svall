@@ -72,7 +72,7 @@ export const stubUsage = (): Promise<UsageSnapshot> =>
 
 // and a load reading, which tests not about load take
 export const stubLoad = (): Promise<LoadSnapshot> =>
-  Promise.resolve({ at: 0, cores: 8, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, chars: {} });
+  Promise.resolve({ at: 0, cores: 8, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: {} });
 
 // and a phone link it can report; tests that are not about serving take this one
 const OFF: MobileStatus = { serving: false, url: '', port: 443, logins: [], phones: [], error: 'no tailscale in tests' };
@@ -93,7 +93,7 @@ export const ownerOf = (home: string, fleetId: FleetId): OwnershipState =>
 export function idleSides(paths: Paths, o: { store?: Store; config?: Config } = {}): { source: SourceDeps; destination: DestinationDeps } {
   const idle = async (): Promise<never> => { throw new Error('this test runs no handover phase'); };
   const store = o.store ?? Store.load(paths.state, () => {});
-  const fleet = { settle: idle, activate: idle, deactivate: idle, reconcileNow: idle, resumeInterrupted: idle, reviveCharacter: idle, openSecond: idle, onSessionStart: () => () => {}, carries: () => {} };
+  const fleet = { settle: idle, activate: idle, deactivate: idle, reconcileNow: idle, resumeInterrupted: idle, reviveRobot: idle, openSecond: idle, onSessionStart: () => () => {}, carries: () => {} };
   const tmux = { listWindows: idle, sendBytes: idle, sendLine: idle, capture: idle, screen: idle, killWindow: idle, ensureServer: idle };
   return {
     source: { paths, store, fleet, tmux, viewers: { detach: idle }, log: silentLogger },

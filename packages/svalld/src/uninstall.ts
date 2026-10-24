@@ -225,7 +225,7 @@ export async function runUninstall(o: {
     fs.rmSync(plist, { force: true });
     done.push(`removed ${plist}`);
   }
-  // a character's agent would run on in tmux, spending usage with no app left to show it; a companion's server is
+  // a robot's agent would run on in tmux, spending usage with no app left to show it; a companion's server is
   // stopped by the tmux its release carries, so before the release goes
   for (const home of o.homes) {
     const sock = resolvePaths(home).tmuxSock;

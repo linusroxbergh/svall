@@ -2,12 +2,12 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Delivery, type FleetState, type Island, type Portrait, type TerminalSlot } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type Portrait, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
 import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
-import { characterKeyEnv, rendererEnv } from './claude.js';
+import { robotKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
 import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
@@ -49,35 +49,35 @@ import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
 import type { LiveWindow, Tmux } from './tmux/tmux.js';
 import { appPid } from './uninstall.js';
 
-type Events = PaneEvents & { stopped: []; 'session-start': [charId: string, term: 2 | undefined, sessionId: string] };
+type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string] };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
-function setNote(c: Character, note: string): void {
+function setNote(c: Robot, note: string): void {
   c.note = note;
   if (note) c.noteSource = 'manual'; else delete c.noteSource;
 }
 
-export type RefreshLinks = (store: Store, config: Config, charId: string) => Promise<void>;
+export type RefreshLinks = (store: Store, config: Config, robotId: string) => Promise<void>;
 type Deps = {
   store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; ownership: OwnershipState; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number;
   runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; refreshLinks?: RefreshLinks; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>;
   endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[]; platform?: NodeJS.Platform;
 };
-type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
+type LiveRobot = Robot & { tmux: NonNullable<Robot['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
-type Revived = Character & { delivery?: Delivery };
+type Revived = Robot & { delivery?: Delivery };
 
 export class Fleet extends EventEmitter<Events> {
   private reviving = new Map<string, Promise<Revived>>();
   // the windows of agents ended for idleness or put to sleep, until tmux has closed them, the agent has exited and a
   // sleep has ended what it started
   private ending = new Map<string, Promise<void>>();
-  // the window names of characters being closed, which a listing meanwhile must not adopt
+  // the window names of robots being closed, which a listing meanwhile must not adopt
   private closing = new Set<string>();
-  // when the user last looked at each character's main terminal
+  // when the user last looked at each robot's main terminal
   private seen = new Map<string, number>();
-  private openingSecond = new Map<string, Promise<Character>>();
-  // new characters between opening their window and typing their start command
+  private openingSecond = new Map<string, Promise<Robot>>();
+  // new robots between opening their window and typing their start command
   private creating = new Set<Promise<unknown>>();
   // each revived terminal's resume, by window name, until its session starts
   private resuming = new Map<string, Resume>();
@@ -149,13 +149,13 @@ export class Fleet extends EventEmitter<Events> {
     await this.reconcileNow();
     // when the user last looked is not kept across a restart, so every agent awake now gets a whole rest from here
     const now = Date.now();
-    for (const c of Object.values(this.deps.store.state.characters)) if (c.tmux) this.seen.set(c.id, now);
+    for (const c of Object.values(this.deps.store.state.robots)) if (c.tmux) this.seen.set(c.id, now);
     const opening = this.ensureHome();
     this.syncAgents();
     // the shell is for the Mac app's tour; a Linux machine's new fleet is the one host add starts, which enable replaces only unused
     if (opening && (this.deps.platform ?? process.platform) === 'darwin') {
-      await this.createCharacter({ islandId: opening, cwd: this.deps.config.defaultCwd })
-        .catch((e) => this.deps.log.error(`first character: ${String(e)}`));
+      await this.createRobot({ islandId: opening, cwd: this.deps.config.defaultCwd })
+        .catch((e) => this.deps.log.error(`first robot: ${String(e)}`));
     }
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
@@ -179,9 +179,9 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.flush();
   }
 
-  // the links a character's cwd implies, rebuilt off the critical path
-  private refresh(charId: string): void {
-    this.track((this.deps.refreshLinks ?? refreshLinks)(this.deps.store, this.deps.config, charId), `links ${charId}`);
+  // the links a robot's cwd implies, rebuilt off the critical path
+  private refresh(robotId: string): void {
+    this.track((this.deps.refreshLinks ?? refreshLinks)(this.deps.store, this.deps.config, robotId), `links ${robotId}`);
   }
 
   /** Stops polling, the scribe, held prompts and the control client; resolves once a poll under way has finished and the fleet is on disk. */
@@ -194,9 +194,9 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.flush();
   }
 
-  char(id: string): Character {
-    const c = this.deps.store.state.characters[id];
-    if (!Object.hasOwn(this.deps.store.state.characters, id)) throw new NotFound(`no character ${id}`);
+  robot(id: string): Robot {
+    const c = this.deps.store.state.robots[id];
+    if (!Object.hasOwn(this.deps.store.state.robots, id)) throw new NotFound(`no robot ${id}`);
     return c;
   }
 
@@ -207,7 +207,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // a profile that is missing or cannot be used is left out, and the side card says why
-  private render(island: Island, c?: Character): string {
+  private render(island: Island, c?: Robot): string {
     const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
     return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !this.deps.store.state.worktreesOff);
   }
@@ -221,7 +221,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   brief(id: string): string {
-    const c = this.char(id);
+    const c = this.robot(id);
     const island = this.deps.store.state.islands[c.islandId];
     return island ? this.render(island, c) : '';
   }
@@ -230,16 +230,16 @@ export class Fleet extends EventEmitter<Events> {
     return this.render(this.island(id));
   }
 
-  live(id: string): LiveCharacter {
-    const c = this.char(id);
+  live(id: string): LiveRobot {
+    const c = this.robot(id);
     if (!c.tmux) throw new Dormant(`${c.name} is dormant; revive it first`);
-    return c as LiveCharacter;
+    return c as LiveRobot;
   }
 
   // the terminal a call means: the main one, or the second when it says so
-  terminal(id: string, term?: 2): { tmux: NonNullable<Character['tmux']>; agent?: Agent } {
+  terminal(id: string, term?: 2): { tmux: NonNullable<Robot['tmux']>; agent?: Agent } {
     if (term !== 2) return this.live(id);
-    const c = this.char(id);
+    const c = this.robot(id);
     if (!c.second) throw new Invalid(`${c.name} has no second terminal`);
     if (!c.second.tmux) throw new Dormant(`the second terminal of ${c.name} is dormant; revive it first`);
     return { tmux: c.second.tmux, agent: c.second.agent };
@@ -264,11 +264,11 @@ export class Fleet extends EventEmitter<Events> {
     return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name) && !this.closing.has(w.name));
   }
 
-  /** Each character's pane pids, the Svall app's pid and svalld's own, for attributing `procs`. */
+  /** Each robot's pane pids, the Svall app's pid and svalld's own, for attributing `procs`. */
   async loadScope(procs: LiveProc[]): Promise<Scope> {
     const pids = new Map((await this.listWindows()).map((w) => [w.windowId, w.panePid]));
     const panes = new Map<string, number[]>();
-    for (const c of Object.values(this.deps.store.state.characters)) {
+    for (const c of Object.values(this.deps.store.state.robots)) {
       const ids = [c.tmux?.windowId, c.second?.tmux?.windowId];
       panes.set(c.id, ids.flatMap((id) => (id && pids.get(id)) || []));
     }
@@ -283,17 +283,17 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // `c` is already out of the state, or closing, so its windows' panes join the scope by hand
-  private async owned(c: Character, procs: LiveProc[]): Promise<LiveProc[]> {
+  private async owned(c: Robot, procs: LiveProc[]): Promise<LiveProc[]> {
     const scope = await this.loadScope(procs);
     const ids = new Set([c.tmux?.windowId, c.second?.tmux?.windowId]);
     scope.panes.set(c.id, (await this.deps.tmux.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.panePid));
     // svalld, its tmux server and the app may carry a robot's marks but are never the robot's to end
     const keep = new Set([...scope.own, scope.appPid]);
-    return (attribute(procs, scope).chars.get(c.id) ?? []).filter((p) => !keep.has(p.pid));
+    return (attribute(procs, scope).robots.get(c.id) ?? []).filter((p) => !keep.has(p.pid));
   }
 
   sleepable(id: string, procs: LiveProc[]): boolean {
-    const c = this.deps.store.state.characters[id];
+    const c = this.deps.store.state.robots[id];
     return !!c?.tmux && sleepFlags(c, procs) !== undefined;
   }
 
@@ -316,14 +316,14 @@ export class Fleet extends EventEmitter<Events> {
   private ensureHome(): string | undefined {
     // the crew's model is the one syncAgents picks for the main agent's CLI
     const { model: _picks, ...home } = this.deps.config.home;
-    // a character is refused a cwd that is not a directory, so mission control's crew needs this one;
+    // a robot is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
     try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false })) this.deps.log.info(l); }
     catch (e) { this.deps.log.error(`home cwd ${home.cwd}: ${String(e)}`); }
     // the directory a crewless island starts in; it is the user's folder, so never create it
     const cwd = this.deps.config.defaultCwd;
     if (!fs.statSync(expandHome(cwd), { throwIfNoEntry: false })?.isDirectory()) {
-      this.deps.log.error(`default cwd ${cwd} is not a directory: characters cannot start there`);
+      this.deps.log.error(`default cwd ${cwd} is not a directory: robots cannot start there`);
     }
     // a fleet with no islands at all is new; a recovered or salvaged one already has some by now
     const first = Object.keys(this.deps.store.state.islands).length === 0;
@@ -351,8 +351,8 @@ export class Fleet extends EventEmitter<Events> {
     return endIdleAgents(this.sleep, this.seen, () => this.stopped || !this.writable(), (id) => this.prompts.holds(id));
   }
 
-  /** Ends every terminal as the app quits: each character goes dormant with the revive that resumes it, then the
-   * tmux server goes, and nothing runs again until a character is opened. A replica only stops: its terminals are the owner's. */
+  /** Ends every terminal as the app quits: each robot goes dormant with the revive that resumes it, then the
+   * tmux server goes, and nothing runs again until a robot is opened. A replica only stops: its terminals are the owner's. */
   async stopAll(): Promise<void> {
     // the control client's exit would otherwise start a server again, and a poll under way write back what this ends
     await this.stop();
@@ -458,14 +458,14 @@ export class Fleet extends EventEmitter<Events> {
     deleteIsland(this.deps, id);
   }
 
-  async createCharacter(p: { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }): Promise<Character & { runSent?: boolean }> {
+  async createRobot(p: { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }): Promise<Robot & { runSent?: boolean }> {
     if (p.run && !p.command) throw new Invalid('run needs a command to start the agent');
     this.island(p.islandId);
     if (p.agentProfile) this.checkAgentProfile(p.agentProfile);
     if (p.cell) {
       this.checkCell(this.island(p.islandId), p.cell);
       if (occupiedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} is occupied`);
-      if (blockedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} touches another character`);
+      if (blockedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} touches another robot`);
     } else {
       // probe the real placement (including any grow) on a clone: a full island must fail before the
       // tmux window exists, not after — the clone keeps this one code path with placeOnIsland
@@ -476,73 +476,73 @@ export class Fleet extends EventEmitter<Events> {
     if (!path.isAbsolute(cwd)) throw new Invalid(`cwd ${p.cwd} is not an absolute path`);
     if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new Invalid(`cwd ${p.cwd} is not a directory`);
     const id = newId('c');
-    // the path tmux reports for a pane started here, as for /tmp, so a poll moves the character only once the pane moves
+    // the path tmux reports for a pane started here, as for /tmp, so a poll moves the robot only once the pane moves
     const panePath = fs.realpathSync(cwd);
     const prompt = p.command && isAgentCommand(p.command) ? p.run : undefined;
     this.deps.ownership.assertOwner('terminal');
-    const opening = this.openCharacter(id, cwd, panePath, p, prompt);
+    const opening = this.openRobot(id, cwd, panePath, p, prompt);
     this.creating.add(opening);
     const done = () => { this.creating.delete(opening); };
     void opening.then(done, done);
     await opening;
     // a freeze since the window opened stops the background work and the prompt
     if (!this.writable()) {
-      if (p.run && !prompt) this.deps.log.error(`character ${id}: the fleet froze for a handover, prompt not sent`);
-      return { ...this.char(id), ...(p.run && { runSent: !!prompt }) };
+      if (p.run && !prompt) this.deps.log.error(`robot ${id}: the fleet froze for a handover, prompt not sent`);
+      return { ...this.robot(id), ...(p.run && { runSent: !!prompt }) };
     }
     this.refresh(id);
-    if (!p.run) return this.char(id);
+    if (!p.run) return this.robot(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.prompts.waitForAgent(id, timeoutMs);
     // an agent has its prompt already, and submits it once it is up
-    if (prompt) return { ...this.char(id), runSent: true };
+    if (prompt) return { ...this.robot(id), runSent: true };
     if (runSent && !this.writable()) {
-      this.deps.log.error(`character ${id}: the fleet froze for a handover, prompt not sent`);
-      return { ...this.char(id), runSent: false };
+      this.deps.log.error(`robot ${id}: the fleet froze for a handover, prompt not sent`);
+      return { ...this.robot(id), runSent: false };
     }
     if (runSent) {
-      // the window can die between the agent attaching and the send; the character stays, without its prompt
+      // the window can die between the agent attaching and the send; the robot stays, without its prompt
       try { await this.run(id, p.run, true); } catch { runSent = false; }
     }
     // Claude Code asks whether an unfamiliar directory is trusted before it starts, and reports in only
     // once answered: the whole wait passes with the pane sitting on the question, which is worth a line
-    if (!runSent) this.deps.log.error(`character ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
-    return { ...this.char(id), runSent };
+    if (!runSent) this.deps.log.error(`robot ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
+    return { ...this.robot(id), runSent };
   }
 
-  // the window, the record and the start command of a new character; neither an orphan window nor a half-made character outlives a failure
-  private async openCharacter(
+  // the window, the record and the start command of a new robot; neither an orphan window nor a half-made robot outlives a failure
+  private async openRobot(
     id: string, cwd: string, panePath: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }, prompt: string | undefined,
   ): Promise<void> {
-    const w = await this.deps.tmux.newWindow(id, cwd, this.charEnv(id));
+    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id));
     try {
       this.deps.store.update((d) => {
         // a name asked for twice, as a button pressed twice does, gets a number
-        const names = Object.values(d.characters).map((c) => c.name);
-        d.characters[id] = {
+        const names = Object.values(d.robots).map((c) => c.name);
+        d.robots[id] = {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
-          portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
+          portrait: randomPortrait(new Set(Object.values(d.robots).map((c) => c.portrait))),
           note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };
-        // a hidden island comes back to take the character, as one placed there for it does
+        // a hidden island comes back to take the robot, as one placed there for it does
         if (p.cell && d.islands[p.islandId].collapsed) unfold(d, p.islandId, this.deps.log);
       });
       if (p.command) await this.deps.tmux.sendLine(w.paneId, this.launchLine(id, withAddDirs(p.command, this.deps.store.state.islands[p.islandId].context), prompt), true);
     } catch (e) {
       // the island filled up while the window was being created, or the start command never reached the
-      // pane: neither an orphan window nor a half-created character survives
+      // pane: neither an orphan window nor a half-created robot survives
       if (prompt) fs.rmSync(this.promptFile(id), { force: true });
-      this.deps.store.update((d) => { delete d.characters[id]; });
+      this.deps.store.update((d) => { delete d.robots[id]; });
       await this.deps.tmux.killWindow(w.windowId);
       throw e;
     }
   }
 
-  private charEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { ...characterKeyEnv(this.deps.paths.env), ...rendererEnv(userPaths().claudeSettings), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
+  private robotEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
+    return { ...robotKeyEnv(this.deps.paths.env), ...rendererEnv(userPaths().claudeSettings), SVALL_ROBOT_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
   }
 
   private codexEnv(): Record<string, string> {
@@ -560,7 +560,7 @@ export class Fleet extends EventEmitter<Events> {
     // only where OpenCode is, as for the plugin: a config folder made here would pass for an install
     if (!(this.deps.config.integrations?.includes('opencode') ?? true) || !(this.deps.agentsFound?.includes('opencode') || fs.existsSync(o.dir))) return {};
     const { opencodeConfig, opencodeReplaced } = this.deps.paths;
-    // every TUI in a directory shares one live tab strip, so a character's OpenCode shows only its own session. The
+    // every TUI in a directory shares one live tab strip, so a robot's OpenCode shows only its own session. The
     // highlights dialog after an update hides the cursor, which holds safe send; ctrl+z undoes instead of suspending
     const cli = { OPENCODE_CLI_CONFIG_CONTENT: JSON.stringify({ tabs: { mode: 'off' }, highlights: false, keybinds: { 'terminal.suspend': 'none', 'input.undo': 'ctrl+z,ctrl+-,super+z' } }) };
     try {
@@ -587,34 +587,34 @@ export class Fleet extends EventEmitter<Events> {
     return withPromptFile(command, this.promptFile(id));
   }
 
-  // the cell before the islandId, or the character's stale cell would count as occupied on the target island
+  // the cell before the islandId, or the robot's stale cell would count as occupied on the target island
   private placeOn(d: FleetState, id: string, islandId: string): void {
     const cell = placeOnIsland(d, islandId, id, this.deps.log);
-    d.characters[id].islandId = islandId;
-    d.characters[id].cell = cell;
+    d.robots[id].islandId = islandId;
+    d.robots[id].cell = cell;
   }
 
-  /** A profile renamed in its folder takes the characters that use it along. */
+  /** A profile renamed in its folder takes the robots that use it along. */
   renameAgentProfile(from: string, to: string): void {
-    this.deps.store.update((d) => { for (const c of Object.values(d.characters)) if (c.agentProfile === from) c.agentProfile = to; });
+    this.deps.store.update((d) => { for (const c of Object.values(d.robots)) if (c.agentProfile === from) c.agentProfile = to; });
   }
 
-  updateCharacter(id: string, patch: {
-    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait; robot?: number; keepHere?: boolean;
-  }): Character {
-    const current = this.char(id);
+  updateRobot(id: string, patch: {
+    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait; figure?: number; keepHere?: boolean;
+  }): Robot {
+    const current = this.robot(id);
     if (patch.islandId) this.island(patch.islandId);
     if (patch.agentProfile) this.checkAgentProfile(patch.agentProfile);
-    // names resolve without regard to case, so a twin would leave both characters unreachable by name
-    const clash = patch.name !== undefined && Object.values(this.deps.store.state.characters)
+    // names resolve without regard to case, so a twin would leave both robots unreachable by name
+    const clash = patch.name !== undefined && Object.values(this.deps.store.state.robots)
       .find((c) => c.id !== id && c.name.toLowerCase() === patch.name!.toLowerCase());
-    if (clash) throw new Invalid(`another character is already called ${clash.name}`);
+    if (clash) throw new Invalid(`another robot is already called ${clash.name}`);
     const context = patch.context && settleItems(patch.context, current.context);
     this.deps.store.update((d) => {
-      const c = d.characters[id];
+      const c = d.robots[id];
       if (patch.name !== undefined) c.name = patch.name;
       if (patch.portrait !== undefined) c.portrait = patch.portrait;
-      if (patch.robot !== undefined) c.robot = patch.robot;
+      if (patch.figure !== undefined) c.figure = patch.figure;
       if (patch.note !== undefined) setNote(c, patch.note);
       if (patch.instructions !== undefined) c.instructions = patch.instructions;
       if (patch.agentProfile) c.agentProfile = patch.agentProfile;
@@ -624,31 +624,31 @@ export class Fleet extends EventEmitter<Events> {
       if (context) c.context = context;
       if (patch.islandId && patch.islandId !== c.islandId) this.placeOn(d, id, patch.islandId);
     });
-    return this.char(id);
+    return this.robot(id);
   }
 
   // one store update: a swap must never be observed half done
-  moveCharacter(id: string, islandId: string, cell?: Cell): Character {
-    this.char(id);   // whichever path runs, the character has to exist
+  moveRobot(id: string, islandId: string, cell?: Cell): Robot {
+    this.robot(id);   // whichever path runs, the robot has to exist
     const island = this.island(islandId);
-    // without a cell the fleet picks one and grows the island to fit, even on the island the character already stands on
+    // without a cell the fleet picks one and grows the island to fit, even on the island the robot already stands on
     if (!cell) {
       this.deps.store.update((d) => this.placeOn(d, id, islandId));
-      return this.char(id);
+      return this.robot(id);
     }
     this.checkCell(island, cell);
     const state = this.deps.store.state;
-    const occupant = Object.values(state.characters).find((o) => o.id !== id && o.islandId === islandId && cellKey(o.cell) === cellKey(cell));
-    if (!occupant && blockedCells(state, islandId, id).has(cellKey(cell))) throw new Invalid(`cell ${cellKey(cell)} touches another character`);
+    const occupant = Object.values(state.robots).find((o) => o.id !== id && o.islandId === islandId && cellKey(o.cell) === cellKey(cell));
+    if (!occupant && blockedCells(state, islandId, id).has(cellKey(cell))) throw new Invalid(`cell ${cellKey(cell)} touches another robot`);
     this.deps.store.update((d) => {
-      const c = d.characters[id];
-      const other = occupant ? d.characters[occupant.id] : undefined;
+      const c = d.robots[id];
+      const other = occupant ? d.robots[occupant.id] : undefined;
       if (other) { other.islandId = c.islandId; other.cell = c.cell; }
       c.islandId = islandId;
       c.cell = cell;
       if (d.islands[islandId].collapsed) unfold(d, islandId, this.deps.log);
     });
-    return this.char(id);
+    return this.robot(id);
   }
 
   // a cell asked for by name is one of mission control's slots, or land on any other island
@@ -659,43 +659,43 @@ export class Fleet extends EventEmitter<Events> {
 
   // A sidebar drop inserts into the target crew in one update. On another island it first
   // makes room there; within one island it rotates only the occupied cells between the rows.
-  reorderCharacter(id: string, targetId: string, after: boolean): Character {
-    const moving = this.char(id);
-    const target = this.char(targetId);
+  reorderRobot(id: string, targetId: string, after: boolean): Robot {
+    const moving = this.robot(id);
+    const target = this.robot(targetId);
     if (id === targetId) return moving;
     this.deps.store.update((d) => {
       if (moving.islandId !== target.islandId) this.placeOn(d, id, target.islandId);
-      const crew = crewOf(d, target.islandId).map((charId) => d.characters[charId]);
+      const crew = crewOf(d, target.islandId).map((robotId) => d.robots[robotId]);
       const cells = crew.map((c) => c.cell);
       const order = crew.map((c) => c.id).filter((c) => c !== id);
       order.splice(order.indexOf(targetId) + Number(after), 0, id);
-      order.forEach((charId, index) => { d.characters[charId].cell = cells[index]; });
+      order.forEach((robotId, index) => { d.robots[robotId].cell = cells[index]; });
     });
-    return this.char(id);
+    return this.robot(id);
   }
 
-  // without a target the star goes first; every starred character is numbered anew in one update
-  starCharacter(id: string, targetId?: string, after = false): Character {
-    this.char(id);
-    if (targetId !== undefined && this.char(targetId).star === undefined) throw new Invalid(`${this.char(targetId).name} is not starred`);
-    if (id === targetId) return this.char(id);
+  // without a target the star goes first; every starred robot is numbered anew in one update
+  starRobot(id: string, targetId?: string, after = false): Robot {
+    this.robot(id);
+    if (targetId !== undefined && this.robot(targetId).star === undefined) throw new Invalid(`${this.robot(targetId).name} is not starred`);
+    if (id === targetId) return this.robot(id);
     const order = starredOf(this.deps.store.state).map((c) => c.id).filter((x) => x !== id);
     order.splice(targetId === undefined ? 0 : order.indexOf(targetId) + Number(after), 0, id);
-    this.deps.store.update((d) => { order.forEach((x, n) => { d.characters[x].star = n; }); });
-    return this.char(id);
+    this.deps.store.update((d) => { order.forEach((x, n) => { d.robots[x].star = n; }); });
+    return this.robot(id);
   }
 
-  unstarCharacter(id: string): Character {
-    this.char(id);
-    this.deps.store.update((d) => { delete d.characters[id].star; });
-    return this.char(id);
+  unstarRobot(id: string): Robot {
+    this.robot(id);
+    this.deps.store.update((d) => { delete d.robots[id].star; });
+    return this.robot(id);
   }
 
-  async closeCharacter(id: string): Promise<void> {
+  async closeRobot(id: string): Promise<void> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
-    const c = this.char(id);
+    const c = this.robot(id);
     for (const name of [id, secondName(id)]) this.closing.add(name);
-    this.deps.store.update((d) => { delete d.characters[id]; });
+    this.deps.store.update((d) => { delete d.robots[id]; });
     const killed = this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; })
       .then(async (victims) => {
         if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
@@ -706,17 +706,17 @@ export class Fleet extends EventEmitter<Events> {
     // a freeze waits for the windows to close and what the robot started to end
     this.track(killed.then((victims) => endProcs(victims, () => this.readLive(), this.deps.endOpts)), `end ${id}`);
     await killed;
-    // nothing the fleet keeps outside the state outlives the character
+    // nothing the fleet keeps outside the state outlives the robot
     this.seen.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
-    removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
+    removeDocs(this.deps.paths.docs, 'robot', id, this.deps.log);
   }
 
   /** Ends the agent and everything it started, closes the second terminal, dormant if it ran an agent, and leaves the
    * robot dormant without a carry-on note; the session resumes on the next open. */
-  async sleepCharacter(id: string): Promise<void> {
+  async sleepRobot(id: string): Promise<void> {
     await Promise.all([this.reviving.get(id), this.ending.get(id)].map((p) => p?.catch(() => {})));
-    const c = this.char(id);
+    const c = this.robot(id);
     const procs = await this.readLive();
     const flags = sleepFlags(c, procs);
     if (!c.tmux || !flags) throw new Invalid(`${c.name} can't be put to sleep`);
@@ -730,11 +730,11 @@ export class Fleet extends EventEmitter<Events> {
     const keys = [id];
     // a freeze while the processes were read leaves the robot as it is
     this.deps.ownership.assertOwner('mutation');
-    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear. A close, another
+    // dormant before the kill: the SessionEnd the kill sends then finds no live robot to clear. A close, another
     // sleep or an idle ending meanwhile leaves nothing to put to sleep
     this.deps.store.update((d) => {
-      const cur = d.characters[id];
-      if (!cur) throw new NotFound(`no character ${id}`);
+      const cur = d.robots[id];
+      if (!cur) throw new NotFound(`no robot ${id}`);
       if (cur.tmux?.windowId !== c.tmux!.windowId) throw new Invalid(`${c.name} can't be put to sleep`);
       markDormant(cur, flags);
       delete cur.revive?.interrupted;
@@ -758,17 +758,17 @@ export class Fleet extends EventEmitter<Events> {
     await killed;
   }
 
-  /** Revives every character whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet.
+  /** Revives every robot whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet.
    *  Only the owner opens windows, and a terminal an open handover carries is that handover's to reopen. */
   async resumeInterrupted(): Promise<void> {
     if (!this.writable()) return;
-    const ids = Object.values(this.deps.store.state.characters).filter((c) => c.revive?.interrupted && !this.carried(c.id)).map((c) => c.id);
-    await Promise.all(ids.map((id) => this.reviveCharacter(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
+    const ids = Object.values(this.deps.store.state.robots).filter((c) => c.revive?.interrupted && !this.carried(c.id)).map((c) => c.id);
+    await Promise.all(ids.map((id) => this.reviveRobot(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
   }
 
   // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place of the resume
-  reviveCharacter(id: string, prompt?: string, fresh?: string): Promise<Revived> {
-    // a page still open on a character that the stop has just put to sleep would wake it again
+  reviveRobot(id: string, prompt?: string, fresh?: string): Promise<Revived> {
+    // a page still open on a robot that the stop has just put to sleep would wake it again
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
@@ -783,35 +783,35 @@ export class Fleet extends EventEmitter<Events> {
     // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
     if (admitted) this.deps.ownership.assertOwner('terminal');
-    const c = this.char(id);
+    const c = this.robot(id);
     if (c.tmux) return c;
-    // a character marked dormant while its window lived goes back to that window; a new one would run the resume twice
+    // a robot marked dormant while its window lived goes back to that window; a new one would run the resume twice
     const alive = (await this.deps.tmux.listWindows()).find((w) => w.name === id && !w.dead);
     if (admitted) this.deps.ownership.assertOwner('terminal');
     if (alive) {
       this.deps.store.update((d) => {
-        const cur = d.characters[id];
+        const cur = d.robots[id];
         if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; if (!this.carried(id)) delete cur.revive; delete cur.resumeError; }
       });
       const delivery = prompt ? await this.run(id, prompt, true) : undefined;
-      return { ...this.char(id), ...(delivery && { delivery }) };
+      return { ...this.robot(id), ...(delivery && { delivery }) };
     }
     const cwd = this.reviveCwd(c);
-    const w = await this.deps.tmux.newWindow(id, cwd, this.charEnv(id));
-    if (!this.deps.store.state.characters[id]) {
+    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id));
+    if (!this.deps.store.state.robots[id]) {
       await this.deps.tmux.killWindow(w.windowId);
-      throw new NotFound(`no character ${id}`);
+      throw new NotFound(`no robot ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
     if (!this.carried(id)) fresh ??= unsaved(c);
     const gone = fresh === undefined && (c.revive?.interrupted || c.agent?.kind === 'codex') ? this.goneFolder(c) : undefined;
     const moved = gone ? { from: gone, to: cwd } : undefined;
     if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
-    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.characters[id], this.carried(id), id) : undefined;
+    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], this.carried(id), id) : undefined;
     try {
       const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
       this.deps.store.update((d) => {
-        const cur = d.characters[id];
+        const cur = d.robots[id];
         cur.tmux = { windowId: w.windowId, paneId: w.paneId };
         // one a handover has yet to answer for keeps the resume command it carries, which a retry lays it dormant with again
         if (!this.carried(id)) delete cur.revive;
@@ -826,10 +826,10 @@ export class Fleet extends EventEmitter<Events> {
       if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     } catch (e) {
       // the prompt file could not be written, or the resume never reached the pane: the window goes, or a poll would
-      // take it as the character's and drop the revive. A failed resume and its session stay, for a fresh start to retry
+      // take it as the robot's and drop the revive. A failed resume and its session stay, for a fresh start to retry
       this.resuming.delete(id);
       this.deps.store.update((d) => {
-        const cur = d.characters[id];
+        const cur = d.robots[id];
         if (cur?.tmux?.windowId !== w.windowId) return;
         delete cur.tmux;
         if (c.revive) cur.revive = c.revive;
@@ -839,15 +839,15 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`revive ${id}: ${String(k)}`));
       throw e;
     }
-    return this.char(id);
+    return this.robot(id);
   }
 
   /**
    * Starts a new session of a dormant terminal's agent in its folder, with the launch flags its resume carries and, as
    * its first prompt, a summary of the session it could not resume, whose files stay where they are.
    */
-  async startFresh(id: string, term?: 2): Promise<Character> {
-    const c = this.char(id);
+  async startFresh(id: string, term?: 2): Promise<Robot> {
+    const c = this.robot(id);
     const slot = term === 2 ? c.second : c;
     const which = term === 2 ? `${c.name}'s second terminal` : c.name;
     if (!slot?.agent || slot.tmux) throw new Invalid(`${which} has no dormant session to start afresh from`);
@@ -856,7 +856,7 @@ export class Fleet extends EventEmitter<Events> {
     const { kind, sessionId, transcriptPath } = slot.agent;
     const prompt = repairBrief(kind, transcriptPath ? readTail(transcriptPath, 4 * 1024 * 1024) : '', { sessionId });
     const command = freshCommand(slot.revive?.command ?? '', kind, sessionId);
-    return term === 2 ? this.openSecond(id, { command, prompt }) : this.reviveCharacter(id, prompt, command);
+    return term === 2 ? this.openSecond(id, { command, prompt }) : this.reviveRobot(id, prompt, command);
   }
 
   // the folder a dormant terminal's transcript last records its session working in, when this machine lacks it, as a
@@ -866,9 +866,9 @@ export class Fleet extends EventEmitter<Events> {
     return recorded && !fs.existsSync(recorded) ? recorded : undefined;
   }
 
-  // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's character
+  // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's robot
   // goes back to its main checkout, any other to the nearest folder left. Codex resumes into the gone folder; OpenCode stops to ask
-  private reviveCwd(c: Character, term?: 2): string {
+  private reviveCwd(c: Robot, term?: 2): string {
     const t = term === 2 ? c.second : c;
     const cwd = t?.cwd ?? c.cwd;
     const isDir = (p: string) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
@@ -886,7 +886,7 @@ export class Fleet extends EventEmitter<Events> {
 
   // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too, or
   // started `fresh` with that command and its prompt
-  openSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Character> {
+  openSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Robot> {
     const inFlight = this.openingSecond.get(id);
     if (inFlight) return inFlight;
     const p = this.doOpenSecond(id, this.writable(), fresh).finally(() => this.openingSecond.delete(id));
@@ -894,11 +894,11 @@ export class Fleet extends EventEmitter<Events> {
     return p;
   }
 
-  private async doOpenSecond(id: string, admitted: boolean, fresh?: { command: string; prompt: string }): Promise<Character> {
+  private async doOpenSecond(id: string, admitted: boolean, fresh?: { command: string; prompt: string }): Promise<Robot> {
     // a second window still closing is not one to open beside
     await this.ending.get(secondName(id));
     if (admitted) this.deps.ownership.assertOwner('terminal');
-    const c = this.char(id);
+    const c = this.robot(id);
     if (c.second?.tmux) return c;
     const cwd = c.second ? this.reviveCwd(c, 2) : c.cwd;
     const island = this.deps.store.state.islands[c.islandId];
@@ -907,14 +907,14 @@ export class Fleet extends EventEmitter<Events> {
     const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
     const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
-    const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.charEnv(id, { SVALL_TERM: '2' }));
-    if (!this.deps.store.state.characters[id]) {
+    const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }));
+    if (!this.deps.store.state.robots[id]) {
       await this.deps.tmux.killWindow(w.windowId);
-      throw new NotFound(`no character ${id}`);
+      throw new NotFound(`no robot ${id}`);
     }
-    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.characters[id].second, this.carried(id, 2), id, 2);
+    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.robots[id].second, this.carried(id, 2), id, 2);
     this.deps.store.update((d) => {
-      const cur = d.characters[id];
+      const cur = d.robots[id];
       const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };
       if (!this.carried(id, 2)) delete second.revive;
       delete second.resumeError;
@@ -930,7 +930,7 @@ export class Fleet extends EventEmitter<Events> {
       // as a revive's: the window goes, and a failed resume and its session stay, for a fresh start to retry
       this.resuming.delete(secondName(id));
       this.deps.store.update((d) => {
-        const second = d.characters[id]?.second;
+        const second = d.robots[id]?.second;
         if (second?.tmux?.windowId !== w.windowId) return;
         delete second.tmux;
         if (c.second?.revive) second.revive = c.second.revive;
@@ -940,38 +940,38 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`open ${secondName(id)}: ${String(k)}`));
       throw e;
     }
-    return this.char(id);
+    return this.robot(id);
   }
 
   // only the terminal the viewer is looking at: a surface that cannot show the second one must not clear it
-  markSeen(id: string, term?: 2): Character {
-    this.char(id);
+  markSeen(id: string, term?: 2): Robot {
+    this.robot(id);
     if (term !== 2) this.seen.set(id, Date.now());
     this.deps.store.update((d) => {
       if (term === 2) {
-        const second = d.characters[id].second;
-        if (second) d.characters[id].second = markSeenPure(second);
+        const second = d.robots[id].second;
+        if (second) d.robots[id].second = markSeenPure(second);
         return;
       }
-      d.characters[id] = markSeenPure(d.characters[id]);
+      d.robots[id] = markSeenPure(d.robots[id]);
     });
-    return this.char(id);
+    return this.robot(id);
   }
 
   openTab(id: string, url: string, tab?: string): BrowserTab {
-    return openTab(this.deps.store, this.char(id), url, tab);
+    return openTab(this.deps.store, this.robot(id), url, tab);
   }
 
   closeTab(id: string, tab: string): void {
-    closeTab(this.deps.store, this.char(id), tab);
+    closeTab(this.deps.store, this.robot(id), tab);
   }
 
   activateTab(id: string, tab: string): void {
-    activateTab(this.deps.store, this.char(id), tab);
+    activateTab(this.deps.store, this.robot(id), tab);
   }
 
   updateTab(id: string, tab: string, patch: { url?: string; title?: string }): void {
-    updateTab(this.deps.store, this.char(id), tab, patch);
+    updateTab(this.deps.store, this.robot(id), tab, patch);
   }
 
   run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
@@ -991,7 +991,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   readTranscript(id: string, turns: number, term?: 2): string {
-    const c = this.char(id);
+    const c = this.robot(id);
     const agent = term === 2 ? c.second?.agent : c.agent;
     if (!agent) throw new Invalid(`${c.name} has no agent${term === 2 ? ' in its second terminal' : ''}`);
     if (!agent.transcriptPath) return '';
@@ -999,7 +999,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   readPrompts(id: string, limit: number): string[] {
-    const c = this.char(id);
+    const c = this.robot(id);
     if (!c.agent) return [];
     const text = c.agent.transcriptPath ? readTail(c.agent.transcriptPath, 4 * 1024 * 1024) : '';
     return userPrompts(c.agent.kind, text, limit, c.agent.lastPrompt);
@@ -1010,7 +1010,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   /** Hears each session that starts in a terminal, once its SessionStart has landed there. */
-  onSessionStart(fn: (charId: string, term: 2 | undefined, sessionId: string) => void): () => void {
+  onSessionStart(fn: (robotId: string, term: 2 | undefined, sessionId: string) => void): () => void {
     this.on('session-start', fn);
     return () => { this.off('session-start', fn); };
   }
@@ -1020,12 +1020,12 @@ export class Fleet extends EventEmitter<Events> {
     if (!this.deps.ownership.isOwner()) return undefined;
     const reply = await this.agentEvents.apply(e);
     if ('hook' in e && e.hook.name === 'SessionStart') {
-      const { charId, term, sessionId, pid } = e.hook;
-      this.resuming.delete(term === 2 ? secondName(charId) : charId);
-      const c = this.deps.store.state.characters[charId];
-      if (sessionId && (term === 2 ? c?.second : c)?.agent?.sessionId === sessionId) this.emit('session-start', charId, term, sessionId);
-      // only a start the character took: one dropped as a server's or a nested run's reads nothing
-      if (pid && (term === 2 ? c?.second : c)?.agent?.pid === pid) this.track(this.rememberFlags(charId, term, pid), `flags ${charId}`);
+      const { robotId, term, sessionId, pid } = e.hook;
+      this.resuming.delete(term === 2 ? secondName(robotId) : robotId);
+      const c = this.deps.store.state.robots[robotId];
+      if (sessionId && (term === 2 ? c?.second : c)?.agent?.sessionId === sessionId) this.emit('session-start', robotId, term, sessionId);
+      // only a start the robot took: one dropped as a server's or a nested run's reads nothing
+      if (pid && (term === 2 ? c?.second : c)?.agent?.pid === pid) this.track(this.rememberFlags(robotId, term, pid), `flags ${robotId}`);
     }
     return reply;
   }
@@ -1035,7 +1035,7 @@ export class Fleet extends EventEmitter<Events> {
     const procs = await this.sleep.processes().catch((e) => { this.deps.log.error(`flags ${id}: ${String(e)}`); return undefined; });
     if (!procs || this.stopped) return;
     this.deps.store.update((d) => {
-      const t = term === 2 ? d.characters[id]?.second : d.characters[id];
+      const t = term === 2 ? d.robots[id]?.second : d.robots[id];
       if (t?.agent?.pid === pid) rememberFlags(t, procs);
     });
   }

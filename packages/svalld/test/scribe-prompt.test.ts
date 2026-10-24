@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Character, ContextItem } from '@svall/protocol';
-import { CharacterAnswer, IslandAnswer, acceptLine, acceptLinks, acceptName, characterPrompt, islandPrompt, parseAnswer, prEvidence } from '../src/scribe/prompt.js';
+import type { Robot, ContextItem } from '@svall/protocol';
+import { RobotAnswer, IslandAnswer, acceptLine, acceptLinks, acceptName, robotPrompt, islandPrompt, parseAnswer, prEvidence } from '../src/scribe/prompt.js';
 
-const char = (extra: Partial<Character> = {}): Character => ({
+const robot = (extra: Partial<Robot> = {}): Robot => ({
   id: 'c', islandId: 'i', cell: { x: 0, y: 0 }, name: 'golden heron', portrait: 'fox', note: '', instructions: '', cwd: '/repo', context: [],
   shell: { lastOutputAt: 0 }, unread: false, ...extra,
 });
@@ -29,7 +29,7 @@ describe('acceptName', () => {
     expect(acceptName('golden heron', { value: 'internationalisation-work', reason: 'generated' }, none)).toBeUndefined();
     expect(acceptName('quite long given name', { value: '#542 quite long given name', reason: 'identifier' }, none)).toBeUndefined();
   });
-  it('refuses a name another character has, and no change at all', () => {
+  it('refuses a name another robot has, and no change at all', () => {
     expect(acceptName('golden heron', { value: 'deploy web', reason: 'generated' }, new Set(['deploy web']))).toBeUndefined();
     expect(acceptName('golden heron', { value: 'ENG-1907 auth', reason: 'generated' }, new Set(['eng-1907 auth']))).toBeUndefined();
     expect(acceptName('deploy web', { value: 'deploy web', reason: 'identifier' }, none)).toBeUndefined();
@@ -114,62 +114,62 @@ describe('acceptLinks', () => {
 
 describe('parseAnswer', () => {
   it('reads an object out of a fenced answer', () => {
-    const a = parseAnswer(CharacterAnswer, '```json\n{"note": "x", "name": {"value": "deploy web", "reason": "generated"}}\n```');
+    const a = parseAnswer(RobotAnswer, '```json\n{"note": "x", "name": {"value": "deploy web", "reason": "generated"}}\n```');
     expect(a).toEqual({ note: 'x', name: { value: 'deploy web', reason: 'generated' } });
     expect(parseAnswer(IslandAnswer, '{"description": "d"}')).toEqual({ description: 'd' });
-    expect(parseAnswer(CharacterAnswer, '{"note": "x", "links": null}')).toEqual({ note: 'x', links: null });
+    expect(parseAnswer(RobotAnswer, '{"note": "x", "links": null}')).toEqual({ note: 'x', links: null });
   });
   it('reads the first object of an answer that goes on after it', () => {
-    expect(parseAnswer(CharacterAnswer, '{"note": "a } in {it}"}\n\n{"links": []}')).toEqual({ note: 'a } in {it}' });
-    expect(parseAnswer(CharacterAnswer, '{"note": "say \\"}\\""}\n\nThat is all.}')).toEqual({ note: 'say "}"' });
+    expect(parseAnswer(RobotAnswer, '{"note": "a } in {it}"}\n\n{"links": []}')).toEqual({ note: 'a } in {it}' });
+    expect(parseAnswer(RobotAnswer, '{"note": "say \\"}\\""}\n\nThat is all.}')).toEqual({ note: 'say "}"' });
   });
   it('throws on prose, bad JSON and a wrong shape', () => {
-    expect(() => parseAnswer(CharacterAnswer, 'I could not tell.')).toThrow(/^the scribe's answer has no JSON object$/);
+    expect(() => parseAnswer(RobotAnswer, 'I could not tell.')).toThrow(/^the scribe's answer has no JSON object$/);
     // the parser's own message would quote the answer, which is text from a transcript
-    expect(() => parseAnswer(CharacterAnswer, '{"note": the transcript said hunter2}')).toThrow(/^the scribe's answer is not valid JSON$/);
-    expect(() => parseAnswer(CharacterAnswer, '{"name": {"value": "x", "reason": "because"}}')).toThrow(/^the scribe's answer has the wrong shape: name\.reason Invalid option[^\n]*$/);
+    expect(() => parseAnswer(RobotAnswer, '{"note": the transcript said hunter2}')).toThrow(/^the scribe's answer is not valid JSON$/);
+    expect(() => parseAnswer(RobotAnswer, '{"name": {"value": "x", "reason": "because"}}')).toThrow(/^the scribe's answer has the wrong shape: name\.reason Invalid option[^\n]*$/);
   });
 });
 
-describe('characterPrompt', () => {
+describe('robotPrompt', () => {
   it('marks a generated name and a hand-written note, and lists links by source', () => {
-    const p = characterPrompt(char({ note: 'mine', noteSource: 'manual', context: [{ kind: 'pr', ref: 'https://gh/pull/5', label: '#5', source: 'auto' }] }), 'USER: hi', ['deploy web']);
+    const p = robotPrompt(robot({ note: 'mine', noteSource: 'manual', context: [{ kind: 'pr', ref: 'https://gh/pull/5', label: '#5', source: 'auto' }] }), 'USER: hi', ['deploy web']);
     expect(p).toContain('Name: golden heron (generated placeholder)');
     expect(p).toContain('Note (hand-written): mine');
     expect(p).toContain('- auto #5 https://gh/pull/5');
     expect(p).toContain('must not repeat: deploy web');
     expect(p).toContain('<transcript>\nUSER: hi\n</transcript>');
-    expect(characterPrompt(char({ name: 'robin review', note: 'x' }), '', [])).toContain('Name: robin review\n');
+    expect(robotPrompt(robot({ name: 'robin review', note: 'x' }), '', [])).toContain('Name: robin review\n');
   });
 });
 
 describe('prEvidence', () => {
   const repo = { kind: 'github' as const, ref: 'https://github.com/o/r', label: 'o/r', source: 'auto' as const };
   it('resolves an explicit PR number using the linked repository', () => {
-    const evidence = prEvidence(char({ context: [repo] }), 'USER: review PR #42', '');
+    const evidence = prEvidence(robot({ context: [repo] }), 'USER: review PR #42', '');
     expect(evidence).toEqual(['https://github.com/o/r/pull/42']);
-    expect(characterPrompt(char({ context: [repo] }), 'USER: review PR #42', [], evidence)).toContain('- https://github.com/o/r/pull/42');
+    expect(robotPrompt(robot({ context: [repo] }), 'USER: review PR #42', [], evidence)).toContain('- https://github.com/o/r/pull/42');
     expect(acceptLinks([{ url: evidence[0], label: '#42' }], `USER: review PR #42\n${evidence.join('\n')}`, [])).toMatchObject([{ kind: 'pr', ref: evidence[0] }]);
   });
   it('recovers a PR URL from an older tool result, without inventing one from an issue number', () => {
-    const evidence = prEvidence(char({ context: [repo] }), 'USER: continue review', 'tool https://github.com/o/r/pull/42#discussion_r1 then https://github.com/o/r/issues/9');
+    const evidence = prEvidence(robot({ context: [repo] }), 'USER: continue review', 'tool https://github.com/o/r/pull/42#discussion_r1 then https://github.com/o/r/issues/9');
     expect(evidence).toEqual(['https://github.com/o/r/pull/42']);
-    expect(prEvidence(char({ context: [repo] }), 'USER: fix issue #9', '')).toEqual([]);
+    expect(prEvidence(robot({ context: [repo] }), 'USER: fix issue #9', '')).toEqual([]);
   });
   it('resolves a numbered PR mentioned before the condensed turns', () => {
-    expect(prEvidence(char({ context: [repo] }), 'AGENT: continuing review', 'USER: Please review pull request #42')).toEqual(['https://github.com/o/r/pull/42']);
+    expect(prEvidence(robot({ context: [repo] }), 'AGENT: continuing review', 'USER: Please review pull request #42')).toEqual(['https://github.com/o/r/pull/42']);
   });
   // a /[.,;:!?]+$/ over a long run of dots backtracks from every one of them
   it('reads a tail with a URL of tens of thousands of dots in one pass', () => {
     const started = performance.now();
-    expect(prEvidence(char(), '', `https://github.com/o/r/pull/7 https://x.test/${'.'.repeat(40_000)}a`)).toEqual(['https://github.com/o/r/pull/7']);
+    expect(prEvidence(robot(), '', `https://github.com/o/r/pull/7 https://x.test/${'.'.repeat(40_000)}a`)).toEqual(['https://github.com/o/r/pull/7']);
     expect(performance.now() - started).toBeLessThan(500);
   });
   it('keeps a second PR that the first is named far more often than', () => {
     const urls = ['https://github.com/o/r/pull/41', ...Array<string>(9).fill('https://github.com/o/r/pull/42')].join(' ');
-    expect(prEvidence(char(), '', urls)).toEqual(['https://github.com/o/r/pull/41', 'https://github.com/o/r/pull/42']);
+    expect(prEvidence(robot(), '', urls)).toEqual(['https://github.com/o/r/pull/41', 'https://github.com/o/r/pull/42']);
     const refs = ['PR #43', ...Array<string>(9).fill('PR #44')].join('\n');
-    expect(prEvidence(char({ context: [repo] }), refs, '')).toEqual(['https://github.com/o/r/pull/43', 'https://github.com/o/r/pull/44']);
+    expect(prEvidence(robot({ context: [repo] }), refs, '')).toEqual(['https://github.com/o/r/pull/43', 'https://github.com/o/r/pull/44']);
   });
 });
 
@@ -177,7 +177,7 @@ describe('islandPrompt', () => {
   it('marks a hand-written description and lists the island\'s links and each member\'s', () => {
     const island = { id: 'i', name: 'auth', description: 'mine', descriptionSource: 'manual' as const, instructions: '', position: { x: 0, y: 0 }, size: { w: 8, h: 6 }, seed: 1,
       context: [{ kind: 'other' as const, ref: 'https://docs.example/plan', label: 'plan', source: 'manual' as const }] };
-    const p = islandPrompt(island, [char({ name: 'auth tests', note: 'rewrite', context: [{ kind: 'pr', ref: 'https://gh/pull/5', label: '#5', source: 'auto' }] })]);
+    const p = islandPrompt(island, [robot({ name: 'auth tests', note: 'rewrite', context: [{ kind: 'pr', ref: 'https://gh/pull/5', label: '#5', source: 'auto' }] })]);
     expect(p).toContain('Description (hand-written): mine\nLinks:\n- manual plan https://docs.example/plan\nMembers:');
     expect(p).toContain('- auth tests | /repo | rewrite\n  - auto #5 https://gh/pull/5');
   });

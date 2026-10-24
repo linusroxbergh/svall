@@ -8,7 +8,8 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-const charId = process.env.SVALL_CHAR_ID;
+// a session an older svalld started carries SVALL_CHAR_ID
+const robotId = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const backend = process.argv[2] === 'codex' ? 'codex' : 'claude';
 const pid = Number(process.argv[3]) || undefined;
@@ -22,7 +23,7 @@ const variantOf = (h) => {
 };
 // argv[1], unlike import.meta.url, keeps the name of a home that is a symlink
 const mine = variantOf(path.dirname(path.dirname(path.resolve(process.argv[1])))) === variantOf(home);
-if (!charId || !mine) done();
+if (!robotId || !mine) done();
 const safety = setTimeout(done, 1500);
 safety.unref();
 
@@ -77,7 +78,7 @@ function send(hook, tries) {
     else { safety.refresh(); setTimeout(() => send(hook, tries + 1), RETRY_MS); }
   });
   sock.on('connect', () => {
-    sock.write(JSON.stringify({ charId, term, backend, pid, hook: fields(monitored(failed(asked(hook)))) }) + '\n');
+    sock.write(JSON.stringify({ robotId, term, backend, pid, hook: fields(monitored(failed(asked(hook)))) }) + '\n');
     // the exit waits for the write to drain, or a large payload is truncated mid-line and dropped
     if (!WAITS.has(hook.hook_event_name)) { sock.end(done); return; }
     let buf = '';

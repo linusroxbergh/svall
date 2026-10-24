@@ -280,7 +280,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
 test('the corner names the machine the fleet runs on, and the fleet stays on the screen while it is away', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   const island = await svall.api.call('island.create', { name: svall.uniq('host') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   await svall.open();
   await expect(page.getByTestId('board')).toBeVisible();
 
@@ -300,7 +300,7 @@ test('the corner names the machine the fleet runs on, and the fleet stays on the
   await page.getByTestId('connection-reconnect').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'connection.retry' });
   await expect(page.getByTestId('owner-badge')).toHaveAttribute('data-state', 'error');
-  // the fleet the page already holds is still there, characters and all
+  // the fleet the page already holds is still there, robots and all
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.getByTestId(`tab-${c.id}`)).toBeVisible();
 

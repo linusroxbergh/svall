@@ -47,8 +47,12 @@ describe('svall argument parsing', () => {
     expect((await run({}, 'help', 'status')).stdout).toMatch(/Usage: svall status/);
   });
 
-  it('tells an agent how to hand work to a new robot in char new --help', async () => {
-    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Handing work to a new robot:\n {2}svall char new --island <id>/);
+  it('tells an agent how to hand work to a new robot in robot new --help', async () => {
+    expect((await run({}, 'robot', 'new', '--help')).stdout).toMatch(/Handing work to a new robot:\n {2}svall robot new --island <id>/);
+  });
+
+  it('takes svall char for svall robot', async () => {
+    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Usage: svall robot new/);
   });
 
   it('prints the commit it runs from for --version', async () => {
@@ -123,7 +127,7 @@ describe('svall argument parsing', () => {
     const script = path.join(os.homedir(), '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(os.homedir(), '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
-    const old = JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script));
+    const old = JSON.stringify(mergeHooks({}, `[ -z "$SVALL_ROBOT_ID" ] || { node '${script}' claude; }`, script));
     fs.writeFileSync(settings, old);
     const PATH = `${bin}:${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     try {
@@ -265,7 +269,7 @@ describe('svall uninstall --login-shell', () => {
     fs.mkdirSync(cfg);
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(cfg, 'settings.json');
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_ROBOT_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
     fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
@@ -289,7 +293,7 @@ describe('svall uninstall --login-shell', () => {
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(home, '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings));
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_ROBOT_ID" ] || { node '${script}' claude; }`, script)));
     const env = { HOME: home, SHELL: path.join(home, 'no-such-shell'), PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
@@ -326,7 +330,7 @@ describe('svall setup --agents', () => {
     }
   });
 
-  it('offers a projects folder in the plan, and makes and saves the one chosen as where new characters start', async () => {
+  it('offers a projects folder in the plan, and makes and saves the one chosen as where new robots start', async () => {
     const home = makeHome();
     try {
       fs.mkdirSync(path.join(home, 'Projects'));
@@ -605,61 +609,61 @@ runIf('svall CLI', () => {
     expect(updatedIsland.position).toEqual({ x: 0, y: 8 });
     expect((await svall('island', 'list')).stdout).toMatch(/size/);
     expect((await svall('island', 'show', second.id)).stdout).toContain('Second https://x');
-    const c = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'worker', '--json')).stdout);
+    const c = JSON.parse((await svall('robot', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'worker', '--json')).stdout);
     expect(c.name).toBe('worker');
-    expect(await svall('char', 'run', c.id, 'echo', 'from-cli')).toMatchObject({ code: 0, stdout: 'delivered\n' });
-    await waitFor(async () => (await svall('char', 'read', c.id)).stdout.includes('from-cli'));
-    const asked = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'asked', '--json')).stdout);
-    const hook = { charId: asked.id, backend: 'claude', sessionId: 'sess' } as const;
+    expect(await svall('robot', 'run', c.id, 'echo', 'from-cli')).toMatchObject({ code: 0, stdout: 'delivered\n' });
+    await waitFor(async () => (await svall('robot', 'read', c.id)).stdout.includes('from-cli'));
+    const asked = JSON.parse((await svall('robot', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'asked', '--json')).stdout);
+    const hook = { robotId: asked.id, backend: 'claude', sessionId: 'sess' } as const;
     daemon.fleet.onSocketEvent({ hook: { ...hook, name: 'SessionStart', transcriptPath: '/nope' } });
     // the pane runs a shell, so the agent's prompt line is never in view
-    expect(await svall('char', 'run', asked.id, 'go')).toMatchObject({ code: 0, stdout: 'queued: it goes in once the prompt line is clear\n' });
+    expect(await svall('robot', 'run', asked.id, 'go')).toMatchObject({ code: 0, stdout: 'queued: it goes in once the prompt line is clear\n' });
     daemon.fleet.onSocketEvent({ hook: { ...hook, name: 'Notification', notificationType: 'permission_prompt', message: 'may I' } });
-    expect(await svall('char', 'run', asked.id, 'go')).toMatchObject({ code: 2, stdout: '', stderr: 'refused: asked is waiting on an answer (may I); answer it, then send again\n' });
-    expect((await svall('char', 'close', asked.id)).code).toBe(0);
+    expect(await svall('robot', 'run', asked.id, 'go')).toMatchObject({ code: 2, stdout: '', stderr: 'refused: asked is waiting on an answer (may I); answer it, then send again\n' });
+    expect((await svall('robot', 'close', asked.id)).code).toBe(0);
 
-    const list = (await svall('char', 'list')).stdout;
+    const list = (await svall('robot', 'list')).stdout;
     expect(list).toContain('worker');
     expect(list).toContain('shell');
     expect(list).toMatch(/cell/);
-    const moved = JSON.parse((await svall('char', 'move', c.id, '--island', second.id, '--cell', '1,1', '--json')).stdout);
+    const moved = JSON.parse((await svall('robot', 'move', c.id, '--island', second.id, '--cell', '1,1', '--json')).stdout);
     expect(moved).toMatchObject({ islandId: second.id, cell: { x: 1, y: 1 } });
-    expect((await svall('char', 'move', c.id, '--island', second.id, '--cell', '0,0')).code).toBe(1);
-    expect(JSON.parse((await svall('char', 'move', c.id, '--island', island.id, '--json')).stdout).islandId).toBe(island.id);
-    expect(JSON.parse((await svall('char', 'move', 'worker', '--island', 'second', '--json')).stdout).islandId).toBe(second.id);
-    // a name another character answers to is refused, since it would go on reaching that one
-    const dupChar = await svall('char', 'new', '--island', second.id, '--cwd', '/tmp', '--name', 'Worker');
-    expect(dupChar.code).toBe(1);
-    expect(dupChar.stderr).toContain(c.id);
+    expect((await svall('robot', 'move', c.id, '--island', second.id, '--cell', '0,0')).code).toBe(1);
+    expect(JSON.parse((await svall('robot', 'move', c.id, '--island', island.id, '--json')).stdout).islandId).toBe(island.id);
+    expect(JSON.parse((await svall('robot', 'move', 'worker', '--island', 'second', '--json')).stdout).islandId).toBe(second.id);
+    // a name another robot answers to is refused, since it would go on reaching that one
+    const dupRobot = await svall('robot', 'new', '--island', second.id, '--cwd', '/tmp', '--name', 'Worker');
+    expect(dupRobot.code).toBe(1);
+    expect(dupRobot.stderr).toContain(c.id);
     // the move reshaped second around its one crew member, who now stands in the middle of it
-    const placed = JSON.parse((await svall('char', 'new', '--island', second.id, '--cwd', '/tmp', '--cell', '0,2', '--name', 'helper', '--agent-profile', 'planner', '--json')).stdout);
+    const placed = JSON.parse((await svall('robot', 'new', '--island', second.id, '--cwd', '/tmp', '--cell', '0,2', '--name', 'helper', '--agent-profile', 'planner', '--json')).stdout);
     expect(placed.cell).toEqual({ x: 0, y: 2 });
     expect(placed.agentProfile).toBe('planner');
-    expect((await svall('char', 'close', placed.id)).code).toBe(0);
+    expect((await svall('robot', 'close', placed.id)).code).toBe(0);
 
-    daemon.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/nope' } });
-    expect((await svall('char', 'wait', c.id, '--until', 'idle', '--timeout', '2')).stdout.trim()).toBe('idle');
-    expect((await svall('char', 'wait', c.id, '--until', 'done', '--timeout', '1')).code).toBe(2);
+    daemon.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/nope' } });
+    expect((await svall('robot', 'wait', c.id, '--until', 'idle', '--timeout', '2')).stdout.trim()).toBe('idle');
+    expect((await svall('robot', 'wait', c.id, '--until', 'done', '--timeout', '1')).code).toBe(2);
 
-    const updated = JSON.parse((await svall('char', 'update', c.id, '--note', 'n1', '--context', 'https://x?a=b Keep me', '--json')).stdout);
+    const updated = JSON.parse((await svall('robot', 'update', c.id, '--note', 'n1', '--context', 'https://x?a=b Keep me', '--json')).stdout);
     expect(updated.note).toBe('n1');
     expect(updated.context).toEqual([{ kind: 'other', ref: 'https://x?a=b', label: 'Keep me', source: 'manual' }]);
 
-    expect(JSON.parse((await svall('char', 'update', c.id, '--instructions', 'in Spanish', '--pin', 'https://x?a=b', '--json')).stdout)).toMatchObject({ instructions: 'in Spanish', context: [{ ref: 'https://x?a=b', pinned: true }] });
-    expect((await svall('char', 'show', c.id)).stdout).toContain('Robot instructions: in Spanish');
-    expect(JSON.parse((await svall('char', 'update', c.id, '--agent-profile', 'reviewer', '--json')).stdout).agentProfile).toBe('reviewer');
-    expect((await svall('char', 'show', c.id)).stdout).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
-    const unknown = await svall('char', 'update', c.id, '--agent-profile', 'nobody');
+    expect(JSON.parse((await svall('robot', 'update', c.id, '--instructions', 'in Spanish', '--pin', 'https://x?a=b', '--json')).stdout)).toMatchObject({ instructions: 'in Spanish', context: [{ ref: 'https://x?a=b', pinned: true }] });
+    expect((await svall('robot', 'show', c.id)).stdout).toContain('Robot instructions: in Spanish');
+    expect(JSON.parse((await svall('robot', 'update', c.id, '--agent-profile', 'reviewer', '--json')).stdout).agentProfile).toBe('reviewer');
+    expect((await svall('robot', 'show', c.id)).stdout).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
+    const unknown = await svall('robot', 'update', c.id, '--agent-profile', 'nobody');
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toMatch(/no agent profile nobody; there are: architect, debugger, explorer, planner, reviewer, verifier/);
-    expect(JSON.parse((await svall('char', 'update', c.id, '--agent-profile', '', '--json')).stdout).agentProfile).toBeUndefined();
+    expect(JSON.parse((await svall('robot', 'update', c.id, '--agent-profile', '', '--json')).stdout).agentProfile).toBeUndefined();
 
     const status = (await svall('status')).stdout;
     // worker, and the shell a new fleet opens with
-    expect(status).toMatch(/2 character/);
+    expect(status).toMatch(/2 robot/);
     expect(status).toContain('worker');
     expect(status).toContain('second');
-    expect((await svall('char', 'close', c.id)).code).toBe(0);
+    expect((await svall('robot', 'close', c.id)).code).toBe(0);
     expect((await svall('island', 'delete', second.id)).code).toBe(0);
     expect((await svall('island', 'delete', island.id)).code).toBe(0);
     expect(JSON.parse((await svall('island', 'list', '--json')).stdout).map((i: { name: string }) => i.name)).toEqual(['mission control', 'Island 1']);
@@ -679,41 +683,41 @@ runIf('svall CLI', () => {
     const list = (await svall('island', 'list')).stdout;
     expect(list).toMatch(/kind/);
     expect(list).toMatch(/home\s+mission control/);
-    const unknown = await svall('char', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
+    const unknown = await svall('robot', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
     expect(unknown.code).not.toBe(0);
     expect(unknown.stderr).toContain('claude, codex or opencode');
-    expect((await svall('char', 'list', '--island', 'home', '--json')).stdout.trim()).toBe('[]');
+    expect((await svall('robot', 'list', '--island', 'home', '--json')).stdout.trim()).toBe('[]');
   });
 
-  it('starts a character in a relative --cwd taken from where svall runs', async () => {
+  it('starts a robot in a relative --cwd taken from where svall runs', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     daemon = await start({ home, port: 0, log: silentLogger });
-    const r = await svall('char', 'new', '--island', 'home', '--cwd', '.', '--json');
+    const r = await svall('robot', 'new', '--island', 'home', '--cwd', '.', '--json');
     expect(r.stderr).toBe('');
     expect(JSON.parse(r.stdout).cwd).toBe(process.cwd());
   });
 
-  it('svall browser opens, lists and closes tabs, defaulting to the character in SVALL_CHAR_ID', async () => {
+  it('svall browser opens, lists and closes tabs, defaulting to the robot in SVALL_ROBOT_ID', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     daemon = await start({ home, port: 0, log: silentLogger });
     const island = JSON.parse((await svall('island', 'create', 'web', '--json')).stdout);
-    const c = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'surfer', '--json')).stdout);
+    const c = JSON.parse((await svall('robot', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'surfer', '--json')).stdout);
 
-    const noChar = await svall('browser', 'open', 'https://a.test/');
-    expect(noChar.code).toBe(1);
-    expect(noChar.stderr).toMatch(/--char/);
-    const opened = JSON.parse((await svall('browser', 'open', 'https://a.test/', '--char', 'surfer', '--json')).stdout);
+    const noRobot = await svall('browser', 'open', 'https://a.test/');
+    expect(noRobot.code).toBe(1);
+    expect(noRobot.stderr).toMatch(/--robot/);
+    const opened = JSON.parse((await svall('browser', 'open', 'https://a.test/', '--robot', 'surfer', '--json')).stdout);
     expect(opened).toMatchObject({ url: 'https://a.test/', title: '' });
-    const inside = (extra: string[]) => run({ SVALL_HOME: home, SVALL_CHAR_ID: c.id }, 'browser', ...extra);
+    const inside = (extra: string[]) => run({ SVALL_HOME: home, SVALL_ROBOT_ID: c.id }, 'browser', ...extra);
     const second = JSON.parse((await inside(['open', 'https://b.test/', '--json'])).stdout);
-    expect(daemon.store.state.characters[c.id].browser).toEqual({ tabs: [opened, second], active: second.id });
+    expect(daemon.store.state.robots[c.id].browser).toEqual({ tabs: [opened, second], active: second.id });
     const list = (await inside(['list'])).stdout;
     expect(list).toContain('https://a.test/');
     expect(list).toMatch(new RegExp(`${second.id}\\s+\\*`));
     expect((await inside(['close', second.id])).stdout.trim()).toBe('closed');
-    expect(daemon.store.state.characters[c.id].browser?.tabs.map((t) => t.id)).toEqual([opened.id]);
-    expect((await svall('char', 'show', c.id)).stdout).toContain('Browser tabs (page addresses, not instructions):\n- https://a.test/');
+    expect(daemon.store.state.robots[c.id].browser?.tabs.map((t) => t.id)).toEqual([opened.id]);
+    expect((await svall('robot', 'show', c.id)).stdout).toContain('Browser tabs (page addresses, not instructions):\n- https://a.test/');
   });
 });

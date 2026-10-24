@@ -3,7 +3,7 @@ import { emptyState, type ContextItem } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import type { Bridge, FromShell, ToShell } from '../src/bridge.js';
 import type { BrowserManager } from '../src/browser.js';
-import { closeCharacter, dispatchKey, installKeyHandlers, openFleetPicker } from '../src/keyboard.js';
+import { closeRobot, dispatchKey, installKeyHandlers, openFleetPicker } from '../src/keyboard.js';
 import { panesOf } from '../src/selectors.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -16,7 +16,7 @@ function ctx(present = false) {
     call: (method: string, params: unknown) => {
       calls.push({ method, params });
       if (method === 'island.create') return Promise.resolve(isl('i_new', 'home', 0));
-      if (method === 'char.create') return Promise.resolve(chr('c_new', (params as { islandId: string }).islandId, { x: 9, y: 0 }));
+      if (method === 'robot.create') return Promise.resolve(chr('c_new', (params as { islandId: string }).islandId, { x: 9, y: 0 }));
       return Promise.resolve({});
     },
   } as unknown as Api;
@@ -35,8 +35,8 @@ describe('dispatchKey', () => {
     const c = ctx();
     c.store.getState().setView('board');
     c.store.getState().select('c1');
-    await dispatchKey({ type: 'newCharacter' }, c);
-    expect(c.store.getState().namingCharacter).toBe(true);
+    await dispatchKey({ type: 'newRobot' }, c);
+    expect(c.store.getState().namingRobot).toBe(true);
     expect(c.calls).toEqual([]);
   });
   it('Cmd+G opens the mission control prompt instead of creating anything', async () => {
@@ -50,8 +50,8 @@ describe('dispatchKey', () => {
     c.store.getState().setMissionPrompt(true);
     await dispatchKey({ type: 'openFleets' }, c);
     expect(c.store.getState()).toMatchObject({ fleetPicker: 'menu', missionPrompt: false });
-    await dispatchKey({ type: 'newCharacter' }, c);
-    expect(c.store.getState()).toMatchObject({ fleetPicker: undefined, namingCharacter: true });
+    await dispatchKey({ type: 'newRobot' }, c);
+    expect(c.store.getState()).toMatchObject({ fleetPicker: undefined, namingRobot: true });
   });
   it('the fleet picker from the menu stops a shortcut row waiting under it', () => {
     const c = ctx();
@@ -60,135 +60,135 @@ describe('dispatchKey', () => {
     openFleetPicker(c.store);
     expect(c.store.getState()).toMatchObject({ fleetPicker: 'menu', settingsOpen: true, capturingKey: undefined });
   });
-  it('Cmd+W asks before closing the selected character, and takes the other dialogs down', async () => {
+  it('Cmd+W asks before closing the selected robot, and takes the other dialogs down', async () => {
     const c = ctx();
     c.store.getState().select('c0');
     c.store.getState().setMissionPrompt(true);
-    await dispatchKey({ type: 'closeCharacter' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
     expect(c.calls).toEqual([]);
-    expect(c.store.getState()).toMatchObject({ closingCharacter: 'c0', missionPrompt: false, selectedId: 'c0' });
-    await dispatchKey({ type: 'newCharacter' }, c);
-    expect(c.store.getState()).toMatchObject({ closingCharacter: undefined, namingCharacter: true });
+    expect(c.store.getState()).toMatchObject({ closingRobot: 'c0', missionPrompt: false, selectedId: 'c0' });
+    await dispatchKey({ type: 'newRobot' }, c);
+    expect(c.store.getState()).toMatchObject({ closingRobot: undefined, namingRobot: true });
   });
   it('with the machines panel or the handover sheet up, no key opens a dialog beneath it', async () => {
     for (const open of [(c: ReturnType<typeof ctx>) => c.store.getState().toggleHost(true), (c: ReturnType<typeof ctx>) => c.store.getState().toggleHandover(true)]) {
       const c = ctx();
       c.store.getState().select('c0');
       open(c);
-      await dispatchKey({ type: 'closeCharacter' }, c);
-      await dispatchKey({ type: 'closeCharacter' }, c);
-      await dispatchKey({ type: 'newCharacter' }, c);
+      await dispatchKey({ type: 'closeRobot' }, c);
+      await dispatchKey({ type: 'closeRobot' }, c);
+      await dispatchKey({ type: 'newRobot' }, c);
       await dispatchKey({ type: 'missionControl' }, c);
       await dispatchKey({ type: 'openFleets' }, c);
       expect(c.calls).toEqual([]);
-      expect(c.store.getState()).toMatchObject({ closingCharacter: undefined, namingCharacter: false, missionPrompt: false, selectedId: 'c0' });
+      expect(c.store.getState()).toMatchObject({ closingRobot: undefined, namingRobot: false, missionPrompt: false, selectedId: 'c0' });
       expect(c.store.getState().fleetPicker).toBeUndefined();
       expect(c.store.getState().hostOpen || c.store.getState().handoverOpen).toBe(true);
     }
   });
-  it('a confirmed close moves on to the next character', async () => {
+  it('a confirmed close moves on to the next robot', async () => {
     const c = ctx();
     c.store.getState().select('c0');
-    await closeCharacter(c, 'c0');
-    expect(c.calls).toEqual([{ method: 'char.close', params: { id: 'c0' } }]);
+    await closeRobot(c, 'c0');
+    expect(c.calls).toEqual([{ method: 'robot.close', params: { id: 'c0' } }]);
     expect(c.store.getState().selectedId).toBe('c1');
   });
-  it('closing a character other than the current one stays where it is, on the map and on the board', async () => {
+  it('closing a robot other than the current one stays where it is, on the map and on the board', async () => {
     const c = ctx();
     c.store.getState().select('c2');
-    await closeCharacter(c, 'c0');
+    await closeRobot(c, 'c0');
     expect(c.store.getState().selectedId).toBe('c2');
     c.store.getState().focus('c2');
     c.store.getState().setView('board');
-    await closeCharacter(c, 'c1');
+    await closeRobot(c, 'c1');
     expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c2', focusedId: 'c2' });
-    expect(c.calls).toEqual([{ method: 'char.close', params: { id: 'c0' } }, { method: 'char.close', params: { id: 'c1' } }]);
+    expect(c.calls).toEqual([{ method: 'robot.close', params: { id: 'c0' } }, { method: 'robot.close', params: { id: 'c1' } }]);
   });
-  it('Cmd+W on the board asks about the viewed character; confirmed, the board selects the next', async () => {
+  it('Cmd+W on the board asks about the viewed robot; confirmed, the board selects the next', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
     c.store.getState().setView('board');
-    await dispatchKey({ type: 'closeCharacter' }, c);
-    expect(c.store.getState().closingCharacter).toBe('c0');
-    await closeCharacter(c, 'c0');
-    expect(c.calls).toEqual([{ method: 'char.close', params: { id: 'c0' } }]);
+    await dispatchKey({ type: 'closeRobot' }, c);
+    expect(c.store.getState().closingRobot).toBe('c0');
+    await closeRobot(c, 'c0');
+    expect(c.calls).toEqual([{ method: 'robot.close', params: { id: 'c0' } }]);
     expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c1', sideCardOpen: true });
   });
-  it('a second Cmd+W deletes the character the dialog asks about', async () => {
+  it('a second Cmd+W deletes the robot the dialog asks about', async () => {
     const c = ctx();
     c.store.getState().select('c0');
-    await dispatchKey({ type: 'closeCharacter' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
     c.store.getState().select('c2');
-    await dispatchKey({ type: 'closeCharacter' }, c);
-    expect(c.calls).toEqual([{ method: 'char.close', params: { id: 'c0' } }]);
-    expect(c.store.getState().closingCharacter).toBeUndefined();
+    await dispatchKey({ type: 'closeRobot' }, c);
+    expect(c.calls).toEqual([{ method: 'robot.close', params: { id: 'c0' } }]);
+    expect(c.store.getState().closingRobot).toBeUndefined();
   });
   it('a delete confirmed by a second Cmd+W that svalld refuses says so', async () => {
     const c = ctx();
     c.api.call = () => Promise.reject(new Error('svalld offline'));
     c.store.getState().select('c0');
-    await dispatchKey({ type: 'closeCharacter' }, c);
-    await dispatchKey({ type: 'closeCharacter' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
     expect(c.store.getState().toast?.text).toBe('svalld offline');
   });
-  it('a character that vanishes takes its pending close with it', () => {
+  it('a robot that vanishes takes its pending close with it', () => {
     const c = ctx();
-    c.store.getState().setClosingCharacter('c0');
-    c.store.getState().applyPatch([{ op: 'remove', path: '/characters/c0' }]);
-    expect(c.store.getState().closingCharacter).toBeUndefined();
+    c.store.getState().setClosingRobot('c0');
+    c.store.getState().applyPatch([{ op: 'remove', path: '/robots/c0' }]);
+    expect(c.store.getState().closingRobot).toBeUndefined();
   });
   it('on the board the navigation chords move the selection and stay on the board', async () => {
     const c = ctx();
     c.store.getState().setView('board');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c0', sideCardOpen: true });
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().selectedId).toBe('c2');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState().selectedId).toBe('c0');
-    await dispatchKey({ type: 'prevCharacter' }, c);
-    await dispatchKey({ type: 'prevCharacter' }, c);
+    await dispatchKey({ type: 'prevRobot' }, c);
+    await dispatchKey({ type: 'prevRobot' }, c);
     expect(c.store.getState().selectedId).toBe('c1');
     expect(c.store.getState().view).toBe('board');
     await dispatchKey({ type: 'toggleView' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1' });
   });
-  it('walks a starred character on a collapsed island until the starred section folds', async () => {
+  it('walks a starred robot on a collapsed island until the starred section folds', async () => {
     const c = ctx();
     const f = fleet();
-    f.characters.c1.star = 0;
+    f.robots.c1.star = 0;
     f.islands.i_b.collapsed = true;
     c.store.getState().setFleet(f);
     c.store.getState().select('c2');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState().selectedId).toBe('c1');
     c.store.getState().setSection('sidebar.starred', { shut: true }, false);
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState().selectedId).toBe('c2');
   });
-  it('walks a starred character on its island row and on its Starred row', async () => {
+  it('walks a starred robot on its island row and on its Starred row', async () => {
     const c = ctx();
     const f = fleet();
-    f.characters.c0.star = 0;
+    f.robots.c0.star = 0;
     c.store.getState().setFleet(f);
     c.store.getState().select('c2');
-    const walk = async (type: 'nextCharacter' | 'prevCharacter') => { await dispatchKey({ type }, c); return c.store.getState().selectedId; };
-    expect(await walk('nextCharacter')).toBe('c0');
-    expect(await walk('nextCharacter')).toBe('c1');
-    expect(await walk('nextCharacter')).toBe('c0');
+    const walk = async (type: 'nextRobot' | 'prevRobot') => { await dispatchKey({ type }, c); return c.store.getState().selectedId; };
+    expect(await walk('nextRobot')).toBe('c0');
+    expect(await walk('nextRobot')).toBe('c1');
+    expect(await walk('nextRobot')).toBe('c0');
     expect(c.store.getState().starredRow).toBe('c0');
-    expect(await walk('nextCharacter')).toBe('c2');
+    expect(await walk('nextRobot')).toBe('c2');
     expect(c.store.getState().starredRow).toBeUndefined();
-    expect(await walk('prevCharacter')).toBe('c0');
-    expect(await walk('prevCharacter')).toBe('c1');
+    expect(await walk('prevRobot')).toBe('c0');
+    expect(await walk('prevRobot')).toBe('c1');
   });
   it('walks the whole fleet with the card open', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState()).toMatchObject({ focusedId: 'c1', card: 'c1' });
-    await dispatchKey({ type: 'prevCharacter' }, c);
-    await dispatchKey({ type: 'prevCharacter' }, c);
+    await dispatchKey({ type: 'prevRobot' }, c);
+    await dispatchKey({ type: 'prevRobot' }, c);
     expect(c.store.getState().focusedId).toBe('c2');
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().focusedId).toBe('c0');
@@ -249,7 +249,7 @@ describe('dispatchKey', () => {
 
   it('Cmd+L with nobody in view asks for nothing', async () => {
     const c = ctx();
-    c.store.getState().setFleet({ ...fleet(), characters: {} });
+    c.store.getState().setFleet({ ...fleet(), robots: {} });
     c.store.getState().setView('board');
     await dispatchKey({ type: 'focusAddress' }, c);
     expect(c.store.getState().addressFocus).toBe(false);
@@ -267,7 +267,7 @@ describe('dispatchKey', () => {
 
   const linked = (c: ReturnType<typeof ctx>, context: ContextItem[]) => {
     const f = fleet();
-    c.store.getState().setFleet({ ...f, characters: { ...f.characters, c1: { ...f.characters.c1, context } } });
+    c.store.getState().setFleet({ ...f, robots: { ...f.robots, c1: { ...f.robots.c1, context } } });
     const loads: unknown[][] = [];
     return { loads, keys: { ...c, browser: { load: (...a: unknown[]) => { loads.push(a); } } as unknown as BrowserManager } };
   };
@@ -282,7 +282,7 @@ describe('dispatchKey', () => {
     expect(panes(c)).toEqual({ left: 'terminal', right: 'browser' });
   });
 
-  it('Cmd+U on the map opens the card of the selected character to show the link', async () => {
+  it('Cmd+U on the map opens the card of the selected robot to show the link', async () => {
     const c = ctx();
     const { loads, keys } = linked(c, [item('pr', 'https://github.com/o/r/pull/1')]);
     c.store.getState().select('c1');
@@ -304,8 +304,8 @@ describe('dispatchKey', () => {
     const c = ctx(true);
     c.store.getState().setView('board');
     const f = fleet();
-    const id = Object.keys(f.characters)[0];
-    f.characters[id] = { ...f.characters[id], browser: { tabs: [{ id: 't_1', url: 'https://github.com/login', title: '' }], active: 't_1' } };
+    const id = Object.keys(f.robots)[0];
+    f.robots[id] = { ...f.robots[id], browser: { tabs: [{ id: 't_1', url: 'https://github.com/login', title: '' }], active: 't_1' } };
     c.store.getState().setFleet(f);
     c.store.getState().select(id);
     c.store.getState().setPanes('c1', { left: 'terminal', right: 'browser' });
@@ -346,7 +346,7 @@ describe('dispatchKey', () => {
     c.store.getState().setPanes('c1', { left: 'files', right: 'terminal' });
     await dispatchKey({ type: 'showPane', pane: 'terminal' }, c);
     expect(panes(c)).toEqual({ left: 'terminal', right: 'files' });
-    expect(c.calls.map((x) => x.method)).not.toContain('char.second');
+    expect(c.calls.map((x) => x.method)).not.toContain('robot.second');
   });
 
   it('closing the side card refocuses the surface only while a terminal is up', async () => {
@@ -415,7 +415,7 @@ describe('installKeyHandlers', () => {
     // a settings change that leaves the chords alone says nothing
     c.store.getState().setSettings({ zoom: 1.1 });
     expect(c.sent).toEqual([]);
-    c.store.getState().setSettings({ bindings: { nextCharacter: 'cmd+y' } });
+    c.store.getState().setSettings({ bindings: { nextRobot: 'cmd+y' } });
     const chords = (c.sent.at(-1) as { chords: string[] }).chords;
     expect(chords).toContain('cmd+y');
     expect(chords).not.toContain('cmd+j');
@@ -477,13 +477,13 @@ describe('installKeyHandlers', () => {
     listeners.keydown({ key: 'Enter', target: { tagName: 'BUTTON' }, preventDefault: kept } as unknown as KeyboardEvent);
     expect(kept).not.toHaveBeenCalled();
   });
-  it('on the board the navigation chords remember the character as the focus', async () => {
+  it('on the board the navigation chords remember the robot as the focus', async () => {
     const c = ctx();
     c.store.getState().setView('board');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c0', focusedId: 'c0', card: undefined });
   });
-  it('Escape on the board closes the side card and keeps the viewed character', () => {
+  it('Escape on the board closes the side card and keeps the viewed robot', () => {
     const c = ctx(true);
     const listeners: Record<string, (e: KeyboardEvent) => void> = {};
     const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
@@ -527,36 +527,36 @@ describe('dispatchKey on the map', () => {
   it('navigation moves the selection and the card follows when open', async () => {
     const c = ctx();
     c.store.getState().select('c0');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1', card: undefined });
     c.store.getState().focus('c1');
-    await dispatchKey({ type: 'prevCharacter' }, c);
+    await dispatchKey({ type: 'prevRobot' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c0', card: 'c0' });
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().card).toBe('c2');
   });
-  it('from an island picked on the map the keys start at its first character', async () => {
+  it('from an island picked on the map the keys start at its first robot', async () => {
     const c = ctx();
     c.store.getState().focus('c1');
     c.store.getState().closeCard();
     c.store.getState().selectIsland('i_b');
-    await dispatchKey({ type: 'nextCharacter' }, c);
+    await dispatchKey({ type: 'nextRobot' }, c);
     expect(c.store.getState().selectedId).toBe('c0');
     c.store.getState().selectIsland('i_b');
-    await dispatchKey({ type: 'prevCharacter' }, c);
+    await dispatchKey({ type: 'prevRobot' }, c);
     expect(c.store.getState().selectedId).toBe('c2');
   });
-  it('Cmd+W closes the card first, then the selected character', async () => {
+  it('Cmd+W closes the card first, then the selected robot', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
-    await dispatchKey({ type: 'closeCharacter' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
     expect(c.store.getState().card).toBeUndefined();
     expect(c.calls).toEqual([]);
-    await dispatchKey({ type: 'closeCharacter' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
     expect(c.calls).toEqual([]);
-    expect(c.store.getState().closingCharacter).toBe('c0');
+    expect(c.store.getState().closingRobot).toBe('c0');
   });
-  it('Cmd+M toggles the map and the board; the board returns to the map with its character in the card', async () => {
+  it('Cmd+M toggles the map and the board; the board returns to the map with its robot in the card', async () => {
     const c = ctx();
     c.store.getState().select('c1');
     await dispatchKey({ type: 'toggleView' }, c);
@@ -564,7 +564,7 @@ describe('dispatchKey on the map', () => {
     c.store.getState().setPanes('c1', { left: 'files', right: 'browser' });
     await dispatchKey({ type: 'toggleView' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1', card: 'c1' });
-    // the character's panes come to the map as the board left them
+    // the robot's panes come to the map as the board left them
     expect(panesOf(c.store.getState(), 'c1')).toEqual({ left: 'files', right: 'browser' });
     const empty = ctx();
     empty.store.getState().setFleet(emptyState());
@@ -582,7 +582,7 @@ describe('dispatchKey on the map', () => {
   it('steps over a collapsed home without opening it', async () => {
     const c = ctx();
     const f = fleet();
-    f.characters.ch = chr('ch', 'home', { x: 1, y: 1 });
+    f.robots.ch = chr('ch', 'home', { x: 1, y: 1 });
     f.islands.home.collapsed = true;
     c.store.getState().setFleet(f);
     c.store.getState().setView('map');
@@ -619,7 +619,7 @@ describe('dispatchKey on the map', () => {
     await dispatchKey({ type: 'toggleResources' }, c);
     expect(c.store.getState().resourcesOpen).toBe(false);
   });
-  it('Enter on the open resources shelf leaves the character behind it shut', () => {
+  it('Enter on the open resources shelf leaves the robot behind it shut', () => {
     const c = ctx(true);
     const listeners: Record<string, (e: KeyboardEvent) => void> = {};
     const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
@@ -632,14 +632,14 @@ describe('dispatchKey on the map', () => {
     listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
     expect(c.store.getState().card).toBe('c1');
   });
-  it('Enter under the link popup or a corner panel leaves the character behind it shut', () => {
+  it('Enter under the link popup or a corner panel leaves the robot behind it shut', () => {
     const c = ctx(true);
     const listeners: Record<string, (e: KeyboardEvent) => void> = {};
     const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
     installKeyHandlers(c, win);
     const enter = () => listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
     c.store.getState().select('c1', false);
-    c.store.getState().askLink({ url: 'https://example.com', charId: 'c1', x: 0, y: 0 });
+    c.store.getState().askLink({ url: 'https://example.com', robotId: 'c1', x: 0, y: 0 });
     enter();
     c.store.getState().closeLinkAsk();
     c.store.getState().toggleUsage(true);

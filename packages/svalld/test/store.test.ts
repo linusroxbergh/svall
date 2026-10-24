@@ -151,7 +151,7 @@ describe('Store', () => {
     fs.writeFileSync(file, '{not json');
     const logs: string[] = [];
     const s = Store.load(file, (m) => logs.push(m));
-    expect(s.state.characters).toEqual({});
+    expect(s.state.robots).toEqual({});
     expect(fs.readdirSync(home).some((f) => f.startsWith('state.json.broken-'))).toBe(true);
     expect(logs[0]).toMatch(/unreadable/);
   });
@@ -159,21 +159,21 @@ describe('Store', () => {
   it('refuses a file from a newer svalld and leaves it in place', () => {
     const home = makeHome();
     const file = path.join(home, 'state.json');
-    const newer = JSON.stringify({ version: 10, islands: {}, characters: {} });
+    const newer = JSON.stringify({ version: 11, islands: {}, robots: {} });
     fs.writeFileSync(file, newer);
-    expect(() => Store.load(file, () => {})).toThrow(/version 10.*newer.*update svall/);
+    expect(() => Store.load(file, () => {})).toThrow(/version 11.*newer.*update svall/);
     expect(fs.readdirSync(home)).toEqual(['state.json']);
     expect(fs.readFileSync(file, 'utf8')).toBe(newer);
   });
 
-  it('lifts a version 7 or 8 file to 9, keeping the file as read beside it', () => {
-    for (const version of [7, 8]) {
+  it('lifts a version 7, 8 or 9 file to 10, keeping the file as read beside it', () => {
+    for (const version of [7, 8, 9]) {
       const home = makeHome();
       const file = path.join(home, 'state.json');
       const before = JSON.stringify({ version, islands: {}, characters: {} });
       fs.writeFileSync(file, before);
-      expect(Store.load(file, () => {}).state.version).toBe(9);
-      expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(9);
+      expect(Store.load(file, () => {}).state.version).toBe(10);
+      expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(10);
       const kept = fs.readdirSync(home).find((f) => f.startsWith(`state.json.v${version}-`));
       expect(fs.readFileSync(path.join(home, kept!), 'utf8')).toBe(before);
     }
@@ -196,39 +196,39 @@ describe('Store', () => {
     fs.writeFileSync(file, before);
     const logs: string[] = [];
     Store.load(file, (m) => logs.push(m));
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(9);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(10);
     expect(logs[0]).toMatch(/migrated/);
     const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.v7-'));
     expect(kept).toBeDefined();
     expect(fs.readFileSync(path.join(home, kept!), 'utf8')).toBe(before);
   });
 
-  it('leaves out a character the schema rejects, keeps the file as read beside the rest, and writes the rest back', () => {
+  it('leaves out a robot the schema rejects, keeps the file as read beside the rest, and writes the rest back', () => {
     const home = makeHome();
     const file = path.join(home, 'state.json');
     const island = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    const char = (id: string) => ({ id, islandId: 'i_1', cell: { x: 1, y: 1 }, name: id, portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false });
-    const before = JSON.stringify({ version: 9, islands: { i_1: island }, characters: { c_good: char('c_good'), c_bad: { ...char('c_bad'), agent: { kind: 'gemini' } } } });
+    const robot = (id: string) => ({ id, islandId: 'i_1', cell: { x: 1, y: 1 }, name: id, portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false });
+    const before = JSON.stringify({ version: 10, islands: { i_1: island }, robots: { c_good: robot('c_good'), c_bad: { ...robot('c_bad'), agent: { kind: 'gemini' } } } });
     fs.writeFileSync(file, before);
     const logs: string[] = [];
     const s = Store.load(file, (m) => logs.push(m));
-    expect(Object.keys(s.state.characters)).toEqual(['c_good']);
-    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).characters)).toEqual(['c_good']);
+    expect(Object.keys(s.state.robots)).toEqual(['c_good']);
+    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).robots)).toEqual(['c_good']);
     const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.broken-'));
     expect(kept).toBeDefined();
     expect(fs.readFileSync(path.join(home, kept!), 'utf8')).toBe(before);
-    expect(logs.join('\n')).toMatch(/character c_bad: agent/);
+    expect(logs.join('\n')).toMatch(/robot c_bad: agent/);
   });
 });
 
 const island = (id: string) => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 });
 
 describe('Store.update', () => {
-  it('writes no character the schema would refuse, and leaves the fleet as every listener last saw it', () => {
+  it('writes no robot the schema would refuse, and leaves the fleet as every listener last saw it', () => {
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
     s.update((d) => {
-      d.characters.c_1 = {
+      d.robots.c_1 = {
         id: 'c_1', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', note: '', portrait: 'fox', instructions: '', cwd: '/w', context: [],
         shell: { lastOutputAt: 0 }, unread: false,
       };
@@ -236,10 +236,10 @@ describe('Store.update', () => {
     const written = fs.readFileSync(file, 'utf8');
     const seen: unknown[] = [];
     s.subscribe((ops) => seen.push(...ops));
-    expect(() => s.update((d) => { d.characters.c_2 = { ...d.characters.c_1, id: 'c_2', name: undefined as never, cwd: undefined as never }; })).toThrow(/c_2/);
-    expect(() => s.update((d) => { delete (d.characters.c_1 as { cwd?: string }).cwd; })).toThrow(/c_1/);
+    expect(() => s.update((d) => { d.robots.c_2 = { ...d.robots.c_1, id: 'c_2', name: undefined as never, cwd: undefined as never }; })).toThrow(/c_2/);
+    expect(() => s.update((d) => { delete (d.robots.c_1 as { cwd?: string }).cwd; })).toThrow(/c_1/);
     expect(fs.readFileSync(file, 'utf8')).toBe(written);
-    expect(Object.keys(s.state.characters)).toEqual(['c_1']);
+    expect(Object.keys(s.state.robots)).toEqual(['c_1']);
     expect(seen).toEqual([]);
   });
 });

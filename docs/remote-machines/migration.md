@@ -94,7 +94,7 @@ and configuration code differs from 0.5.1's only by optional state fields.
    That takes the newest kept copy. Going back to a release before OpenCode support (0.3.x or earlier) after
    upgrading through 0.5 or later, copy the newest `state.json.v7-*` instead.
 
-   The fleet comes back as it was when you upgraded. Islands, characters and notes changed since are lost, and so is
+   The fleet comes back as it was when you upgraded. Islands, robots and notes changed since are lost, and so is
    any setting changed since in `fleet.json` or `node.json`, unless you copy it into `config.json`. A fleet first made
    on this release has no kept copies, and the older build cannot open it; move its fleet home aside instead.
 
@@ -107,16 +107,16 @@ A Linux machine you set up can stay as it is; the older build never contacts it.
 
 To keep what changed since the upgrade instead of going back to the kept copy, set `"version": 9` at the top of
 `state.json` to `8` in step 3 rather than copying a kept one. Svall 0.5.1 read this release's state that way in the
-same test; 0.12.0's schema has stars and robots as well. The older build leaves out any island or character it cannot
-read, and keeps the file as it read it beside `state.json` as `state.json.broken-<time>`. A character whose second
+same test; 0.12.0's schema has stars and robots as well. The older build leaves out any island or robot it cannot
+read, and keeps the file as it read it beside `state.json` as `state.json.broken-<time>`. A robot whose second
 terminal is dormant (a `second` with no `tmux`) is one, since the older build has no dormant second terminal; remove
-each such `second` as you relabel, and the character comes back without it:
+each such `second` as you relabel, and the robot comes back without it:
 
 ```sh
-jq '.version = 8 | del(.characters[].second | select(.tmux == null))' state.json > state.json.8 && mv state.json.8 state.json
+jq '.version = 8 | del(.robots[].second | select(.tmux == null))' state.json > state.json.8 && mv state.json.8 state.json
 ```
 
-For a release before OpenCode support, relabel to `7` instead. That release also leaves out every OpenCode character,
+For a release before OpenCode support, relabel to `7` instead. That release also leaves out every OpenCode robot,
 which it cannot read; Svall 0.3.2 started the rest of the fleet that way.
 
 ### Upgrading again

@@ -20,7 +20,7 @@ not copy credentials, user settings, plugins or real conversations into this rep
 - A `SessionStart` hook received `session_id` and `transcript_path`; the latter pointed to an
   existing `<config>/projects/<cwd-slug>/<uuid>.jsonl`. The hook run used `--setting-sources project`
   plus an explicit disposable `--settings` hook, so the user's normal hooks were not required.
-- For this version, the project slug replaced non-alphanumeric cwd characters with `-`.
+- For this version, the project slug replaced non-alphanumeric cwd robots with `-`.
 - A completed `Agent` call produced
   `<project>/<uuid>/subagents/agent-*.jsonl` and a matching `agent-*.meta.json`. Those were copied.
   No `sessions-index.json` or file-history content was created by this disposable session, although

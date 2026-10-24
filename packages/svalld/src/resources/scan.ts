@@ -13,23 +13,23 @@ import { hooks, mcpServers, plugins, type Parsed } from './parse.js';
 
 export const rootIdOf = (root: string): string => `r:${root}`;
 
-type FleetRoot = { root: string; islandIds: string[]; characterIds: string[] };
+type FleetRoot = { root: string; islandIds: string[]; robotIds: string[] };
 
 /** The folders the fleet works in, a worktree counted as its repository, mission control left out. */
 export function fleetRoots(state: FleetState): FleetRoot[] {
   const by = new Map<string, FleetRoot>();
-  for (const c of Object.values(state.characters)) {
+  for (const c of Object.values(state.robots)) {
     const root = repoRootOf(c);
     if (root === undefined) continue;
-    const r = by.get(root) ?? { root, islandIds: [], characterIds: [] };
+    const r = by.get(root) ?? { root, islandIds: [], robotIds: [] };
     if (!r.islandIds.includes(c.islandId)) r.islandIds.push(c.islandId);
-    r.characterIds.push(c.id);
+    r.robotIds.push(c.id);
     by.set(root, r);
   }
-  return [...by.values()].map((r) => ({ ...r, islandIds: r.islandIds.sort(), characterIds: r.characterIds.sort() })).sort((a, b) => a.root.localeCompare(b.root));
+  return [...by.values()].map((r) => ({ ...r, islandIds: r.islandIds.sort(), robotIds: r.robotIds.sort() })).sort((a, b) => a.root.localeCompare(b.root));
 }
 
-// <docs>/islands/<id>, <docs>/characters/<id> or <docs>/repos/<slug>, for an entity the fleet has or a slug folder on disk;
+// <docs>/islands/<id>, <docs>/robots/<id> or <docs>/repos/<slug>, for an entity the fleet has or a slug folder on disk;
 // the folder may itself be a link out of the tree, so it is judged by where its closest existing ancestor really is
 function isDocsRoot(root: string, state: FleetState, docs: string): boolean {
   // the fleet's own folder names no entity, so it is known by its place alone
@@ -37,7 +37,7 @@ function isDocsRoot(root: string, state: FleetState, docs: string): boolean {
   const [tree, id, ...rest] = path.relative(docs, root).split(path.sep);
   if (rest.length || !id || root !== path.join(docs, tree, id)) return false;
   const known = tree === 'islands' ? Object.hasOwn(state.islands, id)
-    : tree === 'characters' ? Object.hasOwn(state.characters, id)
+    : tree === 'robots' ? Object.hasOwn(state.robots, id)
     : tree === 'repos' && (fleetRoots(state).some((r) => repoSlug(r.root) === id) || fs.statSync(root, { throwIfNoEntry: false })?.isDirectory() === true);
   if (!known) return false;
   const real = realOf(root), realDocs = realOf(docs);
@@ -52,12 +52,12 @@ export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths,
   return docs !== undefined && isDocsRoot(root, state, docs) ? root : undefined;
 }
 
-/** The folder a workspace id names: a resource root when the id is one, else the character's own folder. */
+/** The folder a workspace id names: a resource root when the id is one, else the robot's own folder. */
 export function workspaceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): string {
   const res = resourceRoot(id, state, claude, codex, docs, agentProfiles);
   if (res) return res;
-  if (!Object.hasOwn(state.characters, id)) throw new NotFound(`no character ${id}`);
-  const c = state.characters[id];
+  if (!Object.hasOwn(state.robots, id)) throw new NotFound(`no robot ${id}`);
+  const c = state.robots[id];
   return c.repo?.root ?? c.cwd;
 }
 
@@ -197,7 +197,7 @@ export function codexSource(codex: CodexPaths): ResourceSource | undefined {
     ['hooks', hookItems(b, ['hooks.json'])],
     ['settings', config instanceof Error ? [{ ...fileItem(b, 'config.toml'), error: config.message }, ...files(b, ['hooks.json'])] : files(b, ['config.toml', 'hooks.json'])],
   ]);
-  return groups.length ? { ...b, name: 'Codex', tier: 'global' as const, islandIds: [], characterIds: [], groups } : undefined;
+  return groups.length ? { ...b, name: 'Codex', tier: 'global' as const, islandIds: [], robotIds: [], groups } : undefined;
 }
 
 // what it reveals, and then the place it opens at or its own name, tell two rows of a kind apart even when they share a file
@@ -220,7 +220,7 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
   const projects = (claudeJson.projects && typeof claudeJson.projects === 'object' ? claudeJson.projects : {}) as Record<string, { mcpServers?: unknown } | undefined>;
 
   const everywhere: ResourceSource = {
-    ...user, name: 'Claude', tier: 'global', islandIds: [], characterIds: [],
+    ...user, name: 'Claude', tier: 'global', islandIds: [], robotIds: [],
     groups: groupsOf([
       ['instructions', files(user, ['CLAUDE.md'])],
       ['skills', skills(user, 'skills')],
@@ -249,37 +249,37 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
       ['settings', files(b, ['.claude/settings.json', '.claude/settings.local.json', '.codex/config.toml', '.codex/hooks.json'])],
       ['autoMemory', entries(path.join(claude.dir, memory)).filter((d) => d.name.endsWith('.md')).map((d) => fileItem(user, `${memory}/${d.name}`))],
     ]);
-    return { ...b, name: path.basename(r.root), tier: 'repo', ...(folder && { docs: rootIdOf(folder) }), islandIds: r.islandIds, characterIds: r.characterIds, groups };
+    return { ...b, name: path.basename(r.root), tier: 'repo', ...(folder && { docs: rootIdOf(folder) }), islandIds: r.islandIds, robotIds: r.robotIds, groups };
   });
 
-  // the fleet's own docs, read by every character in this fleet and by no other, and the agent profiles its characters pick from;
+  // the fleet's own docs, read by every robot in this fleet and by no other, and the agent profiles its robots pick from;
   // both sit in the fleet's home
   const fleet = docs === undefined ? [] : [((): ResourceSource => {
     const dir = fleetDir(docs);
     const profiles = agentProfiles === undefined ? {} : { agentProfiles: rootIdOf(agentProfiles) };
     const groups = groupsOf([['docs', docRows(dir)], ['agentProfiles', agentProfiles === undefined ? [] : agentProfileRows(agentProfiles)]]);
-    return { rootId: rootIdOf(dir), root: dir, name: state.name ?? profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), ...profiles, islandIds: [], characterIds: [], groups };
+    return { rootId: rootIdOf(dir), root: dir, name: state.name ?? profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), ...profiles, islandIds: [], robotIds: [], groups };
   })()];
 
-  const entity = (tier: 'island' | 'character', id: string, name: string, islandIds: string[], characterIds: string[]): ResourceSource[] => {
+  const entity = (tier: 'island' | 'robot', id: string, name: string, islandIds: string[], robotIds: string[]): ResourceSource[] => {
     if (!docs) return [];
     const dir = docsDir(docs, tier, id);
-    return [{ rootId: rootIdOf(dir), root: dir, name, tier, docs: rootIdOf(dir), islandIds, characterIds, groups: groupsOf([['docs', docRows(dir)]]) }];
+    return [{ rootId: rootIdOf(dir), root: dir, name, tier, docs: rootIdOf(dir), islandIds, robotIds, groups: groupsOf([['docs', docRows(dir)]]) }];
   };
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-  const crew = Object.values(state.characters);
+  const crew = Object.values(state.robots);
   const islands = Object.values(state.islands).sort(byName)
     .flatMap((i) => entity('island', i.id, i.name, [i.id], crew.filter((c) => c.islandId === i.id).map((c) => c.id).sort()));
-  const characters = [...crew].sort(byName).flatMap((c) => entity('character', c.id, c.name, [c.islandId], [c.id]));
+  const robots = [...crew].sort(byName).flatMap((c) => entity('robot', c.id, c.name, [c.islandId], [c.id]));
 
   // a slug nobody stands in any more cannot be traced to a checkout, so its source is its docs folder
   const slugs = new Set(roots.map((r) => repoSlug(r.root)));
   const orphans = docs === undefined ? [] : entries(path.join(docs, 'repos')).filter((d) => d.isDirectory() && !slugs.has(d.name)).flatMap((d): ResourceSource[] => {
     const dir = path.join(docs, 'repos', d.name);
     const groups = groupsOf([['docs', docRows(dir)]]);
-    return groups.length ? [{ rootId: rootIdOf(dir), root: dir, name: d.name, tier: 'repo', docs: rootIdOf(dir), islandIds: [], characterIds: [], groups }] : [];
+    return groups.length ? [{ rootId: rootIdOf(dir), root: dir, name: d.name, tier: 'repo', docs: rootIdOf(dir), islandIds: [], robotIds: [], groups }] : [];
   });
 
   const everywhereCodex = codex && codexSource(codex);
-  return [everywhere, ...(everywhereCodex ? [everywhereCodex] : []), ...fleet, ...repos, ...orphans, ...islands, ...characters];
+  return [everywhere, ...(everywhereCodex ? [everywhereCodex] : []), ...fleet, ...repos, ...orphans, ...islands, ...robots];
 }

@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 
-export type LiveProc = { pid: number; ppid: number; start: number; cpuNs: number; mem: number; resp?: number; path: string; args: string; char?: string; home?: string };
+export type LiveProc = { pid: number; ppid: number; start: number; cpuNs: number; mem: number; resp?: number; path: string; args: string; robot?: string; home?: string };
 
 /** The helper's `procs` output; undefined when it is empty (an older helper) or not that JSON. */
 export function parseHelper(out: string): LiveProc[] | undefined {

@@ -105,7 +105,7 @@ real(`relocationBlockers${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { ti
     const gitDir = path.join(l.home, 'app.git');
     git(l.base, l.home, 'init', '-q', '--separate-git-dir', gitDir, app);
     const g: GitGraph = {
-      id: 'g_app', commonDir: gitDir, main: { path: app, gitDir, head: null, branch: 'refs/heads/main', status: [], index: 'a'.repeat(64), characters: [] },
+      id: 'g_app', commonDir: gitDir, main: { path: app, gitDir, head: null, branch: 'refs/heads/main', status: [], index: 'a'.repeat(64), robots: [] },
       worktrees: [], unused: [], stash: [],
     };
     expect((await relocationBlockers([g], { from: l.home, to: LINUX }, runGit)).map((b) => b.message)).toEqual([

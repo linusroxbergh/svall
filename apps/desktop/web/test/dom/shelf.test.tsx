@@ -33,18 +33,18 @@ test('a press on the map closes the shelf', async () => {
 });
 
 test('a note half typed in the shelf is saved by the press that closes it', async () => {
-  store.getState().showResourceField({ tier: 'character', id: 'c0', field: 'note' });
+  store.getState().showResourceField({ tier: 'robot', id: 'c0', field: 'note' });
   render(<OnMap />);
   await act(async () => {});
   const note = screen.getByTestId('resources-field') as HTMLTextAreaElement;
   note.focus();
   fireEvent.change(note, { target: { value: 'half a thought' } });
   act(() => { fireEvent.pointerDown(document.querySelector('.map-sea')!); });
-  expect(call).toHaveBeenCalledWith('char.update', { id: 'c0', note: 'half a thought' });
+  expect(call).toHaveBeenCalledWith('robot.update', { id: 'c0', note: 'half a thought' });
 });
 
 test('the shelf chord saves a half typed note before the shelf closes', async () => {
-  store.getState().showResourceField({ tier: 'character', id: 'c0', field: 'note' });
+  store.getState().showResourceField({ tier: 'robot', id: 'c0', field: 'note' });
   render(<OnMap />);
   await act(async () => {});
   const note = screen.getByTestId('resources-field') as HTMLTextAreaElement;
@@ -52,14 +52,14 @@ test('the shelf chord saves a half typed note before the shelf closes', async ()
   fireEvent.change(note, { target: { value: 'half a thought' } });
   await act(() => dispatchKey({ type: 'toggleResources' }, { store, api: { call } as never, bridge }));
   expect(store.getState().resourcesOpen).toBe(false);
-  expect(call).toHaveBeenCalledWith('char.update', { id: 'c0', note: 'half a thought' });
+  expect(call).toHaveBeenCalledWith('robot.update', { id: 'c0', note: 'half a thought' });
 });
 
-test('the character keys leave the keys with the shelf', async () => {
+test('the robot keys leave the keys with the shelf', async () => {
   render(<OnMap />);
   await act(async () => {});
   expect(document.activeElement).toBe(screen.getByTestId('resources-shelf'));
-  await act(() => dispatchKey({ type: 'nextCharacter' }, { store, api: { call } as never, bridge }));
+  await act(() => dispatchKey({ type: 'nextRobot' }, { store, api: { call } as never, bridge }));
   expect(document.activeElement).toBe(screen.getByTestId('resources-shelf'));
 });
 
@@ -81,7 +81,7 @@ test('scrolling inside the shelf leaves the map where it is', async () => {
 });
 
 test('the new doc field stands until Enter or Escape, and a refused name keeps its text', async () => {
-  const src = { rootId: 'r:/d/islands/i0', root: '/d/islands/i0', name: 'isle', tier: 'island' as const, docs: 'r:/d/islands/i0', islandIds: ['i0'], characterIds: [], groups: [] };
+  const src = { rootId: 'r:/d/islands/i0', root: '/d/islands/i0', name: 'isle', tier: 'island' as const, docs: 'r:/d/islands/i0', islandIds: ['i0'], robotIds: [], groups: [] };
   call.mockImplementation((m: string) => (m === 'resources.get' ? Promise.resolve({ sources: [src] })
     : m === 'docs.create' ? Promise.reject(new Error('taken.md is already there')) : Promise.resolve({})));
   store.getState().setResources([src]);
@@ -107,7 +107,7 @@ test('a skill, an agent, a command and a memory file each offer a delete that Un
   const C = 'r:/u/.claude';
   const row = (kind: string, name: string, path: string, folder?: string) =>
     ({ id: `${kind}:${name}`, name, reveal: `/u/.claude/${folder ?? path}`, target: folder ? 'folder' as const : 'file' as const, open: { rootId: C, path, ...(folder && { folder }) } });
-  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], robotIds: [], groups: [
     { kind: 'instructions' as const, items: [row('instructions', 'CLAUDE.md', 'CLAUDE.md')] },
     { kind: 'skills' as const, items: [row('skills', 'tidy', 'skills/tidy/SKILL.md', 'skills/tidy')] },
     { kind: 'agents' as const, items: [row('agents', 'critic', 'agents/critic.md')] },
@@ -176,7 +176,7 @@ test('the grip drags the shelf from its corner and the size is kept once it is l
 const twoFiles = () => {
   const C = 'r:/u/.claude';
   const row = (name: string) => ({ id: `instructions:${name}`, name, reveal: `/u/.claude/${name}`, target: 'file' as const, open: { rootId: C, path: name } });
-  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [{ kind: 'instructions' as const, items: [row('CLAUDE.md'), row('AGENTS.md')] }] };
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], robotIds: [], groups: [{ kind: 'instructions' as const, items: [row('CLAUDE.md'), row('AGENTS.md')] }] };
   call.mockImplementation((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: '/u/.claude' } : {}));
   store.getState().setResources([src]);
   store.getState().toggleResources(true, { where: C, what: 'all' });
@@ -210,7 +210,7 @@ test('a row the pointer picks still hands the keys to its file', async () => {
 
 test('a file the list opens on its own under a chip leaves nothing behind that a later Enter pick would trip on', async () => {
   const C = 'r:/u/.claude';
-  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], robotIds: [], groups: [
     { kind: 'instructions' as const, items: [{ id: 'instructions:CLAUDE.md', name: 'CLAUDE.md', reveal: '/u/.claude/CLAUDE.md', target: 'file' as const, open: { rootId: C, path: 'CLAUDE.md' } }] },
     { kind: 'skills' as const, items: [{ id: 'skills:tidy', name: 'tidy', reveal: '/u/.claude/skills/tidy', target: 'folder' as const, open: { rootId: C, path: 'skills/tidy/SKILL.md', folder: 'skills/tidy' } }] },
   ] };

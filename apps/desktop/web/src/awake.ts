@@ -5,7 +5,7 @@ import { slotStatus, wantsUser } from './selectors.js';
 import type { KeepAwake } from './settings.js';
 import type { AppStore } from './store/index.js';
 
-// how long the Mac stays awake for a shell left running, a character waiting on the user or a phone, after an agent last did something
+// how long the Mac stays awake for a shell left running, a robot waiting on the user or a phone, after an agent last did something
 export const AWAKE_WINDOW_MS = 30 * 60_000;
 
 // shells: agents whose turn ended with only shells running on. since: when an agent last did something or a phone came on
@@ -13,7 +13,7 @@ export type Need = { working: number; shells: number; waiting: number; phones: n
 
 export function needOf(f: FleetState, phones: PhoneSession[]): Need {
   const need = { working: 0, shells: 0, waiting: 0, phones: phones.length, since: 0 };
-  for (const c of Object.values(f.characters)) {
+  for (const c of Object.values(f.robots)) {
     for (const term of [1, 2] as const) {
       const a = term === 1 ? c.agent : c.second?.agent;
       if (!a) continue;
@@ -31,7 +31,7 @@ const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 // a server or watcher may run for days, so it holds only for the window, as what waits on the user does
 function windowReason(need: Need, mode: KeepAwake): string | undefined {
-  if (mode === 'needs' && need.waiting) return `${count(need.waiting, 'character')} waiting on you`;
+  if (mode === 'needs' && need.waiting) return `${count(need.waiting, 'robot')} waiting on you`;
   if (need.shells) return `${count(need.shells, 'agent')} with a shell running`;
   if (mode === 'needs' && need.phones) return `${count(need.phones, 'phone')} connected`;
   return undefined;

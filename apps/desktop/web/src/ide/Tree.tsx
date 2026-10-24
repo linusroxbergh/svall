@@ -6,7 +6,7 @@ import { useApp } from '../hooks.js';
 type Props = { id: string; dir: string; depth: number; tick: number; onOpen(path: string): void };
 
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
-// one array for every character with nothing open: a selector must answer the same thing twice
+// one array for every robot with nothing open: a selector must answer the same thing twice
 const NONE: string[] = [];
 
 /** One folder's rows; a folder row holds its own Tree once expanded. */

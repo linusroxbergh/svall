@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// a character's portrait name: a new character takes one no one else wears, and the name picks its default robot
+// a robot's portrait name: a new robot takes one no one else wears, and the name picks its default figure
 export const PORTRAITS = [
   'bat', 'bear', 'beaver', 'camel', 'cat', 'chameleon',
   'cheetah', 'cow', 'deer', 'duck', 'eagle', 'elephant',

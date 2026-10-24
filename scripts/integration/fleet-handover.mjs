@@ -24,7 +24,7 @@ const L = `${prefix}-local`;
 const R = `${prefix}-remote`;
 const NET = `${prefix}-it`;
 const HOMES = { [L]: '/Users/svall', [R]: '/home/svall' };
-// each agent character: the flag its revive names its session with, and where it works in its machine's home
+// each agent robot: the flag its revive names its session with, and where it works in its machine's home
 const AGENTS = [
   { key: 'agent', kind: 'claude', resume: '--resume', dir: 'src/app-wt' },
   { key: 'oc', kind: 'opencode', resume: '-s', dir: 'src/app' },
@@ -106,7 +106,7 @@ function install() {
     const j = JSON.parse(fs.readFileSync(f, "utf8")); j.handover = { ...j.handover, enabled: true };
     fs.writeFileSync(f + ".tmp", JSON.stringify(j, null, 2) + "\\n", { mode: 0o600 }); fs.renameSync(f + ".tmp", f);' &&
     systemctl --user restart svall-svalld@private.service &&
-    for i in $(seq 100); do svall char list >/dev/null 2>&1 && break; sleep 0.2; done && svall char list >/dev/null`);
+    for i in $(seq 100); do svall robot list >/dev/null 2>&1 && break; sleep 0.2; done && svall robot list >/dev/null`);
   const enable = sh(L, 'svall host enable remote --fleet private --json </dev/null', { ok: false });
   check('host enable', last(enable.stdout)?.result === 'ready', () => enable.stdout.trim());
   const ids = {
@@ -144,10 +144,10 @@ printf 'wt untracked\n' > wt-untracked.txt
 function fixture(ids) {
   sh(L, GIT_FIXTURE);
   const island = JSON.parse(sh(L, 'svall --json island create integration').stdout).id;
-  const agent = JSON.parse(sh(L, `svall --json char new --island ${island} --cwd ~/src/app-wt --name agent --claude`).stdout).id;
-  const oc = JSON.parse(sh(L, `svall --json char new --island ${island} --cwd ~/src/app --name oc --opencode`).stdout).id;
-  const shell = JSON.parse(sh(L, `svall --json char new --island ${island} --cwd ~/src/app --name shell`).stdout).id;
-  for (const id of [agent, oc]) sh(L, `svall char wait ${id} --until idle --timeout 60`);
+  const agent = JSON.parse(sh(L, `svall --json robot new --island ${island} --cwd ~/src/app-wt --name agent --claude`).stdout).id;
+  const oc = JSON.parse(sh(L, `svall --json robot new --island ${island} --cwd ~/src/app --name oc --opencode`).stdout).id;
+  const shell = JSON.parse(sh(L, `svall --json robot new --island ${island} --cwd ~/src/app --name shell`).stdout).id;
+  for (const id of [agent, oc]) sh(L, `svall robot wait ${id} --until idle --timeout 60`);
   const fx = { island, agent, oc, shell };
   turn(ids, fx, 'first turn on local');
   return fx;
@@ -166,7 +166,7 @@ function turn(ids, fx, text) {
   const owner = ctx.owner === 'remote' ? R : L;
   for (const a of AGENTS) {
     const before = held(snap(owner, ids), a.kind);
-    sh(L, `svall char run ${fx[a.key]} '${text}' && svall char wait ${fx[a.key]} --until done,idle --timeout 60`);
+    sh(L, `svall robot run ${fx[a.key]} '${text}' && svall robot wait ${fx[a.key]} --until done,idle --timeout 60`);
     const after = held(snap(owner, ids), a.kind);
     const [id] = Object.keys(after);
     check(`same ${a.kind} session`, Object.keys(after).length === 1 && Object.keys(before).every((k) => k === id)
@@ -199,7 +199,7 @@ function noJournals(label, local, remote) {
   }
 }
 
-/** The machine that runs the fleet: its record, and every character up as the baseline had it, each agent on its session. */
+/** The machine that runs the fleet: its record, and every robot up as the baseline had it, each agent on its session. */
 function runsFleet(label, s, base, owner, generation, fx) {
   check(`${label} ownership`, s.ownership.ownerMachineId === owner && s.ownership.generation === generation && s.ownership.frozen === false,
     () => brief(s.ownership));
@@ -209,8 +209,8 @@ function runsFleet(label, s, base, owner, generation, fx) {
   check(`${label} agent processes`, s.agents.length === AGENTS.length, () => brief(s.agents));
   for (const { key, kind, resume, dir } of AGENTS) {
     const cwd = `${s.home}/${dir}`;
-    const a = s.characters.find((c) => c.id === fx[key]);
-    const b = base.characters.find((c) => c.id === fx[key]);
+    const a = s.robots.find((c) => c.id === fx[key]);
+    const b = base.robots.find((c) => c.id === fx[key]);
     check(`${label} ${kind} session id`, a?.agent?.sessionId && a.agent.sessionId === b?.agent?.sessionId, () => `${a?.agent?.sessionId} vs ${b?.agent?.sessionId}`);
     check(`${label} ${kind} up`, a?.agent && ['idle', 'done'].includes(a.agent.status), () => brief(a?.agent));
     const procs = s.agents.filter((p) => p.kind === kind && p.cwd === cwd);
@@ -229,8 +229,8 @@ function runsFleet(label, s, base, owner, generation, fx) {
       () => `${brief(s.opencode)} vs ${brief(base.opencode)}`);
     }
   }
-  check(`${label} characters`, same(s.characters.map((c) => [c.id, c.name, tilde(s, c.cwd), c.islandId]), base.characters.map((c) => [c.id, c.name, tilde(base, c.cwd), c.islandId])),
-    () => brief(s.characters));
+  check(`${label} robots`, same(s.robots.map((c) => [c.id, c.name, tilde(s, c.cwd), c.islandId]), base.robots.map((c) => [c.id, c.name, tilde(base, c.cwd), c.islandId])),
+    () => brief(s.robots));
   for (const repo of Object.keys(base.git)) {
     for (const k of Object.keys(base.git[repo])) check(`${label} git ${repo} ${k}`, same(tilde(s, s.git[repo]?.[k]), tilde(base, base.git[repo][k])), () => `${brief(s.git[repo]?.[k])} vs ${brief(base.git[repo][k])}`);
     check(`${label} git ${repo} fsck`, s.git[repo]?.fsck === '', () => s.git[repo]?.fsck);
@@ -299,7 +299,7 @@ function clean(ids, fx, to) {
   const base = snap(from, ids);
   const d = drive(to);
   check('result', d.summary.result?.status === 'complete' && d.summary.exit.code === 0, () => brief(d.summary.result));
-  check('characters ok', d.summary.result?.characters?.length === 3 && d.summary.result.characters.every((c) => c.ok), () => brief(d.summary.result?.characters));
+  check('robots ok', d.summary.result?.robots?.length === 3 && d.summary.result.robots.every((c) => c.ok), () => brief(d.summary.result?.robots));
   manifestIs('clean', d, base.home);
   ctx.owner = to;
   ctx.generation += 1;

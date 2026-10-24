@@ -1,7 +1,7 @@
-import type { Character, ContextItem, Params } from '@svall/protocol';
+import type { Robot, ContextItem, Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
-import { saveCharacter, saveCharacterContext, setStar } from './actions.js';
+import { saveRobot, saveRobotContext, setStar } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
@@ -11,7 +11,7 @@ import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
-import { robotOf, robotUrl, stepRobot } from './portraits.js';
+import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
@@ -19,7 +19,7 @@ import { Section } from './Section.js';
 import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
 import { StarIcon } from './Sidebar.js';
 
-type Patch = Omit<Params<'char.update'>, 'id'>;
+type Patch = Omit<Params<'robot.update'>, 'id'>;
 
 // collapsing is sticky: the card stays shut until the user opens it again.
 export function Collapse() {
@@ -30,11 +30,11 @@ export function Collapse() {
   );
 }
 
-function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
+function LastCommand({ id, agent }: { id: string; agent: Robot['agent'] }) {
   const { list, at, step } = usePromptHistory(app.api, id, agent);
   if (!agent) return null;
   return (
-    <Section name="character.command" title="Last command" testid="side-prompt" head={list.length > 0 && (
+    <Section name="robot.command" title="Last command" testid="side-prompt" head={list.length > 0 && (
       <span className="cmd-nav">
         <button data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}>‹</button>
         <b className="tnum" data-testid="side-prompt-pos">{at + 1}/{list.length}</b>
@@ -46,45 +46,45 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
   );
 }
 
-function PortraitPicker({ id, portrait, robot }: Pick<Character, 'id' | 'portrait' | 'robot'>) {
-  const step = (by: 1 | -1) => saveCharacter(deps(), id, { robot: stepRobot(robotOf({ portrait, robot }), by) });
+function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' | 'figure'>) {
+  const step = (by: 1 | -1) => saveRobot(deps(), id, { figure: stepFigure(figureOf({ portrait, figure }), by) });
   return (
     <div className="side-portrait" data-testid="side-portrait">
-      <button className="pnav" data-testid="portrait-prev" aria-label="Previous robot" onClick={() => step(-1)}>‹</button>
-      <img className="side-robot" src={robotUrl(robotOf({ portrait, robot }))} alt="robot" draggable={false} />
-      <button className="pnav" data-testid="portrait-next" aria-label="Next robot" onClick={() => step(1)}>›</button>
+      <button className="pnav" data-testid="portrait-prev" aria-label="Previous portrait" onClick={() => step(-1)}>‹</button>
+      <img className="side-figure" src={figureUrl(figureOf({ portrait, figure }))} alt="robot" draggable={false} />
+      <button className="pnav" data-testid="portrait-next" aria-label="Next portrait" onClick={() => step(1)}>›</button>
     </div>
   );
 }
 
 export function SideCard({ id }: { id: string }) {
-  const c = useApp((s) => s.fleet.characters[id]);
+  const c = useApp((s) => s.fleet.robots[id]);
   const fleet = useApp((s) => s.fleet);
   const onBoard = useApp((s) => s.view === 'board');
-  const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === id);
+  const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
-  const details = useApp((s) => !s.sections['character.details']?.shut);
+  const details = useApp((s) => !s.sections['robot.details']?.shut);
   const active = useApp((s) => s.active);
-  const load = useLoad(details && active).load?.chars?.[id];
+  const load = useLoad(details && active).load?.robots?.[id];
   const handover = useApp((s) => !!s.shell?.handoverEnabled);
-  const failed = useApp((s) => resumeErrorOf(s, s.fleet.characters[id]));
+  const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id]));
   if (!c) return null;
 
   const status = statusOf(c);
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
   const starred = c.star !== undefined;
-  const save = (patch: Patch) => saveCharacter(deps(), id, patch);
-  const saveContext = (context: ContextItem[]) => saveCharacterContext(deps(), id, context);
+  const save = (patch: Patch) => saveRobot(deps(), id, patch);
+  const saveContext = (context: ContextItem[]) => saveRobotContext(deps(), id, context);
 
   return (
-    <aside className="side" data-testid="side-card" data-drop={`char:${id}`} data-drop-hover={hover}>
+    <aside className="side" data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
         <i className="sdot" data-status={status} />{status}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-head">
-        <PortraitPicker id={id} portrait={c.portrait} robot={c.robot} />
+        <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
         <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
         <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}
@@ -97,23 +97,23 @@ export function SideCard({ id }: { id: string }) {
       )}
       {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
       <div className="side-secs">
-        <Section name="character.note" title="Note" head={<Info id="char-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={6} placeholder="What this character is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
+        <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
         </Section>
-        <Section name="character.instructions" title="Agent instructions" head={<Info id="char-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
+        <Section name="robot.instructions" title="Agent instructions" head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
           <AgentProfilePick id={id} />
           <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
             onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
         </Section>
-        <Section name="character.context" title="Context" head={<Info id="char-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
+        <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
           <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
-            charId={id} onChange={saveContext} />
+            robotId={id} onChange={saveContext} />
           <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
         </Section>
-        <DocsList tier="character" id={id} />
+        <DocsList tier="robot" id={id} />
         <LastCommand key={id} id={id} agent={c.agent} />
-        <Section name="character.details" title="Details">
+        <Section name="robot.details" title="Details">
           <div className="rows">
             <div className="row"><span>island</span>
               <b><select className="fld inline" aria-label="Island" value={c.islandId} data-testid="side-island" onChange={(e) => save({ islandId: e.target.value })}>
@@ -158,8 +158,8 @@ export function SideCard({ id }: { id: string }) {
       </div>
       <div className="acts">
         {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
-        <button className="btn dan" data-testid="side-close" title="Deletes the character and kills its terminal"
-          onClick={() => app.store.getState().setClosingCharacter(id)}>Delete character</button>
+        <button className="btn dan" data-testid="side-close" title="Deletes the robot and kills its terminal"
+          onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>
   );

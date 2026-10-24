@@ -6,7 +6,7 @@ import { askCodexTrust, ourTrust, recordedTrust } from '../src/codex/trust.js';
 
 const SCRIPT = '/u/.svall/hooks/agent-hook.mjs';
 const hook = (command: string, trustStatus: string) => ({ command, trustStatus, sourcePath: '/u/.codex/hooks.json' });
-const ours = (s: string) => hook(`[ -z "$SVALL_CHAR_ID" ] || { node '${SCRIPT}' codex "$PPID"; }`, s);
+const ours = (s: string) => hook(`[ -z "$SVALL_ROBOT_ID" ] || { node '${SCRIPT}' codex "$PPID"; }`, s);
 
 describe('ourTrust', () => {
   it('counts only Svall hooks', () => {

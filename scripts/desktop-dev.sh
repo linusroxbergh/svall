@@ -3,7 +3,7 @@
 set -eu
 case "$(basename "${SVALL_HOME:-}")" in
   .svall-dev|.svall-dev-*) ;;
-  .svall|.svall-[a-z]*) unset SVALL_HOME SVALL_CHAR_ID ;;
+  .svall|.svall-[a-z]*) unset SVALL_HOME SVALL_ROBOT_ID ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

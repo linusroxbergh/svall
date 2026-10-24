@@ -47,8 +47,8 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
     .find((i) => i.id !== id && i.name.toLowerCase() === p.name!.toLowerCase());
   if (clash) throw new Invalid(`another island is already called ${clash.name}`);
   if ((p.position || p.size) && !placementOk(store.state, next)) throw new Invalid(`island ${current.name} would overlap another island`);
-  const members = Object.values(store.state.characters).filter((c) => c.islandId === id);
-  if (p.size && landCells(next.size).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than characters`);
+  const members = Object.values(store.state.robots).filter((c) => c.islandId === id);
+  if (p.size && landCells(next.size).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than robots`);
   const context = p.context && settleItems(p.context, current.context);
   store.update((d) => {
     const i = d.islands[id];
@@ -91,7 +91,7 @@ export function reorderIsland({ store }: Deps, id: string, targetId: string, aft
 export function deleteIsland({ store, log, paths }: Deps, id: string): void {
   if (!Object.hasOwn(store.state.islands, id)) throw new NotFound(`no island ${id}`);
   if (store.state.islands[id].kind === 'home') throw new Invalid('mission control cannot be deleted');
-  if (Object.values(store.state.characters).some((c) => c.islandId === id)) throw new Invalid(`island ${store.state.islands[id].name} is not empty`);
+  if (Object.values(store.state.robots).some((c) => c.islandId === id)) throw new Invalid(`island ${store.state.islands[id].name} is not empty`);
   store.update((d) => { delete d.islands[id]; settleHome(d); });
   removeDocs(paths.docs, 'island', id, log);
 }

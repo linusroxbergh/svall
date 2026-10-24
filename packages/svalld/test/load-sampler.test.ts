@@ -24,7 +24,7 @@ describe('LoadSampler', () => {
     await vi.advanceTimersByTimeAsync(500);
     const snap = await p;
     expect(read).toHaveBeenCalledTimes(2);
-    expect(snap.chars.c_a.cpu).toBeCloseTo(50);
+    expect(snap.robots.c_a.cpu).toBeCloseTo(50);
     load.stop();
   });
 
@@ -49,7 +49,7 @@ describe('LoadSampler', () => {
     const { load } = sampler([[proc(10, 1, 0)], [proc(10, 1, 0), proc(11, 10, 100)]]);
     const p = load.get();
     await vi.advanceTimersByTimeAsync(500);
-    expect((await p).chars.c_a.cpu).toBeCloseTo(20);
+    expect((await p).robots.c_a.cpu).toBeCloseTo(20);
     load.stop();
   });
 
@@ -58,8 +58,8 @@ describe('LoadSampler', () => {
     const p = load.get();
     await vi.advanceTimersByTimeAsync(500);
     const snap = await p;
-    expect(snap.chars.c_a.cpu).toBeCloseTo(20);
-    expect(snap.chars.c_a.procs).toBe(1);
+    expect(snap.robots.c_a.cpu).toBeCloseTo(20);
+    expect(snap.robots.c_a.procs).toBe(1);
     load.stop();
   });
 
@@ -67,12 +67,12 @@ describe('LoadSampler', () => {
     const shell = sampler([[proc(10, 1, 0)]]);
     const a = shell.load.get();
     await vi.advanceTimersByTimeAsync(500);
-    expect((await a).chars.c_a.shellOnly).toBe(true);
+    expect((await a).robots.c_a.shellOnly).toBe(true);
     shell.load.stop();
     const agent = sampler([[proc(10, 1, 0), proc(11, 10, 0)]]);
     const b = agent.load.get();
     await vi.advanceTimersByTimeAsync(500);
-    expect((await b).chars.c_a.shellOnly).toBe(false);
+    expect((await b).robots.c_a.shellOnly).toBe(false);
     agent.load.stop();
   });
 
@@ -83,9 +83,9 @@ describe('LoadSampler', () => {
     const p = load.get();
     await vi.advanceTimersByTimeAsync(500);
     const s = await p;
-    expect(Object.keys(s.chars).sort()).toEqual(['c_a', 'c_b']);
+    expect(Object.keys(s.robots).sort()).toEqual(['c_a', 'c_b']);
     expect(s.app.procs).toBe(1);
-    const parts = [s.app, ...(s.codex ? [s.codex] : []), ...Object.values(s.chars)];
+    const parts = [s.app, ...(s.codex ? [s.codex] : []), ...Object.values(s.robots)];
     expect(s.total.procs).toBe(parts.reduce((n, u) => n + u.procs, 0));
     expect(s.total.mem).toBe(parts.reduce((n, u) => n + u.mem, 0));
     expect(s.total.cpu).toBeCloseTo(parts.reduce((n, u) => n + u.cpu, 0));
@@ -98,7 +98,7 @@ describe('LoadSampler', () => {
     const { load } = sampler([[proc(10, 1, 900, { start: 0 })], [proc(10, 1, 1000, { start: 5 })]]);
     const p = load.get();
     await vi.advanceTimersByTimeAsync(500);
-    expect((await p).chars.c_a.cpu).toBeCloseTo(20);
+    expect((await p).robots.c_a.cpu).toBeCloseTo(20);
     load.stop();
   });
 
@@ -134,7 +134,7 @@ describe('LoadSampler', () => {
     await expect(load.get()).rejects.toThrow('ps died');
     await vi.advanceTimersByTimeAsync(4000);
     expect(read).toHaveBeenCalledTimes(4);
-    expect((await load.get()).chars.c_a.procs).toBe(1);
+    expect((await load.get()).robots.c_a.procs).toBe(1);
     load.stop();
   });
 

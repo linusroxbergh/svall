@@ -3,8 +3,8 @@ import XCTest
 
 private let detached = #"{"event":"handover.detached","data":{"pid":4242}}"#
 private let freeze = #"{"event":"handover.changed","data":{"transactionId":"tx1","phase":"freeze"}}"#
-private let complete = #"{"event":"handover.result","data":{"status":"complete","transactionId":"tx1","generation":2,"characters":[]}}"#
-private let blocked = #"{"event":"handover.result","data":{"status":"blocked","phase":"begin","blockers":[{"code":"character_pinned","message":"ada is kept on this machine"}]}}"#
+private let complete = #"{"event":"handover.result","data":{"status":"complete","transactionId":"tx1","generation":2,"robots":[]}}"#
+private let blocked = #"{"event":"handover.result","data":{"status":"blocked","phase":"begin","blockers":[{"code":"robot_pinned","message":"ada is kept on this machine"}]}}"#
 private let status = #"{"event":"handover.status","data":{"standing":"none","safe":[],"reason":"no handover is open"}}"#
 private let liveStatus = #"{"event":"handover.status","data":{"standing":"open","phase":"transfer","safe":["resume","abort"],"reason":"handover tx1 is under way","helper":{"pid":4242}}}"#
 private let blockedFreeze = #"{"event":"handover.blocked","data":{"transactionId":"tx1","phase":"freeze","blockers":[]}}"#
@@ -125,9 +125,9 @@ final class HandoverTests: XCTestCase {
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(interruptAfterMs: -1), gateway: "studio", profile: nil))
     }
 
-    func testAStartNeverWidensTheCharactersAnAnswerNamedToEveryTerminal() {
-        // `--terminate-shells` names no characters: the run blocks on those terminals again and asks
-        XCTAssertEqual(HandoverCommand.start(to: "local", choices: HandoverChoices(terminateShells: .characters(["c_ada"])), gateway: nil, profile: nil),
+    func testAStartNeverWidensTheRobotsAnAnswerNamedToEveryTerminal() {
+        // `--terminate-shells` names no robots: the run blocks on those terminals again and asks
+        XCTAssertEqual(HandoverCommand.start(to: "local", choices: HandoverChoices(terminateShells: .robots(["c_ada"])), gateway: nil, profile: nil),
                        ["handover", "local", "--json", "--detach"])
     }
 
@@ -184,7 +184,7 @@ final class HandoverTests: XCTestCase {
         }
         XCTAssertEqual(carry, HandoverChoices(carryUnused: true))
         XCTAssertEqual(HandoverControl.choose(HandoverChoices(carryUnused: true)).line, #"{"choose":{"carryUnused":true}}"#)
-        // the characters an answer names reach the helper as the page named them
+        // the robots an answer names reach the helper as the page named them
         guard case .handoverChoose(let named) = try decode(#"{"type":"handover.choose","choices":{"terminateShells":["c_ada","c_bo"]}}"#) else {
             return XCTFail("handover.choose did not decode")
         }

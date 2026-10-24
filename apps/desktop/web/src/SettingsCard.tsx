@@ -91,7 +91,7 @@ function MainAgent() {
   const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
   return (
     <div className="row">
-      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>{shim()} char new --run</code> start. A <code>home.command</code> in fleet.json overrides it for the crew.</Info></span>
+      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>{shim()} robot new --run</code> start. A <code>home.command</code> in fleet.json overrides it for the crew.</Info></span>
       <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
@@ -276,7 +276,7 @@ function Notifications() {
     <>
       <div className="rows">
         <div className="row">
-          <span>notifications<Info id="notify">macOS banners when a character needs you or is done, and when a handover waits for you, finishes or stops. Approve and Deny work from the banner.</Info></span>
+          <span>notifications<Info id="notify">macOS banners when a robot needs you or is done, and when a handover waits for you, finishes or stops. Approve and Deny work from the banner.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" onClick={flip}>{shown ? 'on' : 'off'}</button></b>
         </div>
         {shown && (
@@ -364,7 +364,7 @@ function Machine() {
         </div>
         {shell && (
           <div className="row">
-            <span>keep Mac awake<Info id="keep-awake">Stops idle sleep so agents keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery but a handover. A server an agent leaves running keeps it awake up to 30 minutes after an agent last did something, and so does a character waiting on you or your phone when set to need you. Each fleet sets its own.</Info></span>
+            <span>keep Mac awake<Info id="keep-awake">Stops idle sleep so agents keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery but a handover. A server an agent leaves running keeps it awake up to 30 minutes after an agent last did something, and so does a robot waiting on you or your phone when set to need you. Each fleet sets its own.</Info></span>
             <b><select className="fld inline" aria-label="Keep Mac awake" value={keepAwake} data-testid="set-keep-awake"
               onChange={(e) => set({ keepAwake: e.target.value as KeepAwake })}>
               <option value="off">off</option>

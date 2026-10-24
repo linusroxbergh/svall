@@ -1,12 +1,12 @@
 import { useState, type JSX } from 'react';
-import { createCharacter } from '../actions.js';
+import { createRobot } from '../actions.js';
 import { useApp } from '../hooks.js';
 import { islandCwd, startOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { cwdChoices } from './choices.js';
 import { Sheet } from './Sheet.js';
 
-export function NewCharacter({ islandId, onClose, onCreated }: { islandId: string; onClose(): void; onCreated(id: string): void }): JSX.Element {
+export function NewRobot({ islandId, onClose, onCreated }: { islandId: string; onClose(): void; onCreated(id: string): void }): JSX.Element {
   const fleet = useApp((s) => s.fleet);
   const island = fleet.islands[islandId];
   const choices = cwdChoices(fleet, islandId);
@@ -19,7 +19,7 @@ export function NewCharacter({ islandId, onClose, onCreated }: { islandId: strin
     if (busy) return;
     setBusy(true);
     try {
-      const c = await createCharacter(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.defaultCwd);
+      const c = await createRobot(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.defaultCwd);
       onCreated(c.id);
     } catch (e) {
       setError((e as Error).message);

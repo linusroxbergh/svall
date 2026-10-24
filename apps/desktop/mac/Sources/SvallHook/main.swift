@@ -11,8 +11,9 @@ signal(SIGALRM) { _ in _exit(0) }
 let argv = CommandLine.unsafeArgv
 func arg(_ n: Int) -> UnsafeMutablePointer<CChar>? { n < Int(CommandLine.argc) ? argv[n] : nil }
 
-var charId = Text()
-decodeUTF8(env("SVALL_CHAR_ID")?[...] ?? [], &charId)
+var robotId = Text()
+// a session an older svalld started carries SVALL_CHAR_ID
+decodeUTF8(env("SVALL_ROBOT_ID")?[...] ?? env("SVALL_CHAR_ID")?[...] ?? [], &robotId)
 let term = env("SVALL_TERM") == Array("2".utf8)
 let home = env("SVALL_HOME") ?? join(env("HOME") ?? getpwuid(getuid()).map { bytes($0.pointee.pw_dir) } ?? [], ".svall")
 // the release's and Svall Dev's hooks both run for every agent, so each acts only for its own variant's homes.
@@ -21,13 +22,13 @@ let mine = isRelease(dirname(dirname(resolve(arg(0).map { bytes($0) } ?? [])))) 
 
 if let mode = arg(1), bytes(mode) == Array("procs".utf8) { procs() }
 if let mode = arg(1), bytes(mode) == Array("status".utf8) {
-    status(home: home, report: !charId.isEmpty && mine, charId: charId, term: term, command: arg(2))
+    status(home: home, report: !robotId.isEmpty && mine, robotId: robotId, term: term, command: arg(2))
 }
-guard !charId.isEmpty && mine else { exit(0) }
+guard !robotId.isEmpty && mine else { exit(0) }
 let backend = arg(1).map { bytes($0) } == Array("codex".utf8) ? "codex" : "claude"
 // the agent's pid, which the shell passes as $PPID
 let pid: Double? = arg(2).flatMap { p in
     let b = bytes(p)
     return !b.isEmpty && b.allSatisfy({ (0x30...0x39).contains($0) }) ? strtod(p, nil) : nil
 }
-hook(home: home, charId: charId, term: term, backend: backend, pid: pid == 0 ? nil : pid)
+hook(home: home, robotId: robotId, term: term, backend: backend, pid: pid == 0 ? nil : pid)

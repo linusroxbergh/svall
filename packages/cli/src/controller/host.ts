@@ -254,7 +254,7 @@ async function tmuxCheck(master: SshMaster, o: { destination: string; home: stri
 // the companion doctor's checks of each agent's Svall hooks and of Codex's sandbox, whose details end with what to do there
 const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['codex hooks', 'codex sandbox'], opencode: ['opencode plugin'] };
 
-/** The agents the fleets on this Mac run: their characters', mission control's and the scribe's; none known while a fleet's state cannot be read. */
+/** The agents the fleets on this Mac run: their robots', mission control's and the scribe's; none known while a fleet's state cannot be read. */
 function fleetAgents(homedir: string): Set<AgentKind> | undefined {
   const homes = fleetHomes(homedir);
   if (!homes.length) return undefined;
@@ -262,7 +262,7 @@ function fleetAgents(homedir: string): Set<AgentKind> | undefined {
   for (const home of homes) {
     let state: FleetState;
     try { state = migrateState(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8'))).state; } catch { return undefined; }
-    for (const c of Object.values(state.characters)) for (const k of [c.agent?.kind, c.second?.agent?.kind]) if (k) kinds.add(k);
+    for (const c of Object.values(state.robots)) for (const k of [c.agent?.kind, c.second?.agent?.kind]) if (k) kinds.add(k);
     for (const k of [state.mainAgent, state.scribeOff ? undefined : state.scribeAgent]) if (k) kinds.add(k);
   }
   return kinds;

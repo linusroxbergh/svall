@@ -12,23 +12,23 @@ let refuse: string | undefined;
 const call = (method: string, params: Record<string, unknown>) => {
   calls.push([method, params]);
   if (method === 'resources.get') return Promise.resolve({ sources: [] });
-  if (method === 'char.prompts') return Promise.resolve({ prompts: ['second ask', 'first ask'] });
+  if (method === 'robot.prompts') return Promise.resolve({ prompts: ['second ask', 'first ask'] });
   return refuse ? Promise.reject(new Error(refuse)) : Promise.resolve({});
 };
 let store: AppStore;
 vi.mock('../../src/mobile/boot.js', () => ({ phone: { api: () => ({ call }), get store() { return store; } } }));
-const { CharacterMenu } = await import('../../src/mobile/CharacterMenu.js');
+const { RobotMenu } = await import('../../src/mobile/RobotMenu.js');
 
 const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/7', label: 'the PR', source: 'auto', pinned: true };
 const plan: ContextItem = { kind: 'file', ref: '~/work/plan.md', label: '', source: 'manual' };
-const updates = () => calls.filter(([m]) => m === 'char.update').map(([, p]) => p);
+const updates = () => calls.filter(([m]) => m === 'robot.update').map(([, p]) => p);
 
 function open(extra: Parameters<typeof chr>[3] = {}, onClosed = () => {}) {
   const f = fleet();
-  f.characters.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { context: [pr, plan], note: 'old note', ...extra });
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { context: [pr, plan], note: 'old note', ...extra });
   store.getState().setFleet(f);
   const onClose = vi.fn();
-  render(<CharacterMenu id="c0" onClose={onClose} onClosed={onClosed} />);
+  render(<RobotMenu id="c0" onClose={onClose} onClosed={onClosed} />);
   return onClose;
 }
 
@@ -90,7 +90,7 @@ test('a note the fleet refuses keeps the sheet up beside its error, and a second
   expect(onClose).toHaveBeenCalled();
 });
 
-test('the sheet shows where the character works, not where it could move', () => {
+test('the sheet shows where the robot works, not where it could move', () => {
   open({ agentProfile: 'reviewer', instructions: 'Keep replies short.' });
   expect(screen.queryByRole('group', { name: 'Move to' })).toBeNull();
   expect(screen.getByText('profile').nextSibling!.textContent).toBe('reviewer');
@@ -116,12 +116,12 @@ test('reads the prompts sent, newest first, and steps back through them', async 
   expect(screen.getByText('2/2')).toBeTruthy();
 });
 
-test('closing the character asks once, says what goes with it, then closes it', async () => {
+test('closing the robot asks once, says what goes with it, then closes it', async () => {
   const onClosed = vi.fn();
   open({}, onClosed);
-  fireEvent.click(screen.getByRole('button', { name: 'Close character' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close robot' }));
   expect(screen.getByText('Closing kills its terminal and deletes its docs.')).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close c0' })); });
-  expect(calls.filter(([m]) => m === 'char.close')).toEqual([['char.close', { id: 'c0' }]]);
+  expect(calls.filter(([m]) => m === 'robot.close')).toEqual([['robot.close', { id: 'c0' }]]);
   expect(onClosed).toHaveBeenCalled();
 });

@@ -120,7 +120,7 @@ export function settleHome(draft: FleetState): void {
 
 // the slots up to and including mission control's last crew member
 const slotsInUse = (draft: FleetState, home: Island): number => {
-  const last = Math.max(0, ...Object.values(draft.characters).filter((c) => c.islandId === HOME_ISLAND).map((c) => c.cell.x));
+  const last = Math.max(0, ...Object.values(draft.robots).filter((c) => c.islandId === HOME_ISLAND).map((c) => c.cell.x));
   return homeSlots(home.size.w).filter((x) => x <= last).length;
 };
 
@@ -162,7 +162,7 @@ const shown = (i: Island): Size => ({ w: Math.max(i.size.w, pillWidth(i.name)), 
 
 // the crew of an island, in reading order of where they stand
 export const crewOf = (state: FleetState, islandId: string): string[] =>
-  Object.values(state.characters).filter((c) => c.islandId === islandId).sort(byCell).map((c) => c.id);
+  Object.values(state.robots).filter((c) => c.islandId === islandId).sort(byCell).map((c) => c.id);
 
 // however wide the window, a crew stands at most about twice as many abreast as deep, so a long crew wraps
 // into a rounder island instead of running out into a single row
@@ -234,7 +234,7 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
   for (const { id } of islands) {
     const { size, cells } = roundGrid(crews.get(id)!.length, abreast);
     draft.islands[id].size = size;
-    crews.get(id)!.forEach((c, i) => { draft.characters[c].cell = cells[i]; });
+    crews.get(id)!.forEach((c, i) => { draft.robots[c].cell = cells[i]; });
   }
 
   let y = origin.y;
@@ -260,11 +260,11 @@ class IslandFull extends Error { code = 'invalid'; }
 export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string, log?: Logger): Cell {
   const island = draft.islands[islandId];
   if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
-  // a character re-placed on its own island is not its own crew, or the grid would size for it twice
+  // a robot re-placed on its own island is not its own crew, or the grid would size for it twice
   const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
   const { size, cells } = crewGrid(crew.length + 1);
   island.size = size;
-  crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
+  crew.forEach((id, i) => { draft.robots[id].cell = cells[i]; });
   unfold(draft, islandId, log);
   // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
   if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
@@ -281,13 +281,13 @@ function placeOnHome(draft: FleetState, island: Island, exceptId?: string): Cell
 }
 
 export function occupiedCells(state: FleetState, islandId: string, exceptId?: string): Set<string> {
-  return new Set(Object.values(state.characters).filter((c) => c.islandId === islandId && c.id !== exceptId).map((c) => cellKey(c.cell)));
+  return new Set(Object.values(state.robots).filter((c) => c.islandId === islandId && c.id !== exceptId).map((c) => cellKey(c.cell)));
 }
 
-// characters keep two empty cells between them: every occupied cell blocks everything within Chebyshev distance SPACING
+// robots keep two empty cells between them: every occupied cell blocks everything within Chebyshev distance SPACING
 export function blockedCells(state: FleetState, islandId: string, exceptId?: string): Set<string> {
   const blocked = new Set<string>();
-  for (const c of Object.values(state.characters)) {
+  for (const c of Object.values(state.robots)) {
     if (c.islandId !== islandId || c.id === exceptId) continue;
     for (let dy = -SPACING; dy <= SPACING; dy++) for (let dx = -SPACING; dx <= SPACING; dx++) blocked.add(cellKey({ x: c.cell.x + dx, y: c.cell.y + dy }));
   }
@@ -301,16 +301,16 @@ export function nearestFreeLand(island: Island, from: Cell, blocked: Set<string>
 
 class NoFreeLand extends Error { code = 'invalid'; }
 
-// after a resize, characters whose cell became water move to the nearest free land, in reading order of their old cells
+// after a resize, robots whose cell became water move to the nearest free land, in reading order of their old cells
 export function relocateDrowned(draft: FleetState, islandId: string): void {
   const island = draft.islands[islandId];
-  const drowned = Object.values(draft.characters)
+  const drowned = Object.values(draft.robots)
     .filter((c) => c.islandId === islandId && !isLand(island, c.cell))
     .sort(byCell);
   for (const c of drowned) {
     const cell = nearestFreeLand(island, c.cell, blockedCells(draft, islandId, c.id));
     if (!cell) throw new NoFreeLand(`island ${island.name} has no free land to relocate ${c.name}`);
-    draft.characters[c.id].cell = cell;
+    draft.robots[c.id].cell = cell;
   }
 }
 

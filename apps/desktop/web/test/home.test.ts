@@ -38,9 +38,9 @@ describe('home geometry', () => {
   });
   it('is full for a card from elsewhere once every slot is taken, and never for its own crew', () => {
     const f = fleet();
-    f.characters.h1 = chr('h1', 'home', { x: 1, y: 1 });
+    f.robots.h1 = chr('h1', 'home', { x: 1, y: 1 });
     expect(homeFull(f, f.islands.home, 'c0')).toBe(false);
-    f.characters.h4 = chr('h4', 'home', { x: 4, y: 1 });
+    f.robots.h4 = chr('h4', 'home', { x: 4, y: 1 });
     expect(homeFull(f, f.islands.home, 'c0')).toBe(true);
     expect(homeFull(f, f.islands.home, 'h1')).toBe(false);
   });
@@ -108,7 +108,7 @@ describe('home geometry', () => {
 
 const crewed = (): FleetState => {
   const f = fleet();
-  f.characters.h1 = chr('h1', 'home', { x: 1, y: 1 });
+  f.robots.h1 = chr('h1', 'home', { x: 1, y: 1 });
   return f;
 };
 const dragging = (id: string, over?: { islandId: string; local: Cell; free: boolean }): Drag =>
@@ -124,7 +124,7 @@ describe('home crew', () => {
   it('drops a crew member dragged out over the world', () => {
     expect(homeCrew(crewed(), dragging('h1', { islandId: 'i_b', local: { x: 2, y: 1 }, free: true }))).toEqual([]);
   });
-  it('takes in a world character dragged over home, once', () => {
+  it('takes in a world robot dragged over home, once', () => {
     expect(homeCrew(crewed(), dragging('c0', { islandId: 'home', local: { x: 4, y: 1 }, free: true })).map((c) => c.id)).toEqual(['h1', 'c0']);
   });
   it('ignores a visitor that no longer exists', () => {

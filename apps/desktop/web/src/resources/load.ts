@@ -5,11 +5,11 @@ import { theme } from '../theme.js';
 
 export type ResourcesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
-/** What the listing is made of, as one string: the roots, and every island and character by id, name and place. It is asked again only when this moves. */
+/** What the listing is made of, as one string: the roots, and every island and robot by id, name and place. It is asked again only when this moves. */
 export const listingKey = (f: FleetState): string => [
-  ...[...new Set(Object.values(f.characters).map((c) => c.repo?.mainRoot ?? c.cwd))].sort(),
+  ...[...new Set(Object.values(f.robots).map((c) => c.repo?.mainRoot ?? c.cwd))].sort(),
   ...Object.values(f.islands).map((i) => `i:${i.id}:${i.name}`).sort(),
-  ...Object.values(f.characters).map((c) => `c:${c.id}:${c.name}:${c.islandId}:${c.agentProfile ?? ''}`).sort(),
+  ...Object.values(f.robots).map((c) => `c:${c.id}:${c.name}:${c.islandId}:${c.agentProfile ?? ''}`).sort(),
 ].join('\n');
 
 // svalld walks every root for each read, so a store has one read out at a time, and keeps the last for a moment;

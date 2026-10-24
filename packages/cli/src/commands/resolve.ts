@@ -10,5 +10,5 @@ function pick(items: Record<string, { id: string; name: string }>, ref: string, 
   throw new Error(`"${ref}" matches ${matches.map((m) => `${m.id} (${m.name})`).join(', ')}; use the id`);
 }
 
-export const charId = (state: FleetState, ref: string): string => pick(state.characters, ref, 'character');
+export const robotId = (state: FleetState, ref: string): string => pick(state.robots, ref, 'robot');
 export const islandId = (state: FleetState, ref: string): string => pick(state.islands, ref, 'island');

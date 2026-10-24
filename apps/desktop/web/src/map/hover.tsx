@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Character, Island } from '@svall/protocol';
+import type { Robot, Island } from '@svall/protocol';
 import { theme, tokenPx } from '../theme.js';
 import { homeBox, homeCellToScreen } from './home.js';
 import { HoverCard } from './HoverCard.js';
@@ -9,7 +9,7 @@ import type { Placement } from './resources.js';
 // how far a hovered card rises, matching `.tok:hover .card` in map.css
 const HOVER_LIFT = 6;
 
-/** The character whose hover card shows, after a moment over its token, and the island hot under the pointer. */
+/** The robot whose hover card shows, after a moment over its token, and the island hot under the pointer. */
 export function useHover() {
   const [hover, setHover] = useState<string>();
   const [hotIsland, setHotIsland] = useState<string>();
@@ -35,7 +35,7 @@ export function useHover() {
 }
 
 /** The hover card over or under the token it belongs to, on the map or on mission control. */
-export function HoverLayer({ c, island, layout, place, host }: { c: Character; island: Island; layout: Layout; place: Placement; host: { w: number; h: number } }) {
+export function HoverLayer({ c, island, layout, place, host }: { c: Robot; island: Island; layout: Layout; place: Placement; host: { w: number; h: number } }) {
   if (island.collapsed) return null;
   const onHome = island.kind === 'home';
   const box = onHome ? homeBox(island, host, place.homeShift, place.homeScale) : undefined;

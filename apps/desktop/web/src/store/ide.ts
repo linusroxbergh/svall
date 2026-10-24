@@ -3,7 +3,7 @@ import type { StateCreator } from 'zustand/vanilla';
 import { SINGLE, shows, withoutSecond, type Panes } from '../panes.js';
 import type { App } from './index.js';
 
-// the panes a character shows, how the two share the width, and the editor's open files; page state, per character.
+// the panes a robot shows, how the two share the width, and the editor's open files; page state, per robot.
 // failed holds the files whose last write went wrong
 export type IdeState = { panes: Panes; ratio: number; open: string[]; active?: string; expanded: string[]; dirty: string[]; conflict: string[]; failed: string[] };
 const emptyIde = (): IdeState => ({ panes: SINGLE, ratio: 0.5, open: [], expanded: [], dirty: [], conflict: [], failed: [] });
@@ -12,11 +12,11 @@ const emptyIde = (): IdeState => ({ panes: SINGLE, ratio: 0.5, open: [], expande
 const withSet = (list: string[], v: string, on: boolean): string[] =>
   list.includes(v) === on ? list : on ? [...list, v] : list.filter((x) => x !== v);
 
-// a character that is gone takes its panes and buffers with it, a resource root is nobody's, and a second terminal
+// a robot that is gone takes its panes and buffers with it, a resource root is nobody's, and a second terminal
 // the fleet no longer carries closes the pane that showed it (a dormant one keeps it); nothing pruned gives `ide` back
 export const pruneIde = (ide: Record<string, IdeState>, f: FleetState, prev: FleetState): Record<string, IdeState> => {
-  const next = Object.fromEntries(Object.entries(ide).filter(([id]) => id.startsWith('r:') || f.characters[id]).map(([id, s]) => {
-    if (!prev.characters[id]?.second || f.characters[id]?.second || !shows(s.panes, 'terminal2')) return [id, s];
+  const next = Object.fromEntries(Object.entries(ide).filter(([id]) => id.startsWith('r:') || f.robots[id]).map(([id, s]) => {
+    if (!prev.robots[id]?.second || f.robots[id]?.second || !shows(s.panes, 'terminal2')) return [id, s];
     return [id, { ...s, panes: withoutSecond(s.panes) }];
   }));
   const ids = Object.keys(next);

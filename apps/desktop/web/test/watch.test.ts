@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRepoWatch } from '../src/ide/watch.js';
 
 describe('repo watch', () => {
-  it('asks svalld once per character while anyone listens, and again after a reconnect', () => {
+  it('asks svalld once per robot while anyone listens, and again after a reconnect', () => {
     const fired: [string, unknown][] = [];
     const w = createRepoWatch({ fire: (m, p) => { fired.push([m, p]); } });
     const stopA = w.watch('c1');
@@ -23,7 +23,7 @@ describe('repo watch', () => {
     expect(fired.length).toBe(3);
   });
 
-  it('hands a change to the listeners of that character only', () => {
+  it('hands a change to the listeners of that robot only', () => {
     const w = createRepoWatch({ fire: () => {} });
     const seen: string[] = [];
     const off = w.on('c1', () => seen.push('c1'));

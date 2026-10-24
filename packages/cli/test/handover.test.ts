@@ -205,7 +205,7 @@ class FakeTx {
   /** what status() waits on first, and what it fails with */
   statusGate?: Promise<void>;
   statusError?: Error;
-  script: (kind: Kind, n: number) => Promise<Outcome> = async () => ({ status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] });
+  script: (kind: Kind, n: number) => Promise<Outcome> = async () => ({ status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] });
 
   constructor(local: MachineId) {
     this.owned = { fleetId: FLEET, generation: 4, ownerMachineId: local };
@@ -287,7 +287,7 @@ const pre = (blockers: Blocker[] = [], warnings: Blocker[] = []): HandoverEvent 
   event: 'handover.preflight',
   data: {
     summary: { digest: 'a'.repeat(64), roots: 2, files: 5, bytes: 2048, sessions: 1 }, blockers, warnings,
-    names: { characters: { c_ada: 'ada', c_bo: 'bo' }, roots: { r_app: '/home/ada/app', r_git: '/home/ada/app.git' }, sessions: { s0: 'ada' } },
+    names: { robots: { c_ada: 'ada', c_bo: 'bo' }, roots: { r_app: '/home/ada/app', r_git: '/home/ada/app.git' }, sessions: { s0: 'ada' } },
   },
 });
 const forever = <T>(): Promise<T> => new Promise<T>(() => undefined);
@@ -298,16 +298,16 @@ describe('svall handover', () => {
     h.tx.script = async () => {
       h.tx.record(pre());
       h.tx.record(changed('begin'));
-      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_ada', phase: 'freeze' } });
+      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_ada', phase: 'freeze' } });
       h.tx.record({ event: 'handover.retry', data: { phase: 'transfer', attempt: 1, error: `token ${TOKEN} refused` } });
       // the transaction's own result is the command's to write, once
-      h.tx.record({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] } });
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [{ id: 'c_ada', ok: true }] };
+      h.tx.record({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] } });
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [{ id: 'c_ada', ok: true }] };
     };
     expect(await runHandover(start(), h.ctx)).toEqual({ code: 0 });
     const events = h.events();
     expect(events.map((e) => e.event)).toEqual(['handover.preflight', 'handover.changed', 'handover.entity', 'handover.retry', 'handover.result']);
-    expect(events.at(-1)).toEqual({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [{ id: 'c_ada', ok: true }] } });
+    expect(events.at(-1)).toEqual({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [{ id: 'c_ada', ok: true }] } });
     expect(h.out()).not.toContain(TOKEN);
     expect(h.tx.calls).toEqual([{ kind: 'start', to: TRIFT, choices: {} }]);
     expect(fs.readFileSync(h.paths.events, 'utf8')).toBe(h.out());
@@ -329,7 +329,7 @@ describe('svall handover', () => {
       await next();
       h.tx.record(changed('freeze'));
       await next();
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
 
     expect(await runHandover(start(), { ...h.ctx, deps: { ...h.deps, stdout } })).toEqual({ code: 0 });
@@ -371,15 +371,15 @@ describe('svall handover', () => {
     for (const o of [{ tty: false }, { tty: true, json: true }]) {
       const h = harness(o);
       const blockers: Blocker[] = [
-        { code: 'transcript_missing', message: '/Users/ada/.claude/projects/-app/3f2b.jsonl is not there', entity: { kind: 'character', id: 'c_ada' } },
-        { code: 'incompatible_adapter', message: "a handover carries claude sessions from 2.1.251 on; update the destination's claude 2.1.200", entity: { kind: 'character', id: 'c_bo' } },
+        { code: 'transcript_missing', message: '/Users/ada/.claude/projects/-app/3f2b.jsonl is not there', entity: { kind: 'robot', id: 'c_ada' } },
+        { code: 'incompatible_adapter', message: "a handover carries claude sessions from 2.1.251 on; update the destination's claude 2.1.200", entity: { kind: 'robot', id: 'c_bo' } },
         { code: 'destination_diverged', message: 'the destination changed while this machine did not own the fleet', entity: { kind: 'root', id: 'r_app' } },
-        { code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'character', id: 'c_bo' } },
-        { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in (old-stuff, unrelated)", entity: { kind: 'character', id: 'c_ada' } },
+        { code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'robot', id: 'c_bo' } },
+        { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no robot works in (old-stuff, unrelated)", entity: { kind: 'robot', id: 'c_ada' } },
       ];
       const warnings: Blocker[] = [
         { code: 'config_difference', message: 'claude 2.1.280 runs on mac and 2.1.290 on trift' },
-        { code: 'codex_trust', message: 'Codex asks whether to trust its folder', entity: { kind: 'character', id: 'c_bo' } },
+        { code: 'codex_trust', message: 'Codex asks whether to trust its folder', entity: { kind: 'robot', id: 'c_bo' } },
         { code: 'platform_heuristic', message: '/Users/ada/app holds an Xcode project, which does not build on linux', entity: { kind: 'root', id: 'r_app' } },
       ];
       h.tx.script = async () => { h.tx.record(pre(blockers, warnings)); return { status: 'blocked', phase: 'begin', blockers }; };
@@ -398,8 +398,8 @@ describe('svall handover', () => {
       for (const w of ['2.1.290 on trift', 'Codex asks whether to trust', 'an Xcode project']) expect(text).toContain(w);
       expect(text).toContain('--terminate-shells');
       expect(text).toContain('--archive /home/ada/app');
-      expect(text).toContain("  ✗ ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in (old-stuff, unrelated) (repository_unused)\n");
-      expect(text).toContain('--carry-unused carries the Git repositories a folder holds that no character works in');
+      expect(text).toContain("  ✗ ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no robot works in (old-stuff, unrelated) (repository_unused)\n");
+      expect(text).toContain('--carry-unused carries the Git repositories a folder holds that no robot works in');
       expect(text).not.toMatch(/Choose/);
     }
   });
@@ -413,7 +413,7 @@ describe('svall handover', () => {
     expect(ready.out()).toContain('Nothing stops a handover to trift; `svall handover trift` moves the fleet.');
 
     const busy = harness({ tty: true });
-    const blockers: Blocker[] = [{ code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'character', id: 'c_bo' } }];
+    const blockers: Blocker[] = [{ code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'robot', id: 'c_bo' } }];
     busy.tx.script = async () => { busy.tx.record(pre(blockers)); return { status: 'blocked', phase: 'begin', blockers }; };
     expect(await runHandover(check('trift', { carryUnused: true }), busy.ctx)).toEqual({ code: 1 });
     expect(busy.tx.calls).toEqual([{ kind: 'check', to: TRIFT, choices: { carryUnused: true } }]);
@@ -421,31 +421,31 @@ describe('svall handover', () => {
     expect(busy.out()).not.toMatch(/Choose/);
   });
 
-  it('offers at Begin to carry a folder whole with the repositories no character works in, and starts again with that choice', async () => {
+  it('offers at Begin to carry a folder whole with the repositories no robot works in, and starts again with that choice', async () => {
     const h = harness({ tty: true });
     const unused: Blocker[] = [
-      { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in", entity: { kind: 'character', id: 'c_ada' } },
+      { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no robot works in", entity: { kind: 'robot', id: 'c_ada' } },
     ];
     h.tx.script = async (_kind, n) => {
       h.tx.record(pre(n === 1 ? unused : []));
       if (n === 1) return { status: 'blocked', phase: 'begin', blockers: unused };
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const run = runHandover(start(), h.ctx);
     await waitFor(() => /Choose/.test(h.out()));
-    expect(h.out()).toMatch(/u\) Carry the folder ada is in whole, with the Git repositories there no character works in/);
+    expect(h.out()).toMatch(/u\) Carry the folder ada is in whole, with the Git repositories there no robot works in/);
     h.type('u');
     expect(await run).toEqual({ code: 0 });
     expect(h.tx.calls.map((c) => c.choices)).toEqual([{}, { carryUnused: true }]);
-    const carry = (ids: string[]) => options(ids.map((id) => ({ ...unused[0], entity: { kind: 'character' as const, id } })), 'begin', { characters: { c_ada: 'ada', c_bo: 'bo' }, roots: {} }).find((o) => o.key === 'u')?.label;
-    expect(carry(['c_ada'])).toBe('Carry the folder ada is in whole, with the Git repositories there no character works in');
-    expect(carry(['c_ada', 'c_bo'])).toBe('Carry the folders ada and bo are in whole, with the Git repositories there no character works in');
+    const carry = (ids: string[]) => options(ids.map((id) => ({ ...unused[0], entity: { kind: 'robot' as const, id } })), 'begin', { robots: { c_ada: 'ada', c_bo: 'bo' }, roots: {} }).find((o) => o.key === 'u')?.label;
+    expect(carry(['c_ada'])).toBe('Carry the folder ada is in whole, with the Git repositories there no robot works in');
+    expect(carry(['c_ada', 'c_bo'])).toBe('Carry the folders ada and bo are in whole, with the Git repositories there no robot works in');
   });
 
   it('never waits on a blocker after Begin without a person or a helper to answer it: the answer is cancel', async () => {
     for (const o of [{ tty: false }, { tty: true, json: true }]) {
       const h = harness(o);
-      const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+      const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
       let answered: HandoverChoices | 'cancel' | undefined;
       h.tx.script = async () => {
         answered = await h.tx.decide(working, 'freeze');
@@ -457,13 +457,13 @@ describe('svall handover', () => {
     }
   });
 
-  it('asks at each blocker in a terminal, naming the characters and paths each choice affects, and runs again with the answer', async () => {
+  it('asks at each blocker in a terminal, naming the robots and paths each choice affects, and runs again with the answer', async () => {
     const h = harness({ tty: true });
     const busy: Blocker[] = [
-      { code: 'shell_busy', message: "ada's terminal is running vim", entity: { kind: 'character', id: 'c_ada' } },
+      { code: 'shell_busy', message: "ada's terminal is running vim", entity: { kind: 'robot', id: 'c_ada' } },
       { code: 'destination_occupied', message: '/home/ada/app already exists and no handover left it there', entity: { kind: 'root', id: 'r_app' } },
     ];
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async (_kind, n) => {
       h.tx.record(pre(n === 1 ? busy : []));
@@ -472,7 +472,7 @@ describe('svall handover', () => {
       h.tx.record(changed('freeze'));
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
       answered = await h.tx.decide(working, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const run = runHandover(start(), h.ctx);
     await waitFor(() => /Choose/.test(h.out()));
@@ -496,10 +496,10 @@ describe('svall handover', () => {
     let release!: () => void;
     h.tx.script = async () => {
       h.tx.record(changed('freeze'));
-      for (const id of ['c_ada', 'c_bo']) h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id, phase: 'freeze' } });
-      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_ada', phase: 'freeze', done: 1, total: 1 } });
+      for (const id of ['c_ada', 'c_bo']) h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id, phase: 'freeze' } });
+      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_ada', phase: 'freeze', done: 1, total: 1 } });
       await new Promise<void>((r) => { release = r; });
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const run = runHandover({ kind: 'resume' }, h.ctx);
     await waitFor(() => /interrupt and carry/i.test(h.out()));
@@ -513,14 +513,14 @@ describe('svall handover', () => {
 
   it('answers a blocker on --resume with the choices the run holds, so none its start was given is dropped', async () => {
     const h = harness({ tty: true });
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     const held: HandoverChoices = { terminateShells: true, archiveRoots: ['r_app'] };
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record(changed('freeze'));
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working, choices: held } });
       answered = await h.tx.decide(working, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const run = runHandover({ kind: 'resume' }, h.ctx);
     await waitFor(() => /Choose/.test(h.out()));
@@ -531,16 +531,16 @@ describe('svall handover', () => {
 
   it('keeps Interrupt and carry typed while the rest waits in the answer to a blocker after it', async () => {
     const h = harness({ tty: true });
-    const busy: Blocker[] = [{ code: 'shell_busy', message: "ada's terminal is running vim", entity: { kind: 'character', id: 'c_ada' } }];
+    const busy: Blocker[] = [{ code: 'shell_busy', message: "ada's terminal is running vim", entity: { kind: 'robot', id: 'c_ada' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record(changed('freeze'));
-      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'freeze' } });
+      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_bo', phase: 'freeze' } });
       await waitFor(() => h.tx.chosen.length === 1);
       // the controller asks the freeze again with the interrupt merged into the choices it holds
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: busy, choices: { archiveRoots: ['r_app'], interruptAfterMs: 0 } } });
       answered = await h.tx.decide(busy, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const run = runHandover(start('trift', { archiveRoots: ['r_app'] }), h.ctx);
     await waitFor(() => /interrupt and carry/i.test(h.out()));
@@ -553,7 +553,7 @@ describe('svall handover', () => {
 
   it('cancels at once a blocker asked after the terminal\'s input ended', async () => {
     const h = harness({ tty: true });
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     let rest: (() => void) | undefined;
     h.tx.script = async () => {
@@ -565,7 +565,7 @@ describe('svall handover', () => {
     };
     const run = runHandover(start(), h.ctx);
     await waitFor(() => rest !== undefined);
-    // Ctrl-D while the characters rest, with no question asked
+    // Ctrl-D while the robots rest, with no question asked
     h.stdin.end();
     await new Promise((r) => setTimeout(r, 50));
     rest!();
@@ -611,7 +611,7 @@ describe('svall handover', () => {
         expect(h.out()).toContain('svall -p lab handover --resume');
         continue;
       }
-      finish({ status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] });
+      finish({ status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] });
       expect(await run).toEqual({ code: 0 });
       expect(h.out()).toMatch(/runs on/);
     }
@@ -659,7 +659,7 @@ describe('svall handover', () => {
     expect(await attached).toBe(0);
     h.signals.emit('SIGINT');
     await waitFor(() => /Ctrl-C again/.test(h.out()));
-    finish({ status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] });
+    finish({ status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] });
     expect(await run).toEqual({ code: 0 });
     expect(h.tx.cancelled).toBe(1);
   });
@@ -683,7 +683,7 @@ describe('svall handover', () => {
 
   it('exits 0 only when the command did what it was asked', async () => {
     const cases: [Job, Outcome, number][] = [
-      [start(), { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [], pending: ['source'] }, 0],
+      [start(), { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [], pending: ['source'] }, 0],
       [start(), { status: 'aborted', transactionId: 'tx-1', phase: 'freeze' }, 1],
       [{ kind: 'resume' }, { status: 'none', reason: 'nothing is open' }, 1],
       [{ kind: 'resume' }, { status: 'interrupted', transactionId: 'tx-1', phase: 'transfer', error: 'rsync died', safe: ['resume', 'abort'] }, 1],
@@ -823,7 +823,7 @@ describe('svall handover', () => {
 
   it('attaches to a live helper: replays the run, answers its decision with choose, cancels like Ctrl-C, and ends on its result', async () => {
     const h = harness();
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record(changed('freeze'));
@@ -855,12 +855,12 @@ describe('svall handover', () => {
 
   it('takes an attached client\'s answer as the whole of the choices, so one it turned off is dropped', async () => {
     const h = harness();
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
       answered = await h.tx.decide(working, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const helper = runHandover(start('trift', { terminateShells: true }), { ...h.ctx, helper: true });
     await waitFor(async () => (await probe(h.paths.socket)) === 'live' && fs.readFileSync(h.paths.events, 'utf8').includes('handover.blocked'));
@@ -891,7 +891,7 @@ describe('svall handover', () => {
     clients[0].type('{"cancel":true}');
     expect(await quitter).toBe(0);
     expect(clients[0].events().at(-1)).toEqual({ event: 'handover.result', data: { status: 'detached', transactionId: 'tx-1' } });
-    finish({ status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] });
+    finish({ status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] });
     expect(await watcher).toBe(0);
     expect(await helper).toEqual({ code: 0 });
     expect(clients[1].events().at(-1)).toMatchObject({ event: 'handover.result', data: { status: 'complete' } });
@@ -900,7 +900,7 @@ describe('svall handover', () => {
 
   it('lets a person attached at a terminal answer the helper from a menu, and interrupt the rest with i', async () => {
     const h = harness();
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record(pre());
@@ -908,7 +908,7 @@ describe('svall handover', () => {
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
       answered = await h.tx.decide(working, 'freeze');
       await waitFor(() => h.tx.chosen.length === 1);
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const helper = runHandover(start(), { ...h.ctx, helper: true });
     await waitFor(async () => (await probe(h.paths.socket)) === 'live' && fs.readFileSync(h.paths.events, 'utf8').includes('handover.blocked'));
@@ -929,7 +929,7 @@ describe('svall handover', () => {
 
   it('answers from an attached terminal with the choices the run holds, so none it started with is dropped', async () => {
     const h = harness();
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     const held: HandoverChoices = { terminateShells: true, archiveRoots: ['r_app'] };
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
@@ -937,7 +937,7 @@ describe('svall handover', () => {
       h.tx.record(changed('freeze'));
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working, choices: held } });
       answered = await h.tx.decide(working, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const helper = runHandover(start('trift', held), { ...h.ctx, helper: true });
     await waitFor(async () => (await probe(h.paths.socket)) === 'live' && fs.readFileSync(h.paths.events, 'utf8').includes('handover.blocked'));
@@ -954,13 +954,13 @@ describe('svall handover', () => {
 
   it('ends a terminal attach when its input ends with a question pending, and neither answers nor cancels', async () => {
     const h = harness();
-    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record(pre());
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
       answered = await h.tx.decide(working, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const helper = runHandover(start(), { ...h.ctx, helper: true });
     await waitFor(async () => (await probe(h.paths.socket)) === 'live' && fs.readFileSync(h.paths.events, 'utf8').includes('handover.blocked'));
@@ -986,12 +986,12 @@ describe('svall handover', () => {
 
   it('takes an attached client\'s answer to the question the terminal is asking, and drops the question', async () => {
     const h = harness({ tty: true });
-    const working: Blocker[] = [{ code: 'agent_blocked', message: 'bo is waiting on an answer', entity: { kind: 'character', id: 'c_bo' } }];
+    const working: Blocker[] = [{ code: 'agent_blocked', message: 'bo is waiting on an answer', entity: { kind: 'robot', id: 'c_bo' } }];
     let answered: HandoverChoices | 'cancel' | undefined;
     h.tx.script = async () => {
       h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working } });
       answered = await h.tx.decide(working, 'freeze');
-      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] };
     };
     const run = runHandover(start(), h.ctx);
     await waitFor(() => /Choose/.test(h.out()));
@@ -1134,14 +1134,14 @@ describe('the human reading', () => {
     const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
     const blocked: HandoverEvent = { event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: [] } };
     for (const e of [changed('begin'), changed('freeze'), blocked, changed('freeze'), changed('transfer'), changed('verify'), changed('prepare'), changed('transfer')]) view.show(e);
-    expect(printed.filter((l) => l === 'Resting characters')).toHaveLength(1);
+    expect(printed.filter((l) => l === 'Resting robots')).toHaveLength(1);
     expect(printed.filter((l) => l === 'Transferring files and sessions')).toHaveLength(2);
     expect(view.phase).toBe('transfer');
   });
 });
 
 describe('the human reading of what a row names', () => {
-  it('names a session row and its blocker by the character whose session it is', () => {
+  it('names a session row and its blocker by the robot whose session it is', () => {
     const printed: string[] = [];
     const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
     view.show(pre());
@@ -1152,7 +1152,7 @@ describe('the human reading of what a row names', () => {
   });
 
   it('offers to archive a root the destination holds by where it lands there', () => {
-    const names = { characters: {}, roots: { r_app: '/Users/ada/app' }, landing: { r_app: '/home/ada/app' } };
+    const names = { robots: {}, roots: { r_app: '/Users/ada/app' }, landing: { r_app: '/home/ada/app' } };
     const diverged: Blocker = { code: 'destination_diverged', message: '/home/ada/app changed', entity: { kind: 'root', id: 'r_app' } };
     expect(options([diverged], 'prepare', names).find((o) => o.key === 'a')?.label).toMatch(/^Archive \/home\/ada\/app: /);
   });
@@ -1166,9 +1166,9 @@ describe('the human reading of a session the destination went on with', () => {
     view.about.destination = 'trift';
     const id = 'ses_0123456789abABCDEFGHIJKLMN';
     const blockers: Blocker[] = [
-      { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${id} past the copy coming in`, entity: { kind: 'character', id: 'c_ada' } },
-      { code: 'destination_diverged', message: "the destination's Claude Code went on with session 3f2b past the copy coming in: /home/ada/.claude/projects/-app/3f2b.jsonl", entity: { kind: 'character', id: 'c_bo' } },
-      { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${id} past the copy coming in: /home/ada/.svall/transcripts/opencode/${id}.jsonl`, entity: { kind: 'character', id: 'c_ada' } },
+      { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${id} past the copy coming in`, entity: { kind: 'robot', id: 'c_ada' } },
+      { code: 'destination_diverged', message: "the destination's Claude Code went on with session 3f2b past the copy coming in: /home/ada/.claude/projects/-app/3f2b.jsonl", entity: { kind: 'robot', id: 'c_bo' } },
+      { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${id} past the copy coming in: /home/ada/.svall/transcripts/opencode/${id}.jsonl`, entity: { kind: 'robot', id: 'c_ada' } },
       { code: 'destination_diverged', message: '/home/ada/app changed', entity: { kind: 'root', id: 'r_app' } },
     ];
     view.show({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'prepare', blockers } });
@@ -1193,7 +1193,7 @@ describe('the human reading of where a handover stands', () => {
     const printed: string[] = [];
     const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
     const lines = view.outcome({ status: 'interrupted', phase: 'activate', error: "trift's handover journal could not be read", detail: 'moved to /x.broken-1', safe: [], stop: 'journal_lost' });
-    expect(lines).toEqual(["Stopped while resuming characters: trift's handover journal could not be read", '  moved to /x.broken-1', '`svall handover status` says where it stands.']);
+    expect(lines).toEqual(["Stopped while resuming robots: trift's handover journal could not be read", '  moved to /x.broken-1', '`svall handover status` says where it stands.']);
   });
 
   it('waits on the gateway only where the gateway could not say, and on the ways out a lost journal names otherwise', () => {
@@ -1243,7 +1243,7 @@ describe('the human reading of what a copy kept aside', () => {
     const row = { transactionId: 'tx-1', kind: 'root' as const, id: 'r_app', notice };
     view.show({ event: 'handover.entity', data: { ...row, phase: 'transfer' } });
     view.show({ event: 'handover.entity', data: { ...row, phase: 'verify', done: 2, total: 2 } });
-    view.show({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] } });
+    view.show({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [] } });
     expect(printed.filter((l) => l.includes(notice))).toEqual([`  ! /home/ada/app: ${notice}`, `  ! /home/ada/app: ${notice}`]);
     expect(printed.indexOf(`  ! /home/ada/app: ${notice}`)).toBeLessThan(printed.findIndex((l) => l.startsWith('Handed over')));
     expect(printed.at(-1)).toBe(`  ! /home/ada/app: ${notice}`);
@@ -1259,14 +1259,14 @@ describe('the human reading of what a copy kept aside', () => {
   });
 });
 
-describe('the human reading of what a resumed character waits on', () => {
+describe('the human reading of what a resumed robot waits on', () => {
   it('says so on its row as it resumes and again when the handover completes', () => {
     const printed: string[] = [];
     const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
     view.show(pre());
     const notice = 'codex waits at its "Trust this folder?" prompt in bo\'s terminal; answer it there';
-    view.show({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', notice } });
-    view.show({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] } });
+    view.show({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_bo', phase: 'activate', notice } });
+    view.show({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: true, notice }] } });
     expect(printed).toContain(`  ✓ bo resumed; ${notice}`);
     expect(printed).toContain(`  ! bo: ${notice}`);
     expect(printed.filter((l) => l.startsWith('  ! ada') || l.startsWith('  ✗'))).toEqual([]);
@@ -1350,7 +1350,7 @@ describe('svall handover --detach', () => {
     expect(await launchHelper(start(), h.ctx)).toBe(1);
     expect(h.events()).toEqual([{ event: 'handover.result', data: ended }]);
 
-    const complete: Outcome = { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [{ id: 'c_ada', ok: true }] };
+    const complete: Outcome = { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [{ id: 'c_ada', ok: true }] };
     const done = harness({ json: true });
     done.deps.launch = launcher(done, { HELPER_EVENTS: done.paths.events, HELPER_RESULT: JSON.stringify(complete) });
     expect(await launchHelper(start(), done.ctx)).toBe(0);
@@ -1360,7 +1360,7 @@ describe('svall handover --detach', () => {
   it('never takes the result an earlier run left in the events file for that of a helper that could not start', async () => {
     const h = harness({ json: true });
     fs.mkdirSync(h.paths.dir, { recursive: true, mode: 0o700 });
-    const earlier: Outcome = { status: 'complete', transactionId: 'tx-0', generation: 4, characters: [] };
+    const earlier: Outcome = { status: 'complete', transactionId: 'tx-0', generation: 4, robots: [] };
     fs.writeFileSync(h.paths.events, `${JSON.stringify({ event: 'handover.result', data: earlier })}\n`, { mode: 0o600 });
     h.deps.launch = launcher(h, { HELPER_FAIL: '1' });
     expect(await launchHelper(start(), h.ctx)).toBe(1);
@@ -1494,14 +1494,14 @@ describe('a fleet handed to another machine, from this one', () => {
   const main = path.join(root, 'packages/cli/src/main.ts');
   const GATE = MachineId.parse('cccccccc-dddd-eeee-ffff-000000000000');
 
-  it('reaches the new owner with status, char list and connect: through the gateway, and through the route the handover cached', { timeout: 120_000 }, async () => {
+  it('reaches the new owner with status, robot list and connect: through the gateway, and through the route the handover cached', { timeout: 120_000 }, async () => {
     const ssh = installFakeSsh();
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));
     try {
       // the daemon that runs the fleet on trift now, behind the forward the fake ssh proxies
       const state = emptyState();
-      state.characters.c_ada = {
+      state.robots.c_ada = {
         id: 'c_ada', islandId: 'home', cell: { x: 0, y: 1 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [],
         shell: { lastOutputAt: 0 }, unread: false, revive: { command: '' },
       };
@@ -1538,7 +1538,7 @@ describe('a fleet handed to another machine, from this one', () => {
         tx.record(changed('complete'));
         holds(TRIFT, 5);
         rememberOwner(home, { ownerMachineId: TRIFT, generation: 5 });
-        return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [{ id: 'c_ada', ok: true }] };
+        return { status: 'complete', transactionId: 'tx-1', generation: 5, robots: [{ id: 'c_ada', ok: true }] };
       };
       const out: string[] = [];
       const deps: CliDeps = {
@@ -1561,7 +1561,7 @@ describe('a fleet handed to another machine, from this one', () => {
       const reachesTrift = async (): Promise<void> => {
         const status = await svall('status', '--json');
         expect(status, status.stderr).toMatchObject({ code: 0 });
-        expect(JSON.parse(status.stdout).characters.c_ada.name).toBe('ada');
+        expect(JSON.parse(status.stdout).robots.c_ada.name).toBe('ada');
       };
 
       // first with the gateway out of reach: only the route the handover cached leads to trift, which holds generation 5
@@ -1577,7 +1577,7 @@ describe('a fleet handed to another machine, from this one', () => {
       // then through the gateway's record
       gateAt('gate.test');
       await reachesTrift();
-      const list = await svall('char', 'list', '--json');
+      const list = await svall('robot', 'list', '--json');
       expect(list.code).toBe(0);
       expect(JSON.parse(list.stdout).map((c: { name: string }) => c.name)).toEqual(['ada']);
       // no daemon runs the fleet here any more, and the reading says where it went

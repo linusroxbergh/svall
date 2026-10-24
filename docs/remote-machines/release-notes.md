@@ -15,19 +15,19 @@ not `handover.enabled` is on.
 - **Make it a fleet's gateway** with `svall host enable <name> --fleet <fleet>`. The gateway keeps the record of which
   machine owns the fleet, so only one ever runs it.
 - **Hand the fleet over** with the Handover button or `svall handover <name>`, and back with **This Mac** or
-  `svall handover local`. Characters, islands, notes, browser tab URLs, entity docs and agent profiles move; so do the
-  repositories the characters work in, with their worktrees, staged and unstaged changes, untracked files and
+  `svall handover local`. Robots, islands, notes, browser tab URLs, entity docs and agent profiles move; so do the
+  repositories the robots work in, with their worktrees, staged and unstaged changes, untracked files and
   stashes, and each Claude Code, Codex and OpenCode conversation. Agents resume from their transcripts, shells reopen
   in their folders, and the app reconnects to the fleet where it now runs.
 - **The checks come first.** Nothing moves until they pass, and each blocker says what to do: finish or interrupt a
   working agent, end a busy shell's command, archive a folder in the way, carry a terminal's folder whole when it
-  holds repositories no character works in. A folder changed on the other machine while it did not own the fleet stops
+  holds repositories no robot works in. A folder changed on the other machine while it did not own the fleet stops
   the handover before the copy starts; what a later copy pass replaces there is kept aside and listed.
 - **A handover survives interruptions.** It carries on while the app is closed, with this Mac's daemon and terminals
   left running for it. A dropped link or a killed process leaves it where it stopped, and the sheet or
   `svall handover status` says whether Resume or Abort is safe. Before the commit an abort gives the fleet back; after
   it, only the new machine goes on.
-- **Keep a character on this machine** from its card, or `svall char update <id> --keep-here`, and a handover waits
+- **Keep a robot on this machine** from its card, or `svall robot update <id> --keep-here`, and a handover waits
   for it.
 - **Disaster recovery**: `svall fleet recover --force-owner <machine>` writes a new ownership record when the gateway
   is lost for good, after showing everything each machine holds.
@@ -63,6 +63,6 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 ## Not yet
 
 - A stable phone URL that follows the fleet between machines, and forwarding a remote dev server's ports to the Mac.
-- More than one Linux machine per fleet, and moving a single character or island.
+- More than one Linux machine per fleet, and moving a single robot or island.
 
 Known limitations are listed in [Moving a fleet](handover.md#known-limitations).

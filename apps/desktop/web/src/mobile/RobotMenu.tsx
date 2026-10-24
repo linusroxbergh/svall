@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState, type JSX, type RefObject } from 'react';
-import { contextKind, type Character, type ContextItem, type Params } from '@svall/protocol';
+import { contextKind, type Robot, type ContextItem, type Params } from '@svall/protocol';
 import { webUrl } from '../bridge.js';
 import { AS_TYPED, commitFocused, FollowTextarea } from '../Field.js';
 import { useApp, useTick } from '../hooks.js';
@@ -8,22 +8,22 @@ import { ago, hintText, linkText } from '../map/tokenText.js';
 import { usePromptHistory } from '../promptHistory.js';
 import { contextPctOf } from '../selectors.js';
 import { phone } from './boot.js';
-import { CloseConfirm } from './CloseCharacter.js';
+import { CloseConfirm } from './CloseRobot.js';
 import { DocsList } from './DocsList.js';
 import { Sheet } from './Sheet.js';
 
 // a refusal is told beside the edit it refused
 function useSave(id: string) {
   const [error, setError] = useState<string>();
-  const save = (patch: Omit<Params<'char.update'>, 'id'>): Promise<boolean> => {
+  const save = (patch: Omit<Params<'robot.update'>, 'id'>): Promise<boolean> => {
     setError(undefined);
-    return phone.api().call('char.update', { id, ...patch }).then(() => true, (e: Error) => { setError(e.message); return false; });
+    return phone.api().call('robot.update', { id, ...patch }).then(() => true, (e: Error) => { setError(e.message); return false; });
   };
   return [error, save] as const;
 }
 
 // a pinned item is read before the agent starts; only one added by hand can be taken off
-function Context({ c }: { c: Character }) {
+function Context({ c }: { c: Robot }) {
   const [ref, setRef] = useState('');
   const [error, save] = useSave(c.id);
   const set = (context: ContextItem[]) => save({ context });
@@ -61,19 +61,19 @@ function Context({ c }: { c: Character }) {
   );
 }
 
-function Note({ c, saving }: { c: Character; saving: RefObject<Promise<boolean> | undefined> }) {
+function Note({ c, saving }: { c: Robot; saving: RefObject<Promise<boolean> | undefined> }) {
   const [error, save] = useSave(c.id);
   return (
     <div className="m-sec">
       <h4>Note</h4>
-      <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this character is doing" value={c.note}
+      <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this robot is doing" value={c.note}
         onSave={(v) => { if (v !== c.note) saving.current = save({ note: v }); }} />
       {error && <p className="sheet-error">{error}</p>}
     </div>
   );
 }
 
-function LastCommand({ c }: { c: Character }) {
+function LastCommand({ c }: { c: Robot }) {
   const { list, at, step } = usePromptHistory(phone.api, c.id, c.agent);
   if (!c.agent) return null;
   return (
@@ -94,7 +94,7 @@ function LastCommand({ c }: { c: Character }) {
 }
 
 // the phone reads the agent's instructions; they are written on the Mac
-function Instructions({ c }: { c: Character }) {
+function Instructions({ c }: { c: Robot }) {
   if (!c.instructions) return null;
   return (
     <div className="m-sec">
@@ -104,7 +104,7 @@ function Instructions({ c }: { c: Character }) {
   );
 }
 
-function Details({ c }: { c: Character }) {
+function Details({ c }: { c: Robot }) {
   const pct = contextPctOf(c);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
@@ -124,9 +124,9 @@ function Details({ c }: { c: Character }) {
   );
 }
 
-/** The side card of the Mac, as a sheet: what the character works from. */
-export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose(): void; onClosed(): void }): JSX.Element | null {
-  const c = useApp((s) => s.fleet.characters[id]);
+/** The side card of the Mac, as a sheet: what the robot works from. */
+export function RobotMenu({ id, onClose, onClosed }: { id: string; onClose(): void; onClosed(): void }): JSX.Element | null {
+  const c = useApp((s) => s.fleet.robots[id]);
   const [confirm, setConfirm] = useState(false);
   const saving = useRef<Promise<boolean>>(undefined);
   if (!c) return null;
@@ -145,14 +145,14 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
       {hint && <p className="sheet-note">{hint}</p>}
       <Context c={c} />
       <Note c={c} saving={saving} />
-      <DocsList tier="character" id={id} />
+      <DocsList tier="robot" id={id} />
       <LastCommand c={c} />
       <Instructions c={c} />
       <Details c={c} />
       <div className="sheet-form m-acts">
         {confirm
           ? <CloseConfirm c={c} onClosed={onClosed} />
-          : <button type="button" className="dan" onClick={() => setConfirm(true)}>Close character</button>}
+          : <button type="button" className="dan" onClick={() => setConfirm(true)}>Close robot</button>}
       </div>
     </Sheet>
   );

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { z, type ZodTypeAny } from 'zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  Character, emptyState, FleetConfig, FleetState, MachineRecord, NodeConfig, TransferManifestV1,
+  Robot, emptyState, FleetConfig, FleetState, MachineRecord, NodeConfig, TransferManifestV1,
   type Blocker, type FleetState as State, type GitCheckout, type GitGraph, type MachineId, type Warning,
 } from '@svall/protocol';
 import { discoverGit } from '../../src/handover/git-graph.js';
@@ -69,8 +69,8 @@ describe('path classification', () => {
   });
 
   it('fails on a path field nobody classified', () => {
-    const Future = FleetState.extend({ characters: z.record(z.string(), Character.extend({ scratchDir: z.string() })) });
-    expect(unclassified({ ...CLASSIFIED, FleetState: Future })).toEqual(['FleetState.characters.*.scratchDir']);
+    const Future = FleetState.extend({ robots: z.record(z.string(), Robot.extend({ scratchDir: z.string() })) });
+    expect(unclassified({ ...CLASSIFIED, FleetState: Future })).toEqual(['FleetState.robots.*.scratchDir']);
   });
 
   it('classifies every number, flag and choice the state and fleet.json carry as bound to a machine or process, or not', () => {
@@ -78,8 +78,8 @@ describe('path classification', () => {
   });
 
   it('fails on a pid or any other value nobody classified', () => {
-    const Future = FleetState.extend({ characters: z.record(z.string(), Character.extend({ shellPid: z.number().int().optional() })) });
-    expect(unclassifiedValues({ ...TRAVELLING, FleetState: Future })).toEqual(['FleetState.characters.*.shellPid']);
+    const Future = FleetState.extend({ robots: z.record(z.string(), Robot.extend({ shellPid: z.number().int().optional() })) });
+    expect(unclassifiedValues({ ...TRAVELLING, FleetState: Future })).toEqual(['FleetState.robots.*.shellPid']);
   });
 
   it('names no field the schemas no longer have', () => {
@@ -90,7 +90,7 @@ describe('path classification', () => {
 
   it('reads a context ref as a path only for a file or folder, and a browser url only when it is file:', () => {
     const state = emptyState();
-    state.characters.c1 = char('c1', {
+    state.robots.c1 = robot('c1', {
       cwd: '/Users/linus/p',
       context: [
         { kind: 'file', ref: '/Users/linus/notes.md', label: '', source: 'manual' },
@@ -102,11 +102,11 @@ describe('path classification', () => {
     expect(values.map((v) => [v.field, v.path]).sort()).toEqual([
       ['FleetConfig.defaultCwd', '/Users/linus'],
       ['FleetConfig.home.cwd', '/Users/linus/.svall/home'],
-      ['FleetState.characters.*.browser.tabs[].url', '/Users/linus/p/a b.html'],
-      ['FleetState.characters.*.context[].ref', '/Users/linus/notes.md'],
-      ['FleetState.characters.*.cwd', '/Users/linus/p'],
       ['FleetState.defaultCwd', '/Users/linus'],
       ['FleetState.home.cwd', '/Users/linus/.svall/home'],
+      ['FleetState.robots.*.browser.tabs[].url', '/Users/linus/p/a b.html'],
+      ['FleetState.robots.*.context[].ref', '/Users/linus/notes.md'],
+      ['FleetState.robots.*.cwd', '/Users/linus/p'],
     ]);
   });
 
@@ -115,26 +115,26 @@ describe('path classification', () => {
     state.agentsFound = ['claude', 'codex'];
     const tmux = { windowId: '@1', paneId: '%1' };
     const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t.jsonl', status: 'idle' as const, lastActivityAt: 1 };
-    state.characters.c1 = char('c1', {
+    state.robots.c1 = robot('c1', {
       tmux, panePath: '/Users/linus/p', hint: 'codex-silent', codexDaemon: true, star: 0,
       agent: { ...agent, pid: 41, monitors: ['b1'], subagents: ['a1'], flags: ['--effort', "'high'"] },
       second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42, monitors: ['b2'], subagents: ['a2'], flags: ['--verbose'] } },
     });
     const exported = exportSnapshot(state);
-    expect(exported.characters.c1.tmux).toBeUndefined();
-    expect(exported.characters.c1.panePath).toBeUndefined();
-    expect(exported.characters.c1.hint).toBeUndefined();
-    expect(exported.characters.c1.codexDaemon).toBeUndefined();
+    expect(exported.robots.c1.tmux).toBeUndefined();
+    expect(exported.robots.c1.panePath).toBeUndefined();
+    expect(exported.robots.c1.hint).toBeUndefined();
+    expect(exported.robots.c1.codexDaemon).toBeUndefined();
     // a pid, a monitor's task, a subagent or the launch flags ps showed name a process on this machine only, and the destination finds its own agents
-    expect(exported.characters.c1.agent).toEqual(agent);
-    expect(exported.characters.c1.star).toBe(0);
-    expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false, agent });
+    expect(exported.robots.c1.agent).toEqual(agent);
+    expect(exported.robots.c1.star).toBe(0);
+    expect(exported.robots.c1.second).toEqual({ cwd: '/x', unread: false, agent });
     expect(exported.agentsFound).toBeUndefined();
-    const { tmux: _t, panePath: _p, hint: _h, codexDaemon: _d, agent: _a, second: _s, ...rest } = state.characters.c1;
-    expect(exported.characters.c1).toEqual({ ...rest, agent, second: { cwd: '/x', unread: false, agent } });
-    expect(state.characters.c1.tmux).toEqual(tmux);
-    expect(state.characters.c1.agent?.pid).toBe(41);
-    expect(state.characters.c1.agent?.monitors).toEqual(['b1']);
+    const { tmux: _t, panePath: _p, hint: _h, codexDaemon: _d, agent: _a, second: _s, ...rest } = state.robots.c1;
+    expect(exported.robots.c1).toEqual({ ...rest, agent, second: { cwd: '/x', unread: false, agent } });
+    expect(state.robots.c1.tmux).toEqual(tmux);
+    expect(state.robots.c1.agent?.pid).toBe(41);
+    expect(state.robots.c1.agent?.monitors).toEqual(['b1']);
     expect(state.agentsFound).toEqual(['claude', 'codex']);
     expect(FleetState.parse(exported)).toEqual(exported);
   });
@@ -205,14 +205,14 @@ function seed() {
     destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.svall') },
   };
   const state = emptyState();
-  state.characters = {
-    main: char('main', { cwd: path.join(repo, 'src'), repo: { root: repo, mainRoot: repo, branch: 'main', isWorktree: false } }),
-    w1: char('w1', {
+  state.robots = {
+    main: robot('main', { cwd: path.join(repo, 'src'), repo: { root: repo, mainRoot: repo, branch: 'main', isWorktree: false } }),
+    w1: robot('w1', {
       cwd: nested, repo: { root: nested, mainRoot: repo, branch: 'w1', isWorktree: true },
       agent: agent('claude', path.join(mac, '.claude/projects/w1/11111111-1111-4111-8111-111111111111.jsonl')),
       second: { cwd: plain, unread: false, agent: agent('codex', path.join(mac, '.codex/sessions/r.jsonl')) },
     }),
-    w2: char('w2', {
+    w2: robot('w2', {
       cwd: sibling, repo: { root: sibling, mainRoot: repo, branch: 'w2', isWorktree: true },
       context: [
         { kind: 'file', ref: notes, label: '', source: 'manual' },
@@ -220,7 +220,7 @@ function seed() {
       ],
     }),
     // a shell parked at the home root: it reopens there, and home itself is never copied
-    idle: char('idle', { cwd: mac }),
+    idle: robot('idle', { cwd: mac }),
   };
   return { base, mac, repo, nested, sibling, plain, notes, maps, state };
 }
@@ -245,18 +245,18 @@ describe('buildInventory', () => {
     expect(inv.toMachineId).toBe(TRIFT);
     expect(inv.home).toBe(s.mac);
     // nothing it records is rewritten
-    expect(inv.snapshot.characters).toEqual(exportSnapshot(s.state).characters);
+    expect(inv.snapshot.robots).toEqual(exportSnapshot(s.state).robots);
   });
 
   it('lists the transcript each agent recorded, in either terminal, and blocks an agent that recorded none', () => {
     const s = seed();
-    s.state.characters.w2.agent = { kind: 'codex', sessionId: '22222222-2222-4222-8222-222222222222', status: 'idle', lastActivityAt: 0 };
+    s.state.robots.w2.agent = { kind: 'codex', sessionId: '22222222-2222-4222-8222-222222222222', status: 'idle', lastActivityAt: 0 };
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.sessions).toEqual([
-      { characterId: 'w1', agent: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: s.state.characters.w1.agent!.transcriptPath },
-      { characterId: 'w1', term: 2, agent: 'codex', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: path.join(s.mac, '.codex/sessions/r.jsonl') },
+      { robotId: 'w1', agent: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: s.state.robots.w1.agent!.transcriptPath },
+      { robotId: 'w1', term: 2, agent: 'codex', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: path.join(s.mac, '.codex/sessions/r.jsonl') },
     ]);
-    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'character', id: 'w2' } })]);
+    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'robot', id: 'w2' } })]);
   });
 
   describe('between accounts with different homes', () => {
@@ -298,7 +298,7 @@ describe('buildInventory', () => {
       const { linux } = away(s);
       const odd = path.join(linux, 'odd');
       fs.mkdirSync(odd, { recursive: true });
-      s.state.characters.w2.context.push({ kind: 'folder', ref: odd, label: '', source: 'manual' });
+      s.state.robots.w2.context.push({ kind: 'folder', ref: odd, label: '', source: 'manual' });
       const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
       expect(inv.blockers).toEqual([{ code: 'path_unsupported', message: relocationProblem(odd, { from: s.mac, to: linux }), entity: { kind: 'root', id: expect.any(String) } }]);
       expect(inv.roots.some((r) => r.path === odd)).toBe(false);
@@ -308,7 +308,7 @@ describe('buildInventory', () => {
   it('carries a root outside the home at its own path, leaving the destination to say whether the folder it lands in is there', () => {
     const s = seed();
     const outside = path.join(s.base, 'outside');
-    s.state.characters.w2.context.push({ kind: 'folder', ref: outside, label: '', source: 'manual' });
+    s.state.robots.w2.context.push({ kind: 'folder', ref: outside, label: '', source: 'manual' });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers).toEqual([]);
     expect(inv.roots.find((r) => r.path === outside)).toMatchObject({ kind: 'context', entry: 'dir' });
@@ -316,9 +316,9 @@ describe('buildInventory', () => {
 
   it('blocks a working directory holding a control character', () => {
     const s = seed();
-    s.state.characters.main.second = { cwd: path.join(s.mac, 'a\tb'), unread: false };
+    s.state.robots.main.second = { cwd: path.join(s.mac, 'a\tb'), unread: false };
     expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toEqual([
-      { code: 'path_unsupported', message: `${JSON.stringify(path.join(s.mac, 'a\tb'))} holds a control character`, entity: { kind: 'character', id: 'main' } },
+      { code: 'path_unsupported', message: `${JSON.stringify(path.join(s.mac, 'a\tb'))} holds a control character`, entity: { kind: 'robot', id: 'main' } },
     ]);
   });
 
@@ -327,14 +327,14 @@ describe('buildInventory', () => {
     const linked = path.join(s.mac, 'linked');
     fs.symlinkSync(s.plain, linked);
     fs.writeFileSync(path.join(s.plain, 'todo.md'), 'todo');
-    s.state.characters.idle.cwd = linked;
-    s.state.characters.w2.context.push({ kind: 'file', ref: path.join(linked, 'todo.md'), label: '', source: 'manual' });
+    s.state.robots.idle.cwd = linked;
+    s.state.robots.w2.context.push({ kind: 'file', ref: path.join(linked, 'todo.md'), label: '', source: 'manual' });
     const inv = buildInventory(s.state, { fleet: { ...FLEET, home: { ...FLEET.home, cwd: '~/linked' } } }, s.maps);
     const said = (p: string, real: string) =>
       `${p} leads to ${real} through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use ${real} instead`;
     expect(inv.blockers).toEqual([
-      { code: 'path_symlinked', message: said(linked, s.plain), entity: { kind: 'character', id: 'idle' } },
-      { code: 'path_symlinked', message: said(path.join(linked, 'todo.md'), path.join(s.plain, 'todo.md')), entity: { kind: 'character', id: 'w2' } },
+      { code: 'path_symlinked', message: said(linked, s.plain), entity: { kind: 'robot', id: 'idle' } },
+      { code: 'path_symlinked', message: said(path.join(linked, 'todo.md'), path.join(s.plain, 'todo.md')), entity: { kind: 'robot', id: 'w2' } },
       { code: 'path_symlinked', message: said(linked, s.plain) },
     ]);
     expect(inv.roots.some((r) => r.path.startsWith(linked))).toBe(false);
@@ -349,14 +349,14 @@ describe('buildInventory', () => {
     const stored = (p: string): string => p.split('/').slice(1)
       .reduce((at, name) => path.join(at, fs.readdirSync(at).find((n) => n.toLowerCase() === name.toLowerCase()) ?? name), '/');
     vi.spyOn(fs.realpathSync, 'native').mockImplementation(((p: string) => native(stored(p))) as typeof native);
-    s.state.characters.idle.cwd = path.join(s.mac, 'SCRATCH');
-    s.state.characters.keys = char('keys', { cwd: path.join(s.mac, '.SSH') });
+    s.state.robots.idle.cwd = path.join(s.mac, 'SCRATCH');
+    s.state.robots.keys = robot('keys', { cwd: path.join(s.mac, '.SSH') });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     const said = (p: string, real: string) =>
       `${p} is spelled ${real} on disk; a handover carries each folder at its real path, the one Git and the agents record, so use ${real} instead`;
     expect(inv.blockers).toEqual([
-      { code: 'path_symlinked', message: said(path.join(s.mac, 'SCRATCH'), s.plain), entity: { kind: 'character', id: 'idle' } },
-      { code: 'path_symlinked', message: said(path.join(s.mac, '.SSH'), ssh), entity: { kind: 'character', id: 'keys' } },
+      { code: 'path_symlinked', message: said(path.join(s.mac, 'SCRATCH'), s.plain), entity: { kind: 'robot', id: 'idle' } },
+      { code: 'path_symlinked', message: said(path.join(s.mac, '.SSH'), ssh), entity: { kind: 'robot', id: 'keys' } },
     ]);
     expect(inv.roots.filter((r) => r.path.toLowerCase() === s.plain.toLowerCase()).map((r) => r.path)).toEqual([s.plain]);
     expect(inv.roots.some((r) => r.path.toLowerCase() === ssh.toLowerCase())).toBe(false);
@@ -366,7 +366,7 @@ describe('buildInventory', () => {
     const s = seed();
     const built = path.join(s.plain, 'build/site');
     fs.mkdirSync(built, { recursive: true });
-    s.state.characters.site = char('site', { cwd: built });
+    s.state.robots.site = robot('site', { cwd: built });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers).toEqual([]);
     const root = inv.roots.find((r) => r.path === built);
@@ -395,8 +395,8 @@ describe('buildInventory', () => {
     fs.writeFileSync(doc, 'conventions\n');
     fs.mkdirSync(path.join(fleetHome, 'agent-profiles'));
     fs.writeFileSync(path.join(fleetHome, 'agent-profiles/reviewer.md'), 'Review.\n');
-    // a doc a character keeps as context rides in the docs, as no overlap of the fleet home
-    s.state.characters.w2.context.push({ kind: 'file', ref: doc, label: '', source: 'manual' });
+    // a doc a robot keeps as context rides in the docs, as no overlap of the fleet home
+    s.state.robots.w2.context.push({ kind: 'file', ref: doc, label: '', source: 'manual' });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers).toEqual([]);
     expect(inv.roots.filter((r) => r.path.startsWith(`${fleetHome}/`)).map((r) => [r.kind, path.relative(fleetHome, r.path), r.entry])).toEqual([
@@ -418,9 +418,9 @@ describe('buildInventory', () => {
     expect(buildInventory(s.state, { fleet: FLEET }, s.maps).roots.filter((r) => r.kind === 'docs' || r.kind === 'profiles')).toEqual([]);
   });
 
-  it('comes out the same whatever order the characters were added in', () => {
+  it('comes out the same whatever order the robots were added in', () => {
     const s = seed();
-    const reversed: State = { ...s.state, characters: Object.fromEntries(Object.entries(s.state.characters).reverse()) };
+    const reversed: State = { ...s.state, robots: Object.fromEntries(Object.entries(s.state.robots).reverse()) };
     expect(buildInventory(reversed, { fleet: FLEET }, s.maps)).toEqual(buildInventory(s.state, { fleet: FLEET }, s.maps));
   });
 
@@ -429,11 +429,11 @@ describe('buildInventory', () => {
     const fleetHome = path.join(s.mac, '.svall');
     fs.mkdirSync(path.join(fleetHome, 'hooks'));
     fs.mkdirSync(path.join(s.mac, '.svall-dest'));
-    s.state.characters.inside = char('inside', { cwd: fleetHome });
-    s.state.characters.hooks = char('hooks', { cwd: path.join(fleetHome, 'hooks') });
+    s.state.robots.inside = robot('inside', { cwd: fleetHome });
+    s.state.robots.hooks = robot('hooks', { cwd: path.join(fleetHome, 'hooks') });
     // lands on the destination's fleet home, though it is not this machine's
     s.maps.destination.fleetHome = path.join(s.mac, '.svall-dest');
-    s.state.characters.lands = char('lands', { cwd: path.join(s.mac, '.svall-dest') });
+    s.state.robots.lands = robot('lands', { cwd: path.join(s.mac, '.svall-dest') });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     const blocked = [fleetHome, path.join(fleetHome, 'hooks'), path.join(s.mac, '.svall-dest')];
     expect(inv.blockers.map((b) => [b.code, b.entity?.kind])).toEqual(blocked.map(() => ['path_unsupported', 'root']));
@@ -455,13 +455,13 @@ describe('buildInventory', () => {
     s.maps.source.agentHomes = { claude, codex: path.join(s.mac, '.codex') };
     // the destination keeps Codex's login elsewhere, which a root here would land on
     s.maps.destination.agentHomes = { codex };
-    s.state.characters.dotclaude = char('dotclaude', { cwd: claude });
-    s.state.characters.codex = char('codex', { cwd: codex });
-    s.state.characters.keys = char('keys', { cwd: ssh });
-    s.state.characters.key = char('key', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(ssh, 'id_ed25519'), label: '', source: 'manual' }] });
-    s.state.characters.config = char('config', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(s.mac, '.claude.json'), label: '', source: 'manual' }] });
+    s.state.robots.dotclaude = robot('dotclaude', { cwd: claude });
+    s.state.robots.codex = robot('codex', { cwd: codex });
+    s.state.robots.keys = robot('keys', { cwd: ssh });
+    s.state.robots.key = robot('key', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(ssh, 'id_ed25519'), label: '', source: 'manual' }] });
+    s.state.robots.config = robot('config', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(s.mac, '.claude.json'), label: '', source: 'manual' }] });
     // a folder inside an agent's home holds neither
-    s.state.characters.skills = char('skills', { cwd: path.join(claude, 'skills') });
+    s.state.robots.skills = robot('skills', { cwd: path.join(claude, 'skills') });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     const blocked = [claude, codex, ssh, path.join(ssh, 'id_ed25519'), path.join(s.mac, '.claude.json')];
     expect(inv.blockers.filter((b) => b.code === 'path_unsupported').map((b) => b.message).sort()).toEqual([
@@ -483,9 +483,9 @@ describe('buildInventory', () => {
     fs.writeFileSync(path.join(fallback, '.credentials.json'), '{}');
     // the daemon runs with CLAUDE_CONFIG_DIR set, and a shell without it logs in to ~/.claude
     s.maps.source.agentHomes = { claude: configured };
-    s.state.characters.fallback = char('fallback', { cwd: fallback });
-    s.state.characters.share = char('share', { cwd: path.join(s.mac, '.local/share') });
-    s.state.characters.config = char('config', { cwd: path.join(s.mac, '.config') });
+    s.state.robots.fallback = robot('fallback', { cwd: fallback });
+    s.state.robots.share = robot('share', { cwd: path.join(s.mac, '.local/share') });
+    s.state.robots.config = robot('config', { cwd: path.join(s.mac, '.config') });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers.filter((b) => b.code === 'path_unsupported').map((b) => b.message).sort()).toEqual([
       `${fallback} holds ${path.join(fallback, '.credentials.json')}, which stays on its machine`,
@@ -506,14 +506,14 @@ describe('buildInventory', () => {
     s.maps.destination.opencode = [named];
     s.maps.source.agentHomes = { opencode: landing };
     s.maps.destination.agentHomes = { opencode: landing };
-    s.state.characters.landing = char('landing', { cwd: landing });
-    s.state.characters.local = char('local', { cwd: path.join(s.mac, '.local/state') });
-    s.state.characters.cache = char('cache', { cwd: path.join(s.mac, '.cache/opencode/node_modules') });
-    s.state.characters.other = char('other', { cwd: path.join(s.mac, '.local/state/other') });
-    s.state.characters.under = char('under', { cwd: path.join(s.mac, 'oc-data') });
-    s.state.characters.snap = char('snap', { cwd: path.join(data, 'snapshot') });
-    s.state.characters.config = char('config', { cwd: config });
-    s.state.characters.db = char('db', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(data, 'opencode.db-wal'), label: '', source: 'manual' }] });
+    s.state.robots.landing = robot('landing', { cwd: landing });
+    s.state.robots.local = robot('local', { cwd: path.join(s.mac, '.local/state') });
+    s.state.robots.cache = robot('cache', { cwd: path.join(s.mac, '.cache/opencode/node_modules') });
+    s.state.robots.other = robot('other', { cwd: path.join(s.mac, '.local/state/other') });
+    s.state.robots.under = robot('under', { cwd: path.join(s.mac, 'oc-data') });
+    s.state.robots.snap = robot('snap', { cwd: path.join(data, 'snapshot') });
+    s.state.robots.config = robot('config', { cwd: config });
+    s.state.robots.db = robot('db', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(data, 'opencode.db-wal'), label: '', source: 'manual' }] });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers.filter((b) => b.code === 'path_unsupported').map((b) => b.message).sort()).toEqual([
       `${path.join(data, 'snapshot')} lies in ${data}, which stays on its machine`,
@@ -534,7 +534,7 @@ describe('buildInventory', () => {
     fs.mkdirSync(path.join(fleetHome, 'hooks'));
     fs.symlinkSync(fleetHome, path.join(s.mac, 'svall-link'));
     s.maps.source.fleetHome = path.join(s.mac, 'svall-link');
-    s.state.characters.idle.cwd = path.join(fleetHome, 'hooks');
+    s.state.robots.idle.cwd = path.join(fleetHome, 'hooks');
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`overlaps the fleet home ${path.join(s.mac, 'svall-link')}`) })]);
     expect(inv.roots.some((r) => r.path === path.join(fleetHome, 'hooks'))).toBe(false);
@@ -544,7 +544,7 @@ describe('buildInventory', () => {
     const s = seed();
     const notes = path.join(s.mac, '.svall/home/notes.md');
     fs.writeFileSync(notes, 'notes');
-    s.state.characters.w2.context.push({ kind: 'file', ref: notes, label: '', source: 'manual' });
+    s.state.robots.w2.context.push({ kind: 'file', ref: notes, label: '', source: 'manual' });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers).toEqual([]);
     expect(inv.roots.some((r) => r.path === notes)).toBe(false);
@@ -591,12 +591,12 @@ describe('buildInventory', () => {
     const s = seed();
     // a file named like an excluded folder rides in the folder around it
     fs.writeFileSync(path.join(s.plain, 'build'), 'a file, not the build folder');
-    s.state.characters.w2.context.push({ kind: 'file', ref: path.join(s.plain, 'build'), label: '', source: 'manual' });
+    s.state.robots.w2.context.push({ kind: 'file', ref: path.join(s.plain, 'build'), label: '', source: 'manual' });
     // a folder named build that a tab opens is carried on its own, since the folder around it excludes it
     const site = path.join(s.sibling, 'build');
     fs.mkdirSync(site);
     fs.writeFileSync(path.join(site, 'index.html'), '<p>');
-    s.state.characters.w2.browser = { tabs: [{ id: 't1', url: pathToFileURL(site).href, title: '' }] };
+    s.state.robots.w2.browser = { tabs: [{ id: 't1', url: pathToFileURL(site).href, title: '' }] };
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.roots.some((r) => r.path === path.join(s.plain, 'build'))).toBe(false);
     expect(inv.roots.find((r) => r.path === site)).toMatchObject({ kind: 'context', entry: 'dir' });
@@ -605,16 +605,16 @@ describe('buildInventory', () => {
 
   it('keeps a snapshot with no tmux ids', () => {
     const s = seed();
-    s.state.characters.main.tmux = { windowId: '@1', paneId: '%1' };
-    expect(buildInventory(s.state, { fleet: FLEET }, s.maps).snapshot.characters.main.tmux).toBeUndefined();
+    s.state.robots.main.tmux = { windowId: '@1', paneId: '%1' };
+    expect(buildInventory(s.state, { fleet: FLEET }, s.maps).snapshot.robots.main.tmux).toBeUndefined();
   });
 });
 
 describe('buildInventory with the discovered Git graphs', () => {
-  const checkout = (p: string, gitDir: string, characters: string[]): GitCheckout =>
-    ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), characters });
+  const checkout = (p: string, gitDir: string, robots: string[]): GitCheckout =>
+    ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), robots });
 
-  // the seed's repository, a bare one with a worktree beside it, and a submodule a character works in
+  // the seed's repository, a bare one with a worktree beside it, and a submodule a robot works in
   function discovered(s: ReturnType<typeof seed>) {
     const bare = path.join(s.mac, 'code/tool.git');
     const bw = path.join(s.mac, 'code/tool-wt');
@@ -622,8 +622,8 @@ describe('buildInventory with the discovered Git graphs', () => {
     const modules = path.join(s.repo, '.git/modules/sub');
     for (const d of [bare, bw, sub, modules]) fs.mkdirSync(d, { recursive: true });
     // what a bare repository's worktree records: its parent as the main root
-    s.state.characters.tool = char('tool', { cwd: bw, repo: { root: bw, mainRoot: path.join(s.mac, 'code'), branch: 'x', isWorktree: true } });
-    s.state.characters.sub = char('sub', { cwd: sub });
+    s.state.robots.tool = robot('tool', { cwd: bw, repo: { root: bw, mainRoot: path.join(s.mac, 'code'), branch: 'x', isWorktree: true } });
+    s.state.robots.sub = robot('sub', { cwd: sub });
     const graphs: GitGraph[] = [
       {
         id: 'g_app', commonDir: path.join(s.repo, '.git'), main: checkout(s.repo, path.join(s.repo, '.git'), ['main']),
@@ -668,10 +668,10 @@ describe('buildInventory with the discovered Git graphs', () => {
     for (const d of [...trees.map((w) => path.join(w, 'src')), path.join(data, 'snapshot')]) fs.mkdirSync(d, { recursive: true });
     s.maps.source.opencode = [named];
     s.maps.destination.opencode = [theirs];
-    // one character stands in a folder inside its worktree
-    trees.forEach((w, i) => { s.state.characters[`oc${i}`] = char(`oc${i}`, { cwd: i === 1 ? path.join(w, 'src') : w }); });
-    s.state.characters.folder = char('folder', { cwd: path.join(data, 'worktree') });
-    s.state.characters.snap = char('snap', { cwd: path.join(data, 'snapshot') });
+    // one robot stands in a folder inside its worktree
+    trees.forEach((w, i) => { s.state.robots[`oc${i}`] = robot(`oc${i}`, { cwd: i === 1 ? path.join(w, 'src') : w }); });
+    s.state.robots.folder = robot('folder', { cwd: path.join(data, 'worktree') });
+    s.state.robots.snap = robot('snap', { cwd: path.join(data, 'snapshot') });
     const graph: GitGraph = {
       id: 'g_app', commonDir: path.join(s.repo, '.git'), main: checkout(s.repo, path.join(s.repo, '.git'), ['main']),
       worktrees: trees.map((w, i) => checkout(w, path.join(s.repo, '.git/worktrees', path.basename(w)), [`oc${i}`])), unused: [], stash: [],
@@ -697,7 +697,7 @@ describe('buildInventory with the discovered Git graphs', () => {
     const linked = path.join(s.base, 'tool-link');
     fs.symlinkSync(d.bw, linked);
     d.discovery.graphs[2].worktrees[0].path = linked;
-    const found: Blocker = { code: 'worktree_unresolved', message: 'git refused', entity: { kind: 'character', id: 'w1' } };
+    const found: Blocker = { code: 'worktree_unresolved', message: 'git refused', entity: { kind: 'robot', id: 'w1' } };
     d.discovery.blockers.push(found);
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps, d.discovery);
     expect(inv.blockers).toEqual([
@@ -715,7 +715,7 @@ describe('buildInventory with the discovered Git graphs', () => {
     for (const note of [kept, cached]) {
       fs.mkdirSync(path.dirname(note), { recursive: true });
       fs.writeFileSync(note, 'notes');
-      s.state.characters.w2.context.push({ kind: 'file', ref: note, label: '', source: 'manual' });
+      s.state.robots.w2.context.push({ kind: 'file', ref: note, label: '', source: 'manual' });
     }
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps, d.discovery);
     expect(inv.roots.some((r) => r.path === kept)).toBe(false);
@@ -733,7 +733,7 @@ describe('buildInventory with the discovered Git graphs', () => {
     const s = seed();
     const d = discovered(s);
     const code = path.join(s.mac, 'code');
-    s.state.characters.plain = char('plain', { cwd: code });
+    s.state.robots.plain = robot('plain', { cwd: code });
     const write = (...files: string[]) => files.forEach((f) => {
       fs.mkdirSync(path.dirname(path.join(d.bare, f)), { recursive: true });
       fs.writeFileSync(path.join(d.bare, f), 'x\n');
@@ -755,7 +755,7 @@ describe('buildInventory with the discovered Git graphs', () => {
   });
 
   // git names each checkout by its real path, as ~/code to /Volumes/work/code resolves
-  it.skipIf(!hasGit)('carries a repository by the real path git names it by, and blocks the character that reached it through a link (needs git)', async () => {
+  it.skipIf(!hasGit)('carries a repository by the real path git names it by, and blocks the robot that reached it through a link (needs git)', async () => {
     const base = tmp();
     fs.writeFileSync(path.join(base, 'gitconfig'), '');
     const home = path.join(base, 'home');
@@ -770,7 +770,7 @@ describe('buildInventory with the discovered Git graphs', () => {
     fs.mkdirSync(home);
     fs.symlinkSync(disk, declared);
     const state = emptyState();
-    state.characters = { app: char('app', { cwd: path.join(declared, 'app') }), lone: char('lone', { cwd: outside }) };
+    state.robots = { app: robot('app', { cwd: path.join(declared, 'app') }), lone: robot('lone', { cwd: outside }) };
     const maps: MachineMaps = {
       source: { machineId: MAC, home, fleetHome: path.join(home, '.svall') },
       destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.svall') },
@@ -783,7 +783,7 @@ describe('buildInventory with the discovered Git graphs', () => {
       ['repo', outside],
       ['home', path.join(home, '.svall/home')],
     ]);
-    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_symlinked', entity: { kind: 'character', id: 'app' } })]);
+    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_symlinked', entity: { kind: 'robot', id: 'app' } })]);
   });
 
   it.skipIf(!hasGit)("carries a worktree OpenCode made in its data folder, with the work in it, and its repository (needs git)", async () => {
@@ -798,7 +798,7 @@ describe('buildInventory with the discovered Git graphs', () => {
     git(base, repo, 'worktree', 'add', '-q', '-b', 'react-boilerplate', tree);
     fs.writeFileSync(path.join(tree, 'App.tsx'), 'work in progress\n');
     const state = emptyState();
-    state.characters = { oc: char('oc', { cwd: tree }) };
+    state.robots = { oc: robot('oc', { cwd: tree }) };
     const maps: MachineMaps = {
       source: { machineId: MAC, home, fleetHome: path.join(home, '.svall') },
       destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.svall') },
@@ -813,13 +813,13 @@ describe('buildInventory with the discovered Git graphs', () => {
   });
 });
 
-function char(id: string, o: Partial<Character>): Character {
+function robot(id: string, o: Partial<Robot>): Robot {
   return {
     id, islandId: 'i1', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'fox', instructions: '', cwd: '/',
     context: [], shell: { lastOutputAt: 0 }, unread: false, ...o,
   };
 }
 
-function agent(kind: 'claude' | 'codex', transcriptPath: string): NonNullable<Character['agent']> {
+function agent(kind: 'claude' | 'codex', transcriptPath: string): NonNullable<Robot['agent']> {
   return { kind, sessionId: '11111111-1111-4111-8111-111111111111', transcriptPath, status: 'idle', lastActivityAt: 0 };
 }

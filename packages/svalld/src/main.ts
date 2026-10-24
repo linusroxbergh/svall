@@ -10,6 +10,7 @@ import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
 import { recordedTrust } from './codex/trust.js';
 import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig, setGateway } from './config.js';
+import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { fleetAuthority } from './gateway/client.js';
@@ -165,6 +166,7 @@ async function start(opts: Options): Promise<Daemon> {
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
+  liftRobotDocs(paths.docs);
   installHookScripts(paths);
   const token = readOrCreateToken(paths.token);
   const key = phoneKey(paths.mobileKey, readOrCreateToken(paths.mobileKey));

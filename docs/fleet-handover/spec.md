@@ -19,11 +19,11 @@ The stable phone gateway and remote port forwarding are designed under
 A handover checkpoints a fleet, transfers its durable state, and resumes it on another machine.
 It preserves:
 
-- islands, characters, placement, notes, instructions, links, browser tab URLs and entity docs;
+- islands, robots, placement, notes, instructions, links, browser tab URLs and entity docs;
 - tracked, untracked, ignored and staged working-tree changes, subject to configured excludes;
 - linked Git worktrees and their indexes;
 - supported Claude Code, Codex and OpenCode conversations;
-- the selected character and open card in the Mac that initiated the handover.
+- the selected robot and open card in the Mac that initiated the handover.
 
 A handover does **not** migrate a running Unix process. A build, REPL, server, foreground shell
 command or in-flight agent tool is allowed to finish, explicitly interrupted, or reported as a
@@ -33,22 +33,22 @@ Plain shells reopen in their previous directory with a notice that the process w
 Only one machine may execute or mutate a fleet at a time. A failed handover must result in either:
 
 - the source still owning and being able to resume the fleet; or
-- the destination owning the fleet, with individual characters available for retry.
+- the destination owning the fleet, with individual robots available for retry.
 
 It must never automatically revive both sides.
 
 ## User story
 
-Five islands, twelve characters and four agents are active on the Mac. The user presses
+Five islands, twelve robots and four agents are active on the Mac. The user presses
 `Handover`, chooses the Linux machine `trift`, and sees a preflight report: what would move, and which
-characters stop and how. Nothing freezes until they choose Move. Two agents finish their
+robots stop and how. Nothing freezes until they choose Move. Two agents finish their
 turns. One is interrupted after the user chooses **Interrupt and carry**. A shell running a build
 blocks the move until the build finishes.
 
 Svall freezes mutations, mirrors six repository graphs, transfers the exact agent sessions,
-validates the destination, commits ownership, and resumes the characters on `trift`. The window
-reconnects through SSH and redraws the same map with the same character selected. A failed
-character resume stays dormant with a Retry action; it does not roll ownership back.
+validates the destination, commits ownership, and resumes the robots on `trift`. The window
+reconnects through SSH and redraws the same map with the same robot selected. A failed
+robot resume stays dormant with a Retry action; it does not roll ownership back.
 
 When the Mac sleeps, the fleet continues on `trift`.
 
@@ -260,8 +260,8 @@ cached generation.
 
 The owner check covers every mutating operation, including:
 
-- island and character creation, update, movement and deletion;
-- character run, answer, revive, sleep, second terminal and terminal input;
+- island and robot creation, update, movement and deletion;
+- robot run, answer, revive, sleep, second terminal and terminal input;
 - browser tab mutations;
 - filesystem writes;
 - scribe and background metadata updates;
@@ -455,7 +455,7 @@ the source's home lands and come back elsewhere. That is the only path the swap 
 two roots land on one path. Root ids hash the source path and are compared only within one
 transaction.
 
-Each transfer root is recorded and copied at its real path. A character cwd whose real path differs
+Each transfer root is recorded and copied at its real path. A robot cwd whose real path differs
 from the recorded one blocks, because Git and the agents record the resolved path. Preflight also
 detects case-folding collisions, unsupported file names, broken destination symlinks and
 insufficient space.
@@ -473,10 +473,10 @@ Preflight creates an immutable, versioned manifest containing:
 
 - the source fleet generation and complete state snapshot;
 - the portable `fleet.json`;
-- the fleet's entity docs and agent profiles: fleet, island, character and repo docs, and the
+- the fleet's entity docs and agent profiles: fleet, island, robot and repo docs, and the
   `agent-profiles` folder, under the fleet home;
 - repository graphs described below;
-- non-repository character cwd roots;
+- non-repository robot cwd roots;
 - `home.cwd`;
 - file or folder context refs not already covered by another root;
 - exact agent-session files and required sidecars;
@@ -513,7 +513,7 @@ directory's refs are compared by what they resolve to, so packing them is no cha
 
 ## Git repository graphs
 
-For every character in Git, preflight records:
+For every robot in Git, preflight records:
 
 ```text
 git rev-parse --path-format=absolute \
@@ -522,7 +522,7 @@ git worktree list --porcelain
 ```
 
 The repository graph contains the common directory/main checkout and every worktree used by a fleet
-character. A used worktree outside the main checkout is a separate transfer root. Registered
+robot. A used worktree outside the main checkout is a separate transfer root. Registered
 worktrees unused by the fleet retain refs but are not made live on the destination.
 
 Transfer carries the common Git directory, per-worktree index and metadata, and every used working
@@ -555,7 +555,7 @@ moved with its worktrees. Preflight, the claim and prepare also block while any 
 graph moves from is on the destination as well, as on an account that still holds a same-home
 copy: repair would tie the landed copy to the old one and point a worktree kept there at the copy.
 
-Submodules remain their own repository graph when a character works inside one. Otherwise their
+Submodules remain their own repository graph when a robot works inside one. Otherwise their
 working directories and gitlink state travel with the containing graph. A submodule's `origin`
 remote is not rewritten by this flow; an origin URL naming the source machine is reported to the
 user as a warning. Git validation failure prevents commit.
@@ -608,7 +608,7 @@ and goes on only once archived.
 ## Agent sessions
 
 The manifest uses the recorded `agent.transcriptPath`; it does not derive a directory by replacing
-characters in cwd. It honors `CLAUDE_CONFIG_DIR` and `CODEX_HOME` on both machines.
+robots in cwd. It honors `CLAUDE_CONFIG_DIR` and `CODEX_HOME` on both machines.
 
 For Claude Code, the adapter copies the session JSONL plus session-specific sidecars and subagent
 data into the same project folder under the destination's config directory. It does not copy every
@@ -649,7 +649,7 @@ destination release is older than the source's (a prerelease is older than its r
 that machine's daemon probes its CLI; it also blocks a session whose required file is missing. A
 kind the fleet does not run is not checked. The way back swaps source and destination, so a fleet
 that goes and comes back needs each agent it runs at the same release on both machines. A terminal
-whose resume failed offers **Start fresh from summary** (`svall char revive <id> --fresh`): a new session of the same agent in
+whose resume failed offers **Start fresh from summary** (`svall robot revive <id> --fresh`): a new session of the same agent in
 its folder, with its launch flags, whose first prompt summarises the old session's last turns and
 says it is a new one. The old session's files stay. It is never the automatic handover path.
 
@@ -703,10 +703,10 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
   after a restart until a login;
 - a transfer root lies in the destination's home but not in the source's, or its parent is
   missing where it lands;
-- a character is marked **Keep on this machine**;
+- a robot is marked **Keep on this machine**;
 - mission control's folder (`home.cwd`) is also another fleet's on the source machine;
 - a foreground shell process is still running;
-- a terminal's cwd root, outside every repository, holds Git repositories no character works in
+- a terminal's cwd root, outside every repository, holds Git repositories no robot works in
   (`repository_unused`), unless the user chooses **Carry the folder whole** (`carryUnused`,
   `--carry-unused`) or `handover.exclude` leaves them out;
 - a worktree graph cannot be reconstructed and validated;
@@ -716,18 +716,18 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - a required transcript is absent;
 - SSH is not non-interactive after the controller's initial authenticated connection.
 
-Platform dependence is explicit rather than guessed. A character can be marked **Keep on this
+Platform dependence is explicit rather than guessed. A robot can be marked **Keep on this
 machine**, and a repository may contain `.svall/handover.json` with supported destination
 platforms. Heuristics such as Xcode projects produce warnings, not silent policy.
 
-## Resting characters
+## Resting robots
 
 After successful preflight, the controller opens an authority transaction and asks the source to
 freeze. Freeze rejects every mutating RPC, stops scribe/background state changes, closes new attach
-requests and snapshots the known character set.
+requests and snapshots the known robot set.
 
 Freeze repeats the process-tree and source-path checks because work may have started after
-preflight. It checks for repositories no character works in from the file names alone before the
+preflight. It checks for repositories no robot works in from the file names alone before the
 rest and again on the manifest built after it, as the rest records where each second terminal
 stands. A blocker Freeze finds, before, during or after the rest, reopens only the terminals the
 handover stopped and returns the source to normal ownership, while the gateway transaction stays
@@ -799,7 +799,7 @@ The controller executes these durable steps:
    manifests are sealed at generation `g + 1`, and the source stops its fleet, tmux server
    included, so a later handover back starts it afresh.
 
-State import is a validated replacement, not a merge. Character and island deletions on the source
+State import is a validated replacement, not a merge. Robot and island deletions on the source
 therefore remain deleted.
 
 Source, destination and gateway journals are written atomically and contain enough information for
@@ -821,7 +821,7 @@ At or after Commit:
 - the source remains fenced even if it missed the commit response;
 - restart checks the gateway and learns the committed generation;
 - activation is retried only on the destination;
-- characters that fail to resume remain dormant with their transcript and a visible error;
+- robots that fail to resume remain dormant with their transcript and a visible error;
 - a source that does not answer once the destination and the gateway completed is finished by a later resume; after
   three resumes that could not reach it, status offers `svall handover --forget --source`, which drops the
   controller's journal and leaves that side frozen for a resume to finish if it answers again before the
@@ -888,7 +888,7 @@ Port discovery is useful but not part of the ownership transaction. A resumed de
 process and is discovered after it starts.
 
 On Linux, svalld samples `ss -ltnpH` while a desktop viewer is connected and attributes sockets to
-a character when the listener belongs to its pane process tree. Ports are runtime data and are
+a robot when the listener belongs to its pane process tree. Ports are runtime data and are
 cleared when the process disappears; they are not transferred as durable fleet state.
 
 For a remote owner, the Mac connection manager adds forwards through the existing SSH master. It
@@ -900,10 +900,10 @@ A `:5173` chip opens the mapped local URL. If the port was remapped, the chip di
 External applications cannot use the original printed port when it collides, so the product makes
 no promise that every literal `localhost` URL remains unchanged.
 
-`svall forward <char> <port>` creates a manual forward and `svall forward --list` reports mappings.
+`svall forward <robot> <port>` creates a manual forward and `svall forward --list` reports mappings.
 Forwards reconnect with the SSH master and close when the fleet connection closes. Multiple
-characters reporting the same remote listener share one tunnel. Listener changes reach the app as
-`event ports.changed { characterId, ports }`.
+robots reporting the same remote listener share one tunnel. Listener changes reach the app as
+`event ports.changed { robotId, ports }`.
 
 ---
 
@@ -913,14 +913,14 @@ characters reporting the same remote listener share one tunnel. Listener changes
 configured gateway. The sheet has six user-facing sections backed by the transaction phases:
 
 1. Checks
-2. Resting characters
+2. Resting robots
 3. Transferring files and sessions
 4. Verifying
 5. Committing
-6. Resuming characters
+6. Resuming robots
 
 Choosing a destination runs the checks alone (`svall handover <machine> --check`): the sheet shows
-what moves and which characters stop and how, and nothing is rested until **Move**, which runs the
+what moves and which robots stop and how, and nothing is rested until **Move**, which runs the
 checks again and goes on. Settings → Machines lists every machine in the registry with the fleets it
 is the gateway of and its last check, and runs `svall host …` on it. The fleet's **remote machines**
 switch runs `svall handover on|off`, which sets `handover.enabled`; it stays on while the fleet names a
@@ -931,7 +931,7 @@ activation fails, and never offers an unsafe rollback. Closing the app does not 
 transaction; reopening reconstructs the sheet from journals and, after the commit, resumes by itself.
 
 On successful activation the app reconnects to the new owner and keeps its locally selected
-character, open card and pane layout. Those presentation choices are device-local. Another Mac sees
+robot, open card and pane layout. Those presentation choices are device-local. Another Mac sees
 the same fleet and browser tab URLs but not the first Mac's editor layout, WebKit cookies or logged-in
 browser sessions.
 
@@ -974,7 +974,7 @@ ownership.get          {} -> { fleetId, generation, ownerMachineId, frozen, tran
 handover.preflight     { toMachineId } -> { manifestSummary, blockers, warnings }
 handover.freeze        { transactionId, generation, choices } -> { manifest }
 handover.prepare       { transactionId, generation, snapshot, manifestDigest, controllerId? } -> {}
-handover.activate      { transactionId, generation, committed? } -> { characters: [...] }
+handover.activate      { transactionId, generation, committed? } -> { robots: [...] }
 handover.abort         { transactionId, generation } -> {}
 handover.status        {} -> { transaction?, quarantined? }
 ```
@@ -1096,7 +1096,7 @@ honest remapped URL when its preferred local port is occupied.
 
 - Unit-test every ownership transition, compare-and-swap failure and restart state.
 - Run fault injection before and after every transaction write, rsync pass, state install, commit
-  and character activation.
+  and robot activation.
 - Assert that pre-commit abort revives only the source and post-commit retry activates only the
   destination.
 - Enumerate all RPC handlers and prove every mutator is fenced.
@@ -1115,14 +1115,14 @@ honest remapped URL when its preferred local port is occupied.
 
 ## Manual acceptance
 
-- Twelve characters across five islands hand over in both directions; working agents finish or are
+- Twelve robots across five islands hand over in both directions; working agents finish or are
   explicitly interrupted, and foreground shells block visibly.
-- The initiating Mac returns to the same selected character and browser tab URLs.
+- The initiating Mac returns to the same selected robot and browser tab URLs.
 - A linked worktree retains branch, index, staged/unstaged/untracked changes and resumes its agent.
 - Pulling the network during every displayed phase produces the documented Abort or Resume action.
 - Killing the controller before and after commit reconstructs the correct sheet on relaunch.
 - A failed destination agent login before freeze blocks; a resume failure after commit leaves one
-  dormant, retryable character without reactivating the source.
+  dormant, retryable robot without reactivating the source.
 - A destination file edited while inactive is never overwritten without explicit archive approval;
   OS and editor noise is no edit, and a copy may replace it, or remove a folder the source dropped with it, but
   deletes it nowhere else.
@@ -1144,7 +1144,7 @@ provisioning passes on both supported Linux architectures.
 - remote-to-remote transfer or more than one gateway per fleet;
 - continuous background repository sync;
 - simultaneous writable copies or conflict merging;
-- per-character or per-island handover;
+- per-robot or per-island handover;
 - Linux or Windows desktop apps;
 - browser cookie/login migration between Macs;
 - a guarantee that a colliding local port keeps its original number;

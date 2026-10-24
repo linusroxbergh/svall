@@ -22,8 +22,8 @@ const MANIFEST = {
     { id: 'r_2', kind: 'worktree', entry: 'dir', path: '/Users/linus/p/.claude/worktrees/w', foldedInto: 'r_1', files: [] },
   ],
   sessions: [
-    { characterId: 'c_1', agent: 'claude', sessionId: 's1', sourcePath: '/Users/linus/.claude/projects/p/s1.jsonl', files: [{ ...FILE, path: 's1.jsonl' }] },
-    { characterId: 'c_2', agent: 'opencode', sessionId: 'ses_eeda388f0ffeOB6E6MBZswShKL', sourcePath: '/Users/linus/.svall/transcripts/opencode/ses_eeda388f0ffeOB6E6MBZswShKL.jsonl',
+    { robotId: 'c_1', agent: 'claude', sessionId: 's1', sourcePath: '/Users/linus/.claude/projects/p/s1.jsonl', files: [{ ...FILE, path: 's1.jsonl' }] },
+    { robotId: 'c_2', agent: 'opencode', sessionId: 'ses_eeda388f0ffeOB6E6MBZswShKL', sourcePath: '/Users/linus/.svall/transcripts/opencode/ses_eeda388f0ffeOB6E6MBZswShKL.jsonl',
       files: [{ ...FILE, path: 'ses_eeda388f0ffeOB6E6MBZswShKL.json' }] },
   ],
 };
@@ -136,7 +136,7 @@ describe('handover vocabulary', () => {
     expect(() => HandoverPhase.parse('resting')).toThrow();
   });
   it('points a blocker or a warning at the entity it is about', () => {
-    const blocker = { code: 'shell_busy', message: 'vite is still running', entity: { kind: 'character', id: 'c_1' } };
+    const blocker = { code: 'shell_busy', message: 'vite is still running', entity: { kind: 'robot', id: 'c_1' } };
     expect(Blocker.parse(blocker)).toEqual(blocker);
     expect(Warning.parse({ code: 'platform_heuristic', message: 'an Xcode project' }).entity).toBeUndefined();
     expect(() => Blocker.parse({ code: 'shells_are_busy', message: 'x' })).toThrow();
@@ -144,7 +144,7 @@ describe('handover vocabulary', () => {
     expect(HandoverEntity.parse({ kind: 'git', id: 'r_1' }).kind).toBe('git');
   });
   it('keeps a blocker code for each way preflight refuses', () => {
-    for (const code of ['identity_mismatch', 'generation_mismatch', 'transaction_open', 'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter', 'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing', 'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_symlinked', 'mission_control_shared', 'transcript_missing', 'ssh_interactive', 'external_writer', 'rsync_unsupported']) {
+    for (const code of ['identity_mismatch', 'generation_mismatch', 'transaction_open', 'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter', 'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing', 'home_mismatch', 'parent_missing', 'robot_pinned', 'shell_busy', 'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_symlinked', 'mission_control_shared', 'transcript_missing', 'ssh_interactive', 'external_writer', 'rsync_unsupported']) {
       expect(Blocker.parse({ code, message: code }).code).toBe(code);
     }
   });
@@ -204,10 +204,10 @@ describe('transfer manifest', () => {
   });
 
   it('describes each repository graph it carries, and a Git directory carried on its own', () => {
-    const checkout = { path: '/Users/linus/p', gitDir: '/Users/linus/p/.git', head: 'b'.repeat(40), branch: 'refs/heads/main', status: ['1 .M N... 100644 100644 100644 a a a.txt'], index: DIGEST, characters: [] };
+    const checkout = { path: '/Users/linus/p', gitDir: '/Users/linus/p/.git', head: 'b'.repeat(40), branch: 'refs/heads/main', status: ['1 .M N... 100644 100644 100644 a a a.txt'], index: DIGEST, robots: [] };
     const graph = {
       id: 'g_1', commonDir: '/Users/linus/p/.git', main: checkout,
-      worktrees: [{ ...checkout, path: '/Users/linus/w', gitDir: '/Users/linus/p/.git/worktrees/w', branch: null, locked: 'on a disk', characters: ['c_1'] }],
+      worktrees: [{ ...checkout, path: '/Users/linus/w', gitDir: '/Users/linus/p/.git/worktrees/w', branch: null, locked: 'on a disk', robots: ['c_1'] }],
       unused: [{ path: '/Users/linus/old', head: null, branch: 'refs/heads/old', prunable: true }],
       stash: ['c'.repeat(40)],
     };
@@ -225,7 +225,7 @@ describe('transfer manifest', () => {
   it('names the commits a graph\'s refs reach by full object names, which git can never read as an option', () => {
     const graph = { id: 'g_1', commonDir: '/Users/linus/p/.git', worktrees: [], unused: [], stash: [] };
     for (const tips of [['a'.repeat(40)], ['b'.repeat(64)]]) expect(GitGraph.parse({ ...graph, tips }).tips).toEqual(tips);
-    const checkout = { path: '/Users/linus/p', gitDir: '/Users/linus/p/.git', head: 'b'.repeat(40), branch: 'refs/heads/main', status: [], index: 'd'.repeat(64), characters: [] };
+    const checkout = { path: '/Users/linus/p', gitDir: '/Users/linus/p/.git', head: 'b'.repeat(40), branch: 'refs/heads/main', status: [], index: 'd'.repeat(64), robots: [] };
     expect(GitGraph.parse({ ...graph, main: { ...checkout, head: null }, stash: ['c'.repeat(64)] }).main?.head).toBeNull();
     for (const tip of ['--all', '--output=/tmp/x', '-n', 'HEAD', 'a'.repeat(39), 'A'.repeat(40), `${'a'.repeat(40)} `, 'a'.repeat(41)]) {
       expect(() => GitGraph.parse({ ...graph, tips: [tip] }), tip).toThrow();

@@ -103,7 +103,7 @@ runIf('startDaemon', () => {
     const logged: string[] = [];
     const again = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
     try {
-      expect(again.store.state.version).toBe(9);
+      expect(again.store.state.version).toBe(10);
       expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe(fleet);
       expect(JSON.parse(fleet).mainAgent).toBe('codex');
       expect(fs.existsSync(p.legacyConfig)).toBe(false);
@@ -202,7 +202,7 @@ runIf('startDaemon', () => {
     // the app attaches with the tmux the daemon runs, not one it finds on its own
     expect(fs.readFileSync(path.join(home, 'tmux-binary'), 'utf8')).toBe(new Tmux(paths.tmuxSock, paths.tmuxConf).binary);
     const island = d1.fleet.createIsland({ name: 'x' });
-    const c = await d1.fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    const c = await d1.fleet.createRobot({ islandId: island.id, cwd: '/tmp' });
     await d1.fleet.run(c.id, 'echo persist-me', true);
     await waitFor(async () => (await d1.fleet.readScreen(c.id, 20)).includes('persist-me'));
     await d1.stop();
@@ -210,19 +210,19 @@ runIf('startDaemon', () => {
 
     const d2 = await start({ home, port: 0, log: silentLogger });
     expect(d2.token).toBe(d1.token);
-    const again = d2.store.state.characters[c.id];
+    const again = d2.store.state.robots[c.id];
     expect(again.tmux).toEqual(c.tmux);
     expect(await d2.fleet.readScreen(c.id, 20)).toContain('persist-me');
-    await d2.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
+    await d2.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
     await d2.stop();
 
     await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();
     const d3 = await start({ home, port: 0, log: silentLogger });
-    const dormant = d3.store.state.characters[c.id];
+    const dormant = d3.store.state.robots[c.id];
     expect(dormant.tmux).toBeUndefined();
     expect(dormant.revive).toEqual({ command: 'claude --resume 9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e' });
-    d3.store.update((s) => { s.characters[c.id].revive = { command: 'echo back' }; });
-    await d3.fleet.reviveCharacter(c.id);
+    d3.store.update((s) => { s.robots[c.id].revive = { command: 'echo back' }; });
+    await d3.fleet.reviveRobot(c.id);
     await waitFor(async () => (await d3.fleet.readScreen(c.id, 20)).includes('back'));
     await d3.stop();
   });
@@ -277,17 +277,17 @@ runIf('startDaemon', () => {
     try {
       await expect(start({ home, port: first.port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(/already running/);
       expect(fs.existsSync(paths.hooksSock)).toBe(true);
-      const c = await first.fleet.createCharacter({ islandId: first.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+      const c = await first.fleet.createRobot({ islandId: first.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
       await new Promise<void>((resolve, reject) => {
         const socket = net.createConnection(paths.hooksSock);
         socket.once('error', reject);
         socket.once('connect', () => {
-          socket.end(JSON.stringify({ charId: c.id, backend: 'codex', hook: {
+          socket.end(JSON.stringify({ robotId: c.id, backend: 'codex', hook: {
             hook_event_name: 'SessionStart', session_id: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e',
           } }) + '\n', resolve);
         });
       });
-      await waitFor(() => first.fleet.char(c.id).agent?.kind === 'codex');
+      await waitFor(() => first.fleet.robot(c.id).agent?.kind === 'codex');
     } finally {
       await first.stop();
     }
@@ -363,7 +363,7 @@ runIf('startDaemon', () => {
     try {
       await new Promise((r) => ws.once('open', r));
       ws.send(JSON.stringify({ token: d.token }));
-      const c = await d.fleet.createCharacter({ islandId: d.fleet.createIsland({ name: 'x' }).id, cwd: os.homedir() });
+      const c = await d.fleet.createRobot({ islandId: d.fleet.createIsland({ name: 'x' }).id, cwd: os.homedir() });
       for (const p of ['.svall-files/token', '.svall-files/mobile-key', '.svall-files/vapid.json', '.svall-files/.env', '.svall-later/token']) {
         expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ error: { code: 'invalid' } });
       }

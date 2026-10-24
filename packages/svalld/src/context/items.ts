@@ -25,7 +25,7 @@ export function settleItems(items: ContextItem[], current: ContextItem[] = []): 
   });
 }
 
-// the PR the work is on leads a character's links: the branch's own, as the lookup shows it or the scribe holds it (the
+// the PR the work is on leads a robot's links: the branch's own, as the lookup shows it or the scribe holds it (the
 // lookup reads a state for that PR alone), else the first the scribe found. A PR the user added stays where they put it
 export function prFirst(items: ContextItem[]): ContextItem[] {
   const pr = items.find((it) => it.kind === 'pr' && it.source === 'auto')

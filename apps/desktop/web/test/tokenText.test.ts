@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Character } from '@svall/protocol';
+import type { Robot } from '@svall/protocol';
 import { ago, hintLabel, hintText, linkText, statusWord } from '../src/map/tokenText.js';
 
 describe('linkText', () => {
@@ -23,19 +23,19 @@ describe('linkText', () => {
 
 describe('hintText', () => {
   it('describes missing updates without assuming why hooks are silent', () => {
-    const text = hintText({ hint: 'codex-silent' } as Character);
+    const text = hintText({ hint: 'codex-silent' } as Robot);
     expect(text).toContain('svall doctor');
     expect(text).toContain('/hooks');
     expect(text).not.toContain('trust the Svall hook');
-    expect(hintText({} as Character)).toBeUndefined();
+    expect(hintText({} as Robot)).toBeUndefined();
   });
 
   it('names the shared server, and the flag that keeps codex off it', () => {
-    const c = { hint: 'codex-silent', codexDaemon: true } as Character;
+    const c = { hint: 'codex-silent', codexDaemon: true } as Robot;
     expect(hintText(c)).toContain('codex --no-daemon');
     expect(hintText(c)).not.toContain('/hooks');
     expect(hintLabel(c)).toBe('--no-daemon');
-    expect(hintLabel({ hint: 'codex-silent' } as Character)).toBe('/hooks');
+    expect(hintLabel({ hint: 'codex-silent' } as Robot)).toBe('/hooks');
   });
 });
 

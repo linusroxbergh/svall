@@ -25,7 +25,7 @@ a 10-minute timeout.
    refused. Then:
 
        svall island create review
-       svall char move bob --island review
+       svall robot move bob --island review
 
    Name the island after the task, short and lower case.
 

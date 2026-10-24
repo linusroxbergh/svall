@@ -29,7 +29,7 @@ vi.mock('../../src/mobile/push.js', () => push);
 
 const { Settings } = await import('../../src/mobile/Settings.js');
 const { IslandSheet } = await import('../../src/mobile/IslandSheet.js');
-const { CloseCharacter } = await import('../../src/mobile/CloseCharacter.js');
+const { CloseRobot } = await import('../../src/mobile/CloseRobot.js');
 const { NewIsland } = await import('../../src/mobile/NewIsland.js');
 
 beforeEach(() => {
@@ -97,14 +97,14 @@ test('a refusal to notify is told in the sheet', async () => {
 });
 
 test('an island with crew on it is not deleted until they move', async () => {
-  await act(async () => { render(<IslandSheet islandId="i_b" onClose={() => {}} onNewCharacter={() => {}} />); });
+  await act(async () => { render(<IslandSheet islandId="i_b" onClose={() => {}} onNewRobot={() => {}} />); });
   expect(screen.getByText('Move its crew away before deleting it.')).toBeTruthy();
   expect((screen.getByRole('button', { name: 'Delete island' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test('an empty island is deleted on a second tap', async () => {
   const onClose = vi.fn();
-  await act(async () => { render(<IslandSheet islandId="i_e" onClose={onClose} onNewCharacter={() => {}} />); });
+  await act(async () => { render(<IslandSheet islandId="i_e" onClose={onClose} onNewRobot={() => {}} />); });
   fireEvent.click(screen.getByRole('button', { name: 'Delete island' }));
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete empty and its docs?' })); });
   expect(calls.filter(([m]) => m === 'island.delete')).toEqual([['island.delete', { id: 'i_e' }]]);
@@ -112,23 +112,23 @@ test('an empty island is deleted on a second tap', async () => {
 });
 
 test('mission control is never offered for deleting', async () => {
-  await act(async () => { render(<IslandSheet islandId="home" onClose={() => {}} onNewCharacter={() => {}} />); });
+  await act(async () => { render(<IslandSheet islandId="home" onClose={() => {}} onNewRobot={() => {}} />); });
   expect(screen.queryByRole('button', { name: 'Delete island' })).toBeNull();
 });
 
-test('closing a character from the list says what goes with it, and closes it', async () => {
+test('closing a robot from the list says what goes with it, and closes it', async () => {
   const onClose = vi.fn();
-  render(<CloseCharacter id="c0" onClose={onClose} />);
+  render(<CloseRobot id="c0" onClose={onClose} />);
   expect(screen.getByText('Closing kills its terminal and deletes its docs.')).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close c0' })); });
-  expect(calls).toEqual([['char.close', { id: 'c0' }]]);
+  expect(calls).toEqual([['robot.close', { id: 'c0' }]]);
   expect(onClose).toHaveBeenCalled();
 });
 
 test('a close the fleet refuses is told beside the button, which works again', async () => {
   refuse = 'svalld offline';
   const onClose = vi.fn();
-  render(<CloseCharacter id="c0" onClose={onClose} />);
+  render(<CloseRobot id="c0" onClose={onClose} />);
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close c0' })); });
   expect(screen.getByText('svalld offline')).toBeTruthy();
   expect(onClose).not.toHaveBeenCalled();

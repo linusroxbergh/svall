@@ -31,7 +31,7 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
 const unquoted = (command: string): string => command.replace(/\\.|'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
 
 // OpenCode's and Codex's TUIs otherwise run on the user's shared background server, whose plugins, hooks and commands
-// get the environment of whoever started it; a private server inherits the character's. A TUI on a server the user
+// get the environment of whoever started it; a private server inherits the robot's. A TUI on a server the user
 // names can't have one. Codex's update picker on start would take the keys of a launch nobody watches
 export function withStandalone(command: string): string {
   if (agentKindOf(command) === 'codex') {

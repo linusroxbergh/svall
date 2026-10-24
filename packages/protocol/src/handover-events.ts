@@ -5,8 +5,8 @@ import type { Blocker, HandoverChoices, HandoverEntityKind, HandoverPhase, Machi
 /** What the user may do about a transaction that stopped part way. */
 export type SafeAction = 'resume' | 'abort';
 
-/** One character as its destination brought it up; `notice` is what one that came up still waits on in its terminal. */
-export type CharacterResult = { id: string; ok: boolean; error?: string; notice?: string };
+/** One robot as its destination brought it up; `notice` is what one that came up still waits on in its terminal. */
+export type RobotResult = { id: string; ok: boolean; error?: string; notice?: string };
 
 /**
  * Why a run that stopped part way offers nothing safe: whether its commit landed is unknown, the gateway could not be
@@ -24,7 +24,7 @@ export type StopReason = 'commit_unknown' | 'gateway_unknown' | 'journal_lost' |
  * `none`: there was no handover to resume or abort. `ready`: a check found nothing that stops a handover, and began nothing.
  */
 export type Outcome =
-  | { status: 'complete'; transactionId: string; generation: number; characters: CharacterResult[]; pending?: ('source' | 'gateway')[]; error?: string }
+  | { status: 'complete'; transactionId: string; generation: number; robots: RobotResult[]; pending?: ('source' | 'gateway')[]; error?: string }
   | { status: 'none'; reason: string }
   | { status: 'blocked'; transactionId?: string; phase: HandoverPhase; blockers: Blocker[] }
   | { status: 'aborted'; transactionId?: string; phase: HandoverPhase }
@@ -57,7 +57,7 @@ export type Verdict = {
 };
 
 /**
- * How far one character, root or session row has come, and why it stopped; `archivedTo`: where what a root held before went;
+ * How far one robot, root or session row has come, and why it stopped; `archivedTo`: where what a root held before went;
  * `verified`: the destination has verified a root's or session's copy, which phase `verify` alone does not say.
  */
 export type EntityData = {
@@ -66,10 +66,10 @@ export type EntityData = {
 };
 
 /**
- * What a blocker or a row points at, for a person: each character's name, each root's path on the source and, for one
+ * What a blocker or a row points at, for a person: each robot's name, each root's path on the source and, for one
  * that lands at another path, where it lands, and whose each session row `s<i>` is.
  */
-export type Names = { characters: Record<string, string>; roots: Record<string, string>; landing?: Record<string, string>; sessions?: Record<string, string> };
+export type Names = { robots: Record<string, string>; roots: Record<string, string>; landing?: Record<string, string>; sessions?: Record<string, string> };
 
 /** One line of what a handover tells whoever watches it. */
 export type HandoverEvent =

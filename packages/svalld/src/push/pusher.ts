@@ -5,7 +5,7 @@ import type { Store } from '../store.js';
 import type { PushStore, Subscription } from './store.js';
 import type { Vapid } from './vapid.js';
 
-// term 2 marks the character's second session, which the phone cannot answer, so its notification carries no buttons.
+// term 2 marks the robot's second session, which the phone cannot answer, so its notification carries no buttons.
 // promptId goes back with the answer, so a late one does not answer a newer question
 export type PushPayload = { id: string; name: string; status: PushStatus; term?: 2; prompt?: string; promptId?: string };
 // subject is who the push service may contact about the sender
@@ -18,12 +18,12 @@ export function startPusher(o: { store: Store; push: PushStore; send: Send; log:
     const f = o.store.state;
     const next = sessionsOf(f);
     const url = o.served();
-    for (const [key, { charId, term, agent }] of next) {
+    for (const [key, { robotId, term, agent }] of next) {
       const status = agent?.status;
       if (url === undefined || !isNews(last.get(key)?.agent, agent) || !isPushStatus(status)) continue;
-      const c = f.characters[charId];
+      const c = f.robots[robotId];
       const payload: PushPayload = {
-        id: charId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
+        id: robotId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
       };
       for (const sub of o.push.list()) {
         if (!sub.statuses.includes(status) || !o.logins().includes(sub.login)) continue;

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, MAX_MANIFEST_BYTES, TRANSFER_SCHEMA_VERSION, type Character, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@svall/protocol';
+import { emptyState, FleetConfig, MAX_MANIFEST_BYTES, TRANSFER_SCHEMA_VERSION, type Robot, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@svall/protocol';
 import { gitIndexDigest } from '../../src/handover/git-graph.js';
 import { canonicalDigest, canonicalJson, hashStream } from '../../src/handover/hash.js';
 import { buildInventory, DEFAULT_EXCLUDES, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, type Inventory, type MachineMaps } from '../../src/handover/inventory.js';
@@ -79,9 +79,9 @@ function seed() {
     destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.svall'), agentHomes: { claude: path.join(mac, '.claude'), codex: path.join(mac, '.codex') } },
   };
   const state = emptyState();
-  state.characters = {
-    main: char('main', { cwd: repo, repo: { root: repo, mainRoot: repo, branch: 'main', isWorktree: false } }),
-    w1: char('w1', {
+  state.robots = {
+    main: robot('main', { cwd: repo, repo: { root: repo, mainRoot: repo, branch: 'main', isWorktree: false } }),
+    w1: robot('w1', {
       cwd: nested, repo: { root: nested, mainRoot: repo, branch: 'w1', isWorktree: true },
       agent: { kind: 'claude', sessionId: SESSION, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 },
     }),
@@ -112,7 +112,7 @@ describe('buildManifest', () => {
     });
     // the transcript lands where it was, under the same agent home
     expect(manifest.sessions).toEqual([{
-      characterId: 'w1', agent: 'claude', sessionId: SESSION, sourcePath: s.transcript, adapter: 1,
+      robotId: 'w1', agent: 'claude', sessionId: SESSION, sourcePath: s.transcript, adapter: 1,
       sourceHome: path.join(s.mac, '.claude'), destinationHome: path.join(s.mac, '.claude'), destinationPath: s.transcript,
       files: [expect.objectContaining({ type: 'file', path: `projects/app/${SESSION}.jsonl`, sha256: sha(LINE(s.nested)) })],
     }]);
@@ -142,7 +142,7 @@ describe('buildManifest', () => {
       fs.writeFileSync(path.join(dotfiles, rel), 'secret\n');
     }
     fs.writeFileSync(path.join(s.mac, '.netrc'), 'machine example.com password x\n');
-    s.state.characters.dots = char('dots', { cwd: dotfiles, context: [{ kind: 'file', ref: path.join(s.mac, '.netrc'), label: '', source: 'manual' }] });
+    s.state.robots.dots = robot('dots', { cwd: dotfiles, context: [{ kind: 'file', ref: path.join(s.mac, '.netrc'), label: '', source: 'manual' }] });
     const { manifest, warnings } = await buildManifest(inventory(s), HEADER);
     const idOf = (p: string): string => manifest.roots.find((r) => r.path === p)!.id;
     expect(warnings.filter((w) => w.code === 'credential_file')).toEqual([
@@ -199,9 +199,9 @@ describe('buildManifest', () => {
   it('blocks a transcript that is gone and a repository that is gone, and drops a missing context file', async () => {
     const s = seed();
     fs.rmSync(s.transcript);
-    s.state.characters.main.context = [{ kind: 'file', ref: path.join(s.base, 'mac/gone.md'), label: '', source: 'manual' }];
+    s.state.robots.main.context = [{ kind: 'file', ref: path.join(s.base, 'mac/gone.md'), label: '', source: 'manual' }];
     const other = path.join(s.mac, 'other');
-    s.state.characters.gone = char('gone', { cwd: other, repo: { root: other, mainRoot: other, branch: 'main', isWorktree: false } });
+    s.state.robots.gone = robot('gone', { cwd: other, repo: { root: other, mainRoot: other, branch: 'main', isWorktree: false } });
     const { manifest, blockers } = await buildManifest(inventory(s), HEADER);
     expect(blockers.map((b) => b.code)).toEqual(['transcript_missing', 'worktree_unresolved']);
     expect(manifest.sessions).toEqual([]);
@@ -213,10 +213,10 @@ describe('buildManifest', () => {
     const rollout = path.join(s.mac, '.codex', ROLLOUT);
     fs.mkdirSync(path.dirname(rollout), { recursive: true });
     fs.copyFileSync(path.join(import.meta.dirname, '../fixtures/handover/codex/rollout.jsonl'), rollout);
-    s.state.characters.main.agent = { kind: 'codex', sessionId: '01a0aaaa-bbbb-7ccc-8ddd-eeeeffff0000', transcriptPath: rollout, status: 'idle', lastActivityAt: 0 };
+    s.state.robots.main.agent = { kind: 'codex', sessionId: '01a0aaaa-bbbb-7ccc-8ddd-eeeeffff0000', transcriptPath: rollout, status: 'idle', lastActivityAt: 0 };
     const first = await buildManifest(inventory(s), HEADER);
     expect(first.manifest.sessions).toHaveLength(2);
-    const reversed: FleetState = { ...s.state, characters: Object.fromEntries(Object.entries(s.state.characters).reverse()) };
+    const reversed: FleetState = { ...s.state, robots: Object.fromEntries(Object.entries(s.state.robots).reverse()) };
     const backwards: ScanFs = { ...realScanFs, readdir: async (p) => (await realScanFs.readdir(p)).reverse() };
     const second = await buildManifest(buildInventory(reversed, { fleet: FLEET }, s.maps), HEADER, backwards);
     expect(second.digest).toBe(first.digest);
@@ -327,9 +327,9 @@ function seedGit() {
     destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.svall') },
   };
   const state = emptyState();
-  state.characters = {
-    main: char('main', { cwd: repo, repo: { root: repo, mainRoot: repo, branch: 'main', isWorktree: false } }),
-    wt: char('wt', { cwd: worktree, repo: { root: worktree, mainRoot: repo, branch: 'wt', isWorktree: true } }),
+  state.robots = {
+    main: robot('main', { cwd: repo, repo: { root: repo, mainRoot: repo, branch: 'main', isWorktree: false } }),
+    wt: robot('wt', { cwd: worktree, repo: { root: worktree, mainRoot: repo, branch: 'wt', isWorktree: true } }),
   };
   return { base, repo, worktree, maps, state };
 }
@@ -382,7 +382,7 @@ describe('a Git ref', () => {
 
 describe('the discovered Git graphs', () => {
   const checkout = (p: string, gitDir: string): GitCheckout =>
-    ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), characters: [] });
+    ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), robots: [] });
 
   // a bare repository whose refs and worktree records carry names like the default excludes
   function bare(s: ReturnType<typeof seed>) {
@@ -394,7 +394,7 @@ describe('the discovered Git graphs', () => {
     }
     fs.mkdirSync(wt);
     fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${path.join(dir, 'worktrees/dist')}\n`);
-    s.state.characters.tool = char('tool', { cwd: wt });
+    s.state.robots.tool = robot('tool', { cwd: wt });
     const graph: GitGraph = { id: 'g_tool', commonDir: dir, worktrees: [checkout(wt, path.join(dir, 'worktrees/dist'))], unused: [], stash: [] };
     const warning: Warning = { code: 'worktree_unused', message: 'an unused worktree', entity: { kind: 'git', id: 'g_tool' } };
     return { dir, wt, discovery: { graphs: [graph], blockers: [], warnings: [warning] } };
@@ -421,7 +421,7 @@ describe('the discovered Git graphs', () => {
       fs.writeFileSync(path.join(dir, f), f);
     }
     fs.writeFileSync(path.join(main, '.git'), `gitdir: ${path.join(dir, 'worktrees/main')}\n`);
-    s.state.characters.proj = char('proj', { cwd: main });
+    s.state.robots.proj = robot('proj', { cwd: main });
     const graph: GitGraph = { id: 'g_proj', commonDir: dir, worktrees: [checkout(main, path.join(dir, 'worktrees/main'))], unused: [], stash: [] };
     return { dir, main, discovery: { graphs: [graph], blockers: [], warnings: [] } };
   }
@@ -533,7 +533,7 @@ describe('a manifest on disk', () => {
   });
 });
 
-function char(id: string, o: Partial<Character>): Character {
+function robot(id: string, o: Partial<Robot>): Robot {
   return {
     id, islandId: 'i1', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'fox', instructions: '', cwd: '/',
     context: [], shell: { lastOutputAt: 0 }, unread: false, ...o,

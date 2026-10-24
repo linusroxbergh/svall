@@ -52,7 +52,7 @@ export function setMotion(next: boolean): void {
   }
 }
 
-export function addRobot(bot: SVGElement): () => void {
+export function addFigure(bot: SVGElement): () => void {
   bots.set(bot, {});
   if (on) rest(bot, true);
   return () => {
@@ -68,7 +68,7 @@ const watchReduce = (change: () => void) => {
   return () => q.removeEventListener('change', change);
 };
 
-// robots move only on a map in full view: the app active, no character window open, the switch on and motion not reduced
+// robots move only on a map in full view: the app active, no robot window open, the switch on and motion not reduced
 export function useRobotMotion(): void {
   const wanted = useApp((s) => s.active && !s.card && s.settings.robotMotion);
   const reduced = useSyncExternalStore(watchReduce, () => matchMedia(REDUCE).matches);

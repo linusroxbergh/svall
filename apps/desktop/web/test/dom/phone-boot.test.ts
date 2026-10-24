@@ -67,7 +67,7 @@ test('a patch that does not apply fetches the whole fleet again', async () => {
   const first = socket.sent.find((m) => m.method === 'state.get')!;
   socket.receive({ id: first.id, result: fleet() });
   await Promise.resolve();
-  socket.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/characters/nobody/name', value: 'x' }] } });
+  socket.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/nobody/name', value: 'x' }] } });
   expect(socket.sent.filter((m) => m.method === 'state.get')).toHaveLength(2);
 });
 

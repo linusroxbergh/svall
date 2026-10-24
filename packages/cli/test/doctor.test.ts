@@ -490,7 +490,7 @@ describe('doctor on Linux', () => {
     const blocked = byName(await doctor(priv, linux({ [sandbox]: denied }, { files: restrict, found: ['codex'] }).deps));
     expect(blocked['codex sandbox']).toMatchObject({
       status: 'warn',
-      detail: 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex character asks before each one: '
+      detail: 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex robot asks before each one: '
         + 'sudo apt install bubblewrap apparmor-profiles, sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
       run: 'sudo apt install bubblewrap apparmor-profiles && sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/ && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
     });

@@ -33,12 +33,12 @@ runIf('Fleet layout', () => {
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     // these layouts start from mission control alone, without the island and shell a new fleet opens with
-    for (const c of Object.values(store.state.characters)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeCharacter(c.id);
+    for (const c of Object.values(store.state.robots)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeRobot(c.id);
     for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
     return { fleet, store, tmux };
   }
 
-  it('creates islands with defaults, refuses overlap, and places characters on land', async () => {
+  it('creates islands with defaults, refuses overlap, and places robots on land', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a' });
     expect(a).toMatchObject({ position: { x: 0, y: 0 }, size: { w: 7, h: 5 }, description: '', instructions: '', context: [] });
@@ -49,79 +49,79 @@ runIf('Fleet layout', () => {
     expect(clearBy(a, c, 1)).toBe(true);
     expect(clearBy(b, c, 1)).toBe(true);
     expect(fleet.createIsland({ name: 'a' }).name).toBe('a 2');
-    const c1 = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    const c2 = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    const c1 = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    const c2 = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     // the island reshaped around the pair, so the first one moved with it
     const size = store.state.islands[a.id].size;
-    const cells = [c1, c2].map((c) => store.state.characters[c.id].cell);
+    const cells = [c1, c2].map((c) => store.state.robots[c.id].cell);
     for (const c of cells) expect(inset(size, c)).toBeGreaterThanOrEqual(CREW_INSET);
     expect(Math.max(Math.abs(cells[0].x - cells[1].x), Math.abs(cells[0].y - cells[1].y))).toBeGreaterThan(2);
-    await expect(fleet.createCharacter({ islandId: a.id, cwd: '/tmp', cell: cells[0] })).rejects.toThrow(/occupied/);
-    await expect(fleet.createCharacter({ islandId: a.id, cwd: '/tmp', cell: { x: cells[0].x + 1, y: cells[0].y } })).rejects.toThrow(/touches/);
-    await expect(fleet.createCharacter({ islandId: a.id, cwd: '/tmp', cell: { x: 0, y: 0 } })).rejects.toThrow(/land/);
+    await expect(fleet.createRobot({ islandId: a.id, cwd: '/tmp', cell: cells[0] })).rejects.toThrow(/occupied/);
+    await expect(fleet.createRobot({ islandId: a.id, cwd: '/tmp', cell: { x: cells[0].x + 1, y: cells[0].y } })).rejects.toThrow(/touches/);
+    await expect(fleet.createRobot({ islandId: a.id, cwd: '/tmp', cell: { x: 0, y: 0 } })).rejects.toThrow(/land/);
   });
 
   it('moves and swaps atomically', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a' });
     const b = fleet.createIsland({ name: 'b' });
-    const c1 = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    const c2 = await fleet.createCharacter({ islandId: b.id, cwd: '/tmp' });
+    const c1 = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    const c2 = await fleet.createRobot({ islandId: b.id, cwd: '/tmp' });
     const target = landCells(a.size)[3];
-    expect(fleet.moveCharacter(c1.id, a.id, target).cell).toEqual(target);
+    expect(fleet.moveRobot(c1.id, a.id, target).cell).toEqual(target);
     const ops: number[] = [];
     store.subscribe((o) => ops.push(o.length));
-    fleet.moveCharacter(c1.id, b.id, c2.cell);
+    fleet.moveRobot(c1.id, b.id, c2.cell);
     expect(ops).toHaveLength(1);
-    expect(store.state.characters[c1.id]).toMatchObject({ islandId: b.id, cell: c2.cell });
-    expect(store.state.characters[c2.id]).toMatchObject({ islandId: a.id, cell: target });
-    expect(() => fleet.moveCharacter(c1.id, a.id, { x: 0, y: 0 })).toThrow(/land/);
+    expect(store.state.robots[c1.id]).toMatchObject({ islandId: b.id, cell: c2.cell });
+    expect(store.state.robots[c2.id]).toMatchObject({ islandId: a.id, cell: target });
+    expect(() => fleet.moveRobot(c1.id, a.id, { x: 0, y: 0 })).toThrow(/land/);
   });
 
   it('reshapes an island around its crew on create, pushing the island below it aside', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a', size: { w: 4, h: 3 }, seed: 1 });
     const below = fleet.createIsland({ name: 'below', position: { x: 0, y: 7 }, size: { w: 4, h: 3 } });
-    const first = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    const first = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     const grown = store.state.islands[a.id].size;
     expect(grown.h).toBeGreaterThan(3);
-    expect(landCells(grown)).toContainEqual(store.state.characters[first.id].cell);
+    expect(landCells(grown)).toContainEqual(store.state.robots[first.id].cell);
     // growing into the water the island below held moves that one out of the way rather than refusing
-    for (let i = 0; i < 20 && store.state.islands[a.id].size.h < 8; i++) await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    for (let i = 0; i < 20 && store.state.islands[a.id].size.h < 8; i++) await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     expect(store.state.islands[a.id].size.h).toBeGreaterThanOrEqual(8);
     expect(store.state.islands[below.id].position).not.toEqual(below.position);
     expect(clearBy(store.state.islands[a.id], store.state.islands[below.id], 1)).toBe(true);
-    const cells = Object.values(store.state.characters).map((c) => c.cell);
+    const cells = Object.values(store.state.robots).map((c) => c.cell);
     for (const p of cells) for (const q of cells) if (p !== q) expect(Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y))).toBeGreaterThan(2);
   });
 
-  it('kills the tmux window when recording the character fails', async () => {
+  it('kills the tmux window when recording the robot fails', async () => {
     const { fleet, store, tmux } = await boot();
     const a = fleet.createIsland({ name: 'a', size: { w: 4, h: 3 }, seed: 1 });
-    await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    // refuse the update that records a new character, leaving the window that was already created behind
+    await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    // refuse the update that records a new robot, leaving the window that was already created behind
     const update = store.update.bind(store);
     store.update = (mutate) => {
       const probe = structuredClone(store.state);
       mutate(probe);
-      if (Object.keys(probe.characters).length > Object.keys(store.state.characters).length) throw new Error('island a is full');
+      if (Object.keys(probe.robots).length > Object.keys(store.state.robots).length) throw new Error('island a is full');
       return update(mutate);
     };
-    await expect(fleet.createCharacter({ islandId: a.id, cwd: '/tmp' })).rejects.toThrow(/full/);
+    await expect(fleet.createRobot({ islandId: a.id, cwd: '/tmp' })).rejects.toThrow(/full/);
     const windows = await tmux.listWindows();
     expect(windows).toHaveLength(1);
   });
 
-  it('resize relocates a drowned character and refuses when too small', async () => {
+  it('resize relocates a drowned robot and refuses when too small', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a', size: { w: 8, h: 6 }, seed: 2 });
     const far = landCells(a.size).at(-1)!;
-    const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp', cell: far });
+    const c = await fleet.createRobot({ islandId: a.id, cwd: '/tmp', cell: far });
     fleet.updateIsland(a.id, { size: { w: 4, h: 3 } });
-    expect(landCells({ w: 4, h: 3 })).toContainEqual(store.state.characters[c.id].cell);
+    expect(landCells({ w: 4, h: 3 })).toContainEqual(store.state.robots[c.id].cell);
     fleet.updateIsland(a.id, { size: { w: 8, h: 6 } });
     const cap = spacedCells({ w: 8, h: 6 }, 99).length;
-    for (let i = 1; i < cap; i++) await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    for (let i = 1; i < cap; i++) await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     expect(store.state.islands[a.id].size).toEqual(crewGrid(cap).size);
     expect(() => fleet.updateIsland(a.id, { size: { w: 4, h: 3 } })).toThrow(/fewer|free land/);
   });
@@ -191,47 +191,47 @@ runIf('Fleet layout', () => {
     expect(fleet.createIsland({ name: 'b', position: { x: 0, y: 0 }, size: { w: 6, h: 4 } }).position).toEqual({ x: 0, y: 0 });
   });
 
-  it('char.update with a new island places the character on a free cell', async () => {
+  it('robot.update with a new island places the robot on a free cell', async () => {
     const { fleet } = await boot();
     const a = fleet.createIsland({ name: 'a' });
     const b = fleet.createIsland({ name: 'b' });
-    const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    const moved = fleet.updateCharacter(c.id, { islandId: b.id });
+    const c = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    const moved = fleet.updateRobot(c.id, { islandId: b.id });
     expect(moved.islandId).toBe(b.id);
     expect(inset(b.size, moved.cell)).toBeGreaterThanOrEqual(CREW_INSET);
-    const upd = fleet.updateCharacter(c.id, { instructions: 'in Spanish', context: [{ kind: 'file', ref: '/tmp', label: '', source: 'manual' }] });
+    const upd = fleet.updateRobot(c.id, { instructions: 'in Spanish', context: [{ kind: 'file', ref: '/tmp', label: '', source: 'manual' }] });
     expect(upd.instructions).toBe('in Spanish');
     expect(upd.context[0].kind).toBe('folder');
     expect(fleet.brief(c.id)).toContain('Robot instructions: in Spanish');
   });
 
-  it('char.update keeps a character on this machine, and lets it go again', async () => {
+  it('robot.update keeps a robot on this machine, and lets it go again', async () => {
     const { fleet } = await boot();
     const a = fleet.createIsland({ name: 'a' });
-    const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    expect(fleet.updateCharacter(c.id, { keepHere: true }).keepHere).toBe(true);
-    expect(fleet.updateCharacter(c.id, { note: 'x' }).keepHere).toBe(true);
-    expect(fleet.updateCharacter(c.id, { keepHere: false }).keepHere).toBeUndefined();
+    const c = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    expect(fleet.updateRobot(c.id, { keepHere: true }).keepHere).toBe(true);
+    expect(fleet.updateRobot(c.id, { note: 'x' }).keepHere).toBe(true);
+    expect(fleet.updateRobot(c.id, { keepHere: false }).keepHere).toBeUndefined();
   });
 
-  it('a move without a cell re-places a character on the island it already stands on', async () => {
+  it('a move without a cell re-places a robot on the island it already stands on', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a' });
-    const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    const c = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     const coast = landCells(store.state.islands[a.id].size).at(-1)!;
-    expect(fleet.moveCharacter(c.id, a.id, coast).cell).toEqual(coast);
-    const moved = fleet.moveCharacter(c.id, a.id);
+    expect(fleet.moveRobot(c.id, a.id, coast).cell).toEqual(coast);
+    const moved = fleet.moveRobot(c.id, a.id);
     expect(moved.cell).not.toEqual(coast);
     expect(inset(store.state.islands[a.id].size, moved.cell)).toBeGreaterThanOrEqual(CREW_INSET);
   });
 
-  it('gives each new character a portrait of its own, and char.update swaps it', async () => {
+  it('gives each new robot a portrait of its own, and robot.update swaps it', async () => {
     const { fleet } = await boot();
     const a = fleet.createIsland({ name: 'a' });
-    const one = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    const two = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    const one = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    const two = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     expect(PORTRAITS).toContain(one.portrait);
     expect(two.portrait).not.toBe(one.portrait);
-    expect(fleet.updateCharacter(one.id, { portrait: 'walrus' }).portrait).toBe('walrus');
+    expect(fleet.updateRobot(one.id, { portrait: 'walrus' }).portrait).toBe('walrus');
   });
 });

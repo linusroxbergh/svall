@@ -24,7 +24,7 @@ final class QuitFlowTests: XCTestCase {
         let local = flow()
         quit(local, working: 1)
         XCTAssertEqual(sent, ["quit.ask", "quit.stop"])
-        XCTAssertEqual(asked, ["Quit Svall? 1 character is working and will stop. Everything picks up where it left off when you open Svall again."])
+        XCTAssertEqual(asked, ["Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again."])
         XCTAssertEqual(answers, [])
         local.stopped(ok: true)
         XCTAssertEqual(answers, [true])
@@ -34,7 +34,7 @@ final class QuitFlowTests: XCTestCase {
     func testAFleetThatRunsElsewhereIsNeverAskedToStop() {
         quit(flow(elsewhere: true), working: 1)
         XCTAssertEqual(sent, ["quit.ask"])
-        XCTAssertEqual(asked, ["Quit Svall? Your characters keep working on the machine this fleet runs on."])
+        XCTAssertEqual(asked, ["Quit Svall? Your robots keep working on the machine this fleet runs on."])
         // this Mac's daemon alone
         XCTAssertEqual(kills, 1)
         XCTAssertEqual(answers, [true])
@@ -62,7 +62,7 @@ final class QuitFlowTests: XCTestCase {
             XCTAssertEqual(sent, ["quit.ask"], "elsewhere: \(elsewhere)")
             XCTAssertEqual(kills, 0, "elsewhere: \(elsewhere)")
             XCTAssertEqual(answers, [true], "elsewhere: \(elsewhere)")
-            // this Mac may be where the fleet is going, and its characters may be at rest for the move
+            // this Mac may be where the fleet is going, and its robots may be at rest for the move
             XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed. Keep this Mac awake until it finishes."], "elsewhere: \(elsewhere)")
         }
     }

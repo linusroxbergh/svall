@@ -96,7 +96,7 @@ describe('bundle paths', () => {
   it('serves a file, falls back to the page, and never escapes the bundle', () => {
     expect(resolveFile(dir, '/assets/app.js')).toBe(path.join(dir, 'assets', 'app.js'));
     expect(resolveFile(dir, '/')).toBe(path.join(dir, 'index.html'));
-    expect(resolveFile(dir, '/char/abc')).toBe(path.join(dir, 'index.html'));
+    expect(resolveFile(dir, '/robot/abc')).toBe(path.join(dir, 'index.html'));
     expect(resolveFile(dir, '/../../etc/passwd')).toBe(path.join(dir, 'index.html'));
     expect(resolveFile('/nowhere', '/')).toBeUndefined();
   });
@@ -152,7 +152,7 @@ runIf('phone sockets', () => {
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
-    const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
+    const workspace = new Workspace((id) => { const c = store.state.robots[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
     const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const api = await startApi({
@@ -237,7 +237,7 @@ runIf('phone sockets', () => {
     await expect(hello(open('svall-pass=not-the-pass'))).rejects.toThrow(/closed 4402/);
     await expect(hello(open(`svall-pass=${pass.slice(1)}`))).rejects.toThrow(/closed 4402/);
     expect((await hello(open(`other=1; svall-pass=${pass}`))).protocol).toBe(PROTOCOL_VERSION);
-    const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
+    const call = { id: 1, method: 'robot.answer', params: { id: 'c_none', answer: 'approve' } };
     const post = (cookie?: string) => fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com', ...(cookie ? { cookie } : {}) } });
     expect((await post()).status).toBe(401);
     expect((await post(`svall-pass=${pass}`)).status).toBe(200);
@@ -299,7 +299,7 @@ runIf('phone sockets', () => {
       return ws;
     };
     const refused = [open(), open(), open()].map((ws) => expect(hello(ws)).rejects.toThrow(/closed 4403/));
-    const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
+    const call = { id: 1, method: 'robot.answer', params: { id: 'c_none', answer: 'approve' } };
     const post = fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com', ...PAIRED } });
     expect((await post).status).toBe(401);
     await Promise.all(refused);
@@ -434,14 +434,14 @@ runIf('phone sockets', () => {
   it('answers the prompt a notification carried, once', async () => {
     const api = await boot();
     // an agent's pane runs something other than a shell, or the poll ends the agent
-    const c = await api.fleet.createCharacter({ islandId: api.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    await api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
-    await api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
-    expect(api.store.state.characters[c.id].agent?.status).toBe('blocked');
+    const c = await api.fleet.createRobot({ islandId: api.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await api.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
+    await api.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
+    expect(api.store.state.robots[c.id].agent?.status).toBe('blocked');
     // a tap comes seconds later, after the fleet has polled the pane several times
     await waitForPolls(api.fleet, 3);
     const approve = () => new Promise<unknown>((resolve, reject) => {
-      const body = JSON.stringify({ id: 1, method: 'char.answer', params: { id: c.id, answer: 'approve' } });
+      const body = JSON.stringify({ id: 1, method: 'robot.answer', params: { id: c.id, answer: 'approve' } });
       const req = http.request({
         host: '127.0.0.1', port: api.port, path: `/${key}/rpc`, method: 'POST',
         headers: { host: 'mac.tail.ts.net', origin: 'https://mac.tail.ts.net', 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json', ...PAIRED },
@@ -450,7 +450,7 @@ runIf('phone sockets', () => {
       req.end(body);
     });
     expect(await approve()).toEqual({ status: 200, body: { id: 1, result: {} } });
-    expect(api.store.state.characters[c.id].agent?.status).toBe('working');
+    expect(api.store.state.robots[c.id].agent?.status).toBe('working');
     // a second tap on the same notification finds nothing waiting
     expect(await approve()).toMatchObject({ status: 200, body: { error: { code: 'invalid' } } });
   });
@@ -460,21 +460,21 @@ runIf('phone sockets', () => {
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
       fetch(`http://127.0.0.1:${api.port}${path}`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', ...headers } });
     const me = { 'Tailscale-User-Login': 'me@example.com', ...PAIRED };
-    const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
+    const call = { id: 1, method: 'robot.answer', params: { id: 'c_none', answer: 'approve' } };
     const ok = await post(`/${key}/rpc`, call, me);
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ id: 1, error: { code: 'not_found' } });
     expect((await post('/rpc', call, me)).status).toBe(401);
     expect((await post(`/${key}/rpc`, call, { 'Tailscale-User-Login': 'them@example.com' })).status).toBe(401);
-    for (const method of ['state.get', 'char.seen']) expect((await post(`/${key}/rpc`, { id: 1, method, params: { id: 'c_none' } }, me)).status).toBe(400);
+    for (const method of ['state.get', 'robot.seen']) expect((await post(`/${key}/rpc`, { id: 1, method, params: { id: 'c_none' } }, me)).status).toBe(400);
     expect((await post(`/${key}/rpc`, call, { ...me, origin: 'https://evil.example' })).status).toBe(403);
     expect((await fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: '{', headers: me })).status).toBe(400);
   });
 
-  it('reads a POST body whole, a character split across its chunks and all, and lets a dropped one go', async () => {
+  it('reads a POST body whole, a robot split across its chunks and all, and lets a dropped one go', async () => {
     const api = await boot();
     const headers = { 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json', ...PAIRED };
-    const body = Buffer.from(JSON.stringify({ id: 1, method: 'char.answer', params: { id: 'c_ö', answer: 'approve' } }));
+    const body = Buffer.from(JSON.stringify({ id: 1, method: 'robot.answer', params: { id: 'c_ö', answer: 'approve' } }));
     const split = body.indexOf(Buffer.from('ö')) + 1;
     const answer = await new Promise<string>((resolve, reject) => {
       const req = http.request({ host: '127.0.0.1', port: api.port, path: `/${key}/rpc`, method: 'POST', headers: { ...headers, 'content-length': body.length } },

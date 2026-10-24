@@ -8,7 +8,7 @@ import { createAppStore, type AppStore } from '../../src/store/index.js';
 
 const ROOT = 'r:/d/islands/i1';
 const plan = { id: 'd:plan', name: 'plan', detail: 'When to read.', reveal: '/d/islands/i1/plan.md', target: 'file' as const, open: { rootId: ROOT, path: 'plan.md' } };
-const source: ResourceSource = { rootId: ROOT, root: '/d/islands/i1', name: 'isle', tier: 'island', docs: ROOT, islandIds: ['i1'], characterIds: [], groups: [{ kind: 'docs', items: [plan] }] };
+const source: ResourceSource = { rootId: ROOT, root: '/d/islands/i1', name: 'isle', tier: 'island', docs: ROOT, islandIds: ['i1'], robotIds: [], groups: [{ kind: 'docs', items: [plan] }] };
 let store: AppStore;
 const call = (m: string) => Promise.resolve(m === 'resources.get' ? { sources: [source] } : { text: '---\ndescription: When to read.\n---\n# Plan\n', mtimeMs: 1 });
 vi.mock('../../src/mobile/boot.js', () => ({ phone: { api: () => ({ call }), get store() { return store; } } }));

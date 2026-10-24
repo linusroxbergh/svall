@@ -1,20 +1,20 @@
 import { memo, useState } from 'react';
-import { starredOf, type Character, type Island } from '@svall/protocol';
-import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, setStar, starCharacterAt, toggleIsland } from './actions.js';
+import { starredOf, type Robot, type Island } from '@svall/protocol';
+import { moveRobotTo, newRobotOn, newIsland, reorderIsland, saveRobot, saveIsland, setStar, starRobotAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { memoByValue, useApp } from './hooks.js';
-import { characterMenu, islandMenu } from './menus.js';
+import { robotMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
-import { boardIsland, boardViewed, charactersOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
+import { boardIsland, boardViewed, robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
-// what a folded island would hide: the characters that want the user
-const attentionIn = (chars: Character[]): number => chars.filter(wantsUser).length;
+// what a folded island would hide: the robots that want the user
+const attentionIn = (robots: Robot[]): number => robots.filter(wantsUser).length;
 
 const stop = (e: React.MouseEvent) => e.stopPropagation();
 
-// a character dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
-const CHAR_DRAG = 'application/x-svall-character';
+// a robot dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
+const ROBOT_DRAG = 'application/x-svall-robot';
 const ISLAND_DRAG = 'application/x-svall-island';
 // a starred row dragged within its section; the islands below do not take it
 const STAR_DRAG = 'application/x-svall-star';
@@ -22,12 +22,12 @@ const STAR_DRAG = 'application/x-svall-star';
 const lowerHalf = (e: React.DragEvent) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY >= r.top + r.height / 2; };
 
 const targetAt = (e: React.DragEvent, target: DropTarget): DropTarget =>
-  target.kind === 'char' ? { ...target, after: lowerHalf(e) } : target;
+  target.kind === 'robot' ? { ...target, after: lowerHalf(e) } : target;
 
-// island rows accept a character; a character row inserts it before or after its midpoint
+// island rows accept a robot; a robot row inserts it before or after its midpoint
 const dropZone = (target: DropTarget) => ({
   onDragOver: (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(CHAR_DRAG)) return;
+    if (!e.dataTransfer.types.includes(ROBOT_DRAG)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     app.store.getState().setDropHover(targetAt(e, target));
@@ -39,11 +39,11 @@ const dropZone = (target: DropTarget) => ({
     if (dropHover?.kind === target.kind && dropHover.id === target.id) setDropHover(undefined);
   },
   onDrop: (e: React.DragEvent) => {
-    const id = e.dataTransfer.getData(CHAR_DRAG);
+    const id = e.dataTransfer.getData(ROBOT_DRAG);
     if (!id) return;
     e.preventDefault();
     app.store.getState().setDropHover(undefined);
-    moveCharacterTo(deps(), id, target, targetAt(e, target).after);
+    moveRobotTo(deps(), id, target, targetAt(e, target).after);
   },
 });
 
@@ -82,7 +82,7 @@ export function StarIcon({ on }: { on: boolean }) {
   );
 }
 
-function StarButton({ c, testid }: { c: Character; testid: string }) {
+function StarButton({ c, testid }: { c: Robot; testid: string }) {
   const on = c.star !== undefined;
   return (
     <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} title={on ? 'Unstar' : 'Star'}
@@ -90,23 +90,23 @@ function StarButton({ c, testid }: { c: Character; testid: string }) {
   );
 }
 
-const IslandRow = memoByValue(function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
-  i: Island; chars: Character[]; editing: boolean; setEditing(id?: string): void; dragging: boolean; setDragging(id?: string): void;
+const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditing, dragging, setDragging }: {
+  i: Island; robots: Robot[]; editing: boolean; setEditing(id?: string): void; dragging: boolean; setDragging(id?: string): void;
 }) {
   const status = useApp((s) => islandStatus(s.fleet, i.id));
   const onBoard = useApp((s) => s.view === 'board');
   const selected = useApp((s) => (s.view === 'board' ? boardIsland(s)?.id === i.id : s.selectedIslandId === i.id));
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === i.id);
   const open = !i.collapsed;
-  const attention = attentionIn(chars);
-  // on the board an island is a place to work, so it opens a character; on the map it is a thing to read
+  const attention = attentionIn(robots);
+  // on the board an island is a place to work, so it opens a robot; on the map it is a thing to read
   const select = () => {
     const s = app.store.getState();
     if (!open) toggleIsland(deps(), i.id);
-    if (onBoard && chars[0]) s.focus(chars[0].id); else s.selectIsland(i.id);
+    if (onBoard && robots[0]) s.focus(robots[0].id); else s.selectIsland(i.id);
   };
   // the rename field keeps the text menu
-  const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, chars.length === 0, () => setEditing(i.id));
+  const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, robots.length === 0, () => setEditing(i.id));
   return (
     <div className="sb-row sb-isle" data-testid={`sb-island-${i.id}`} data-selected={selected} data-open={open}
       data-drop={`island:${i.id}`} data-drop-hover={hover} {...dropZone({ kind: 'island', id: i.id })}
@@ -126,17 +126,17 @@ const IslandRow = memoByValue(function IslandRow({ i, chars, editing, setEditing
         <span className="sb-name" data-testid="island-name">{i.name}</span>
       )}
       {!open && attention > 0 && <span className="sb-attn" data-testid={`sb-island-attention-${i.id}`}>{attention}</span>}
-      <span className="sb-ct tnum">{chars.length || '—'}</span>
-      <i className="sdot" data-status={status} data-empty={chars.length === 0} />
-      {chars.length > 0 && <button className="sb-char-add" data-testid={`sb-island-new-${i.id}`}
+      <span className="sb-ct tnum">{robots.length || '—'}</span>
+      <i className="sdot" data-status={status} data-empty={robots.length === 0} />
+      {robots.length > 0 && <button className="sb-robot-add" data-testid={`sb-island-new-${i.id}`}
         title={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
-        onClick={(e) => { stop(e); void newCharacterOn(deps(), i.id); }} onDoubleClick={stop}>+</button>}
+        onClick={(e) => { stop(e); void newRobotOn(deps(), i.id); }} onDoubleClick={stop}>+</button>}
     </div>
   );
 });
 
 // a PR in review and a running monitor, marked without words; the title spells them out
-function Marks({ c }: { c: Character }) {
+function Marks({ c }: { c: Robot }) {
   const pr = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
   if (!pr && !monitor) return null;
@@ -144,30 +144,30 @@ function Marks({ c }: { c: Character }) {
   return <span className="sb-ind" title={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
 }
 
-const CharacterRow = memo(function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boolean; setEditing(id?: string): void }) {
+const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; editing: boolean; setEditing(id?: string): void }) {
   const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
-  const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id);
-  const reorderHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
-  const hoverAfter = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after);
+  const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id);
+  const reorderHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
+  const hoverAfter = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after);
   const failed = useApp((s) => resumeErrorOf(s, c));
   const [dragging, setDragging] = useState(false);
   const status = statusOf(c);
   return (
     <div
-      className="sb-row sb-child" data-testid={`sb-char-${c.id}`} data-status={status} data-unread={isUnread(c)}
+      className="sb-row sb-child" data-testid={`sb-robot-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={wantsUser(c)} data-selected={selected}
-      data-drop={`char:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'char', id: c.id })}
+      data-drop={`robot:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'robot', id: c.id })}
       draggable={!editing} data-dragging={dragging}
-      onDragStart={(e) => { e.dataTransfer.setData(CHAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
+      onDragStart={(e) => { e.dataTransfer.setData(ROBOT_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => { setDragging(false); app.store.getState().setDropHover(undefined); }}
       onClick={() => pick(c.id)}
-      onContextMenu={editing ? undefined : (e) => characterMenu(e, c.id, () => setEditing(c.id))}
+      onContextMenu={editing ? undefined : (e) => robotMenu(e, c.id, () => setEditing(c.id))}
     >
       <i className="sdot" data-status={status} />
       {editing ? (
-        <NameField name={c.name} testid="char-name-input" onDone={(name) => {
+        <NameField name={c.name} testid="robot-name-input" onDone={(name) => {
           setEditing(undefined);
-          if (name) saveCharacter(deps(), c.id, { name });
+          if (name) saveRobot(deps(), c.id, { name });
         }} />
       ) : (
         <>
@@ -176,7 +176,7 @@ const CharacterRow = memo(function CharacterRow({ c, editing, setEditing }: { c:
         </>
       )}
       {!editing && <Marks c={c} />}
-      {!editing && <StarButton c={c} testid={`sb-char-star-${c.id}`} />}
+      {!editing && <StarButton c={c} testid={`sb-robot-star-${c.id}`} />}
     </div>
   );
 });
@@ -184,21 +184,21 @@ const CharacterRow = memo(function CharacterRow({ c, editing, setEditing }: { c:
 // a row in Starred drops before or after its midpoint; the header, or a folded section, takes it first
 type StarHover = { id?: string; after: boolean };
 
-function StarredRow({ c, hover, zone }: { c: Character; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
+function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
   const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
   const island = useApp((s) => s.fleet.islands[c.islandId]?.name);
-  // a Finder file over this character; a reorder over its tree row carries `after` and leaves this row be
-  const fileHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after === undefined);
+  // a Finder file over this robot; a reorder over its tree row carries `after` and leaves this row be
+  const fileHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after === undefined);
   const [dragging, setDragging] = useState(false);
   const status = statusOf(c);
   return (
     <div className="sb-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
-      data-attention={wantsUser(c)} data-selected={selected} data-drop={`char:${c.id}`} data-drop-hover={fileHover}
+      data-attention={wantsUser(c)} data-selected={selected} data-drop={`robot:${c.id}`} data-drop-hover={fileHover}
       data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
       draggable data-dragging={dragging} {...zone}
       onDragStart={(e) => { e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => setDragging(false)}
-      onClick={() => pick(c.id, true)} onContextMenu={(e) => characterMenu(e, c.id)}>
+      onClick={() => pick(c.id, true)} onContextMenu={(e) => robotMenu(e, c.id)}>
       <i className="sdot" data-status={status} />
       <span className="sb-name" title={c.name}>{c.name}</span>
       <span className="sb-where"><span>{island}</span></span>
@@ -208,9 +208,9 @@ function StarredRow({ c, hover, zone }: { c: Character; hover?: StarHover; zone:
   );
 }
 
-const draggedStar = (e: React.DragEvent) => e.dataTransfer.types.includes(STAR_DRAG) || e.dataTransfer.types.includes(CHAR_DRAG);
+const draggedStar = (e: React.DragEvent) => e.dataTransfer.types.includes(STAR_DRAG) || e.dataTransfer.types.includes(ROBOT_DRAG);
 
-// a starred row or a tree character dropped here is starred at that spot
+// a starred row or a tree robot dropped here is starred at that spot
 function starZone(id: string | undefined, setHover: (f: (h?: StarHover) => StarHover | undefined) => void) {
   return {
     onDragOver: (e: React.DragEvent) => {
@@ -225,11 +225,11 @@ function starZone(id: string | undefined, setHover: (f: (h?: StarHover) => StarH
       setHover((h) => (h?.id === id ? undefined : h));
     },
     onDrop: (e: React.DragEvent) => {
-      const moving = e.dataTransfer.getData(STAR_DRAG) || e.dataTransfer.getData(CHAR_DRAG);
+      const moving = e.dataTransfer.getData(STAR_DRAG) || e.dataTransfer.getData(ROBOT_DRAG);
       if (!moving) return;
       e.preventDefault();
       setHover(() => undefined);
-      starCharacterAt(deps(), moving, id, id !== undefined && lowerHalf(e));
+      starRobotAt(deps(), moving, id, id !== undefined && lowerHalf(e));
     },
   };
 }
@@ -238,9 +238,9 @@ function Starred() {
   const fleet = useApp((s) => s.fleet);
   const shut = useApp((s) => s.sections[STARRED]?.shut ?? false);
   const [hover, setHover] = useState<StarHover>();
-  const chars = starredOf(fleet);
-  if (chars.length === 0) return null;
-  const attention = attentionIn(chars);
+  const robots = starredOf(fleet);
+  if (robots.length === 0) return null;
+  const attention = attentionIn(robots);
   const fold = () => app.store.getState().setSection(STARRED, { shut: !shut });
   return (
     <div className="sb-folder" data-testid="sb-starred">
@@ -250,10 +250,10 @@ function Starred() {
           onClick={(e) => { stop(e); fold(); }}><Caret open={!shut} /></button>
         <span className="sb-name">Starred</span>
         {shut && attention > 0 && <span className="sb-attn" data-testid="sb-starred-attention">{attention}</span>}
-        <span className="sb-ct tnum">{chars.length}</span>
+        <span className="sb-ct tnum">{robots.length}</span>
         <i className="sb-star-mark"><StarIcon on /></i>
       </div>
-      {!shut && <div className="sb-kids">{chars.map((c) => <StarredRow key={c.id} c={c} hover={hover} zone={starZone(c.id, setHover)} />)}</div>}
+      {!shut && <div className="sb-kids">{robots.map((c) => <StarredRow key={c.id} c={c} hover={hover} zone={starZone(c.id, setHover)} />)}</div>}
     </div>
   );
 }
@@ -298,15 +298,15 @@ export function Sidebar() {
       <div className="sb-list">
         <Starred />
         {islandsSorted(fleet).map((i) => {
-          const chars = charactersOf(fleet, i.id);
+          const robots = robotsOf(fleet, i.id);
           return (
             <div key={i.id} className="sb-folder" data-testid={`sb-folder-${i.id}`} {...reorderZone(i)}
               data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
-              <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
-              {!i.collapsed && chars.length === 0 && <div className="sb-kids"><button className="sb-row sb-char-empty" data-testid={`sb-island-new-${i.id}`}
-                aria-label={`New robot on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
-              {!i.collapsed && chars.length > 0 && (
-                <div className="sb-kids">{chars.map((c) => <CharacterRow key={c.id} c={c} editing={editing === c.id} setEditing={setEditing} />)}</div>
+              <IslandRow i={i} robots={robots} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
+              {!i.collapsed && robots.length === 0 && <div className="sb-kids"><button className="sb-row sb-robot-empty" data-testid={`sb-island-new-${i.id}`}
+                aria-label={`New robot on ${i.name}`} onClick={() => void newRobotOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
+              {!i.collapsed && robots.length > 0 && (
+                <div className="sb-kids">{robots.map((c) => <RobotRow key={c.id} c={c} editing={editing === c.id} setEditing={setEditing} />)}</div>
               )}
             </div>
           );

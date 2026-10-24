@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { Agent } from '@svall/protocol';
 import type { HookEvent, StatusEvent } from '../hooks/receiver.js';
 
-// what a terminal's hooks act on: the character itself for the main terminal, its `second` for the other
+// what a terminal's hooks act on: the robot itself for the main terminal, its `second` for the other
 export type Slot = { agent?: Agent; unread: boolean };
 
 const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog']);
@@ -37,7 +37,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       next.agent.lastActivityAt = now;
       return next;
     }
-    // a `claude -p` or `codex exec` run inside the agent inherits its character; a new session takes the
+    // a `claude -p` or `codex exec` run inside the agent inherits its robot; a new session takes the
     // slot only from the process that holds it (clear, resume, compact) or once that process is gone
     const held = next.agent?.pid;
     if (held && e.pid && e.pid !== held && alive(held)) return c;
@@ -49,7 +49,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     return next;
   }
   if (e.name === 'SessionEnd') {
-    // a late end from a session the character has already left must not clear the new one
+    // a late end from a session the robot has already left must not clear the new one
     if (e.sessionId && next.agent && next.agent.sessionId !== e.sessionId) return c;
     // nor may the end of a process that lost the slot, as a revive resuming its session while it still closes
     if (e.pid && next.agent?.pid && next.agent.pid !== e.pid) return c;
@@ -204,7 +204,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   return next;
 }
 
-// Claude Code's own context reading; a statusline from a session the character has moved on from is stale
+// Claude Code's own context reading; a statusline from a session the robot has moved on from is stale
 export function applyStatus<T extends Slot>(c: T, e: StatusEvent): T {
   if (!c.agent) return c;
   if (e.sessionId && c.agent.sessionId !== e.sessionId) return c;

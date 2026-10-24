@@ -20,7 +20,7 @@ const source = (over: Partial<SourceJournal> = {}): SourceJournal => SourceJourn
   toMachineId: crypto.randomUUID(),
   phase: 'freeze',
   manifestDigest: digest,
-  stoppedTerminals: [{ characterId: 'c_1', term: 2 }],
+  stoppedTerminals: [{ robotId: 'c_1', term: 2 }],
   updatedAt: 1,
   ...over,
 });
@@ -35,7 +35,7 @@ const destination = (over: Partial<DestinationJournal> = {}): DestinationJournal
   phase: 'prepare',
   manifestDigest: digest,
   preparedPath: '/x/handover/prepared-tx-1.json',
-  activation: [{ characterId: 'c_1', ok: false, error: 'no tmux' }],
+  activation: [{ robotId: 'c_1', ok: false, error: 'no tmux' }],
   updatedAt: 2,
   ...over,
 });
@@ -53,14 +53,14 @@ describe('journal schemas', () => {
   });
 
   it('names a stopped terminal the way every other call does: absent is the main one', () => {
-    expect(SourceJournal.parse({ ...source(), stoppedTerminals: [{ characterId: 'c_1' }] }).stoppedTerminals)
-      .toEqual([{ characterId: 'c_1' }]);
-    expect(() => SourceJournal.parse({ ...source(), stoppedTerminals: [{ characterId: 'c_1', term: 1 }] })).toThrow();
+    expect(SourceJournal.parse({ ...source(), stoppedTerminals: [{ robotId: 'c_1' }] }).stoppedTerminals)
+      .toEqual([{ robotId: 'c_1' }]);
+    expect(() => SourceJournal.parse({ ...source(), stoppedTerminals: [{ robotId: 'c_1', term: 1 }] })).toThrow();
   });
 
   it('keeps stopped terminals on the source', () => {
     const j = source({ error: 'rsync died' });
-    expect(j.stoppedTerminals).toEqual([{ characterId: 'c_1', term: 2 }]);
+    expect(j.stoppedTerminals).toEqual([{ robotId: 'c_1', term: 2 }]);
     expect(j.error).toBe('rsync died');
   });
 });

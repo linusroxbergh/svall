@@ -96,7 +96,7 @@ describe('followQuit', () => {
     const q = setup();
     const agent = (status: 'working' | 'idle') => ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0 });
     const f = fleet();
-    f.characters = { a: chr('a', 'i_a', { x: 0, y: 0 }, { agent: agent('working') }), b: chr('b', 'i_a', { x: 1, y: 0 }, { agent: agent('idle') }) };
+    f.robots = { a: chr('a', 'i_a', { x: 0, y: 0 }, { agent: agent('working') }), b: chr('b', 'i_a', { x: 1, y: 0 }, { agent: agent('idle') }) };
     q.store.getState().setFleet(f);
     q.bridge.emit({ type: 'quit.ask' });
     await vi.advanceTimersByTimeAsync(0);
@@ -152,7 +152,7 @@ describe('followMemory', () => {
   });
 });
 
-it('unsavedFiles names every dirty file across characters and shelf roots', () => {
+it('unsavedFiles names every dirty file across robots and shelf roots', () => {
   const store = createAppStore();
   store.getState().markFile('c1', '/repo/a.ts', { dirty: true });
   store.getState().markFile('c2', 'notes/b.md', { dirty: true });

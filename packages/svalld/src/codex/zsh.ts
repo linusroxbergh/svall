@@ -3,7 +3,7 @@ import path from 'node:path';
 
 // zsh reads $ZDOTDIR/.zshenv first: this one restores the user's ZDOTDIR, so the rest of startup is theirs, and gives the
 // interactive shell a codex off Codex's shared server, which agents, queue, remote-control and --remote need
-const ZSHENV = `# Svall: a character's zsh reads this first
+const ZSHENV = `# Svall: a robot's zsh reads this first
 if (( \${+SVALL_ZDOTDIR} )); then ZDOTDIR=$SVALL_ZDOTDIR; else unset ZDOTDIR; fi
 unset SVALL_ZDOTDIR
 [[ -r \${ZDOTDIR:-$HOME}/.zshenv ]] && source \${ZDOTDIR:-$HOME}/.zshenv
@@ -22,7 +22,7 @@ if [[ -o interactive ]]; then
 fi
 `;
 
-/** Writes the ZDOTDIR `dir` a character's zsh starts from, and answers the env that points zsh at it. */
+/** Writes the ZDOTDIR `dir` a robot's zsh starts from, and answers the env that points zsh at it. */
 export function codexZshEnv(dir: string, inherited: string | undefined = process.env.ZDOTDIR): Record<string, string> {
   const file = path.join(dir, '.zshenv');
   // checked on every window: without the file, zsh would skip the user's own startup files

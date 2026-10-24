@@ -24,7 +24,7 @@ export function realOf(p: string): string | undefined {
 export function inside(root: string, rel: string): string {
   root = path.resolve(root);
   const abs = path.resolve(root, rel);
-  const out = () => new WorkspaceError('invalid', `${rel || '.'} is outside the character's root`);
+  const out = () => new WorkspaceError('invalid', `${rel || '.'} is outside the robot's root`);
   if (path.isAbsolute(rel) || !within(abs, root)) throw out();
   let realRoot: string;
   try { realRoot = fs.realpathSync(root); } catch { throw new WorkspaceError('not_found', `${root} is gone`); }

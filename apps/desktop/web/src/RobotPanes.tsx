@@ -39,10 +39,10 @@ const UnsplitGlyph = ({ side }: { side: Side }) => {
 
 type Props = { id: string; opacity?: number; lead?: React.ReactNode; trail?: React.ReactNode };
 
-// one or two panes of a character, each with the control that says what it holds;
+// one or two panes of a robot, each with the control that says what it holds;
 // the card's own name and marks ride the same row, at the far left and the far right
-export function CharPanes({ id, opacity, lead, trail }: Props) {
-  const c = useApp((s) => s.fleet.characters[id]);
+export function RobotPanes({ id, opacity, lead, trail }: Props) {
+  const c = useApp((s) => s.fleet.robots[id]);
   const panes = useApp((s) => panesOf(s, id));
   const ratio = useApp((s) => s.ide[id]?.ratio ?? 0.5);
   const bindings = useApp((s) => s.settings.bindings);

@@ -1,4 +1,4 @@
-import type { Character } from '@svall/protocol';
+import type { Robot } from '@svall/protocol';
 import { contextPctOf, isUnread, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { ago, linkText } from './tokenText.js';
@@ -6,7 +6,7 @@ import { ago, linkText } from './tokenText.js';
 // the accent for a status is the CSS token of the same name
 const accent = (status: string): string => `var(--${status})`;
 
-type Props = { c: Character; x: number; y: number; flip: boolean };
+type Props = { c: Robot; x: number; y: number; flip: boolean };
 
 export function HoverCard({ c, x, y, flip }: Props) {
   const status = statusOf(c);

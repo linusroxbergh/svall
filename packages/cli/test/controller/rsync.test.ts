@@ -179,7 +179,7 @@ describe('exitKind', () => {
 describe('runRsync', () => {
   it('hands on each line as it ends, whole characters and all, and keeps the exit and stderr', async () => {
     const dir = tmp();
-    // a character split across two writes, and progress that rewrites its own line
+    // a robot split across two writes, and progress that rewrites its own line
     const exe = script(dir, 'fake', `printf '<f+++++++++ sm\\303'; sleep 0.1; printf '\\266rgas\\n  10  50%%  1kB/s  0:00:00\\r  20 100%%  1kB/s  0:00:00\\n'; echo warn >&2; exit 23`);
     const lines: string[] = [];
     const r = await runRsync(exe, [], { onLine: (l) => lines.push(l) });
@@ -187,7 +187,7 @@ describe('runRsync', () => {
     expect(r).toEqual({ code: 23, signal: null, stderr: 'warn\n' });
   });
 
-  it('never lets the environment turn argument protection or character conversion back on', async () => {
+  it('never lets the environment turn argument protection or robot conversion back on', async () => {
     const dir = tmp();
     const exe = script(dir, 'env', 'env');
     process.env.RSYNC_ICONV = 'utf-8,latin1';

@@ -80,7 +80,7 @@ function createPhone(): PhoneContext {
   return {
     store,
     api: () => api,
-    // terminal frames go to whichever character is open; there is only ever one on a phone
+    // terminal frames go to whichever robot is open; there is only ever one on a phone
     onTermEvent: (h) => { termHandlers.add(h); return () => { termHandlers.delete(h); }; },
   };
 }

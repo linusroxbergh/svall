@@ -48,8 +48,8 @@ const SERVICE_OFF = '{"disabled":true}\n';
 // the temporary a save writes before renaming it into place, OpenCode's or Svall's own
 const SAVING = /\.tmp(-\d+)?$/;
 
-/** Fills `dir` as OpenCode's config dir for characters: links to the user's config beside a service.json that turns the
- *  shared server off, so a typed `opencode` runs its own server with the character's env. A setting OpenCode saved over
+/** Fills `dir` as OpenCode's config dir for robots: links to the user's config beside a service.json that turns the
+ *  shared server off, so a typed `opencode` runs its own server with the robot's env. A setting OpenCode saved over
  *  a link goes back to the user's config if it is newer; the copy it beats is kept in `replaced`. Answers what failed. */
 export function linkOpencodeConfig(dir: string, o: OpencodePaths, replaced: string): string[] {
   const failed: string[] = [];

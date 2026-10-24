@@ -40,7 +40,7 @@ export function setupPlan(o: {
 
 const PROJECT_DIRS = ['Developer', 'Projects', 'Code', 'src', 'dev', 'repos', 'workspace', 'git'];
 
-/** The folder setup offers for new characters to start in: the one saved before, else the first usual code folder in
+/** The folder setup offers for new robots to start in: the one saved before, else the first usual code folder in
  *  `userHome`, else ~/Developer. An agent started in home reads Documents, Downloads and Music, each asking for access. */
 export function suggestProjects(userHome: string, saved: string): string {
   if (saved !== DEFAULT_CWD) return saved;

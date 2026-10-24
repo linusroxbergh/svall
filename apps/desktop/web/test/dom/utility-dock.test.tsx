@@ -44,7 +44,7 @@ test('answering a dialog the load panel opened leaves the panel open', async () 
   store.getState().toggleLoad(true);
   render(<><div data-testid="map" /><UtilityDock /><ConfirmSleep /></>);
   await act(async () => {});
-  act(() => store.getState().setSleepingCharacter('c1'));
+  act(() => store.getState().setSleepingRobot('c1'));
   act(() => { fireEvent.pointerDown(screen.getByTestId('confirm-sleep-cancel')); });
   expect(store.getState().loadOpen).toBe(true);
   act(() => { fireEvent.pointerDown(screen.getByTestId('map')); });

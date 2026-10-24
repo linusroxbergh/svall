@@ -6,8 +6,8 @@ import { ARCHIVABLE } from '@svall/svalld/handover/replicas';
 export type Words = { svall(args: string): string; machine(id?: string): string };
 
 const HEADINGS: Record<HandoverPhase, string> = {
-  begin: 'Begun', freeze: 'Resting characters', transfer: 'Transferring files and sessions', verify: 'Verifying',
-  prepare: 'Preparing the destination', ready: 'Verifying and committing', commit: 'Committing', activate: 'Resuming characters',
+  begin: 'Begun', freeze: 'Resting robots', transfer: 'Transferring files and sessions', verify: 'Verifying',
+  prepare: 'Preparing the destination', ready: 'Verifying and committing', commit: 'Committing', activate: 'Resuming robots',
   complete: 'Completing', aborted: 'Aborting',
 };
 
@@ -28,10 +28,10 @@ function bytes(n: number): string {
   return `${v.toFixed(1)} ${units[u]}`;
 }
 
-/** Who or what an entity is, for a person: a character's name, a root's destination path, a session's character. */
+/** Who or what an entity is, for a person: a robot's name, a root's destination path, a session's robot. */
 export function label(names: Names, entity?: HandoverEntity): string | undefined {
   if (!entity) return undefined;
-  if (entity.kind === 'character') return names.characters[entity.id] ?? entity.id;
+  if (entity.kind === 'robot') return names.robots[entity.id] ?? entity.id;
   if (entity.kind === 'root') return names.roots[entity.id] ?? entity.id;
   if (entity.kind === 'session') return names.sessions?.[entity.id] ? `${names.sessions[entity.id]}'s session` : entity.id;
   return undefined;
@@ -51,15 +51,15 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 
 /** The way out of a session the destination went on with, which no choice clears. */
 function sessionHint(b: Blocker, at = 'the destination'): string | undefined {
-  if (b.code !== 'destination_diverged' || b.entity?.kind !== 'character') return undefined;
+  if (b.code !== 'destination_diverged' || b.entity?.kind !== 'robot') return undefined;
   const id = OPENCODE_SESSION.exec(b.message)?.[1];
   return `    The copy of this session on ${at} went on there. ` + (id
     ? `To keep it, run \`opencode session export --standalone ${id} > keep.json\` on ${at}, then \`opencode session delete --standalone ${id}\`, then try again.`
     : `Move the file named above aside on ${at}, then try again.`);
 }
 
-const characters = (blockers: Blocker[], codes: (c: string) => boolean): string[] =>
-  unique(blockers.flatMap((b) => (codes(b.code) && b.entity?.kind === 'character' ? [b.entity.id] : [])));
+const robots = (blockers: Blocker[], codes: (c: string) => boolean): string[] =>
+  unique(blockers.flatMap((b) => (codes(b.code) && b.entity?.kind === 'robot' ? [b.entity.id] : [])));
 const roots = (blockers: Blocker[]): string[] =>
   unique(blockers.flatMap((b) => (ARCHIVABLE.has(b.code) && b.entity?.kind === 'root' ? [b.entity.id] : [])));
 // a root the destination holds, by where it lands there
@@ -68,16 +68,16 @@ const landing = (names: Names, id: string): string => names.landing?.[id] ?? nam
 export type Option = { key: string; label: string; answer: HandoverChoices | 'cancel' };
 
 /**
- * What a person may do about these blockers, each naming the characters and paths it affects, and each answer the
+ * What a person may do about these blockers, each naming the robots and paths it affects, and each answer the
  * whole of the choices from here on. At `begin`, nothing has started, so blockers no choice clears offer nothing to choose.
  */
 export function options(blockers: Blocker[], phase: HandoverPhase, names: Names, held: HandoverChoices = {}): Option[] {
-  const name = (ids: string[]) => ids.map((id) => names.characters[id] ?? id).join(', ');
-  const working = characters(blockers, (c) => REST.has(c));
-  const stuck = characters(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled');
-  const unsettled = characters(blockers, (c) => c === 'agent_unsettled');
+  const name = (ids: string[]) => ids.map((id) => names.robots[id] ?? id).join(', ');
+  const working = robots(blockers, (c) => REST.has(c));
+  const stuck = robots(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled');
+  const unsettled = robots(blockers, (c) => c === 'agent_unsettled');
   const archive = roots(blockers);
-  const unused = characters(blockers, (c) => c === 'repository_unused');
+  const unused = robots(blockers, (c) => c === 'repository_unused');
   const out: Option[] = [];
   if (phase === 'freeze' && (working.length || unsettled.length)) {
     out.push({ key: 'w', label: `Continue waiting for ${name(unique([...working, ...unsettled]))}`, answer: { ...held } });
@@ -103,7 +103,7 @@ export function options(blockers: Blocker[], phase: HandoverPhase, names: Names,
   if (unused.length) {
     const who = unused.length > 1 ? `folders ${name(unused.slice(0, -1))} and ${name(unused.slice(-1))} are` : `folder ${name(unused)} is`;
     out.push({
-      key: 'u', label: `Carry the ${who} in whole, with the Git repositories there no character works in`,
+      key: 'u', label: `Carry the ${who} in whole, with the Git repositories there no robot works in`,
       answer: { ...held, carryUnused: true },
     });
   }
@@ -116,18 +116,18 @@ export function options(blockers: Blocker[], phase: HandoverPhase, names: Names,
 /** The flags a run without a person at it takes to get past these blockers. */
 function flags(blockers: Blocker[], names: Names): string[] {
   const out: string[] = [];
-  if (characters(blockers, (c) => REST.has(c)).length) out.push('--interrupt-after <duration> interrupts the agents still working');
-  if (characters(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled').length) out.push('--terminate-shells terminates what keeps a terminal busy');
+  if (robots(blockers, (c) => REST.has(c)).length) out.push('--interrupt-after <duration> interrupts the agents still working');
+  if (robots(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled').length) out.push('--terminate-shells terminates what keeps a terminal busy');
   for (const id of roots(blockers)) out.push(`--archive ${landing(names, id)} moves what is there aside first`);
-  if (characters(blockers, (c) => c === 'repository_unused').length) out.push('--carry-unused carries the Git repositories a folder holds that no character works in');
+  if (robots(blockers, (c) => c === 'repository_unused').length) out.push('--carry-unused carries the Git repositories a folder holds that no robot works in');
   return out;
 }
 
 /** Renders a handover's events for a person, one line at a time, as the foreground command and `attach` show them. */
 export class View {
-  names: Names = { characters: {}, roots: {} };
+  names: Names = { robots: {}, roots: {} };
   phase?: HandoverPhase;
-  /** the characters whose rest the source has not confirmed yet */
+  /** the robots whose rest the source has not confirmed yet */
   resting = new Set<string>();
   /** the machines this run moves the fleet from and to, once known */
   about: { source?: string; destination?: string } = {};
@@ -171,7 +171,7 @@ export class View {
         const d = e.data;
         const who = label(this.names, { kind: d.kind, id: d.id }) ?? d.id;
         let line: string | undefined;
-        if (d.kind === 'character') {
+        if (d.kind === 'robot') {
           if (d.phase === 'freeze') {
             if (d.error) this.resting.delete(d.id);
             else if (d.done === undefined) this.resting.add(d.id);
@@ -186,7 +186,7 @@ export class View {
           this.print(`  ! ${who}: what was there is kept at ${d.archivedTo}`);
         }
         // what a copy kept aside matters most on a row that failed
-        if (d.kind !== 'character' && d.notice && this.shown.get(`notice:${d.id}`) !== `  ! ${who}: ${d.notice}`) {
+        if (d.kind !== 'robot' && d.notice && this.shown.get(`notice:${d.id}`) !== `  ! ${who}: ${d.notice}`) {
           this.shown.set(`notice:${d.id}`, `  ! ${who}: ${d.notice}`);
           this.print(`  ! ${who}: ${d.notice}`);
         }
@@ -227,10 +227,10 @@ export class View {
     switch (o.status) {
       case 'complete': {
         const lines = [`Handed over: the fleet runs on ${this.about.destination ?? 'its new machine'} at generation ${o.generation}.`];
-        for (const c of o.characters.filter((x) => !x.ok)) {
-          lines.push(`  ✗ ${this.names.characters[c.id] ?? c.id} did not resume: ${c.error ?? 'no reason given'}; it stays dormant with its transcript`);
+        for (const c of o.robots.filter((x) => !x.ok)) {
+          lines.push(`  ✗ ${this.names.robots[c.id] ?? c.id} did not resume: ${c.error ?? 'no reason given'}; it stays dormant with its transcript`);
         }
-        for (const c of o.characters.filter((x) => x.ok && x.notice)) lines.push(`  ! ${this.names.characters[c.id] ?? c.id}: ${c.notice}`);
+        for (const c of o.robots.filter((x) => x.ok && x.notice)) lines.push(`  ! ${this.names.robots[c.id] ?? c.id}: ${c.notice}`);
         for (const [key, line] of this.shown) if (key.startsWith('notice:')) lines.push(line);
         if (o.pending?.length) lines.push(`Still to finish on the ${o.pending.join(' and the ')}: \`${svall('handover --resume')}\`.`);
         return lines;
@@ -285,7 +285,7 @@ export class View {
 
 /**
  * The terminal a person steers a handover from: a menu for each decision, and between them the lines they
- * type while characters rest. Ctrl-C stays a signal; nothing here holds the terminal raw.
+ * type while robots rest. Ctrl-C stays a signal; nothing here holds the terminal raw.
  */
 export class Prompter {
   private rl: readline.Interface;

@@ -130,11 +130,11 @@ runIf('API', () => {
     const bad = await TestClient.connect(api.port, 'nope');
     await waitFor(() => bad.closeCode === 4401);
     const good = await TestClient.connect(api.port, 'secret');
-    const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; characters: Record<string, unknown>; home: { command: string } } };
+    const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; robots: Record<string, unknown>; home: { command: string } } };
     expect(snap.id).toBe(1);
-    expect(snap.result.version).toBe(9);
+    expect(snap.result.version).toBe(10);
     // the shell a new fleet opens with
-    expect(Object.keys(snap.result.characters)).toHaveLength(1);
+    expect(Object.keys(snap.result.robots)).toHaveLength(1);
     expect(snap.result.islands.home.kind).toBe('home');
     expect(snap.result.home.command).toBe('claude --model opus');
     good.ws.close();
@@ -150,7 +150,7 @@ runIf('API', () => {
     await waitFor(() => bad.closeCode === 4401);
     const good = await TestClient.connect(api.port, token);
     await good.call('no.such.method', { token });
-    await good.call('char.get', { id: token });
+    await good.call('robot.get', { id: token });
     good.ws.close();
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.join('\n')).not.toContain(token);
@@ -174,8 +174,8 @@ runIf('API', () => {
     for (let index = 0; index < count; index++) {
       c.ws.send(JSON.stringify({ part: { id: 7, index, count, data: bytes.subarray(index * PART_BYTES, (index + 1) * PART_BYTES).toString('base64') } }));
     }
-    expect(await answered).toMatchObject({ id: 7, result: { version: 9 } });
-    expect(await c.call('state.get')).toMatchObject({ result: { version: 9 } });
+    expect(await answered).toMatchObject({ id: 7, result: { version: 10 } });
+    expect(await c.call('state.get')).toMatchObject({ result: { version: 10 } });
     c.ws.close();
   });
 
@@ -255,7 +255,7 @@ runIf('API', () => {
       role: 'source', transactionId: 'tx-1', generation: 0, fleetId: config.id, fromMachineId: machineId(), toMachineId: other,
       phase: 'freeze', stoppedTerminals: [], terminated: [], serverKills: [], updatedAt: 1,
     });
-    handover.emitEntity({ transactionId: 'tx-1', kind: 'character', id: 'c1', phase: 'freeze' });
+    handover.emitEntity({ transactionId: 'tx-1', kind: 'robot', id: 'c1', phase: 'freeze' });
 
     const moved = (c: TestClient): Event[] => c.events.filter((e) => e.event.startsWith('ownership.') || e.event.startsWith('handover.'));
     for (const c of [desktop, phone]) {
@@ -263,7 +263,7 @@ runIf('API', () => {
       expect(moved(c)).toEqual([
         { event: 'ownership.changed', data: { generation: 0, ownerMachineId: machineId() } },
         { event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } },
-        { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c1', phase: 'freeze' } },
+        { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c1', phase: 'freeze' } },
       ]);
     }
   });
@@ -284,21 +284,21 @@ runIf('API', () => {
     }
   });
 
-  it('drives islands, characters and terminals, and pushes patches', async () => {
+  it('drives islands, robots and terminals, and pushes patches', async () => {
     const { api } = await boot();
     const c = await TestClient.connect(api.port, 'secret');
     const island = (await c.call('island.create', { name: 'x' })) as { result: { id: string } };
     await waitFor(() => c.events.some((e) => e.event === 'state.patch'));
-    const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
+    const ch = (await c.call('robot.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
     const opened = (await c.call('term.open', { id: ch.result.id, cols: 80, rows: 24 })) as { result: { screen: string } };
     expect(typeof opened.result.screen).toBe('string');
     await c.call('term.input', { id: ch.result.id, data: Buffer.from('echo via-api\n').toString('base64') });
     await waitFor(() => c.events.some((e) => e.event === 'term.output' && Buffer.from((e.data as { data: string }).data, 'base64').toString().includes('via-api')));
-    const read = (await c.call('char.read', { id: ch.result.id, lines: 20 })) as { result: { text: string } };
+    const read = (await c.call('robot.read', { id: ch.result.id, lines: 20 })) as { result: { text: string } };
     expect(read.result.text).toContain('via-api');
-    expect(await c.call('char.read', { id: 'c_nope' })).toMatchObject({ error: { code: 'not_found' } });
+    expect(await c.call('robot.read', { id: 'c_nope' })).toMatchObject({ error: { code: 'not_found' } });
     expect(await c.call('nope.method')).toMatchObject({ error: { code: 'unknown_method' } });
-    expect(await c.call('char.run', { id: ch.result.id })).toMatchObject({ error: { code: 'invalid_params' } });
+    expect(await c.call('robot.run', { id: ch.result.id })).toMatchObject({ error: { code: 'invalid_params' } });
     c.ws.close();
   });
 
@@ -306,12 +306,12 @@ runIf('API', () => {
     const { api, store, terminals } = await boot();
     const c = await TestClient.connect(api.port, 'secret');
     const island = (await c.call('island.create', { name: 'x' })) as { result: { id: string } };
-    const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
+    const ch = (await c.call('robot.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
     await c.call('term.open', { id: ch.result.id, cols: 80, rows: 24 });
     expect(terminals.viewerCount(ch.result.id)).toBe(1);
     c.ws.close();
     await waitFor(() => terminals.viewerCount(ch.result.id) === 0, 2000);
-    expect(store.state.characters[ch.result.id].tmux).toBeDefined();
+    expect(store.state.robots[ch.result.id].tmux).toBeDefined();
   });
 
   it('lets go of a socket that stops answering pings, and of the terminal it watched', async () => {
@@ -325,7 +325,7 @@ runIf('API', () => {
     const silent = new TestClient(ws);
     ws.send(JSON.stringify({ token: 'secret' }));
     const island = (await silent.call('island.create', { name: 'x' })) as { result: { id: string } };
-    const ch = (await silent.call('char.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
+    const ch = (await silent.call('robot.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
     await silent.call('term.open', { id: ch.result.id, cols: 80, rows: 24 });
     expect(terminals.viewerCount(ch.result.id)).toBe(1);
     answering = false;
@@ -340,12 +340,12 @@ runIf('API', () => {
     const c = await TestClient.connect(api.port, 'secret');
     const island = (await c.call('island.create', { name: 'x' })) as { result: { id: string } };
     // an agent's pane runs something other than a shell, or the poll ends the agent
-    const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp', command: 'sleep 600' })) as { result: { id: string } };
-    expect(await c.call('char.answer', { id: ch.result.id, answer: 'approve' })).toMatchObject({ error: { code: 'invalid' } });
-    await fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
-    await fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
-    expect((await c.call('state.get')) as { result: { characters: Record<string, { agent?: { prompt?: string } }> } }).toMatchObject({ result: { characters: { [ch.result.id]: { agent: { prompt: 'Bash?' } } } } });
-    expect(await c.call('char.answer', { id: ch.result.id, answer: 'deny' })).toMatchObject({ result: {} });
+    const ch = (await c.call('robot.create', { islandId: island.result.id, cwd: '/tmp', command: 'sleep 600' })) as { result: { id: string } };
+    expect(await c.call('robot.answer', { id: ch.result.id, answer: 'approve' })).toMatchObject({ error: { code: 'invalid' } });
+    await fleet.onSocketEvent({ hook: { robotId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
+    await fleet.onSocketEvent({ hook: { robotId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
+    expect((await c.call('state.get')) as { result: { robots: Record<string, { agent?: { prompt?: string } }> } }).toMatchObject({ result: { robots: { [ch.result.id]: { agent: { prompt: 'Bash?' } } } } });
+    expect(await c.call('robot.answer', { id: ch.result.id, answer: 'deny' })).toMatchObject({ result: {} });
     c.ws.close();
   });
 
@@ -375,14 +375,14 @@ runIf('API', () => {
     c.ws.close();
   });
 
-  it('serves a character\'s files and refuses a path outside its root', async () => {
+  it('serves a robot\'s files and refuses a path outside its root', async () => {
     const { api } = await boot();
     const client = await TestClient.connect(api.port, 'secret');
     // the path tmux reports for the pane, which the poll writes over the one it was made with
     const home = fs.realpathSync(makeHome());
     fs.writeFileSync(`${home}/hello.txt`, 'hi\n');
     const island = (await client.call('island.create', { name: 'ws' })) as { result: { id: string } };
-    const c = (await client.call('char.create', { islandId: island.result.id, cwd: home })) as { result: { id: string } };
+    const c = (await client.call('robot.create', { islandId: island.result.id, cwd: home })) as { result: { id: string } };
     const list = (await client.call('fs.list', { id: c.result.id, path: '' })) as { result: { entries: { name: string }[] } };
     expect(list.result.entries.map((e) => e.name)).toEqual(['hello.txt']);
     const bad = (await client.call('fs.read', { id: c.result.id, path: '../x' })) as { error: { code: string } };
@@ -423,29 +423,29 @@ runIf('API', () => {
     client.ws.close();
   });
 
-  it('takes the characters on an agent profile along when its file is renamed, and leaves them when the name is taken', async () => {
+  it('takes the robots on an agent profile along when its file is renamed, and leaves them when the name is taken', async () => {
     const { api, store, fleet, agentProfiles } = await boot();
     const client = await TestClient.connect(api.port, 'secret');
     const call = (method: string, params: unknown) => client.call(method, params) as Promise<{ result?: unknown; error?: { code: string } }>;
     const island = fleet.createIsland({ name: 'roles' });
-    const a = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', agentProfile: 'reviewer' });
-    const b = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', agentProfile: 'planner' });
+    const a = await fleet.createRobot({ islandId: island.id, cwd: '/tmp', agentProfile: 'reviewer' });
+    const b = await fleet.createRobot({ islandId: island.id, cwd: '/tmp', agentProfile: 'planner' });
     const id = `r:${agentProfiles}`;
     expect((await call('docs.rename', { id, path: 'reviewer.md', to: 'planner.md' })).error).toMatchObject({ code: 'exists' });
-    expect(store.state.characters[a.id].agentProfile).toBe('reviewer');
+    expect(store.state.robots[a.id].agentProfile).toBe('reviewer');
     expect((await call('docs.rename', { id, path: 'reviewer.md', to: 'critic.md' })).result).toEqual({});
-    expect(store.state.characters[a.id].agentProfile).toBe('critic');
-    expect(store.state.characters[b.id].agentProfile).toBe('planner');
+    expect(store.state.robots[a.id].agentProfile).toBe('critic');
+    expect(store.state.robots[b.id].agentProfile).toBe('planner');
     expect(fleet.brief(a.id)).toContain('Agent profile: critic — follow this role.');
     client.ws.close();
   });
 
-  it('tells a watching socket that its character\'s root changed', async () => {
+  it('tells a watching socket that its robot\'s root changed', async () => {
     const { api } = await boot();
     const client = await TestClient.connect(api.port, 'secret');
     const home = makeHome();
     const island = (await client.call('island.create', { name: 'ws' })) as { result: { id: string } };
-    const c = (await client.call('char.create', { islandId: island.result.id, cwd: home })) as { result: { id: string } };
+    const c = (await client.call('robot.create', { islandId: island.result.id, cwd: home })) as { result: { id: string } };
     await client.call('repo.watch', { id: c.result.id });
     // a watcher that has just started may not hear yet, so the write is made again until it is heard
     await waitFor(() => {

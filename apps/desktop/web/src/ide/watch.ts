@@ -1,7 +1,7 @@
 import type { Api } from '../api.js';
 
 export type RepoWatch = {
-  /** Starts watching the character's root; the returned function stops this listener's share of it. */
+  /** Starts watching the robot's root; the returned function stops this listener's share of it. */
   watch(id: string): () => void;
   on(id: string, fn: () => void): () => void;
   emit(id: string): void;

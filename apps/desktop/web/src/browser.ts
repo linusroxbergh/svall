@@ -1,4 +1,4 @@
-import { charOfKey, toUrl, type ContextItem } from '@svall/protocol';
+import { robotOfKey, toUrl, type ContextItem } from '@svall/protocol';
 import type { Api } from './api.js';
 import { openUrl, webUrl, type Bridge, type Rect } from './bridge.js';
 import { showBrowser } from './panes.js';
@@ -9,7 +9,7 @@ export type BrowserManager = {
   show(id: string, tab: string, rect: Rect, takeFocus?: boolean): void;
   move(tab: string, rect: Rect): void;
   hide(tab: string): void;
-  // into the tab when there is one, else as the character's first tab
+  // into the tab when there is one, else as the robot's first tab
   load(id: string, tab: string | undefined, url: string): void;
   // the start page, for a pane with no tabs and none on the way
   start(id: string): void;
@@ -24,8 +24,8 @@ const START_PAGE = 'https://www.google.com';
 
 export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore): BrowserManager {
   const state = () => store.getState();
-  const tabOf = (id: string, tab: string) => state().fleet.characters[id]?.browser?.tabs.find((t) => t.id === tab);
-  const ownerOf = (tab: string) => Object.values(state().fleet.characters).find((c) => c.browser?.tabs.some((t) => t.id === tab))?.id;
+  const tabOf = (id: string, tab: string) => state().fleet.robots[id]?.browser?.tabs.find((t) => t.id === tab);
+  const ownerOf = (tab: string) => Object.values(state().fleet.robots).find((c) => c.browser?.tabs.some((t) => t.id === tab))?.id;
 
   const close = (tab: string) => {
     bridge.send({ type: 'browser.close', tab });
@@ -33,7 +33,7 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
   };
   // popups that closed themselves before svalld had answered browser.open for them
   const closedEarly = new Set<string>();
-  // characters whose first tab has been asked for; svalld has not put it in the fleet yet
+  // robots whose first tab has been asked for; svalld has not put it in the fleet yet
   const opening = new Set<string>();
 
   const load: BrowserManager['load'] = (id, tab, input) => {
@@ -46,12 +46,12 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
     }
   };
 
-  // a link followed in a terminal asks whether it opens beside it, as a tab of that character; anything the
-  // browser cannot hold, and a character that is not there, goes straight out to the user's own browser
+  // a link followed in a terminal asks whether it opens beside it, as a tab of that robot; anything the
+  // browser cannot hold, and a robot that is not there, goes straight out to the user's own browser
   const fromTerminal = (key: string, url: string, x: number, y: number) => {
-    const id = charOfKey(key);
-    if (!state().fleet.characters[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
-    state().askLink({ url, charId: id, x, y, surface: key });
+    const id = robotOfKey(key);
+    if (!state().fleet.robots[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
+    state().askLink({ url, robotId: id, x, y, surface: key });
   };
 
   bridge.onMessage((m) => {
@@ -88,8 +88,8 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
   // a tab gone from the fleet takes its view with it, whoever closed it
   store.subscribe((s, prev) => {
     if (s.fleet === prev.fleet) return;
-    for (const id of opening) if (s.fleet.characters[id]?.browser?.tabs.length) opening.delete(id);
-    const alive = new Set(Object.values(s.fleet.characters).flatMap((c) => c.browser?.tabs.map((t) => t.id) ?? []));
+    for (const id of opening) if (s.fleet.robots[id]?.browser?.tabs.length) opening.delete(id);
+    const alive = new Set(Object.values(s.fleet.robots).flatMap((c) => c.browser?.tabs.map((t) => t.id) ?? []));
     for (const tab of Object.keys(s.webviews)) if (!alive.has(tab)) close(tab);
   });
 
@@ -115,7 +115,7 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
     },
     load,
     start(id) {
-      if (opening.has(id) || state().fleet.characters[id]?.browser?.tabs.length) return;
+      if (opening.has(id) || state().fleet.robots[id]?.browser?.tabs.length) return;
       load(id, undefined, START_PAGE);
     },
     go(tab, action) {
@@ -124,11 +124,11 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
   };
 }
 
-// a web page can open in the character's browser; a folder, a file and a mailto have one place to go
+// a web page can open in the robot's browser; a folder, a file and a mailto have one place to go
 export const opensInside = (item: ContextItem): boolean =>
   item.kind !== 'file' && item.kind !== 'folder' && /^https?:/i.test(webUrl(item.ref) ?? '');
 
-// the page opens as a new tab beside the character's terminal, with the character in view
+// the page opens as a new tab beside the robot's terminal, with the robot in view
 export function openBeside(store: AppStore, browser: BrowserManager, id: string, url: string): void {
   const s = store.getState();
   if (s.view === 'map') s.focus(id); else s.select(id);

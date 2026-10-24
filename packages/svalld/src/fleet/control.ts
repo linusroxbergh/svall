@@ -8,9 +8,9 @@ import type { Tmux } from '../tmux/tmux.js';
 
 // what the terminals hear of the panes: their output, tmux pausing and resuming one, and a client attached afresh
 export type PaneEvents = {
-  output: [charId: string, data: Buffer];
-  pause: [charId: string];
-  continue: [charId: string];
+  output: [robotId: string, data: Buffer];
+  pause: [robotId: string];
+  continue: [robotId: string];
   'control-reset': [];
 };
 
@@ -45,9 +45,9 @@ export class ControlLink {
   private async attach(): Promise<void> {
     const { events } = this.deps;
     const c = this.deps.tmux.connect();
-    c.on('output', (paneId, data) => { const id = this.charByPane(paneId); if (id && this.streaming.has(id)) events.emit('output', id, data); });
-    c.on('pause', (paneId) => { const id = this.charByPane(paneId); if (id) events.emit('pause', id); });
-    c.on('continue', (paneId) => { const id = this.charByPane(paneId); if (id) events.emit('continue', id); });
+    c.on('output', (paneId, data) => { const id = this.robotByPane(paneId); if (id && this.streaming.has(id)) events.emit('output', id, data); });
+    c.on('pause', (paneId) => { const id = this.robotByPane(paneId); if (id) events.emit('pause', id); });
+    c.on('continue', (paneId) => { const id = this.robotByPane(paneId); if (id) events.emit('continue', id); });
     c.on('window-close', (windowId) => { if (this.deps.writable()) this.deps.track(this.windowClosed(windowId), `window ${windowId} closed`); });
     // a client that exits before it is ready fails start, and the caller's retry is the one recovery
     let ready = false;
@@ -79,7 +79,7 @@ export class ControlLink {
   }
 
   continuePane(id: string): void {
-    const c = this.deps.store.state.characters[id];
+    const c = this.deps.store.state.robots[id];
     if (c?.tmux) this.control?.send(`refresh-client -A '${c.tmux.paneId}:continue'`);
   }
 
@@ -87,21 +87,21 @@ export class ControlLink {
     this.streaming.delete(id);
   }
 
-  private charByPane(paneId: string): string | undefined {
-    return Object.values(this.deps.store.state.characters).find((c) => c.tmux?.paneId === paneId)?.id;
+  private robotByPane(paneId: string): string | undefined {
+    return Object.values(this.deps.store.state.robots).find((c) => c.tmux?.paneId === paneId)?.id;
   }
 
-  private charByWindow(windowId: string): string | undefined {
-    return Object.values(this.deps.store.state.characters).find((c) => c.tmux?.windowId === windowId)?.id;
+  private robotByWindow(windowId: string): string | undefined {
+    return Object.values(this.deps.store.state.robots).find((c) => c.tmux?.windowId === windowId)?.id;
   }
 
   // tmux also reports a close when a viewer session holding a linked window goes away
   private async windowClosed(windowId: string): Promise<void> {
     if (await this.deps.tmux.hasWindow(windowId) || !this.deps.writable()) return;
-    const id = this.charByWindow(windowId);
-    if (id) { this.deps.store.update((d) => { const ch = d.characters[id]; if (ch) markDormant(ch); }); return; }
-    const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux?.windowId === windowId)?.id;
-    if (owner) this.deps.store.update((d) => { const ch = d.characters[owner]; if (ch) loseSecond(ch, undefined, this.deps.atShell(secondName(owner))); });
+    const id = this.robotByWindow(windowId);
+    if (id) { this.deps.store.update((d) => { const ch = d.robots[id]; if (ch) markDormant(ch); }); return; }
+    const owner = Object.values(this.deps.store.state.robots).find((ch) => ch.second?.tmux?.windowId === windowId)?.id;
+    if (owner) this.deps.store.update((d) => { const ch = d.robots[owner]; if (ch) loseSecond(ch, undefined, this.deps.atShell(secondName(owner))); });
   }
 
   // a stop at any step ends the recovery there, or it would start the server the stop just ended

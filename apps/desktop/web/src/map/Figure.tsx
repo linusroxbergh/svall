@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { robotUrl } from '../portraits.js';
-import { addRobot } from './motion.js';
+import { figureUrl } from '../portraits.js';
+import { addFigure } from './motion.js';
 
 // each robot's SVG text, fetched once
 const texts = new Map<number, string>();
@@ -19,7 +19,7 @@ function hoist(svg: string): string {
 function load(n: number): Promise<void> {
   let p = loads.get(n);
   if (!p) {
-    p = fetch(robotUrl(n))
+    p = fetch(figureUrl(n))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
       .then((t) => { texts.set(n, hoist(t)); }, () => { loads.delete(n); });
     loads.set(n, p);
@@ -29,7 +29,7 @@ function load(n: number): Promise<void> {
 
 // one card's copy of a robot: its ids (and every reference to them) prefixed so copies never share one, hidden from
 // assistive tech, in the img's box and bottom-anchored as the img's object-position is
-export function inlineRobot(svg: string, prefix: string): string {
+export function inlineFigure(svg: string, prefix: string): string {
   const ids = new Set(Array.from(svg.matchAll(/\sid="([^"]+)"/g), (m) => m[1]));
   const own = (id: string) => (ids.has(id) ? `${prefix}-${id}` : id);
   // WKWebView's page zoom moves a px transform-origin on an SVG part to zoom × itself, but leaves a share of the view box in place
@@ -42,25 +42,25 @@ export function inlineRobot(svg: string, prefix: string): string {
     .replace(/(\saria-labelledby=")([^"]+)"/g, (_, a: string, list: string) => `${a}${list.split(/\s+/).map(own).join(' ')}"`)
     .replace(/<svg\b[^>]*>/, (root) => {
       const cls = root.match(/\sclass="([^"]*)"/)?.[1];
-      return `${root.slice(0, -1).replace(/\sclass="[^"]*"/, '')} class="${cls ? `${cls} ` : ''}portrait robot" aria-hidden="true" preserveAspectRatio="xMidYMax meet">`;
+      return `${root.slice(0, -1).replace(/\sclass="[^"]*"/, '')} class="${cls ? `${cls} ` : ''}portrait figure" aria-hidden="true" preserveAspectRatio="xMidYMax meet">`;
     });
 }
 
 let cards = 0;
 
 // the robot inline, so its own actions can play on it; the img stands in until its text arrives
-export function Robot({ n }: { n: number }) {
+export function Figure({ n }: { n: number }) {
   const [prefix] = useState(() => `bot${++cards}`);
   const [, loaded] = useReducer((x: number) => x + 1, 0);
   const text = texts.get(n);
   useEffect(() => { if (!texts.has(n)) void load(n).then(loaded); }, [n]);
-  const svg = useMemo(() => text && inlineRobot(text, prefix), [text, prefix]);
+  const svg = useMemo(() => text && inlineFigure(text, prefix), [text, prefix]);
   const stage = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const bot = stage.current?.firstElementChild;
-    return bot instanceof SVGElement ? addRobot(bot) : undefined;
+    return bot instanceof SVGElement ? addFigure(bot) : undefined;
   }, [svg]);
   return svg
-    ? <div key="svg" ref={stage} className="stage" data-robot={n} dangerouslySetInnerHTML={{ __html: svg }} />
-    : <div key="img" className="stage" data-robot={n}><img className="portrait robot" src={robotUrl(n)} alt="" draggable={false} /></div>;
+    ? <div key="svg" ref={stage} className="stage" data-figure={n} dangerouslySetInnerHTML={{ __html: svg }} />
+    : <div key="img" className="stage" data-figure={n}><img className="portrait figure" src={figureUrl(n)} alt="" draggable={false} /></div>;
 }

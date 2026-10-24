@@ -22,9 +22,9 @@ export function readEnvFile(file: string): Record<string, string> {
   return env;
 }
 
-// A character is a general-purpose shell. Only agent credentials cross from the fleet's
+// A robot is a general-purpose shell. Only agent credentials cross from the fleet's
 // .env into it; other values in that file belong to headless daemon tasks.
-export function characterKeyEnv(file: string): Record<string, string> {
+export function robotKeyEnv(file: string): Record<string, string> {
   const values = readEnvFile(file);
   return Object.fromEntries(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']
     .filter((key) => values[key])
@@ -40,11 +40,11 @@ export function rendererEnv(settingsFile: string): Record<string, string> {
   return { CLAUDE_CODE_NO_FLICKER: '1' };
 }
 
-// cwd is an empty folder so no project settings or CLAUDE.md load; without a character id the
-// Svall hook exits at once, so the pass is not mistaken for a character. launchd gives the
+// cwd is an empty folder so no project settings or CLAUDE.md load; without a robot id the
+// Svall hook exits at once, so the pass is not mistaken for a robot. launchd gives the
 // daemon no shell environment, so an API key reaches the child through envFile
 export function spawnClaude(o: { args: string[]; cwd: string; envFile: string }): Piped {
   fs.mkdirSync(o.cwd, { recursive: true });
-  const { SVALL_CHAR_ID: _id, ...env } = { ...process.env, ...readEnvFile(o.envFile) };
+  const { SVALL_ROBOT_ID: _id, ...env } = { ...process.env, ...readEnvFile(o.envFile) };
   return spawn('claude', [...o.args, ...ISOLATION], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
 }

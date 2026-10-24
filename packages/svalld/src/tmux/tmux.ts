@@ -182,7 +182,7 @@ export class Tmux {
     return said.trim() === windowId;
   }
 
-  // one session per desktop terminal, holding only the character's window: when that window dies the
+  // one session per desktop terminal, holding only the robot's window: when that window dies the
   // session dies and the attached client exits instead of being moved to another window. One tmux call:
   // a failing command ends its sequence, so the steps that would fail on a second attach sit behind `if -F`
   async attachSession(name: string, windowId: string): Promise<void> {

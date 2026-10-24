@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pillWidth, type Island } from '@svall/protocol';
-import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, onBlocks, roomOf, screenToCell, sharedCardScale, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
+import { cardScale, cellOwner, robotAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, onBlocks, roomOf, screenToCell, sharedCardScale, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
 import { mapIslands } from '../src/selectors.js';
 import { theme, tokenPx } from '../src/theme.js';
 import { fleet } from './fixtures.js';
@@ -57,7 +57,7 @@ describe('world layout', () => {
   it('finds the largest scale a world whose cards change size with it still fits', () => {
     // a card on beta's bottom row hangs past the ground by an amount that follows the scale
     const f = fleet();
-    f.characters.c1 = { ...f.characters.c1, cell: { x: 4, y: 3 } };
+    f.robots.c1 = { ...f.robots.c1, cell: { x: 4, y: 3 } };
     const islands = mapIslands(f), crew = crewOf(f), win = { w: 3000, h: 400 };
     const l = fitAll(islands, win, crew);
     expect(worldBounds(islands, crew, l.scale).h * cs(l)).toBeCloseTo(win.h - theme.fit.top - theme.fit.bottom, 3);
@@ -131,12 +131,12 @@ describe('world layout', () => {
     expect(screenToCell(l, { x: 99, y: 49 })).toEqual({ x: -1, y: -1 });
   });
 
-  it('finds the island and character under a world cell', () => {
+  it('finds the island and robot under a world cell', () => {
     const f = fleet();
-    const c0 = f.characters.c0;
+    const c0 = f.robots.c0;
     const w = worldCell(f.islands.i_b.position, c0.cell);
     expect(cellOwner(f, w)).toEqual({ island: f.islands.i_b, local: c0.cell, land: true });
-    expect(characterAt(f, 'i_b', c0.cell)?.id).toBe('c0');
+    expect(robotAt(f, 'i_b', c0.cell)?.id).toBe('c0');
     expect(cellOwner(f, { x: 0, y: 0 })).toMatchObject({ island: f.islands.i_b, land: false }); // corner cut
     expect(cellOwner(f, { x: 7, y: 0 })).toBeUndefined();                                       // gap
   });

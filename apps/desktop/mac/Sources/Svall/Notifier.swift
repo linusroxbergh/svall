@@ -64,8 +64,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    // a key is a terminal surface key: a character's second terminal carries a -2 suffix
-    private static func charId(_ key: String) -> String { key.hasSuffix("-2") ? String(key.dropLast(2)) : key }
+    // a key is a terminal surface key: a robot's second terminal carries a -2 suffix
+    private static func robotId(_ key: String) -> String { key.hasSuffix("-2") ? String(key.dropLast(2)) : key }
 
     func post(key: String, title: String, subtitle: String, body: String, sound: Bool, actions: Bool, promptId: String?) {
         let content = UNMutableNotificationContent()
@@ -74,7 +74,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.body = body
         content.sound = sound ? .default : nil
         if actions { content.categoryIdentifier = Self.blocked }
-        content.threadIdentifier = prefix + Self.charId(key)
+        content.threadIdentifier = prefix + Self.robotId(key)
         content.userInfo = ["home": home, "key": key, "promptId": promptId ?? ""]
         let id = prefix + key
         posted.insert(id)

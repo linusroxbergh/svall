@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import {
   FleetConfig, FleetId, FleetState, Home, MachineId, emptyState,
-  type Character, type Event, type Island, type LandedRoot, type OwnerRecord, type ParsedParams, type TransferManifestV1,
+  type Robot, type Event, type Island, type LandedRoot, type OwnerRecord, type ParsedParams, type TransferManifestV1,
 } from '@svall/protocol';
 import { readAgentProfile } from '../../src/agent-profiles.js';
 import { startApi } from '../../src/api/server.js';
@@ -70,12 +70,12 @@ const refusal = (p: Promise<unknown>): Promise<{ code: string; data: Record<stri
 const blockersOf = (r: { data: Record<string, unknown> }): { code: string; message: string }[] => (r.data.blockers ?? []) as { code: string; message: string }[];
 
 const win = (n: number) => ({ windowId: `@${n}`, paneId: `%${n}` });
-const char = (id: string, cwd: string, over: Partial<Character> = {}): Character => ({
+const robot = (id: string, cwd: string, over: Partial<Robot> = {}): Robot => ({
   id, islandId: 'home', cell: { x: 0, y: 1 }, name: id.slice(2), portrait: 'fox', note: '', instructions: '', cwd, context: [],
   shell: { lastOutputAt: 0 }, unread: false, revive: { command: '' }, ...over,
 });
-// a character whose terminals this handover's rest closed, as the source's rest leaves them
-const rested = (c: Character): Character => ({ ...c, restedBy: TX, ...(c.second && { second: { ...c.second, restedBy: TX } }) });
+// a robot whose terminals this handover's rest closed, as the source's rest leaves them
+const rested = (c: Robot): Robot => ({ ...c, restedBy: TX, ...(c.second && { second: { ...c.second, restedBy: TX } }) });
 
 // every file under a folder with its size, mtime and mode, so a check can prove nothing was written there
 function tree(dir: string): Record<string, string> {
@@ -177,9 +177,9 @@ class Crew {
     reconcileNow: async () => { this.log.push('reconcile'); },
     // as the fleet does: each terminal a crash cut off mid-turn that no open handover carries is revived
     resumeInterrupted: async () => {
-      for (const c of Object.values(this.store.state.characters)) if (c.revive?.interrupted && !this.carried(c.id)) await this.open(c.id);
+      for (const c of Object.values(this.store.state.robots)) if (c.revive?.interrupted && !this.carried(c.id)) await this.open(c.id);
     },
-    reviveCharacter: (id) => this.open(id),
+    reviveRobot: (id) => this.open(id),
     openSecond: (id) => this.open(id, 2),
     onSessionStart: (fn) => { this.starts.add(fn); return () => { this.starts.delete(fn); }; },
     carries: (fn) => { this.carried = fn; },
@@ -226,7 +226,7 @@ class Crew {
     for (const fn of this.starts) fn(id, term, sessionId);
   }
 
-  private async open(id: string, term?: 2): Promise<Character> {
+  private async open(id: string, term?: 2): Promise<Robot> {
     const key = term ? `${id}-2` : id;
     this.opening++;
     this.peak = Math.max(this.peak, this.opening);
@@ -236,11 +236,11 @@ class Crew {
     if (this.failing.has(key)) throw new Error(`tmux could not open a window for ${key}`);
     const n = this.next++;
     this.store.update((d) => {
-      const slot = term ? d.characters[id].second! : d.characters[id];
+      const slot = term ? d.robots[id].second! : d.robots[id];
       slot.tmux = win(n);
       delete slot.revive;
     });
-    const c = this.store.state.characters[id];
+    const c = this.store.state.robots[id];
     const agent = (term ? c.second : c)?.agent;
     const dies = this.dies.get(key);
     const running = agent && dies !== 'typed' && !this.exiting.has(key);
@@ -281,7 +281,7 @@ type Tamper = (m: TransferManifestV1) => void;
 /**
  * Mac to trift under one temp folder, where as on two real machines both keep the fleet under one home `dst`: the
  * Mac's tree is made there and the manifest read from it, then the tree is set aside at `src`, the Mac the fleet
- * leaves, and the transfer copies from it. `home` is this daemon's own fleet home. Four characters: one with a
+ * leaves, and the transfer copies from it. `home` is this daemon's own fleet home. Four robots: one with a
  * second terminal, file context and a file: tab, a Claude session, a Codex session, and a shell standing at the
  * home itself. `before` sets this machine up before anything lands. With `relocate`, the Mac's home is `src` and the
  * tree is made and left there, so each path lands where its place under `src` is under `dst`.
@@ -319,21 +319,21 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
   state.home = Home.parse(fleet.home);
   const tab = `${pathToFileURL(path.join(at, 'work/ada/index.html')).href}?x=1#top`;
   for (const c of [
-    rested(char('c_ada', path.join(at, 'work/ada'), {
+    rested(robot('c_ada', path.join(at, 'work/ada'), {
       second: { cwd: path.join(at, 'work/ada/sub'), unread: false, revive: { command: '' } },
       context: [{ kind: 'file', ref: path.join(at, 'work/ada/notes.md'), label: 'notes', source: 'manual' }],
       browser: { tabs: [{ id: 't_1', url: tab, title: 'ada' }], active: 't_1' },
     })),
-    rested(char('c_bo', path.join(at, 'work/bo'), {
+    rested(robot('c_bo', path.join(at, 'work/bo'), {
       agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --resume ${SID}` },
     })),
-    rested(char('c_cy', at)),
-    rested(char('c_dee', path.join(at, 'work/demo'), {
+    rested(robot('c_cy', at)),
+    rested(robot('c_dee', path.join(at, 'work/demo'), {
       agent: { kind: 'codex', sessionId: CODEX_ID, transcriptPath: rollout, status: 'idle', lastActivityAt: 0 }, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` },
     })),
     // dormant before the freeze, last closed by an earlier handover: this one carries it and leaves it as it was
-    char('c_old', at, { restedBy: 'tx-0', second: { cwd: at, unread: false, revive: { command: '' } } }),
-  ]) state.characters[c.id] = c;
+    robot('c_old', at, { restedBy: 'tx-0', second: { cwd: at, unread: false, revive: { command: '' } } }),
+  ]) state.robots[c.id] = c;
 
   // with `opencode`, eve's OpenCode session, in her second terminal's own folder with 'second': the Mac's OpenCode holds
   // it, and the Mac's fleet logs it and wrote it out
@@ -349,7 +349,7 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
     const terminal = {
       agent: { kind: 'opencode' as const, sessionId: OC, transcriptPath: path.join(ocLogs, `${OC}.jsonl`), status: 'idle' as const, lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
     };
-    state.characters.c_eve = rested(char('c_eve', path.join(at, 'work/eve'), o.opencode === 'second' ? { second: { cwd: path.join(at, 'work/eve/sub'), unread: false, ...terminal } } : terminal));
+    state.robots.c_eve = rested(robot('c_eve', path.join(at, 'work/eve'), o.opencode === 'second' ? { second: { cwd: path.join(at, 'work/eve/sub'), unread: false, ...terminal } } : terminal));
   }
 
   const agentHomes = { claude: path.join(dst, '.claude'), codex: path.join(dst, '.codex'), ...(o.opencode && { opencode: path.join(home, 'transcripts/opencode') }) };
@@ -367,7 +367,7 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
   o.before?.({ src, dst, base });
   const manifest = built.manifest;
   // a snapshot that still names live tmux ids, as a careless source could send
-  manifest.snapshot.characters.c_ada.tmux = win(1);
+  manifest.snapshot.robots.c_ada.tmux = win(1);
   o.tamper?.(manifest);
   const landed = o.land === false ? [] : await transfer(paths, manifest, (p) => (o.relocate ? p : path.join(src, path.relative(dst, p))));
   const probes: AgentProbe[] = [
@@ -426,7 +426,7 @@ describe('destination prepare', () => {
 
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
     expect(r.preparedDigest).toBe(canonicalDigest(prepared));
-    const { c_ada: ada, c_bo: bo, c_cy: cy, c_dee: dee } = prepared.characters;
+    const { c_ada: ada, c_bo: bo, c_cy: cy, c_dee: dee } = prepared.robots;
     expect(ada.cwd).toBe(path.join(s.dst, 'work/ada'));
     expect(ada.second).toEqual({ cwd: path.join(s.dst, 'work/ada/sub'), unread: false, revive: { command: '' }, restedBy: TX });
     expect(ada.context[0].ref).toBe(path.join(s.dst, 'work/ada/notes.md'));
@@ -457,7 +457,7 @@ describe('destination prepare', () => {
 
     // nothing active moved: the old state, no window, no background work, and still a replica
     expect(fs.readFileSync(s.paths.state)).toEqual(before);
-    expect(s.store.state.characters).toEqual({});
+    expect(s.store.state.robots).toEqual({});
     expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
     expect(d.ownership.writable()).toBe(false);
   });
@@ -547,11 +547,11 @@ describe('destination prepare', () => {
     const logs = path.join(s.home, 'transcripts/opencode');
     expect(fs.readdirSync(logs)).toEqual([`${OC}.jsonl`]);
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
-    expect(prepared.characters.c_eve).toMatchObject({ revive: { command: `opencode -s ${OC}` }, agent: { transcriptPath: path.join(logs, `${OC}.jsonl`) } });
+    expect(prepared.robots.c_eve).toMatchObject({ revive: { command: `opencode -s ${OC}` }, agent: { transcriptPath: path.join(logs, `${OC}.jsonl`) } });
 
     d.gateway.commit(preparedDigest);
     const r = await d.handover.activate({ transactionId: TX, generation: 5 });
-    expect(r.characters.find((c) => c.id === 'c_eve')).toEqual({ id: 'c_eve', ok: true });
+    expect(r.robots.find((c) => c.id === 'c_eve')).toEqual({ id: 'c_eve', ok: true });
   });
 
   it('refuses an OpenCode session id or folder the manifest names that could pass for an option, before it runs OpenCode at all', async () => {
@@ -559,15 +559,15 @@ describe('destination prepare', () => {
     for (const tamper of [
       (m: TransferManifestV1) => {
         m.sessions.find((x) => x.agent === 'opencode')!.sessionId = forged;
-        m.snapshot.characters.c_eve.agent!.sessionId = forged;
+        m.snapshot.robots.c_eve.agent!.sessionId = forged;
       },
-      (m: TransferManifestV1) => { m.snapshot.characters.c_eve.cwd = forged; },
+      (m: TransferManifestV1) => { m.snapshot.robots.c_eve.cwd = forged; },
     ]) {
       const s = await scene({ opencode: true, tamper });
       const asked: string[] = [];
       const cli: CliRun = async (cmd, args) => { asked.push([cmd, ...args].join(' ')); return { code: 1, stdout: '', stderr: '' }; };
       const r = await refusal(daemon(s, { cli }).handover.prepare(params(s)));
-      expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(forged), entity: { kind: 'character', id: 'c_eve' } }));
+      expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(forged), entity: { kind: 'robot', id: 'c_eve' } }));
       expect(asked).toEqual([]);
     }
   });
@@ -589,7 +589,7 @@ describe('destination prepare', () => {
     // a copy that will not go: OpenCode keeps it and answers the import with "Session already exists", exiting 0
     const keeping: CliRun = (cmd, args, o) => (args[1] === 'delete' ? Promise.resolve({ code: 1, stdout: '', stderr: 'Error: database is locked\n' }) : run(cmd, args, o));
     const r = await refusal(daemon(s, { cli: keeping }).handover.prepare(params(s)));
-    expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('database is locked'), entity: { kind: 'character', id: 'c_eve' } }]);
+    expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('database is locked'), entity: { kind: 'robot', id: 'c_eve' } }]);
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
     const quiet: CliRun = (cmd, args, o) => (args[1] === 'delete' ? Promise.resolve({ code: 0, stdout: '', stderr: '' }) : run(cmd, args, o));
     expect(blockersOf(await refusal(daemon(s, { cli: quiet }).handover.prepare(params(s))))[0].message).toContain('Session already exists');
@@ -609,7 +609,7 @@ describe('destination prepare', () => {
     const log = path.join(s.home, 'transcripts/opencode', `${OC}.jsonl`);
     fs.writeFileSync(log, '');
     const r = await refusal(daemon(s, { cli: cliRunner(s.oc.trift) }).handover.prepare(params(s)));
-    expect(blockersOf(r)).toEqual([{ code: 'destination_diverged', message: expect.stringContaining(`session ${OC}`), entity: { kind: 'character', id: 'c_eve' } }]);
+    expect(blockersOf(r)).toEqual([{ code: 'destination_diverged', message: expect.stringContaining(`session ${OC}`), entity: { kind: 'robot', id: 'c_eve' } }]);
     expect(fs.readFileSync(log, 'utf8')).toBe('');
     expect(held(s.oc.trift)).toEqual({ [OC]: went });
   });
@@ -623,7 +623,7 @@ describe('destination prepare', () => {
     // OpenCode cannot read in what came, and reads in its own copy again
     const failing: CliRun = (cmd, args, o) => (args[1] === 'import' && args.at(-1)!.startsWith(stage) ? Promise.resolve({ code: 1, stdout: '', stderr: 'Error: disk I/O error\n' }) : run(cmd, args, o));
     const r = await refusal(daemon(s, { cli: failing }).handover.prepare(params(s)));
-    expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('disk I/O error'), entity: { kind: 'character', id: 'c_eve' } }]);
+    expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('disk I/O error'), entity: { kind: 'robot', id: 'c_eve' } }]);
     expect(held(s.oc.trift)).toEqual({ [OC]: mine });
     expect(fs.readdirSync(s.paths.handoverDir).filter((f) => f.startsWith('held-'))).toEqual([]);
   });
@@ -794,7 +794,7 @@ describe('destination prepare', () => {
     const s = await scene();
     s.probes[0] = { ...s.probes[0], home: path.join(s.dst, '.claude-other') };
     const r = await refusal(daemon(s).handover.prepare(params(s)));
-    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'character', id: 'c_bo' } }));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'robot', id: 'c_bo' } }));
     // nothing beside the config that folder held
     expect(fs.readdirSync(path.join(s.dst, '.claude'))).toEqual(['.claude.json']);
   });
@@ -816,8 +816,8 @@ describe('destination prepare', () => {
     expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(false);
   });
 
-  it('blocks a session a character runs that the manifest does not carry, before it writes anything', async () => {
-    const s = await scene({ tamper: (m) => { m.sessions = m.sessions.filter((x) => x.characterId !== 'c_bo'); } });
+  it('blocks a session a robot runs that the manifest does not carry, before it writes anything', async () => {
+    const s = await scene({ tamper: (m) => { m.sessions = m.sessions.filter((x) => x.robotId !== 'c_bo'); } });
     const d = daemon(s);
     const r = await refusal(d.handover.prepare(params(s)));
     expect(r.code).toBe('blocked');
@@ -1052,7 +1052,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     expect(git(l.base, dd.main, 'worktree', 'list', '--porcelain')).toContain(`worktree ${dd.nested}`);
     expect(git(l.base, dd.main, 'worktree', 'list', '--porcelain')).not.toContain(dd.unused);
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
-    expect(prepared.characters.nested.cwd).toBe(dd.nested);
+    expect(prepared.robots.nested.cwd).toBe(dd.nested);
 
     // the seal holds the gitfile the source sent
     const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
@@ -1126,7 +1126,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     for (const w of linked) expect(git(l.base, at(w), 'rev-parse', '--path-format=absolute', '--git-common-dir')).toBe(path.join(at(dd.main), '.git'));
     expect(git(l.base, at(dd.main), 'submodule', 'status')).toMatch(/^[ +]\w+ sub/);
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
-    expect(prepared.characters.sib.cwd).toBe(at(dd.sibling));
+    expect(prepared.robots.sib.cwd).toBe(at(dd.sibling));
 
     // what repair wrote is sealed as it stands, and flushed with the configs
     const repaired = [path.join(at(dd.sibling), '.git'), path.join(at(dd.main), '.git/worktrees/sibling/gitdir')];
@@ -1215,7 +1215,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     return { home, paths, store: Store.load(paths.state, () => {}), manifest: built.manifest, digest: built.digest, probes: [] as AgentProbe[], from };
   }
 
-  it('keeps a worktree no character uses registered on the machine the fleet comes back to, and git reads it as it was', async () => {
+  it('keeps a worktree no robot uses registered on the machine the fleet comes back to, and git reads it as it was', async () => {
     const l = seedHere(made);
     const s = l.source;
     const before = { status: git(l.base, s.unused, 'status', '--porcelain=v2', '--branch'), head: git(l.base, s.unused, 'rev-parse', 'HEAD') };
@@ -1321,7 +1321,7 @@ describe('destination activate', () => {
 
   it('resumes a terminal a crash cut off mid-turn before the freeze once the fleet runs here', async () => {
     // bo was already dormant, cut off mid-turn, when the source froze, so the handover's rest never touched it
-    const s = await scene({ tamper: (m) => { const bo = m.snapshot.characters.c_bo; delete bo.restedBy; bo.revive = { ...bo.revive!, interrupted: true }; } });
+    const s = await scene({ tamper: (m) => { const bo = m.snapshot.robots.c_bo; delete bo.restedBy; bo.revive = { ...bo.revive!, interrupted: true }; } });
     const d = daemon(s);
     const { preparedDigest } = await d.handover.prepare(params(s));
     d.gateway.commit(preparedDigest);
@@ -1333,7 +1333,7 @@ describe('destination activate', () => {
 
   it('leaves a robot put to sleep before the freeze asleep, with the session it resumes when opened', async () => {
     // a sleep leaves bo dormant with its resume and no note of a turn cut short, so the handover's rest never touched it
-    const s = await scene({ tamper: (m) => { delete m.snapshot.characters.c_bo.restedBy; } });
+    const s = await scene({ tamper: (m) => { delete m.snapshot.robots.c_bo.restedBy; } });
     const d = daemon(s);
     const { preparedDigest } = await d.handover.prepare(params(s));
     d.gateway.commit(preparedDigest);
@@ -1341,8 +1341,8 @@ describe('destination activate', () => {
     await d.handover.activate({ transactionId: TX, generation: 5 });
 
     expect(d.crew.log).not.toContain('open c_bo');
-    expect(s.store.state.characters.c_bo.tmux).toBeUndefined();
-    expect(s.store.state.characters.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(s.store.state.robots.c_bo.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
   it('waits for the gateway to commit this handover at the next generation before it touches anything', async () => {
@@ -1425,7 +1425,7 @@ describe('destination activate', () => {
 
     const r = await d.handover.activate({ transactionId: TX, generation: 5, committed: held });
 
-    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(r.robots.every((c) => c.ok)).toBe(true);
     expect(journalOf(s.paths).phase).toBe('activate');
     expect(JSON.parse(fs.readFileSync(s.paths.owner, 'utf8'))).toMatchObject({ generation: 5, ownerMachineId: trift });
     expect(d.ownership.writable()).toBe(true);
@@ -1440,14 +1440,14 @@ describe('destination activate', () => {
     d.gateway.commit(preparedDigest);
 
     const r = await d.handover.activate({ transactionId: TX, generation: 5 });
-    expect(r.characters.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+    expect(r.robots.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
       { id: 'c_ada', ok: true }, { id: 'c_bo', ok: true }, { id: 'c_cy', ok: true }, { id: 'c_dee', ok: true },
     ]);
     // the store took the prepared state whole before any terminal opened
     expect(seen[0]).toBe('store');
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
-    expect(s.store.state.characters.c_bo.cwd).toBe(expected.characters.c_bo.cwd);
-    expect(Store.readSnapshot(s.paths.state).characters.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
+    expect(s.store.state.robots.c_bo.cwd).toBe(expected.robots.c_bo.cwd);
+    expect(Store.readSnapshot(s.paths.state).robots.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
     expect(FleetConfig.parse(JSON.parse(fs.readFileSync(s.paths.fleetConfig, 'utf8'))).home.cwd).toBe('~/mc');
     expect(d.config.home.cwd).toBe('~/mc');
     // a node.json that names no port leaves the daemon on the one it took
@@ -1459,13 +1459,13 @@ describe('destination activate', () => {
     expect(d.crew.log.slice(2).sort()).toEqual(['open c_ada', 'open c_ada-2', 'open c_bo', 'open c_cy', 'open c_dee']);
     expect(d.crew.peak).toBe(2);
     // plain shells say what happened to them; a resumed agent does not need to
-    const panes = (id: string, term?: 2) => { const c = s.store.state.characters[id]; return (term ? c.second : c)!.tmux!.paneId; };
+    const panes = (id: string, term?: 2) => { const c = s.store.state.robots[id]; return (term ? c.second : c)!.tmux!.paneId; };
     const notices = d.crew.lines.map((l) => l.split(' ')[0]).sort();
     expect(notices).toEqual([panes('c_ada'), panes('c_ada', 2), panes('c_cy')].sort());
     expect(d.crew.lines[0]).toMatch(/restarted .* handover/);
     expect(journalOf(s.paths)).toMatchObject({ phase: 'activate' });
     expect(journalOf(s.paths).activation!.every((a) => a.ok)).toBe(true);
-    expect(d.events).toContainEqual({ event: 'handover.entity', data: { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'activate' } });
+    expect(d.events).toContainEqual({ event: 'handover.entity', data: { transactionId: TX, kind: 'robot', id: 'c_bo', phase: 'activate' } });
   });
 
   it('writes the fleet.json it promotes through a link to the file it names, with the mode that file had', async () => {
@@ -1507,7 +1507,7 @@ describe('destination activate', () => {
     expect(lines).toContainEqual(expect.stringContaining(`${s.paths.fleetConfig} links to ${target}`));
   });
 
-  it('names a resume that never comes up as its character error, keeps the fleet, and clears it when the session starts after all', async () => {
+  it('names a resume that never comes up as its robot error, keeps the fleet, and clears it when the session starts after all', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
     d.crew.exiting.add('c_bo');
@@ -1516,7 +1516,7 @@ describe('destination activate', () => {
     void run.finally(() => { done = true; });
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
     const r = await run;
-    const byId = Object.fromEntries(r.characters.map((c) => [c.id, c]));
+    const byId = Object.fromEntries(r.robots.map((c) => [c.id, c]));
     expect(byId.c_bo).toMatchObject({ ok: false, error: expect.stringMatching(/claude did not come up within 60 s: its pane stayed at the shell prompt/) });
     // this machine's Claude trusts bo's folder, so no trust prompt is named
     expect(byId.c_bo.error).not.toMatch(/trust/i);
@@ -1525,18 +1525,18 @@ describe('destination activate', () => {
     expect(JSON.parse(fs.readFileSync(s.paths.owner, 'utf8'))).toMatchObject({ generation: 5, ownerMachineId: trift });
     // it is dormant again with the session it carries, its window closed, for the user to revive, and says why on its record
     expect(d.crew.log).toContain('kill c_bo');
-    expect(s.store.state.characters.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: byId.c_bo.error });
-    expect(s.store.state.characters.c_bo.tmux).toBeUndefined();
-    expect(s.store.state.characters.c_ada.resumeError).toBeUndefined();
+    expect(s.store.state.robots.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: byId.c_bo.error });
+    expect(s.store.state.robots.c_bo.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_ada.resumeError).toBeUndefined();
 
     // another session starting there is not the one that was carried
     d.crew.started('c_bo', undefined, '99999999-9999-4999-8999-999999999999');
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')!.error).toBe(byId.c_bo.error);
-    expect(s.store.state.characters.c_bo.resumeError).toBe(byId.c_bo.error);
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo')!.error).toBe(byId.c_bo.error);
+    expect(s.store.state.robots.c_bo.resumeError).toBe(byId.c_bo.error);
     // the user revives bo, and the carried session starts
     d.crew.started('c_bo', undefined, SID);
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual({ characterId: 'c_bo', ok: true, sessionId: SID });
-    expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo')).toEqual({ robotId: 'c_bo', ok: true, sessionId: SID });
+    expect(s.store.state.robots.c_bo.resumeError).toBeUndefined();
   });
 
   it('says a resume suspended with ctrl+z before its session started is suspended, not that another program ran', async () => {
@@ -1547,14 +1547,14 @@ describe('destination activate', () => {
     let done = false;
     void run.finally(() => { done = true; });
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
-    const bo = (await run).characters.find((c) => c.id === 'c_bo');
+    const bo = (await run).robots.find((c) => c.id === 'c_bo');
     expect(bo).toMatchObject({ ok: false, error: expect.stringMatching(/claude did not come up within 60 s: its pane has claude suspended,/) });
   });
 
   it('leaves a terminal whose wake fails dormant with the launch flags its carried resume had', async () => {
     const bo = `claude --dangerously-skip-permissions --effort 'high' --resume ${SID}`;
     const dee = `codex resume -c tui.resume_cwd=session -m 'gpt-6' ${CODEX_ID}`;
-    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; m.snapshot.characters.c_dee.revive = { command: dee }; } });
+    const s = await scene({ tamper: (m) => { m.snapshot.robots.c_bo.revive = { command: bo }; m.snapshot.robots.c_dee.revive = { command: dee }; } });
     const d = daemon(s);
     d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
     // bo's resume never comes up, and dee's window never opens
@@ -1565,9 +1565,9 @@ describe('destination activate', () => {
     void run.finally(() => { done = true; });
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
     const r = await run;
-    expect(r.characters.filter((c) => !c.ok).map((c) => c.id).sort()).toEqual(['c_bo', 'c_dee']);
-    expect(s.store.state.characters.c_bo).toMatchObject({ revive: { command: bo }, agent: { sessionId: SID } });
-    expect(s.store.state.characters.c_dee).toMatchObject({ revive: { command: dee }, agent: { sessionId: CODEX_ID } });
+    expect(r.robots.filter((c) => !c.ok).map((c) => c.id).sort()).toEqual(['c_bo', 'c_dee']);
+    expect(s.store.state.robots.c_bo).toMatchObject({ revive: { command: bo }, agent: { sessionId: SID } });
+    expect(s.store.state.robots.c_dee).toMatchObject({ revive: { command: dee }, agent: { sessionId: CODEX_ID } });
   });
 
   it('lays a terminal whose wake fails mid-turn in another session dormant without marking it cut off by a crash', async () => {
@@ -1576,12 +1576,12 @@ describe('destination activate', () => {
     d.crew.exiting.add('c_bo');
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
     await waitFor(() => !!d.crew.window('c_bo'));
-    s.store.update((st) => { Object.assign(st.characters.c_bo.agent!, { sessionId: '99999999-9999-4999-8999-999999999999', status: 'working' }); });
+    s.store.update((st) => { Object.assign(st.robots.c_bo.agent!, { sessionId: '99999999-9999-4999-8999-999999999999', status: 'working' }); });
     let done = false;
     void run.finally(() => { done = true; });
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
-    expect((await run).characters.find((c) => c.id === 'c_bo')?.ok).toBe(false);
-    expect(s.store.state.characters.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect((await run).robots.find((c) => c.id === 'c_bo')?.ok).toBe(false);
+    expect(s.store.state.robots.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
   /** Activates with the clock moving half a second at a time for twenty seconds, a minute at a time after that, and says how far it had moved when the activation answered. */
@@ -1607,11 +1607,11 @@ describe('destination activate', () => {
     const { r, at } = await activateBy(d);
 
     expect(at).toBeLessThan(3000);
-    expect(r.characters.find((c) => c.id === 'c_dee')).toEqual({ id: 'c_dee', ok: true });
+    expect(r.robots.find((c) => c.id === 'c_dee')).toEqual({ id: 'c_dee', ok: true });
     expect(d.crew.log).not.toContain('kill c_dee');
     expect(d.crew.window('c_dee')?.command).toBe('codex');
-    expect(s.store.state.characters.c_dee.tmux?.paneId).toBe(d.crew.window('c_dee')!.paneId);
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
+    expect(s.store.state.robots.c_dee.tmux?.paneId).toBe(d.crew.window('c_dee')!.paneId);
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
   });
 
   it("leaves a resumed Codex that stops at its review of Svall's hooks dormant with its session, as not resumed", async () => {
@@ -1624,12 +1624,12 @@ describe('destination activate', () => {
     const { r, at } = await activateBy(d);
 
     expect(at).toBeLessThan(3000);
-    expect(r.characters.find((c) => c.id === 'c_dee')).toMatchObject({
+    expect(r.robots.find((c) => c.id === 'c_dee')).toMatchObject({
       ok: false, error: `dee's terminal resumed codex session ${CODEX_ID}, but codex stopped at its "Hooks need review" screen, which waits for an answer before it resumes, so it is dormant again with that session; revive it to see`,
     });
     expect(d.crew.log).toContain('kill c_dee');
-    expect(s.store.state.characters.c_dee.tmux).toBeUndefined();
-    expect(s.store.state.characters.c_dee.agent?.sessionId).toBe(CODEX_ID);
+    expect(s.store.state.robots.c_dee.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_dee.agent?.sessionId).toBe(CODEX_ID);
   });
 
   it("counts a resumed Codex whose prompt does not show up once its pane has run Codex through the settle, and says that is all it saw", async () => {
@@ -1643,7 +1643,7 @@ describe('destination activate', () => {
     // three seconds of Codex in its pane, and not the minute a SessionStart gets
     expect(at).toBeGreaterThanOrEqual(3000);
     expect(at).toBeLessThanOrEqual(5000);
-    expect(r.characters.find((c) => c.id === 'c_dee')).toEqual({
+    expect(r.robots.find((c) => c.id === 'c_dee')).toEqual({
       id: 'c_dee', ok: true, notice: "codex has held dee's terminal for 3 s without showing its prompt, so it is counted up on that alone; look there",
     });
     expect(d.crew.log).not.toContain('kill c_dee');
@@ -1657,13 +1657,13 @@ describe('destination activate', () => {
     const { r, at } = await activateBy(d);
 
     expect(at).toBeLessThanOrEqual(5000);
-    const dee = r.characters.find((c) => c.id === 'c_dee')!;
+    const dee = r.robots.find((c) => c.id === 'c_dee')!;
     expect(dee).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt in dee's terminal/) });
     expect(dee.error).toBeUndefined();
-    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
     expect(d.crew.log).not.toContain('kill c_dee');
-    expect(s.store.state.characters.c_dee.tmux).toBeDefined();
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, notice: dee.notice });
+    expect(s.store.state.robots.c_dee.tmux).toBeDefined();
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_dee')).toMatchObject({ ok: true, notice: dee.notice });
   });
 
   it('stops watching a Codex counted up at its trust prompt once its folder is trusted, since Codex starts its session only with its first turn', async () => {
@@ -1672,7 +1672,7 @@ describe('destination activate', () => {
     d.crew.silent.add('c_dee');
 
     const { r } = await activateBy(d);
-    expect(r.characters.find((c) => c.id === 'c_dee')).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt/) });
+    expect(r.robots.find((c) => c.id === 'c_dee')).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt/) });
     await d.clock.advance(10_000);
     expect(d.crew.carried('c_dee')).toBe(true);
 
@@ -1690,8 +1690,8 @@ describe('destination activate', () => {
     await d.clock.advance(10_000);
     expect(looks).toBe(0);
     expect(d.crew.log).not.toContain('kill c_dee');
-    expect(s.store.state.characters.c_dee.resumeError).toBeUndefined();
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true });
+    expect(s.store.state.robots.c_dee.resumeError).toBeUndefined();
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_dee')).toMatchObject({ ok: true });
   });
 
   it("counts a resumed Claude up at its trust prompt where this machine's Claude does not trust its folder, keeps its window without the SessionStart wait, and says which answer goes on", async () => {
@@ -1704,20 +1704,20 @@ describe('destination activate', () => {
     const { r, at } = await activateBy(d);
 
     expect(at).toBeLessThanOrEqual(5000);
-    const bo = r.characters.find((c) => c.id === 'c_bo')!;
+    const bo = r.robots.find((c) => c.id === 'c_bo')!;
     expect(bo).toMatchObject({ ok: true, notice: 'claude waits at its "Trust this folder?" prompt in bo\'s terminal; choose "Yes, I trust this folder" there' });
     expect(bo.error).toBeUndefined();
     expect(d.crew.log).not.toContain('kill c_bo');
-    expect(s.store.state.characters.c_bo.tmux?.paneId).toBe(d.crew.window('c_bo')!.paneId);
-    expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
-    const row = journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo');
+    expect(s.store.state.robots.c_bo.tmux?.paneId).toBe(d.crew.window('c_bo')!.paneId);
+    expect(s.store.state.robots.c_bo.resumeError).toBeUndefined();
+    const row = journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo');
     expect(row).toMatchObject({ ok: true, sessionId: SID, notice: bo.notice });
 
     // answered, Claude starts the carried session, which leaves the terminal the fleet's as any other
     expect(d.crew.carried('c_bo')).toBe(true);
     d.crew.started('c_bo', undefined, SID);
     await settle();
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual(row);
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo')).toEqual(row);
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
@@ -1730,11 +1730,11 @@ describe('destination activate', () => {
     const { r, at } = await activateBy(d);
 
     expect(at).toBeGreaterThanOrEqual(60_000);
-    const bo = r.characters.find((c) => c.id === 'c_bo')!;
+    const bo = r.robots.find((c) => c.id === 'c_bo')!;
     expect(bo).toMatchObject({ ok: false, error: `bo's terminal resumed claude session ${SID}, but claude did not start that session within 60 s and may be waiting at a prompt there, so it is dormant again with that session; revive it to see` });
     expect(d.crew.log).toContain('kill c_bo');
-    expect(s.store.state.characters.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: bo.error });
-    expect(s.store.state.characters.c_bo.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: bo.error });
+    expect(s.store.state.robots.c_bo.tmux).toBeUndefined();
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
@@ -1746,21 +1746,21 @@ describe('destination activate', () => {
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
     await waitFor(() => !!d.crew.window('c_bo'));
     // the fleet takes the new session into the terminal before it says which session started
-    s.store.update((st) => { st.characters.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    s.store.update((st) => { st.robots.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
     d.crew.started('c_bo', undefined, NEW);
     let done = false;
     void run.finally(() => { done = true; });
     for (let i = 0; i < 4 && !done; i++) await d.clock.advance(500);
     expect(done).toBe(true);
-    const bo = (await run).characters.find((c) => c.id === 'c_bo')!;
+    const bo = (await run).robots.find((c) => c.id === 'c_bo')!;
     expect(bo).toMatchObject({ ok: false, error: `bo's terminal resumed claude session ${SID}, but claude started a new session (${NEW}) in its place, so it is dormant again with ${SID}; revive it to see` });
     expect(d.crew.log).toContain('kill c_bo');
-    expect(s.store.state.characters.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: bo.error });
+    expect(s.store.state.robots.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: bo.error });
   });
 
   it("counts a resumed Claude up at its Bypass Permissions warning where this machine's Claude has not accepted bypass mode, keeps its window and says which answer goes on", async () => {
     const bo = `claude --dangerously-skip-permissions --resume ${SID}`;
-    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const s = await scene({ tamper: (m) => { m.snapshot.robots.c_bo.revive = { command: bo }; } });
     const d = daemon(s);
     d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
     d.crew.silent.add('c_bo');
@@ -1768,14 +1768,14 @@ describe('destination activate', () => {
     const { r, at } = await activateBy(d);
 
     expect(at).toBeLessThanOrEqual(5000);
-    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true, notice: 'claude waits at its Bypass Permissions warning in bo\'s terminal; choose "Yes, I accept" there' });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true, notice: 'claude waits at its Bypass Permissions warning in bo\'s terminal; choose "Yes, I accept" there' });
     expect(d.crew.log).not.toContain('kill c_bo');
     expect(d.crew.carried('c_bo')).toBe(true);
 
     // "No, exit", which that warning preselects
     d.crew.window('c_bo')!.command = 'bash';
     await d.clock.advance(5000);
-    expect(s.store.state.characters.c_bo).toMatchObject({
+    expect(s.store.state.robots.c_bo).toMatchObject({
       agent: { sessionId: SID }, revive: { command: bo },
       resumeError: expect.stringMatching(/before that session started, .*; revive it and choose "Yes, I accept" at its Bypass Permissions warning$/),
     });
@@ -1791,7 +1791,7 @@ describe('destination activate', () => {
     d.crew.started('c_bo', undefined, SID);
     await d.clock.advance(500);
     const r = await run;
-    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
   });
 
   async function opencodeAt() {
@@ -1802,15 +1802,15 @@ describe('destination activate', () => {
     return { s, d };
   }
   const dormantEve = (s: Awaited<ReturnType<typeof opencodeAt>>['s'], error: string) => {
-    expect(s.store.state.characters.c_eve).toMatchObject({ agent: { sessionId: OC }, revive: { command: `opencode -s ${OC}` }, resumeError: error });
-    expect(s.store.state.characters.c_eve.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_eve).toMatchObject({ agent: { sessionId: OC }, revive: { command: `opencode -s ${OC}` }, resumeError: error });
+    expect(s.store.state.robots.c_eve.tmux).toBeUndefined();
   };
 
   it('fails a resumed OpenCode that starts no session within the minute, and lays it dormant with its session', async () => {
     const { s, d } = await opencodeAt();
     const { r, at } = await activateBy(d);
     expect(at).toBeGreaterThanOrEqual(60_000);
-    const eve = r.characters.find((c) => c.id === 'c_eve')!;
+    const eve = r.robots.find((c) => c.id === 'c_eve')!;
     expect(eve).toMatchObject({ ok: false, error: `eve's terminal resumed opencode session ${OC}, but opencode did not start that session within 60 s and may be waiting at a prompt there, so it is dormant again with that session; revive it to see` });
     dormantEve(s, eve.error!);
   });
@@ -1820,26 +1820,26 @@ describe('destination activate', () => {
     const NEW = 'ses_9f9f9f9f9f9fZzZzZzZzZzZzZz';
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
     await waitFor(() => !!d.crew.window('c_eve'));
-    s.store.update((st) => { st.characters.c_eve.agent = { kind: 'opencode', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    s.store.update((st) => { st.robots.c_eve.agent = { kind: 'opencode', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
     d.crew.started('c_eve', undefined, NEW);
     let done = false;
     void run.finally(() => { done = true; });
     for (let i = 0; i < 4 && !done; i++) await d.clock.advance(500);
-    const eve = (await run).characters.find((c) => c.id === 'c_eve')!;
+    const eve = (await run).robots.find((c) => c.id === 'c_eve')!;
     expect(eve).toMatchObject({ ok: false, error: `eve's terminal resumed opencode session ${OC}, but opencode started a new session (${NEW}) in its place, so it is dormant again with ${OC}; revive it to see` });
     dormantEve(s, eve.error!);
   });
 
   it("keeps watching a Claude counted up at its trust prompt, and lays it dormant again with its carried resume and an error once it exits there", async () => {
     const bo = `claude --effort 'high' --resume ${SID}`;
-    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const s = await scene({ tamper: (m) => { m.snapshot.robots.c_bo.revive = { command: bo }; } });
     const d = daemon(s);
     d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
     fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
     d.crew.silent.add('c_bo');
 
     const { r } = await activateBy(d);
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
     // until its session starts, the fleet leaves the agent and resume command the terminal carries alone
     await d.clock.advance(10_000);
     expect(d.crew.carried('c_bo')).toBe(true);
@@ -1850,19 +1850,19 @@ describe('destination activate', () => {
     await d.clock.advance(5000);
 
     expect(d.crew.log).toContain('kill c_bo');
-    const c = s.store.state.characters.c_bo;
+    const c = s.store.state.robots.c_bo;
     expect(c.tmux).toBeUndefined();
     expect(c).toMatchObject({
       agent: { sessionId: SID }, revive: { command: bo },
       resumeError: expect.stringMatching(/^bo's terminal resumed claude session \S+, but claude exited back to its shell before that session started, .*; revive it and choose "Yes, I trust this folder"/),
     });
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
   it('lays a Claude watched at its trust prompt dormant again with its carried session once it starts a session under another id', async () => {
     const bo = `claude --effort 'high' --resume ${SID}`;
-    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const s = await scene({ tamper: (m) => { m.snapshot.robots.c_bo.revive = { command: bo }; } });
     const d = daemon(s);
     d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
     fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
@@ -1870,19 +1870,19 @@ describe('destination activate', () => {
     const NEW = '99999999-9999-4999-8999-999999999999';
 
     const { r } = await activateBy(d);
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
     // answered, it starts another session, which the fleet takes into the terminal
-    s.store.update((st) => { st.characters.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
+    s.store.update((st) => { st.robots.c_bo.agent = { kind: 'claude', sessionId: NEW, status: 'idle', lastActivityAt: 0 }; });
     d.crew.started('c_bo', undefined, NEW);
     await d.clock.advance(5000);
 
     expect(d.crew.log).toContain('kill c_bo');
-    const c = s.store.state.characters.c_bo;
+    const c = s.store.state.robots.c_bo;
     expect(c).toMatchObject({
       agent: { sessionId: SID }, revive: { command: bo },
       resumeError: `bo's terminal resumed claude session ${SID}, but claude started a new session (${NEW}) in its place, so it is dormant again with ${SID}; revive it to see`,
     });
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
@@ -1892,7 +1892,7 @@ describe('destination activate', () => {
     fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
     d.crew.silent.add('c_bo');
     const { r } = await activateBy(d);
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt/) });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt/) });
     let looks = 0;
     const list = d.crew.tmux.listWindows;
     d.crew.tmux.listWindows = (signal) => { looks++; return list(signal); };
@@ -1925,7 +1925,7 @@ describe('destination activate', () => {
 
   it('keeps watching a Claude that answered its trust prompt, and names no trust prompt once it exits at a later one', async () => {
     const bo = `claude --dangerously-skip-permissions --resume ${SID}`;
-    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const s = await scene({ tamper: (m) => { m.snapshot.robots.c_bo.revive = { command: bo }; } });
     const d = daemon(s);
     d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
     const config = path.join(s.dst, '.claude/.claude.json');
@@ -1934,7 +1934,7 @@ describe('destination activate', () => {
     d.crew.silent.add('c_bo');
 
     const { r } = await activateBy(d);
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
     // "Yes, I trust this folder", which Claude writes into its config, then its Bypass Permissions warning, which holds its SessionStart too
     fs.writeFileSync(config, trust);
     await d.clock.advance(10_000);
@@ -1944,7 +1944,7 @@ describe('destination activate', () => {
     d.crew.window('c_bo')!.command = 'bash';
     await d.clock.advance(5000);
 
-    const c = s.store.state.characters.c_bo;
+    const c = s.store.state.robots.c_bo;
     expect(c).toMatchObject({
       agent: { sessionId: SID }, revive: { command: bo },
       resumeError: expect.stringMatching(/^bo's terminal resumed claude session \S+, but claude exited back to its shell before that session started, .*; revive it and answer the prompt it waits at$/),
@@ -1959,7 +1959,7 @@ describe('destination activate', () => {
 
     const { r } = await activateBy(d);
 
-    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
     expect(d.crew.log).not.toContain('kill c_bo');
   });
 
@@ -1979,12 +1979,12 @@ describe('destination activate', () => {
     expect(done).toBe(true);
     const r = await run;
 
-    const dee = r.characters.find((c) => c.id === 'c_dee')!;
+    const dee = r.robots.find((c) => c.id === 'c_dee')!;
     expect(dee).toMatchObject({ ok: false, error: expect.stringMatching(/codex exited back to its shell/) });
     expect(dee.error).not.toMatch(/trust/i);
     expect(d.crew.log).toContain('kill c_dee');
-    expect(s.store.state.characters.c_dee.tmux).toBeUndefined();
-    expect(s.store.state.characters.c_dee).toMatchObject({ agent: { sessionId: CODEX_ID }, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` } });
+    expect(s.store.state.robots.c_dee.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_dee).toMatchObject({ agent: { sessionId: CODEX_ID }, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` } });
   });
 
   it('leaves a resume that ends back at its shell dormant with its session and a visible error', async () => {
@@ -1998,11 +1998,11 @@ describe('destination activate', () => {
     const r = await run;
 
     // an agent that never came up says what its pane showed instead
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: false, error: expect.stringMatching(/claude did not come up within 60 s: its pane stayed at the shell prompt/) });
-    expect(r.characters.find((c) => c.id === 'c_dee')).toMatchObject({ ok: false, error: expect.stringMatching(/codex did not come up within 60 s: its pane stayed at the shell prompt/) });
+    expect(r.robots.find((c) => c.id === 'c_bo')).toMatchObject({ ok: false, error: expect.stringMatching(/claude did not come up within 60 s: its pane stayed at the shell prompt/) });
+    expect(r.robots.find((c) => c.id === 'c_dee')).toMatchObject({ ok: false, error: expect.stringMatching(/codex did not come up within 60 s: its pane stayed at the shell prompt/) });
     expect(d.crew.log).toEqual(expect.arrayContaining(['kill c_bo', 'kill c_dee']));
     for (const [id, command] of [['c_bo', `claude --resume ${SID}`], ['c_dee', `codex resume -c tui.resume_cwd=session ${CODEX_ID}`]]) {
-      const c = s.store.state.characters[id];
+      const c = s.store.state.robots[id];
       expect(c.tmux).toBeUndefined();
       expect(c).toMatchObject({ agent: { sessionId: id === 'c_bo' ? SID : CODEX_ID }, revive: { command } });
       // answered for, it is the fleet's again, and nothing of it is left for the poll to take
@@ -2014,10 +2014,10 @@ describe('destination activate', () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
     const r = await d.handover.activate({ transactionId: TX, generation: 5 });
-    expect(r.characters.map((c) => c.id).sort()).toEqual(['c_ada', 'c_bo', 'c_cy', 'c_dee']);
+    expect(r.robots.map((c) => c.id).sort()).toEqual(['c_ada', 'c_bo', 'c_cy', 'c_dee']);
     await d.handover.activate({ transactionId: TX, generation: 5 });
     expect(d.crew.log.filter((l) => l.includes('c_old'))).toEqual([]);
-    const old = s.store.state.characters.c_old;
+    const old = s.store.state.robots.c_old;
     expect([old.tmux, old.second!.tmux]).toEqual([undefined, undefined]);
     expect(old.revive).toEqual({ command: '' });
   });
@@ -2087,7 +2087,7 @@ describe('destination activate', () => {
   });
 
   it('answers only once every terminal it started has settled, even when recording one fails', async () => {
-    const { d, preparedDigest } = await prepared({ failWrite: (j) => j.role === 'destination' && !!j.activation?.some((a) => a.characterId === 'c_ada' && !a.term) });
+    const { d, preparedDigest } = await prepared({ failWrite: (j) => j.role === 'destination' && !!j.activation?.some((a) => a.robotId === 'c_ada' && !a.term) });
     d.gateway.commit(preparedDigest);
     const r = await refusal(d.handover.activate({ transactionId: TX, generation: 5 }));
     expect(r.message).toContain('ENOSPC');
@@ -2104,19 +2104,19 @@ describe('destination activate', () => {
     d.gateway.commit(preparedDigest);
     d.crew.failing.add('c_ada-2');
     const first = await d.handover.activate({ transactionId: TX, generation: 5 });
-    expect(first.characters.find((c) => c.id === 'c_ada')).toMatchObject({ ok: false, error: expect.stringContaining('could not open') });
+    expect(first.robots.find((c) => c.id === 'c_ada')).toMatchObject({ ok: false, error: expect.stringContaining('could not open') });
     const opened = d.crew.log.filter((l) => l.startsWith('open'));
 
     d.crew.failing.clear();
     d.crew.log.length = 0;
     const second = await d.handover.activate({ transactionId: TX, generation: 5 });
     expect(d.crew.log.filter((l) => l.startsWith('open'))).toEqual(['open c_ada-2']);
-    expect(second.characters.every((c) => c.ok)).toBe(true);
+    expect(second.robots.every((c) => c.ok)).toBe(true);
     expect(opened).toHaveLength(5);
-    expect(s.store.state.characters.c_ada.second!.tmux).toBeDefined();
+    expect(s.store.state.robots.c_ada.second!.tmux).toBeDefined();
   });
 
-  it('starts again each terminal a daemon that died mid-activation opened and never started, and reports every character', async () => {
+  it('starts again each terminal a daemon that died mid-activation opened and never started, and reports every robot', async () => {
     const { s, d, preparedDigest } = await prepared({ concurrency: 2 });
     d.gateway.commit(preparedDigest);
     // every state from the promotion on keeps the session each resumed terminal carries
@@ -2124,7 +2124,7 @@ describe('destination activate', () => {
     const lost: string[] = [];
     s.store.subscribe(() => {
       for (const [id, sessionId] of Object.entries(carrying)) {
-        const c = s.store.state.characters[id];
+        const c = s.store.state.robots[id];
         if (c && c.agent?.sessionId !== sessionId) lost.push(id);
       }
     });
@@ -2135,7 +2135,7 @@ describe('destination activate', () => {
     await settle();
     const atPrompt = [...d.crew.windows.values()].filter((w) => w.command === 'bash').map((w) => w.key).sort();
     expect(atPrompt).toEqual(['c_ada', 'c_ada-2', 'c_bo', 'c_cy', 'c_dee']);
-    expect(journalOf(s.paths).activation!.map((a) => a.characterId).sort()).toEqual(['c_ada', 'c_ada', 'c_cy']);
+    expect(journalOf(s.paths).activation!.map((a) => a.robotId).sort()).toEqual(['c_ada', 'c_ada', 'c_cy']);
 
     const restarted = d.start();
     const journal = restarted.handover.journalState();
@@ -2147,13 +2147,13 @@ describe('destination activate', () => {
     d.crew.log.length = 0;
     const r = await restarted.handover.activate({ transactionId: TX, generation: 5 });
 
-    expect(r.characters.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+    expect(r.robots.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
       { id: 'c_ada', ok: true }, { id: 'c_bo', ok: true }, { id: 'c_cy', ok: true }, { id: 'c_dee', ok: true },
     ]);
     // each window that never ran its resume is replaced, and the resume runs in the new one; the rest are left as they are
     expect(d.crew.log.filter((l) => /^(kill|open)/.test(l)).sort()).toEqual(['kill c_bo', 'kill c_dee', 'open c_bo', 'open c_dee']);
     expect([...d.crew.windows.values()].filter((w) => w.command === 'bash').map((w) => w.key).sort()).toEqual(['c_ada', 'c_ada-2', 'c_cy']);
-    for (const id of ['c_bo', 'c_dee']) expect(d.crew.windows.get(s.store.state.characters[id].tmux!.windowId)?.command).not.toBe('bash');
+    for (const id of ['c_bo', 'c_dee']) expect(d.crew.windows.get(s.store.state.robots[id].tmux!.windowId)?.command).not.toBe('bash');
     expect(journalOf(s.paths).activation!.every((a) => a.ok)).toBe(true);
     expect(lost).toEqual([]);
     expect(['c_ada', 'c_bo', 'c_cy', 'c_dee'].some((id) => d.crew.carried(id))).toBe(false);
@@ -2190,7 +2190,7 @@ describe('destination activate', () => {
     expect(done).toBe(true);
     const r = await run;
 
-    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(r.robots.every((c) => c.ok)).toBe(true);
     expect(d.crew.log.filter((l) => /^(kill|open)/.test(l))).toEqual([]);
     expect([d.crew.window('c_bo'), d.crew.window('c_dee')]).toEqual([bo, dee]);
     expect(journalOf(s.paths).activation!.filter((a) => a.sessionId).map((a) => a.sessionId).sort()).toEqual([CODEX_ID, SID].sort());
@@ -2205,7 +2205,7 @@ describe('destination activate', () => {
 
     const r = await restarted.handover.activate({ transactionId: TX, generation: 5 });
 
-    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(r.robots.every((c) => c.ok)).toBe(true);
     expect(d.crew.log.filter((l) => /^(kill|open)/.test(l)).sort()).toEqual(['open c_bo', 'open c_cy', 'open c_dee']);
     const noticed = d.crew.lines.filter((l) => /restarted .* handover/.test(l)).map((l) => l.split(' ')[0]);
     expect(noticed).toContain(d.crew.window('c_ada')!.paneId);
@@ -2217,14 +2217,14 @@ describe('destination activate', () => {
     d.gateway.commit(preparedDigest);
     d.crew.dies.set('c_bo', 'typed').set('c_dee', 'typed');
     const restarted = await diedMidActivation(d, 5);
-    d.crew.windows.delete(s.store.state.characters.c_bo.tmux!.windowId);
+    d.crew.windows.delete(s.store.state.robots.c_bo.tmux!.windowId);
     d.crew.window('c_dee')!.dead = true;
 
     const r = await restarted.handover.activate({ transactionId: TX, generation: 5 });
 
-    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(r.robots.every((c) => c.ok)).toBe(true);
     expect(d.crew.log.filter((l) => /^(kill|open)/.test(l)).sort()).toEqual(['kill c_dee', 'open c_bo', 'open c_dee']);
-    for (const id of ['c_bo', 'c_dee']) expect(d.crew.window(id)?.command).toBe(s.store.state.characters[id].agent!.kind);
+    for (const id of ['c_bo', 'c_dee']) expect(d.crew.window(id)?.command).toBe(s.store.state.robots[id].agent!.kind);
   });
 
   it('judges each window a dead daemon left by its pane when that terminal\'s turn comes, never closing an agent started since', async () => {
@@ -2241,7 +2241,7 @@ describe('destination activate', () => {
     d.crew.started('c_bo', undefined, SID);
     const r = await run;
 
-    expect(r.characters.every((c) => c.ok)).toBe(true);
+    expect(r.robots.every((c) => c.ok)).toBe(true);
     expect(d.crew.log.filter((l) => /^(kill|open)/.test(l))).toEqual([]);
   });
 
@@ -2253,10 +2253,10 @@ describe('destination activate', () => {
       if (renamed) fs.renameSync(s.paths.preparedState(TX), s.paths.state);
       const again = d.start();
       const r = await again.handover.activate({ transactionId: TX, generation: 5 });
-      expect(r.characters.every((c) => c.ok), `renamed: ${renamed}`).toBe(true);
+      expect(r.robots.every((c) => c.ok), `renamed: ${renamed}`).toBe(true);
       expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
-      expect(s.store.state.characters.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
-      expect(Store.readSnapshot(s.paths.state).characters.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
+      expect(s.store.state.robots.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
+      expect(Store.readSnapshot(s.paths.state).robots.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
     }
   });
 
@@ -2271,7 +2271,7 @@ describe('destination activate', () => {
       const r = await refusal(d.handover.activate({ transactionId: TX, generation: 5 }));
       expect(r.message, how).toMatch(how === 'changed' ? /is not the state handover tx-1 prepared/ : /prepared is gone/);
       expect(fs.readFileSync(s.paths.state), how).toEqual(before);
-      expect(s.store.state.characters, how).toEqual({});
+      expect(s.store.state.robots, how).toEqual({});
       expect(d.ownership.writable(), how).toBe(false);
       expect(d.crew.log, how).toEqual([]);
     }
@@ -2365,9 +2365,9 @@ withTmux('destination activate on real terminals', () => {
       // answered; one told "No, exit" is back at the shell
       if (kind === 'claude' && o.claude) return send(paneId, o.claude === 'prompt' ? `exec -a 'claude --effort high' ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 6`, true);
       await send(paneId, 'exec sleep 600', true);
-      const ch = Object.values(store.state.characters).find((x) => x.tmux?.paneId === paneId || x.second?.tmux?.paneId === paneId)!;
+      const ch = Object.values(store.state.robots).find((x) => x.tmux?.paneId === paneId || x.second?.tmux?.paneId === paneId)!;
       const term = ch.second?.tmux?.paneId === paneId ? 2 as const : undefined;
-      setTimeout(() => fleet.onSocketEvent({ hook: { charId: ch.id, backend: kind, name: 'SessionStart', sessionId: resume[2], ...(term && { term }) } }), o.startAfterMs ?? 0);
+      setTimeout(() => fleet.onSocketEvent({ hook: { robotId: ch.id, backend: kind, name: 'SessionStart', sessionId: resume[2], ...(term && { term }) } }), o.startAfterMs ?? 0);
     };
     const handover = new HandoverService({
       ownership, journal: openJournal(s.paths), agents: async () => s.probes, fleet,
@@ -2396,26 +2396,26 @@ withTmux('destination activate on real terminals', () => {
     const first = boot(c, s.store, { concurrency: 2, dies: 'typed' });
     void first.handover.activate({ transactionId: TX, generation: 5 });
     const typed = async (id: string) => {
-      const pane = s.store.state.characters[id]?.tmux?.paneId;
+      const pane = s.store.state.robots[id]?.tmux?.paneId;
       return !!pane && (await first.tmux.capture(pane, 5)).toString().includes('resume');
     };
     await waitFor(async () => (await typed('c_bo')) && (await typed('c_dee')), 10_000);
     first.fleet.stop();
-    expect(journalOf(s.paths).activation!.map((a) => a.characterId).sort()).toEqual(['c_ada', 'c_ada', 'c_cy']);
+    expect(journalOf(s.paths).activation!.map((a) => a.robotId).sort()).toEqual(['c_ada', 'c_ada', 'c_cy']);
 
     // the poll passes over dee's shell while bo's window is replaced ahead of it
     const second = await restart(c, { concurrency: 1, startAfterMs: 400 });
     const lost: string[] = [];
     second.store.subscribe(() => {
       for (const [id, sessionId] of Object.entries({ c_bo: SID, c_dee: CODEX_ID })) {
-        if (second.store.state.characters[id]?.agent?.sessionId !== sessionId) lost.push(id);
+        if (second.store.state.robots[id]?.agent?.sessionId !== sessionId) lost.push(id);
       }
     });
     const before = new Map((await second.tmux.listWindows()).map((w) => [w.name, w.windowId]));
 
     const r = await second.handover.activate({ transactionId: TX, generation: 5 });
 
-    expect(r.characters.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+    expect(r.robots.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
       { id: 'c_ada', ok: true }, { id: 'c_bo', ok: true }, { id: 'c_cy', ok: true }, { id: 'c_dee', ok: true },
     ]);
     const after = new Map((await second.tmux.listWindows()).map((w) => [w.name, w]));
@@ -2433,7 +2433,7 @@ withTmux('destination activate on real terminals', () => {
     const first = boot(c, s.store, { concurrency: 2, dies: 'entered' });
     void first.handover.activate({ transactionId: TX, generation: 5 });
     const running = async (id: string, kind: string) => {
-      const w = (await first.tmux.listWindows().catch(() => [])).find((x) => x.windowId === s.store.state.characters[id]?.tmux?.windowId);
+      const w = (await first.tmux.listWindows().catch(() => [])).find((x) => x.windowId === s.store.state.robots[id]?.tmux?.windowId);
       return !!w && (await ProcessTable.read()).pane(w.panePid)?.agent?.kind === kind;
     };
     await waitFor(async () => (await running('c_bo', 'claude')) && (await running('c_dee', 'codex')), 10_000);
@@ -2446,7 +2446,7 @@ withTmux('destination activate on real terminals', () => {
 
     // well inside the 10 s a resume has to report its SessionStart
     expect(Date.now() - at).toBeLessThan(5000);
-    expect(r.characters.every((x) => x.ok)).toBe(true);
+    expect(r.robots.every((x) => x.ok)).toBe(true);
     const after = new Map((await second.tmux.listWindows()).map((w) => [w.name, w.windowId]));
     expect(['c_bo', 'c_dee'].map((name) => after.get(name))).toEqual(['c_bo', 'c_dee'].map((name) => before.get(name)));
     expect(journalOf(s.paths).activation!.filter((a) => a.sessionId).map((a) => a.sessionId).sort()).toEqual([CODEX_ID, SID].sort());
@@ -2459,11 +2459,11 @@ withTmux('destination activate on real terminals', () => {
     await first.fleet.start();
     const r = await first.handover.activate({ transactionId: TX, generation: 5 });
 
-    expect(r.characters.find((x) => x.id === 'c_dee')).toMatchObject({ ok: true, notice: expect.stringMatching(/Trust this folder/) });
-    const dee = s.store.state.characters.c_dee.tmux!;
+    expect(r.robots.find((x) => x.id === 'c_dee')).toMatchObject({ ok: true, notice: expect.stringMatching(/Trust this folder/) });
+    const dee = s.store.state.robots.c_dee.tmux!;
     const w = (await first.tmux.listWindows()).find((x) => x.windowId === dee.windowId)!;
     expect((await ProcessTable.read()).pane(w.panePid)?.agent?.kind).toBe('codex');
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
   }, 30_000);
 
   it("keeps a resumed Claude at its trust prompt up in its window, and takes the carried session's SessionStart there once the prompt is answered", async () => {
@@ -2474,21 +2474,21 @@ withTmux('destination activate on real terminals', () => {
     await first.fleet.start();
     const r = await first.handover.activate({ transactionId: TX, generation: 5 });
 
-    expect(r.characters.find((x) => x.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
-    const bo = s.store.state.characters.c_bo;
+    expect(r.robots.find((x) => x.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    const bo = s.store.state.robots.c_bo;
     const w = (await first.tmux.listWindows()).find((x) => x.windowId === bo.tmux!.windowId)!;
     const claude = (await ProcessTable.read()).pane(w.panePid)?.agent;
     expect(claude?.kind).toBe('claude');
 
     // answered, Claude resumes the carried session in that window and reports it as any resume does
     const transcriptPath = bo.agent!.transcriptPath!;
-    await first.fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath, pid: claude!.pid } });
-    expect(s.store.state.characters.c_bo).toMatchObject({ tmux: bo.tmux, agent: { kind: 'claude', sessionId: SID, transcriptPath, pid: claude!.pid } });
-    expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
-    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: true, sessionId: SID });
+    await first.fleet.onSocketEvent({ hook: { robotId: 'c_bo', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath, pid: claude!.pid } });
+    expect(s.store.state.robots.c_bo).toMatchObject({ tmux: bo.tmux, agent: { kind: 'claude', sessionId: SID, transcriptPath, pid: claude!.pid } });
+    expect(s.store.state.robots.c_bo.resumeError).toBeUndefined();
+    expect(journalOf(s.paths).activation!.find((a) => a.robotId === 'c_bo')).toMatchObject({ ok: true, sessionId: SID });
     // the flags a quit without ps would resume it with are read off this machine's own process
     await first.fleet.settle();
-    expect(s.store.state.characters.c_bo.agent?.flags).toEqual(['--effort', "'high'"]);
+    expect(s.store.state.robots.c_bo.agent?.flags).toEqual(['--effort', "'high'"]);
   }, 30_000);
 
   it('leaves a Claude that exits at its trust prompt after Complete dormant again with its carried session and an error, which the fleet does not take from it first', async () => {
@@ -2498,36 +2498,36 @@ withTmux('destination activate on real terminals', () => {
     const first = boot(c, s.store, { concurrency: 2, claude: 'exits' });
     await first.fleet.start();
     const lost: string[] = [];
-    s.store.subscribe(() => { if (s.store.state.characters.c_bo?.agent?.sessionId !== SID) lost.push('c_bo'); });
+    s.store.subscribe(() => { if (s.store.state.robots.c_bo?.agent?.sessionId !== SID) lost.push('c_bo'); });
     const r = await first.handover.activate({ transactionId: TX, generation: 5 });
-    expect(r.characters.find((x) => x.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    expect(r.robots.find((x) => x.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
     await first.handover.complete({ transactionId: TX, generation: 5 });
 
     // claude, told "No, exit", is back at the shell six seconds on, and the fleet polls every 100 ms meanwhile
-    await waitFor(() => !!s.store.state.characters.c_bo.resumeError, 15_000);
-    expect(s.store.state.characters.c_bo.tmux).toBeUndefined();
-    expect(s.store.state.characters.c_bo).toMatchObject({
+    await waitFor(() => !!s.store.state.robots.c_bo.resumeError, 15_000);
+    expect(s.store.state.robots.c_bo.tmux).toBeUndefined();
+    expect(s.store.state.robots.c_bo).toMatchObject({
       agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: expect.stringMatching(/claude exited back to its shell/),
     });
     expect(lost).toEqual([]);
   }, 30_000);
 
-  it("keeps why a resume failed on its character's record past Complete, until a revive brings that terminal up", async () => {
+  it("keeps why a resume failed on its robot's record past Complete, until a revive brings that terminal up", async () => {
     const c = await committed();
     const { s } = c;
     const first = boot(c, s.store, { concurrency: 2, codex: 'exits' });
     await first.fleet.start();
     const r = await first.handover.activate({ transactionId: TX, generation: 5 });
-    const error = r.characters.find((x) => x.id === 'c_dee')!.error!;
+    const error = r.robots.find((x) => x.id === 'c_dee')!.error!;
     expect(error).toMatch(/codex exited back to its shell/);
     await first.handover.complete({ transactionId: TX, generation: 5 });
 
     expect(first.handover.journalState()).toEqual({ kind: 'none' });
-    expect(Store.readSnapshot(s.paths.state).characters.c_dee).toMatchObject({ resumeError: error, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` } });
-    expect(Object.values(Store.readSnapshot(s.paths.state).characters).filter((x) => x.resumeError).map((x) => x.id)).toEqual(['c_dee']);
-    const back = await first.fleet.reviveCharacter('c_dee');
+    expect(Store.readSnapshot(s.paths.state).robots.c_dee).toMatchObject({ resumeError: error, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` } });
+    expect(Object.values(Store.readSnapshot(s.paths.state).robots).filter((x) => x.resumeError).map((x) => x.id)).toEqual(['c_dee']);
+    const back = await first.fleet.reviveRobot('c_dee');
     expect(back.tmux).toBeDefined();
-    expect(Store.readSnapshot(s.paths.state).characters.c_dee.resumeError).toBeUndefined();
+    expect(Store.readSnapshot(s.paths.state).robots.c_dee.resumeError).toBeUndefined();
   }, 30_000);
 });
 
@@ -2594,7 +2594,7 @@ describe('destination under a forced record', () => {
     d.gateway.commit(preparedDigest);
     expect(await d.handover.adopt(d.gateway.record)).toMatchObject({ adopted: false });
     expect(await d.handover.adopt({ fleetId, generation: 5, ownerMachineId: elsewhere })).toMatchObject({ adopted: false });
-    expect((await d.handover.activate({ transactionId: TX, generation: 5 })).characters.every((c) => c.ok)).toBe(true);
+    expect((await d.handover.activate({ transactionId: TX, generation: 5 })).robots.every((c) => c.ok)).toBe(true);
   });
 
   it('lets go at start a held destination whose handover a forced record superseded', async () => {
@@ -2891,7 +2891,7 @@ describe('destination inspect', () => {
     expect((await inspect(undefined)).untrusted).toBeUndefined();
   });
 
-  it("says this machine's Codex has not trusted Svall's hooks when a Codex character resumes here, asking its own Codex home", async () => {
+  it("says this machine's Codex has not trusted Svall's hooks when a Codex robot resumes here, asking its own Codex home", async () => {
     const s = await scene({ land: false });
     const asked: string[] = [];
     let untrusted = 4;
@@ -3112,9 +3112,9 @@ describe("a moved fleet's docs and agent profiles", () => {
     const paths = resolvePaths(home);
     const island: Island = { id: 'i_work', name: 'work', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
     // a folder with no Git in it keys its repository docs as a main checkout would: by its absolute path
-    const ada = char('c_ada', repo, { islandId: island.id, agentProfile: 'reviewer' });
+    const ada = robot('c_ada', repo, { islandId: island.id, agentProfile: 'reviewer' });
     // the Mac's docs at every tier, each keyed as docs.ts keys it, and the profile ada names
-    const tiers = { fleet: fleetDir(paths.docs), repo: docsDir(paths.docs, 'repo', repoSlug(repo)), island: docsDir(paths.docs, 'island', island.id), character: docsDir(paths.docs, 'character', ada.id) };
+    const tiers = { fleet: fleetDir(paths.docs), repo: docsDir(paths.docs, 'repo', repoSlug(repo)), island: docsDir(paths.docs, 'island', island.id), robot: docsDir(paths.docs, 'robot', ada.id) };
     for (const [tier, dir] of Object.entries(tiers)) {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, `${tier}.md`), `---\ndescription: the ${tier} doc\n---\n${tier} notes\n`);
@@ -3123,7 +3123,7 @@ describe("a moved fleet's docs and agent profiles", () => {
     fs.writeFileSync(path.join(paths.agentProfiles, 'reviewer.md'), '---\ndescription: reviews\n---\nReview every change.\n');
     const state = emptyState();
     state.islands[island.id] = island;
-    state.characters[ada.id] = rested(ada);
+    state.robots[ada.id] = rested(ada);
     const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' } });
     const inventory = buildInventory(state, { fleet }, { source: { machineId: mac, home: dst, fleetHome: home }, destination: { machineId: trift, home: dst, fleetHome: home } });
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
@@ -3143,11 +3143,11 @@ describe("a moved fleet's docs and agent profiles", () => {
     await d.handover.activate({ transactionId: TX, generation: 5 });
     await d.handover.complete({ transactionId: TX, generation: 5 });
 
-    const moved = store.state.characters[ada.id];
+    const moved = store.state.robots[ada.id];
     expect(moved.agentProfile).toBe('reviewer');
     expect(readAgentProfile(paths.agentProfiles, 'reviewer')).toEqual({ name: 'reviewer', description: 'reviews', body: 'Review every change.' });
     expect(docFolders(paths.docs, store.state.islands[island.id], moved).map((f) => [f.tier, f.dir, f.docs.map((x) => x.description)])).toEqual([
-      ['fleet', tiers.fleet, ['the fleet doc']], ['repo', tiers.repo, ['the repo doc']], ['island', tiers.island, ['the island doc']], ['character', tiers.character, ['the character doc']],
+      ['fleet', tiers.fleet, ['the fleet doc']], ['repo', tiers.repo, ['the repo doc']], ['island', tiers.island, ['the island doc']], ['robot', tiers.robot, ['the robot doc']],
     ]);
     const replicas = new ReplicaStore({ fleetId, paths });
     for (const r of replicaRoots(built.manifest).filter((x) => x.kind === 'docs' || x.kind === 'profiles')) {
@@ -3164,8 +3164,8 @@ describe("a moved fleet's repository docs, between accounts with different homes
     const [macHome, linux] = [path.join(base, 'mac'), path.join(base, 'linux')];
     const [macFleet, home] = [path.join(macHome, '.svall'), path.join(linux, '.svall')];
     const island: Island = { id: 'i_work', name: 'work', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    const ada = char('c_ada', path.join(macHome, 'work/app'), { islandId: island.id });
-    const bo = char('c_bo', '~/work/tool', { islandId: island.id });
+    const ada = robot('c_ada', path.join(macHome, 'work/app'), { islandId: island.id });
+    const bo = robot('c_bo', '~/work/tool', { islandId: island.id });
     for (const d of [ada.cwd, path.join(macHome, 'work/tool'), path.join(macHome, 'mc'), path.join(linux, 'work'), home]) fs.mkdirSync(d, { recursive: true });
     const macDocs = resolvePaths(macFleet).docs;
     for (const root of [ada.cwd, path.join(macHome, 'work/tool')]) {
@@ -3176,7 +3176,7 @@ describe("a moved fleet's repository docs, between accounts with different homes
     also?.({ macDocs, linux });
     const state = emptyState();
     state.islands[island.id] = island;
-    for (const c of [ada, bo]) state.characters[c.id] = rested(c);
+    for (const c of [ada, bo]) state.robots[c.id] = rested(c);
     const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' } });
     const inventory = buildInventory(state, { fleet }, { source: { machineId: mac, home: macHome, fleetHome: macFleet }, destination: { machineId: trift, home: linux, fleetHome: home } });
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
@@ -3199,7 +3199,7 @@ describe("a moved fleet's repository docs, between accounts with different homes
     await d.handover.activate({ transactionId: TX, generation: 5 });
     await d.handover.complete({ transactionId: TX, generation: 5 });
 
-    const ada = s.store.state.characters.c_ada;
+    const ada = s.store.state.robots.c_ada;
     expect(ada.cwd).toBe(path.join(s.linux, 'work/app'));
     expect(docFolders(s.paths.docs, s.store.state.islands[s.island.id], ada).find((f) => f.tier === 'repo')!.docs.map((x) => x.description)).toEqual(['app']);
     expect(listDocsIn(docsDir(s.paths.docs, 'repo', repoSlug(path.join(s.linux, 'work/tool'))))).toEqual(['tool']);
@@ -3349,7 +3349,7 @@ describe('a fleet from an account with another home', () => {
     const d = daemon(s);
     await d.handover.prepare(params(s));
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
-    const { c_ada: ada, c_bo: bo, c_cy: cy, c_dee: dee } = prepared.characters;
+    const { c_ada: ada, c_bo: bo, c_cy: cy, c_dee: dee } = prepared.robots;
     expect(ada.cwd).toBe(path.join(s.dst, 'work/ada'));
     expect(ada.second!.cwd).toBe(path.join(s.dst, 'work/ada/sub'));
     expect(ada.context[0].ref).toBe(path.join(s.dst, 'work/ada/notes.md'));

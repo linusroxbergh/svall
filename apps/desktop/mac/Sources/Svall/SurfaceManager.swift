@@ -18,7 +18,7 @@ enum ControlSocket {
     }
 }
 
-/// The shell command a surface runs to attach to a character's tmux session, here or on the owner's machine.
+/// The shell command a surface runs to attach to a robot's tmux session, here or on the owner's machine.
 enum AttachCommand {
     static func quote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -101,7 +101,7 @@ private struct Attached {
     var hidden = false
 }
 
-/// Creates, positions, hides and frees one SurfaceView per character id, above the webview.
+/// Creates, positions, hides and frees one SurfaceView per robot id, above the webview.
 final class SurfaceManager {
     private let makeView: (String, NSRect) -> SurfaceView?
     private let overlay: OverlayViews<SurfaceView>

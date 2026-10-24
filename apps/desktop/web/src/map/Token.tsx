@@ -1,10 +1,10 @@
-import type { Cell, Character, ContextItem } from '@svall/protocol';
+import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
 import { BotGlyph, EyeGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
-import { Robot } from './Robot.js';
-import { robotOf } from '../portraits.js';
+import { Figure } from './Figure.js';
+import { figureOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
 import { hintLabel, hintText, statusWord } from './tokenText.js';
@@ -12,7 +12,7 @@ import type { PointerHandlers } from './types.js';
 
 const RAIL_MAX = 3;
 
-function footInner(c: Character, status: DisplayStatus, word: string | undefined, failed: string | undefined) {
+function footInner(c: Robot, status: DisplayStatus, word: string | undefined, failed: string | undefined) {
   return (
     <>
       {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
@@ -25,7 +25,7 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
 export const Token = memoByValue(function Token({
   c, status, world, links, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
-  c: Character;
+  c: Robot;
   status: DisplayStatus;
   // the link chips on the card's right edge
   links?: boolean;
@@ -35,13 +35,13 @@ export const Token = memoByValue(function Token({
   settling?: boolean;
   hover: boolean;
   offset?: { x: number; y: number };
-  // why a handover could not resume this character, from the app's store; the landing page has none
+  // why a handover could not resume this robot, from the app's store; the landing page has none
   failed?: string;
   pointer: PointerHandlers;
   onHoverStart(): void;
   onHoverEnd(): void;
   onOpen(): void;
-  onLink(item: ContextItem, charId: string, at: { x: number; y: number }): void;
+  onLink(item: ContextItem, robotId: string, at: { x: number; y: number }): void;
   onMenu(e: React.MouseEvent): void;
 }) {
   const word = statusWord(status);
@@ -60,7 +60,7 @@ export const Token = memoByValue(function Token({
       data-status={status}
       data-selected={selected}
       data-unread={isUnread(c)}
-      data-drop={`char:${c.id}`}
+      data-drop={`robot:${c.id}`}
       data-drop-hover={hover}
       data-settling={settling}
       style={{
@@ -81,7 +81,7 @@ export const Token = memoByValue(function Token({
       <div className="card">
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
-        <Robot n={robotOf(c)} />
+        <Figure n={figureOf(c)} />
         <button
           type="button"
           className="foot"

@@ -11,7 +11,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function fakeApi() {
   let calls = 0;
-  const api = { call: (m: string) => { if (m === 'resources.get') calls++; return Promise.resolve({ sources: [{ rootId: 'r:/h', root: '/h', name: 'Claude', tier: 'global', islandIds: [], characterIds: [], groups: [] }] }); } } as unknown as Pick<Api, 'call'>;
+  const api = { call: (m: string) => { if (m === 'resources.get') calls++; return Promise.resolve({ sources: [{ rootId: 'r:/h', root: '/h', name: 'Claude', tier: 'global', islandIds: [], robotIds: [], groups: [] }] }); } } as unknown as Pick<Api, 'call'>;
   return { api, calls: () => calls };
 }
 
@@ -19,7 +19,7 @@ describe('loadResources', () => {
   afterEach(() => { vi.useRealTimers(); });
   it('puts the listing in the store, and leaves the store alone when svalld cannot answer', async () => {
     const store = createAppStore();
-    const sources = [{ rootId: 'r:/d/islands/i1', root: '/d/islands/i1', name: 'one', tier: 'island', docs: 'r:/d/islands/i1', islandIds: ['i1'], characterIds: [], groups: [] }];
+    const sources = [{ rootId: 'r:/d/islands/i1', root: '/d/islands/i1', name: 'one', tier: 'island', docs: 'r:/d/islands/i1', islandIds: ['i1'], robotIds: [], groups: [] }];
     await loadResources({ api: { call: () => Promise.resolve({ sources }) } as never, store });
     expect(store.getState().resources).toEqual(sources);
     await loadResources({ api: { call: () => Promise.reject(new Error('down')) } as never, store });
@@ -55,9 +55,9 @@ describe('loadResources', () => {
     const first = loadResources(d);
     const second = reloadResources(d);
     expect(answers).toHaveLength(2);
-    answers[1]({ sources: [{ rootId: 'r:/h', root: '/h', name: 'later', tier: 'global', islandIds: [], characterIds: [], groups: [] }] });
+    answers[1]({ sources: [{ rootId: 'r:/h', root: '/h', name: 'later', tier: 'global', islandIds: [], robotIds: [], groups: [] }] });
     await second;
-    answers[0]({ sources: [{ rootId: 'r:/h', root: '/h', name: 'earlier', tier: 'global', islandIds: [], characterIds: [], groups: [] }] });
+    answers[0]({ sources: [{ rootId: 'r:/h', root: '/h', name: 'earlier', tier: 'global', islandIds: [], robotIds: [], groups: [] }] });
     await first;
     expect(store.getState().resources[0].name).toBe('later');
   });
@@ -87,8 +87,8 @@ describe('followResources', () => {
     await tick();
     expect(calls()).toBe(1);
 
-    const [id] = Object.keys(f.characters);
-    store.getState().setFleet({ ...f, characters: { ...f.characters, [id]: { ...f.characters[id], cwd: '/somewhere/else', repo: undefined } } });
+    const [id] = Object.keys(f.robots);
+    store.getState().setFleet({ ...f, robots: { ...f.robots, [id]: { ...f.robots[id], cwd: '/somewhere/else', repo: undefined } } });
     await tick();
     expect(calls()).toBe(2);
     stop();
@@ -97,14 +97,14 @@ describe('followResources', () => {
     const f = fleet();
     expect(listingKey(f)).toBe(listingKey({ ...f }));
   });
-  it('moves when an island or a character is added, renamed or moved, and not otherwise', () => {
+  it('moves when an island or a robot is added, renamed or moved, and not otherwise', () => {
     const f = fleet();
-    const [cid] = Object.keys(f.characters), [iid] = Object.keys(f.islands);
-    const c = f.characters[cid], i = f.islands[iid];
-    expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, unread: !c.unread, note: 'changed' } } })).toBe(listingKey(f));
-    expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, name: 'renamed' } } })).not.toBe(listingKey(f));
-    expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, islandId: 'elsewhere' } } })).not.toBe(listingKey(f));
-    expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, agentProfile: 'reviewer' } } })).not.toBe(listingKey(f));
+    const [cid] = Object.keys(f.robots), [iid] = Object.keys(f.islands);
+    const c = f.robots[cid], i = f.islands[iid];
+    expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, unread: !c.unread, note: 'changed' } } })).toBe(listingKey(f));
+    expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, name: 'renamed' } } })).not.toBe(listingKey(f));
+    expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, islandId: 'elsewhere' } } })).not.toBe(listingKey(f));
+    expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, agentProfile: 'reviewer' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, islands: { ...f.islands, [iid]: { ...i, name: 'renamed' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, islands: { ...f.islands, extra: { ...i, id: 'extra' } } })).not.toBe(listingKey(f));
   });

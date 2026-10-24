@@ -3,9 +3,9 @@
 //   node scripts/bench/handover.mjs --out <dir> [--repos small,large,many] [--files <n>] [--large-mib <n>] [--keep] [--flood]
 //                                   [--prefix <name>]
 //
-// For each repository it makes the repository on the machine that owns the fleet with a shell character in it, hands
+// For each repository it makes the repository on the machine that owns the fleet with a shell robot in it, hands
 // the fleet over (first), changes ten files and adds one on the new owner and hands it back (incremental), does that
-// again (incremental), then closes the character and hands the fleet back with only the integration fixture
+// again (incremental), then closes the robot and hands the fleet back with only the integration fixture
 // (fixture). Each handover records its wall time and phases, the controller's event stream, the peak RSS of the
 // controller, both daemons and every rsync, the messages the manifest travels in, and the Mac's power state.
 import { spawnSync } from 'node:child_process';
@@ -116,23 +116,23 @@ function repoRun(kind, isl) {
   const dir = (m) => `${HOMES[m]}/bench/${kind}`;
   const made = bench(at, `repo ${kind} ${dir(at)}${o.files ? ` --files ${o.files}` : ''}${o['large-mib'] ? ` --large-mib ${o['large-mib']}` : ''}`);
   say(`   ${kind}: ${made.tracked} tracked files at ${dir(at)} on ${hostOf(at)}`);
-  const id = json(L, `svall --json char new --island ${isl} --cwd ${dir(at)} --name bench-${kind}`).id;
+  const id = json(L, `svall --json robot new --island ${isl} --cwd ${dir(at)} --name bench-${kind}`).id;
   sh(L, 'sleep 2');
   at = measure(at, `${kind}-1-first`, kind, 'first');
   bench(at, `touch ${dir(at)} 10`);
   at = measure(at, `${kind}-2-incremental`, kind, 'incremental');
   bench(at, `touch ${dir(at)} 10`);
   at = measure(at, `${kind}-3-incremental`, kind, 'incremental');
-  sh(L, `svall char close ${id}`);
+  sh(L, `svall robot close ${id}`);
   measure(at, `${kind}-4-fixture`, kind, 'fixture');
 }
 
 function flood(isl) {
   const at = owner();
-  const id = json(L, `svall --json char new --island ${isl} --cwd ${HOMES[at]} --name bench-flood`).id;
+  const id = json(L, `svall --json robot new --island ${isl} --cwd ${HOMES[at]} --name bench-flood`).id;
   sh(L, 'sleep 2');
   const r = bench(at, `flood ${id} --seconds ${o.seconds ?? 20}`);
-  sh(L, `svall char close ${id}`);
+  sh(L, `svall robot close ${id}`);
   fs.writeFileSync(path.join(out, 'flood.json'), `${JSON.stringify({ ...r, machine: hostOf(at), power: power() }, null, 1)}\n`);
   say(`   flood on ${hostOf(at)}: daemon RSS ${mib(r.startKiB)} -> peak ${mib(r.peakKiB)} over ${r.seconds} s; the viewer read ${mb(r.receivedBeforePause)} in the second before it stopped, and ${mb(r.receivedAfter)} after`);
 }

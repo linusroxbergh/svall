@@ -14,7 +14,7 @@ async function openCard(page: import('@playwright/test').Page, id: string) {
 
 test('a card opens on one pane, splits in two, and each side closes on its own', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('split') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'pair' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'pair' });
   await svall.open('map');
   const card = await openCard(page, c.id);
   await expect(card.getByTestId('pane-right')).toHaveCount(0);
@@ -36,39 +36,39 @@ test('a card opens on one pane, splits in two, and each side closes on its own',
 
 test('a split starts the second terminal, and it ends with its shell', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('two') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'twin' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'twin' });
   await svall.open('map');
   const card = await openCard(page, c.id);
   await card.getByTestId('pane-split').click();
   await expect(card.getByTestId('pane-right-terminal')).toHaveText(/Terminal 2/);
   await expect(card.getByTestId('surface')).toHaveCount(2);
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second).toBeTruthy();
-  await svall.api.call('char.run', { id: c.id, text: 'exit', term: 2 });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].second).toBeTruthy();
+  await svall.api.call('robot.run', { id: c.id, text: 'exit', term: 2 });
   await expect(card.getByTestId('pane-right')).toHaveCount(0);
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second).toBeFalsy();
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].second).toBeFalsy();
 });
 
 test('a second terminal that ran an agent stays dormant when its window goes, and revives', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('two') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'twin' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'twin' });
   await svall.open('map');
   const card = await openCard(page, c.id);
   await card.getByTestId('pane-split').click();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second).toBeTruthy();
-  await svall.api.call('char.run', { id: c.id, text: FAKE_CLAUDE, term: 2 });
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second?.agent?.status, { timeout: 15_000 }).toBe('idle');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].second).toBeTruthy();
+  await svall.api.call('robot.run', { id: c.id, text: FAKE_CLAUDE, term: 2 });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].second?.agent?.status, { timeout: 15_000 }).toBe('idle');
   const state = await svall.api.call('state.get', {});
-  execFileSync('tmux', ['-S', path.join(svall.home, 'tmux.sock'), 'kill-window', '-t', state.characters[c.id].second!.tmux!.windowId]);
+  execFileSync('tmux', ['-S', path.join(svall.home, 'tmux.sock'), 'kill-window', '-t', state.robots[c.id].second!.tmux!.windowId]);
   const right = card.getByTestId('pane-right');
   await expect(right.getByTestId('revive')).toBeVisible({ timeout: 15_000 });
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second?.revive).toBeTruthy();
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].second?.revive).toBeTruthy();
   await right.getByTestId('revive').click();
   await expect(right.getByTestId('surface')).toBeVisible({ timeout: 15_000 });
 });
 
 test('the board shows the same panes as the card', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('same') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'mirror' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'mirror' });
   await svall.open('map');
   const card = await openCard(page, c.id);
   await card.getByTestId('pane-split').click();

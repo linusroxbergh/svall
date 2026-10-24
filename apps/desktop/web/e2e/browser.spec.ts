@@ -2,7 +2,7 @@ import { expect, test } from './fixtures.js';
 
 test('the browser pane opens beside the terminal, tabs come from the address bar and close from the strip', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('web') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'surfer' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'surfer' });
   await svall.open();
   await expect(page.getByTestId('browser-area')).toHaveCount(0);
   // the pane opens under the key that asks for the address bar, and the address bar is where the keys land
@@ -12,19 +12,19 @@ test('the browser pane opens beside the terminal, tabs come from the address bar
   // the pane opens on the start page rather than an empty frame, and closing that tab leaves it empty
   const start = page.getByTestId('browser-tabs').locator('[data-testid^="btab-"]:not([data-testid^="btab-close-"])');
   await expect(start).toHaveCount(1);
-  const first = (await svall.api.call('state.get', {})).characters[c.id].browser!.tabs[0];
+  const first = (await svall.api.call('state.get', {})).robots[c.id].browser!.tabs[0];
   expect(first.url).toBe('https://www.google.com');
   await page.getByTestId(`btab-close-${first.id}`).click();
   await expect(page.getByTestId('browser-empty')).toBeVisible();
   // the terminal keeps its place on the left
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
 
   await page.getByTestId('browser-address').fill('example.com');
   await page.getByTestId('browser-address').press('Enter');
   const tab = page.getByTestId('browser-tabs').locator('[data-testid^="btab-"]:not([data-testid^="btab-close-"])');
   await expect(tab).toHaveCount(1);
   await expect(tab.first()).toHaveAttribute('data-active', 'true');
-  const tabs = (await svall.api.call('state.get', {})).characters[c.id].browser!.tabs;
+  const tabs = (await svall.api.call('state.get', {})).robots[c.id].browser!.tabs;
   expect(tabs).toHaveLength(1);
   expect(tabs[0].url).toBe('https://example.com');
   // without the shell the surface is a placeholder naming the tab
@@ -36,7 +36,7 @@ test('the browser pane opens beside the terminal, tabs come from the address bar
   await page.getByTestId('browser-address').press('Enter');
   await expect(tab).toHaveCount(2);
   await expect(page.getByTestId(`btab-${tabs[0].id}`)).toHaveAttribute('data-active', 'false');
-  const third = (await svall.api.call('state.get', {})).characters[c.id].browser!.tabs[1];
+  const third = (await svall.api.call('state.get', {})).robots[c.id].browser!.tabs[1];
   expect(third.url).toBe('https://c.test');
   await page.getByTestId(`btab-close-${third.id}`).click();
   await expect(tab).toHaveCount(1);
@@ -50,7 +50,7 @@ test('the browser pane opens beside the terminal, tabs come from the address bar
   // the stored url names the active tab until the shell reports a page of its own
   await expect(page.getByTestId('browser-address')).toHaveValue(tabs[0].url);
 
-  // the panes are the page's own: a reload brings the character back on one, and the browser opens beside it
+  // the panes are the page's own: a reload brings the robot back on one, and the browser opens beside it
   await page.reload();
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.getByTestId('browser-area')).toHaveCount(0);
@@ -61,7 +61,7 @@ test('the browser pane opens beside the terminal, tabs come from the address bar
 
 test("the map's card flips between the terminal and the browser", async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('web') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'surfer' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'surfer' });
   const tab = await svall.api.call('browser.open', { id: c.id, url: 'https://a.test/' });
   await svall.open('map');
   // the card opens the way card.spec.ts opens it: the first click selects the token, the second opens it

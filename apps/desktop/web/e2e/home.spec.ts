@@ -14,12 +14,12 @@ test('a button spawns a crew member on home and hands it the prompt', async ({ p
   await expect(page.getByTestId('toast')).toContainText('organise started', { timeout: 15_000 });
 
   const state = await svall.api.call('state.get', {});
-  const crew = Object.values(state.characters).find((c) => c.islandId === 'home');
+  const crew = Object.values(state.robots).find((c) => c.islandId === 'home');
   expect(crew).toBeDefined();
   expect(crew!.name).toBe('organise');
   expect(crew!.cell).toEqual({ x: 1, y: 1 });
   await expect(page.getByTestId(`token-${crew!.id}`)).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
-  await expect.poll(async () => (await svall.api.call('char.read', { id: crew!.id, source: 'transcript', lines: 5 })).text, { timeout: 15_000 })
+  await expect.poll(async () => (await svall.api.call('robot.read', { id: crew!.id, source: 'transcript', lines: 5 })).text, { timeout: 15_000 })
     .toContain('/svall-organise');
   // on a map with no other islands home's cards stand at their largest, and still clear its bottom edge
   await settleMap(page);
@@ -28,7 +28,7 @@ test('a button spawns a crew member on home and hands it the prompt', async ({ p
 
   await page.getByTestId('home-new').click();
   await expect(home.locator('.tok')).toHaveCount(2, { timeout: 15_000 });
-  const second = Object.values((await svall.api.call('state.get', {})).characters).find((c) => c.islandId === 'home' && c.id !== crew!.id);
+  const second = Object.values((await svall.api.call('state.get', {})).robots).find((c) => c.islandId === 'home' && c.id !== crew!.id);
   expect(second!.cell).toEqual({ x: 4, y: 1 });
   // a crew member made by hand starts the home command too, rather than a shell
   await expect(page.getByTestId(`token-${second!.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
@@ -51,7 +51,7 @@ test('the chevron collapses home to its row and the choice survives a reload', a
 // a crew card crossing the home boundary changes its DOM parent mid-drag; the drag has to survive that
 test('a card drags onto a home slot and back out to the map', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('crew'), seed: 4, position: { x: 0, y: 40 } });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'wanderer' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'wanderer' });
   await svall.open('map');
   const token = page.getByTestId(`token-${c.id}`);
   await expect(token).toBeVisible();
@@ -72,8 +72,8 @@ test('a card drags onto a home slot and back out to the map', async ({ page, sva
   const slot = { x: homeBox.x + theme.pad + 1.5 * theme.cell, y: map.y + map.height - theme.home.visible + 1.5 * theme.cell };
 
   await drag(slot);
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].islandId).toBe('home');
-  expect((await svall.api.call('state.get', {})).characters[c.id].cell).toEqual({ x: 1, y: 1 });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].islandId).toBe('home');
+  expect((await svall.api.call('state.get', {})).robots[c.id].cell).toEqual({ x: 1, y: 1 });
 
   // and back out: a drop on its own island must move it there, not strand it on the crossing cell
   const back = spacedCells(island.size, 3)[2];
@@ -83,17 +83,17 @@ test('a card drags onto a home slot and back out to the map', async ({ page, sva
   const cs = await page.evaluate(() => { const l = window.__map!.layout(); return l.scale * l.tile; });
   await settleMap(page);
   await drag({ x: map.x + at.x + cs / 2, y: map.y + at.y + cs / 2 });
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].islandId).toBe(island.id);
-  expect((await svall.api.call('state.get', {})).characters[c.id].cell).toEqual(back);
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].islandId).toBe(island.id);
+  expect((await svall.api.call('state.get', {})).robots[c.id].cell).toEqual(back);
 });
 
 test('a card dropped on a shrunk mission control lands in the slot under the pointer', async ({ page, svall }) => {
   // five crew make home 17 cells wide; the first leaves its slot free
   const crew = [];
-  for (let n = 0; n < 5; n++) crew.push(await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` }));
-  await svall.api.call('char.close', { id: crew[0].id });
+  for (let n = 0; n < 5; n++) crew.push(await svall.api.call('robot.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` }));
+  await svall.api.call('robot.close', { id: crew[0].id });
   const island = await svall.api.call('island.create', { name: svall.uniq('crew'), seed: 4, position: { x: 0, y: 40 } });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'wanderer' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'wanderer' });
   await svall.open('map');
   await setMapWidth(page, 700);
 
@@ -110,17 +110,17 @@ test('a card dropped on a shrunk mission control lands in the slot under the poi
   await page.mouse.move(slot.x, slot.y - 100, { steps: 6 });
   await page.mouse.move(slot.x, slot.y, { steps: 6 });
   await page.mouse.up();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].islandId).toBe('home');
-  expect((await svall.api.call('state.get', {})).characters[c.id].cell).toEqual({ x: 1, y: 1 });
-  expect((await svall.api.call('state.get', {})).characters[crew[1].id].cell).toEqual({ x: 4, y: 1 });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].islandId).toBe('home');
+  expect((await svall.api.call('state.get', {})).robots[c.id].cell).toEqual({ x: 1, y: 1 });
+  expect((await svall.api.call('state.get', {})).robots[crew[1].id].cell).toEqual({ x: 4, y: 1 });
 });
 
 test('a card dropped past the last slot of a full mission control joins it at the end, and nobody leaves', async ({ page, svall }) => {
   // two crew fill home's two slots
   const crew = [];
-  for (let n = 0; n < 2; n++) crew.push(await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` }));
+  for (let n = 0; n < 2; n++) crew.push(await svall.api.call('robot.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` }));
   const island = await svall.api.call('island.create', { name: svall.uniq('crew'), seed: 4, position: { x: 0, y: 40 } });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'wanderer' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'wanderer' });
   await svall.open('map');
 
   const map = (await page.getByTestId('map').boundingBox())!;
@@ -133,15 +133,15 @@ test('a card dropped past the last slot of a full mission control joins it at th
   await page.mouse.move(end.x, end.y - 100, { steps: 6 });
   await page.mouse.move(end.x, end.y, { steps: 6 });
   await page.mouse.up();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].islandId).toBe('home');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].islandId).toBe('home');
   const s = await svall.api.call('state.get', {});
-  expect(s.characters[c.id].cell).toEqual({ x: 7, y: 1 });
+  expect(s.robots[c.id].cell).toEqual({ x: 7, y: 1 });
   expect(s.islands.home.size.w).toBe(11);
-  expect(crew.map((m) => s.characters[m.id])).toMatchObject([{ islandId: 'home', cell: { x: 1, y: 1 } }, { islandId: 'home', cell: { x: 4, y: 1 } }]);
+  expect(crew.map((m) => s.robots[m.id])).toMatchObject([{ islandId: 'home', cell: { x: 1, y: 1 } }, { islandId: 'home', cell: { x: 4, y: 1 } }]);
 });
 
 test('arrange gives mission control a spare slot past its crew where the map has room, and takes it back where not', async ({ page, svall }) => {
-  for (let n = 0; n < 2; n++) await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` });
+  for (let n = 0; n < 2; n++) await svall.api.call('robot.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` });
   await svall.api.call('island.create', { name: svall.uniq('crew'), position: { x: 0, y: 0 } });
   await svall.open('map');
   const width = async () => (await svall.api.call('state.get', {})).islands.home.size.w;
@@ -175,8 +175,8 @@ test('Cmd+G sends a prompt to a fresh mission control agent', async ({ page, sva
   // only once the daemon has answered is there an agent to read
   await expect(page.getByTestId('toast')).toContainText('started', { timeout: 15_000 });
   expect(await page.evaluate(() => (window as unknown as { __order: string[] }).__order)).toEqual(['closed', 'answered']);
-  const crew = Object.values((await svall.api.call('state.get', {})).characters).find((c) => c.islandId === 'home');
+  const crew = Object.values((await svall.api.call('state.get', {})).robots).find((c) => c.islandId === 'home');
   expect(crew).toBeDefined();
-  await expect.poll(async () => (await svall.api.call('char.read', { id: crew!.id, source: 'transcript', lines: 5 })).text, { timeout: 15_000 })
+  await expect.poll(async () => (await svall.api.call('robot.read', { id: crew!.id, source: 'transcript', lines: 5 })).text, { timeout: 15_000 })
     .toContain('regroup the fleet');
 });

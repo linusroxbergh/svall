@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { HOME_ISLAND, type Character, type Island } from '@svall/protocol';
-import { docFolders, docsDir, listDocs, removeDocs, repoRootOf, repoSlug } from '../src/docs.js';
+import { HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
+import { docFolders, docsDir, liftRobotDocs, listDocs, removeDocs, repoRootOf, repoSlug } from '../src/docs.js';
 import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -10,8 +10,8 @@ const put = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), {
 const doc = (description: string, name = 'ignored') => `---\nname: ${name}\ndescription: ${description}\n---\n# body\n`;
 // only the fields the docs module reads
 const island = (id: string) => ({ id, name: id }) as unknown as Island;
-const char = (id: string, islandId: string, cwd: string, mainRoot?: string) =>
-  ({ id, islandId, cwd, ...(mainRoot && { repo: { root: cwd, mainRoot, branch: 'main', isWorktree: cwd !== mainRoot } }) }) as unknown as Character;
+const robot = (id: string, islandId: string, cwd: string, mainRoot?: string) =>
+  ({ id, islandId, cwd, ...(mainRoot && { repo: { root: cwd, mainRoot, branch: 'main', isWorktree: cwd !== mainRoot } }) }) as unknown as Robot;
 
 afterEach(cleanHomes);
 
@@ -34,10 +34,10 @@ describe('repoSlug', () => {
 });
 
 describe('repoRootOf', () => {
-  it('is the main root for a worktree, the folder for a plain character, and nothing for mission control', () => {
-    expect(repoRootOf(char('a', 'i1', '/r/app/.claude/worktrees/x', '/r/app'))).toBe('/r/app');
-    expect(repoRootOf(char('b', 'i1', '/plain'))).toBe('/plain');
-    expect(repoRootOf(char('h', HOME_ISLAND, '/home/mc'))).toBeUndefined();
+  it('is the main root for a worktree, the folder for a plain robot, and nothing for mission control', () => {
+    expect(repoRootOf(robot('a', 'i1', '/r/app/.claude/worktrees/x', '/r/app'))).toBe('/r/app');
+    expect(repoRootOf(robot('b', 'i1', '/plain'))).toBe('/plain');
+    expect(repoRootOf(robot('h', HOME_ISLAND, '/home/mc'))).toBeUndefined();
   });
 });
 
@@ -87,9 +87,9 @@ describe('listDocs', () => {
 });
 
 describe('docFolders', () => {
-  it('is fleet, repo, island, character for a character, and resolves a worktree to its main repository', () => {
+  it('is fleet, repo, island, robot for a robot, and resolves a worktree to its main repository', () => {
     const docs = path.join(makeHome(), 'docs');
-    const c = char('c1', 'i1', '/r/app/.claude/worktrees/x', '/r/app');
+    const c = robot('c1', 'i1', '/r/app/.claude/worktrees/x', '/r/app');
     put(path.join(docsDir(docs, 'repo', repoSlug('/r/app')), 'conventions.md'), doc('House style.'));
     put(path.join(docs, 'fleet', 'tone.md'), doc('How we write.'));
     const folders = docFolders(docs, island('i1'), c);
@@ -97,20 +97,20 @@ describe('docFolders', () => {
       ['fleet', path.join(docs, 'fleet')],
       ['repo', path.join(docs, 'repos', repoSlug('/r/app'))],
       ['island', path.join(docs, 'islands', 'i1')],
-      ['character', path.join(docs, 'characters', 'c1')],
+      ['robot', path.join(docs, 'robots', 'c1')],
     ]);
     expect(folders[0].docs.map((d) => d.name)).toEqual(['tone']);
     expect(folders[1].docs.map((d) => d.name)).toEqual(['conventions']);
     expect(folders[2].docs).toEqual([]);
   });
-  it('has no repo folder for a home character, and mission control resolves from islands/home', () => {
+  it('has no repo folder for a home robot, and mission control resolves from islands/home', () => {
     const docs = path.join(makeHome(), 'docs');
     put(path.join(docs, 'islands', HOME_ISLAND, 'standing.md'), doc('Standing orders.'));
-    const folders = docFolders(docs, island(HOME_ISLAND), char('h', HOME_ISLAND, '/home/mc'));
-    expect(folders.map((f) => f.tier)).toEqual(['fleet', 'island', 'character']);
+    const folders = docFolders(docs, island(HOME_ISLAND), robot('h', HOME_ISLAND, '/home/mc'));
+    expect(folders.map((f) => f.tier)).toEqual(['fleet', 'island', 'robot']);
     expect(folders[1].docs.map((d) => d.name)).toEqual(['standing']);
   });
-  it('is the fleet and the island alone without a character', () => {
+  it('is the fleet and the island alone without a robot', () => {
     expect(docFolders('/d', island('i1')).map((f) => f.tier)).toEqual(['fleet', 'island']);
   });
 });
@@ -121,15 +121,15 @@ describe('removeDocs', () => {
     const docs = path.join(makeHome(), 'docs');
     put(path.join(docs, 'islands/i1/a.md'), doc('A.'));
     put(path.join(docs, 'islands/i2/b.md'), doc('B.'));
-    put(path.join(docs, 'characters/i1/c.md'), doc('C.'));
+    put(path.join(docs, 'robots/i1/c.md'), doc('C.'));
     removeDocs(docs, 'island', 'i1', log());
     expect(fs.existsSync(path.join(docs, 'islands/i1'))).toBe(false);
     expect(fs.existsSync(path.join(docs, 'islands/i2/b.md'))).toBe(true);
-    expect(fs.existsSync(path.join(docs, 'characters/i1/c.md'))).toBe(true);
+    expect(fs.existsSync(path.join(docs, 'robots/i1/c.md'))).toBe(true);
   });
   it('says nothing about a folder that was never made', () => {
     const l = log();
-    removeDocs(path.join(makeHome(), 'docs'), 'character', 'c9', l);
+    removeDocs(path.join(makeHome(), 'docs'), 'robot', 'c9', l);
     expect(l.lines).toEqual([]);
   });
   it('refuses an id that climbs out of its tree', () => {
@@ -157,5 +157,18 @@ describe('removeDocs', () => {
     expect(() => removeDocs(docs, 'island', 'i1', l)).not.toThrow();
     fs.chmodSync(path.join(docs, 'islands'), 0o700);
     expect(l.lines).toHaveLength(1);
+  });
+});
+
+describe('liftRobotDocs', () => {
+  it("moves the robots' notes out of the characters folder an older svalld kept, and leaves a robots folder alone", () => {
+    const docs = resolvePaths(makeHome()).docs;
+    put(path.join(docs, 'characters', 'c1', 'a.md'), doc('A.'));
+    liftRobotDocs(docs);
+    expect(fs.existsSync(path.join(docs, 'characters'))).toBe(false);
+    expect(fs.readFileSync(path.join(docsDir(docs, 'robot', 'c1'), 'a.md'), 'utf8')).toBe(doc('A.'));
+    put(path.join(docs, 'characters', 'c2', 'b.md'), doc('B.'));
+    liftRobotDocs(docs);
+    expect(fs.existsSync(path.join(docs, 'characters', 'c2', 'b.md'))).toBe(true);
   });
 });

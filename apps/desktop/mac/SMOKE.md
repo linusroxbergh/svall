@@ -39,28 +39,28 @@ In the `smoke` fleet, make:
 - two islands;
 - a repository with a commit, a linked worktree beside it (`git worktree add ../smoke-wt -b wt`), and in each a staged
   change, an unstaged change, an untracked file and a stash;
-- a character running Claude Code in the main checkout, with one finished turn that names a code word;
-- a character running Codex in the worktree, with one finished turn;
-- a character running OpenCode in the main checkout, with one finished turn that names another code word;
-- a plain shell character with a second terminal open (Split, then Terminal in the right pane), and a browser tab on
+- a robot running Claude Code in the main checkout, with one finished turn that names a code word;
+- a robot running Codex in the worktree, with one finished turn;
+- a robot running OpenCode in the main checkout, with one finished turn that names another code word;
+- a plain shell robot with a second terminal open (Split, then Terminal in the right pane), and a browser tab on
   a `file:` URL;
-- a character with a file in its context.
+- a robot with a file in its context.
 
-Select the Claude character and open its side card.
+Select the Claude robot and open its side card.
 
 ## 3. Mac to Linux
 
 1. **Handover** at the foot of the sidebar → **studio**.
-   - The checks run alone: the sheet lists the folders, files and size, which characters stop and how, and warns about
+   - The checks run alone: the sheet lists the folders, files and size, which robots stop and how, and warns about
      each folder Claude or Codex will ask to trust. Nothing is rested until **Move to studio**; choose it.
    - A rested terminal says the step the handover is at; clicking it opens the sheet. The transfer row shows a rate
      and the time left.
-   - Resting characters, then Transferring files and sessions with progress per folder and session, then Verifying and
-     committing, then Resuming characters with a row per character.
+   - Resting robots, then Transferring files and sessions with progress per folder and session, then Verifying and
+     committing, then Resuming robots with a row per robot.
 2. When it completes:
-   - The sidebar's foot names `studio`. The same character is selected with its card open.
-   - A terminal of the Claude character answers its trust prompt once ("Yes, I trust this folder"), then shows its
-     earlier turn. Ask it for the code word: it remembers it. The Codex character does the same, and the OpenCode one
+   - The sidebar's foot names `studio`. The same robot is selected with its card open.
+   - A terminal of the Claude robot answers its trust prompt once ("Yes, I trust this folder"), then shows its
+     earlier turn. Ask it for the code word: it remembers it. The Codex robot does the same, and the OpenCode one
      remembers its code word without asking about the folder.
    - The plain shell prints *Svall restarted this shell after a handover…*, in the same folder. `hostname` names
      the Linux machine. Its second terminal is there too.
@@ -82,13 +82,13 @@ Select the Claude character and open its side card.
 2. Start it again and choose **Terminate and carry**: the handover goes on, and on the other side the shell reopens
    with the restart notice.
 3. Give an agent a task that takes a few minutes and start a handover.
-   - Resting characters shows it resting, with **Interrupt and carry**.
+   - Resting robots shows it resting, with **Interrupt and carry**.
    - Choose it: the agent is interrupted, and on the other side it resumes with its conversation.
-4. Give the OpenCode character a local MCP server (an `mcp` entry in `opencode.json` in its folder), let it finish a
+4. Give the OpenCode robot a local MCP server (an `mcp` entry in `opencode.json` in its folder), let it finish a
    turn, and start a handover.
-   - Resting characters rests it at once: the MCP server it runs does not block.
-   - Once the handover completes, `pgrep -fl opencode` on the machine it left lists nothing of that character.
-5. Turn on **keep on this machine** on a character's card and start a handover: `character_pinned` stops it, with a
+   - Resting robots rests it at once: the MCP server it runs does not block.
+   - Once the handover completes, `pgrep -fl opencode` on the machine it left lists nothing of that robot.
+5. Turn on **keep on this machine** on a robot's card and start a handover: `robot_pinned` stops it, with a
    button to the card.
 
 ## 6. A copy changed on the other machine
@@ -106,7 +106,7 @@ The Linux machine is reached over Tailscale, so disconnecting Tailscale on the M
 1. Start a handover and disconnect while it is transferring.
    - The headline shows retries, and within two minutes it stops with **Resume** and **Abort**.
 2. Reconnect and choose **Abort**. The fleet stays on the machine it was on, and its terminals reopen.
-3. Start again, disconnect during Resuming characters (after the commit), and reconnect.
+3. Start again, disconnect during Resuming robots (after the commit), and reconnect.
    - It stops with **Retry** only, never Abort.
    - Retry brings the fleet up on the new machine; the old one runs none of its terminals.
 4. Repeat 1–2 in the other direction, from Linux to the Mac.
@@ -118,7 +118,7 @@ The Linux machine is reached over Tailscale, so disconnecting Tailscale on the M
 2. Start one more. While it transfers, find the helper with `svall -p smoke handover status` ("running here as pid N")
    and `kill -9` it, then quit and reopen the app.
    - The sheet shows the handover stopped part way with **Resume** and **Abort**. Resume completes it.
-3. Do the same once it is Resuming characters: the sheet offers only **Retry**, and Retry completes it.
+3. Do the same once it is Resuming robots: the sheet offers only **Retry**, and Retry completes it.
 
 ## 9. Re-attach after an ssh drop
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { app } from '../boot.js';
 import { rectOf } from '../BrowserArea.js';
 import { useApp } from '../hooks.js';
-import { CharPanes } from '../CharPanes.js';
+import { RobotPanes } from '../RobotPanes.js';
 import { useHalfGrip } from '../halfGrip.js';
 import { statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
@@ -11,7 +11,7 @@ import { cardRect } from './card.js';
 type Props = { id: string; host: { w: number; h: number } };
 
 export function TerminalCard({ id, host }: Props) {
-  const c = useApp((s) => s.fleet.characters[id]);
+  const c = useApp((s) => s.fleet.robots[id]);
   const size = useApp((s) => s.cardSize);
   const half = useApp((s) => s.halfCard);
   const opacity = useApp((s) => (size === 'full' ? s.settings.fullOpacity : s.settings.cardOpacity));
@@ -47,11 +47,11 @@ export function TerminalCard({ id, host }: Props) {
   const status = statusOf(c);
   return (
     // a wheel and a double click inside the card are the card's: the map under it pans on one and makes an island on the other
-    <div ref={ref} className="terminal-card panel" data-testid="terminal-card" data-char={id} data-size={size} data-settled={settled} data-resizing={resizing}
+    <div ref={ref} className="terminal-card panel" data-testid="terminal-card" data-robot={id} data-size={size} data-settled={settled} data-resizing={resizing}
       onWheel={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}
       style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}>
       <div className="card-body">
-        <CharPanes key={id} id={id} opacity={opacity}
+        <RobotPanes key={id} id={id} opacity={opacity}
           lead={<span className="tname-row"><i className="sdot" data-status={status} /><span className="tname">{c.name}</span></span>}
           trail={
             <span className="tctl">

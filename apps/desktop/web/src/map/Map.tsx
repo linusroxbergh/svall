@@ -1,12 +1,12 @@
 import { useMemo, useRef } from 'react';
 import { HOME_ISLAND, MIN_SIZE } from '@svall/protocol';
-import { newCharacterOn, newIsland, startHomeAction, toggleIsland } from '../actions.js';
+import { newRobotOn, newIsland, startHomeAction, toggleIsland } from '../actions.js';
 import { app, deps } from '../boot.js';
 import { followLink } from '../LinkAsk.js';
 import { useApp } from '../hooks.js';
-import { characterMenu, islandMenu } from '../menus.js';
+import { robotMenu, islandMenu } from '../menus.js';
 import { ResourcesLayer } from '../resources/Shelf.js';
-import { charactersOf, homeIsland, mapIslandsSorted, resumeErrorOf, statusOf } from '../selectors.js';
+import { robotsOf, homeIsland, mapIslandsSorted, resumeErrorOf, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { Toast, toastCorner } from '../Toast.js';
 import { useAutoArrange } from './arrange.js';
@@ -56,7 +56,7 @@ export function Map() {
   useRobotMotion();
 
   const cs = cellSize(layout);
-  const hovered = hov.hover && !drag && !card ? fleet.characters[hov.hover] : undefined;
+  const hovered = hov.hover && !drag && !card ? fleet.robots[hov.hover] : undefined;
   const cardBox = card ? cardRect({ size: cardSize, win: hostSize, half: halfCard }) : undefined;
   const sea = domPointer({ kind: 'water' });
   const startHover = (id: string) => { if (!app.store.getState().card && !inDrag()) hov.start(id); };
@@ -90,13 +90,13 @@ export function Map() {
               y: Math.max((MIN_SIZE.h - i.size.h) * theme.cell, preview.offset.y) - (preview.size.h - i.size.h) * theme.cell }
             : undefined;
           const hold = { onPointerEnter: () => hov.holdIsland(i.id), onPointerLeave: () => hov.releaseIsland(i.id) };
-          const count = charactersOf(fleet, i.id).length;
+          const count = robotsOf(fleet, i.id).length;
           return (
             <Island key={i.id} island={shown} count={count} offset={islandOffset(i, preview)} gripOffset={gripOffset}
               hot={hov.hotIsland === i.id || selectedIslandId === i.id} selected={selectedIslandId === i.id}
               dragging={Boolean(preview)} settling={Boolean(pendingIsland) && preview === pendingIsland}
               hover={dropHover?.kind === 'island' && dropHover.id === i.id}
-              onNew={() => newCharacterOn(deps(), i.id)}
+              onNew={() => newRobotOn(deps(), i.id)}
               onToggle={() => toggleIsland(deps(), i.id)}
               onMenu={(e) => islandMenu(e, i.id, count === 0)}
               land={domPointer({ kind: 'label', islandId: i.id })}
@@ -116,7 +116,7 @@ export function Map() {
           return <div className="drop-cell" data-testid="drop-cell" data-free={drag.over.free}
             style={{ left: (i.position.x + drag.over.local.x) * cs, top: (i.position.y + drag.over.local.y) * cs, width: cs, height: cs }} />;
         })()}
-        {mapIslandsSorted(fleet).flatMap((i) => charactersOf(fleet, i.id).map((c) => {
+        {mapIslandsSorted(fleet).flatMap((i) => robotsOf(fleet, i.id).map((c) => {
           const dragging = drag?.kind === 'figure' && drag.id === c.id;
           if (dragging && overHome) return null;
           const preview = previewFor(i.id);
@@ -125,18 +125,18 @@ export function Map() {
           return (
             <Token key={c.id} c={c} status={statusOf(c)} world={world} links={links} selected={c.id === selectedId} dragging={dragging}
               offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland} failed={resumeErrorOf({ shell }, c)}
-              hover={dropHover?.kind === 'char' && dropHover.id === c.id}
+              hover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
               onOpen={() => app.store.getState().focus(c.id)}
-              onLink={followLink} onMenu={(e) => characterMenu(e, c.id)} />
+              onLink={followLink} onMenu={(e) => robotMenu(e, c.id)} />
           );
         }))}
-        {drag?.kind === 'figure' && !overHome && fleet.characters[drag.id]?.islandId === HOME_ISLAND && (
-          <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} links={links} selected={drag.id === selectedId} dragging
-            failed={resumeErrorOf({ shell }, fleet.characters[drag.id])}
+        {drag?.kind === 'figure' && !overHome && fleet.robots[drag.id]?.islandId === HOME_ISLAND && (
+          <Token key={drag.id} c={fleet.robots[drag.id]} status={statusOf(fleet.robots[drag.id])} world={drag.cell} links={links} selected={drag.id === selectedId} dragging
+            failed={resumeErrorOf({ shell }, fleet.robots[drag.id])}
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
-            onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => characterMenu(e, drag.id)} />
+            onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => robotMenu(e, drag.id)} />
         )}
       </div>
       <div className="map-overlay">
@@ -150,18 +150,18 @@ export function Map() {
             onArrange={() => arrange()}
             onNewIsland={() => newIsland(deps())}
             onAction={(a) => startHomeAction(deps(), a)}
-            onNew={() => newCharacterOn(deps(), HOME_ISLAND)}
+            onNew={() => newRobotOn(deps(), HOME_ISLAND)}
             label={domPointer({ kind: 'label', islandId: HOME_ISLAND })}
             tokenPointer={(id) => domPointer({ kind: 'figure', id })}
             onHoverStart={startHover} onHoverEnd={endHover}
             onOpen={(id) => app.store.getState().focus(id)}
             onLink={followLink}
-            onMenu={(id, e) => characterMenu(e, id)}
+            onMenu={(id, e) => robotMenu(e, id)}
             dropHover={dropHover} />
         )}
         {hi && place.mode !== 'pill' && <ResourcesIsland place={place} />}
         {hovered && fleet.islands[hovered.islandId] && <HoverLayer c={hovered} island={fleet.islands[hovered.islandId]} layout={layout} place={place} host={hostSize} />}
-        {card && fleet.characters[card] && <TerminalCard key={card} id={card} host={hostSize} />}
+        {card && fleet.robots[card] && <TerminalCard key={card} id={card} host={hostSize} />}
         <Toast corner={toastCorner(cardBox, hostSize)} />
         <ResourcesLayer tip={place.cx - ISLET.margin} />
       </div>
