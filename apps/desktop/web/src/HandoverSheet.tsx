@@ -275,14 +275,17 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
 /** No gateway to move to: a machine this Mac knows made the gateway, or a new one added, and back to the sheet after. */
 function NoGateway() {
   const machines = useApp((s) => s.machines);
+  const error = useApp((s) => s.machinesError);
   const running = useApp((s) => !!s.host?.running);
-  useEffect(() => { app.bridge.send({ type: 'host.list' }); }, []);
+  const list = () => { app.bridge.send({ type: 'host.list' }); };
+  useEffect(list, []);
   const known = machines?.filter((m) => m.ssh) ?? [];
   const enable = (name: string) => { store().hostFromHandover(name); startHost('enable', { name }); };
   return (
     <div className="host-note" data-testid="handover-no-gateway">
-      {known.length ? "Make a machine this fleet's gateway to move the fleet there." : 'Add a Linux machine to move this fleet to.'}
+      {error ?? (known.length ? "Make a machine this fleet's gateway to move the fleet there." : 'Add a Linux machine to move this fleet to.')}
       <div className="acts">
+        {error && <button className="btn" data-testid="handover-machines-reload" onClick={list}>Read again</button>}
         {known.map((m) => (
           <button key={m.id} className="btn pri" data-testid={`handover-enable-${m.name}`} disabled={running} onClick={() => enable(m.name)}>
             Make {m.name} this fleet&apos;s gateway

@@ -72,7 +72,7 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   handoverOpen: false,
   // the fleet the page already holds stands while its machine is away: only the report changes
   setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
-  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined, hostForHandover: false }; }),
+  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined, hostForHandover: next && s.hostForHandover }; }),
   hostFromHandover: (machine) => set({ handoverOpen: false, hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: undefined, hostForHandover: true, host: undefined }),
   openHostTerminal: (machine, run) => set({ hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run } : {} }),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
