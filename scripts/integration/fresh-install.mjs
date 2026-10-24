@@ -283,8 +283,8 @@ function hostAdd(a) {
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
-    && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code', 'ssh fresh, then install Codex',
-      'ssh fresh, then install OpenCode']), () => brief(result));
+    && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',
+      'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup']), () => brief(result));
 }
 
 /** A second fleet whose gateway the machine is, as a handover moves one: its own daemon's unit on the machine. */
@@ -318,7 +318,7 @@ function upgrade(b) {
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
   for (const s of steps) check(`host upgrade ${s.step}`, s.status === 'ok', () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
-  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'release', 'upload', 'install', 'probe']),
+  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe']),
     () => brief(steps.map((s) => s.step)));
   check('host upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
   check('host upgrade release', steps.find((s) => s.step === 'release')?.detail === from(b), () => brief(steps.find((s) => s.step === 'release')));
