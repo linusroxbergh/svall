@@ -550,7 +550,15 @@ The first `pnpm e2e` needs
   libghostty terminals; `web/src/mobile` is the phone view over the same store.
 - TypeScript on Node 24, pnpm workspaces, vitest.
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). There is no CLA.
+
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The fonts are not MIT; their folder has a licence
-file.
+GPL-3.0-or-later, see [`LICENSE`](LICENSE). Copyright (c) 2026 Linus Roxbergh.
+The fonts are OFL; their folder has the licence file. The third-party software
+the app and the controller carry is listed in
+[`apps/desktop/mac/NOTICE`](apps/desktop/mac/NOTICE) and the release's
+`licenses/NOTICE`. The name and icon are not covered by the licence, see
+[`TRADEMARK.md`](TRADEMARK.md).
