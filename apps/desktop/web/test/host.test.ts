@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, machineName, outcomeOf,
+  applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, loginForward, machineName, outcomeOf,
   runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 
-const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
+const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string; run?: string } = {}) =>
   ({ step: s, status, ...extra });
 
 describe('host run', () => {
@@ -26,6 +26,8 @@ describe('host run', () => {
     run = applyStep(run, step('claude', 'warn', { detail: '1.2.3, not logged in', action: 'ssh u@h, then claude auth status and log in' }));
     run = applyStep(run, step('probe', 'fail', { detail: 'the daemon did not answer', action: 'ssh u@h and see what svall doctor says' }));
     expect(runActions(run)).toEqual(['ssh u@h, then claude auth status and log in', 'ssh u@h and see what svall doctor says']);
+    run = applyStep(run, step('codex', 'warn', { detail: 'not logged in', action: 'ssh u@h, then codex login', run: 'codex login' }));
+    expect(run.steps.at(-1)?.run).toBe('codex login');
     run = endRun(run, 1);
     expect(run.running).toBe(false);
     expect(run.code).toBe(1);
@@ -209,6 +211,13 @@ describe('what the page may ask for', () => {
     expect(sshDestination('linus@studio')).toBe(true);
     expect(sshDestination('--oProxyCommand=x')).toBe(false);
     expect(sshDestination('a b')).toBe(false);
+  });
+
+  it("forwards Codex's login port only to a login that waits for the browser on it", () => {
+    expect(loginForward('codex login')).toBe(1455);
+    expect(loginForward('codex login --device-auth')).toBeUndefined();
+    expect(loginForward('codex')).toBeUndefined();
+    expect(loginForward('claude auth login')).toBeUndefined();
   });
 });
 

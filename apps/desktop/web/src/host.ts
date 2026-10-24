@@ -81,6 +81,7 @@ export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {
     step: event.step, status: event.status,
     ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
     ...(event.action ? { action: plainStep(event.action, names) } : {}),
+    ...(event.run ? { run: event.run } : {}),
   };
   if (event.status === 'start' && run.steps.some((s) => s.step === event.step)) return run;
   const at = run.steps.findIndex((s) => s.step === event.step && s.status === 'start');
@@ -211,3 +212,6 @@ export function connectionBanner(c: ConnectionState | undefined, o: { handoverEn
     }
   }
 }
+
+/** The port a login there waits for the browser on: Codex's, on localhost:1455, which a forward from this Mac reaches. */
+export const loginForward = (run: string): number | undefined => (/^codex login\s*$/.test(run) ? 1455 : undefined);

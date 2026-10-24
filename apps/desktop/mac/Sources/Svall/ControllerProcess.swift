@@ -165,6 +165,9 @@ extension String {
 /// A machine's registry name: the only name `svall host` and `svall handover` take for one.
 let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
 
+/// An ssh destination the app hands to ssh: never one that reads as a flag.
+let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
+
 /// What `svall handover` reads as its own words before a machine's name, which the registry refuses as names.
 let handoverWords: Set<String> = ["on", "off", "status", "attach"]
 
@@ -179,7 +182,7 @@ enum HostCommand {
         switch op {
         case .add:
             guard let ssh = args.ssh, args.forget == nil,
-                  ssh.allowed(by: "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$") else { return nil }
+                  ssh.allowed(by: sshDestinationPattern) else { return nil }
             argv += ["--ssh", ssh]
         case .enable:
             guard let fleet, args.ssh == nil, args.forget == nil, fleet.allowed(by: "^[a-z][a-z0-9-]*$") else { return nil }
@@ -203,11 +206,13 @@ final class HostProcess {
     struct Step: Codable, Equatable {
         let step: String, status: String
         let detail: String?, action: String?
+        // a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
+        var run: String? = nil
     }
 
     /// What `svall host doctor --json` prints once it is done: each check becomes a step.
     private struct Report: Decodable {
-        struct Check: Decodable { let name: String, status: String, detail: String? }
+        struct Check: Decodable { let name: String, status: String, detail: String?, run: String? }
         let checks: [Check]
     }
 
@@ -254,7 +259,7 @@ final class HostProcess {
     /// command itself said.
     private func finish(_ status: Int32, said: [String]) {
         if report, let report = try? JSONDecoder().decode(Report.self, from: Data(printed.joined(separator: "\n").utf8)) {
-            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: nil)) }
+            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: nil, run: check.run)) }
         }
         if status != 0, !sawFailure, !said.isEmpty {
             onStep(Step(step: "svall", status: "fail", detail: said.joined(separator: "\n"), action: nil))
