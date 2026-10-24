@@ -198,7 +198,7 @@ const KILL_GRACE = 2000;
  * still running at `timeoutMs` is sent SIGTERM, then SIGKILL, and the run rejects at once.
  */
 export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
-  const { SVALL_ROBOT_ID: _id, SVALL_TERM: _term, ...rest } = env;
+  const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, SVALL_TERM: _term, ...rest } = env;
   const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);
   const child = spawn(cmd, args, { env: rest, cwd: o.cwd ?? os.homedir(), stdio: ['ignore', out, 'pipe'] });
   if (typeof out === 'number') fs.closeSync(out);

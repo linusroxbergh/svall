@@ -49,6 +49,13 @@ describe('localAppStorage', () => {
     expect(store().getResourceGroups()).toEqual(['global', 'fleet', 'repo']);
   });
 
+  it('reads the side card sections and shelf groups an older app saved under character', () => {
+    mem.setItem('svall.side.sections', '{"character.note":{"height":140},"character.details":{"shut":true}}');
+    mem.setItem('svall.resources.tiers', '["global","character"]');
+    expect(store().getSections()).toEqual({ 'robot.note': { height: 140 }, 'robot.details': { shut: true } });
+    expect(store().getResourceGroups()).toEqual(['global', 'robot']);
+  });
+
   it('reads back what it wrote', () => {
     const s = store();
     s.setFocus('c1');

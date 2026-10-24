@@ -25,11 +25,25 @@ export const repoSlug = (mainRoot: string): string =>
 
 export const docsDir = (docs: string, tier: EntityTier, id: string): string => path.join(docs, TREE[tier], id);
 
-/** Moves the robots' notes out of docs/characters, where an older svalld kept them. */
-export function liftRobotDocs(docs: string): void {
+/** Moves the robots' notes out of docs/characters, where an older svalld and the sessions it started keep them. */
+export function liftRobotDocs(docs: string, log: Pick<Logger, 'error'>): void {
   const from = path.join(docs, 'characters');
-  const to = path.join(docs, TREE.robot);
-  if (fs.existsSync(from) && !fs.existsSync(to)) fs.renameSync(from, to);
+  if (!fs.existsSync(from)) return;
+  for (const id of fs.readdirSync(from)) {
+    const was = path.join(from, id);
+    const to = docsDir(docs, 'robot', id);
+    try {
+      if (!fs.existsSync(to)) {
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        fs.renameSync(was, to);
+        continue;
+      }
+      // a note never replaces one of the same name, which stays behind for the next start
+      for (const f of fs.readdirSync(was)) if (!fs.existsSync(path.join(to, f))) fs.renameSync(path.join(was, f), path.join(to, f));
+      if (fs.readdirSync(was).length === 0) fs.rmdirSync(was);
+    } catch (e) { log.error(`docs: ${was} stays where it is: ${(e as Error).message}`); }
+  }
+  if (fs.readdirSync(from).length === 0) fs.rmdirSync(from);
 }
 
 /**

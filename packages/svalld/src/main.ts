@@ -166,7 +166,7 @@ async function start(opts: Options): Promise<Daemon> {
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
-  liftRobotDocs(paths.docs);
+  liftRobotDocs(paths.docs, log);
   installHookScripts(paths);
   const token = readOrCreateToken(paths.token);
   const key = phoneKey(paths.mobileKey, readOrCreateToken(paths.mobileKey));

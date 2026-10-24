@@ -45,6 +45,6 @@ export function rendererEnv(settingsFile: string): Record<string, string> {
 // daemon no shell environment, so an API key reaches the child through envFile
 export function spawnClaude(o: { args: string[]; cwd: string; envFile: string }): Piped {
   fs.mkdirSync(o.cwd, { recursive: true });
-  const { SVALL_ROBOT_ID: _id, ...env } = { ...process.env, ...readEnvFile(o.envFile) };
+  const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...env } = { ...process.env, ...readEnvFile(o.envFile) };
   return spawn('claude', [...o.args, ...ISOLATION], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
 }

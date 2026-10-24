@@ -127,7 +127,7 @@ describe('svall argument parsing', () => {
     const script = path.join(os.homedir(), '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(os.homedir(), '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
-    const old = JSON.stringify(mergeHooks({}, `[ -z "$SVALL_ROBOT_ID" ] || { node '${script}' claude; }`, script));
+    const old = JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script));
     fs.writeFileSync(settings, old);
     const PATH = `${bin}:${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     try {
@@ -269,7 +269,7 @@ describe('svall uninstall --login-shell', () => {
     fs.mkdirSync(cfg);
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(cfg, 'settings.json');
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_ROBOT_ID" ] || { node '${script}' claude; }`, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
     fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
@@ -293,7 +293,7 @@ describe('svall uninstall --login-shell', () => {
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(home, '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings));
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_ROBOT_ID" ] || { node '${script}' claude; }`, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const env = { HOME: home, SHELL: path.join(home, 'no-such-shell'), PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');

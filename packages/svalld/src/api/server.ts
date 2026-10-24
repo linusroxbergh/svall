@@ -202,9 +202,11 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     let parsed: unknown;
     try { parsed = JSON.parse(text); } catch { res.writeHead(400).end(); return; }
     const r = Request.safeParse(parsed);
-    if (!r.success || !RPC_METHODS.has(r.data.method)) { res.writeHead(400).end(); return; }
+    // a worker an older svalld served answers with char.answer
+    const call = r.success && r.data.method === 'char.answer' ? { ...r.data, method: 'robot.answer' } : r.data;
+    if (!call || !RPC_METHODS.has(call.method)) { res.writeHead(400).end(); return; }
     const viewer: Viewer = { kind: 'phone', login, send: () => {}, backlog: () => 0 };
-    const out = await dispatch(r.data, { ...base, viewer });
+    const out = await dispatch(call, { ...base, viewer });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(out));
   }
   server.on('upgrade', (req, socket, head) => {

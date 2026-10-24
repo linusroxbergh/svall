@@ -464,6 +464,8 @@ runIf('phone sockets', () => {
     const ok = await post(`/${key}/rpc`, call, me);
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ id: 1, error: { code: 'not_found' } });
+    // a worker an older svalld served answers with char.answer
+    expect(await (await post(`/${key}/rpc`, { ...call, method: 'char.answer' }, me)).json()).toMatchObject({ id: 1, error: { code: 'not_found' } });
     expect((await post('/rpc', call, me)).status).toBe(401);
     expect((await post(`/${key}/rpc`, call, { 'Tailscale-User-Login': 'them@example.com' })).status).toBe(401);
     for (const method of ['state.get', 'robot.seen']) expect((await post(`/${key}/rpc`, { id: 1, method, params: { id: 'c_none' } }, me)).status).toBe(400);
@@ -471,7 +473,7 @@ runIf('phone sockets', () => {
     expect((await fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: '{', headers: me })).status).toBe(400);
   });
 
-  it('reads a POST body whole, a robot split across its chunks and all, and lets a dropped one go', async () => {
+  it('reads a POST body whole, a character split across its chunks and all, and lets a dropped one go', async () => {
     const api = await boot();
     const headers = { 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json', ...PAIRED };
     const body = Buffer.from(JSON.stringify({ id: 1, method: 'robot.answer', params: { id: 'c_ö', answer: 'approve' } }));

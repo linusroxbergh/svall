@@ -80,6 +80,14 @@ describe('openJournal', () => {
     expect(loaded).toMatchObject({ kind: 'open', journal: { role: 'source', phase: 'transfer' } });
   });
 
+  it("loads a journal an older svalld wrote, which names each terminal's robot characterId", () => {
+    const paths = resolvePaths(makeHome());
+    const old = JSON.stringify(source({ terminated: [{ robotId: 'c_2', term: undefined, processes: ['vim'] }] })).replaceAll('"robotId"', '"characterId"');
+    fs.mkdirSync(path.dirname(paths.journal), { recursive: true });
+    fs.writeFileSync(paths.journal, old);
+    expect(openJournal(paths).load()).toMatchObject({ kind: 'open', journal: { stoppedTerminals: [{ robotId: 'c_1', term: 2 }], terminated: [{ robotId: 'c_2', processes: ['vim'] }] } });
+  });
+
   it('survives a crash between the rename and the directory fsync', () => {
     const paths = resolvePaths(makeHome());
     const stages: Partial<DurableStages> = {

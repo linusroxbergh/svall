@@ -97,7 +97,7 @@ export const isHomeSlot = (island: { size: Size }, cell: Cell): boolean =>
   cell.y === HOME_ROW && homeSlots(island.size.w).includes(cell.x);
 
 // the label pill as the map draws it: two rows above the island's top edge, centred on its middle, and
-// as wide as its chevron, count and name — measured at 2.4 cells of furniture plus a fifth per robot
+// as wide as its chevron, count and name — measured at 2.4 cells of furniture plus a fifth per character
 export const pillWidth = (name: string): number => Math.max(2, Math.round(2.4 + name.length * 0.2));
 
 // the ground something holds on the map

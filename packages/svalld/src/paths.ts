@@ -24,7 +24,8 @@ export const helperOr = (script: string, args: string, fallback: string): string
 };
 
 // every hook command setup installs starts here, so the hook costs nothing outside a robot
-export const HOOK_GUARD = '[ -z "$SVALL_ROBOT_ID" ] ||';
+// a session an older svalld started carries SVALL_CHAR_ID
+export const HOOK_GUARD = '[ -z "$SVALL_ROBOT_ID$SVALL_CHAR_ID" ] ||';
 
 /** The scripts setup points Claude and Codex at from this home, the hook and the statusline, and the helper that stands in for them. */
 export const installedScripts = (home: string = svallHome()): string[] =>

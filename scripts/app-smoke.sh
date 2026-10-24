@@ -17,7 +17,7 @@ printf '#!/bin/sh\necho 2.1.0\n' > "$T/home/.local/bin/claude"
 # answers the daemon's version probe and nothing else, so the real tailscale is never asked
 printf '#!/bin/sh\n[ "$1" = version ]\n' > "$T/bin/tailscale"
 chmod +x "$T/bin/launchctl" "$T/bin/tailscale" "$T/home/.local/bin/claude"
-unset SVALL_HOME SVALL_ROBOT_ID TMUX CLAUDE_CONFIG_DIR CODEX_HOME
+unset SVALL_HOME SVALL_ROBOT_ID SVALL_CHAR_ID TMUX CLAUDE_CONFIG_DIR CODEX_HOME
 export HOME="$T/home" PATH="$T/bin:$T/home/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin" SHELL=/bin/sh SVALL_APP_DEST="$T/Apps"
 cli() { "$A/Helpers/node" "$A/Resources/runtime/svall.mjs" "$@"; }
 FAILED=0

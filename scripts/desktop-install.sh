@@ -4,7 +4,7 @@
 # hooks, shims or launchd agent are out of date or run another checkout, so a failed check or build leaves the machine untouched.
 set -eu
 # a robot's shell names its own fleet, which may be the release's
-unset SVALL_HOME SVALL_ROBOT_ID
+unset SVALL_HOME SVALL_ROBOT_ID SVALL_CHAR_ID
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 DEST="${SVALL_APP_DEST:-/Applications}"

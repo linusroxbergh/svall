@@ -30,7 +30,7 @@ export function codexRunner(o: { model?: string; cwd: string; bin?: string; time
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-scribe-'));
     const last = path.join(dir, 'last.txt');
     // without a robot id the Svall hook exits at once, so the pass is not mistaken for a robot
-    const { SVALL_ROBOT_ID: _id, ...env } = process.env;
+    const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...env } = process.env;
     try {
       const { code, out, err } = await runChild(
         () => spawn(o.bin ?? 'codex', ['exec', '--json', ...(o.model ? ['-m', o.model] : []), '-c', 'model_reasoning_effort="low"', ...ISOLATION, '-o', last, '-'],

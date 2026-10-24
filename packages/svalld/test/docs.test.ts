@@ -161,14 +161,23 @@ describe('removeDocs', () => {
 });
 
 describe('liftRobotDocs', () => {
-  it("moves the robots' notes out of the characters folder an older svalld kept, and leaves a robots folder alone", () => {
+  it("moves the robots' notes out of the characters folder, joins one written there later to the robot's, and replaces none", () => {
     const docs = resolvePaths(makeHome()).docs;
+    const lines: string[] = [];
+    const log = { error: (m: string) => { lines.push(m); } };
+    const robotDir = (id: string) => docsDir(docs, 'robot', id);
     put(path.join(docs, 'characters', 'c1', 'a.md'), doc('A.'));
-    liftRobotDocs(docs);
+    liftRobotDocs(docs, log);
     expect(fs.existsSync(path.join(docs, 'characters'))).toBe(false);
-    expect(fs.readFileSync(path.join(docsDir(docs, 'robot', 'c1'), 'a.md'), 'utf8')).toBe(doc('A.'));
-    put(path.join(docs, 'characters', 'c2', 'b.md'), doc('B.'));
-    liftRobotDocs(docs);
-    expect(fs.existsSync(path.join(docs, 'characters', 'c2', 'b.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(robotDir('c1'), 'a.md'), 'utf8')).toBe(doc('A.'));
+    put(path.join(docs, 'characters', 'c1', 'a.md'), doc('Later.'));
+    put(path.join(docs, 'characters', 'c1', 'b.md'), doc('B.'));
+    put(path.join(docs, 'characters', 'c2', 'c.md'), doc('C.'));
+    liftRobotDocs(docs, log);
+    expect(fs.readdirSync(robotDir('c1')).sort()).toEqual(['a.md', 'b.md']);
+    expect(fs.readFileSync(path.join(robotDir('c1'), 'a.md'), 'utf8')).toBe(doc('A.'));
+    expect(fs.readdirSync(path.join(docs, 'characters'))).toEqual(['c1']);
+    expect(fs.existsSync(path.join(robotDir('c2'), 'c.md'))).toBe(true);
+    expect(lines).toEqual([]);
   });
 });

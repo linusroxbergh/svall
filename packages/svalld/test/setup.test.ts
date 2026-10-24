@@ -209,6 +209,14 @@ describe('hookCommand and nodeRun', () => {
     expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_ROBOT_ID: '' })).toBe('args:0\n');
   });
 
+  it('runs the helper for a session an older svalld started, which carries SVALL_CHAR_ID', () => {
+    const { dir, script, pinned } = scripts();
+    fs.writeFileSync(path.join(dir, 'svall-hook'), '#!/bin/sh\necho "helper $*"\n', { mode: 0o755 });
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper claude \d+\n$/);
+    expect(sh(codexHookCommand(script), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper codex \d+\n$/);
+    expect(sh(statusWrapper(pinned, script), { SVALL_CHAR_ID: 'c1' })).toBe('helper status\n');
+  });
+
   it('runs the helper beside the script while it is there and executable, with the arguments the script would get', () => {
     const { dir, script, pinned } = scripts();
     const helper = path.join(dir, 'svall-hook');
@@ -328,10 +336,10 @@ describe('installHookScripts', () => {
 describe('commands Svall 0.1 wrote', () => {
   // what setup wrote before the helper, word for word
   const v01 = {
-    hook: (node: string, script: string) => `[ -z "$SVALL_ROBOT_ID" ] || { n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)} claude "$PPID"; }`,
-    codex: (script: string, node: string) => `[ -z "$SVALL_ROBOT_ID" ] || { n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)} codex "$PPID"; }`,
+    hook: (node: string, script: string) => `[ -z "$SVALL_CHAR_ID" ] || { n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)} claude "$PPID"; }`,
+    codex: (script: string, node: string) => `[ -z "$SVALL_CHAR_ID" ] || { n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)} codex "$PPID"; }`,
     status: (node: string, script: string) =>
-      `svall_status() { if [ -n "$SVALL_ROBOT_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`,
+      `svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`,
   };
   const R = { hook: '/u/.svall/hooks/agent-hook.mjs', status: '/u/.svall/hooks/claude-status.mjs' };
   const D = { hook: '/u/.svall-dev/hooks/agent-hook.mjs', status: '/u/.svall-dev/hooks/claude-status.mjs' };
@@ -1142,7 +1150,7 @@ describe('a bundled runtime', () => {
 
   it("names the app's node in Codex's hook for when the helper is missing, falling back to the one on PATH", () => {
     expect(codexHookCommand('/h/.svall/hooks/agent-hook.mjs', '/A/node'))
-      .toBe(`[ -z "$SVALL_ROBOT_ID" ] || { if [ -x '/h/.svall/hooks/svall-hook' ]; then '/h/.svall/hooks/svall-hook' codex "$PPID"; else n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; fi; }`);
+      .toBe(`[ -z "$SVALL_ROBOT_ID$SVALL_CHAR_ID" ] || { if [ -x '/h/.svall/hooks/svall-hook' ]; then '/h/.svall/hooks/svall-hook' codex "$PPID"; else n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; fi; }`);
   });
 });
 

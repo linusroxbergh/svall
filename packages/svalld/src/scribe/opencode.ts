@@ -20,7 +20,7 @@ export function opencodeRunner(o: { model?: string; cwd: string; bin?: string; t
   return async (system, prompt, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });
     const bin = o.bin ?? 'opencode';
-    const { SVALL_ROBOT_ID: _id, ...rest } = process.env;
+    const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...rest } = process.env;
     const env = { ...rest, OPENCODE_CONFIG_CONTENT: CONFIG };
     const { code, out, err } = await runChild(
       () => spawn(bin, ['run', '--standalone', '--format', 'json', '--agent', 'svall-scribe', ...(o.model ? ['-m', o.model] : [])], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
