@@ -1,7 +1,11 @@
+import path from 'node:path';
 import type { FleetState, UsageSnapshot, UsageWindow } from '@svall/protocol';
 import { lastTokenCount, type RawRateLimits, type RawRateWindow } from '../agent/codex-transcript.js';
 import { readTail as readFileTail } from '../agent/transcript.js';
 import { spawnClaude } from '../claude.js';
+import { codexPaths } from '../codex/install.js';
+import { claudePaths } from '../paths.js';
+import { accountLine, claudeAccount, codexAccount } from './account.js';
 
 export type FetchUsage = () => Promise<UsageSnapshot>;
 
@@ -131,11 +135,25 @@ export const codexWindows = (limits: RawRateLimits): UsageWindow[] =>
 
 const CODEX_TAIL = 64 * 1024;
 
+type Accounts = { claude: () => string | undefined; codex: () => string | undefined };
+
 // a plan shows only while a character runs on it. Codex answers no usage question out of band and
 // reports its limits on every turn instead, so they are read off the live sessions' rollouts when the
 // panel asks: nothing is remembered, and a reading is no older than the last turn of an open session
-export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string }): FetchUsage {
+export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string; accounts?: Accounts }): FetchUsage {
   const tail = o.readTail ?? ((file: string) => readFileTail(file, CODEX_TAIL));
+  const accounts = o.accounts ?? {
+    claude: () => claudeAccount(claudePaths().json),
+    codex: () => codexAccount(path.join(codexPaths().dir, 'auth.json')),
+  };
+  // the login line names only the plans whose windows show
+  const withAccount = (snapshot: UsageSnapshot, shown: { claude?: boolean; codex?: boolean }): UsageSnapshot => {
+    const account = accountLine([
+      ...(shown.claude ? [{ agent: 'Claude', email: accounts.claude() }] : []),
+      ...(shown.codex ? [{ agent: 'Codex', email: accounts.codex() }] : []),
+    ]);
+    return account ? { ...snapshot, account } : snapshot;
+  };
   return async () => {
     const agents = Object.values(o.state().characters).flatMap((c) => (c.tmux && c.agent ? [c.agent] : []));
     const newest = agents
@@ -146,9 +164,12 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
     if (!agents.length) return { available: true, idle: true, windows: [] };
     // OpenCode runs on any provider and reports no plan's limits
     if (agents.every((a) => a.kind === 'opencode')) return { available: false, windows: [] };
-    if (!agents.some((a) => a.kind === 'claude')) return { available: true, windows: codex };
+    if (!agents.some((a) => a.kind === 'claude')) return withAccount({ available: true, windows: codex }, { codex: codex.length > 0 });
     // a claude that is logged out or slow must not take the codex windows down with it
     const claude = await o.claude().catch((e: unknown): UsageSnapshot => { if (!codex.length) throw e; return { available: false, windows: [] }; });
-    return { available: claude.available || codex.length > 0, windows: [...claude.windows, ...codex] };
+    return withAccount(
+      { available: claude.available || codex.length > 0, windows: [...claude.windows, ...codex] },
+      { claude: claude.available, codex: codex.length > 0 },
+    );
   };
 }

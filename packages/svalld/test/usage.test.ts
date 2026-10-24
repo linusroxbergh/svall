@@ -3,6 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentKind, FleetState, UsageSnapshot } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
+import { accountLine, claudeAccount, codexAccount } from '../src/usage/account.js';
 import { cachedUsage, codexWindows, fleetUsage, usageFetcher } from '../src/usage/usage.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -212,5 +213,63 @@ describe('fleetUsage', () => {
     expect(await fleetUsage({ state: stateOf(char('a', 'claude')), claude: apiKeyLogin })()).toEqual({ available: false, windows: [] });
     const both = stateOf(char('a', 'claude'), char('b', 'codex', { transcriptPath: '/b.jsonl' }));
     expect((await fleetUsage({ state: both, claude: apiKeyLogin, readTail: noon })()).available).toBe(true);
+  });
+
+  it('names the login behind the windows it shows, and none while nothing shows', async () => {
+    const accounts = { claude: () => 'a@x.io', codex: () => 'b@x.io' };
+    const both = stateOf(char('a', 'claude'), char('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    expect((await fleetUsage({ state: both, claude: async () => claudeSnapshot, readTail: noon, accounts })()).account).toBe('Claude a@x.io · Codex b@x.io');
+    expect((await fleetUsage({ state: stateOf(char('a', 'claude')), claude: async () => claudeSnapshot, accounts })()).account).toBe('a@x.io');
+    expect((await fleetUsage({ state: stateOf(char('b', 'codex', { transcriptPath: '/b.jsonl' })), claude: async () => claudeSnapshot, readTail: noon, accounts })()).account).toBe('b@x.io');
+    // a codex that has reported nothing yet, an API-key claude and an idle fleet show no windows, so no login either
+    expect(await fleetUsage({ state: stateOf(char('b', 'codex', { transcriptPath: '/b.jsonl' })), claude: async () => claudeSnapshot, readTail: () => '', accounts })()).not.toHaveProperty('account');
+    const apiKeyLogin = async (): Promise<UsageSnapshot> => ({ available: false, windows: [] });
+    expect(await fleetUsage({ state: stateOf(char('a', 'claude')), claude: apiKeyLogin, accounts })()).not.toHaveProperty('account');
+    expect(await fleetUsage({ state: stateOf(char('a', 'claude', { live: false })), claude: async () => claudeSnapshot, accounts })()).not.toHaveProperty('account');
+    // a claude that failed while codex still shows names codex alone
+    const broken = async (): Promise<UsageSnapshot> => { throw new Error('claude exited 1'); };
+    expect((await fleetUsage({ state: both, claude: broken, readTail: noon, accounts })()).account).toBe('b@x.io');
+  });
+});
+
+describe('account readers', () => {
+  let home: string;
+  beforeEach(() => { home = makeHome(); });
+  afterEach(cleanHomes);
+
+  const jwt = (claims: object): string => `eyJhbGciOiJSUzI1NiJ9.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`;
+
+  it('reads the Claude login from .claude.json, and nothing from a file without one', () => {
+    const file = path.join(home, '.claude.json');
+    fs.writeFileSync(file, JSON.stringify({ oauthAccount: { emailAddress: 'linus@example.com', displayName: 'linus' } }));
+    expect(claudeAccount(file)).toBe('linus@example.com');
+    fs.writeFileSync(file, JSON.stringify({ projects: {} }));
+    expect(claudeAccount(file)).toBeUndefined();
+    fs.writeFileSync(file, JSON.stringify({ oauthAccount: { emailAddress: 7 } }));
+    expect(claudeAccount(file)).toBeUndefined();
+    fs.writeFileSync(file, '{not json');
+    expect(claudeAccount(file)).toBeUndefined();
+    expect(claudeAccount(path.join(home, 'missing.json'))).toBeUndefined();
+  });
+
+  it('reads the Codex login from the id token in auth.json, and nothing from an API-key login', () => {
+    const file = path.join(home, 'auth.json');
+    fs.writeFileSync(file, JSON.stringify({ auth_mode: 'chatgpt', tokens: { id_token: jwt({ email: 'linus@openai.example', sub: 'x' }), access_token: 'a' } }));
+    expect(codexAccount(file)).toBe('linus@openai.example');
+    fs.writeFileSync(file, JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'sk-test' }));
+    expect(codexAccount(file)).toBeUndefined();
+    fs.writeFileSync(file, JSON.stringify({ tokens: { id_token: 'not.a-jwt' } }));
+    expect(codexAccount(file)).toBeUndefined();
+    fs.writeFileSync(file, JSON.stringify({ tokens: { id_token: jwt({ sub: 'x' }) } }));
+    expect(codexAccount(file)).toBeUndefined();
+    expect(codexAccount(path.join(home, 'missing.json'))).toBeUndefined();
+  });
+
+  it('names one login plainly, two by their agent, and the same login once', () => {
+    expect(accountLine([{ agent: 'Claude', email: 'a@x.io' }])).toBe('a@x.io');
+    expect(accountLine([{ agent: 'Claude', email: 'a@x.io' }, { agent: 'Codex', email: 'b@x.io' }])).toBe('Claude a@x.io · Codex b@x.io');
+    expect(accountLine([{ agent: 'Claude', email: 'a@x.io' }, { agent: 'Codex', email: 'a@x.io' }])).toBe('a@x.io');
+    expect(accountLine([{ agent: 'Claude' }, { agent: 'Codex', email: 'b@x.io' }])).toBe('b@x.io');
+    expect(accountLine([{ agent: 'Claude' }])).toBeUndefined();
   });
 });

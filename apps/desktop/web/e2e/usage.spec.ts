@@ -1,7 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 import type { ToShell } from '../src/bridge.js';
 
 test('the usage tab tells nothing until it is opened, then reads the plan limits', async ({ page, svall }) => {
+  // the daemon's CLAUDE_CONFIG_DIR: the login whose limits the fake claude answers with
+  fs.writeFileSync(path.join(svall.home, 'claude', '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'linus@example.com' } }));
   await svall.open();
   const tab = page.getByTestId('usage-tab');
   await expect(tab).toBeVisible();
@@ -13,15 +17,17 @@ test('the usage tab tells nothing until it is opened, then reads the plan limits
   // a plan shows only while an agent runs on it
   await tab.click();
   await expect(page.getByTestId('usage-idle')).toHaveText('No agent is running.');
+  await expect(page.getByTestId('usage-account')).toHaveCount(0);
   await page.keyboard.press('Escape');
   const island = await svall.api.call('island.create', { name: svall.uniq('use') });
   const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
   await expect.poll(async () => (await svall.api.call('state.get', {})).characters[agent.id].agent?.kind).toBe('claude');
 
   await tab.click();
+  // the login the limits belong to sits small under the title
+  await expect(page.getByTestId('usage-account')).toHaveText('linus@example.com');
   const rows = page.getByTestId('usage-windows').locator('.use-win');
-  await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText('Session');
+  await expect(rows).toHaveCount(3);  await expect(rows.nth(0)).toContainText('Session');
   await expect(rows.nth(0)).toContainText('35%');
   await expect(rows.nth(1)).toContainText('Week');
   await expect(rows.nth(1)).toContainText('56%');

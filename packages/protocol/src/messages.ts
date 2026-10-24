@@ -34,9 +34,11 @@ export type UsageWindow = z.infer<typeof UsageWindow>;
 
 // available is false for the logins plan limits do not cover: an API key, Bedrock, Vertex
 // idle is a fleet with no agent running, which is when no plan is asked about
+// account names the login(s) the windows belong to, when known
 export const UsageSnapshot = z.object({
   available: z.boolean(),
   idle: z.boolean().optional(),
+  account: z.string().optional(),
   windows: z.array(UsageWindow),
 });
 export type UsageSnapshot = z.infer<typeof UsageSnapshot>;
