@@ -52,7 +52,7 @@
   .use-panel[data-load] { width: min(390px, calc(100vw - 16px)); }
 }
 /* the login the windows belong to, pulled up under the title */
-.use-account { margin: calc(-1 * var(--sp-lg)) 0 var(--sp-xl); font-size: var(--text-sm); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-account { margin: calc(-1 * var(--sp-lg)) 0 var(--sp-xl); font-size: var(--text-sm); color: var(--ink-3); overflow-wrap: anywhere; }
 .use-wins { display: flex; flex-direction: column; gap: var(--sp-2xl); }
 .use-win { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .use-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-lg); }
