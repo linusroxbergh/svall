@@ -208,7 +208,7 @@ describe('recordedCwd', () => {
     const meta = { type: 'session_meta', payload: { cwd: '/Users/ada/app' } };
     const turn = { type: 'turn_context', payload: { cwd: '/Users/ada/app/wt' } };
     const resumed = { type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: { cwd: '/home/ada/app' } } };
-    const said = { type: 'response_item', payload: { type: 'message', content: [{ type: 'output_text', text: '"cwd": "/elsewhere"' }] } };
+    const said = { type: 'response_item', payload: { type: 'function_call_output', cwd: '/elsewhere' } };
     expect(recordedCwd('codex', write([meta]))).toBe('/Users/ada/app');
     expect(recordedCwd('codex', write([meta, turn, said]))).toBe('/Users/ada/app/wt');
     expect(recordedCwd('codex', write([meta, turn, resumed, said]))).toBe('/home/ada/app');

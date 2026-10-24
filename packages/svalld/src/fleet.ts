@@ -785,11 +785,12 @@ export class Fleet extends EventEmitter<Events> {
       throw new NotFound(`no character ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
-    const { recorded, moved } = this.recorded(c, cwd);
+    const gone = fresh === undefined && (c.revive?.interrupted || c.agent?.kind === 'codex') ? this.goneFolder(c) : undefined;
+    const moved = gone ? { from: gone, to: cwd } : undefined;
     if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
     const resuming = fresh === undefined ? resumeOf(this.deps.store.state.characters[id], this.carried(id), id) : undefined;
     try {
-      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', cwd, recorded)), [...(island?.context ?? []), ...c.context]), prompt);
+      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
       this.deps.store.update((d) => {
         const cur = d.characters[id];
         cur.tmux = { windowId: w.windowId, paneId: w.paneId };
@@ -839,13 +840,11 @@ export class Fleet extends EventEmitter<Events> {
     return term === 2 ? this.openSecond(id, { command, prompt }) : this.reviveCharacter(id, prompt, command);
   }
 
-  /**
-   * The folder a dormant terminal's transcript last records its session working in, and, when this machine lacks it, that
-   * the session `moved` to `cwd`, as a handover between homes leaves it.
-   */
-  private recorded(t: TerminalSlot, cwd: string): { recorded?: string; moved?: { from: string; to: string } } {
+  // the folder a dormant terminal's transcript last records its session working in, when this machine lacks it, as a
+  // handover between homes leaves it
+  private goneFolder(t: TerminalSlot): string | undefined {
     const recorded = t.agent?.transcriptPath && t.revive?.command ? recordedCwd(t.agent.kind, t.agent.transcriptPath) : undefined;
-    return { recorded, ...(recorded && recorded !== cwd && !fs.existsSync(recorded) && { moved: { from: recorded, to: cwd } }) };
+    return recorded && !fs.existsSync(recorded) ? recorded : undefined;
   }
 
   // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's character
@@ -884,8 +883,8 @@ export class Fleet extends EventEmitter<Events> {
     if (c.second?.tmux) return c;
     const cwd = c.second ? this.reviveCwd(c, 2) : c.cwd;
     const island = this.deps.store.state.islands[c.islandId];
-    const revive = c.second?.revive?.command && resumeHere(c.second.revive.command, cwd, this.recorded(c.second, cwd).recorded);
-    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive ?? ''), [...(island?.context ?? []), ...c.context]);
+    const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
+    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
     const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.charEnv(id, { SVALL_TERM: '2' }));
     if (!this.deps.store.state.characters[id]) {
