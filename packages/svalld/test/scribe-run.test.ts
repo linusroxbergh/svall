@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AgentKind } from '@svall/protocol';
 import { claudeRunner, perPass } from '../src/scribe/run.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -83,13 +82,11 @@ describe('claudeRunner', () => {
 });
 
 describe('perPass', () => {
-  it('runs each pass on the CLI named at that moment', async () => {
-    let agent: AgentKind = 'claude';
-    const run = perPass({ claude: async () => 'from claude', codex: async () => 'from codex', opencode: async () => 'from opencode' }, () => agent);
+  it('runs each pass on the runner picked at that moment', async () => {
+    let name = 'claude';
+    const run = perPass(() => { const picked = name; return async () => `from ${picked}`; });
     expect(await run('s', 'p')).toBe('from claude');
-    agent = 'codex';
+    name = 'codex';
     expect(await run('s', 'p')).toBe('from codex');
-    agent = 'opencode';
-    expect(await run('s', 'p')).toBe('from opencode');
   });
 });

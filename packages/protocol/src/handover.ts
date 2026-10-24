@@ -70,20 +70,23 @@ export const MachineRecord = z.object({
 });
 export type MachineRecord = z.infer<typeof MachineRecord>;
 
+// a model for each CLI it names, picked in Settings or written here
+const ModelPicks = z.partialRecord(AgentKind, z.string());
+
 /** fleet.json: everything that travels with the fleet when it moves to another machine. */
 export const FleetConfig = z.object({
   id: FleetId,
   // what the app and `svall <name>` call the fleet; absent, its directory names it
   name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
   gatewayMachineId: MachineId.optional(),
-  // with no command, the crew starts the main agent's crewCommand
-  home: Home.extend({ command: z.string().optional() }).prefault({}),
+  // with no command, the crew starts the main agent's crewCommand on that CLI's model in home.model
+  home: Home.extend({ command: z.string().optional(), model: ModelPicks.optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
   // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),
-  // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
-  scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
+  // which plan a scribe pass spends; absent, the main agent's. model is one per CLI, or one of scribe.agent's CLI, else of claude's
+  scribe: z.object({ agent: AgentKind.optional(), model: z.union([z.string(), ModelPicks]).optional() }).prefault({}),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
   mobile: z.object({
     // the tailnet logins that may drive the fleet and get its pushes; empty lets in only the Mac's own login

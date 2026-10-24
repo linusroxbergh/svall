@@ -66,9 +66,14 @@ describe('login probes', () => {
 });
 
 describe('crewCommand', () => {
-  it("names the command mission control's crew starts", () => {
-    expect(AGENTS.claude.crewCommand).toBe('claude --model sonnet');
-    expect(AGENTS.codex.crewCommand).toBe('codex');
+  it("names the command mission control's crew starts, on a model when one is given", () => {
+    expect(AGENTS.claude.crewCommand(AGENTS.claude.crewModel)).toBe('claude --model opus');
+    expect(AGENTS.claude.crewCommand('sonnet')).toBe('claude --model sonnet');
+    expect(AGENTS.codex.crewCommand(AGENTS.codex.crewModel)).toBe('codex');
+    expect(AGENTS.codex.crewCommand('gpt-6-astra')).toBe('codex -m gpt-6-astra');
+    expect(AGENTS.opencode.crewCommand('opencode/big-pickle')).toBe('opencode');
+    expect(AGENTS.claude.crewCommand('opus[1m]')).toBe("claude --model 'opus[1m]'");
+    expect(AGENTS.codex.crewCommand('x; rm -rf ~')).toBe("codex -m 'x; rm -rf ~'");
   });
 });
 

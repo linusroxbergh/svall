@@ -302,6 +302,10 @@ export const setMainAgent = (d: ActionDeps, agent: AgentKind): void => {
   d.api.call('mainAgent.set', { agent }).catch(toast(d));
 };
 
+export const setModel = (d: ActionDeps, of: 'scribe' | 'home', agent: AgentKind, model: string | undefined): void => {
+  d.api.call('model.set', { of, agent, model }).catch(toast(d));
+};
+
 // only the label changes, and the window title with it; a refusal is the caller's to show
 export const renameFleet = async (d: Pick<Deps, 'api' | 'bridge'>, name: string): Promise<void> => {
   await d.api.call('fleet.rename', { name });

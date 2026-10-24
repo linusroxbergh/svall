@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
+import { shq } from './text.js';
 
 export type Version = [number, number, number];
 
@@ -20,9 +21,16 @@ type AgentAdapter = {
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
   loginHint: string;
-  // what mission control's crew starts with, unless fleet.json's home.command names a command
-  crewCommand: string;
+  // what mission control's crew starts with on `model`, unless fleet.json's home.command names a command
+  crewCommand(model?: string): string;
+  // the models the crew and the scribe run unless fleet.json names one; absent, the CLI's own
+  crewModel?: string;
+  scribeModel?: string;
 };
+
+// the command is typed into a shell, so a model that is not a plain word, such as opus[1m], is quoted
+const withModel = (bin: string, flag: string) => (model?: string): string =>
+  (model ? `${bin} ${flag} ${/^[\w.:@/-]+$/.test(model) ? model : shq(model)}` : bin);
 
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
@@ -32,14 +40,14 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
     loginHint: 'claude auth login',
-    crewCommand: 'claude --model sonnet',
+    crewCommand: withModel('claude', '--model'), crewModel: 'opus', scribeModel: 'haiku',
   },
   codex: {
     label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 156, 0],
     installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', updateCommand: 'codex update',
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
-    crewCommand: 'codex',
+    crewCommand: withModel('codex', '-m'), scribeModel: 'gpt-6-luna',
   },
   opencode: {
     label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/v2/docs/', minVersion: [2, 0, 22],
@@ -54,7 +62,8 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
       } catch { return false; }
     },
     loginHint: 'opencode auth login',
-    crewCommand: 'opencode',
+    // its TUI refuses -m: the model is the provider config's
+    crewCommand: () => 'opencode',
   },
 };
 export const AGENT_KINDS = Object.keys(AGENTS) as AgentKind[];

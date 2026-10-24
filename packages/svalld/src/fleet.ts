@@ -10,7 +10,7 @@ import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/trans
 import { characterKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
-import { initConfig, patchFleetConfig, saveMainAgent, scribeModel, type Config } from './config.js';
+import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
@@ -96,13 +96,8 @@ export class Fleet extends EventEmitter<Events> {
 
   constructor(private deps: Deps) {
     super();
-    const { store, log, config, paths } = deps;
-    const cwd = path.join(paths.home, 'scribe');
-    const run = deps.runScribe ?? perPass({
-      claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'haiku', cwd, envFile: paths.env }),
-      codex: codexRunner({ model: scribeModel(config.scribe, 'codex') ?? 'gpt-6-luna', cwd }),
-      opencode: opencodeRunner({ model: scribeModel(config.scribe, 'opencode'), cwd }),
-    }, () => store.state.scribeAgent ?? 'claude');
+    const { store, log, config } = deps;
+    const run = deps.runScribe ?? perPass(() => this.scribeRunner());
     this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c) });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
     const writable = () => this.writable();
@@ -319,7 +314,8 @@ export class Fleet extends EventEmitter<Events> {
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
   private ensureHome(): string | undefined {
-    const home = this.deps.config.home;
+    // the crew's model is the one syncAgents picks for the main agent's CLI
+    const { model: _picks, ...home } = this.deps.config.home;
     // a character is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
     try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false })) this.deps.log.info(l); }
@@ -372,9 +368,25 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
 
-  // fleet.json's home.command, else the main agent's
+  // the scribe's CLI and model as fleet.json and the main agent name them now
+  private scribeRunner(): RunScribe {
+    const { paths, store } = this.deps;
+    const agent = store.state.scribeAgent ?? 'claude';
+    const cwd = path.join(paths.home, 'scribe');
+    const model = this.model('scribe', agent);
+    if (agent === 'claude') return claudeRunner({ model: model!, cwd, envFile: paths.env });
+    return agent === 'codex' ? codexRunner({ model, cwd }) : opencodeRunner({ model, cwd });
+  }
+
+  // fleet.json's model for `agent`'s CLI, else the CLI's default
+  private model(of: 'scribe' | 'home', agent: AgentKind): string | undefined {
+    return modelPicks(this.deps.config, of)[agent] ?? (of === 'scribe' ? AGENTS[agent].scribeModel : AGENTS[agent].crewModel);
+  }
+
+  // fleet.json's home.command, else the main agent's on the crew's model
   private crewCommand(): string {
-    return this.deps.config.home.command ?? AGENTS[mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? [])].crewCommand;
+    const agent = mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? []);
+    return this.deps.config.home.command ?? AGENTS[agent].crewCommand(this.model('home', agent));
   }
 
   // fleet.json holds the choice; the fleet carries it, and what svalld finds, to the app
@@ -384,8 +396,18 @@ export class Fleet extends EventEmitter<Events> {
       d.mainAgent = mainAgent(this.deps.config.mainAgent, found);
       d.agentsFound = found;
       d.scribeAgent = this.deps.config.scribe.agent ?? d.mainAgent;
+      d.scribeModel = this.model('scribe', d.scribeAgent);
       d.home.command = this.crewCommand();
+      d.home.model = this.model('home', d.mainAgent);
     });
+  }
+
+  // `agent`'s pick, kept beside the other CLIs'; with no model, that CLI's default
+  setModel(of: 'scribe' | 'home', agent: AgentKind, model: string | undefined): void {
+    const picks = { ...modelPicks(this.deps.config, of), [agent]: model };
+    saveConfig(this.deps.paths, of === 'home' ? { home: { model: picks } } : { scribe: { model: picks } }, this.deps.log.info);
+    this.deps.config[of].model = picks;
+    this.syncAgents();
   }
 
   setMainAgent(agent: AgentKind): void {

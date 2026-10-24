@@ -111,6 +111,14 @@ describe('saveMainAgent', () => {
     expect(JSON.parse(fs.readFileSync(p.nodeConfig, 'utf8')).mobile).toEqual({ httpsPort: 8444 });
     expect(loadConfig(p).mobile).toMatchObject({ logins: ['me@example.com'], httpsPort: 8444 });
   });
+  it("saves a model inside home and scribe, keeping the rest of each", () => {
+    const p = paths();
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: crypto.randomUUID(), home: { cwd: '/mc', command: 'my-agent' }, scribe: { agent: 'codex', model: 'gpt-6-luna' } }));
+    saveConfig(p, { home: { model: { claude: 'sonnet' } }, scribe: { model: { codex: 'gpt-6-sol' } } });
+    expect(JSON.parse(fs.readFileSync(p.fleetConfig, 'utf8'))).toMatchObject({
+      home: { cwd: '/mc', command: 'my-agent', model: { claude: 'sonnet' } }, scribe: { agent: 'codex', model: { codex: 'gpt-6-sol' } },
+    });
+  });
   it('leaves the scribe agent unset unless it is named', () => {
     expect(loadConfig(paths()).scribe.agent).toBeUndefined();
   });

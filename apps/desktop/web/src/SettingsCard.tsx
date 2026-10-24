@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
-import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setScribe, setWorktrees } from './actions.js';
+import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, type PushStatus } from '@svall/protocol';
+import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
 import { holdCutout } from './cutout.js';
@@ -104,6 +104,35 @@ function MainAgent() {
   );
 }
 
+// the models `agent`'s CLI takes, the one set when it is none of them, and the default, which drops the pick; none for OpenCode
+function ModelPick({ of, agent, model, label }: { of: 'scribe' | 'home'; agent: AgentKind; model: string | undefined; label: string }) {
+  const models = MODELS[agent];
+  if (!models.length) return null;
+  const options = model && !models.includes(model) ? [model, ...models] : models;
+  return (
+    <div className="row">
+      <span>{label}</span>
+      <b><select className="fld inline" aria-label={label} value={model ?? ''} data-testid={`set-${of}-model`}
+        onChange={(e) => setModel(deps(), of, agent, e.target.value || undefined)}>
+        <option value="">{model ? 'default' : `${AGENT_LABEL[agent]}'s own`}</option>
+        {options.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select></b>
+    </div>
+  );
+}
+
+function HomeModel() {
+  const main = useApp((s) => s.fleet.mainAgent ?? 'claude');
+  const model = useApp((s) => s.fleet.home.model);
+  return <ModelPick of="home" agent={main} model={model} label="mission control model" />;
+}
+
+function ScribeModel() {
+  const agent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
+  const model = useApp((s) => s.fleet.scribeModel);
+  return <ModelPick of="scribe" agent={agent} model={model} label="scribe model" />;
+}
+
 // only the label changes; an empty or unchanged field writes nothing
 function FleetName() {
   const name = useApp((s) => s.fleet.name);
@@ -197,10 +226,12 @@ function Scribe() {
       <div className="rows">
         <FleetName />
         <MainAgent />
+        <HomeModel />
         <div className="row">
           <span>scribe<Info id="scribe">Updates names, notes and links after an agent stops. Each pass is a headless {AGENT_LABEL[scribeAgent]} call and may cost API credits.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-scribe" onClick={flip}>{on ? 'on' : 'off'}</button></b>
         </div>
+        <ScribeModel />
         {error && (
           <div className="row" data-testid="set-scribe-error">
             <span>last failure</span>

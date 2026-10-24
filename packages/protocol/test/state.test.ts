@@ -14,7 +14,7 @@ describe('state schemas', () => {
     expect(FleetState.parse(emptyState())).toEqual({
       version: 9, islands: {}, characters: {},
       home: {
-        cwd: '~/.svall/home', command: 'claude --model sonnet',
+        cwd: '~/.svall/home', command: 'claude --model opus',
         actions: [
           { label: 'update info', prompt: '/svall-update-info' }, { label: 'status', prompt: '/svall-status' },
         ],
@@ -26,10 +26,10 @@ describe('state schemas', () => {
 
   it('fills home from defaults when a state file has none', () => {
     const s = FleetState.parse({ version: 9, islands: {}, characters: {} });
-    expect(s.home.command).toBe('claude --model sonnet');
+    expect(s.home.command).toBe('claude --model opus');
     expect(s.defaultCwd).toBe(DEFAULT_CWD);
     expect(s.home.actions.map((a) => a.label)).toEqual(['update info', 'status']);
-    expect(Home.parse({ cwd: '/x' })).toEqual({ cwd: '/x', command: 'claude --model sonnet', actions: defaultHome().actions });
+    expect(Home.parse({ cwd: '/x' })).toEqual({ cwd: '/x', command: 'claude --model opus', actions: defaultHome().actions });
   });
 
   it('accepts a home island and rejects other kinds', () => {
