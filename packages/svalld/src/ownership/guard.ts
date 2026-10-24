@@ -36,7 +36,6 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'scribe.sweep': 'mutation',
   'scribe.set': 'mutation',
   'worktrees.set': 'mutation',
-  'robots.set': 'mutation',
   'dormancy.set': 'mutation',
   'mainAgent.set': 'mutation',
   'usage.get': 'read',

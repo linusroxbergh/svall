@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Character } from '@svall/protocol';
-import { GAUGE_C, ago, gaugeDash, hintLabel, hintText, linkText, statusWord } from '../src/map/tokenText.js';
+import { ago, hintLabel, hintText, linkText, statusWord } from '../src/map/tokenText.js';
 
 describe('linkText', () => {
   it('shows a file or folder by its last segment', () => {
@@ -39,14 +39,6 @@ describe('hintText', () => {
   });
 });
 
-
-describe('gaugeDash', () => {
-  it('is empty without a context percentage, keeps a 3% sliver, and scales linearly', () => {
-    expect(gaugeDash(undefined).startsWith('0 ')).toBe(true);
-    expect(gaugeDash(1)).toBe(`${((GAUGE_C * 3) / 100).toFixed(2)} ${GAUGE_C.toFixed(2)}`);
-    expect(gaugeDash(50)).toBe(`${(GAUGE_C / 2).toFixed(2)} ${GAUGE_C.toFixed(2)}`);
-  });
-});
 
 describe('statusWord', () => {
   it('names only the loud statuses', () => {

@@ -1,15 +1,6 @@
 import type { Character, ContextItem } from '@svall/protocol';
 import type { DisplayStatus } from '../selectors.js';
 
-export const GAUGE_R = 32.5;
-export const GAUGE_C = 2 * Math.PI * GAUGE_R;
-
-// the gauge arc: a 3% minimum sliver so a fresh session still reads as a ring
-export function gaugeDash(pct: number | undefined): string {
-  const len = pct == null ? '0' : ((GAUGE_C * Math.max(pct, 3)) / 100).toFixed(2);
-  return `${len} ${GAUGE_C.toFixed(2)}`;
-}
-
 // a github PR or issue reads as `repo #number`, so the pill says which repository it belongs to
 const GH_ITEM = /^(?:https?:\/\/)?(?:www\.)?github\.com\/[^/]+\/([^/]+)\/(?:pull|issues)\/(\d+)/i;
 const ghItemText = (ref: string): string | undefined => {

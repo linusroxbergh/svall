@@ -75,14 +75,23 @@ describe('migrateState', () => {
     expect(state).toEqual({ ...raw, version: 9, characters: { ...raw.characters, c_a: { ...c, second: { ...second, cwd: '/work' } } } });
   });
 
-  it('lifts a version 8 file Svall 0.9.0 wrote, with robots, animals and the subagents and shells of both terminals, losing nothing', () => {
+  it('lifts a version 8 file Svall 0.9.0 wrote, with robots and the subagents and shells of both terminals, losing nothing but its animals switch', () => {
     const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: { ...agent, background: true, shellsOnly: true, subagents: ['a2'] } };
     const c = { ...char('c_a', 'i_a'), cwd: '/work', robot: 42, agent: { ...agent, subagents: ['a1'] }, second };
-    const raw = { ...emptyState(), version: 8, animals: true, islands: { i_a: island('i_a') }, characters: { c_a: c, c_b: { ...char('c_b', 'i_a'), robot: 7 } } };
-    const { state, migrated, dropped } = migrateState(raw);
+    const { animals: _, ...raw } = { ...emptyState(), version: 8, animals: true, islands: { i_a: island('i_a') }, characters: { c_a: c, c_b: { ...char('c_b', 'i_a'), robot: 7 } } };
+    const { state, migrated, dropped } = migrateState({ ...raw, animals: true });
     expect(migrated).toBe(true);
     expect(dropped).toEqual([]);
     expect(state).toEqual({ ...raw, version: 9, characters: { ...raw.characters, c_a: { ...c, second: { ...second, cwd: '/work' } } } });
+  });
+
+  it('reads a current file whose fleet still has the animals switch, and drops the key', () => {
+    const raw = { ...emptyState(), islands: { i_a: island('i_a') }, characters: { c_a: char('c_a', 'i_a') } };
+    const { state, migrated, dropped } = migrateState({ ...raw, animals: true });
+    expect(migrated).toBe(false);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual(raw);
+    expect(state).not.toHaveProperty('animals');
   });
 
   it('refuses a file older than version 7 and says so', () => {

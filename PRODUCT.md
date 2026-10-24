@@ -40,7 +40,7 @@ Runs on macOS 15+ on Apple silicon. Wraps the Claude Code, Codex and OpenCode CL
 
 - Name: Svall (Swedish for the swell of water that washes in behind a boat).
 - Visual world: the app's night sea, sand and sage-grass island (`apps/desktop/web/src/tokens.css`), and the bare round island icon (`apps/desktop/web/public/icons/icon.svg`).
-- The animal portraits and lighthouse are licensed Flaticon art (`apps/desktop/web/public/animals/LICENSE`): never in a logo or icon. The site's demo cards show the portraits, as the app's cards do, at the owner's request.
+- The robot portraits are licensed Flaticon art (`apps/desktop/web/public/robots/LICENSE`): never in a logo or icon. The site's demo cards show the portraits, as the app's cards do, at the owner's request.
 - The site matches the app's map: its sea, grain, island drawing, label pills and cards at their real size.
 
 ## Evidence on Hand

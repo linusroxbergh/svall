@@ -18,7 +18,6 @@ it('builds every file the landing page loads', async () => {
     const missing = refs.filter((r) => !fs.existsSync(path.join(r.startsWith('shots/') ? site : out, r)));
     expect(missing).toEqual([]);
     // the cast's portraits load from beside the page, as the app's own load from beside index.html
-    expect(fs.readdirSync(path.join(out, 'animals')).sort()).toEqual(fs.readdirSync(path.join(web, 'public/animals')).sort());
     expect(fs.readdirSync(path.join(out, 'robots')).sort()).toEqual(fs.readdirSync(path.join(web, 'public/robots')).sort());
     expect(fs.readFileSync(path.join(out, 'map/map.css'), 'utf8')).toContain('JetBrainsMono-Medium.woff2');
   } finally {

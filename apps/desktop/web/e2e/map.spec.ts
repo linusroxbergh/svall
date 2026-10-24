@@ -48,7 +48,7 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
 
   const shellTok = page.getByTestId(`token-${shell.id}`);
   await expect(shellTok).toHaveAttribute('data-status', 'shell');
-  await expect(shellTok.locator('.portrait')).toHaveAttribute('src', `./animals/${shell.portrait}.svg`);
+  await expect(shellTok.locator('.stage')).toHaveAttribute('data-robot', String(robotOf(shell)));
   const shellCell = await svall.cellOf(shell.id);
   await expect.poll(async () => (await dump(page)).tokens.find((t) => t.id === shell.id)?.cell)
     .toEqual({ x: island.position.x + shellCell.x, y: island.position.y + shellCell.y });
@@ -58,22 +58,21 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
 
   await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
   await expect(agentTok).toHaveAttribute('data-status', 'blocked', { timeout: 15_000 });
-  await expect(agentTok.locator('.gem')).toHaveText('!');
+  await expect(agentTok.locator('.foot .sw')).toHaveText('blocked');
 
   await svall.api.call('char.answer', { id: agent.id, answer: 'approve' });
   await expect(agentTok).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
   await expect(agentTok).toHaveAttribute('data-unread', 'true');
-  await expect(agentTok.locator('.gem')).toHaveText('✓');
+  await expect(agentTok.locator('.foot .sw')).toHaveText('done');
 
   const scale = (await dump(page)).scale;
   expect(scale).toBeGreaterThanOrEqual(0.5);
   expect(scale).toBeLessThanOrEqual(1.5);
 });
 
-test('with robots on, a card stands its robot under the name and its foot alone says the status', async ({ page, svall }) => {
+test('a card stands its robot under the name and its foot alone says the status', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
   const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
-  await svall.api.call('robots.set', { enabled: true });
   await svall.open('map');
 
   const tok = page.getByTestId(`token-${agent.id}`);
@@ -84,19 +83,13 @@ test('with robots on, a card stands its robot under the name and its foot alone 
 
   await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
   await expect(tok.locator('.foot .sw')).toHaveText('blocked', { timeout: 15_000 });
-  await expect(tok.locator('.gem')).toHaveCount(0);
-
-  await svall.api.call('robots.set', { enabled: false });
-  await expect(tok.locator('.portrait')).toHaveAttribute('src', `./animals/${agent.portrait}.svg`);
-  await expect(tok.locator('.edge i')).toHaveCount(0);
 });
 
-test('with robots on, the corner marks lift with their card and leave a full rail of links to click', async ({ page, svall }) => {
+test('the corner marks lift with their card and leave a full rail of links to click', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
   const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
   const links = Array.from({ length: 4 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
   await svall.api.call('char.update', { id: agent.id, context: links });
-  await svall.api.call('robots.set', { enabled: true });
   await showLinks(page);
   await svall.open('map');
   const tok = page.getByTestId(`token-${agent.id}`);
@@ -137,9 +130,8 @@ test('the subagents running stand counted on the card\'s top-left corner until t
   await expect(mark).toBeHidden({ timeout: 15_000 });
 });
 
-test('with robots on, mission control\'s crew stand as robots, and so does one dragged out', async ({ page, svall }) => {
+test('mission control\'s crew stand as robots, and so does one dragged out', async ({ page, svall }) => {
   const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
-  await svall.api.call('robots.set', { enabled: true });
   await svall.open('map');
   await settleMap(page);
   const robot = String(robotOf(mc));
@@ -153,11 +145,10 @@ test('with robots on, mission control\'s crew stand as robots, and so does one d
   await page.mouse.up();
 });
 
-test('with robots on, a robot card plays one of its actions now and then and comes back to still', async ({ page, svall }) => {
+test('a robot card plays one of its actions now and then and comes back to still', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
   const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
   await svall.api.call('char.update', { id: agent.id, robot: 8 });
-  await svall.api.call('robots.set', { enabled: true });
   await svall.open('map');
   const bot = page.getByTestId(`token-${agent.id}`).locator('.stage > svg.portrait');
   await expect(bot).toHaveClass(/\br08\b/);
@@ -502,7 +493,7 @@ test('a narrow map behind an open terminal does not save a tall fleet arrangemen
 // out; what the arrangement owns is the water between islands — a card must never reach another island's label
 test('an arranged fleet keeps every label pill clear of the cards around it', async ({ page, svall }) => {
   await page.setViewportSize({ width: 700, height: 900 });
-  const crewed = await svall.api.call('island.create', { name: svall.uniq('animalplayground'), position: { x: 0, y: 0 } });
+  const crewed = await svall.api.call('island.create', { name: svall.uniq('playground'), position: { x: 0, y: 0 } });
   const below = await svall.api.call('island.create', { name: svall.uniq('documentation'), position: { x: 0, y: 40 } });
   const chars = [];
   for (const island of [crewed, crewed, crewed, below]) chars.push(await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp' }));

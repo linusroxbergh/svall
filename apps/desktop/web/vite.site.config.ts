@@ -6,7 +6,6 @@ import { defineConfig, type Plugin } from 'vite';
 // the page's fonts and art are the app's own, copied beside it on every build
 const ASSETS: Record<string, string> = {
   fonts: 'public/fonts',
-  animals: 'public/animals',
   robots: 'public/robots',
   'icon.svg': 'public/icons/icon.svg',
   'icon-180.png': 'public/icons/icon-180.png',

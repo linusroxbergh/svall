@@ -209,9 +209,9 @@ Every delete, rename and archive a handover or its install makes, with the recor
     text and libintl's source, or a written offer of it, and with what a recipient needs to relink the app against a
     changed libintl: the app's object files or source and the kit's build script. That has to reach whoever receives
     the app, whether or not the repository is public.
-  - **Flaticon art.** The animal portraits and the lighthouse are Flaticon Premium icons whose licence does not allow
-    redistributing the files (`web-mobile/animals/LICENSE`, `resources/LICENSE`). The companion archive, which is
-    published, carries them as files. So does the app.
+  - **Flaticon art.** The robot portraits are Flaticon Premium icons whose licence does not allow redistributing the
+    files (`web-mobile/robots/LICENSE`). The companion archive, which is published, carries them as files. So does
+    the app.
   - **The object check's generic names.** `app-notice.test.ts` attributes objects named `log`, `version`, `timer`,
     `print`, `st` or `empty` to the component that brings one today, so a new dependency with an object of such a name
     would be counted as that component.

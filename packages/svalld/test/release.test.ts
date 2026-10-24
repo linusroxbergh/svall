@@ -451,7 +451,7 @@ describe('a release built by the build scripts', () => {
     for (const f of fs.readdirSync(path.join(installed.release, 'licenses')).filter((f) => f !== 'NOTICE')) expect(notice, f).toContain(`licenses/${f}`);
     for (const name of meta.bundledLicenses as string[]) expect(notice, name).toMatch(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\S+ `, 'm'));
     for (const name of ['react', '@xterm/xterm']) expect(notice, name).toMatch(new RegExp(`^${name.replace('/', '\\/')} \\S+ .*the phone page`, 'm'));
-    for (const f of ['web-mobile/fonts/OFL.txt', 'web-mobile/animals/LICENSE']) expect(notice).toContain(f);
+    for (const f of ['web-mobile/fonts/OFL.txt', 'web-mobile/robots/LICENSE']) expect(notice).toContain(f);
   }, 180_000);
 });
 

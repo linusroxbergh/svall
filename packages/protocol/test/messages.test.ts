@@ -170,7 +170,6 @@ describe('protocol version', () => {
   });
 
   it('was 21 with robot portraits', () => {
-    expect(methods['robots.set'].params.safeParse({ enabled: false }).success).toBe(true);
     expect(methods['char.update'].params.parse({ id: 'c_a', robot: 42 }).robot).toBe(42);
   });
 

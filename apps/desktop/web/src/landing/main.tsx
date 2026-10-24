@@ -103,7 +103,7 @@ function DemoMap({ at }: { at: Cell[] }) {
           land={pointer} label={pointer} handle={pointer} hold={hold} />
       ))}
       {ISLANDS.flatMap((isl, i) => isl.crew.map((ci, k) => (
-        <Token key={ci} c={character(crew[ci], isl.id)} status={crew[ci].status} robots
+        <Token key={ci} c={character(crew[ci], isl.id)} status={crew[ci].status}
           world={{ x: at[i].x + GRIDS[i].cells[k].x, y: at[i].y + GRIDS[i].cells[k].y }}
           selected={false} dragging={false} hover={false} pointer={pointer}
           onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />

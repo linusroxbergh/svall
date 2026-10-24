@@ -170,7 +170,7 @@ function FlowScene() {
   const place = placeIslet(SIZE.w, HOME.size.w * theme.cell, false, cardScale(k));
   const left = (SIZE.w - WORLD_W * k) / 2;
   const tok = (m: Member, islandId: string, at: Cell, cell: Cell) => (
-    <Token c={character(m, islandId)} status={m.status} robots world={{ x: at.x + cell.x, y: at.y + cell.y }}
+    <Token c={character(m, islandId)} status={m.status} world={{ x: at.x + cell.x, y: at.y + cell.y }}
       selected={s.picked === m.id} dragging={false} hover={false} pointer={pointer}
       onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
   );
@@ -191,7 +191,7 @@ function FlowScene() {
         {s.crew.map((m, i) => <div key={m.id} className="pop">{tok(m, REVIEWS.id, REVIEWS_AT, RG.cells[i])}</div>)}
       </div>
       <Home island={HOME} crew={s.mc ? [character(s.mc, 'home', { x: 1, y: 1 })] : []} config={HOME_CONFIG} collapsed={false} selected={false}
-        status={(c) => c.agent!.status} robots shift={place.homeShift} rowShift={place.homeShift} scale={place.homeScale}
+        status={(c) => c.agent!.status} shift={place.homeShift} rowShift={place.homeShift} scale={place.homeScale}
         onToggle={none} onAction={asyncNone} onArrange={none} onNewIsland={none} onNew={none} label={pointer}
         tokenPointer={() => pointer} onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
       <Islet place={place} count={31} />

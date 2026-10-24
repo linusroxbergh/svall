@@ -114,54 +114,8 @@
 .tok.s-done    .edge{background:var(--done)}
 .tok.s-shell   .edge{background:var(--shell-dim)}
 
-.tok .pf{position:relative;flex:none;height:calc(var(--tok)*1.64);padding-top:calc(var(--tok)*.13);
-  display:grid;place-items:center}
-.tok .disc-wrap{position:relative;width:calc(var(--tok)*1.55);height:calc(var(--tok)*1.55);
-  display:grid;place-items:center}
-.tok .disc{position:relative;z-index:2;
-  width:calc(var(--tok)*1.18);height:calc(var(--tok)*1.18);border-radius:50%;
-  display:grid;place-items:center;
-  background:radial-gradient(118% 118% at 33% 22%, var(--disc-0) 0%, var(--disc-1) 44%, var(--disc-2) 100%);
-  box-shadow:0 2px 4px var(--shade-1), inset 0 -1px 2px color-mix(in srgb, var(--card-tint) 18%, transparent),
-             inset 0 1px 1px color-mix(in srgb, var(--white) 55%, transparent)}
-.tok .disc::after{content:'';position:absolute;left:9%;top:6%;width:62%;height:42%;border-radius:50%;
-  background:linear-gradient(170deg, color-mix(in srgb, var(--white) 70%, transparent), transparent 72%);
-  pointer-events:none;opacity:.35}
 .tok .portrait{position:relative;width:100%;height:100%;
   -webkit-user-drag:none;user-select:none}
-
-/* animal portraits: a palette disc behind, the artwork muted toward it and free to overhang the disc */
-.portrait-img{filter:saturate(.9) contrast(.96)}
-.pdisc[data-tint=sky],.tok .disc[data-tint=sky]{background:var(--pt-sky)}
-.pdisc[data-tint=sun],.tok .disc[data-tint=sun]{background:var(--pt-sun)}
-.pdisc[data-tint=coral],.tok .disc[data-tint=coral]{background:var(--pt-coral)}
-.pdisc[data-tint=earth],.tok .disc[data-tint=earth]{background:var(--pt-earth)}
-.pdisc[data-tint=moss],.tok .disc[data-tint=moss]{background:var(--pt-moss)}
-.pdisc[data-tint=slate],.tok .disc[data-tint=slate]{background:var(--pt-slate)}
-.pdisc::after,.tok .disc::before{content:'';position:absolute;inset:0;z-index:1;border-radius:50%;
-  background:var(--sea-1);opacity:.1;mix-blend-mode:color;pointer-events:none}
-
-.tok .gauge{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:visible}
-.tok .gauge circle{fill:none;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
-.tok .gauge .track{stroke:color-mix(in srgb, var(--ink-land) 42%, transparent);stroke-width:5.6}
-.tok .gauge .arc{stroke-width:5.6;stroke:var(--idle);
-  filter:drop-shadow(0 1px 1.5px var(--shade-1))}
-.tok.s-working .gauge .arc{stroke:var(--working)}
-.tok.s-blocked .gauge .arc{stroke:var(--blocked)}
-.tok.s-done    .gauge .arc{stroke:var(--done)}
-.tok.s-shell   .gauge .track{stroke:color-mix(in srgb, var(--idle) 65%, transparent);stroke-width:3.6;
-  stroke-dasharray:.1 7;stroke-linecap:round}
-.tok.s-shell   .gauge .arc{display:none}
-
-.tok .gem{position:absolute;top:calc(var(--tok)*-.11);left:50%;transform:translateX(-50%);z-index:5;
-  width:calc(var(--tok)*.42);height:calc(var(--tok)*.42);border-radius:50%;
-  display:grid;place-items:center;line-height:1;
-  font-size:calc(var(--tok)*.26);font-weight:var(--w-bold);
-  box-shadow:0 2px 4px var(--shade-2), 0 0 0 calc(var(--tok)*.055) var(--cream)}
-.tok .gem.blocked{background:var(--blocked);color:var(--ink-on-blocked)}
-.tok .gem.done{background:var(--done);color:var(--ink-on-done)}
-.tok .gem.working{width:calc(var(--tok)*.28);height:calc(var(--tok)*.28);
-  top:calc(var(--tok)*-.04);background:var(--working);box-shadow:0 0 0 calc(var(--tok)*.055) var(--cream)}
 
 .tok .nm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;text-align:center;
   padding:0 calc(var(--tok)*.15) calc(var(--tok)*.04);
@@ -209,8 +163,6 @@
 .tok .chip.more{cursor:inherit;font-size:calc(var(--tok)*.28);font-variant-numeric:tabular-nums;letter-spacing:var(--track-tight)}
 .tok .chip.more:hover{background:var(--surface-2);color:var(--ink)}
 
-.tok.s-shell .disc{box-shadow:0 4px 7px var(--shade-1), inset 0 0 0 1.4px color-mix(in srgb, var(--cream) 28%, transparent)}
-.tok.s-shell .disc::after{opacity:.18}
 
 /* robot portraits: the top edge a meter of the context used, the name under it in a band two lines tall, the robot standing below on a soft shadow */
 .tok.bot .edge{--st:var(--idle);position:relative;height:calc(var(--tok)*.17);background:color-mix(in srgb, var(--st) 26%, var(--card-band))}
