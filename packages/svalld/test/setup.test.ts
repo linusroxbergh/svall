@@ -417,6 +417,11 @@ describe('runSetup', () => {
     const lines = await runSetup({ home, settingsPath: path.join(root, 'claude', 'settings.json'), launchAgentsDir: path.join(root, 'LaunchAgents'), shimDir: path.join(root, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }), opencode: opencodeIn(root), agents: ['codex'] });
     const host = path.join(root, '.svall-host');
     expect(lines).toContain(`${host} holds a fleet named host, a name svall now keeps for its own command, so no -p reaches it: mv ${host} ${host}-fleet, then svall host-fleet`);
+
+    // mission control's folder inside the home moves with it
+    fs.writeFileSync(path.join(host, 'fleet.json'), JSON.stringify({ id: '0b6f2c4e-5a1d-4c3b-9e8f-7a6d5c4b3a21', home: { cwd: '~/.svall-host/home' } }));
+    const again = await runSetup({ home, settingsPath: path.join(root, 'claude', 'settings.json'), launchAgentsDir: path.join(root, 'LaunchAgents'), shimDir: path.join(root, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }), opencode: opencodeIn(root), agents: ['codex'] });
+    expect(again).toContain(`${host} holds a fleet named host, a name svall now keeps for its own command, so no -p reaches it: mv ${host} ${host}-fleet, set home.cwd in ${host}-fleet/fleet.json to ${host}-fleet/home, then svall host-fleet`);
   });
 
   it('sets up a fleet whose config.json names it with a word svall now keeps for a command, and says it dropped the name', async () => {

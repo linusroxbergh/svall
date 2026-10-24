@@ -209,7 +209,11 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codexHooks
     done.push(`home folder skipped: ${(e as Error).message}`);
   }
   for (const r of reservedProfileHomes(path.dirname(o.home))) {
-    done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so no -p reaches it: mv ${r.home} ${path.join(path.dirname(r.home), `${homePrefix}${r.rename}`)}, then ${SHIM} ${r.rename}`);
+    const to = path.join(path.dirname(r.home), `${homePrefix}${r.rename}`);
+    let cwd: string | undefined;
+    try { cwd = expandHome(peekConfig(resolvePaths(r.home)).home.cwd, path.dirname(r.home)); } catch { /* a config this cannot read is that fleet's own start to report */ }
+    const also = cwd?.startsWith(`${r.home}/`) ? `, set home.cwd in ${path.join(to, 'fleet.json')} to ${path.join(to, path.relative(r.home, cwd))}` : '';
+    done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so no -p reaches it: mv ${r.home} ${to}${also}, then ${SHIM} ${r.rename}`);
   }
   for (const r of reservedFleetNames(path.dirname(o.home))) {
     done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so the fleet goes without it; give it another in Settings`);

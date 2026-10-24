@@ -4,9 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetConfig, NodeConfig } from '@svall/protocol';
 import { InvalidConfig, configRefusal, configRelinked, configuredMainAgent, initConfig, loadConfig, patchFleetConfig, peekConfig, reservedFleetNames } from '../src/config.js';
 import { resolvePaths } from '../src/paths.js';
+import { PRIVATE, profileHome } from '../src/profile.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(cleanHomes);
+afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -316,6 +317,29 @@ describe('a fleet with nothing to split', () => {
     const p = resolvePaths(path.join(makeHome(), 'gone'));
     expect(loadConfig(p)).toMatchObject({ host: '127.0.0.1', defaultCwd: '~' });
     expect(fs.existsSync(p.home)).toBe(false);
+  });
+
+  it('gives a profile that has never run a mission control folder in its own fleet home, and keeps every other fleet on the default', () => {
+    const u = makeHome();
+    vi.stubEnv('HOME', u);
+    const [work, ran, own] = ['work', 'ran', PRIVATE].map((n) => resolvePaths(profileHome(n, u)));
+    for (const p of [work, ran, own]) fs.mkdirSync(p.home);
+    fs.writeFileSync(ran.state, '{}');
+    for (const p of [work, ran, own]) initConfig(p);
+    expect(read(work.fleetConfig).home).toEqual({ cwd: '~/.svall-work/home' });
+    expect(loadConfig(work).home.cwd).toBe('~/.svall-work/home');
+    for (const p of [ran, own]) {
+      expect(read(p.fleetConfig).home).toBeUndefined();
+      expect(loadConfig(p).home.cwd).toBe('~/.svall/home');
+    }
+    const away = resolvePaths(path.join(makeHome(), '.svall-away'));
+    fs.mkdirSync(away.home);
+    initConfig(away);
+    expect(read(away.fleetConfig).home).toBeUndefined();
+    const split = resolvePaths(legacyHome(LEGACY, 'old'));
+    vi.stubEnv('HOME', path.dirname(split.home));
+    expect(loadConfig(split).home.cwd).toBe('~/.svall/home');
+    expect(read(split.fleetConfig).home).toBeUndefined();
   });
 
   it('seeds node.json with the port a named fleet was set up on', () => {
