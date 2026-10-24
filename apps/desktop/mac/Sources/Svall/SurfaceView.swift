@@ -80,6 +80,17 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
 
     /// The last line with text in it, scrollback included: what a command that just ended said last.
     func lastLine() -> String? {
+        screenText().flatMap(Self.lastLine(of:))
+    }
+
+    /// Puts `text` at the cursor as a paste, which a shell that brackets pastes takes without running it.
+    func type(_ text: String) {
+        guard let surface else { return }
+        text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+    }
+
+    /// Everything the terminal shows, scrollback included.
+    func screenText() -> String? {
         guard let surface else { return nil }
         var text = ghostty_text_s()
         let all = ghostty_selection_s(
@@ -88,7 +99,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
             rectangle: false)
         guard ghostty_surface_read_text(surface, all, &text) else { return nil }
         defer { ghostty_surface_free_text(surface, &text) }
-        return Self.lastLine(of: String(cString: text.text))
+        return String(cString: text.text)
     }
 
     /// The banner login(1) prints without ~/.hushlogin is not the command's, nor the line ssh ends a connection with:

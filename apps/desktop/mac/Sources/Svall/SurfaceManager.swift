@@ -48,6 +48,40 @@ enum AttachCommand {
     }
 }
 
+/// The shell command a terminal on another machine runs: an ssh of its own that asks nothing and forwards no agent,
+/// and that quits rather than open without the port forward a login's browser comes back on.
+enum MachineCommand {
+    static func build(_ machine: WebMachine) -> String? {
+        guard machine.ssh.allowed(by: sshDestinationPattern) else { return nil }
+        var forward = ""
+        if let port = machine.forward {
+            guard (1024...65535).contains(port) else { return nil }
+            forward = " -o ExitOnForwardFailure=yes -L 127.0.0.1:\(port):localhost:\(port)"
+        }
+        // Linux ships no xterm-ghostty terminfo, as for an attach on the owner's machine
+        return "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no\(forward) -- \(AttachCommand.quote(machine.ssh))"
+    }
+
+    /// Text that is typed and never run: one line, no control characters.
+    static func typeable(_ text: String) -> Bool {
+        !text.isEmpty && !text.unicodeScalars.contains { $0.properties.generalCategory == .control }
+    }
+}
+
+/// Whether a terminal has drawn its prompt: it has shown something, then nothing new for `quiet` seconds.
+struct QuietScreen {
+    let quiet: TimeInterval
+    private var last: String?
+    private var since: Date?
+
+    init(quiet: TimeInterval) { self.quiet = quiet }
+
+    mutating func settled(_ screen: String, at now: Date) -> Bool {
+        guard screen == last, let since else { last = screen; since = now; return false }
+        return !screen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && now.timeIntervalSince(since) >= quiet
+    }
+}
+
 private struct Attached {
     let rect: WebRect, attach: WebAttach, opacity: Double?
     var hidden = false
@@ -59,6 +93,8 @@ final class SurfaceManager {
     private let overlay: OverlayViews<SurfaceView>
     // what each surface was asked for with, so a route that is back can be attached to again
     private var attached: [String: Attached] = [:]
+    // terminals on another machine, which a change of the fleet's route leaves open
+    private var machines: Set<String> = []
     var route: () -> ConnectionRoute = { .local }
     private var fontDelta = 0.0
     // false while the window is minimised, hidden or covered, when no surface need draw
@@ -88,7 +124,7 @@ final class SurfaceManager {
         overlay.setCutout(rects: rects, passive: passive)
     }
 
-    func show(id: String, rect: WebRect, attach: WebAttach?, opacity: Double?) {
+    func show(id: String, rect: WebRect, attach: WebAttach?, machine: WebMachine? = nil, opacity: Double?) {
         if let view = overlay[id] {
             overlay.place(view, rect)
             view.isHidden = false
@@ -97,6 +133,7 @@ final class SurfaceManager {
             attached[id] = attached[id].map { Attached(rect: rect, attach: $0.attach, opacity: opacity) }
             return
         }
+        if let machine { return open(id: id, rect: rect, machine: machine, opacity: opacity) }
         guard let attach else { return }
         let route = route()
         // the page names the socket and session only; which binary runs is decided here
@@ -106,12 +143,36 @@ final class SurfaceManager {
             attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
             return
         }
+        let program = switch route { case .remote: "ssh"; default: binary }
+        guard make(id: id, command: command, program: program, rect: rect, opacity: opacity) != nil else { return }
+        attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
+    }
+
+    /// A terminal on another machine, with what the page asked for typed once its prompt is up.
+    private func open(id: String, rect: WebRect, machine: WebMachine, opacity: Double?) {
+        guard let command = MachineCommand.build(machine) else {
+            return onFailed(id, "\(machine.ssh) is not an ssh destination a terminal opens to")
+        }
+        guard let view = make(id: id, command: command, program: "ssh", rect: rect, opacity: opacity) else { return }
+        machines.insert(id)
+        guard let text = machine.type, MachineCommand.typeable(text) else { return }
+        var screen = QuietScreen(quiet: 0.8)
+        let started = Date()
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self, weak view] timer in
+            guard let self, let view, self.overlay[id] === view, Date().timeIntervalSince(started) < 30 else { return timer.invalidate() }
+            guard screen.settled(view.screenText() ?? "", at: Date()) else { return }
+            timer.invalidate()
+            view.type(text)
+        }
+    }
+
+    /// A surface running `command`, which tells the page when it ends.
+    private func make(id: String, command: String, program: String, rect: WebRect, opacity: Double?) -> SurfaceView? {
         guard let view = makeView(command, overlay.frame(rect)) else {
             NSLog("ghostty_surface_new failed for %@", id)
             onFailed(id, "Ghostty could not open a terminal; see the app log")
-            return
+            return nil
         }
-        let program = switch route { case .remote: "ssh"; default: binary }
         let gone: (_ failure: String?) -> Void = { [weak self, weak view] failure in
             guard let self, let view, self.overlay[id] === view else { return }
             self.close(id: id)
@@ -126,10 +187,10 @@ final class SurfaceManager {
         view.onOpenURL = { [weak self] url in self?.onOpenURL(id, url) }
         if fontDelta != 0 { view.setFontDelta(fontDelta) }
         overlay.add(view, as: id)
-        attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
         overlay.mask(view)
         view.alphaValue = opacity ?? 1
         if !windowVisible { view.setOccluded(true) }
+        return view
     }
 
     func move(id: String, rect: WebRect) {
@@ -146,6 +207,7 @@ final class SurfaceManager {
 
     func close(id: String) {
         attached[id] = nil
+        machines.remove(id)
         overlay.close(id)
     }
 
@@ -162,7 +224,7 @@ final class SurfaceManager {
     /// After a reconnection or a new owner, tmux has destroyed each viewer session its client left, so every
     /// surface is let go and the page told it exited, to ask the daemon for a fresh attach.
     func rebuild() {
-        for id in Set(overlay.views.keys).union(attached.keys) {
+        for id in Set(overlay.views.keys).union(attached.keys).subtracting(machines) {
             close(id: id)
             onExited(id)
         }
@@ -170,6 +232,7 @@ final class SurfaceManager {
 
     func closeAll() {
         attached = [:]
+        machines = []
         overlay.closeAll()
     }
 }

@@ -3,6 +3,7 @@ import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
+import { MachineTerminal } from './MachineTerminal.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
@@ -23,6 +24,8 @@ export function MachineActions({ name }: { name: string }) {
     <span className="machine-acts">
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs for a handover, checked now" onClick={() => run('doctor')}>Check</button>
       <button className="btn set-open" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={() => run('upgrade')}>Upgrade</button>
+      <button className="btn set-open" data-testid="machine-terminal" disabled={running} title="A terminal on this machine, for what Svall leaves to you there"
+        onClick={() => store().openHostTerminal(name)}>Terminal</button>
       {gateway !== name && (
         <button className="btn set-open" data-testid="machine-enable" disabled={running}
           title="Make this machine the gateway that keeps this fleet's ownership record; the fleet stays on this Mac" onClick={() => run('enable')}>Make gateway</button>
@@ -62,7 +65,8 @@ function Outcome({ run }: { run: HostRun }) {
   );
 }
 
-function Checklist({ run }: { run: HostRun }) {
+// terminal: opens a terminal on the machine with a step's command typed, where the panel knows how to reach it
+function Checklist({ run, terminal }: { run: HostRun; terminal?: (command: string) => void }) {
   return (
     <div className="host-steps" data-testid="host-steps">
       {groupSteps(run.steps).map((group, i) => (
@@ -75,6 +79,10 @@ function Checklist({ run }: { run: HostRun }) {
               <span className="host-said">
                 {stepSaid(row, run.args.name)}
                 {row.action && <em data-testid={`host-action-${row.step}`}>{row.action}</em>}
+                {row.run && terminal && !run.running && (
+                  <button className="btn set-open" data-testid={`host-terminal-${row.step}`} title={`Opens a terminal on ${run.args.name} with ${row.run} typed, for you to run`}
+                    onClick={() => terminal(row.run!)}>Open terminal</button>
+                )}
                 {!row.action && row.status === 'fail' && !run.running && (
                   <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>
                     {run.op === 'doctor' ? 'Check again' : 'Try again'}
@@ -126,6 +134,9 @@ export function HostSetup() {
   const confirm = useApp((s) => s.hostConfirm);
   const machine = useApp((s) => s.hostMachine);
   const known = useApp((s) => !!s.machines?.some((m) => m.name === s.hostMachine));
+  const terminal = useApp((s) => s.hostTerminal);
+  // the registry's destination, or the one an add not yet in the registry was given
+  const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
   const shut = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -148,6 +159,11 @@ export function HostSetup() {
   // a machine an add has yet to put in the registry is added again, not acted on
   const adding = !machine || (!known && shown?.op === 'add');
   const close = () => app.store.getState().toggleHost(false);
+  // the logins and fixes made there are what the machine's own checks look at again
+  const ended = () => {
+    app.store.getState().closeHostTerminal();
+    if (known && machine && !running) startHost('doctor', { name: machine });
+  };
 
   return (
     <div className="modal-back" data-testid="host-setup" onPointerDown={close}>
@@ -157,27 +173,31 @@ export function HostSetup() {
           <span className="spacer" />
           <button ref={shut} className="side-x" data-testid="host-close" title="Close" aria-label="Close" onClick={close}>×</button>
         </div>
-        {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
-        {confirm && (
-          <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
-            {confirm.forget
-              ? `Forgetting ${confirm.name} leaves Svall installed on it and drops its route here. Nothing on that machine is uninstalled, and a fleet it owns stays where it is.`
-              : `Removing ${confirm.name} uninstalls Svall there and drops its route here. The fleets on it and their files stay on that machine.`}
-            <div className="acts">
-              <button className="btn dan" data-testid="host-confirm-yes"
-                onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
-                {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
-              </button>
-              <button className="btn" data-testid="host-confirm-no"
-                onClick={() => app.store.getState().confirmHost(undefined)}>Cancel</button>
-            </div>
-          </div>
-        )}
-        {shown && <Checklist run={shown} />}
-        {running && (
-          <div className="acts">
-            <button className="btn" data-testid="host-cancel" onClick={() => app.bridge.send({ type: 'host.cancel' })}>Stop</button>
-          </div>
+        {terminal && machine && ssh ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} onEnd={ended} /> : (
+          <>
+            {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
+            {confirm && (
+              <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
+                {confirm.forget
+                  ? `Forgetting ${confirm.name} leaves Svall installed on it and drops its route here. Nothing on that machine is uninstalled, and a fleet it owns stays where it is.`
+                  : `Removing ${confirm.name} uninstalls Svall there and drops its route here. The fleets on it and their files stay on that machine.`}
+                <div className="acts">
+                  <button className="btn dan" data-testid="host-confirm-yes"
+                    onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
+                    {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
+                  </button>
+                  <button className="btn" data-testid="host-confirm-no"
+                    onClick={() => app.store.getState().confirmHost(undefined)}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {shown && <Checklist run={shown} terminal={machine && ssh ? (run) => app.store.getState().openHostTerminal(machine, run) : undefined} />}
+            {running && (
+              <div className="acts">
+                <button className="btn" data-testid="host-cancel" onClick={() => app.bridge.send({ type: 'host.cancel' })}>Stop</button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

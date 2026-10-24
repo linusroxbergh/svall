@@ -2,7 +2,7 @@ import XCTest
 @testable import Svall
 
 private let step = #"{"step":"ssh","status":"ok","detail":"linus@studio accepted an interactive login"}"#
-private let warn = #"{"step":"claude","status":"warn","detail":"1.2.3, not logged in","action":"ssh linus@studio, then claude auth status and log in"}"#
+private let warn = #"{"step":"claude","status":"warn","detail":"1.2.3, not logged in","action":"ssh linus@studio, then claude auth login","run":"claude auth login"}"#
 private let outcome = #"{"result":"actions","actions":["ssh linus@studio, then claude auth status and log in"]}"#
 // what `svall host doctor --json` prints: one report, through JSON.stringify(report, null, 2)
 private let doctorReport = #"""
@@ -17,7 +17,8 @@ private let doctorReport = #"""
     {
       "name": "linger",
       "status": "warn",
-      "detail": "off for linus: the fleet stops when you log out; run loginctl enable-linger linus"
+      "detail": "off for linus: the fleet stops when you log out; run loginctl enable-linger linus",
+      "run": "loginctl enable-linger linus"
     },
     {
       "name": "release",
@@ -124,7 +125,7 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(steps, [
             HostProcess.Step(step: "ssh", status: "ok", detail: "linus@studio accepted an interactive login", action: nil),
             HostProcess.Step(step: "claude", status: "warn", detail: "1.2.3, not logged in",
-                             action: "ssh linus@studio, then claude auth status and log in"),
+                             action: "ssh linus@studio, then claude auth login", run: "claude auth login"),
         ])
         XCTAssertEqual(code, 1)
     }
@@ -185,7 +186,7 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(steps, [
             HostProcess.Step(step: "tmux", status: "ok", detail: "tmux 3.5a", action: nil),
             HostProcess.Step(step: "linger", status: "warn",
-                             detail: "off for linus: the fleet stops when you log out; run loginctl enable-linger linus", action: nil),
+                             detail: "off for linus: the fleet stops when you log out; run loginctl enable-linger linus", action: nil, run: "loginctl enable-linger linus"),
             HostProcess.Step(step: "release", status: "fail",
                              detail: "0.4.0, protocol 3; this controller runs 0.5.0, protocol 4", action: nil),
         ])
@@ -236,6 +237,8 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(FromShell.hostStep(op: "add", step: step).json as NSDictionary,
                        ["type": "host.step", "op": "add",
                         "event": ["step": "ssh", "status": "warn", "detail": "slow", "action": "try again"]] as NSDictionary)
+        let login = HostProcess.Step(step: "claude", status: "warn", detail: "not logged in", action: "ssh studio, then claude auth login", run: "claude auth login")
+        XCTAssertEqual((FromShell.hostStep(op: "add", step: login).json["event"] as? [String: Any])?["run"] as? String, "claude auth login")
         XCTAssertEqual(FromShell.hostStep(op: "doctor", step: HostProcess.Step(step: "machine", status: "ok", detail: nil, action: nil)).json as NSDictionary,
                        ["type": "host.step", "op": "doctor", "event": ["step": "machine", "status": "ok"]] as NSDictionary)
         XCTAssertEqual(FromShell.hostDone(op: "add", code: 1).json as NSDictionary,

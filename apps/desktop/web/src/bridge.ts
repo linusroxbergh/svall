@@ -3,6 +3,9 @@ import type { HandoverEvent } from './handover.js';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Attach = { socket: string; session: string };
+// a terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's
+// loopback that reaches the same port there
+export type MachineTerm = { ssh: string; type?: string; forward?: number };
 export type Connection = { host: string; port: number; token: string };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
@@ -19,7 +22,8 @@ export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'ena
 // enable names no fleet: the shell supplies the one this window runs
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
-export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string };
+// run: the command `action` names, for the user to run on the machine
+export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, the fleets here it is the gateway of, and its last check
 export type MachineRow = {
   name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[];
@@ -39,7 +43,7 @@ export type ConnectionState = {
 
 export type ToShell =
   | { type: 'connection' }
-  | { type: 'term.show'; id: string; rect: Rect; attach?: Attach; opacity?: number }
+  | { type: 'term.show'; id: string; rect: Rect; attach?: Attach; machine?: MachineTerm; opacity?: number }
   | { type: 'term.move'; id: string; rect: Rect }
   | { type: 'term.hide'; id: string }
   | { type: 'term.close'; id: string }

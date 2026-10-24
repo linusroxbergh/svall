@@ -8,7 +8,7 @@ const ADD_STEPS = [
   { step: 'ssh', status: 'ok', detail: 'linus@studio accepted an interactive login' },
   { step: 'master', status: 'ok', detail: 'connected to linus@studio' },
   { step: 'tmux', status: 'warn', detail: 'tmux 3.4: Shift+Enter needs tmux 3.5 or newer' },
-  { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth status and log in' },
+  { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth login', run: 'claude auth login' },
   { step: 'opencode', status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh linus@studio, then install OpenCode' },
   { step: 'probe', status: 'fail', detail: 'ws://127.0.0.1:47800 refused token=s3cr3t', action: 'ssh linus@studio and run svall doctor' },
 ] as const;
@@ -72,7 +72,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
 
   await expect(page.getByTestId('host-phase')).toHaveText(['Reaching the machine', 'What the machine needs', 'Agent logins', 'Trying it out']);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
-  await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth status and log in');
+  await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth login');
   await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');
   // what the step said is kept, without the token it carried
   await expect(page.getByTestId('host-step-probe')).toContainText('ws://127.0.0.1:47800 refused token=…');
@@ -82,6 +82,13 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await expect(page.getByTestId('host-outcome')).toContainText('Add machine stopped at Final check: ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-outcome')).toContainText('svall doctor');
   await expect(page.getByTestId('host-next-gateway')).toHaveCount(0);
+
+  // a machine not yet in the registry is reached at the destination the add was given, and nothing checks it again
+  await page.getByTestId('host-terminal-claude').click();
+  expect((await sent(page)).at(-2)).toMatchObject({ type: 'term.show', id: 'machine:studio', machine: { ssh: 'linus@studio', type: 'claude auth login' } });
+  await receive(page, { type: 'term.exited', id: 'machine:studio' });
+  await expect(page.getByTestId('host-steps')).toBeVisible();
+  expect((await sent(page)).filter((m) => m.type === 'host.start')).toHaveLength(1);
 
   // an add that stopped short is offered again as it was asked, and one that went through offers the gateway it still needs
   await expect(page.getByTestId('host-ssh')).toHaveValue('linus@studio');
@@ -153,6 +160,57 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await page.getByTestId('host-next-handover').click();
   await expect(page.getByTestId('host-setup')).toHaveCount(0);
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
+});
+
+test('a fix the machine leaves to the user opens a terminal there with its command typed, and the machine is checked again once it closes', async ({ page, svall }) => {
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  await page.getByTestId('settings-open').click();
+  await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
+  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
+  const panel = page.getByTestId('host-setup');
+  await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'claude', status: 'warn', detail: '2.1.300, not signed in: claude auth login', run: 'claude auth login' } });
+  await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'codex', status: 'warn', detail: 'codex-cli 0.156.1, not signed in: codex login', run: 'codex login' } });
+  await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'tmux', status: 'ok', detail: '3.5a' } });
+  // nothing is offered while the check still runs
+  await expect(panel.getByTestId('host-terminal-claude')).toHaveCount(0);
+  await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
+  await expect(panel.getByTestId('host-terminal-tmux')).toHaveCount(0);
+
+  await panel.getByTestId('host-terminal-claude').click();
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('On studio, claude auth login is typed for you: press Return to run it.');
+  await expect(panel.getByTestId('host-steps')).toHaveCount(0);
+  const shown = (await sent(page)).filter((m) => m.type === 'term.show');
+  expect(shown).toEqual([{ type: 'term.show', id: 'machine:studio', rect: expect.any(Object), machine: { ssh: 'linus@studio', type: 'claude auth login' } }]);
+  // its shell exiting is the end of it: the machine's own checks look again
+  await receive(page, { type: 'term.exited', id: 'machine:studio' });
+  await expect(panel.getByTestId('host-terminal')).toHaveCount(0);
+  expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
+  await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'codex', status: 'warn', detail: 'codex-cli 0.156.1, not signed in: codex login', run: 'codex login' } });
+  await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
+
+  // Codex's login waits for the browser on port 1455 there, which a forward from this Mac reaches
+  await panel.getByTestId('host-terminal-codex').click();
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('through port 1455 on this Mac');
+  expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio', type: 'codex login', forward: 1455 } });
+  // an ssh that quits at once says why, and can be opened again
+  await receive(page, { type: 'term.failed', id: 'machine:studio', reason: 'ssh quit as soon as it started: Could not request local forwarding.' });
+  await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding.');
+  await panel.getByTestId('host-terminal-again').click();
+  expect((await sent(page)).filter((m) => m.type === 'term.show')).toHaveLength(3);
+  await panel.getByTestId('host-terminal-done').click();
+  await expect.poll(async () => (await sent(page)).slice(-2)).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
+  await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
+
+  // a plain terminal types nothing, and closing the panel closes it
+  await panel.getByTestId('machine-terminal').click();
+  expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio' } });
+  expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).not.toHaveProperty('machine.type');
+  await expect(panel.getByTestId('host-terminal-note')).toHaveText(/^A terminal on studio\./);
+  await page.getByTestId('host-close').click();
+  expect((await sent(page)).at(-1)).toEqual({ type: 'term.close', id: 'machine:studio' });
 });
 
 test('a machine is only removed or forgotten once the page has asked', async ({ page, svall }) => {
