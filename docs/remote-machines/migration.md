@@ -55,13 +55,13 @@ written, until you keep one of the two; the daemon's log and `svall doctor` both
 
 An older release refuses a fleet this release has migrated, and its install would put a fresh configuration in place
 of yours. Going back therefore means putting back the copies the upgrade kept. The release before this one is Svall
-0.13.0 (protocol 23, state schema 8). Its state checks are 0.9.0's, and its schema adds one optional field to 0.9.0's.
+0.14.0 (protocol 24, state schema 8). Its state checks are 0.9.0's, and its schema adds one optional field to 0.9.0's.
 What follows was checked by running Svall 0.5.1 (protocol 19) and Svall 0.3.2 (protocol 18, state schema 7) against a
 fleet this release had migrated, in a temporary home:
 
 - **The older daemon does not start.** Svall 0.5.1's log says `state.json is version 9, newer than this svalld reads
   (8): …; or, to go back to the fleet as this version last saw it, move ~/.svall/state.json.v8-<time> to
-  ~/.svall/state.json; svalld starts once it is fixed`, the message 0.9.0 to 0.13.0 print too, and it waits without
+  ~/.svall/state.json; svalld starts once it is fixed`, the message 0.9.0 to 0.14.0 print too, and it waits without
   touching the state. A release before OpenCode support says `newer than this svalld reads (7)`, and names a
   `state.json.v7-<time>` copy only when there is one.
 - **The older `svall setup`** finds no `config.json` and writes an empty one, so the fleet would start on the default
