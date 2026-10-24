@@ -39,6 +39,7 @@ import { adapterFor, cliRunner, installSession, placeTranscripts, resumeFolder, 
 import { SessionError, type CliRun, type SessionAdapter } from './sessions/types.js';
 import type { Authority } from './source.js';
 import { holds, realPath } from './portable-path.js';
+import { destinationView, relocate, relocationProblem } from './relocate.js';
 import { gitProblems, importState, landedProblem, linkProblem, manifestProblems, sessionProblems } from './validate.js';
 
 export type DestinationDeps = {
@@ -393,12 +394,14 @@ export class DestinationHandover {
    * A root this machine has prepared from is not taken again, since a second copy would undo its Git import.
    */
   private async runClaim(p: Claim): Promise<Result<'handover.claim'>> {
-    const m = p.manifest;
     const tx = p.transactionId;
     this.identify(p);
+    const m = destinationView(p.manifest);
+    // a root the user named by its path on the source is the one that lands here
+    const archive = p.archive?.map((name) => relocate(name, { from: p.manifest.home, to: m.home }));
     if (this.open(tx)?.preparedDigest) throw notReady(`handover ${tx} is prepared on this machine, so nothing more is copied into its roots`);
-    // each root at its own path here, before any is reserved
-    const unsafe = [...this.homeProblem(m), ...manifestProblems(m, [])];
+    // each root where it lands here, before any is reserved
+    const unsafe = [...this.homeProblem(p.manifest), ...manifestProblems(m, [])];
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
@@ -417,9 +420,9 @@ export class DestinationHandover {
       };
       let check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
       let archivedTo: string | undefined;
-      if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {
+      if (!check.ok && archive?.length && ARCHIVABLE.has(check.blocker.code)) {
         try {
-          archivedTo = (await boundary('destination.claim.archive', () => this.replicas.archive(r, p.archive, claim))).archivedTo;
+          archivedTo = (await boundary('destination.claim.archive', () => this.replicas.archive(r, archive, claim))).archivedTo;
           check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
         } catch (e) {
           if (!(e instanceof ReplicaError && e.code === 'not_approved')) throw e;
@@ -430,13 +433,21 @@ export class DestinationHandover {
     return { roots, ...(stays.unproven.length && { unproven: stays.unproven }) };
   }
 
-  /** A fleet over another home would put its roots and its `~` where this account does not keep them; a home it cannot read is not taken on trust. */
-  private homeProblem(m: TransferManifestV1): Blocker[] {
+  /**
+   * A handover sent to another home would put its roots and its `~` where this account does not keep them, and a root whose
+   * move would not come back is refused; a home it cannot read is not taken on trust.
+   */
+  private homeProblem(sent: TransferManifestV1): Blocker[] {
     let home: string;
     try { home = (this.d.homedir ?? os.homedir)(); } catch (e) {
-      return [{ code: 'home_mismatch', message: `this machine cannot read its own home, so it cannot tell that it is the fleet's ${m.home}: ${(e as Error).message}` }];
+      return [{ code: 'home_mismatch', message: `this machine cannot read its own home, so it cannot tell that it is ${sent.destinationHome}, the one the handover was sent to: ${(e as Error).message}` }];
     }
-    return home === m.home ? [] : [{ code: 'home_mismatch', message: `this account's home is ${home} and the fleet's ${m.home}; a fleet moves only between accounts with the same home path` }];
+    if (home !== sent.destinationHome) return [{ code: 'home_mismatch', message: `this account's home is ${home}, and the handover was sent to ${sent.destinationHome}` }];
+    const moving = { from: sent.home, to: home };
+    return sent.roots.flatMap((r): Blocker[] => {
+      const why = relocationProblem(r.path, moving);
+      return why ? [{ code: 'path_unsupported', message: why, entity: { kind: 'root', id: r.id } }] : [];
+    });
   }
 
   /** The gateway's Begin for this handover, still preparing, handing this fleet on from the generation before this one to this machine. */
@@ -485,9 +496,9 @@ export class DestinationHandover {
    * only then writes the prepared state. Asked again, it proves each root again, against the seal or what landed.
    */
   private async runPrepare(p: Prepare): Promise<Result<'handover.prepare'>> {
-    const m = p.manifest;
     const tx = p.transactionId;
     this.identify(p);
+    const m = destinationView(p.manifest);
     const held = this.open(tx);
     if (held && held.manifestDigest !== p.manifestDigest) {
       throw handoverError({ code: 'transaction_mismatch', message: `this machine prepares handover ${tx} from manifest ${held.manifestDigest}, not ${p.manifestDigest}` });

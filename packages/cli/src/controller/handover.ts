@@ -13,6 +13,7 @@ import { canonicalDigest } from '@svall/svalld/handover/hash';
 import { settle } from '@svall/svalld/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
 import { holds } from '@svall/svalld/handover/portable-path';
+import { destinationView, relocate } from '@svall/svalld/handover/relocate';
 import { caseCollisions, rootCollisions } from '@svall/svalld/handover/probe';
 import { ARCHIVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
 import { resumeFolders } from '@svall/svalld/handover/sessions/registry';
@@ -993,8 +994,12 @@ export class Handover {
     return out;
   }
 
-  /** The destination's own read of the roots it would receive, of the folders they land in, and of where carried links lead there. */
-  private async destinationChecks(source: Side, destination: Side, m: TransferManifestV1, choices: HandoverChoices): Promise<{ blockers: Blocker[]; warnings: Warning[] }> {
+  /**
+   * The destination's own read of the roots it would receive, of the folders they land in, and of where carried links
+   * lead there, each by where it lies there.
+   */
+  private async destinationChecks(source: Side, destination: Side, sent: TransferManifestV1, choices: HandoverChoices): Promise<{ blockers: Blocker[]; warnings: Warning[] }> {
+    const m = destinationView(sent);
     const carried = replicaRoots(m);
     const folderOf = (p: string): string => landingFolder(p, m.home);
     const sessionFolders = m.sessions.map((s) => folderOf(s.destinationHome ?? m.home));
@@ -1016,12 +1021,13 @@ export class Handover {
       if (!(e instanceof Refused)) throw e;
       return { blockers: [{ code: 'identity_mismatch', message: `${where} will not read the roots it would receive: ${e.message}` }], warnings: [] };
     }
-    // a root the user chose to archive is set aside at claim, and arrives as a first copy
+    // a root the user chose to archive, by its path on either machine, is set aside at claim, and arrives as a first copy
+    const archive = choices.archiveRoots?.map((n) => relocate(n, { from: sent.home, to: m.home }));
     const archived = new Set(r.roots.filter((x) => !x.check.ok && ARCHIVABLE.has(x.check.blocker.code)
-      && choices.archiveRoots?.some((n) => n === x.id || n === x.check.path || n === carried.find((c) => c.id === x.id)?.path)).map((x) => x.id));
+      && archive?.some((n) => n === x.id || n === x.check.path || n === carried.find((c) => c.id === x.id)?.path)).map((x) => x.id));
     const blockers: Blocker[] = [
       ...r.roots.flatMap((x) => (x.check.ok || archived.has(x.id) ? [] : [x.check.blocker])),
-      ...await this.lostCommits(source, destination, m, r.unproven, 'begin'),
+      ...await this.lostCommits(source, destination, sent, r.unproven, 'begin'),
     ];
     for (const c of r.commands ?? []) {
       blockers.push({

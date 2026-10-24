@@ -24,6 +24,7 @@
     "./handover/journal": "./src/handover/journal.ts",
     "./handover/manifest": "./src/handover/manifest.ts",
     "./handover/probe": "./src/handover/probe.ts",
+    "./handover/relocate": "./src/handover/relocate.ts",
     "./handover/replicas": "./src/handover/replicas.ts",
     "./handover/sessions/registry": "./src/handover/sessions/registry.ts",
     "./codex/install": "./src/codex/install.ts",

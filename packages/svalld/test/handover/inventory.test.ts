@@ -10,6 +10,7 @@ import {
 import { discoverGit } from '../../src/handover/git-graph.js';
 import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, homeCommands, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
 import { exportSnapshot, NOT_BOUND, NOT_PATHS, PATH_FIELDS, portablePathValues } from '../../src/handover/portable-path.js';
+import { relocationProblem } from '../../src/handover/relocate.js';
 import { git, hasGit } from './git-fixture.js';
 
 const made: string[] = [];
@@ -270,6 +271,53 @@ describe('buildInventory', () => {
     expect(homeCommands("/Users/Linus's")).toBe("sudo mkdir -p /Users, then sudo useradd -m -d '/Users/Linus'\\''s' <user> for a new account, or sudo usermod -d '/Users/Linus'\\''s' -m <user> for an existing one you are not logged in as");
   });
 
+  describe('between accounts with different homes', () => {
+    // the destination's home, and where a path of this home lands there
+    const away = (s: ReturnType<typeof seed>): { linux: string; at: (p: string) => string } => {
+      const linux = path.join(s.base, 'linux');
+      s.maps.destination = { ...s.maps.destination, home: linux, fleetHome: path.join(linux, '.svall') };
+      return { linux, at: (p) => path.join(linux, path.relative(s.mac, p)) };
+    };
+    const moved = (blockers: Blocker[]): Blocker[] => blockers.filter((b) => b.code !== 'home_mismatch');
+
+    it('carries the docs, agent profiles and fleet .env to where the destination\'s fleet home keeps them', () => {
+      const s = seed();
+      away(s);
+      const fleetHome = path.join(s.mac, '.svall');
+      for (const d of ['docs/fleet', 'agent-profiles']) fs.mkdirSync(path.join(fleetHome, d), { recursive: true });
+      fs.writeFileSync(path.join(fleetHome, '.env'), 'KEY=1\n');
+      const inv = buildInventory(s.state, { fleet: { ...FLEET, handover: { ...FLEET.handover, transferFleetEnv: true } } }, s.maps);
+      expect(moved(inv.blockers)).toEqual([]);
+      expect(inv.roots.filter((r) => ['docs', 'profiles', 'env'].includes(r.kind)).map((r) => r.path)).toEqual(['.env', 'agent-profiles', 'docs'].map((n) => path.join(fleetHome, n)));
+      expect(inv.destinationHome).toBe(path.join(s.base, 'linux'));
+    });
+
+    it('blocks a root that would land on the destination\'s fleet home or agent login, read where it lands there', () => {
+      const s = seed();
+      const { at } = away(s);
+      const scratch = path.join(s.mac, 'scratch');
+      s.maps.destination.agentHomes = { claude: at(scratch) };
+      expect(moved(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers)).toEqual([
+        { code: 'path_unsupported', message: `${at(scratch)} holds ${at(scratch)}/.credentials.json, which stays on its machine`, entity: { kind: 'root', id: expect.any(String) } },
+      ]);
+      s.maps.destination = { ...s.maps.destination, agentHomes: {}, fleetHome: at(path.join(scratch, 'svall')) };
+      expect(moved(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers)).toContainEqual(
+        { code: 'path_unsupported', message: `${scratch} overlaps the fleet home ${at(path.join(scratch, 'svall'))}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: expect.any(String) } },
+      );
+    });
+
+    it('blocks a root in the destination\'s home outside this one, which would land where a path of this home lands', () => {
+      const s = seed();
+      const { linux } = away(s);
+      const odd = path.join(linux, 'odd');
+      fs.mkdirSync(odd, { recursive: true });
+      s.state.characters.w2.context.push({ kind: 'folder', ref: odd, label: '', source: 'manual' });
+      const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+      expect(moved(inv.blockers)).toEqual([{ code: 'path_unsupported', message: relocationProblem(odd, { from: s.mac, to: linux }), entity: { kind: 'root', id: expect.any(String) } }]);
+      expect(inv.roots.some((r) => r.path === odd)).toBe(false);
+    });
+  });
+
   it('carries a root outside the home at its own path, leaving the destination to say whether the folder it lands in is there', () => {
     const s = seed();
     const outside = path.join(s.base, 'outside');
@@ -348,7 +396,7 @@ describe('buildInventory', () => {
     const elsewhere = buildInventory(s.state, { fleet }, s.maps);
     expect(elsewhere.roots.some((r) => r.kind === 'env')).toBe(false);
     expect(elsewhere.blockers).toEqual([{
-      code: 'path_unsupported', message: `the destination keeps this fleet's .env at ${path.join(s.mac, '.svall-work/.env')}, not ${path.join(s.mac, '.svall/.env')}, so it cannot arrive at the same path`,
+      code: 'path_unsupported', message: `the destination keeps this fleet's .env at ${path.join(s.mac, '.svall-work/.env')}, so it cannot land at ${path.join(s.mac, '.svall/.env')}`,
     }]);
   });
 
@@ -373,8 +421,8 @@ describe('buildInventory', () => {
     expect(elsewhere.roots.filter((r) => r.kind === 'docs' || r.kind === 'profiles')).toEqual([]);
     const there = path.join(s.mac, '.svall-work');
     expect(elsewhere.blockers.map((b) => b.message)).toEqual(expect.arrayContaining([
-      `the destination keeps this fleet's docs at ${there}/docs, not ${fleetHome}/docs, so they cannot arrive at the same path`,
-      `the destination keeps this fleet's agent profiles at ${there}/agent-profiles, not ${fleetHome}/agent-profiles, so they cannot arrive at the same path`,
+      `the destination keeps this fleet's docs at ${there}/docs, so they cannot land at ${fleetHome}/docs`,
+      `the destination keeps this fleet's agent profiles at ${there}/agent-profiles, so they cannot land at ${fleetHome}/agent-profiles`,
     ]));
   });
 

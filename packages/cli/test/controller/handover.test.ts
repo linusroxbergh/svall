@@ -883,6 +883,30 @@ describe('preflight', () => {
     expect(w.source.freezes).toEqual([{ carryUnused: true }]);
   });
 
+  it('asks a destination with another home of each root, folder, link and resume where it lands there, and takes an archive named by either path', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.destinationHome = '/home/ada';
+      for (const x of r.manifest.sessions) x.destinationHome = x.destinationHome!.replace(HOME, '/home/ada');
+      r.manifest.roots[0].files.push({ type: 'symlink', path: 'cfg', target: '/Users/ada/cfg' }, { type: 'symlink', path: 'readme', target: 'a.txt' });
+      return r;
+    }) as never;
+    let asked: { roots: { id: string; path: string }[]; folders: string[]; links?: string[]; resumes?: { cwd: string }[] } | undefined;
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: typeof asked) => { asked = p; return { ...inspect(p), missing: p!.links ?? [] }; }) as never;
+    w.destination.diverged.add('r_app');
+    const pre = await controller(w).preflight(trift, { archiveRoots: [at('app')] });
+    expect(asked!.roots.map((r) => r.path)).toEqual(['/home/ada/app', '/home/ada/app.git']);
+    expect(asked!.folders).toEqual(['/home/ada', '/home/ada/app', '/home/ada/app.git']);
+    expect(asked!.links).toEqual(['/Users/ada/cfg']);
+    expect(asked!.resumes!.map((f) => f.cwd)).toEqual(['/home/ada/app', '/home/ada/app']);
+    expect(pre.blockers).toEqual([]);
+    expect(pre.warnings).toContainEqual(expect.objectContaining({ code: 'symlink_dangling', message: expect.stringMatching(/^1 link in \/home\/ada\/app will point at nothing on trift: cfg;/) }));
+    expect(pre.warnings).toContainEqual(expect.objectContaining({ code: 'destination_diverged', message: expect.stringMatching(/^\/home\/ada\/app is archived when the handover claims it/) }));
+  });
+
   it('blocks a root outside the home whose folder the destination lacks, naming that folder, and takes one whose folder is there', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };

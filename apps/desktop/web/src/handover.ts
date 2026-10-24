@@ -606,7 +606,7 @@ export const accountHome = (fleetHome: string | undefined): string | undefined =
 export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'destination' | undefined {
   switch (b.code) {
     case 'external_writer': return /^the source /.test(b.message) ? 'source' : 'destination';
-    case 'path_symlinked': return /lands at the path it has on the source/.test(b.message) ? 'destination' : 'source';
+    case 'path_symlinked': return /lands at the path the handover gives it here/.test(b.message) ? 'destination' : 'source';
     // the checks and the freeze read the source's folders; the destination checks its own once they have landed
     case 'path_unsupported': return phase === 'begin' || phase === 'freeze' ? 'source' : undefined;
     case 'worktree_unresolved': case 'worktree_unused': case 'repository_unused': case 'platform_unsupported': case 'mission_control_shared': return 'source';

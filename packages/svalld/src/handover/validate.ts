@@ -24,8 +24,8 @@ export function linkProblem(p: string, entity: HandoverEntity): Blocker | undefi
   return {
     code: 'path_symlinked', entity,
     message: spelled
-      ? `${p} is spelled ${at} on disk here; a folder lands at the path it has on the source, the one Git and the agents record, so rename the folder here until the path reads ${p}, then try again`
-      : `${p} leads to ${at} on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first`,
+      ? `${p} is spelled ${at} on disk here; a folder lands at the path the handover gives it here, the one Git and the agents record, so rename the folder here until the path reads ${p}, then try again`
+      : `${p} leads to ${at} on this machine through a symbolic link; a folder lands at the path the handover gives it here, the one Git and the agents record, so that link has to go first`,
   };
 }
 
