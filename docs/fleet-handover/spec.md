@@ -633,10 +633,10 @@ Between accounts with different homes, a Claude Code or Codex session's files la
 under the destination's config folder as under the source's, so a Claude transcript stays in the
 project folder named for the source's cwd, and `claude --resume <id>` from the swapped cwd goes on
 appending to it. Codex records its cwd in the rollout: on every revive Svall reads the last one, and
-when that folder is not on this machine it runs `codex resume -C <cwd> -c tui.resume_cwd=current <id>`
-once, after which the rollout names the new folder and the plain command works. A session
-interrupted by the handover is told on resume which folder it moved from and to, since its
-conversation keeps the old paths.
+when that folder is not on this machine it runs `codex resume -c tui.resume_cwd=current <id>` in
+the terminal's own folder once, after which the rollout names the new folder and the plain command
+works. A session interrupted by the handover is told on resume which folder is gone and which one
+it works in now, since its conversation keeps the old paths.
 
 Session files are copied byte for byte. An adapter therefore depends only on where its CLI keeps a
 session's files, or for OpenCode on its export and import, not on the record format, and has a
