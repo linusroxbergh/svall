@@ -43,6 +43,10 @@ export function withStandalone(command: string): string {
   return access + (/\s--(standalone|server)(\s|=|$)/.test(unquoted(rest)) ? rest : rest.replace(/^\s*opencode/, '$& --standalone'));
 }
 
+// a revive saved under OpenCode 1 may carry -m or --agent, which 2's TUI refuses; dormancy saved their values plain
+export const withoutV1Flags = (revive: string): string =>
+  agentKindOf(revive) === 'opencode' ? revive.replace(/\s(?:-m|--model|--agent)(?:=\S+|\s+\S+)/g, '') : revive;
+
 // OpenCode's TUI holds back the submit of a /command while its command menu is open, which a space after the name closes
 export const promptText = (command: string, prompt: string): string =>
   agentKindOf(command) === 'opencode' && /^\/\S+$/.test(prompt.trim()) ? `${prompt.trim()} ` : prompt;

@@ -1,10 +1,12 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, FleetConfig, FleetId, NodeConfig, type MachineId } from '@svall/protocol';
+import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
 import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
-import { HOME_CWD, PRIVATE, profileHome, profileHomeCwd, profileOf } from './profile.js';
+import { HOME_CWD, PRIVATE, profileHome, profileHomeCwd, profileOf, variantOf } from './profile.js';
+import { variant } from './runtime.js';
 
 const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
 
@@ -15,18 +17,26 @@ export const NodeFile = NodeConfig.extend({ port: z.number().int().optional() })
 
 type Raw = Record<string, unknown>;
 
+// a config.json may name its fleet with a word svall has since kept for a command: that name is read as none, so the
+// fleet goes by its default one
+function unreserved(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || !RESERVED.includes((raw as Raw).name as string)) return raw;
+  const rest = { ...(raw as Raw) };
+  delete rest.name;
+  return rest;
+}
+
 /**
  * Every setting a running fleet reads, portable and machine-local side by side. It is also the shape
  * of the config.json the two files are split out of.
  */
-export const Config = FleetFile.omit({ mobile: true })
+export const Config = z.preprocess(unreserved, FleetFile.omit({ mobile: true })
   .merge(NodeFile.omit({ mobile: true }))
   .extend({
     id: FleetId.default(newFleetId),
     mobile: FleetConfig.shape.mobile.unwrap().merge(NodeConfig.shape.mobile.unwrap()).prefault({}),
-  });
-// integrations, the agents left on, is read out of agentsOff
-export type Config = z.infer<typeof Config> & { integrations?: AgentKind[] };
+  }));
+export type Config = z.infer<typeof Config>;
 
 /** The model fleet.json picks for each CLI of the crew or the scribe; a single scribe.model is scribe.agent's CLI's, else claude's. */
 export function modelPicks(config: Pick<Config, 'home' | 'scribe'>, of: 'scribe' | 'home'): Partial<Record<AgentKind, string>> {
@@ -37,6 +47,9 @@ export function modelPicks(config: Pick<Config, 'home' | 'scribe'>, of: 'scribe'
 
 export class InvalidConfig extends Error {}
 
+// an integrations list in config.json leaves any agent but these on
+const LISTED: AgentKind[] = ['claude', 'codex'];
+
 /** The main agent of the fleet at `home`, whose own config names `own`: absent, the private fleet's, which setup switches
  *  when the user turns one off. */
 export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentKind | undefined {
@@ -45,9 +58,11 @@ export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentK
   try { return configuredMainAgent(resolvePaths(profileHome(PRIVATE))); } catch { return undefined; }
 }
 
-const withIntegrations = <T extends Pick<Config, 'agentsOff'>>(c: T): T & Pick<Config, 'integrations'> => ({
+// the agents left on: those agentsOff leaves out, else an integrations list's and any it never listed
+const withIntegrations = <T extends Pick<Config, 'agentsOff' | 'integrations'>>(c: T): T => ({
   ...c,
-  integrations: c.agentsOff && AgentKind.options.filter((k) => !c.agentsOff!.includes(k)),
+  integrations: c.agentsOff ? AgentKind.options.filter((k) => !c.agentsOff!.includes(k))
+    : c.integrations && AgentKind.options.filter((k) => c.integrations!.includes(k) || !LISTED.includes(k)),
 });
 
 export const mergeConfig = (fleet: FleetConfig, node: z.infer<typeof NodeFile>): Config =>
@@ -76,7 +91,7 @@ const only = (from: Raw, keys: string[]): Raw => Object.fromEntries(Object.entri
 function splitLegacy(file: string): { fleet: Raw; node: Raw } {
   const text = fs.readFileSync(file, 'utf8');
   const { id } = parseConfig(text, file, Config);
-  const raw = JSON.parse(text) as Raw;
+  const raw = unreserved(JSON.parse(text)) as Raw;
   const mobile = (raw.mobile ?? {}) as Raw;
   const fleetMobile = only(mobile, Object.keys(FleetConfig.shape.mobile.unwrap().shape));
   const nodeMobile = only(mobile, Object.keys(NodeConfig.shape.mobile.unwrap().shape));
@@ -177,6 +192,21 @@ export const keptPorts = (homes: string[]): number[] => homes.flatMap((h) => {
 });
 
 /**
+ * Each fleet home in `homedir` whose config.json, or the backup its split left, named the fleet with a word svall now
+ * keeps for a command, while its fleet.json names it nothing else.
+ */
+export function reservedFleetNames(homedir: string): { home: string; name: string }[] {
+  const json = (file: string): Raw | undefined => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as Raw; } catch { return undefined; } };
+  let entries: string[];
+  try { entries = fs.readdirSync(homedir).sort(); } catch { return []; }
+  return entries.filter((f) => variantOf(f) === variant).flatMap((f) => {
+    const p = resolvePaths(path.join(homedir, f));
+    const name = (json(p.legacyConfig) ?? json(`${p.legacyConfig}.bak`))?.name;
+    return typeof name === 'string' && RESERVED.includes(name) && json(p.fleetConfig)?.name === undefined ? [{ home: p.home, name }] : [];
+  });
+}
+
+/**
  * Sets the keys `patch` names in `file`, drops those it names as undefined, merges an object a level down, and keeps every
  * other key as the file held it. A file that does not parse, or would not after the change, is refused, not replaced.
  * A linked file (stow, home-manager) is written where it points, with the mode it had.
@@ -208,9 +238,9 @@ export function saveConfig(paths: Paths, patch: ConfigPatch, say?: (line: string
   initConfig(paths, {}, say);
   const { integrations, mobile, ...fleet } = patch;
   if (Object.keys(fleet).length) patchFleetConfig(paths.fleetConfig, fleet);
-  // integrations are saved as agentsOff
+  // integrations are saved as agentsOff, which replaces an integrations list
   const off = integrations && AgentKind.options.filter((k) => !integrations.includes(k));
-  const node = { ...('integrations' in patch && { agentsOff: off }), ...(mobile && { mobile }) };
+  const node = { ...('integrations' in patch && { integrations: undefined, agentsOff: off }), ...(mobile && { mobile }) };
   if (Object.keys(node).length) patchConfigFile(paths.nodeConfig, NodeConfig, node);
 }
 

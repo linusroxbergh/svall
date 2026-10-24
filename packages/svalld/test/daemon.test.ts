@@ -158,7 +158,7 @@ runIf('startDaemon', () => {
     const home = path.join(os.homedir(), '.svall');
     fs.mkdirSync(home, { recursive: true });
     homes.push(home);
-    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({ agentsOff: ['codex', 'opencode'] }));
+    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({ integrations: ['claude'] }));
     await (await start({ home, port: 0, log: silentLogger })).stop();
     expect(fs.existsSync(codex.hooks)).toBe(false);
   });

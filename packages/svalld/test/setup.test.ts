@@ -432,6 +432,19 @@ describe('runSetup', () => {
     expect(again).toContain(`${host} holds a fleet named host, a name svall now keeps for its own command, so no -p reaches it: mv ${host} ${host}-fleet, set home.cwd in ${host}-fleet/fleet.json to ${host}-fleet/home, then svall host-fleet`);
   });
 
+  it('sets up a fleet whose config.json names it with a word svall now keeps for a command, and says it dropped the name', async () => {
+    const root = makeHome();
+    const [home, work] = [path.join(root, '.svall'), path.join(root, '.svall-work')];
+    for (const [dir, name] of [[home, 'host'], [work, 'version']]) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ name }));
+    }
+    const lines = await runSetup({ home, settingsPath: path.join(root, 'claude', 'settings.json'), launchAgentsDir: path.join(root, 'LaunchAgents'), shimDir: path.join(root, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }), opencode: opencodeIn(root), agents: ['codex'] });
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'fleet.json'), 'utf8'))).not.toHaveProperty('name');
+    expect(lines).toContain(`${home} holds a fleet named host, a name svall now keeps for its own command, so the fleet goes without it; give it another in Settings`);
+    expect(lines).toContain(`${work} holds a fleet named version, a name svall now keeps for its own command, so the fleet goes without it; give it another in Settings`);
+  });
+
   it("writes the OpenCode plugin when OpenCode is here, and takes it back once it is turned off", async () => {
     const home = makeHome();
     const opencode = opencodeIn(home);

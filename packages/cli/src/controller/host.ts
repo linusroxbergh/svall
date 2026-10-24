@@ -6,13 +6,12 @@ import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@sva
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { unitPath } from '@svall/svalld/linux/setup';
-import { PRIVATE, profileOf } from '@svall/svalld/profile';
+import { isFleetName, isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import { shq } from '@svall/svalld/text';
-import { fleetHomes as everyFleetHome } from '@svall/svalld/uninstall';
 import type { Verify } from '../../../../scripts/release-manifest.mjs';
 import type { Check } from '../checks-view.js';
 import { remoteOwner } from './authority.js';
@@ -721,9 +720,18 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
   });
 }
 
-/** The fleet homes on this Mac that hold a fleet.json, the private one and every named profile's. */
+/** The fleet homes on this Mac, the private one and every named profile's. */
 function fleetHomes(homedir: string): string[] {
-  try { return everyFleetHome(homedir).filter((home) => fs.existsSync(resolvePaths(home).fleetConfig)); } catch { return []; }
+  let names: string[];
+  try {
+    names = fs.readdirSync(homedir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isFleetName(f.slice('.svall-'.length))))
+    .map((f) => path.join(homedir, f))
+    .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
 }
 
 /** The fleets on this Mac whose fleet.json names `id` as their gateway, by profile; one that cannot be read names none. */
@@ -743,6 +751,8 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   const named = homes.filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
   const svall = (home: string, args: string): string => {
     const profile = profileOf(home, d.homedir);
+    // a home named for a command svall keeps is no -p's, and is reached by its folder
+    if (profile !== PRIVATE && !isProfileName(profile)) return `\`SVALL_HOME=${shq(home)} svall ${args}\``;
     return `\`svall ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
   };
   // a gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it, and whichever

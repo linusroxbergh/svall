@@ -1528,6 +1528,17 @@ esac
     expect(far.now()).toBe('1.2.2');
   });
 
+  it('refuses a rollback onto a release that reads an older state schema than a fleet in a home named for a command svall keeps', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, STATE_SCHEMA_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
+    fleetState('.svall', STATE_SCHEMA_VERSION - 1);
+    const newer = fleetState('.svall-host', STATE_SCHEMA_VERSION);
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`${newer} is at state schema ${STATE_SCHEMA_VERSION}`) });
+    expect(far.now()).toBe('1.2.3');
+  });
+
   it('goes back onto a release that reads every fleet\'s state there, whatever a folder no profile names holds', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION, STATE_SCHEMA_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
     fleetState('.svall', STATE_SCHEMA_VERSION - 1);
@@ -1677,6 +1688,12 @@ describe('host list', () => {
     fs.writeFileSync(path.join(work, '.svall-broken', 'fleet.json'), '{');
     expect(fleetsNaming(REMOTE, work).sort()).toEqual(['private', 'work']);
   });
+
+  it('finds a fleet whose home is named for a command svall keeps among those naming a machine as their gateway', () => {
+    fs.mkdirSync(path.join(work, '.svall-host'), { recursive: true });
+    fs.writeFileSync(path.join(work, '.svall-host', 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE }));
+    expect(fleetsNaming(REMOTE, work)).toEqual(['host']);
+  });
 });
 
 describe('host remove', () => {
@@ -1825,6 +1842,19 @@ describe('host remove', () => {
     expect(ssh.calls()).toEqual([]);
     expect(gatewayOf(frozen)).toBe(REMOTE);
     expect(gatewayOf(begun)).toBe(REMOTE);
+  });
+
+  it('names a fleet a handover holds open in a home named for a command svall keeps by that home, which no -p reaches', async () => {
+    const registry = registered('trift.test');
+    const held = fleetAt('.svall-host', { gateway: REMOTE, owner: MAC });
+    fs.mkdirSync(path.join(held, 'handover'));
+    fs.writeFileSync(path.join(held, 'handover', 'journal.json'), JSON.stringify({
+      role: 'source', transactionId: 'tx-1', generation: 2, fleetId: FLEET, fromMachineId: MAC, toMachineId: REMOTE, phase: 'freeze', updatedAt: 1,
+    }));
+    const out = await removeHost('trift', {}, deps({ registry }));
+    const said = out.actions.join('\n');
+    expect(said).toContain(`\`SVALL_HOME=${shq(held)} svall handover --resume\``);
+    expect(said).not.toContain('-p host');
   });
 
   it('refuses while a handover through another gateway holds a fleet open, as it may by now have left the fleet on this machine', async () => {

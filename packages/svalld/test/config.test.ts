@@ -188,8 +188,11 @@ describe('patchFleetConfig', () => {
 });
 
 describe('the agents setup turns off', () => {
-  it('saves the agents setup leaves on as the ones it turns off', () => {
+  it('leaves an agent Svall supports after a setup on', () => {
     const p = resolvePaths(makeHome());
+    // the list setup saved before OpenCode, which could name only Claude Code and Codex
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ integrations: ['claude'] }));
+    expect(loadConfig(p).integrations).toEqual(['claude', 'opencode']);
     saveConfig(p, { integrations: ['claude', 'opencode'] });
     expect(JSON.parse(fs.readFileSync(p.nodeConfig, 'utf8'))).toEqual({ agentsOff: ['codex'] });
     expect(loadConfig(p).integrations).toEqual(['claude', 'opencode']);

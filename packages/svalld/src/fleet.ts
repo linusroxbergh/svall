@@ -12,7 +12,7 @@ import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
 import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, promptText, withAddDirs, withPromptFile, withStandalone } from './context/launch.js';
+import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { endAll, endIdleAgents, exited, freshCommand, loseSecond, markDormant, processes, rememberFlags, resumeHere, resumeNote, runsAgent, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
@@ -808,7 +808,7 @@ export class Fleet extends EventEmitter<Events> {
     if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
     const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], this.carried(id), id) : undefined;
     try {
-      const command = this.launchLine(id, withAddDirs(fresh ?? resumeHere(c.revive?.command ?? '', !!gone), [...(island?.context ?? []), ...c.context]), prompt);
+      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
       this.deps.store.update((d) => {
         const cur = d.robots[id];
         cur.tmux = { windowId: w.windowId, paneId: w.paneId };
@@ -904,7 +904,7 @@ export class Fleet extends EventEmitter<Events> {
     const unprompted = c.second && !this.carried(id, 2) ? unsaved(c.second) : undefined;
     if (unprompted !== undefined) fresh ??= { command: unprompted, prompt: '' };
     const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
-    const launch = withAddDirs(fresh?.command ?? revive, [...(island?.context ?? []), ...c.context]);
+    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
     const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }));
     if (!this.deps.store.state.robots[id]) {
