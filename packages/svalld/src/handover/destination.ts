@@ -26,6 +26,7 @@ import { writeDurable } from './durable.js';
 import { boundary } from './failpoints.js';
 import { GitFailure, unsetHere } from './git-graph.js';
 import { graphsHere, importGraphs, keptWorktrees, type KeptWorktree } from './git-import.js';
+import { staleBlockers, stalePlaces } from './git-relocate.js';
 import { canonicalDigest } from './hash.js';
 import { machineLocal, rootMatcher, settle } from './inventory.js';
 import { DestinationJournal } from './journal.js';
@@ -182,6 +183,9 @@ const anotherController = (tx: string, drives: string, asked: string | undefined
   code: 'transaction_mismatch', message: `handover ${tx} is driven by the controller on ${drives}, not ${asked ? `the one on ${asked}` : 'one that names no machine'}`, expected: tx,
 });
 
+// whether anything, a link included, holds the name
+const present = (p: string): boolean => { try { fs.lstatSync(p); return true; } catch { return false; } };
+
 const wire = (check: ReplicaCheck): WireCheck =>
   (check.ok ? { ok: true, path: check.path, kind: check.kind } : { ok: false, path: check.path, blocker: check.blocker });
 
@@ -283,7 +287,7 @@ export class DestinationHandover {
           : wire(await this.replicas.inspect(r, { excludes: p.excludes, ...(r.files && { incoming: r.files }), keep: stays.keep(r.path) }));
         roots.push({ id: r.id, check });
       }
-      const missing = (p.links ?? []).filter((l) => { try { fs.lstatSync(l); return false; } catch { return true; } });
+      const missing = (p.links ?? []).filter((l) => !present(l));
       const untrusted: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
       for (const f of p.resumes ?? []) if (!(await this.trusted(f))) untrusted.push({ kind: f.kind, cwd: f.cwd });
       const bypassing = (p.resumes ?? []).filter((f) => f.bypass);
@@ -401,7 +405,7 @@ export class DestinationHandover {
     const archive = p.archive?.map((name) => relocate(name, { from: p.manifest.home, to: m.home }));
     if (this.open(tx)?.preparedDigest) throw notReady(`handover ${tx} is prepared on this machine, so nothing more is copied into its roots`);
     // each root where it lands here, before any is reserved
-    const unsafe = [...this.homeProblem(p.manifest), ...manifestProblems(m, [])];
+    const unsafe = [...this.homeProblem(p.manifest), ...manifestProblems(m, []), ...staleBlockers(p.manifest, 'this machine', present)];
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
@@ -513,7 +517,7 @@ export class DestinationHandover {
     if (unverified) throw notReady(`the transfer verified nothing in root ${unverified.id} (${unverified.path})`);
     const imported = importState(m);
     const homes = Object.fromEntries((await this.agents()).map((a) => [a.kind, a.home]));
-    const found = [...manifestProblems(m, p.landed), ...sessionProblems(m, homes)];
+    const found = [...manifestProblems(m, p.landed), ...sessionProblems(m, homes), ...staleBlockers(p.manifest, 'this machine', present)];
     if (found.length) throw blocked(found);
     let state: FleetState;
     try { state = FleetState.parse(placeTranscripts(imported.state, m.sessions)); } catch (e) {
@@ -571,23 +575,33 @@ export class DestinationHandover {
     const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
     const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
       .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
-    // what the import writes, by real path: each graph's config, and the registrations it neither carries nor keeps, which it removes
+    // each graph whose common directory or a worktree lands at another path than it left
+    const moved = new Set(stalePlaces(p.manifest).map((s) => s.graph));
+    // what the import writes, by real path: each graph's config, the registrations it neither carries nor keeps, which it
+    // removes, and for a graph that moved each linked worktree's gitfile and the registration naming it, which it repairs
     const commons = graphsHere(m).map((g) => ({ common: realPath(g.commonDir), keep: new Set([...g.carried, ...keptNames[g.id]]) }));
-    const written = (file: string): boolean => commons.some(({ common, keep }) => {
+    const repaired = (m.git ?? []).filter((g) => moved.has(g.id)).flatMap((g) => g.worktrees.flatMap((w) => [
+      realPath(path.posix.join(w.path, '.git')), path.posix.join(realPath(g.commonDir), 'worktrees', path.posix.basename(w.gitDir), 'gitdir'),
+    ]));
+    const written = (file: string): boolean => repaired.includes(file) || commons.some(({ common, keep }) => {
       const rel = path.posix.relative(common, file);
       return rel === 'config' || (rel.startsWith('worktrees/') && !keep.has(rel.split('/')[1]));
     });
-    // what landed in a root, with each path the import writes as it now stands there
+    // what landed in a root, with each path the import writes as it now stands there: read whole where a common directory
+    // is, and else each repaired file alone
     const asImported = async (r: TransferRoot): Promise<TransferFile[]> => {
       const root = at.get(r.id)!;
       const there = (f: TransferFile): boolean => written(f.path ? path.posix.join(root, f.path) : root);
       const read = commons.some(({ common }) => holds(root, common) || holds(common, root));
-      const scanned = read ? (await scanPath(root, rootMatcher(r.kind, m.excludes), this.d.scanFs))?.files ?? [] : [];
+      const alone = async (file: string): Promise<TransferFile[]> =>
+        ((await scanPath(file, () => false, this.d.scanFs))?.files ?? []).map((f) => ({ ...f, path: path.posix.relative(root, file) }));
+      const scanned = read ? (await scanPath(root, rootMatcher(r.kind, m.excludes), this.d.scanFs))?.files ?? []
+        : (await Promise.all(repaired.filter((f) => holds(root, f)).map(alone))).flat();
       return [...p.landed.find((x) => x.id === r.id)!.files.filter((f) => !there(f)), ...scanned.filter(there)];
     };
     let graphs: Blocker[];
     try {
-      graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames });
+      graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames, moved });
     } finally {
       // what Complete seals, or an abort leaves claimable: what landed, with what the import wrote however far it got and
       // nothing else written there meanwhile; a prepare asked again keeps what the one that proved it recorded
@@ -615,7 +629,7 @@ export class DestinationHandover {
     const unread = await this.importSessions(tx, m, run);
     if (unread.length) throw blocked(unread);
     // and what the import wrote since
-    await boundary('destination.prepare.sync', () => flush(graphsHere(m).map((g) => path.join(g.commonDir, 'config'))));
+    await boundary('destination.prepare.sync', () => flush([...graphsHere(m).map((g) => path.join(g.commonDir, 'config')), ...repaired]));
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);

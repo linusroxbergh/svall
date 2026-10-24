@@ -1014,8 +1014,11 @@ describe('destination prepare', () => {
 const realGit = hasGit ? describe : describe.skip;
 
 realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { timeout: 180_000 }, () => {
-  /** The fixture handed from the Mac, whose tree is parked at `mac`, to this machine, which has none of it yet. */
-  async function gitScene(l: Layout) {
+  /**
+   * The fixture handed from the Mac, whose tree is parked at `mac`, to this machine, which has none of it yet; with `to`,
+   * this account's home is there, not the Mac's.
+   */
+  async function gitScene(l: Layout, to = l.home) {
     const home = makeHome();
     const paths = resolvePaths(home);
     fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, gatewayMachineId: trift })));
@@ -1026,10 +1029,10 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const discovery = await discoverGit(state, { excludes: DEFAULT_EXCLUDES });
     expect(discovery.blockers).toEqual([]);
     const inventory = buildInventory(state, { fleet }, {
-      source: { machineId: mac, home: l.home, fleetHome: path.join(l.base, 'mac-svall') }, destination: { machineId: trift, home: l.home, fleetHome: home },
+      source: { machineId: mac, home: l.home, fleetHome: path.join(l.base, 'mac-svall') }, destination: { machineId: trift, home: to, fleetHome: home },
     }, discovery);
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
-    expect(built.blockers).toEqual([]);
+    expect(built.blockers.filter((b) => b.code !== 'home_mismatch' || to === l.home)).toEqual([]);
     const macTree = park(l, 'mac');
     const landed = await transfer(paths, built.manifest, (p) => parkedAt(l, macTree, p));
     const store = Store.load(paths.state, () => {});
@@ -1102,6 +1105,79 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     }
     expect(fs.readFileSync(config, 'utf8')).toBe(landedConfig);
     expect(await d.handover.prepare(params)).toMatchObject({ preparedDigest: expect.any(String) });
+  });
+
+  it('repairs each linked worktree of a graph from another home, and records and flushes what the repair wrote', async () => {
+    const l = seedHere(made);
+    const to = path.join(l.base, 'home/source');
+    const s = await gitScene(l, to);
+    const at = (p: string): string => path.join(to, path.relative(l.home, p));
+    const flushed: string[][] = [];
+    const d = daemon(s, { syncRoots: async (_roots, files) => { flushed.push([...files]); } });
+    await d.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed });
+    const dd = l.source;
+    const linked = [dd.nested, dd.sibling, dd.detached, dd.locked];
+    expect(git(l.base, at(dd.main), 'worktree', 'list', '--porcelain').split('\n').filter((x) => x.startsWith('worktree ') || x.startsWith('prunable')).sort())
+      .toEqual([dd.main, ...linked].map((p) => `worktree ${at(p)}`).sort());
+    for (const w of linked) expect(git(l.base, at(w), 'rev-parse', '--path-format=absolute', '--git-common-dir')).toBe(path.join(at(dd.main), '.git'));
+    expect(git(l.base, at(dd.main), 'submodule', 'status')).toMatch(/^[ +]\w+ sub/);
+    const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
+    expect(prepared.characters.sib.cwd).toBe(at(dd.sibling));
+
+    // what repair wrote is sealed as it stands, and flushed with the configs
+    const repaired = [path.join(at(dd.sibling), '.git'), path.join(at(dd.main), '.git/worktrees/sibling/gitdir')];
+    for (const f of repaired) expect(fs.readFileSync(f, 'utf8')).toContain(to);
+    expect(flushed.at(-1)).toEqual(expect.arrayContaining(repaired));
+    const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
+    const sha = (f: string): string => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+    const sibling = seal.roots.find((x) => x.path === at(dd.sibling))!;
+    expect(sibling.files!.find((f) => f.path === '.git')).toMatchObject({ sha256: sha(repaired[0]) });
+    const main = seal.roots.find((x) => x.path === at(dd.main))!;
+    expect(main.files!.find((f) => f.path === '.git/worktrees/sibling/gitdir')).toMatchObject({ sha256: sha(repaired[1]) });
+    expect(main.files!.find((f) => f.path === '.claude/worktrees/nested/.git')).toMatchObject({ sha256: sha(path.join(at(dd.nested), '.git')) });
+  });
+
+  it.each(['destination.prepare.seal', 'destination.prepare.sync', 'destination.prepare.state', 'destination.prepare.journal'] as const)(
+    'prepares a graph from another home again after the daemon died before %s, its worktrees repaired and sealed as they stand', async (step) => {
+      const l = seedHere(made);
+      const to = path.join(l.base, 'home/source');
+      const s = await gitScene(l, to);
+      const at = (p: string): string => path.join(to, path.relative(l.home, p));
+      const params = { transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed };
+      const d = daemon(s);
+      const disarm = armFailpoints((name, edge) => { if (name === step && edge === 'before') throw new Error('svalld died'); });
+      try { await expect(d.handover.prepare(params)).rejects.toThrow('svalld died'); } finally { disarm(); }
+      expect(await d.start().handover.prepare(params)).toMatchObject({ preparedDigest: expect.any(String) });
+      const dd = l.source;
+      for (const w of [dd.nested, dd.sibling, dd.detached, dd.locked]) expect(git(l.base, at(w), 'rev-parse', '--path-format=absolute', '--git-common-dir')).toBe(path.join(at(dd.main), '.git'));
+      const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
+      const gitfile = path.join(at(dd.sibling), '.git');
+      expect(seal.roots.find((x) => x.path === at(dd.sibling))!.files!.find((f) => f.path === '.git'))
+        .toMatchObject({ sha256: crypto.createHash('sha256').update(fs.readFileSync(gitfile)).digest('hex') });
+      expect(fs.readFileSync(gitfile, 'utf8')).toBe(`gitdir: ${path.join(at(dd.main), '.git/worktrees/sibling')}\n`);
+    },
+  );
+
+  it('refuses a graph from another home while a place it moves from is still here, before it reserves anything', async () => {
+    const l = seedHere(made);
+    const s = await gitScene(l, path.join(l.base, 'home/source'));
+    unpark(l, 'mac');
+    const before = [tree(s.home), tree(l.base)];
+    const r = await refusal(daemon(s).handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest }));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`${l.source.sibling} is on this machine as well, and git worktree repair would tie the copy`) }));
+    expect([tree(s.home), tree(l.base)]).toEqual(before);
+  });
+
+  it('refuses to prepare a graph from another home once a place it moves from is here again, before git repairs anything', async () => {
+    const l = seedHere(made);
+    const to = path.join(l.base, 'home/source');
+    const s = await gitScene(l, to);
+    const gitfile = path.join(to, path.relative(l.home, l.source.sibling), '.git');
+    const before = fs.readFileSync(gitfile, 'utf8');
+    unpark(l, 'mac');
+    const r = await refusal(daemon(s).handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed }));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`${l.source.sibling} is on this machine as well`) }));
+    expect(fs.readFileSync(gitfile, 'utf8')).toBe(before);
   });
 
   /**

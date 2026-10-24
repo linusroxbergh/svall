@@ -594,6 +594,17 @@ describe('source preflight', () => {
     expect((await ask('linux')).blockers).toEqual([]);
   });
 
+  withGit('blocks a repository whose config names a path in this home, which a move to another home leaves behind', async () => {
+    const b = boot({ realGit: true });
+    const bo = path.join(b.work, 'bo');
+    repo(bo);
+    execFileSync('git', ['config', 'core.hooksPath', path.join(b.work, 'hooks')], { cwd: bo });
+    const ask = async (over: { home?: string } = {}) => (await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines(over) }))
+      .blockers.filter((x) => x.code === 'path_unsupported').map((x) => x.message);
+    expect(await ask({ home: '/home/linus' })).toEqual([expect.stringContaining(`${bo}: core.hookspath names ${path.join(b.work, 'hooks')}, a path in ${b.work}`)]);
+    expect(await ask()).toEqual([]);
+  });
+
   withGit('blocks a folder a terminal is in that holds repositories no character works in, naming each terminal, unless they are chosen to be carried', async () => {
     const { b, dev, unused } = developer();
     const ask = async (choices: HandoverChoices = {}) => (await b.handover.preflight({ toMachineId: trift, choices, ...b.machines() })).blockers;

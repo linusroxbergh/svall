@@ -20,6 +20,7 @@
     "./handover/durable": "./src/handover/durable.ts",
     "./handover/failpoints": "./src/handover/failpoints.ts",
     "./handover/git-import": "./src/handover/git-import.ts",
+    "./handover/git-relocate": "./src/handover/git-relocate.ts",
     "./handover/hash": "./src/handover/hash.ts",
     "./handover/journal": "./src/handover/journal.ts",
     "./handover/manifest": "./src/handover/manifest.ts",

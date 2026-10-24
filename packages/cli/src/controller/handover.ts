@@ -9,6 +9,7 @@ import {
 import { compareVersions } from '@svall/svalld/agents';
 import { boundary } from '@svall/svalld/handover/failpoints';
 import { graphsHere } from '@svall/svalld/handover/git-import';
+import { staleBlockers, stalePlaces } from '@svall/svalld/handover/git-relocate';
 import { canonicalDigest } from '@svall/svalld/handover/hash';
 import { settle } from '@svall/svalld/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
@@ -1007,7 +1008,8 @@ export class Handover {
     const folders = [...new Set([...carried.map((c) => folderOf(c.path)), ...sessionFolders, ...dirs.map((c) => c.path)])];
     const where = destination.route.name;
     const links = carriedLinks(m);
-    const ask = [...new Set(links.flatMap((l) => (l.carried === undefined ? [l.at] : [])))];
+    // where each carried link leads there, and each Git place the move leaves, which has to be absent there
+    const ask = [...new Set([...links.flatMap((l) => (l.carried === undefined ? [l.at] : [])), ...stalePlaces(sent).map((s) => s.path)])];
     const resuming = resumeFolders(m);
     let r: Result<'handover.inspect'>;
     try {
@@ -1028,6 +1030,7 @@ export class Handover {
     const blockers: Blocker[] = [
       ...r.roots.flatMap((x) => (x.check.ok || archived.has(x.id) ? [] : [x.check.blocker])),
       ...await this.lostCommits(source, destination, sent, r.unproven, 'begin'),
+      ...staleBlockers(sent, where, (p) => !(r.missing ?? []).includes(p)),
     ];
     for (const c of r.commands ?? []) {
       blockers.push({

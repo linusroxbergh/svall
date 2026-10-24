@@ -132,10 +132,11 @@ const refusal = (e: unknown): e is Error => e instanceof GitFailure || typeof (e
 const unresolved = (e: Error, entity: HandoverEntity): Blocker => ({ code: 'worktree_unresolved', message: e.message, entity });
 
 /**
- * Takes one copied graph as it came: the keys `git init` probes follow this filesystem, and each registration neither
- * carried nor kept here goes while its branch stays. Then git has to read the graph as the source left it.
+ * Takes one copied graph as it came: the keys `git init` probes follow this filesystem, each registration neither
+ * carried nor kept here goes while its branch stays, and a graph that `moved` to another home has its linked worktrees
+ * repaired. Then git has to read the graph as the source left it.
  */
-async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
+async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[]; moved?: boolean } = {}): Promise<Blocker[]> {
   const git = deps.git ?? handoverGit;
   const common = graph.commonDir;
   try {
@@ -148,11 +149,62 @@ async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly
     const keep = new Set([...graph.worktrees.map((w) => path.basename(w.gitDir)), ...(deps.kept ?? [])]);
     const ids = held ? fs.readdirSync(registrations) : [];
     for (const id of ids.filter((x) => !keep.has(x))) fs.rmSync(path.join(registrations, id), { recursive: true, force: true });
+    if (deps.moved && graph.worktrees.length) await repair(graph, deps.kept ?? [], git);
   } catch (e) {
     if (!refusal(e)) throw e;
     return [unresolved(e, { kind: 'git', id: graph.id })];
   }
   return validateGraph(graph, deps);
+}
+
+type Snapshot = { data: Buffer; mode: number };
+
+const snapshot = (file: string): Snapshot | undefined => {
+  try { return { data: fs.readFileSync(file), mode: fs.statSync(file).mode & 0o7777 }; } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw e;
+  }
+};
+
+const same = (a: Snapshot | undefined, b: Snapshot | undefined): boolean => (a && b ? a.data.equals(b.data) : a === b);
+
+// git writes a worktree's links through a link to wherever it leads
+function plain(file: string, kind: 'folder' | 'file', absent = false): void {
+  const s = fs.lstatSync(file, { throwIfNoEntry: false });
+  if (s ? (kind === 'folder' ? s.isDirectory() : s.isFile()) : absent) return;
+  throw new GitFailure(`${file} has to be a ${kind} of its own here, as git worktree repair writes through a link to wherever it leads`);
+}
+
+/**
+ * Points each carried linked worktree and its registration at each other where they landed. `git worktree repair`
+ * mends only the paths it is named, and its pass over every registration must leave each kept worktree's links as they were.
+ */
+async function repair(graph: GitGraph, kept: readonly string[], git: GitRunner): Promise<void> {
+  const registration = (name: string): string => path.join(graph.commonDir, 'worktrees', name);
+  for (const w of graph.worktrees) {
+    const at = registration(path.basename(w.gitDir));
+    plain(at, 'folder');
+    plain(path.join(at, 'gitdir'), 'file');
+    plain(path.join(w.path, '.git'), 'file');
+  }
+  const links = kept.flatMap((name) => {
+    const gitdir = path.join(registration(name), 'gitdir');
+    plain(registration(name), 'folder');
+    plain(gitdir, 'file', true);
+    const named = snapshot(gitdir)?.data.toString('utf8').trim();
+    const gitfile = named ? path.resolve(path.dirname(gitdir), named) : undefined;
+    if (gitfile) plain(gitfile, 'file', true);
+    return gitfile ? [gitdir, gitfile] : [gitdir];
+  });
+  const before = links.map(snapshot);
+  try {
+    await must(git, ['worktree', 'repair', ...graph.worktrees.map((w) => w.path)], graph.main?.path ?? graph.commonDir);
+  } finally {
+    // put back what repair changed of them, failed or not, so a prepare asked again refuses the same
+    const changed = links.flatMap((f, i) => (same(snapshot(f), before[i]) ? [] : [{ f, was: before[i] }]));
+    for (const { f, was } of changed) if (was) writeDurable(f, was.data, { mode: was.mode }); else fs.rmSync(f, { force: true });
+    if (changed.length) throw new GitFailure(`git worktree repair changed ${changed.map((c) => c.f).join(', ')}, which belong to worktrees that stay on this machine`);
+  }
 }
 
 const short = (head: string | null): string => head?.slice(0, 12) ?? 'no commit';
@@ -231,13 +283,13 @@ export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git
  * describes blocks: it would arrive without the graph its worktrees need.
  */
 export async function importGraphs(
-  manifest: Pick<TransferManifestV1, 'roots' | 'git'>, deps: ImportDeps & { kept?: Record<string, readonly string[]> } = {},
+  manifest: Pick<TransferManifestV1, 'roots' | 'git'>, deps: ImportDeps & { kept?: Record<string, readonly string[]>; moved?: ReadonlySet<string> } = {},
 ): Promise<Blocker[]> {
   const graphs = manifest.git ?? [];
   const described = new Set(graphs.flatMap((g) => [g.commonDir, ...(g.main ? [g.main.path] : []), ...g.worktrees.map((w) => w.path)]));
   const blockers: Blocker[] = manifest.roots
     .filter((r) => (r.kind === 'repo' || r.kind === 'worktree' || r.kind === 'gitdir') && !described.has(r.path))
     .map((r) => ({ code: 'worktree_unresolved', message: `${r.path}: no Git graph in the manifest describes it`, entity: { kind: 'root', id: r.id } }));
-  for (const g of graphs) blockers.push(...await importGraph(g, { ...deps, kept: deps.kept?.[g.id] ?? [] }));
+  for (const g of graphs) blockers.push(...await importGraph(g, { ...deps, kept: deps.kept?.[g.id] ?? [], moved: deps.moved?.has(g.id) ?? false }));
   return blockers;
 }
