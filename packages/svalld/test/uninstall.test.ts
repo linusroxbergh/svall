@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
@@ -18,7 +18,7 @@ import { runSetup, shimText } from '../src/setup.js';
 import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, UninstallRefused, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
-afterEach(cleanHomes);
+afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const script = '/h/.svall/hooks/agent-hook.mjs';
 const statusScript = '/h/.svall/hooks/claude-status.mjs';
@@ -329,6 +329,23 @@ describe('runUninstall', () => {
     expect(fs.existsSync(path.join(f.home, 'fleet.json'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(false);
     expect(lines.some((l) => l.includes('someone-else'))).toBe(false);
+  });
+
+  it('on Linux stops each fleet\'s tmux server with the tmux the release carries, before the release goes', async () => {
+    const f = installed();
+    const prefix = path.join(f.root, '.local', 'share', 'svall');
+    const release = path.join(prefix, 'releases', '1.0.0');
+    fs.mkdirSync(path.join(release, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(release, 'bin', 'tmux'), `#!/bin/sh\necho "$@" >> '${f.root}/tmux-calls'\n`, { mode: 0o755 });
+    vi.stubEnv('SVALL_RELEASE_ROOT', release);
+    const sock = path.join(f.home, 'tmux.sock');
+    fs.writeFileSync(sock, '');
+    const run: Run = async () => ({ stdout: '', stderr: '' });
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir: path.join(f.root, 'units'), prefix, run });
+    expect(lines).toContain(`stopped tmux server ${sock}`);
+    expect(fs.readFileSync(path.join(f.root, 'tmux-calls'), 'utf8')).toBe(`-S ${sock} kill-server\n`);
+    expect(fs.existsSync(release)).toBe(false);
   });
 
   it('on Linux takes its hooks back from the agent homes the login shell names, as well as the defaults', async () => {

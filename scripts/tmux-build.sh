@@ -11,6 +11,8 @@ LIBEVENT=2.1.13-stable
 LIBEVENT_SHA256=f7e9383b8c0baa81b687e5b5eecc01beefaf1b19b64151d95ed61647fe7a315c
 UTF8PROC=2.11.3
 UTF8PROC_SHA256=abfed50b6d4da51345713661370290f4f4747263ee73dc90356299dfc7990c78
+# the Linux build's image, by its multi-arch index digest
+UBUNTU=ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
 OUT="$ROOT/vendor/tmux/$TMUX-libevent-$LIBEVENT-utf8proc-$UTF8PROC"
 
 TMP="$(mktemp -d)"
@@ -74,7 +76,7 @@ if [ "${1:-}" = --linux ]; then
   esac
   OUT="$OUT-linux-$2"
   [ -x "$OUT/tmux" ] && { echo "$OUT/tmux"; exit 0; }
-  docker run --rm --platform "$PLATFORM" ubuntu:22.04 sh -c "$(cat "$0")" tmux-build.sh --in-container >"$TMP/tmux.tar"
+  docker run --rm --platform "$PLATFORM" "$UBUNTU" sh -c "$(cat "$0")" tmux-build.sh --in-container >"$TMP/tmux.tar"
   mkdir "$TMP/out"
   tar -xf "$TMP/tmux.tar" -C "$TMP/out"
 else

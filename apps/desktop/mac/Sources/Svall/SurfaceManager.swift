@@ -99,7 +99,7 @@ final class SurfaceManager {
         }
         guard let attach else { return }
         let route = route()
-        // the page names the socket and session only; which binary runs is decided here
+        // a local attach runs this Mac's tmux, decided here; a remote one runs the far tmux the page names
         let binary = SvallHome.tmuxBinary
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else {
             // the helper is opening a route, or opening one again: the session is remembered and attached once it is online

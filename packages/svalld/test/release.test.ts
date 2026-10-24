@@ -2,15 +2,15 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { entriesOf, manifestDigest, signManifest, sshVerify, verifyRelease, writeManifest, type Entry } from '../../../scripts/release-manifest.mjs';
 import { allowedSigners, installRelease } from '../../../scripts/install-release.mjs';
 import { companionAssets, describeVersion, packageLicence, phonePackages, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
 import { isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
-import { resolveTmux } from '../src/tmux/tmux.js';
+import { resolveTmux, servingTmux } from '../src/tmux/tmux.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(() => { delete process.env.SVALL_RELEASE_ROOT; cleanHomes(); });
+afterEach(() => { delete process.env.SVALL_RELEASE_ROOT; vi.unstubAllEnvs(); cleanHomes(); });
 
 const checkout = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -51,10 +51,33 @@ describe('release root on an installed release', () => {
   it('runs the tmux it carries, whatever PATH holds, and the one on PATH when it carries none', () => {
     const root = makeHome();
     process.env.SVALL_RELEASE_ROOT = root;
-    expect(resolveTmux()).not.toBe(path.join(root, 'bin', 'tmux'));
+    fs.mkdirSync(path.join(root, 'path'));
+    fs.writeFileSync(path.join(root, 'path', 'tmux'), '#!/bin/sh\n', { mode: 0o755 });
+    vi.stubEnv('PATH', path.join(root, 'path'));
+    expect(resolveTmux()).toBe(path.join(root, 'path', 'tmux'));
     fs.mkdirSync(path.join(root, 'bin'));
     fs.writeFileSync(path.join(root, 'bin', 'tmux'), '#!/bin/sh\n', { mode: 0o755 });
     expect(resolveTmux()).toBe(path.join(root, 'bin', 'tmux'));
+  });
+
+  it('keeps the tmux an earlier daemon ran while a server of its version answers, and its own otherwise', async () => {
+    const root = makeHome();
+    process.env.SVALL_RELEASE_ROOT = root;
+    fs.mkdirSync(path.join(root, 'bin'));
+    // the release's tmux is 3.7c, and the socket file holds the version its server answers
+    const own = path.join(root, 'bin', 'tmux');
+    fs.writeFileSync(own, '#!/bin/sh\n[ "$1" = -V ] && { echo "tmux 3.7c"; exit; }\ncat "$2"\n', { mode: 0o755 });
+    const system = path.join(root, 'system-tmux');
+    fs.writeFileSync(system, '#!/bin/sh\necho "tmux 3.4"\n', { mode: 0o755 });
+    const sock = path.join(root, 'tmux.sock');
+    expect(await servingTmux(sock, system)).toBe(own);
+    fs.writeFileSync(sock, 'tmux 3.4\n');
+    expect(await servingTmux(sock, system)).toBe(system);
+    expect(await servingTmux(sock, undefined)).toBe(own);
+    fs.writeFileSync(sock, 'tmux 3.5\n');
+    expect(await servingTmux(sock, system)).toBe(own);
+    fs.writeFileSync(sock, 'tmux 3.7c\n');
+    expect(await servingTmux(sock, system)).toBe(own);
   });
 
   it('falls back to dev when release.json is missing or unreadable', () => {

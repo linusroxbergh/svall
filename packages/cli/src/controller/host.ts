@@ -236,10 +236,14 @@ const unitPathOf = (home: string, svallBase: string): string =>
 
 /** The tmux the units start: the companion's own, or the machine's for a release that carries none. */
 async function tmuxCheck(master: SshMaster, o: { destination: string; home: string; svallBase: string }): Promise<Outcome<void>> {
-  const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, o.svallBase)}`), ...sh('svall-tmux-version', 'command -v tmux && tmux -V')], { timeoutMs: PROBE_TIMEOUT });
+  // exit 3 is no tmux on that PATH, apart from ssh's own failures and a tmux that cannot run there
+  const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, o.svallBase)}`), ...sh('svall-tmux-version', 'command -v tmux || exit 3; tmux -V')], { timeoutMs: PROBE_TIMEOUT });
   const [where, version] = r.stdout.trim().split('\n');
-  if (!where) throw new StepError('tmux missing: this release carries none, and the machine has none', onThere(o.destination, 'sudo apt install tmux'));
-  if (r.code !== 0) throw new StepError(`${where} -V exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  if (r.code === 3) {
+    const apt = there(o.destination, 'sudo apt install tmux');
+    throw new StepError('tmux missing: this release carries none, and the machine has none', apt.action, apt.run);
+  }
+  if (r.code !== 0) throw new StepError(`${where || 'tmux'} -V exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
   const whose = where.startsWith(`${o.svallBase}/`) ? "Svall's own" : `from ${where}`;
   return tmuxTooOld(version)
     ? { value: undefined, status: 'warn', detail: `${version} ${whose}: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4` }
@@ -570,6 +574,8 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
     const master = await run.step('master', () => checkedMaster(d, entry));
     try {
+      // a machine added on an older Ubuntu than this release runs on stays on its release
+      await run.step('os', () => osProbe(master));
       const companion = await run.step('release', () => companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch));
       const remote = remotePaths(entry.record.home, companion.version);
       await run.step('upload', async () => {

@@ -21,9 +21,9 @@ this pass covers what only the app and real machines show. What each step should
    - Each step appears as it finishes, grouped Reaching the machine, What the machine needs, Svall on the machine,
      Running Svall there, Agent logins, Trying it out and This Mac's list of machines. A new host key is asked in a dialog.
    - A fresh account ends with **still to do**: lingering, and any agent not logged in.
-2. Do what it lists over ssh, then choose **Check** on `studio`'s row: no row is marked ×. On Ubuntu 24.04 `tmux` is
-   marked ! (it ships 3.4), and so may `gh` and `path` be; none of them stops a handover. It ends with **ready to be
-   this fleet's gateway** and the number of warnings.
+2. Do what it lists over ssh, then choose **Check** on `studio`'s row: no row is marked ×. On Ubuntu 24.04 `gh` and
+   `path` may be marked !; neither stops a handover. It ends with **ready to be this fleet's gateway** and the number
+   of warnings.
 3. Choose **Make it this fleet's gateway**. Its Machine, Ownership record and Fleets steps are ok, and Settings →
    Machines shows `studio` as the gateway for `smoke`, with the release and result of its last check.
 4. Choose **Add machine** again with the same name: every step runs again and nothing changes.

@@ -26,6 +26,20 @@ export function resolveTmux(): string {
   return 'tmux';
 }
 
+/**
+ * The tmux to run against `socket`: resolveTmux()'s, unless a server of another version already answers there and
+ * `recorded`, the tmux an earlier daemon ran, is that version, as a newer client cannot attach to an older server.
+ */
+export async function servingTmux(socket: string, recorded: string | undefined): Promise<string> {
+  const own = resolveTmux();
+  if (!recorded || recorded === own) return own;
+  const read = (binary: string, ...args: string[]): Promise<string | undefined> =>
+    exec(binary, args, CALL).then((r) => r.stdout.trim(), () => undefined);
+  const server = await read(own, '-S', socket, 'display', '-p', 'tmux #{version}');
+  if (!server || server === await read(own, '-V')) return own;
+  return server === await read(recorded, '-V') ? recorded : own;
+}
+
 // the server takes the environment of the command that starts it, and hands it to every pane. The
 // release root the svalld shim exports would make a checkout's `pnpm svall` in a pane act as that release
 function paneEnv(): NodeJS.ProcessEnv {
@@ -120,10 +134,9 @@ export function parseViewerScreen(out: string, lines: number): Buffer {
 }
 
 export class Tmux {
-  readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
 
-  constructor(readonly socket: string, private conf: string) {}
+  constructor(readonly socket: string, private conf: string, readonly binary = resolveTmux()) {}
 
   async run(...args: string[]): Promise<string> {
     return this.call(args);

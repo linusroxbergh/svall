@@ -60,8 +60,9 @@ source daemon's current machine.”
 The first published release supports:
 
 - macOS 15 or newer for the desktop app and local owner;
-- an Ubuntu LTS release (an even year's `.04`) on x86-64 or arm64 for the gateway and remote owner;
-  another Ubuntu release is a warning, any other system is refused, and 24.04 is the release tested;
+- an Ubuntu LTS release (an even year's `.04`), 22.04 or newer, on x86-64 or arm64 for the gateway and remote
+  owner; a later release other than an LTS is a warning, an older one or any other system is refused, and 24.04 is
+  the release tested;
 - Tailscale on both machines;
 - OpenSSH access from the Mac to the Linux account, including Tailscale SSH;
 - the same home path on both machines: the Linux account's home is the Mac's, such as
@@ -288,18 +289,18 @@ below the Unix socket path limit. The connection helper, as it starts, ends the 
 socket there whose process is gone and removes the socket. Commands are spawned with argv arrays,
 never interpolated through a shell.
 
-`term.attach` continues to return only `{ socket, session }`. The Mac native layer already knows
-whether the active connection is remote and builds either:
+`term.attach` returns `{ socket, session, tmux }`, `tmux` being the binary that serves the socket. The Mac
+native layer already knows whether the active connection is remote and builds either, with its own tmux:
 
 ```text
 tmux -S <socket> attach -t <session>
 ```
 
-or:
+or, with the far machine's:
 
 ```text
 env TERM=xterm-256color ssh -S <control-socket> -o ControlMaster=no -o BatchMode=yes -tt -- <ssh-destination> \
-  tmux -S <socket> attach -t <session>
+  <tmux> -S <socket> attach -t <session>
 ```
 
 The remote command is built only while the helper's master answers on its control socket; until
@@ -399,7 +400,8 @@ setup is idempotent. `svall host doctor trift`, `svall host upgrade trift` and
 `svall host upgrade trift --rollback [release]` puts the machine back on the release before, or a
 kept one it names, and probes it as an upgrade does. It refuses before anything changes while a
 fleet's `state.json` there is at a newer state schema than that release's `svall version --json`
-names, or, where it names none, newer than the oldest schema any release has read. `svall uninstall` run on a machine refuses
+names, or, where it names none, newer than the oldest schema any release has read; and while that release carries
+no tmux and a fleet's tmux server runs another version than the machine's own. `svall uninstall` run on a machine refuses
 while it holds a handover journal, runs a fleet for its gateway or keeps gateway records;
 `--force` passes all of it, and `--force-fleet <id>` only the gateway record of that fleet.
 `svall host remove` checks the fleets this controller knows of, then runs it with `--force-fleet`
