@@ -473,7 +473,7 @@ describe('doctor on Linux', () => {
     });
     const c = byName(await doctor(priv, stopped.deps));
     expect(c.systemd.status).toBe('fail');
-    expect(c.linger).toMatchObject({ status: 'warn', detail: expect.stringContaining('loginctl enable-linger linus') });
+    expect(c.linger).toMatchObject({ status: 'warn', detail: expect.stringContaining('run sudo loginctl enable-linger linus') });
 
     const absent = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
     expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });

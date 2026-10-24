@@ -377,8 +377,9 @@ rollback (after a reinstall under the same name, the newest other release) and r
    `OPENCODE_DB` the account's login shell sets. Setup writes Svall's
    OpenCode plugin into the OpenCode config folder that environment names, and removes it when the
    fleet turns OpenCode off.
-6. Enable and start the gateway. If user lingering is disabled, show the exact
-   `loginctl enable-linger <user>` action; `host add` run again and `host doctor` check it again.
+6. Enable and start the gateway. If user lingering is disabled, turn it on with `loginctl enable-linger`, which
+   polkit lets an account do for itself on a stock system; where that is refused, show the exact
+   `sudo loginctl enable-linger <user>` action; `host add` run again and `host doctor` check it again.
 7. Create the stable machine id and add the controller registry entry.
 8. Check Claude Code, Codex and OpenCode installation, supported versions, login and Svall hooks;
    OpenCode's login is `opencode auth list` and its hooks are Svall's plugin. Each finding names

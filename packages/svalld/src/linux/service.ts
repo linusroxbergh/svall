@@ -65,7 +65,7 @@ export type Linger = { user: string; linger: boolean; action: string };
 
 /** Whether the user's services survive logout, and the one command that turns it on. Never run here. */
 export async function lingerState(run: Run, user: string): Promise<Linger> {
-  const action = `loginctl enable-linger ${user}`;
+  const action = `sudo loginctl enable-linger ${user}`;
   try {
     const { stdout } = await run('loginctl', ['show-user', user, '--property=Linger']);
     return { user, linger: /^Linger=yes$/m.test(stdout.trim()), action };
@@ -76,3 +76,6 @@ export async function lingerState(run: Run, user: string): Promise<Linger> {
     return { user, linger: false, action };
   }
 }
+
+/** Lingering turned on by the account itself, which polkit allows without sudo on a stock systemd. */
+export const enableLinger = async (run: Run, user: string): Promise<void> => { await run('loginctl', ['enable-linger', user]); };

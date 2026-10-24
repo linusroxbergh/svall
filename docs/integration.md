@@ -192,8 +192,8 @@ logs.
    - On a Mac the tree runs through its own shim and Node.
    - A Linux runner cannot run the Mac's Node, so there the tree's `lib/svall.mjs` runs on the runner's Node 24,
      with `SVALL_RELEASE_ROOT` at the tree: the same code, manifest and signers.
-2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, sshd, tmux 3.4, Git,
-   rsync and the `tailscale` double, and no Node.
+2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, polkit, sshd, tmux
+   3.4, Git, rsync and the `tailscale` double, and no Node.
    - The run makes one account whose home is the controller's home, a folder of its own under `/var/tmp` on both. It
      is short enough for the gateway's socket path, which holds at most 108 bytes, and outside `/tmp`, which the
      machine empties when it starts again.
@@ -206,12 +206,11 @@ logs.
      the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
      caches it. The release step names that URL, and the cached file is the pinned companion.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
-   - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, Claude Code, Codex and OpenCode not
-     installed, and lingering off, which both the linger and the service steps name.
-   - The result lists exactly four things to do: the lingering command and the three installs.
-4. **Lingering, as host add asks, and a second fleet.** The run turns lingering on, then runs `svall host enable
-   --fleet work` from a controller-side fleet `work`: the machine provisions its own copy under
-   `svall-svalld@work.service`.
+   - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, and Claude Code, Codex and OpenCode not
+     installed. The linger step turns lingering on.
+   - The result lists exactly three things to do: the three installs.
+4. **A second fleet.** The run runs `svall host enable --fleet work` from a controller-side fleet `work`: the machine
+   provisions its own copy under `svall-svalld@work.service`.
 5. **A restart with no login.**
    - All three units, the private and `work` fleets' svalld and the gateway, are active and enabled.
    - Each runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.
