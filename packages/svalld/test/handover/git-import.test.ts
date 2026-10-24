@@ -392,34 +392,62 @@ real(`a real repository graph moved to another machine with the same home${hasGi
       const before = keptLinks.map(read);
       const [g] = view.git!;
       const { git: run, asked } = asking();
-      expect(await importGraphs(view, { git: run, moved: true, kept: { [g.id]: ['kept'] } })).toEqual([]);
+      expect(await importGraphs(view, { git: run, moved: new Set([g.id]), kept: { [g.id]: ['kept'] } })).toEqual([]);
       expect(rebuilds(asked)).toEqual([['worktree', 'repair', ...g.worktrees.map((w) => w.path)]]);
       expect(g.worktrees.map((w) => w.path).sort()).toEqual([d.nested, d.sibling, d.detached, d.locked].map(at).sort());
       expect(keptLinks.map(read)).toEqual(before);
       for (const w of g.worktrees) expect(git(l.base, w.path, 'rev-parse', '--path-format=absolute', '--git-common-dir')).toBe(path.join(at(d.main), '.git'));
     });
 
-    it('refuses, as its graph\'s, a repair that changes a worktree kept here', async () => {
+    it('refuses, as its graph\'s, a repair that changes a worktree kept here, and puts its links back each time', async () => {
       const l = seedHere(made);
       const { view, at } = await moved(l);
       const kept = at(path.join(l.source.work, 'kept'));
       git(l.base, at(l.source.main), 'worktree', 'add', '-q', '-b', 'kept-branch', kept);
       // a gitfile that has lost its registration, which repair's pass over every registration writes again
       fs.writeFileSync(path.join(kept, '.git'), 'gitdir: /nonexistent/kept\n');
+      const keptLinks = [path.join(kept, '.git'), path.join(at(l.source.main), '.git/worktrees/kept/gitdir')];
+      const before = keptLinks.map(read);
       const [g] = view.git!;
-      const blockers = await importGraphs(view, { moved: true, kept: { [g.id]: ['kept'] } });
-      expect(blockers).toEqual([{ code: 'worktree_unresolved', entity: { kind: 'git', id: g.id }, message: expect.stringContaining('which belong to worktrees that stay on this machine') }]);
+      // a prepare asked again after the refusal finds the same
+      for (let i = 0; i < 2; i++) {
+        const blockers = await importGraphs(view, { moved: new Set([g.id]), kept: { [g.id]: ['kept'] } });
+        expect(blockers).toEqual([{ code: 'worktree_unresolved', entity: { kind: 'git', id: g.id }, message: expect.stringContaining('which belong to worktrees that stay on this machine') }]);
+        expect(keptLinks.map(read)).toEqual(before);
+      }
     });
 
-    it('keeps a registration whose worktree is here at the path a move from the source\'s home gives it', async () => {
+    it('repairs nothing through a carried link, and writes nothing where one leads', async () => {
+      const l = seedHere(made);
+      const { view, at } = await moved(l);
+      const outside = path.join(l.base, 'outside');
+      fs.mkdirSync(outside);
+      const gitdir = path.join(at(l.source.main), '.git/worktrees/sibling/gitdir');
+      fs.renameSync(gitdir, path.join(outside, 'gitdir'));
+      fs.symlinkSync(path.join(outside, 'gitdir'), gitdir);
+      const before = read(path.join(outside, 'gitdir'));
+      // and one that leads nowhere yet
+      const gitfile = path.join(at(l.source.detached), '.git');
+      fs.rmSync(gitfile);
+      fs.symlinkSync(path.join(outside, 'made'), gitfile);
+      const [g] = view.git!;
+      expect(await importGraphs(view, { moved: new Set([g.id]) })).toEqual([
+        { code: 'worktree_unresolved', entity: { kind: 'git', id: g.id }, message: expect.stringContaining('has to be a file of its own here') },
+      ]);
+      expect(read(path.join(outside, 'gitdir'))).toBe(before);
+      expect(fs.existsSync(path.join(outside, 'made'))).toBe(false);
+    });
+
+    it('keeps no registration that names a place in the source\'s home, though a folder is here where that place lands', async () => {
       const l = seedHere(made);
       const { view, at } = await moved(l);
       const [g] = graphsHere(view);
+      const registration = path.join(at(l.source.main), '.git/worktrees/unused');
       fs.mkdirSync(at(l.source.unused), { recursive: true });
+      fs.writeFileSync(path.join(at(l.source.unused), '.git'), `gitdir: ${registration}\n`);
       expect((await keptWorktrees(g)).kept).toEqual([]);
-      expect((await keptWorktrees(g, { moving: { from: l.home, to: at(l.home) } })).kept).toEqual([
-        { name: 'unused', registration: path.join(at(l.source.main), '.git/worktrees/unused'), path: at(l.source.unused) },
-      ]);
+      expect(await importGraphs(view, { moved: new Set([g.id]) })).toEqual([]);
+      expect(fs.existsSync(registration)).toBe(false);
     });
   });
 

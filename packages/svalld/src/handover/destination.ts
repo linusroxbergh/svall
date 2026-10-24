@@ -26,7 +26,7 @@ import { writeDurable } from './durable.js';
 import { boundary } from './failpoints.js';
 import { GitFailure, unsetHere } from './git-graph.js';
 import { graphsHere, importGraphs, keptWorktrees, type KeptWorktree } from './git-import.js';
-import { staleBlockers } from './git-relocate.js';
+import { staleBlockers, stalePlaces } from './git-relocate.js';
 import { canonicalDigest } from './hash.js';
 import { machineLocal, rootMatcher, settle } from './inventory.js';
 import { DestinationJournal } from './journal.js';
@@ -40,7 +40,7 @@ import { adapterFor, cliRunner, installSession, placeTranscripts, resumeFolder, 
 import { SessionError, type CliRun, type SessionAdapter } from './sessions/types.js';
 import type { Authority } from './source.js';
 import { holds, realPath } from './portable-path.js';
-import { destinationView, relocate, relocationProblem, type Relocation } from './relocate.js';
+import { destinationView, relocate, relocationProblem } from './relocate.js';
 import { gitProblems, importState, landedProblem, linkProblem, manifestProblems, sessionProblems } from './validate.js';
 
 export type DestinationDeps = {
@@ -287,7 +287,7 @@ export class DestinationHandover {
           : wire(await this.replicas.inspect(r, { excludes: p.excludes, ...(r.files && { incoming: r.files }), keep: stays.keep(r.path) }));
         roots.push({ id: r.id, check });
       }
-      const missing = (p.links ?? []).filter((l) => { try { fs.lstatSync(l); return false; } catch { return true; } });
+      const missing = (p.links ?? []).filter((l) => !present(l));
       const untrusted: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
       for (const f of p.resumes ?? []) if (!(await this.trusted(f))) untrusted.push({ kind: f.kind, cwd: f.cwd });
       const bypassing = (p.resumes ?? []).filter((f) => f.bypass);
@@ -334,11 +334,11 @@ export class DestinationHandover {
    * The worktrees of the graphs a handover brings that stay on this machine: what each root they lie in leaves as it is,
    * and the commits among theirs this machine cannot prove the copy coming back holds, for the source to judge.
    */
-  private async staying(graphs: readonly ReceivedGraph[], moving?: Relocation): Promise<{ keep(root: string): string[]; unproven: KeptCommit[] }> {
+  private async staying(graphs: readonly ReceivedGraph[]): Promise<{ keep(root: string): string[]; unproven: KeptCommit[] }> {
     const kept: KeptWorktree[] = [];
     const unproven: KeptCommit[] = [];
     for (const g of graphs) {
-      const r = await keptWorktrees(g, { ...(this.d.git && { git: this.d.git }), ...(moving && { moving }) });
+      const r = await keptWorktrees(g, { ...(this.d.git && { git: this.d.git }) });
       kept.push(...r.kept);
       unproven.push(...r.unproven);
     }
@@ -408,7 +408,7 @@ export class DestinationHandover {
     const unsafe = [...this.homeProblem(p.manifest), ...manifestProblems(m, []), ...staleBlockers(p.manifest, 'this machine', present)];
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
-    const stays = await this.staying(graphsHere(m), { from: p.manifest.home, to: m.home });
+    const stays = await this.staying(graphsHere(m));
     // written before any root is taken; one an earlier prepare of this manifest wrote stays, as its Git import left the roots
     const prior = this.recorded(tx, p.manifestDigest);
     if (!prior) {
@@ -575,13 +575,14 @@ export class DestinationHandover {
     const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
     const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
       .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
-    const moved = p.manifest.home !== p.manifest.destinationHome;
+    // each graph whose common directory or a worktree lands at another path than it left
+    const moved = new Set(stalePlaces(p.manifest).map((s) => s.graph));
     // what the import writes, by real path: each graph's config, the registrations it neither carries nor keeps, which it
-    // removes, and for a fleet from another home each linked worktree's gitfile and the registration naming it, which it repairs
+    // removes, and for a graph that moved each linked worktree's gitfile and the registration naming it, which it repairs
     const commons = graphsHere(m).map((g) => ({ common: realPath(g.commonDir), keep: new Set([...g.carried, ...keptNames[g.id]]) }));
-    const repaired = moved ? (m.git ?? []).flatMap((g) => g.worktrees.flatMap((w) => [
+    const repaired = (m.git ?? []).filter((g) => moved.has(g.id)).flatMap((g) => g.worktrees.flatMap((w) => [
       realPath(path.posix.join(w.path, '.git')), path.posix.join(realPath(g.commonDir), 'worktrees', path.posix.basename(w.gitDir), 'gitdir'),
-    ])) : [];
+    ]));
     const written = (file: string): boolean => repaired.includes(file) || commons.some(({ common, keep }) => {
       const rel = path.posix.relative(common, file);
       return rel === 'config' || (rel.startsWith('worktrees/') && !keep.has(rel.split('/')[1]));

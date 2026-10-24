@@ -499,14 +499,17 @@ export class SourceHandover {
     return blockers;
   }
 
-  /** Each carried repository using a Git extension the destination's git cannot open, found before anything moves. */
+  /**
+   * Each carried repository using a Git extension the destination's git cannot open, or naming a path a move to another
+   * home leaves behind, found before anything moves.
+   */
   private async gitBlockers(inventory: Inventory, info: SystemInfo): Promise<Blocker[]> {
     if (!inventory.git?.length) return [];
     const git = this.d.git ?? handoverGit;
     const graphs = await Promise.all(inventory.git.map(async (g) => ({ id: g.id, commonDir: g.commonDir, ...(await readExtensions(g.commonDir, git)) })));
     return [
       ...extensionBlockers(graphs, { destination: info.git, source: await gitVersion(git) }),
-      ...await relocationBlockers(inventory.git, { from: inventory.home, to: inventory.destinationHome }, git),
+      ...await relocationBlockers(inventory.git, { from: inventory.home, to: inventory.destinationHome }, git, info.git),
     ];
   }
 

@@ -48,7 +48,17 @@ real(`relocationBlockers${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { ti
     expect(await relocationBlockers([g], { from: l.home, to: l.home }, runGit)).toEqual([]);
   });
 
-  it('refuses a graph with submodules whose checkouts would not all move, which breaks the paths they find each other by', async () => {
+  it('refuses a moving graph with linked worktrees when the destination\'s git cannot repair them', async () => {
+    const l = seedHere(made);
+    const g = await graphOf(l);
+    expect(await relocationBlockers([g], { from: l.home, to: LINUX }, runGit, '2.31.0')).toEqual([]);
+    expect(await relocationBlockers([g], { from: l.home, to: LINUX }, runGit, '2.30.2')).toEqual([{
+      code: 'git_extension', entity: { kind: 'git', id: g.id },
+      message: `${g.commonDir}: its linked worktrees land at other paths, which git worktree repair mends from git 2.31.0 on, and the destination runs git 2.30.2`,
+    }]);
+  });
+
+  it('refuses a graph with submodules whose checkouts would not all move, which breaks the paths they find each other by, and takes one without', async () => {
     const l = seedHere(made);
     const g = await graphOf(l);
     // the main checkout moves, and its worktrees beside it keep their paths
@@ -56,25 +66,36 @@ real(`relocationBlockers${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { ti
     expect(b).toMatchObject({ code: 'path_unsupported', entity: { kind: 'git', id: g.id } });
     expect(b.message).toContain('its submodules find their Git directories by paths relative to each checkout');
     expect(b.message).toContain(`${l.source.sibling}`);
+    // repair mends every linked worktree wherever it lands
+    fs.rmSync(path.join(l.source.main, '.gitmodules'));
+    expect(await relocationBlockers([g], { from: l.source.main, to: path.join(LINUX, 'demo') }, runGit)).toEqual([]);
   });
 
-  it('refuses a hooks folder, a worktree, an include condition and borrowed objects named by a path the move leaves behind, and takes relative ones', async () => {
+  it('refuses a hooks folder, a worktree, an include condition and objects borrowed from outside or by a full path, named by a path the move leaves behind, and takes relative ones', async () => {
     const l = seedHere(made);
     const g = await graphOf(l);
     const m = l.source.main;
+    const sub = path.join(m, '.git/modules/sub');
     git(l.base, m, 'config', 'core.hooksPath', path.join(l.home, 'hooks'));
     git(l.base, m, 'config', `includeIf.gitdir:${l.source.work}/.path`, path.join(l.home, 'extra.gitconfig'));
+    git(l.base, m, 'config', '--file', path.join(sub, 'config'), 'core.worktree', l.source.sub);
     fs.writeFileSync(path.join(m, '.git/objects/info/alternates'), `${path.join(l.source.lib, '.git/objects')}\n`);
+    fs.mkdirSync(path.join(sub, 'objects/info'), { recursive: true });
+    fs.writeFileSync(path.join(sub, 'objects/info/alternates'), `${path.join(m, '.git/objects')}\n`);
     const messages = (await relocationBlockers([g], { from: l.home, to: LINUX }, runGit)).map((b) => b.message);
     expect(messages).toEqual([
       expect.stringContaining(`core.hookspath names ${path.join(l.home, 'hooks')}, a path in ${l.home}`),
       expect.stringContaining(`its config includes ${path.join(l.home, 'extra.gitconfig')} when the Git directory lies in ${l.source.work}/`),
+      expect.stringContaining(`${sub}: core.worktree names ${l.source.sub}, a path in ${l.home}`),
       `${path.join(m, '.git')} borrows objects from ${path.join(l.source.lib, '.git/objects')}, outside the repository, which the handover does not carry to ${LINUX}; run git repack -a -d there, then delete objects/info/alternates`,
+      expect.stringContaining(`${sub} borrows objects from ${path.join(m, '.git/objects')} by its full path`),
     ]);
     git(l.base, m, 'config', 'core.hooksPath', '.githooks');
     git(l.base, m, 'config', '--unset', `includeIf.gitdir:${l.source.work}/.path`);
     git(l.base, m, 'config', 'includeIf.gitdir:~/work/.path', '~/extra.gitconfig');
+    git(l.base, m, 'config', '--file', path.join(sub, 'config'), 'core.worktree', '../../../sub');
     fs.rmSync(path.join(m, '.git/objects/info/alternates'));
+    fs.writeFileSync(path.join(sub, 'objects/info/alternates'), '../../../objects\n');
     expect(await relocationBlockers([g], { from: l.home, to: LINUX }, runGit)).toEqual([]);
   });
 

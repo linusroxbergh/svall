@@ -1162,8 +1162,22 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const l = seedHere(made);
     const s = await gitScene(l, path.join(l.base, 'home/source'));
     unpark(l, 'mac');
+    const before = [tree(s.home), tree(l.base)];
     const r = await refusal(daemon(s).handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest }));
     expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`${l.source.sibling} is on this machine as well, and git worktree repair would tie the copy`) }));
+    expect([tree(s.home), tree(l.base)]).toEqual(before);
+  });
+
+  it('refuses to prepare a graph from another home once a place it moves from is here again, before git repairs anything', async () => {
+    const l = seedHere(made);
+    const to = path.join(l.base, 'home/source');
+    const s = await gitScene(l, to);
+    const gitfile = path.join(to, path.relative(l.home, l.source.sibling), '.git');
+    const before = fs.readFileSync(gitfile, 'utf8');
+    unpark(l, 'mac');
+    const r = await refusal(daemon(s).handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed }));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`${l.source.sibling} is on this machine as well`) }));
+    expect(fs.readFileSync(gitfile, 'utf8')).toBe(before);
   });
 
   /**

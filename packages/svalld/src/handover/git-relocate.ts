@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, TransferManifestV1 } from '@svall/protocol';
 import type { GitRunner } from '../links/git.js';
+import { older } from './git-extensions.js';
 import { GitFailure, repoPaths } from './git-graph.js';
 import { holds } from './portable-path.js';
 import { relocate, type Relocation } from './relocate.js';
@@ -10,11 +11,15 @@ const lines = (file: string): string[] => {
   try { return fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')); } catch { return []; }
 };
 
+// the first git whose worktree repair mends a repository moved together with its worktrees
+const REPAIRS = '2.31.0';
+
 /**
  * What a carried repository keeps by a path that a move between homes would leave naming the source. `git worktree repair`
- * rewrites each linked worktree's gitfile and the registration naming it; anything else is refused, never rewritten.
+ * on the destination, whose git is `destinationGit`, rewrites each linked worktree's gitfile and the registration naming
+ * it; anything else is refused, never rewritten.
  */
-export async function relocationBlockers(graphs: readonly GitGraph[], r: Relocation, git: GitRunner): Promise<Blocker[]> {
+export async function relocationBlockers(graphs: readonly GitGraph[], r: Relocation, git: GitRunner, destinationGit?: string): Promise<Blocker[]> {
   if (r.from === r.to) return [];
   const moves = (p: string): boolean => relocate(p, r) !== p;
   const out: Blocker[] = [];
@@ -24,6 +29,9 @@ export async function relocationBlockers(graphs: readonly GitGraph[], r: Relocat
     const checkouts = [...(g.main ? [g.main] : []), ...g.worktrees];
     // a submodule's gitfile and core.worktree name each other by paths relative to the checkout holding it
     const places = [g.commonDir, ...checkouts.map((c) => c.path)];
+    if (g.worktrees.length && places.some(moves) && destinationGit && older(destinationGit, REPAIRS)) {
+      out.push({ code: 'git_extension', message: `${g.commonDir}: its linked worktrees land at other paths, which git worktree repair mends from git ${REPAIRS} on, and the destination runs git ${destinationGit}`, entity });
+    }
     if (places.some(moves) && !places.every(moves) && checkouts.some((c) => fs.existsSync(path.join(c.path, '.gitmodules')))) {
       refuse(`${g.commonDir}: its submodules find their Git directories by paths relative to each checkout, which break when ${places.filter(moves).join(', ')} moves into ${r.to} and ${places.filter((p) => !moves(p)).join(', ')} keeps its path; keep the repository and its worktrees together inside ${r.from} or outside it`);
     }
@@ -51,9 +59,14 @@ export async function relocationBlockers(graphs: readonly GitGraph[], r: Relocat
     }
     for (const dir of [g.commonDir, ...gitDirs]) {
       const objects = path.join(dir, 'objects');
-      for (const alternate of lines(path.join(objects, 'info', 'alternates')).map((l) => path.resolve(objects, l))) {
-        if (holds(g.commonDir, alternate) || !moves(alternate)) continue;
-        refuse(`${dir} borrows objects from ${alternate}, outside the repository, which the handover does not carry to ${r.to}; run git repack -a -d there, then delete objects/info/alternates`);
+      for (const line of lines(path.join(objects, 'info', 'alternates'))) {
+        const alternate = path.resolve(objects, line);
+        if (!moves(alternate)) continue;
+        if (!holds(g.commonDir, alternate)) {
+          refuse(`${dir} borrows objects from ${alternate}, outside the repository, which the handover does not carry to ${r.to}; run git repack -a -d there, then delete objects/info/alternates`);
+        } else if (path.isAbsolute(line)) {
+          refuse(`${dir} borrows objects from ${alternate} by its full path, which would still name the source once the repository moves to ${r.to}; make that line of objects/info/alternates relative, or run git repack -a -d there and delete it`);
+        }
       }
     }
   }
