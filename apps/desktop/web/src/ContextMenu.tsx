@@ -72,7 +72,7 @@ export function ContextMenu() {
 
   if (!menu) return null;
   return (
-    <div ref={box} className="ctx-menu" role="menu" data-testid="context-menu"
+    <div ref={box} className="ctx-menu popover" role="menu" data-testid="context-menu"
       onContextMenu={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}>
       {items.map((it, i) => (
         <Fragment key={i}>

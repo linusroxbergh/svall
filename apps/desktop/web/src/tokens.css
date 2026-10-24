@@ -41,7 +41,7 @@
 
   --ink: #F4EEDF;
   --ink-2: #CCC5B1;
-  --ink-3: #96907E;
+  --ink-3: #A39D89;
   --ink-cool: #8EA0B0;
   --ink-land: #2C3B31;
   --ink-sand: #3D3418;
@@ -49,12 +49,14 @@
   --working: #FFC95C;
   --blocked: #FF6F5E;
   --done: #63D7C0;
-  --idle: #7C8F9F;
+  --idle: #8A9CAB;
   --shell: #EAF1EE;
   --sel: #8ED0FF;
   --star: var(--pt-sun);
   /* a PR waiting on its reviewers */
   --review: #C3A8C9; --ink-on-review: #33253A;
+  /* an error, or a destructive control's word, on the dark chrome */
+  --danger: color-mix(in srgb, var(--blocked) 70%, var(--ink));
 
   --pt-sky: #78B0C4;
   --pt-sun: #E0BB55;
@@ -76,10 +78,18 @@
   --text-2xl: 17px;     /* the card's own marks */
   --text-3xl: 25px;     /* names in a modal or the side card */
   --text-input: 16px;   /* a phone's fields: iOS zooms the page onto any smaller one */
+  --lh-tight: 1.2;      /* names, headings and one-line labels */
+  --lh: 1.45;           /* body, notes and code */
+  --lh-read: 1.6;       /* a document read or written at length */
 
   /* the room an icon control gets either side of its glyph */
   --ctl-pad: 16px;      /* an icon control in a header or tab bar */
   --ctl-pad-sm: 8px;    /* one inside a tab or a list row */
+  /* a square icon button: inside a dense row, and in a settings row or beside a portrait */
+  --ctl-xs: 18px; --ctl-sm: 22px;
+  /* a status or unsaved dot, and the pip on a tab */
+  --dot: 7px; --dot-sm: 5px;
+  --disabled: .45;
 
   --r-lg: 12px; --r-md: 8px; --r-sm: 6px;
   --ease: cubic-bezier(.22,.7,.24,1);
@@ -98,7 +108,6 @@
   --read-inset-max: 4rem;
 
   --r-xs: 4px; --r-pill: 999px;
-  --edge-tab-w: 20px;
   --edge-lip-w: 11px;   /* a side panel's edge tab, kept under the panel's --sp-xl inset */
   --safe-b: env(safe-area-inset-bottom, 0px);
 
@@ -107,7 +116,7 @@
   --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
-  --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em; --track-wide: .18em;
+  --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em;
 
   /* app layers; the integers inside a token or island order its own parts */
   --z-scenery: 35; --z-furniture: 40; --z-popover: 60; --z-hover: 70;
@@ -120,6 +129,10 @@
   --shadow-2: 0 8px 22px rgba(10,18,24,.34);
   --shadow-3: 0 24px 60px rgba(10,18,24,.5);
   --ring: 0 0 0 3px color-mix(in srgb, var(--sel) 25%, transparent);
+  /* glass over the map: a label or edge tab, then a panel whose text must read over the cards */
+  --blur: 7px; --blur-panel: 18px;
+  /* the toast and the shelf keep this far in from the map's edges */
+  --map-inset: 26px;
 
   /* ink on a status fill */
   --ink-on-working: #3A2406; --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
@@ -135,6 +148,8 @@
   --shell-dim: #9AA7B2;
   --lamp: #FFE28C;
   --map-0: #4B5F72; --map-1: #374959; --map-2: #26303D;
+  /* the lighthouse's rock and the footing under it */
+  --rock-0: #BDB5A6; --rock-1: #928B7B; --rock-bank: #766E5E; --rock-plinth: #9E9685; --rock-plinth-top: #BCB3A1;
 
   /* code */
   --syntax-string: #9BBA86; --syntax-op: #BAD1A2;

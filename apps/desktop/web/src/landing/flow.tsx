@@ -121,17 +121,17 @@ function Islet({ place, count }: { place: Placement; count: number }) {
       <div className="island" style={{ left: -pad, bottom: -(bh - pad - ISLET.visible), width: bw, height: bh }}>
         <svg width={bw} height={bh} viewBox={`0 0 ${bw} ${bh}`}>
           <defs>
-            <linearGradient id="s-res" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#BDB5A6" /><stop offset="1" stopColor="#928B7B" /></linearGradient>
+            <linearGradient id="s-res" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--rock-0)" /><stop offset="1" stopColor="var(--rock-1)" /></linearGradient>
             <clipPath id="c-res"><path d={rock} /></clipPath>
           </defs>
-          <Seabed id="res" sand={rock} cx={bw / 2} cy={bh / 2} bank="#766E5E" />
+          <Seabed id="res" sand={rock} cx={bw / 2} cy={bh / 2} bank="var(--rock-bank)" />
           <path className="land" d={rock} fill="url(#s-res)" stroke="rgba(80,72,58,.34)" strokeWidth="1" />
           <g clipPath="url(#c-res)">
             <path d={rock} fill="none" stroke="rgba(58,52,42,.13)" strokeWidth="14" />
             <path d={face} fill="rgba(255,250,236,.2)" transform="translate(0,-3)" />
             <g className="res-plinth" transform={`translate(${bw / 2},${pad + ISLET.visible - ISLET.foot})`}>
-              <ellipse className="res-plinth-side" fill="#9E9685" stroke="rgba(58,52,42,.16)" />
-              <ellipse className="res-plinth-top" fill="#BCB3A1" />
+              <ellipse className="res-plinth-side" fill="var(--rock-plinth)" stroke="rgba(58,52,42,.16)" />
+              <ellipse className="res-plinth-top" fill="var(--rock-plinth-top)" />
             </g>
           </g>
           <Waterline sand={rock} />

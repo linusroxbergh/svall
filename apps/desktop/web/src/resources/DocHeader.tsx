@@ -33,7 +33,7 @@ export function DocHeader({ id, path, focus, profile = false }: { id: string; pa
   return (
     <label className="res-desc">
       <span>{profile ? 'What is this role for?' : 'When should the agent read this?'}</span>
-      <input ref={input} data-testid="resources-doc-description" placeholder={profile ? 'e.g. reviews finished work before it merges' : 'e.g. before touching the billing code'}
+      <input ref={input} className="fld" data-testid="resources-doc-description" placeholder={profile ? 'e.g. reviews finished work before it merges' : 'e.g. before touching the billing code'}
         value={frontmatter(text).description ?? ''} onChange={(e) => set(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); toBody(); } }} />
     </label>

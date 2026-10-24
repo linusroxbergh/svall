@@ -140,7 +140,7 @@ export function Setup() {
           <h2>Projects folder</h2>
           <p>New robots start here instead of your home folder.</p>
           <div className="setup-folder">
-            <input type="text" value={projects} aria-label="Projects folder" spellCheck={false} onChange={(e) => setProjects(e.target.value)} />
+            <input type="text" className="fld" value={projects} aria-label="Projects folder" spellCheck={false} onChange={(e) => setProjects(e.target.value)} />
             <button type="button" className="btn" onClick={() => bridge.send({ type: 'folder.pick', start: projects.trim() || '~' })}>Choose…</button>
           </div>
         </section>
