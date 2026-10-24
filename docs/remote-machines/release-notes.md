@@ -47,7 +47,7 @@ not `handover.enabled` is on.
   cannot be written or read.
 - The window of a fleet with a gateway runs a small `svall connect` helper that reaches the fleet wherever it runs; a
   fleet with no gateway opens on this Mac without one.
-- The app download is about 100 MB: it carries the Linux companion `svall host add` installs.
+- The app download is about 150 MB: it carries the x86-64 and arm64 Linux companions `svall host add` installs.
 
 See [Upgrading and downgrading](migration.md) for the details and the way back.
 

@@ -343,8 +343,8 @@ unpacked tree must still carry the checksum file the signature covered.
 
 The remote machine does not need a repository clone, pnpm, Node, Xcode, Zig or Ghostty. The Mac app
 takes the companion its release manifest names for the machine's architecture, verifies the digest,
-and uploads it over SSH; another archive of the same release, such as the arm64 companion, is named
-with `--release`. A development build may instead upload the current workspace artifact explicitly.
+and uploads it over SSH; another archive of the same release is named with `--release`. A
+development build may instead upload the current workspace artifact explicitly.
 
 On the Linux machine, releases install without root under:
 

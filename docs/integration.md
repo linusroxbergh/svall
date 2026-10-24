@@ -177,12 +177,12 @@ scripts/integration/fresh-install.sh --out /tmp/fresh-install
 | `--keep` | Leave the machine running, and the controller's home and ssh files in place. |
 
 Without `--release`, the script builds the checkout twice with `scripts/release-build.sh`: as its `git describe`
-name and as that name with `-next`, each pinning its companions on a free loopback port, so both are downloaded. The
-machine runs on the Docker host's own architecture, as the handover run's do. It exits 0 when every check passed, and
-prints `PASS` or its `FAIL` lines per step, like the handover run. The output folder holds `run.log`, the NDJSON of
-`host add`, `host enable` and `host upgrade`, the JSON of the rollback and of each `host doctor`, a `.machine.json` per
-stage with what the checks read on the machine, `served.log` with each download, and `machine.log` with the units'
-logs.
+name, carrying its companions as Svall.app does, and as that name with `-next`, pinning its companions on a free
+loopback port, so `host add` takes the app's route and `host upgrade` downloads. The machine runs on the Docker host's
+own architecture, as the handover run's do. It exits 0 when every check passed, and prints `PASS` or its `FAIL` lines
+per step, like the handover run. The output folder holds `run.log`, the NDJSON of `host add`, `host enable` and
+`host upgrade`, the JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with what the checks
+read on the machine, `served.log` with each download, and `machine.log` with the units' logs.
 
 ### What it checks
 
@@ -202,13 +202,13 @@ logs.
    - ssh from the host reads only the run's own files. A wrapper first on the controller's PATH runs ssh with `-F` on
      a config that names the run's key and known_hosts, and no agent.
 3. **`svall host add`** from the first release.
-   - A release whose manifest pins its companion on this host's loopback takes the app's route: no `--release`, so
-     the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
-     caches it. The release step names that URL, and the cached file is the pinned companion.
+   - A release whose manifest pins its companion on this host's loopback takes no `--release`: the controller looks
+     the companion up in its manifest, downloads it from the run's server, checks its digest and caches it. The
+     release step names that URL, and the cached file is the pinned companion.
    - A release that carries its companions, as Svall.app does, takes the same route from its own tree: the release step
      names the companion's `file:` URL inside it.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
-   - Either way, the release step says whether the release is signed, as its manifest does.
+   - Whichever route, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The
      linger step turns lingering on, and the tmux step finds the release's own.
    - The result lists exactly three things to do: the three installs.
@@ -286,7 +286,7 @@ included, and drops the rest.
 | `build` | `macos-latest` | Needs `key`, and never holds the key. Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published and pins its companions at `http://127.0.0.1:8765/upgrade`. Restores no cache on a signed tag, so a signed release builds its own rsync. Passes both to the other jobs as workflow artifacts, kept for one day. |
 | `sign` | `macos-latest` | Runs only with the key. Signs both builds' archives with `release-build.sh --sign` and puts them back in place of the unsigned ones. |
 | `integration` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Needs `build`, and `sign` unless a run without the key skips it. Runs `fleet-handover.sh` with the release's own companion for that architecture. |
-| `fresh-install` | the same two | Needs `build`, and `sign` unless a run without the key skips it. Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server, as the app does. |
+| `fresh-install` | the same two | Needs `build`, and `sign` unless a run without the key skips it. Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server. |
 | `publish` | `ubuntu-24.04` | Needs `key` and the two test jobs. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, or for a tag with a `-`, it notes that the dry run passed, and uploads nothing. |
 
 - **Signing.** The `SVALL_RELEASE_KEY` secret holds the private key. Only one step in each of the `key`, `sign` and
