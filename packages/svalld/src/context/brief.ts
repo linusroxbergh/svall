@@ -89,7 +89,8 @@ const crewLines = (island: Island, c: Character): string[] => [
   "- $TMUX is the fleet's tmux server, which runs every robot: use `tmux -L <a name of your own>` for your own tmux, and never kill-server or kill-session on the fleet's.",
 ];
 
-const WORKTREE = '- In a git repo, start every task and review in a new worktree inside the main checkout, before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. Change the main checkout only when the user says so.';
+// the path sentence keeps an agent, OpenCode's most of all, from reading a main-checkout path in its task as leave to edit there
+const WORKTREE = '- In a git repo, start every task and review in a new worktree inside the main checkout, before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. A path in the task names a file; change it in your worktree. Change the main checkout only when the user says so.';
 
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
 export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false): string {
