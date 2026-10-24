@@ -88,6 +88,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       // the tmux client died; if the window is still alive (client detached by hand) the terminal comes back
       if (t) setTimeout(() => { if (wanted.has(m.id) && inView(m.id) && live(m.id) && !state().terminals[m.id]) show(m.id, t.rect, lastOpacity.get(m.id), wanted.get(m.id)).catch(() => {}); }, reshowDelayMs);
     }
+    // a terminal on another machine is its panel's own
+    if ((m.type === 'term.failed' || m.type === 'term.focused') && !state().fleet.characters[target(m.id).id]) return;
     if (m.type === 'term.failed') {
       state().termGone(m.id);
       state().termFailed(m.id, m.reason);

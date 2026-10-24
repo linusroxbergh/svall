@@ -83,8 +83,15 @@ Both run the same steps and show each as it finishes:
 
 It ends by saying the machine is added, or with a list of what is still for you to do. In the app, a step that
 failed with nothing named to do offers **Try again** (**Check again** after a check). Once it is added, **Make it
-this fleet's gateway** (`svall host enable <name> --fleet <fleet>`) readies it for handover. Svall never runs `sudo`
-and never copies a login, so these are yours:
+this fleet's gateway** (`svall host enable <name> --fleet <fleet>`) readies it for handover. Svall never runs `sudo`,
+never runs an agent's installer and never copies a login, so these are yours.
+
+In the app, each of them that is one command offers **Open terminal**: a terminal on the machine opens in the panel,
+over an ssh of its own that asks nothing and forwards no ssh agent, with the command typed at its prompt. Press Return
+to run it, or change it first; ⌘-click a link it prints to open it in your browser. When you exit or choose **Done**,
+or close the panel with ×, the terminal hangs up and the panel checks the machine again, once it is in this Mac's
+list. **Terminal** beside **Check** opens one with
+nothing typed. From a terminal on the Mac, each action names the command and the machine to run it on:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
@@ -93,7 +100,10 @@ and never copies a login, so these are yours:
   fleet stops when you log out, and a handover to the machine stops at its checks until it is on.
 - An agent not installed or not logged in: `ssh ada@studio`, install it with its vendor's command and run
   `svall setup`, which writes Svall's hooks for an agent installed since, then `claude auth login`, `codex login` or
-  `opencode auth login`. OpenCode runs OpenCode Zen's free models with no login. A handover to the machine needs a
+  `opencode auth login`. Claude Code prints a link and asks for the code the browser then shows. Codex's login waits
+  for the browser on port 1455 of the machine: its terminal in the app forwards port 1455 of this Mac there, and
+  quits saying so when another program holds that port; over your own ssh, use `ssh -L 1455:localhost:1455`, or
+  `codex login --device-auth`. OpenCode runs OpenCode Zen's free models with no login. A handover to the machine needs a
   model provider's login or key there, as `opencode auth list` shows, unless OpenCode on the machine the fleet comes
   from has none either and its agent has answered there: then the checks only warn.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
@@ -104,7 +114,8 @@ and never copies a login, so these are yours:
   command: the action installs the AppArmor profile that lets `bwrap` make its user namespace,
   `sudo apt install bubblewrap apparmor-profiles`, then
   `sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/` and
-  `sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict`. A sandbox that fails for another reason names it;
+  `sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict`, which the app types as one line for you to run
+  with your own `sudo` password. A sandbox that fails for another reason names it;
   run `codex sandbox -- true` there to see it.
 
 Adding the same machine again runs every check again and changes nothing that is already right.

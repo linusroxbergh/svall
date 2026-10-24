@@ -5,10 +5,18 @@ struct WebAttach: Decodable {
     let socket: String, session: String
 }
 
+/// A terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's
+/// loopback that reaches the same port there.
+struct WebMachine: Decodable, Equatable {
+    let ssh: String
+    var type: String?
+    var forward: Int?
+}
+
 /// Messages from the webview. Mirrors ToShell in apps/desktop/web/src/bridge.ts.
 enum ToShell: Decodable {
     case connection
-    case termShow(id: String, rect: WebRect, attach: WebAttach?, opacity: Double?)
+    case termShow(id: String, rect: WebRect, attach: WebAttach?, machine: WebMachine?, opacity: Double?)
     case termMove(id: String, rect: WebRect)
     case termHide(id: String)
     case termClose(id: String)
@@ -59,13 +67,13 @@ enum ToShell: Decodable {
     case connectionRetry
     case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         switch try c.decode(String.self, forKey: .type) {
         case "connection": self = .connection
-        case "term.show": self = .termShow(id: try c.decode(String.self, forKey: .id), rect: try c.decode(WebRect.self, forKey: .rect), attach: try c.decodeIfPresent(WebAttach.self, forKey: .attach), opacity: try c.decodeIfPresent(Double.self, forKey: .opacity))
+        case "term.show": self = .termShow(id: try c.decode(String.self, forKey: .id), rect: try c.decode(WebRect.self, forKey: .rect), attach: try c.decodeIfPresent(WebAttach.self, forKey: .attach), machine: try c.decodeIfPresent(WebMachine.self, forKey: .machine), opacity: try c.decodeIfPresent(Double.self, forKey: .opacity))
         case "term.move": self = .termMove(id: try c.decode(String.self, forKey: .id), rect: try c.decode(WebRect.self, forKey: .rect))
         case "term.hide": self = .termHide(id: try c.decode(String.self, forKey: .id))
         case "term.close": self = .termClose(id: try c.decode(String.self, forKey: .id))
@@ -173,6 +181,7 @@ enum FromShell {
             var event: [String: Any] = ["step": step.step, "status": step.status]
             if let detail = step.detail { event["detail"] = detail }
             if let action = step.action { event["action"] = action }
+            if let run = step.run { event["run"] = run }
             return ["type": "host.step", "op": op, "event": event]
         case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
         case .hostMachines(let machines, let error):

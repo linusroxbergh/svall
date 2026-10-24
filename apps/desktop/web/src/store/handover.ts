@@ -18,6 +18,8 @@ export type HandoverState = {
   hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
+  // the terminal the panel shows on its machine, and the command typed in it
+  hostTerminal?: { run?: string };
   // the registry as the shell last read it, and why it could not
   machines?: MachineRow[];
   machinesError?: string;
@@ -29,6 +31,8 @@ export type HandoverState = {
 export type HandoverActions = {
   setConnectionState(connection: ConnectionState): void;
   toggleHost(open?: boolean, machine?: string): void;
+  openHostTerminal(machine: string, run?: string): void;
+  closeHostTerminal(): void;
   hostStarted(op: HostOp, args: HostArgs): void;
   hostStep(op: HostOp, event: HostStep): void;
   hostDone(op: HostOp, code: number): void;
@@ -56,13 +60,16 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   hostOpen: false,
   hostMachine: undefined,
   hostConfirm: undefined,
+  hostTerminal: undefined,
   machines: undefined,
   machinesError: undefined,
   handover: undefined,
   handoverOpen: false,
   // the fleet the page already holds stands while its machine is away: only the report changes
   setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
-  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined }; }),
+  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined }; }),
+  openHostTerminal: (machine, run) => set({ hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run } : {} }),
+  closeHostTerminal: () => set({ hostTerminal: undefined }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten

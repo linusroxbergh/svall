@@ -368,7 +368,7 @@ rollback (after a reinstall under the same name, the newest other release) and r
 3. Check Tailscale, tmux, Git, rsync and systemd user services. A tmux older than 3.5 is a warning
    naming the Shift+Enter limitation, not a blocker, and so is an rsync older than 3.2.3. Missing
    system packages are shown with a copyable apt command. Svall never runs sudo: the step's
-   action names the command for the user to run in a terminal of their own.
+   action names the command for the user to run on the machine, and carries it as `run`.
 4. Upload and verify the matching companion release.
 5. Install `svall-gateway.service` and an `svall-svalld@<fleet>.service` template as
    systemd user units. Units use absolute paths through `current`, a resolved PATH that holds
@@ -381,10 +381,15 @@ rollback (after a reinstall under the same name, the newest other release) and r
    polkit lets an account do for itself on a stock system; where that is refused, show the exact
    `sudo loginctl enable-linger <user>` action; `host add` run again and `host doctor` check it again.
 7. Create the stable machine id and add the controller registry entry.
-8. Check Claude Code, Codex and OpenCode installation, supported versions, login and Svall hooks;
-   OpenCode's login is `opencode auth list` and its hooks are Svall's plugin. Each finding names
-   the ssh and login or install command for the user to run in a terminal; the app opens none.
-   Credentials are never copied from the Mac.
+8. Check Claude Code, Codex and OpenCode installation, supported versions, login and Svall hooks,
+   on the PATH and with the agent homes the fleet's unit carries; OpenCode's login is
+   `opencode auth list` and its hooks are Svall's plugin. Each finding names the ssh and login or
+   install command for the user to run there. The app opens a terminal on the machine for it, an
+   ssh of its own with `BatchMode=yes`, `ForwardAgent=no` and `ControlPath=none`, with the command
+   typed at the prompt and never run; `codex login` gets `127.0.0.1:1455` forwarded there for its
+   browser callback, and an ssh that ends before the prompt is up is shown as failed. Once the
+   terminal closes on a machine in the registry, the app runs `svall host doctor` again. Credentials
+   are never copied from the Mac.
 9. Run an end-to-end probe: gateway authority, API tunnel, temporary tmux window, home path and
    free space.
 10. For each existing local fleet the user enables for this machine, create the gateway's initial
@@ -1097,5 +1102,4 @@ provisioning passes on both supported Linux architectures.
 - browser cookie/login migration between Macs;
 - a guarantee that a colliding local port keeps its original number;
 - unsupported Linux distributions, containers or agent CLI versions;
-- a terminal that Add Machine opens for sudo, agent login or hook trust;
 - machines outside the user's tailnet.

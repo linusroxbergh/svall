@@ -21,7 +21,11 @@ this pass covers what only the app and real machines show. What each step should
    - Each step appears as it finishes, grouped Reaching the machine, What the machine needs, Svall on the machine,
      Running Svall there, Agent logins, Trying it out and This Mac's list of machines. A new host key is asked in a dialog.
    - A fresh account ends with **still to do**: lingering, and any agent not logged in.
-2. Do what it lists over ssh, then choose **Check** on `studio`'s row: no row is marked ×. On Ubuntu 24.04 `tmux` is
+2. Choose **Open terminal** on a row that offers it, such as an agent not logged in: a terminal on `studio` opens in
+   the panel with the command typed at the prompt and not run. Press Return and finish the login; ⌘-click its link
+   opens your browser. For `codex login` the sign-in comes back through port 1455; with another `codex login` holding
+   that port on the Mac, the terminal says so at once. Typing `exit` closes it and the panel checks `studio` again.
+   Do the rest the same way, then choose **Check** on `studio`'s row: no row is marked ×. On Ubuntu 24.04 `tmux` is
    marked ! (it ships 3.4), and so may `gh` and `path` be; none of them stops a handover. It ends with **ready to be
    this fleet's gateway** and the number of warnings.
 3. Choose **Make it this fleet's gateway**. Its Machine, Ownership record and Fleets steps are ok, and Settings →

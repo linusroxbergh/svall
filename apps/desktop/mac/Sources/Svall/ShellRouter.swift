@@ -236,8 +236,8 @@ final class ShellRouter {
             let queued = pendingNotify
             pendingNotify = []
             for message in queued { bridge.send(message) }
-        case .termShow(let id, let rect, let attach, let opacity):
-            surfaces.show(id: id, rect: rect, attach: attach, opacity: opacity)
+        case .termShow(let id, let rect, let attach, let machine, let opacity):
+            surfaces.show(id: id, rect: rect, attach: attach, machine: machine, opacity: opacity)
         case .termMove(let id, let rect):
             surfaces.move(id: id, rect: rect)
         case .termHide(let id):
