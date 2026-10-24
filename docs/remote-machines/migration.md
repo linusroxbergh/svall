@@ -13,7 +13,7 @@ fleet's `config.json` in two:
 
 1. `config.json` is renamed `config.json.bak`, byte for byte (a link stays a link), before anything is read out of
    it.
-2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `agentsOff`, `integrations` and
+2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `agentsOff` and
    `mobile.httpsPort`.
 3. `fleet.json` gets every other key it knows and a new fleet `id`. It has no `handover` block, so handover stays off
    until you [turn it on](setup.md#turning-it-on).

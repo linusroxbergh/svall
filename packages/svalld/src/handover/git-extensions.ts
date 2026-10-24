@@ -1,4 +1,5 @@
 import type { Blocker, HandoverEntity } from '@svall/protocol';
+import { compareVersions } from '../agents.js';
 import { handoverGit, type GitRunner } from '../links/git.js';
 
 // the first git that opens a repository using each extension; one missing here needs the git that opened it on the source
@@ -14,14 +15,6 @@ const INTRODUCED: Record<string, string> = {
 
 /** A carried repository's format version and extensions, names lowercased as git reads them. */
 export type GraphExtensions = { id: string; commonDir: string; version: number; extensions: Record<string, string> };
-
-const numbers = (v: string): number[] => v.split('.').map((n) => Number.parseInt(n, 10) || 0);
-
-export function older(a: string, b: string): boolean {
-  const [x, y] = [numbers(a), numbers(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0);
-  return false;
-}
 
 /** `git --version`'s number, or nothing where git cannot run. */
 export async function gitVersion(git: GitRunner = handoverGit): Promise<string | undefined> {
@@ -57,7 +50,7 @@ export function extensionBlockers(graphs: readonly GraphExtensions[], git: { des
     if (g.version < 1) continue;
     for (const name of Object.keys(g.extensions).sort()) {
       const needs = INTRODUCED[name] ?? git.source;
-      if (needs && !older(git.destination, needs)) continue;
+      if (needs && compareVersions(git.destination, needs) !== -1) continue;
       const which = needs ? `git ${needs} or newer` : 'a git that knows it';
       out.push({ code: 'git_extension', message: `${g.commonDir} uses the Git extension ${name}, which needs ${which}, and the destination runs git ${git.destination}`, entity });
     }

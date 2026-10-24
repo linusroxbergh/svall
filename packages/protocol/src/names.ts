@@ -1,7 +1,5 @@
-// commands a fleet's existing home may be named for: no -p reaches that fleet, yet it is one
-export const HELD_COMMANDS = ['host', 'handover', 'gateway', 'fleet', 'connect', 'connection-info', 'version'];
 // svall's own commands, which `svall <name>` would run instead of opening a fleet by that name
-export const RESERVED = ['status', 'island', 'robot', 'char', 'scribe', 'browser', 'mobile', 'setup', 'agent', 'doctor', 'uninstall', ...HELD_COMMANDS, 'help'];
+export const RESERVED = ['status', 'island', 'robot', 'char', 'scribe', 'browser', 'mobile', 'setup', 'agent', 'doctor', 'uninstall', 'host', 'handover', 'gateway', 'fleet', 'connect', 'connection-info', 'version', 'help'];
 const NAME = /^[a-z][a-z0-9-]*$/;
 // Svall Dev's homes are ~/.svall-dev and ~/.svall-dev-<name>, so no release fleet may be named into them
 const DEV = /^dev(-|$)/;

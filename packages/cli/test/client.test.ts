@@ -133,7 +133,7 @@ describe('Client', () => {
     wss.on('connection', (ws) => {
       let authed = false;
       ws.on('message', (raw) => {
-        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true } })); return; }
+        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
         const req = JSON.parse(raw.toString()) as { id: number };
         ws.send(`{"id":${req.id},"result":{"manifest":"${big}"}}`);
       });
@@ -156,7 +156,7 @@ describe('Client', () => {
     wss.on('connection', (ws) => {
       let authed = false;
       ws.on('message', () => {
-        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true } })); return; }
+        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
         ws.close(1009, 'request too large');
       });
     });
@@ -199,7 +199,7 @@ describe('Client', () => {
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));
     wss.on('connection', (ws) => {
-      ws.once('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true } })));
+      ws.once('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })));
     });
     const client = await Client.connectEndpoint({ url: `ws://127.0.0.1:${(wss.address() as { port: number }).port}`, token: 't' });
     const timers = (): number => process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;

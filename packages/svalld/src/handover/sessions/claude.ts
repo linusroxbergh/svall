@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { ResumeFolder } from '@svall/protocol';
 import { AGENTS } from '../../agents.js';
 import { claudePaths } from '../../paths.js';
+import { byCodeUnit } from '../hash.js';
 import { holds, realPath } from '../portable-path.js';
 import { filesUnder, transcriptFile } from './records.js';
 import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
@@ -94,7 +95,7 @@ export const claudeAdapter: SessionAdapter = {
     // the session's own folder travels whole; file history stays, since its backups name machine-local files, and so
     // does session-env, which can hold secrets
     const folder = path.posix.join(path.posix.dirname(transcript), sessionId);
-    const sidecars = (await filesUnder(fs, home, folder)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const sidecars = (await filesUnder(fs, home, folder)).sort(byCodeUnit);
     return { home, transcript, files: [transcript, ...sidecars] };
   },
 

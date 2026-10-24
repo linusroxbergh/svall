@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PushStatus } from '@svall/protocol';
-import { writeJsonAtomic } from '../atomic.js';
+import { writeDurable } from '../handover/durable.js';
 import { readJsonOrQuarantine } from '../jsonfile.js';
 
 export const Subscription = z.object({
@@ -50,6 +50,6 @@ export class PushStore {
   }
 
   private persist(): void {
-    writeJsonAtomic(this.file, { subscriptions: this.subs });
+    writeDurable(this.file, { subscriptions: this.subs });
   }
 }

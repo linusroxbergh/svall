@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { MachineId } from '@svall/protocol';
+import { MachineId, MachineRecord } from '@svall/protocol';
 import { createDurable, writeDurable } from './handover/durable.js';
 
 // the hardware the id was made on, which a copy of the file to another machine no longer matches
@@ -18,6 +18,16 @@ export type HardwareReader = () => string | undefined;
 export function configDir(): string {
   return process.env.SVALL_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'svall');
 }
+
+/** The controller's machines.json: every machine it reaches, by id, no two under one name. */
+export const Registry = z.object({
+  machines: z.record(MachineId, MachineRecord).refine(
+    (machines) => new Set(Object.values(machines).map((m) => m?.name)).size === Object.keys(machines).length,
+    'two machines share a name',
+  ),
+});
+
+export const registryFile = (dir: string = configDir()): string => path.join(dir, 'machines.json');
 
 /**
  * The Mac's IOPlatformUUID, or Linux's machine-id, keyed for svall as machine-id(5) asks, so the id itself is never

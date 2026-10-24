@@ -3,8 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FleetConfig, defaultHome, type FleetId, type MachineId } from '@svall/protocol';
 import { seedAgentProfiles } from '../agent-profiles.js';
-import { writeJsonAtomic } from '../atomic.js';
-import { DurableJson } from '../handover/durable.js';
+import { DurableJson, writeDurable } from '../handover/durable.js';
 import { OwnerCache } from '../ownership/state.js';
 import { resolvePaths, type Paths } from '../paths.js';
 import { PRIVATE, profileHomeCwd } from '../profile.js';
@@ -126,7 +125,7 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   if (absent) {
     fs.mkdirSync(o.home, { recursive: true, mode: 0o700 });
     const cwd = profileHomeCwd(o.home, o.homedir);
-    writeJsonAtomic(paths.fleetConfig, FleetConfig.parse({ id: o.fleetId, gatewayMachineId: o.gatewayMachineId, ...(cwd && { home: { cwd } }) }));
+    writeDurable(paths.fleetConfig, FleetConfig.parse({ id: o.fleetId, gatewayMachineId: o.gatewayMachineId, ...(cwd && { home: { cwd } }) }));
     return { outcome: 'created', home: o.home, unit: await run() };
   }
   const fleet = readJson(paths.fleetConfig);
@@ -142,7 +141,7 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   unseed(o, paths, parsed.data.home.cwd);
   // before fleet.json names this fleet, so a run cut short leaves a home the next one rekeys again
   fs.rmSync(paths.owner, { force: true });
-  writeJsonAtomic(paths.fleetConfig, { ...parsed.data, id: o.fleetId, gatewayMachineId: o.gatewayMachineId });
+  writeDurable(paths.fleetConfig, { ...parsed.data, id: o.fleetId, gatewayMachineId: o.gatewayMachineId });
   await enableUnit(o.run, unit);
   return { outcome: 'rekeyed', home: o.home, unit };
 }

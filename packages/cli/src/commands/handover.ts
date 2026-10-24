@@ -2,11 +2,13 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import type net from 'node:net';
 import readline from 'node:readline';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { Command, Option as Flag } from 'commander';
-import { FleetConfig, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
-import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
+import { type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
+import { InvalidConfig, namedGateway, patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { resolvePaths } from '@svall/svalld/paths';
 import { profileOf } from '@svall/svalld/profile';
+import { messageOf } from '@svall/svalld/text';
 import type { Handover } from '../controller/handover.js';
 import { connectHandover, type Connected } from '../controller/reach.js';
 import { connectHelper, helperPaths, HelperServer, Live, lockHolder, probe, readPid, takeLock, type HelperPaths } from '../controller/helper.js';
@@ -53,9 +55,7 @@ const POLL_MS = 50;
 // a replayed decision is followed within the same burst by whatever answered it
 const SETTLE_MS = 150;
 
-const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const stopped = (error: string, stop: StopReason = 'invalid'): Outcome => ({ status: 'interrupted', phase: 'begin', error, safe: [], stop });
-const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 
 export function parseDuration(s: string): number {
   const m = /^(\d+(?:\.\d+)?)(ms|s|m|h)?$/.exec(s.trim());
@@ -72,10 +72,11 @@ function words(c: Ctx): Words {
 }
 
 function gatewayOf(fleetHome: string): MachineId | undefined {
-  const file = resolvePaths(fleetHome).fleetConfig;
-  let text: string;
-  try { text = fs.readFileSync(file, 'utf8'); } catch { throw new Error(`there is no fleet at ${fleetHome} (${file} cannot be read)`); }
-  return FleetConfig.parse(JSON.parse(text)).gatewayMachineId;
+  const paths = resolvePaths(fleetHome);
+  try { return namedGateway(paths); } catch (e) {
+    if (e instanceof InvalidConfig) throw e;
+    throw new Error(`there is no fleet at ${fleetHome} (${paths.fleetConfig} cannot be read)`);
+  }
 }
 
 const noGateway = (c: Ctx): string =>
@@ -557,7 +558,7 @@ async function forget(c: Ctx, paths: HelperPaths, w: Words, out: Out, source = f
 
 let registry: MachineRegistry | undefined;
 
-export function realDeps(): CliDeps {
+function realDeps(): CliDeps {
   return {
     connect: (o) => connectHandover(o),
     registry: () => (registry ??= MachineRegistry.load()),
@@ -595,7 +596,7 @@ function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
 }
 
 /** Sets handover.enabled in fleet.json, the rest of its handover settings kept; a fleet that names a gateway keeps it on. */
-export function setHandoverEnabled(fleetHome: string, enabled: boolean): void {
+function setHandoverEnabled(fleetHome: string, enabled: boolean): void {
   const paths = resolvePaths(fleetHome);
   const { gatewayMachineId } = readFleetConfig(paths);
   if (!enabled && gatewayMachineId) throw new Error('this fleet names a gateway, so handover stays on; `svall host remove` that machine first');

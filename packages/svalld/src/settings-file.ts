@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeAtomic } from './jsonfile.js';
+import { writeDurable } from './handover/durable.js';
 
 export const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
@@ -61,7 +61,7 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
     done.push(`backup -> ${backup}`);
   }
   fs.mkdirSync(path.dirname(current.file), { recursive: true });
-  writeAtomic(file, formatLike(current.text, next), { mode, perProcess: true });
+  writeDurable(file, Buffer.from(formatLike(current.text, next)), { mode: mode ?? 0o644 });
   // the umask narrows the mode a file is created with, so the one it had is set again
   if (mode !== undefined) fs.chmodSync(file, mode);
   done.push(`${what} -> ${current.file}`);

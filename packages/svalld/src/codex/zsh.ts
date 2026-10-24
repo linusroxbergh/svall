@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeDurable } from '../handover/durable.js';
 
 // zsh reads $ZDOTDIR/.zshenv first: this one restores the user's ZDOTDIR, so the rest of startup is theirs, and gives the
 // interactive shell a codex off Codex's shared server, which agents, queue, remote-control and --remote need
@@ -27,9 +28,7 @@ export function codexZshEnv(dir: string, inherited: string | undefined = process
   const file = path.join(dir, '.zshenv');
   // checked on every window: without the file, zsh would skip the user's own startup files
   if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== ZSHENV) {
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(`${file}.tmp`, ZSHENV);
-    fs.renameSync(`${file}.tmp`, file);
+    writeDurable(file, Buffer.from(ZSHENV), { mode: 0o644 });
   }
   return { ZDOTDIR: dir, ...(inherited !== undefined && inherited !== dir ? { SVALL_ZDOTDIR: inherited } : {}) };
 }

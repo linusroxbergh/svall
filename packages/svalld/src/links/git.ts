@@ -16,7 +16,7 @@ const REDIRECTS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR
  * git as a reader beside the user's own: messages in English, and no index refresh that takes its lock. `config` is set
  * for every command, ahead of what the repository says.
  */
-export function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', config: readonly string[] = []): GitRunner {
+function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', config: readonly string[] = []): GitRunner {
   const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
   for (const k of REDIRECTS) delete env[k];
   const settings = config.flatMap((c) => ['-c', c]);

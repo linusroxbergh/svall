@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 import {
   Blocker, TRANSFER_SCHEMA_VERSION, type AgentKind, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
@@ -19,6 +20,7 @@ import { caseCollisions, rootCollisions } from '@svall/svalld/handover/probe';
 import { ARCHIVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
 import { resumeFolders } from '@svall/svalld/handover/sessions/registry';
 import { resolvePaths } from '@svall/svalld/paths';
+import { messageOf } from '@svall/svalld/text';
 import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';
 import { entryEvent, namesOf, Observer } from './events.js';
 import { redact } from './process.js';
@@ -90,7 +92,6 @@ export type HandoverDeps = {
   rsync(): Promise<string>;
   stateDir: string;
   clock?: HandoverClock;
-  emit?(e: HandoverEvent): void;
   /** Every event, those after a cancel let the watcher go included: what a helper keeps and serves. */
   record?(e: HandoverEvent): void;
   /** Asks the user about blockers found after Begin: new choices to try the step again with, or cancel. Without it, the handover aborts. */
@@ -109,8 +110,7 @@ const RETRY = { attempts: 4, firstDelayMs: FIRST_DELAY };
 const PHASES: readonly HandoverPhase[] = ['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete'];
 const PRE_COMMIT: SafeAction[] = ['resume', 'abort'];
 
-const realClock: HandoverClock = { now: Date.now, sleep: (ms) => new Promise((r) => { setTimeout(r, ms); }) };
-const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const realClock: HandoverClock = { now: Date.now, sleep: (ms) => sleep(ms) };
 const blockersOf = (e: Refused): Blocker[] => {
   const said = z.array(Blocker).safeParse(e.data?.blockers);
   return said.success ? said.data : [{ code: 'path_unsupported', message: e.message }];
@@ -265,7 +265,7 @@ export class Handover {
   private onDetach?: () => void;
 
   constructor(private d: HandoverDeps) {
-    this.observer = new Observer(d.emit, d.record);
+    this.observer = new Observer(d.record);
     this.clock = d.clock ?? realClock;
   }
 
@@ -417,7 +417,6 @@ export class Handover {
   }
 
   private detach(): void {
-    this.observer.detach();
     this.onDetach?.();
   }
 

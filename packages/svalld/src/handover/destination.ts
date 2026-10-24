@@ -193,7 +193,7 @@ const wire = (check: ReplicaCheck): WireCheck =>
   (check.ok ? { ok: true, path: check.path, kind: check.kind } : { ok: false, path: check.path, blocker: check.blocker });
 
 /** One result per robot, from the results of its terminals: ok when every one came up. */
-export function robotResults(activation: readonly Activation[]): RobotResult[] {
+function robotResults(activation: readonly Activation[]): RobotResult[] {
   const byId = new Map<string, Activation[]>();
   for (const a of activation) byId.set(a.robotId, [...(byId.get(a.robotId) ?? []), a]);
   return [...byId].map(([id, slots]) => {

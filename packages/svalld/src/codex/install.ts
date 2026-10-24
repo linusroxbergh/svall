@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { HOOK_GUARD, helperOr } from '../paths.js';
+import { HOOK_GUARD, helperOr, nodeRun } from '../paths.js';
 import { shq } from '../text.js';
 
 export type CodexPaths = { dir: string; config: string; hooks: string };
@@ -22,4 +22,4 @@ export const BWRAP_COMMAND = 'sudo apt install bubblewrap apparmor-profiles && s
 // codex trusts a hook by the hash of its definition: a checkout names no node an upgrade would move, and the app names
 // its own node, whose path an update keeps
 export const codexHookCommand = (script: string, node?: string): string =>
-  `${HOOK_GUARD} { ${helperOr(script, 'codex "$PPID"', `${node ? `n=${shq(node)}; [ -x "$n" ] || n=node; "$n"` : 'node'} ${shq(script)}`)}; }`;
+  `${HOOK_GUARD} { ${helperOr(script, 'codex "$PPID"', node ? nodeRun(node, script) : `node ${shq(script)}`)}; }`;

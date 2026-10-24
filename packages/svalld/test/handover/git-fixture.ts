@@ -13,7 +13,7 @@ export const hasGit = (() => {
  * submodule, a stash, and staged, modified and untracked files in every used checkout. POSIX sh, so the
  * same fixture runs here and on a remote machine.
  */
-export const SEED = String.raw`set -eu
+const SEED = String.raw`set -eu
 T="$1"
 export GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1 LC_ALL=C
 : > "$GIT_CONFIG_GLOBAL"

@@ -79,28 +79,21 @@ export function onPath(bin: string, pathEnv: string, isExec = isExecutable): str
 export const findAgents = (pathEnv: string, isExec = isExecutable): AgentKind[] =>
   AGENT_KINDS.filter((k) => onPath(AGENTS[k].bin, pathEnv, isExec) !== undefined);
 
-export function parseVersion(text: string): Version | undefined {
-  const m = /(\d+)\.(\d+)\.(\d+)/.exec(text);
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined;
-}
-
 /** The release a CLI names in its `--version` line, whatever it wraps it in. */
 export const versionOf = (text: string): string | undefined => /\d+\.\d+\.\d+[0-9A-Za-z.+-]*/.exec(text)?.[0];
 
 // a version line that can't be read passes, so a new format never blocks anyone
-export function versionOk(a: Pick<AgentAdapter, 'minVersion'>, text: string): boolean {
-  const v = parseVersion(text);
-  if (!a.minVersion || !v) return true;
-  for (let i = 0; i < 3; i++) if (v[i] !== a.minVersion[i]) return v[i] > a.minVersion[i];
-  // 0.155.0-alpha.3 comes before 0.155.0
-  return !text.includes(`${v.join('.')}-`);
-}
+export const versionOk = (a: Pick<AgentAdapter, 'minVersion'>, text: string): boolean =>
+  !a.minVersion || compareVersions(text, a.minVersion.join('.')) !== -1;
 
-// -1, 0 or 1 in semver order, a release after its prereleases; undefined when either line has no x.y.z
+// -1, 0 or 1 in semver order, x.y as x.y.0 and a release after its prereleases; undefined when either line has no x.y
 export function compareVersions(a: string, b: string): number | undefined {
-  const [x, y] = [a, b].map((t) => /(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(t));
+  const [x, y] = [a, b].map((t) => /(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?/.exec(t));
   if (!x || !y) return undefined;
-  for (let i = 1; i <= 3; i++) if (Number(x[i]) !== Number(y[i])) return Math.sign(Number(x[i]) - Number(y[i]));
+  for (let i = 1; i <= 3; i++) {
+    const [m, n] = [Number(x[i] ?? 0), Number(y[i] ?? 0)];
+    if (m !== n) return Math.sign(m - n);
+  }
   if (!x[4] || !y[4]) return Number(!x[4]) - Number(!y[4]);
   const [p, q] = [x[4].split('.'), y[4].split('.')];
   for (let i = 0; i < Math.min(p.length, q.length); i++) {

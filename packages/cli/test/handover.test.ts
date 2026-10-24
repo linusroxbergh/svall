@@ -1508,13 +1508,13 @@ describe('a fleet handed to another machine, from this one', () => {
       wss.on('connection', (ws) => {
         let authed = false;
         ws.on('message', (raw) => {
-          if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true } })); return; }
+          if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
           const req = JSON.parse(raw.toString()) as { id: number; method: string };
           ws.send(JSON.stringify({ id: req.id, result: req.method === 'state.get' ? state : {} }));
         });
       });
       const port = (wss.address() as { port: number }).port;
-      ssh.answer({ fleetId: FLEET, machineId: TRIFT, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port, token: 'trift-token', generation: 5 });
+      ssh.answer({ fleetId: FLEET, machineId: TRIFT, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port, token: 'trift-token', generation: 5, fleetHome: '/home/linus/.svall' });
 
       const home = makeHome();
       const config = makeHome();

@@ -3,20 +3,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
-import { patchFleetConfig } from '@svall/svalld/config';
+import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { unitPath } from '@svall/svalld/linux/setup';
-import { isFleetName, isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
+import { PRIVATE, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import { shq } from '@svall/svalld/text';
+import { fleetHomes as everyFleetHome } from '@svall/svalld/uninstall';
 import type { Verify } from '../../../../scripts/release-manifest.mjs';
-import { Client } from '../client.js';
 import type { Check } from '../checks-view.js';
 import { remoteOwner } from './authority.js';
-import { identify, MachineMismatch, remoteConnectionInfo } from './connection.js';
+import { connectForwarded, identify, MachineMismatch } from './connection.js';
 import {
   bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion,
   remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
@@ -359,18 +359,15 @@ function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: st
  * is named, before this machine counts as reachable. `anyProtocol` takes a release on another protocol than this controller's.
  */
 async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyProtocol }: { release?: string; anyProtocol?: boolean } = {}): Promise<Outcome<void>> {
-  const info = await remoteConnectionInfo(master, entry, { profile: PRIVATE, anyProtocol });
-  const forward = await master.forward(info.port);
-  let client: Client | undefined;
+  const { client, info, forward } = await connectForwarded(master, entry, { profile: PRIVATE, anyProtocol });
   try {
-    client = await Client.connectEndpoint({ url: `ws://127.0.0.1:${forward.localPort}`, token: info.token });
     const running = (await client.call('system.info', {})).release;
     if (release && running !== release) throw new Error(`${entry.record.name} answers from release ${running}, not ${release}`);
     return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet` };
   } catch (err) {
     throw new StepError(redact((err as Error).message, [info.token]));
   } finally {
-    client?.close();
+    client.close();
     await forward.cancel().catch(() => undefined);
   }
 }
@@ -724,18 +721,9 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
   });
 }
 
-/** The fleet homes on this Mac, the private one and every named profile's. */
+/** The fleet homes on this Mac that hold a fleet.json, the private one and every named profile's. */
 function fleetHomes(homedir: string): string[] {
-  let names: string[];
-  try {
-    names = fs.readdirSync(homedir);
-  } catch {
-    return [];
-  }
-  return names
-    .filter((f) => f === '.svall' || (f.startsWith('.svall-') && isFleetName(f.slice('.svall-'.length))))
-    .map((f) => path.join(homedir, f))
-    .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
+  try { return everyFleetHome(homedir).filter((home) => fs.existsSync(resolvePaths(home).fleetConfig)); } catch { return []; }
 }
 
 /** The fleets on this Mac whose fleet.json names `id` as their gateway, by profile; one that cannot be read names none. */
@@ -755,8 +743,6 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   const named = homes.filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
   const svall = (home: string, args: string): string => {
     const profile = profileOf(home, d.homedir);
-    // a home named for a command svall keeps is no -p's, and is reached by its folder
-    if (profile !== PRIVATE && !isProfileName(profile)) return `\`SVALL_HOME=${shq(home)} svall ${args}\``;
     return `\`svall ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
   };
   // a gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it, and whichever
@@ -832,7 +818,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
 
 function readFleet(file: string): FleetConfig {
   try {
-    return FleetConfig.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+    return readFleetConfig({ fleetConfig: file });
   } catch (err) {
     throw new StepError(`${file} is not a fleet config: ${(err as Error).message}`);
   }

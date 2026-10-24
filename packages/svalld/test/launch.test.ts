@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
 import { AGENTS } from '../src/agents.js';
-import { agentKindOf, isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from '../src/context/launch.js';
+import { agentKindOf, isAgentCommand, promptText, withAddDirs, withPromptFile, withStandalone } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -67,14 +67,6 @@ describe('withStandalone', () => {
     expect(withStandalone(AGENTS.claude.crewCommand('sonnet'))).toBe('claude --model sonnet');
     expect(withStandalone(AGENTS.codex.crewCommand('gpt-6-astra'))).toBe('codex --no-daemon -c check_for_update_on_startup=false -m gpt-6-astra');
     expect(withStandalone(AGENTS.opencode.crewCommand('opencode/big-pickle'))).toBe('opencode --standalone');
-  });
-});
-
-describe('withoutV1Flags', () => {
-  it('sheds the -m and --agent a revive saved under OpenCode 1 carries', () => {
-    expect(withoutV1Flags(`opencode -m 'opencode/big-pickle' --agent 'build' -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`))
-      .toBe('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
-    expect(withoutV1Flags("codex resume -c tui.resume_cwd=session -m 'gpt-5.5' s1")).toBe("codex resume -c tui.resume_cwd=session -m 'gpt-5.5' s1");
   });
 });
 

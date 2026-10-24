@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, TransferManifestV1 } from '@svall/protocol';
+import { compareVersions } from '../agents.js';
 import type { GitRunner } from '../links/git.js';
-import { older } from './git-extensions.js';
 import { GitFailure, repoPaths } from './git-graph.js';
 import { holds } from './portable-path.js';
 import { relocate, type Relocation } from './relocate.js';
@@ -29,7 +29,7 @@ export async function relocationBlockers(graphs: readonly GitGraph[], r: Relocat
     const checkouts = [...(g.main ? [g.main] : []), ...g.worktrees];
     // a submodule's gitfile and core.worktree name each other by paths relative to the checkout holding it
     const places = [g.commonDir, ...checkouts.map((c) => c.path)];
-    if (g.worktrees.length && places.some(moves) && destinationGit && older(destinationGit, REPAIRS)) {
+    if (g.worktrees.length && places.some(moves) && destinationGit && compareVersions(destinationGit, REPAIRS) === -1) {
       out.push({ code: 'git_extension', message: `${g.commonDir}: its linked worktrees land at other paths, which git worktree repair mends from git ${REPAIRS} on, and the destination runs git ${destinationGit}`, entity });
     }
     if (places.some(moves) && !places.every(moves) && checkouts.some((c) => fs.existsSync(path.join(c.path, '.gitmodules')))) {

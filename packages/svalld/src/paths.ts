@@ -23,6 +23,9 @@ export const helperOr = (script: string, args: string, fallback: string): string
   return `if [ -x ${helper} ]; then ${helper} ${args}; else ${fallback} ${args}; fi`;
 };
 
+// the node setup ran with, or the one on PATH once a version manager has removed it
+export const nodeRun = (node: string, script: string): string => `n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)}`;
+
 // every hook command setup installs starts here, so the hook costs nothing outside a robot
 // a session an older svalld started carries SVALL_CHAR_ID
 export const HOOK_GUARD = '[ -z "$SVALL_ROBOT_ID$SVALL_CHAR_ID" ] ||';

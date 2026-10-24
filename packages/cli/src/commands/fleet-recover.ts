@@ -2,12 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command } from 'commander';
 import { FleetConfig, type FleetId, type MachineId, type MethodName, type OwnerRecord, type OwnershipInfo, type Params, type Result } from '@svall/protocol';
-import { patchFleetConfig } from '@svall/svalld/config';
+import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import type { OwnerAnswer } from '@svall/svalld/gateway/client';
 import { appendDurable, writeDurable } from '@svall/svalld/handover/durable';
 import { HandoverJournal, handoverGeneration } from '@svall/svalld/handover/journal';
 import { OwnerCache } from '@svall/svalld/ownership/state';
 import { resolvePaths } from '@svall/svalld/paths';
+import { messageOf } from '@svall/svalld/text';
 import { authorityOp, Masters, openDaemon } from '../controller/reach.js';
 import { fileStore, type ControllerJournal } from '../controller/recovery.js';
 import { MachineRegistry, type MachineEntry } from '../controller/registry.js';
@@ -75,7 +76,6 @@ export type RecoverEvent =
   | { event: 'recover.adopted'; data: { machineId: MachineId; name: string; adopted?: boolean; superseded?: string; ownership?: OwnershipInfo; error?: string } }
   | { event: 'recover.result'; data: { result: 'recovered' | 'incomplete' | 'refused'; message: string; actions: string[] } };
 
-const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 async function readGateway(d: RecoverDeps, entry: MachineEntry, fleetId: FleetId): Promise<Held> {
   let answer: OwnerAnswer;
   try { answer = await d.gateway(entry)('get', fleetId); } catch (e) { return { state: 'unreachable', message: messageOf(e) }; }
@@ -199,7 +199,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   const file = resolvePaths(d.fleetHome).fleetConfig;
   let fleet: FleetConfig;
   try {
-    fleet = FleetConfig.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+    fleet = readFleetConfig({ fleetConfig: file });
   } catch (e) {
     return refuse(`${file} is not a fleet config: ${messageOf(e)}`);
   }
@@ -548,7 +548,7 @@ export function fleetCommands(home: () => string, json: () => boolean, profile: 
         ? (e: RecoverEvent) => { process.stdout.write(`${JSON.stringify(e)}\n`); }
         : (e: RecoverEvent) => { process.stdout.write(`${render(e, name)}\n`); };
       let fleetId: FleetId | undefined;
-      try { fleetId = FleetConfig.parse(JSON.parse(fs.readFileSync(resolvePaths(fleetHome).fleetConfig, 'utf8'))).id; } catch { /* recoverFleet names the problem */ }
+      try { fleetId = readFleetConfig(resolvePaths(fleetHome)).id; } catch { /* recoverFleet names the problem */ }
       const daemon = async (entry: MachineEntry): Promise<DaemonPort> => {
         if (!fleetId) throw new Error('no fleet here');
         const { client } = await openDaemon(entry, { localId: registry.localId, fleetHome, fleetId, profile: profile(), masters });

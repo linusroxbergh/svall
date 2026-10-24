@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
+import { oneLine } from '../text.js';
 import { writeDurable } from './durable.js';
-import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, runsHere, said, type WorktreeEntry } from './git-graph.js';
+import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, runsHere, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 
 /** What `git init` probes of the filesystem a Git directory sits on; `precomposeUnicode` only where git probes it, on macOS. */
@@ -108,7 +109,7 @@ async function adaptRules(common: string, rules: FsRules, git: GitRunner): Promi
   const changes: [string, string][] = [];
   for (const [key, value, written] of keys) {
     const r = await git(['config', '--file', config, '--type=bool', '--get', key], common);
-    if (r.code !== 0 && r.code !== 1) throw new GitFailure(`${config}: git config --get ${key} failed: ${said(r.stderr) || `exit ${r.code}`}`);
+    if (r.code !== 0 && r.code !== 1) throw new GitFailure(`${config}: git config --get ${key} failed: ${oneLine(r.stderr) || `exit ${r.code}`}`);
     const held = r.code === 0 ? r.stdout.trim() === 'true' : undefined;
     if (held === value || (held === undefined && !written)) continue;
     changes.push([key, String(value)]);

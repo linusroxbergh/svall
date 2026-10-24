@@ -113,8 +113,6 @@ export const NodeConfig = z.object({
   shell: z.string().optional(),
   // the agents setup turned off; any other agent found is on
   agentsOff: z.array(AgentKind).optional(),
-  // the agents whose hooks setup installs; absent, every agent found. Read from agentsOff, else from an integrations list
-  integrations: z.array(AgentKind).optional(),
   mobile: z.object({
     // the https port this fleet is reached on, which svalld saves once it serves there
     httpsPort: z.number().int().min(1).max(65535).optional(),

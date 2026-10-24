@@ -14,7 +14,7 @@ export const OWNER_PATH = '/relay';
 export const CLOSE_SUPERSEDED = 4410;
 export const CLOSE_BAD_FRAME = 1008;
 // four times the 1 MiB terminal burst the spec names: room for a header and backlog, nothing more
-export const MAX_FRAME = 4 * 1024 * 1024;
+const MAX_FRAME = 4 * 1024 * 1024;
 
 /** A binary frame is a 4-byte header length, that many bytes of JSON header, then the payload. */
 export function encodeBinary(header: Frame, payload: Buffer): Buffer {
@@ -32,7 +32,7 @@ export function decodeBinary(frame: Buffer): { header: Frame; payload: Buffer } 
 }
 
 /** The frame a peer sent, or undefined when it is malformed and the socket should be closed. */
-export function decodeFrame(data: Buffer, isBinary: boolean): { header: Frame; payload?: Buffer } | undefined {
+function decodeFrame(data: Buffer, isBinary: boolean): { header: Frame; payload?: Buffer } | undefined {
   if (data.length > MAX_FRAME) return undefined;
   try {
     if (isBinary) return decodeBinary(data);
@@ -43,7 +43,7 @@ export function decodeFrame(data: Buffer, isBinary: boolean): { header: Frame; p
   }
 }
 
-export function signIdentity(key: Buffer, id: Identity): string {
+function signIdentity(key: Buffer, id: Identity): string {
   return crypto.createHmac('sha256', key).update(JSON.stringify(id)).digest('base64url');
 }
 

@@ -29,7 +29,7 @@ function bytes(n: number): string {
 }
 
 /** Who or what an entity is, for a person: a robot's name, a root's destination path, a session's robot. */
-export function label(names: Names, entity?: HandoverEntity): string | undefined {
+function label(names: Names, entity?: HandoverEntity): string | undefined {
   if (!entity) return undefined;
   if (entity.kind === 'robot') return names.robots[entity.id] ?? entity.id;
   if (entity.kind === 'root') return names.roots[entity.id] ?? entity.id;

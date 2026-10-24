@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, FleetState, GitCheckout, GitCommand, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitDirs, type GitRunner } from '../links/git.js';
+import { oneLine } from '../text.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
 import { excludeMatcher, excludedPath, settle } from './inventory.js';
 
@@ -37,13 +38,10 @@ export const graphId = (commonDir: string): string => `g_${sha256Hex(commonDir).
 
 export class GitFailure extends Error {}
 
-/** What git said on stderr, on one line. */
-export const said = (text: string): string => text.trim().replace(/\s+/g, ' ');
-
 /** Runs git and answers its output, or throws what it said. */
 export async function must(git: GitRunner, args: readonly string[], cwd: string, subject = cwd): Promise<string> {
   const r = await git(args, cwd);
-  if (r.code !== 0) throw new GitFailure(`${subject}: git ${args.join(' ')} failed: ${said(r.stderr) || `exit ${r.code}`}`);
+  if (r.code !== 0) throw new GitFailure(`${subject}: git ${args.join(' ')} failed: ${oneLine(r.stderr) || `exit ${r.code}`}`);
   return r.stdout;
 }
 
@@ -136,7 +134,7 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
       }
       const r = await git(DIRS_ARGS, cwd);
       if (r.code !== 0) {
-        if (!/not a git repository/.test(r.stderr)) blockers.push({ code: 'worktree_unresolved', message: `${cwd}: ${said(r.stderr)}`, entity });
+        if (!/not a git repository/.test(r.stderr)) blockers.push({ code: 'worktree_unresolved', message: `${cwd}: ${oneLine(r.stderr)}`, entity });
         continue;
       }
       const dirs = parseDirs(r.stdout);

@@ -16,7 +16,7 @@ const DENIED = MachineId.parse('dddddddd-eeee-ffff-0000-111111111111');
 const TOKEN = 'remote-token-never-on-disk';
 
 const description = (o: { port: number; generation?: number; token?: string }) => ({
-  fleetId: FLEET, machineId: REMOTE, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: TOKEN, ...o,
+  fleetId: FLEET, machineId: REMOTE, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: TOKEN, fleetHome: '/home/linus/.svall', ...o,
 });
 
 // a reconnect spawns the fake ssh some two dozen times, which a loaded machine can stretch past 5 s

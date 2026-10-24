@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { TransferRoot } from '@svall/protocol';
+import { compareVersions } from '@svall/svalld/agents';
 import { CONTROL, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, NOISE } from '@svall/svalld/handover/inventory';
 import { relativeProblem } from '@svall/svalld/handover/replicas';
 import { isRelease, releaseRoot } from '@svall/svalld/release';
@@ -26,18 +27,13 @@ export function bundledRsync(): string {
 
 export type RsyncProbe = { ok: true; exe: string; version: string } | { ok: false; exe: string; reason: string };
 
-const older = (a: readonly number[], b: readonly number[]): boolean => {
-  for (let i = 0; i < b.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
-  return false;
-};
-
 /** What an rsync's `--version` says about driving it: its version, or why it cannot be. macOS ships openrsync, which cannot. */
 export function rsyncVersion(out: string): { version: string } | { reason: string } {
   if (/openrsync/.test(out)) return { reason: 'is openrsync, which cannot protect remote arguments or report byte progress' };
   const m = /^rsync\s+version\s+v?(\d+)\.(\d+)\.(\d+)/.exec(out);
   if (!m) return { reason: `answered --version with ${JSON.stringify(out.split('\n')[0].slice(0, 80))}` };
   const version = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (older(version, MIN_RSYNC)) return { reason: `is rsync ${version.join('.')}; a handover needs ${MIN_RSYNC.join('.')} or newer` };
+  if (compareVersions(version.join('.'), MIN_RSYNC.join('.')) === -1) return { reason: `is rsync ${version.join('.')}; a handover needs ${MIN_RSYNC.join('.')} or newer` };
   return { version: version.join('.') };
 }
 

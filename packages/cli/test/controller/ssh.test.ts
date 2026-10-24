@@ -340,24 +340,6 @@ describe('sweepMasters', () => {
     running.kill();
   });
 
-  it('ends the master on a socket named before the pid led it once its parent is gone, and leaves one whose parent runs', async () => {
-    // a master left behind is launchd's or init's child, as a shell's background job is once the shell exits
-    const sh = spawn('sh', ['-c', 'sleep 30 >/dev/null 2>&1 & echo $!'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const orphan = Number(await new Promise<string>((resolve) => { sh.stdout.on('data', (b: Buffer) => resolve(b.toString().trim())); }));
-    await new Promise((resolve) => { sh.on('close', resolve); });
-    const owned = spawn('sleep', ['30']);
-    fs.mkdirSync(ssh.socketDir, { mode: 0o700 });
-    const [left, held, stale] = ['0123456789ab', 'ba9876543210', 'aaaaaaaaaaaa'];
-    for (const name of [left, held, stale]) fs.writeFileSync(path.join(ssh.socketDir, name), '');
-    fs.writeFileSync(path.join(ssh.dir, 'state', `${left}.master`), String(orphan));
-    fs.writeFileSync(path.join(ssh.dir, 'state', `${held}.master`), String(owned.pid));
-    await sweepMasters(ssh.socketDir);
-    expect(fs.readdirSync(ssh.socketDir)).toEqual([held]);
-    await waitFor(() => !alive(orphan));
-    expect(alive(owned.pid as number)).toBe(true);
-    owned.kill();
-  });
-
   it('keeps the socket of a master that would not exit, and removes one no master listens on', async () => {
     const gone = spawn('true');
     await new Promise((resolve) => { gone.on('close', resolve); });

@@ -92,7 +92,7 @@ describe('fleetControl', () => {
     const f = fake(u);
     const home = await fleetControl(priv, f.deps).create('work');
     expect(home).toBe(path.join(u, '.svall-work'));
-    expect(f.setups).toEqual([{ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: f.deps.launchAgentsDir, launchctl: false, port: 0 }]);
+    expect(f.setups).toEqual([{ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: f.deps.launchAgentsDir, port: 0 }]);
     expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', path.join(f.deps.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist')]]);
     expect(f.up.has(home)).toBe(true);
   });

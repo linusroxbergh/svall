@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { FleetConfig, FleetId, MachineId, MachineRecord, PROTOCOL_VERSION } from '@svall/protocol';
-import { peekConfig } from '@svall/svalld/config';
+import { InvalidConfig, peekConfig, readFleetConfig } from '@svall/svalld/config';
 import { versionMachineId, type OwnerAnswer } from '@svall/svalld/gateway/client';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -66,7 +66,7 @@ const ConnectionInfo = z.object({
   /** the generation of the owner record this daemon holds; a fleet no gateway holds has none */
   generation: z.number().int().nonnegative().optional(),
   /** where the fleet lies on the machine that answers, which a controller elsewhere cannot work out */
-  fleetHome: z.string().optional(),
+  fleetHome: z.string(),
 });
 type ConnectionInfo = z.infer<typeof ConnectionInfo>;
 
@@ -101,7 +101,7 @@ export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform
 export function localFleetId(fleetHome: string): FleetId {
   const file = resolvePaths(fleetHome).fleetConfig;
   try {
-    return FleetId.parse((JSON.parse(fs.readFileSync(file, 'utf8')) as { id: unknown }).id);
+    return readFleetConfig({ fleetConfig: file }).id;
   } catch {
     throw new Error(`no fleet id in ${file}: there is no fleet here to reach another machine's copy of`);
   }
@@ -143,16 +143,28 @@ export async function remoteConnectionInfo(master: SshMaster, machine: MachineEn
   return info;
 }
 
+/** The far daemon of `machine` over a forward on `master`, which a failed connection takes back; its error holds no token. */
+export async function connectForwarded(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean }) {
+  const info = await remoteConnectionInfo(master, machine, o);
+  const forward = await master.forward(info.port);
+  try {
+    return { client: await Client.connectEndpoint({ url: `ws://127.0.0.1:${forward.localPort}`, token: info.token }), info, forward };
+  } catch (err) {
+    // an attempt takes its forward with it, so a retry does not leave one behind on the master
+    await forward.cancel().catch(() => { /* the master may be gone too */ });
+    throw new Error(`${machine.record.name}: ${redact((err as Error).message, [info.token])}`);
+  }
+}
+
 /** Retries a transport that may come back, and never one that will not without a person. */
-export async function withReconnect<T>(attempt: () => Promise<T>, o: { attempts?: number } = {}): Promise<T> {
-  const attempts = o.attempts ?? MAX_ATTEMPTS;
+export async function withReconnect<T>(attempt: () => Promise<T>): Promise<T> {
   let delay = FIRST_DELAY;
   for (let n = 1; ; n++) {
     try {
       return await attempt();
     } catch (err) {
       const kind = err instanceof SshError ? err.kind : undefined;
-      if (n >= attempts || !kind || !RETRIED.includes(kind)) throw err;
+      if (n >= MAX_ATTEMPTS || !kind || !RETRIED.includes(kind)) throw err;
       await sleep(delay);
       delay = Math.min(delay * 2, MAX_DELAY);
     }
@@ -168,19 +180,12 @@ export async function connectRemote(o: { registry: MachineRegistry; machine: str
   const fleetId = localFleetId(o.fleetHome);
   return withReconnect(async () => {
     const master = await SshMaster.open({ destination });
-    const info = await remoteConnectionInfo(master, machine, { fleetId, profile: o.profile });
-    const forward = await master.forward(info.port);
-    try {
-      const client = await Client.connectEndpoint({ url: `ws://127.0.0.1:${forward.localPort}`, token: info.token });
-      client.via = machine.record.name;
-      client.onClose(() => { void forward.cancel().catch(() => undefined).then(() => master.close()).catch(() => undefined); });
-      return client;
-    } catch (err) {
-      // an attempt takes its forward with it, so a retry does not leave one behind on the master
-      await forward.cancel().catch(() => { /* the master may be gone too */ });
-      const message = redact((err as Error).message, [info.token]);
-      throw new SshError(/not reachable|did not accept/.test(message) ? 'daemon_down' : 'other', `${machine.record.name}: ${message}`);
-    }
+    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile: o.profile }).catch((err: Error) => {
+      throw err instanceof SshError ? err : new SshError(/not reachable|did not accept/.test(err.message) ? 'daemon_down' : 'other', err.message);
+    });
+    client.via = machine.record.name;
+    client.onClose(() => { void forward.cancel().catch(() => undefined).then(() => master.close()).catch(() => undefined); });
+    return client;
   });
 }
 
@@ -200,17 +205,13 @@ const realOwnerDeps = (): OwnerDeps => ({
 /** No fleet.json is a machine with no fleet to route; one that will not parse is a fleet to leave alone. */
 function fleetConfig(fleetHome: string): FleetConfig | undefined {
   const file = resolvePaths(fleetHome).fleetConfig;
-  let text: string;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    return readFleetConfig({ fleetConfig: file });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw new SshError('other', `${file} could not be read: ${(err as Error).message}`);
-  }
-  try {
-    return FleetConfig.parse(JSON.parse(text));
-  } catch (err) {
-    throw new SshError('other', `${file} is not a fleet config, so which machine owns this fleet cannot be read: ${(err as Error).message}`);
+    throw new SshError('other', err instanceof InvalidConfig
+      ? `${file} is not a fleet config, so which machine owns this fleet cannot be read: ${err.message}`
+      : `${file} could not be read: ${(err as Error).message}`);
   }
 }
 

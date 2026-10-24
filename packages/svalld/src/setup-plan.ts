@@ -71,11 +71,11 @@ export function requireInstalledApp(r: Runtime): void {
   }
 }
 
-// the version and pid a daemon wrote as it started; a build before the pid wrote the version alone
-const readStamp = (home: string): { version: string; pid?: number } | undefined => {
+// the version and pid a daemon wrote as it started
+const readStamp = (home: string): { version: string; pid: number } | undefined => {
   try {
     const [version, pid] = fs.readFileSync(path.join(home, 'version'), 'utf8').trim().split('\n');
-    return { version, pid: pid ? Number(pid) : undefined };
+    return { version, pid: Number(pid) };
   } catch { return undefined; }
 };
 
@@ -86,7 +86,7 @@ export function staleFleets(homes: string[], version: string, pidOf: (label: str
   return homes.map((h) => [h, label(h)] as const)
     .filter(([h, l]) => {
       const pid = pidOf(l), stamp = readStamp(h);
-      return pid !== undefined && stamp !== undefined && stamp.version !== version && (stamp.pid === undefined || stamp.pid === pid);
+      return pid !== undefined && stamp !== undefined && stamp.version !== version && stamp.pid === pid;
     })
     .map(([, l]) => l);
 }

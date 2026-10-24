@@ -2,18 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { z } from 'zod';
 import { MachineId, MachineRecord } from '@svall/protocol';
-import { writeJsonAtomic } from '@svall/svalld/atomic';
-import { configDir, machineId } from '@svall/svalld/machine';
+import { writeDurable } from '@svall/svalld/handover/durable';
+import { configDir, machineId, Registry, registryFile } from '@svall/svalld/machine';
 import { svallHome } from '@svall/svalld/paths';
-
-const Registry = z.object({
-  machines: z.record(MachineId, MachineRecord).refine(
-    (machines) => new Set(Object.values(machines).map((m) => m?.name)).size === Object.keys(machines).length,
-    'two machines share a name',
-  ),
-});
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
@@ -63,7 +55,7 @@ export class MachineRegistry {
 
   static load(dir: string = configDir(), o: { hostname?: string; warn?: (line: string) => void } = {}): MachineRegistry {
     const id = machineId(dir);
-    const file = path.join(dir, 'machines.json');
+    const file = registryFile(dir);
     let machines = new Map<MachineId, MachineRecord>();
     if (fs.existsSync(file)) {
       try {
@@ -85,7 +77,7 @@ export class MachineRegistry {
   }
 
   save(): void {
-    writeJsonAtomic(this.file, { machines: Object.fromEntries(this.machines) });
+    writeDurable(this.file, { machines: Object.fromEntries(this.machines) });
   }
 
   /** What a lookup that found no machine adds: where a registry that could not be read went, with every machine it named. */

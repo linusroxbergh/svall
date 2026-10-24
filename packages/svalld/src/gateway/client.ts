@@ -5,7 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { z } from 'zod';
 import { MachineRecord, OwnerRecord, type FleetId, type MachineId } from '@svall/protocol';
-import { configDir } from '../machine.js';
+import { Registry, registryFile } from '../machine.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
 import { AuthorityFailure, gatewayPaths, type OwnerOp, type OwnerParamsOf } from './authority.js';
@@ -150,22 +150,20 @@ const realSsh: SshRun = (argv) => new Promise((resolve, reject) => {
   });
 });
 
-const Registry = z.object({ machines: z.record(z.string(), MachineRecord) });
-
 // the far svall names its machine before the authority answers, so a route that now leads elsewhere is refused
 const OWNER_GET = '"$1" version --json; exec "$1" gateway owner get --fleet "$2"';
 
 // what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
-const AUTH = /permission denied|too many authentication failures|no supported authentication/i;
-const HOST_KEY = /host key verification failed|remote host identification has changed/i;
+export const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
+export const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
 // what Tailscale SSH in check mode prints while it waits for a check in the browser, until the timeout kills ssh
-const APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
+export const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
 
 /** What ssh would have had to ask about before it could go on, from what it printed. */
 function prompted(r: { code: number; stderr: string }): 'auth' | 'host_key' | 'approval' | undefined {
-  if (r.code === 255 && AUTH.test(r.stderr)) return 'auth';
-  if (r.code === 255 && HOST_KEY.test(r.stderr)) return 'host_key';
-  return APPROVAL.test(r.stderr) ? 'approval' : undefined;
+  if (r.code === 255 && SSH_AUTH.test(r.stderr)) return 'auth';
+  if (r.code === 255 && SSH_HOST_KEY.test(r.stderr)) return 'host_key';
+  return SSH_APPROVAL.test(r.stderr) ? 'approval' : undefined;
 }
 
 export type FleetAuthorityOptions = {
@@ -205,7 +203,7 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       },
     };
   }
-  const registry = o.registry ?? path.join(configDir(), 'machines.json');
+  const registry = o.registry ?? registryFile();
   const controlDir = o.controlDir ?? path.join(path.dirname(registry), 'ssh');
   const ssh = o.ssh ?? realSsh;
   return {
