@@ -108,11 +108,7 @@
              0 3px 6px var(--shade-1),
              0 0 0 3px var(--cream), 0 0 0 6px var(--sel), 0 0 28px 8px color-mix(in srgb, var(--sel) 38%, transparent)}
 
-.tok .edge{flex:none;height:calc(var(--tok)*.09);background:var(--card-band);z-index:7}
-.tok.s-working .edge{background:var(--working)}
-.tok.s-blocked .edge{background:var(--blocked)}
-.tok.s-done    .edge{background:var(--done)}
-.tok.s-shell   .edge{background:var(--shell-dim)}
+.tok .edge{flex:none;z-index:7}
 
 .tok .portrait{position:relative;width:100%;height:100%;
   -webkit-user-drag:none;user-select:none}

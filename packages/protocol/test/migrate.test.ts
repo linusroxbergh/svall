@@ -78,7 +78,7 @@ describe('migrateState', () => {
   it('lifts a version 8 file Svall 0.9.0 wrote, with robots and the subagents and shells of both terminals, losing nothing but its animals switch', () => {
     const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: { ...agent, background: true, shellsOnly: true, subagents: ['a2'] } };
     const c = { ...char('c_a', 'i_a'), cwd: '/work', robot: 42, agent: { ...agent, subagents: ['a1'] }, second };
-    const { animals: _, ...raw } = { ...emptyState(), version: 8, animals: true, islands: { i_a: island('i_a') }, characters: { c_a: c, c_b: { ...char('c_b', 'i_a'), robot: 7 } } };
+    const raw = { ...emptyState(), version: 8, islands: { i_a: island('i_a') }, characters: { c_a: c, c_b: { ...char('c_b', 'i_a'), robot: 7 } } };
     const { state, migrated, dropped } = migrateState({ ...raw, animals: true });
     expect(migrated).toBe(true);
     expect(dropped).toEqual([]);

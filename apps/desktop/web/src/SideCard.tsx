@@ -49,7 +49,7 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
 function PortraitPicker({ id, portrait, robot }: Pick<Character, 'id' | 'portrait' | 'robot'>) {
   const step = (by: 1 | -1) => saveCharacter(deps(), id, { robot: stepRobot(robotOf({ portrait, robot }), by) });
   return (
-    <div className="side-portrait" data-testid="side-portrait" data-portrait={portrait}>
+    <div className="side-portrait" data-testid="side-portrait">
       <button className="pnav" data-testid="portrait-prev" aria-label="Previous robot" onClick={() => step(-1)}>‹</button>
       <img className="side-robot" src={robotUrl(robotOf({ portrait, robot }))} alt="robot" draggable={false} />
       <button className="pnav" data-testid="portrait-next" aria-label="Next robot" onClick={() => step(1)}>›</button>

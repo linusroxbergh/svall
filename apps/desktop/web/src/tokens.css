@@ -139,9 +139,9 @@
   /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
   --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
 
-  /* islands: the cream card, its disc, the sea and the lamp */
+  /* islands: the cream card, the sea and the lamp */
   --cream: #FFFDF4;
-  --white: #FFFFFF;     /* the ground a QR code needs */
+  --white: #FFFFFF;
   --card-0: #EDE5CF; --card-1: #E2D7BE; --card-2: #D4C6A7;
   --card-tint: #786844; --card-band: #B4A175;
   --shell-dim: #9AA7B2;

@@ -81,7 +81,6 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   flex: none; width: 38px; height: 38px; border-radius: 50%;
   display: grid; place-items: center;
 }
-.face img { width: 26px; height: 26px; }
 .face.robot img { width: 30px; height: 30px; object-fit: contain; }
 
 .row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2xs); }

@@ -493,7 +493,7 @@ test('a narrow map behind an open terminal does not save a tall fleet arrangemen
 // out; what the arrangement owns is the water between islands — a card must never reach another island's label
 test('an arranged fleet keeps every label pill clear of the cards around it', async ({ page, svall }) => {
   await page.setViewportSize({ width: 700, height: 900 });
-  const crewed = await svall.api.call('island.create', { name: svall.uniq('playground'), position: { x: 0, y: 0 } });
+  const crewed = await svall.api.call('island.create', { name: svall.uniq('robotsplayground'), position: { x: 0, y: 0 } });
   const below = await svall.api.call('island.create', { name: svall.uniq('documentation'), position: { x: 0, y: 40 } });
   const chars = [];
   for (const island of [crewed, crewed, crewed, below]) chars.push(await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp' }));
