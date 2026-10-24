@@ -14,7 +14,12 @@ const ASSETS: Record<string, string> = {
 const appAssets = (): Plugin => ({
   name: 'site-assets',
   writeBundle({ dir }) {
-    for (const [to, from] of Object.entries(ASSETS)) fs.cpSync(path.resolve(import.meta.dirname, from), path.join(dir!, '..', to), { recursive: true });
+    for (const [to, from] of Object.entries(ASSETS)) {
+      // replaced, not merged: a file the app no longer has must not stay behind to be deployed
+      const dest = path.join(dir!, '..', to);
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.cpSync(path.resolve(import.meta.dirname, from), dest, { recursive: true });
+    }
   },
 });
 
