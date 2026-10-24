@@ -15,6 +15,9 @@ beforeEach(() => {
 test('opened to add a machine, the panel asks its name and ssh, and the run it starts is that machine\'s', () => {
   render(<HostSetup />);
   act(() => store.getState().toggleHost(true));
+  for (const id of ['host-name', 'host-ssh']) {
+    expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => screen.getByTestId(id).getAttribute(a)), id).toEqual(['off', 'off', 'false', 'off']);
+  }
   fireEvent.change(screen.getByTestId('host-name'), { target: { value: 'studio' } });
   fireEvent.change(screen.getByTestId('host-ssh'), { target: { value: 'ada@studio' } });
   fireEvent.click(screen.getByTestId('host-add'));

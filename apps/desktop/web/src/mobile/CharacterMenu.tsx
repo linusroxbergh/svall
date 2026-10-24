@@ -1,7 +1,7 @@
 import { Fragment, useRef, useState, type JSX, type RefObject } from 'react';
 import { contextKind, type Character, type ContextItem, type Params } from '@svall/protocol';
 import { webUrl } from '../bridge.js';
-import { commitFocused, FollowTextarea } from '../Field.js';
+import { AS_TYPED, commitFocused, FollowTextarea } from '../Field.js';
 import { useApp, useTick } from '../hooks.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { ago, hintText, linkText } from '../map/tokenText.js';
@@ -52,7 +52,7 @@ function Context({ c }: { c: Character }) {
         );
       })}
       <form className="m-add" onSubmit={(e) => { e.preventDefault(); add(); }}>
-        <input value={ref} placeholder="Add a url or path" aria-label="Add a url or path" enterKeyHint="done" autoCapitalize="off" autoCorrect="off"
+        <input value={ref} placeholder="Add a url or path" aria-label="Add a url or path" enterKeyHint="done" {...AS_TYPED}
           onChange={(e) => setRef(e.target.value)} />
         <button type="submit" disabled={!ref.trim()}>Add</button>
       </form>

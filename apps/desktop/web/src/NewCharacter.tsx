@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { newNamedCharacter, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
+import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 
 // name is enough: Enter creates. A note and links are there when the name alone is not.
@@ -52,7 +53,7 @@ export function NewCharacter() {
           <>
             <textarea className="fld desc" placeholder="note" value={note} data-testid="new-character-note"
               onChange={(e) => setNote(e.target.value)} />
-            <textarea className="fld" placeholder="links or paths, one per line" value={links} data-testid="new-character-links"
+            <textarea className="fld" placeholder="links or paths, one per line" value={links} data-testid="new-character-links" {...AS_TYPED}
               onChange={(e) => setLinks(e.target.value)} />
           </>
         )}
