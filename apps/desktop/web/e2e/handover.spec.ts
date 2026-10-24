@@ -140,15 +140,19 @@ test("the dock shows the machine's name and Handover whole beside the utilities 
   await expect(page.getByTestId('load-tab')).toBeVisible();
 });
 
-test('with no gateway the sheet says where one is set up, and offers only This Mac', async ({ page, svall }) => {
+test('with no gateway the sheet offers to add a machine, which opens the panel in its place', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token, true, null);
   await svall.open();
   await nothingOpen(page);
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   await page.getByTestId('handover-tab').click();
-  await expect(page.getByTestId('handover-no-gateway')).toContainText('Settings → Machines');
   await expect(page.getByTestId('handover-to-gateway')).toHaveCount(0);
-  await expect(page.getByTestId('handover-to-local')).toBeDisabled();
+  await expect(page.getByTestId('handover-to-local')).toHaveCount(0);
+  await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
+  await receive(page, { type: 'host.machines', machines: [] });
+  await page.getByTestId('handover-add-machine').click();
+  await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
+  await expect(page.getByTestId('host-name')).toBeVisible();
 });
 
 test('the sheet carries a move to the gateway through all six sections, then the page reaches the fleet where it landed', async ({ page, svall }) => {
@@ -171,7 +175,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   // before anything starts, what a handover moves, with a gateway to move to
   await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you choose Move');
   await expect(page.getByTestId('handover-no-gateway')).toHaveCount(0);
-  await expect(page.getByTestId('handover-to-local')).toBeDisabled();
+  await expect(page.getByTestId('handover-to-local')).toHaveCount(0);
   await page.getByTestId('handover-to-gateway').click();
   // the checks run alone first, and the sheet shows what moves and who stops before anything is rested
   expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'studio', check: true });
@@ -471,7 +475,7 @@ test('preflight blockers name what they are about, and a new start carries the c
   // the fleet runs on the gateway: this is a pull
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
   await page.getByTestId('handover-tab').click();
-  await expect(page.getByTestId('handover-to-gateway')).toBeDisabled();
+  await expect(page.getByTestId('handover-to-gateway')).toHaveCount(0);
   await page.getByTestId('handover-to-local').click();
   expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', check: true });
 
