@@ -197,7 +197,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio', type: 'codex login', forward: 1455 } });
   // an ssh that quits at once says why, and can be opened again
   await receive(page, { type: 'term.failed', id: 'machine:studio', reason: 'ssh quit as soon as it started: Could not request local forwarding.' });
-  await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding.');
+  await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding. Port 1455 on this Mac is taken');
   await panel.getByTestId('host-terminal-again').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show')).toHaveLength(3);
   await panel.getByTestId('host-terminal-done').click();

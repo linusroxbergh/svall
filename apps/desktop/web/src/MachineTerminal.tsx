@@ -54,7 +54,10 @@ export function MachineTerminal({ name, ssh, run, onEnd }: { name: string; ssh: 
       </div>
       {failed && (
         <div className="host-note" data-testid="host-terminal-failed">
-          <span className="host-term-failed">{failed}</span>
+          <span className="host-term-failed">
+            {failed}
+            {forward && /forwarding/.test(failed) && ` Port ${forward} on this Mac is taken, as by a Codex login running here; close that, then try again.`}
+          </span>
           <div className="acts">
             <button className="btn" data-testid="host-terminal-again" onClick={() => { setFailed(undefined); setAttempt((a) => a + 1); }}>Try again</button>
           </div>
