@@ -102,7 +102,7 @@ test('Markdown preview shows the app\'s own images and never asks another origin
   await new Promise<void>((r) => remote.listen(0, '127.0.0.1', r));
   try {
     const dir = repo();
-    fs.writeFileSync(path.join(dir, 'README.md'), `![bat](/animals/bat.svg)\n\n![tracker](http://127.0.0.1:${(remote.address() as AddressInfo).port}/pixel.png)\n`);
+    fs.writeFileSync(path.join(dir, 'README.md'), `![robot](/robots/robot-01.svg)\n\n![tracker](http://127.0.0.1:${(remote.address() as AddressInfo).port}/pixel.png)\n`);
     const island = await svall.api.call('island.create', { name: svall.uniq('markdown-images') });
     await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
     await svall.open();
@@ -111,7 +111,7 @@ test('Markdown preview shows the app\'s own images and never asks another origin
     const editor = page.getByTestId('editor');
     await editor.getByRole('button', { name: 'Preview' }).click();
     const preview = editor.getByTestId('markdown-preview');
-    await expect.poll(() => preview.getByRole('img', { name: 'bat' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(() => preview.getByRole('img', { name: 'robot' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
     await expect.poll(() => preview.getByRole('img', { name: 'tracker' }).evaluate((i: HTMLImageElement) => i.complete)).toBe(true);
     expect(await preview.getByRole('img', { name: 'tracker' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(0);
     expect(asked).toBe(0);

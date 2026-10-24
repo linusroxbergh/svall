@@ -13,11 +13,12 @@ site/map/
 site/shots-in/
 # the app's fonts and art, copied beside the landing page by site:build
 site/fonts/
-site/animals/
 site/robots/
 site/icon.svg
 site/icon-180.png
 site/lighthouse.svg
+# Flaticon art whose licence forbids committing it
+site/animals/
 # the tunnel's token
 site/deploy/
 apps/desktop/web/test-results/

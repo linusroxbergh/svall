@@ -4,10 +4,10 @@ import { BotGlyph, EyeGlyph, PrGlyph, reviewText, subagentsText } from '../indic
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Robot } from './Robot.js';
-import { portraitTint, portraitUrl, robotOf } from '../portraits.js';
+import { robotOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
-import { GAUGE_R, gaugeDash, hintLabel, hintText, statusWord } from './tokenText.js';
+import { hintLabel, hintText, statusWord } from './tokenText.js';
 import type { PointerHandlers } from './types.js';
 
 const RAIL_MAX = 3;
@@ -22,20 +22,11 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
   );
 }
 
-function gem(status: DisplayStatus, unread: boolean) {
-  if (status === 'blocked') return <span className="gem blocked">!</span>;
-  if (status === 'done' && unread) return <span className="gem done">✓</span>;
-  if (status === 'working') return <span className="gem working" />;
-  return null;
-}
-
 export const Token = memoByValue(function Token({
-  c, status, world, robots, links, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, links, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
-  // the robot stands under the name and the top edge fills with the context used, with no gem: the foot says the status
-  robots?: boolean;
   // the link chips on the card's right edge
   links?: boolean;
   world: Cell;
@@ -57,7 +48,7 @@ export const Token = memoByValue(function Token({
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
-  const cls = ['tok', `s-${status}`, robots ? 'bot' : '', selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
+  const cls = ['tok', 'bot', `s-${status}`, selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
   const review = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
   const subs = subagentCount(c);
@@ -88,29 +79,9 @@ export const Token = memoByValue(function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
-        <div className="edge">{robots && pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
-        {robots ? (
-          <>
-            <div className="nm"><span>{c.name}</span></div>
-            <Robot n={robotOf(c)} />
-          </>
-        ) : (
-          <>
-            <div className="pf">
-              <div className="disc-wrap">
-                <svg className="gauge" viewBox="0 0 72 72" aria-hidden="true">
-                  <circle className="track" cx="36" cy="36" r={GAUGE_R} />
-                  <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(pct)} />
-                </svg>
-                <div className="disc" data-tint={portraitTint(c.portrait)}>
-                  <img className="portrait portrait-img" src={portraitUrl(c.portrait)} alt="" draggable={false} />
-                </div>
-                {gem(status, isUnread(c))}
-              </div>
-            </div>
-            <div className="nm"><span>{c.name}</span></div>
-          </>
-        )}
+        <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
+        <div className="nm"><span>{c.name}</span></div>
+        <Robot n={robotOf(c)} />
         <button
           type="button"
           className="foot"

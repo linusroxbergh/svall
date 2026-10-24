@@ -552,6 +552,5 @@ The first `pnpm e2e` needs
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The animal and robot portraits, the lighthouse
-icon and the fonts are not MIT. The portraits' and fonts' folders each have a
-licence file, and the lighthouse is Flaticon art under the animals' licence.
+MIT, see [`LICENSE`](LICENSE). The fonts are not MIT; their folder has a licence
+file.

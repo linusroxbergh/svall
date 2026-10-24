@@ -225,7 +225,7 @@ runIf('Fleet layout', () => {
     expect(inset(store.state.islands[a.id].size, moved.cell)).toBeGreaterThanOrEqual(CREW_INSET);
   });
 
-  it('gives each new character an animal of its own, and char.update swaps it', async () => {
+  it('gives each new character a portrait of its own, and char.update swaps it', async () => {
     const { fleet } = await boot();
     const a = fleet.createIsland({ name: 'a' });
     const one = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });

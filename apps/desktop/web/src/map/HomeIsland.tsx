@@ -16,7 +16,7 @@ const stop = (e: React.PointerEvent) => e.stopPropagation();
 // the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land
 // shrinks by `scale` towards the bottom centre, its cards stand at `cards`, and the row stays full size above them
 export function Home({
-  island, crew, config, collapsed, selected, selectedId, drag, status, failed, robots, links, shift, rowShift, scale, cards = scale, extra,
+  island, crew, config, collapsed, selected, selectedId, drag, status, failed, links, shift, rowShift, scale, cards = scale, extra,
   onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu, dropHover,
 }: {
   island: Island;
@@ -28,7 +28,6 @@ export function Home({
   drag?: Drag;
   status(c: Character): DisplayStatus;
   failed?(c: Character): string | undefined;
-  robots?: boolean;
   links?: boolean;
   shift: number;
   // the shift the window's width alone gives home: the row wraps by it, so its height never follows the map's zoom
@@ -91,7 +90,7 @@ export function Home({
             const dragging = drag?.kind === 'figure' && drag.id === c.id;
             const at = dragging && over ? over.local : c.cell;
             return (
-              <Token key={c.id} c={c} status={status(c)} world={{ x: at.x + PAD_CELLS, y: at.y + PAD_CELLS }} robots={robots} links={links}
+              <Token key={c.id} c={c} status={status(c)} world={{ x: at.x + PAD_CELLS, y: at.y + PAD_CELLS }} links={links}
                 selected={c.id === selectedId} dragging={dragging} hover={dropHover?.kind === 'char' && dropHover.id === c.id} failed={failed?.(c)}
                 pointer={tokenPointer(c.id)} onHoverStart={() => onHoverStart(c.id)} onHoverEnd={onHoverEnd}
                 onOpen={() => onOpen(c.id)} onLink={onLink} onMenu={(e) => onMenu(c.id, e)} />

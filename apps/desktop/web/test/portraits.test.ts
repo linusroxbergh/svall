@@ -21,7 +21,7 @@ describe('robot portraits', () => {
     }
   });
 
-  it('show a character its own robot, else a different one for each animal', () => {
+  it('show a character its own robot, else a different one for each portrait', () => {
     expect(robotOf({ portrait: 'fox', robot: 46 })).toBe(46);
     expect(new Set(PORTRAITS.map((portrait) => robotOf({ portrait }))).size).toBe(PORTRAITS.length);
     expect(robotOf({ portrait: 'fox', robot: 99 })).toBe(robotOf({ portrait: 'fox' }));
