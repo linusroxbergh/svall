@@ -64,7 +64,7 @@ export const realReplicaFs: ReplicaFs = {
 /** A carried root as one machine sees it: `path` is where it lies there. */
 export type ReplicaRoot = Pick<TransferRoot, 'id' | 'kind' | 'entry'> & { path: string };
 
-/** The roots a manifest writes, at the path each has on both machines. A folded root's files travel in its outer root. */
+/** The roots a manifest writes, at the paths it names. A folded root's files travel in its outer root. */
 export const replicaRoots = (manifest: Pick<TransferManifestV1, 'roots'>): ReplicaRoot[] =>
   manifest.roots.filter((r) => !r.foldedInto).map((r) => ({ id: r.id, kind: r.kind, entry: r.entry, path: r.path }));
 

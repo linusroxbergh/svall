@@ -32,8 +32,8 @@ describe('relocate', () => {
 });
 
 describe('relocationProblem', () => {
-  it('refuses a path in the destination\'s home outside this machine\'s, which would land where one of this home lands', () => {
-    expect(relocationProblem('/home/ada/x', TO_LINUX)).toContain('/home/ada/x lies in the destination\'s home /home/ada but not in this machine\'s home /Users/ada');
+  it('refuses a path in the destination\'s home outside the source\'s, which would land where one of the source\'s lands', () => {
+    expect(relocationProblem('/home/ada/x', TO_LINUX)).toContain('/home/ada/x lies in the destination\'s home /home/ada but not in the source\'s home /Users/ada');
     expect(relocationProblem('/home/ada', TO_LINUX)).toBeDefined();
     expect(relocationProblem('/Users/ada/../../home/ada/x', TO_LINUX)).toBeDefined();
     expect(relocationProblem('/home/ada/x', { from: '/Users/ada', to: '/home/ada/' })).toBeDefined();
@@ -139,6 +139,16 @@ describe('destinationView', () => {
     expect(v.destinationHome).toBe('/home/ada');
     expect(TransferManifestV1.parse(v)).toEqual(v);
     expect(m).toEqual(before);
+  });
+
+  it('leaves a root or Git place not spelled plainly as sent, where moving it would have tidied it into a plain path', () => {
+    const m = manifest('/home/ada');
+    const odd = ['/Users/ada/x/../app', '/Users/ada/app/', '/Users/ada//app', '/Users/ada/./app', '/Users/ada/../../etc/x'];
+    m.roots = odd.map((p, i) => ({ ...m.roots[0], id: `r_${i}`, path: p }));
+    m.git![0].commonDir = '/Users/ada/app/../app/.git';
+    const v = destinationView(m);
+    expect(v.roots.map((r) => r.path)).toEqual(odd);
+    expect(v.git![0].commonDir).toBe('/Users/ada/app/../app/.git');
   });
 
   it('reads back as the manifest it came from when the way back swaps the homes', () => {

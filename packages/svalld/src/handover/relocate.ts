@@ -21,7 +21,7 @@ export function relocate(p: string, r: Relocation): string {
 export function relocationProblem(p: string, r: Relocation): string | undefined {
   const q = clean(p);
   return !holds(clean(r.from), q) && holds(clean(r.to), q)
-    ? `${p} lies in the destination's home ${r.to} but not in this machine's home ${r.from}, so it would land where a path of this home lands and come back elsewhere; move it into ${r.from} or out of ${r.to}`
+    ? `${p} lies in the destination's home ${r.to} but not in the source's home ${r.from}, so it would land where a path of the source's home lands and come back elsewhere; move it into ${r.from} or out of ${r.to}`
     : undefined;
 }
 
@@ -48,7 +48,8 @@ function moved(form: PortableForm, value: unknown, parent: Record<string | numbe
 export function destinationView(m: TransferManifestV1): TransferManifestV1 {
   const r: Relocation = { from: m.home, to: m.destinationHome };
   if (r.from === r.to) return m;
-  const at = (p: string): string => relocate(p, r);
+  // a root or Git place not spelled plainly stays as sent, for the checks to refuse as they would between equal homes
+  const at = (p: string): string => (path.posix.normalize(p) === p && !p.endsWith('/') ? relocate(p, r) : p);
   const docs = { FleetState: structuredClone(m.snapshot), FleetConfig: structuredClone(m.fleet) };
   for (const [field, spec] of Object.entries(PATH_FIELDS)) {
     if (spec.classification !== 'portable' || spec.form === 'transcript') continue;

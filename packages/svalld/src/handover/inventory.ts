@@ -8,6 +8,7 @@ import { fleetHomes } from '../uninstall.js';
 import type { GitDiscovery } from './git-graph.js';
 import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
 import { exportSnapshot, holds, portablePathValues, realPath, type PathValue } from './portable-path.js';
+import { relocate, relocationProblem, type Relocation } from './relocate.js';
 
 /** Where one machine keeps what a handover moves: its home, this fleet's own home, where each agent's carried sessions land, and
  *  OpenCode's own folders where its environment puts them, its data folder first. */
@@ -156,18 +157,15 @@ const ROOT_OF: Record<string, Kind> = {
 const rootId = (p: string): string => `r_${sha256Hex(p).slice(0, 16)}`;
 const isGit = (kind: Kind): boolean => kind === 'repo' || kind === 'worktree' || kind === 'gitdir';
 
-type FleetHomes = { source: string; sourceReal: string; destination: string };
-
 /**
- * The fleet home a root would carry or overwrite, if any: a fleet home holds its machine's token, keys,
- * journal and node.json. What of it travels, `travels`, lies inside it by design, and so may anything inside that.
+ * The fleet home of `places` a root at `p` would carry or overwrite, if any: a fleet home holds its machine's token, keys,
+ * journal and node.json. What of it travels, at `travels`, lies inside it by design, and so may anything inside that.
  */
-function fleetHomeClash(root: InventoryRoot, travels: readonly InventoryRoot[], homes: FleetHomes): string | undefined {
-  const places: [home: string, named: string][] = [[homes.source, homes.source], [homes.sourceReal, homes.source], [homes.destination, homes.destination]];
-  const held = places.find(([home]) => holds(root.path, home));
+function fleetHomeClash(p: string, travels: readonly string[], places: readonly [home: string, named: string][]): string | undefined {
+  const held = places.find(([home]) => holds(p, home));
   if (held) return held[1];
-  const inside = travels.some((t) => holds(t.path, root.path));
-  return inside ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
+  const inside = travels.some((t) => holds(t, p));
+  return inside ? undefined : places.find(([home]) => holds(home, p))?.[1];
 }
 
 // the real path of mission control's folder in the fleet at `fleetHome`: ~/.svall/home unless a config it can read says otherwise
@@ -208,12 +206,12 @@ export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes' | 'openco
   };
 }
 
-function credentialClash(root: InventoryRoot, local: MachineLocal): string | undefined {
-  const held = [...local.files, ...local.dirs].find((p) => holds(root.path, p));
-  if (held) return held === root.path ? `${root.path} stays on its machine` : `${root.path} holds ${held}, which stays on its machine`;
-  if (local.worktrees.some((w) => root.path !== w && holds(w, root.path))) return undefined;
-  const dir = local.dirs.find((d) => holds(d, root.path));
-  return dir && `${root.path} lies in ${dir}, which stays on its machine`;
+function credentialClash(root: string, local: MachineLocal): string | undefined {
+  const held = [...local.files, ...local.dirs].find((p) => holds(root, p));
+  if (held) return held === root ? `${root} stays on its machine` : `${root} holds ${held}, which stays on its machine`;
+  if (local.worktrees.some((w) => root !== w && holds(w, root))) return undefined;
+  const dir = local.dirs.find((d) => holds(d, root));
+  return dir && `${root} lies in ${dir}, which stays on its machine`;
 }
 
 // what is on disk decides how a root folds; a path that is not there folds as a folder
@@ -233,13 +231,15 @@ export const homeCommands = (home: string): string =>
   + `or sudo usermod -d ${word(home)} -m <user> for an existing one you are not logged in as`;
 
 /**
- * Everything a handover carries from `source` to `destination`, which share one home path: each working root
- * once, at the path it has on both machines, the transcript each agent recorded, and what stops the move. With
- * the discovered Git graphs, those graphs name every Git root; without them, the recorded repo fields do.
+ * Everything a handover carries from `source` to `destination`: each working root once, at its path here, which lands
+ * where `relocate` moves it there, the transcript each agent recorded, and what stops the move. With the discovered Git
+ * graphs, those graphs name every Git root; without them, the recorded repo fields do.
  */
 export function buildInventory(state: FleetState, configs: InventoryConfigs, machineMaps: MachineMaps, git?: GitDiscovery): Inventory {
   const { source, destination } = machineMaps;
   const { home } = source;
+  const moving: Relocation = { from: home, to: destination.home };
+  const at = (p: string): string => relocate(p, moving);
   const snapshot = exportSnapshot(state);
   const fleet = structuredClone(configs.fleet);
   const { excludes, blockers } = expandExcludes(fleet.handover);
@@ -290,46 +290,55 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
     if (!g.main || !holds(g.main.path, g.commonDir)) roots.push([g.commonDir, 'gitdir']);
     for (const [p, kind] of roots) if (real(p, entity)) offer(p, kind);
   }
-  // the fleet's docs and agent profiles lie in its fleet home, and arrive at the same path in the destination's
+  // the fleet's docs and agent profiles lie in its fleet home, and arrive where the destination's keeps them
   const own = resolvePaths(source.fleetHome);
   const theirs = resolvePaths(destination.fleetHome);
   for (const [kind, p, there, what] of [['docs', own.docs, theirs.docs, 'docs'], ['profiles', own.agentProfiles, theirs.agentProfiles, 'agent profiles']] as const) {
     if (!fs.existsSync(p)) continue;
-    if (there !== p) blockers.push({ code: 'path_unsupported', message: `the destination keeps this fleet's ${what} at ${there}, not ${p}, so they cannot arrive at the same path` });
+    if (there !== at(p)) blockers.push({ code: 'path_unsupported', message: `the destination keeps this fleet's ${what} at ${there}, so they cannot land at ${at(p)}` });
     else if (real(p, undefined)) offer(p, kind);
   }
 
   // of a fleet home, mission control's folder, the docs and the agent profiles travel, and the fleet .env below only when asked for
-  const homes: FleetHomes = { source: path.posix.resolve(source.fleetHome), sourceReal: realPath(path.posix.resolve(source.fleetHome)), destination: path.posix.resolve(destination.fleetHome) };
+  const [sourceHome, destinationHome] = [path.posix.resolve(source.fleetHome), path.posix.resolve(destination.fleetHome)];
+  const sourceReal = realPath(sourceHome);
+  const sourceHomes: [string, string][] = [[sourceHome, sourceHome], [sourceReal, sourceHome]];
+  const destinationHomes: [string, string][] = [[destinationHome, destinationHome]];
+  // a root lands where `at` moves it, so the destination's fleet home is read against that
+  const fleetHome = (p: string, travels: readonly string[]): string | undefined =>
+    fleetHomeClash(p, travels, sourceHomes) ?? fleetHomeClash(at(p), travels.map(at), destinationHomes);
   const placed = [...candidates.values()];
-  const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, [r], homes));
+  const mission = placed.find((r) => r.kind === 'home' && !fleetHome(r.path, [r.path]));
   if (mission) {
-    for (const other of fleetHomes(home).filter((f) => realPath(f) !== homes.sourceReal && missionOf(f, home) === mission.path)) {
+    for (const other of fleetHomes(home).filter((f) => realPath(f) !== sourceReal && missionOf(f, home) === mission.path)) {
       blockers.push({
         code: 'mission_control_shared', entity: { kind: 'root', id: mission.id },
         message: `${mission.path} is mission control's folder for this fleet and for the fleet in ${other}, and a handover would move it away from that fleet; give one of them its own folder with home.cwd in its fleet.json`,
       });
     }
   }
-  const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles');
-  // the destination checks its own by real path when it claims a root
-  const [here, there] = [machineLocal(source), machineLocal(destination)];
-  const both = (k: keyof MachineLocal): string[] => [...new Set([...here[k].map((p) => realPath(p)), ...there[k]])];
-  const local: MachineLocal = { files: both('files'), dirs: both('dirs'), worktrees: both('worktrees') };
+  const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles').map((r) => r.path);
+  // what this account keeps by real path here, and the destination's as it names them, which it checks by real path when it claims a root
+  const here = machineLocal(source);
+  const mine: MachineLocal = { files: here.files.map((p) => realPath(p)), dirs: here.dirs.map((p) => realPath(p)), worktrees: here.worktrees.map((p) => realPath(p)) };
+  const far = machineLocal(destination);
   const allowed = placed.filter((r) => {
-    const fleetHome = fleetHomeClash(r, travels, homes);
-    if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: r.id } });
-    const credential = fleetHome ? undefined : credentialClash(r, local);
-    if (credential) blockers.push({ code: 'path_unsupported', message: credential, entity: { kind: 'root', id: r.id } });
-    return !fleetHome && !credential;
+    const entity: HandoverEntity = { kind: 'root', id: r.id };
+    const moved = relocationProblem(r.path, moving);
+    if (moved) blockers.push({ code: 'path_unsupported', message: moved, entity });
+    const clash = moved ? undefined : fleetHome(r.path, travels);
+    if (clash) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${clash}, whose token, keys and node.json stay on their machine`, entity });
+    const credential = moved || clash ? undefined : credentialClash(r.path, mine) ?? credentialClash(at(r.path), far);
+    if (credential) blockers.push({ code: 'path_unsupported', message: credential, entity });
+    return !moved && !clash && !credential;
   });
 
   const roots = fold(allowed, excludes, blockers);
   if (fleet.handover.transferFleetEnv) {
     const env = resolvePaths(source.fleetHome).env;
     const there = resolvePaths(destination.fleetHome).env;
-    if (there === env) roots.push({ id: rootId(env), kind: 'env', entry: 'file', path: env });
-    else blockers.push({ code: 'path_unsupported', message: `the destination keeps this fleet's .env at ${there}, not ${env}, so it cannot arrive at the same path` });
+    if (there === at(env)) roots.push({ id: rootId(env), kind: 'env', entry: 'file', path: env });
+    else blockers.push({ code: 'path_unsupported', message: `the destination keeps this fleet's .env at ${there}, so it cannot land at ${at(env)}` });
   }
 
   const sessions: InventorySession[] = [];
