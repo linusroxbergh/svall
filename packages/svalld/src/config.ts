@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
+import { AgentKind, FleetConfig, FleetId, MODELS, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from './atomic.js';
 import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
@@ -39,8 +39,9 @@ export const Config = z.preprocess(unreserved, FleetFile.omit({ mobile: true })
   }));
 export type Config = z.infer<typeof Config>;
 
-export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | undefined =>
-  ((s.agent ?? 'claude') === agent ? s.model : undefined);
+/** `model` for `agent`'s CLI, unless Settings lists it as another CLI's: one picked before the agent changed. */
+export const ownModel = (agent: AgentKind, model: string | undefined): string | undefined =>
+  (model && AgentKind.options.some((k) => k !== agent && MODELS[k].includes(model)) ? undefined : model);
 
 export class InvalidConfig extends Error {}
 
@@ -204,7 +205,7 @@ export function reservedFleetNames(homedir: string): { home: string; name: strin
 }
 
 /**
- * Sets the keys `patch` names in `file`, drops those it names as undefined, merges mobile a level down, and keeps every
+ * Sets the keys `patch` names in `file`, drops those it names as undefined, merges an object a level down, and keeps every
  * other key as the file held it. A file that does not parse, or would not after the change, is refused, not replaced.
  * A linked file (stow, home-manager) is written where it points, with the mode it had.
  */
@@ -212,7 +213,9 @@ function patchConfigFile(file: string, schema: z.ZodTypeAny, patch: Raw): void {
   const text = fs.readFileSync(file, 'utf8');
   parseConfig(text, file, schema);
   const json = JSON.parse(text) as Raw;
-  const next = JSON.stringify({ ...json, ...patch, ...(patch.mobile !== undefined && { mobile: { ...(json.mobile as object), ...(patch.mobile as object) } }) }, null, 2);
+  const isObject = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
+  const merged = Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, isObject(v) && isObject(json[k]) ? { ...json[k], ...v } : v]));
+  const next = JSON.stringify({ ...json, ...merged }, null, 2);
   parseConfig(next, file, schema);
   const real = fs.realpathSync(file);
   const mode = fs.statSync(real).mode & 0o777;
@@ -224,7 +227,8 @@ function patchConfigFile(file: string, schema: z.ZodTypeAny, patch: Raw): void {
 /** Sets the keys `patch` names in a fleet.json, as `patchConfigFile` does. */
 export const patchFleetConfig = (file: string, patch: Raw): void => patchConfigFile(file, FleetConfig, patch);
 
-export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> };
+export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>>
+  & { mobile?: Pick<Config['mobile'], 'httpsPort'>; home?: Pick<Config['home'], 'model'>; scribe?: Pick<Config['scribe'], 'model'> };
 
 /** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be; `say` as for `initConfig`. */
 export function saveConfig(paths: Paths, patch: ConfigPatch, say?: (line: string) => void): void {

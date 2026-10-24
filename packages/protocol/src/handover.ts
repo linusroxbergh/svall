@@ -76,13 +76,13 @@ export const FleetConfig = z.object({
   // what the app and `svall <name>` call the fleet; absent, its directory names it
   name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
   gatewayMachineId: MachineId.optional(),
-  // with no command, the crew starts the main agent's crewCommand
+  // with no command, the crew starts the main agent's crewCommand on home.model, a model of that CLI
   home: Home.extend({ command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
   // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),
-  // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
+  // which plan a scribe pass spends; absent, the main agent's. model names a model of the CLI the scribe runs
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
   mobile: z.object({

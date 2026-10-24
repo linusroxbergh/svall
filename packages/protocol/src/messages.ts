@@ -234,6 +234,8 @@ export const methods = {
   'robots.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
+  // the model the scribe or mission control's crew runs, of the CLI it runs now
+  'model.set': { params: z.object({ of: z.enum(['scribe', 'home']), model: z.string().min(1) }), result: z.object({}) },
   // the fleets beside this one; a phone is refused them
   'fleets.list': { params: z.object({}), result: z.object({ fleets: z.array(FleetEntry) }) },
   'fleets.create': { params: z.object({ name: z.string() }), result: z.object({ home: z.string() }) },
