@@ -885,6 +885,21 @@ esac
     expect(done.some((l) => l.startsWith('backup ->'))).toBe(false);
   });
 
+  it('a daemon start adds svall robot beside each svall char an older svalld allowed, keeping the rest', () => {
+    const mc = path.join(makeHome(), 'mc');
+    installHomeTemplate(mc, { replaceSettings: false });
+    const settings = path.join(mc, '.claude/settings.json');
+    const shipped: string[] = JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow;
+    const older = fs.readFileSync(settings, 'utf8').split('\n').filter((l) => !l.includes('svall char ')).join('\n')
+      .replaceAll('svall robot ', 'svall char ').replace('"Bash(svall status:*)"', '"Bash(git log:*)", "Bash(svall status:*)"');
+    fs.writeFileSync(settings, older);
+    installHomeTemplate(mc, { replaceSettings: false });
+    const migrated = fs.readFileSync(settings, 'utf8');
+    expect(JSON.parse(migrated).permissions.allow).toEqual(expect.arrayContaining([...shipped, 'Bash(git log:*)']));
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(migrated);
+  });
+
   // Claude Code asks before a command holding a shell variable even when a rule allows it
   it('lets the buttons run every svall command their skills name without asking, deleting an island aside', () => {
     const template = path.join(repoRoot, 'packages/svalld/home/.claude');

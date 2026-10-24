@@ -39,6 +39,8 @@ const SHARED_SERVICE = /\sserve\s+--service(\s|$)/;
 const PTY_DAEMON = /(^|\/)opencode-pty(\.exe)?(\s|$)/;
 // the start of the statusline wrapper that agent-hooks.ts statusWrapper writes
 const STATUS_WRAPPER = 'svall_status() {';
+// the guard an older svalld installed, which an agent it started may still run
+const OLD_HOOK_GUARD = '[ -z "$SVALL_CHAR_ID" ] ||';
 const zombie = (p: Proc): boolean => p.stat.startsWith('Z');
 /** Whether job control stopped `p`, as ctrl+z does. */
 export const suspended = (p: Proc): boolean => p.stat.startsWith('T');
@@ -128,7 +130,7 @@ export class ProcessTable {
   // node running one of its scripts
   private installed(p: Proc): boolean {
     const [bin, arg] = p.args.split(' ');
-    if (arg === '-c') return isShellCommand(path.basename(bin)) && [HOOK_GUARD, STATUS_WRAPPER].some((head) => p.args.slice(bin.length + 4).startsWith(head));
+    if (arg === '-c') return isShellCommand(path.basename(bin)) && [HOOK_GUARD, OLD_HOOK_GUARD, STATUS_WRAPPER].some((head) => p.args.slice(bin.length + 4).startsWith(head));
     return this.scripts.includes(bin) || this.scripts.includes(arg);
   }
 
