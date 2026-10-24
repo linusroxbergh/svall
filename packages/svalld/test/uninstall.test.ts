@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
+  claudeHooksCurrent, codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
 import { installOpencodePlugin, opencodePaths } from '../src/opencode/install.js';
@@ -289,6 +289,36 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(path.dirname(f.settingsPath)).filter((n) => n.includes('.bak-'))).toHaveLength(2);
   });
 
+  it('gives a settings file back as it was written: its key order, indent, escapes and missing trailing newline', async () => {
+    const f = installed();
+    const text = '{\n    "statusLine": {\n        "command": "ccstatusline",\n        "type": "command"\n    },\n    "model": "opus \\u2014 1m",\n    "hooks": {\n        "Stop": [\n            {\n                "matcher": "",\n                "hooks": [\n                    {\n                        "type": "command",\n                        "command": "keep.sh"\n                    }\n                ]\n            }\n        ]\n    }\n}';
+    fs.writeFileSync(f.settingsPath, text);
+    await runSetup(f.o);
+    expect(fs.readFileSync(f.settingsPath, 'utf8')).not.toBe(text);
+    await runUninstall(f.o);
+    expect(fs.readFileSync(f.settingsPath, 'utf8')).toBe(text);
+    const crlf = '{\r\n  "model": "opus"\r\n}\r\n';
+    fs.writeFileSync(f.settingsPath, crlf);
+    await runSetup(f.o);
+    await runUninstall(f.o);
+    expect(fs.readFileSync(f.settingsPath, 'utf8')).toBe(crlf);
+  });
+
+  it('leaves a settings file whose keys only stand in another order than its own as it is', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const reversed = (v: unknown): unknown => (Array.isArray(v) ? v.map(reversed)
+      : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reversed(x)])) : v);
+    const reordered = `${JSON.stringify(reversed(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))), null, 2)}\n`;
+    fs.writeFileSync(f.settingsPath, reordered);
+    expect(claudeHooksCurrent(JSON.parse(reordered), f.home)).toBe(true);
+    const backups = () => fs.readdirSync(path.dirname(f.settingsPath)).filter((n) => n.includes('.bak-')).length;
+    const before = backups();
+    await runSetup(f.o);
+    expect(fs.readFileSync(f.settingsPath, 'utf8')).toBe(reordered);
+    expect(backups()).toBe(before);
+  });
+
   it('takes its hooks back from every Claude settings file it is given', async () => {
     const f = installed();
     await runSetup(f.o);
@@ -315,7 +345,12 @@ describe('runUninstall', () => {
     const calls: string[][] = [];
     const run: Run = async (cmd, args) => { calls.push([cmd, ...args]); return { stdout: '', stderr: '' }; };
 
-    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir, prefix, run, launchctl: true });
+    const cache = path.join(f.root, '.cache', 'svall');
+    fs.mkdirSync(path.join(cache, 'staging-1.0.0'), { recursive: true });
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir, prefix, cache, run, launchctl: true });
+    expect(fs.existsSync(cache)).toBe(false);
+    expect(lines).toContain(`removed ${cache}`);
     expect(fs.readdirSync(unitDir)).toEqual(['someone-else.service']);
     expect(calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
       ['systemctl', '--user', 'disable', '--now', 'svall-svalld@private.service'],

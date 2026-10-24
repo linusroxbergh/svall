@@ -177,7 +177,7 @@ export class UninstallRefused extends Error {}
 // only the gateway records of those fleets.
 export async function runUninstall(o: {
   home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
-  mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; run?: Run;
+  mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; cache?: string; run?: Run;
   force?: boolean; forceFleets?: string[];
 }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
@@ -236,6 +236,11 @@ export async function runUninstall(o: {
     );
   }
   if (o.prefix) done.push(...removeReleases(o.prefix));
+  // where host add uploads and stages a release
+  if (linux && o.cache && fs.existsSync(o.cache)) {
+    fs.rmSync(o.cache, { recursive: true, force: true });
+    done.push(`removed ${o.cache}`);
+  }
   return [...done, ...removeShims(o.shimDir)];
 }
 

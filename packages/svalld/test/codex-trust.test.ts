@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { askCodexTrust, ourTrust } from '../src/codex-trust.js';
+import { askCodexTrust, ourTrust, recordedTrust } from '../src/codex/trust.js';
 
 const SCRIPT = '/u/.svall/hooks/agent-hook.mjs';
 const hook = (command: string, trustStatus: string) => ({ command, trustStatus, sourcePath: '/u/.codex/hooks.json' });
@@ -18,6 +18,26 @@ describe('ourTrust', () => {
     expect(ourTrust({ nope: true }, SCRIPT)).toBeUndefined();
     expect(ourTrust(undefined, SCRIPT)).toBeUndefined();
     expect(ourTrust({ data: [null, { hooks: [null] }] }, SCRIPT)).toBeUndefined();
+  });
+});
+
+describe('recordedTrust', () => {
+  it("counts Svall's hooks by the trust records config.toml keeps for their place in hooks.json, without running codex", () => {
+    const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-trust-'));
+    const file = path.join(codexHome, 'hooks.json');
+    const command = ours('').command;
+    fs.writeFileSync(file, JSON.stringify({ hooks: {
+      SessionStart: [{ hooks: [{ type: 'command', command: 'mine.sh' }] }, { hooks: [{ type: 'command', command }] }],
+      UserPromptSubmit: [{ hooks: [{ type: 'command', command }] }],
+    } }));
+    expect(recordedTrust(codexHome, SCRIPT)).toEqual({ trusted: 0, untrusted: 2 });
+    fs.writeFileSync(path.join(codexHome, 'config.toml'), `[hooks.state."${file}:session_start:1:0"]\ntrusted_hash = "sha256:a"\n\n[hooks.state."${file}:user_prompt_submit:1:0"]\ntrusted_hash = "sha256:b"\n`);
+    expect(recordedTrust(codexHome, SCRIPT)).toEqual({ trusted: 1, untrusted: 1 });
+    expect(recordedTrust(codexHome, '/other/.svall/hooks/agent-hook.mjs')).toBeUndefined();
+    for (const odd of ['{', '{"hooks":{"Stop":[{"hooks":{}}]}}', '{"hooks":{"Stop":{}}}']) {
+      fs.writeFileSync(file, odd);
+      expect(recordedTrust(codexHome, SCRIPT)).toBeUndefined();
+    }
   });
 });
 

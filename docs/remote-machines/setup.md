@@ -96,6 +96,8 @@ nothing typed. From a terminal on the Mac, each action names the command and the
 - Lingering the system would not turn on: `ssh ada@studio, then sudo loginctl enable-linger ada`. Svall turns it on
   itself where polkit lets an account do so, as on Ubuntu Server; a machine without polkit refuses. Without it the
   fleet stops when you log out, and a handover to the machine stops at its checks until it is on.
+- An agent not installed that no fleet on this Mac runs, as a character's, mission control's or the scribe's agent,
+  is only noted, once every fleet here has started at least once.
 - An agent not installed or not logged in: `ssh ada@studio`, install it with its vendor's command and run
   `svall setup`, which writes Svall's hooks for an agent installed since, then `claude auth login`, `codex login` or
   `opencode auth login`. Claude Code prints a link and asks for the code the browser then shows. Codex's login waits
@@ -165,8 +167,8 @@ release and result of its last check, each with the buttons below.
 | `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path; `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux until it ends, as at a reboot. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
-| `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
-| `svall host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
+| `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry and its last check from `checks.json`. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
+| `svall host remove <name> --forget` | Forget | Drops the machine and its last check without reaching it, when it is gone. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until
 both machines run the same release, a handover stops with `incompatible_release`. While the machine runs a fleet of
@@ -205,6 +207,7 @@ On the Linux machine, all under the account:
 - `~/.local/share/svall/gateway/fleets/<fleet id>.json`, the ownership record of each fleet it is the gateway
   for, and `gateway/recoveries.ndjson`, the audit of every forced recovery.
 - `~/.local/share/svall/log`, the units' logs.
+- `~/.cache/svall`, where `svall host add` and `upgrade` upload and unpack a release.
 - `~/.svall` (and `~/.svall-<name>`), the machine's copy of each fleet.
 
 On the Mac:
