@@ -107,7 +107,8 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
   return (
     <>
       <div className="host-note" data-testid="host-intro">
-        <span>Svall installs itself there over ssh and lists what is left for you to do.</span>
+        <span>Svall installs itself on the machine over ssh and lists what is left for you to do.</span>
+        <span>The machine needs:</span>
         <ul>
           <li>Ubuntu 22.04 LTS or newer, with systemd</li>
           <li>x86-64 or arm64</li>

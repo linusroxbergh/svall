@@ -173,7 +173,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   await page.getByTestId('handover-tab').click();
   // before anything starts, what a handover moves, with a gateway to move to
-  await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you confirm');
+  await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you choose Move again');
   await expect(page.getByTestId('handover-no-gateway')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-local')).toHaveCount(0);
   await page.getByTestId('handover-to-gateway').click();

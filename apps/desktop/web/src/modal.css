@@ -79,8 +79,7 @@
 .ho-foot[data-tone="wait"] .ho-status { color: var(--working); }
 .ho-sub { display: block; font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-3); }
 .ho-line { display: block; }
-.ho-line[data-item] { padding-left: var(--sp-lg); }
-.ho-line[data-item]::before { content: '•'; display: inline-block; width: var(--sp-lg); margin-left: calc(-1 * var(--sp-lg)); }
+.ho-line[data-item] { display: list-item; margin-left: var(--sp-2xl); }
 .ho-cmd { font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-2); user-select: all; overflow-wrap: anywhere; }
 .ho-foot .acts .btn.dan { flex: 0 0 auto; padding-inline: var(--sp-3xl); }
 .btn.ghost.ho-again { align-self: flex-start; }

@@ -147,7 +147,7 @@ function EntityRow({ row, ctx, run }: { row: Row; ctx: HintContext; run: Handove
 
 const REST_TEXT: Record<RestHow, (one: boolean, to: string) => string> = {
   resume: (one, to) => (one ? `stops now and resumes from its transcript on ${to}.` : `stop now and resume from their transcripts on ${to}.`),
-  wait: (one) => `${one ? 'is' : 'are'} working: the handover waits up to three minutes for ${one ? 'its turn' : 'each turn'}, then asks you.`,
+  wait: (one) => `${one ? 'is' : 'are'} working: the handover waits up to three minutes for ${one ? 'its turn' : 'each turn'} to end, then asks you.`,
   answer: (one) => `${one ? 'waits on an answer' : 'wait on answers'}: answer first, or interrupt when the handover asks.`,
   background: (one) => `left ${one ? 'a command' : 'commands'} running in the background: the handover waits for ${one ? 'it' : 'them'}, or you end ${one ? 'it' : 'them'}.`,
   shell: (one, to) => (one ? `closes and reopens in its folder on ${to}. A command still running does not move.`
@@ -460,7 +460,7 @@ export function HandoverSheet() {
         <div className="ho-body">
           {!shown && (
             <div className="host-note" data-testid="handover-intro">
-              <span>A handover moves this whole fleet to another machine.<span className="ho-sub">The checks run first; nothing moves until you confirm.</span></span>
+              <span>A handover moves this whole fleet to another machine.<span className="ho-sub">The checks run first; nothing moves until you choose Move again.</span></span>
               <More label="What moves" testid="handover-what-moves">
                 <span>Islands, characters, repositories and agent sessions.</span>
                 <span>Agents resume from their transcripts.</span>

@@ -259,6 +259,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await page.getByTestId('host-close').click();
   await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
+  await expect(page.getByTestId('host-confirm')).toContainText('Svall stays installed there');
   expect(await starts()).toHaveLength(1);
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio', forget: true } });

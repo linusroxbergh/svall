@@ -545,6 +545,16 @@ describe('what each blocker and warning is explained with', () => {
     expect(HandoverIssueCode.options.filter((code) => /\.md\b/.test(blockerHint({ code, message: 'it is so' }, ctx) ?? ''))).toEqual([]);
   });
 
+  it('puts each command a hint names alone on its line, as code', () => {
+    const own = (code: HandoverIssueCode) => (blockerHint({ code, message: 'it is so' }, ctx) ?? '').split('\n').filter((l) => l.includes('`'));
+    expect(HandoverIssueCode.options.flatMap(own).filter((l) => !/^`[^`]+`$/.test(l))).toEqual([]);
+    expect(own('ssh_interactive')).toEqual(['`ssh-add --apple-use-keychain`']);
+    expect(own('rsync_unsupported')).toEqual(['`sudo apt install rsync`', '`svall doctor`']);
+    expect(own('worktree_unresolved')).toEqual(['`git status`']);
+    expect(own('worktree_unused')).toEqual(['`git worktree remove <path>`']);
+    expect(own('git_config_command')).toEqual(['`git config --global <key> <command>`', '`git config --unset <key>`']);
+  });
+
   it('says on which machine to fix what only that machine can', () => {
     // the registry's ssh destination can differ from the machine's name, so no command names one
     const ssh = blockerHint({ code: 'ssh_interactive', message: 'ssh would have to ask before it could go on' }, ctx);
@@ -606,7 +616,7 @@ describe('what each blocker and warning is explained with', () => {
   it('sends a gateway that could not be asked, or cannot read its record, to the Linux machine, whichever way the fleet moves', () => {
     for (const run of [ctx, { ...ctx, destination: 'This Mac', source: 'studio', pull: true }]) {
       expect(blockerHint({ code: 'authority_unreachable', message: 'this machine could not ask its gateway' }, run)).toMatch(/gateway.*Check studio/s);
-      expect(blockerHint({ code: 'authority_corrupt', message: 'the gateway cannot read its record' }, run)).toMatch(/studio.*readable record.*`svall fleet recover`/s);
+      expect(blockerHint({ code: 'authority_corrupt', message: 'the gateway cannot read its record' }, run)).toMatch(/studio.*readable record.*`svall fleet recover --force-owner <machine> --gateway <other machine>`/s);
     }
     // a gateway that answered with a failure is not said to be silent, and one on a third machine is named
     const third = { ...ctx, gateway: 'vault' };

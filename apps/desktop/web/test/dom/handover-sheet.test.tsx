@@ -63,6 +63,11 @@ test('a destination runs the checks alone and shows what moves and who stops bef
   store.setState({ handover: undefined });
   render(<HandoverSheet />);
   act(() => store.getState().toggleHandover(true));
+  // what moves folds away under the one line on what a handover does
+  const moves = screen.getByTestId('handover-what-moves');
+  expect(moves.querySelector('summary')?.textContent).toBe('What moves');
+  expect([...moves.querySelectorAll('.ho-more-body > span')].map((s) => s.textContent)).toEqual(['Islands, characters, repositories and agent sessions.',
+    'Agents resume from their transcripts.', 'Shells reopen in their folders; a command still running does not move.']);
   fireEvent.click(screen.getByTestId('handover-to-gateway'));
   expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift', check: true });
   act(() => {
@@ -317,7 +322,7 @@ test('stopped at the checks, every blocker names what it is about in words and h
   // each blocker's code, small, to look up in errors.md
   expect(asked.querySelector('.ho-code')?.textContent).toBe('agent_blocked');
   const stuck = screen.getByTestId('handover-blocker-path_unsupported');
-  expect(stuck.querySelector('em')?.textContent).toContain('cd that terminal to a folder that travels');
+  expect([...stuck.querySelectorAll('em .ho-line[data-item]')].map((l) => l.textContent)).toEqual(['move what it names', 'cd that terminal to a folder that travels', 'close the character']);
   expect(stuck.querySelector('[data-testid="handover-open-card"]')?.textContent).toBe('Open c2');
   const taken = screen.getByTestId('handover-blocker-destination_occupied');
   expect(taken.querySelector('.ho-who')?.textContent).toBe('~/src/beta');
@@ -691,7 +696,8 @@ test('where nothing is safe or the gateway has moved on, the sheet names the com
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
   expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
-  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/Forget is enough if another handover or a recovery moved it on/);
+  expect(linesOf('handover-way-out')).toEqual(['Where the fleet stands now:', 'svall handover status', 'Forget is enough if another handover or a recovery moved it on.',
+    "If the gateway was set up again, make this Mac the fleet's owner:", 'svall fleet recover --force-owner local']);
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: '' } }]));
   expect(screen.queryByTestId('handover-way-out')).toBeNull();
@@ -711,7 +717,8 @@ test('a stop with nothing safe names the way out for what stopped it, with what 
   expect(screen.getByTestId('handover-headline').textContent).toBe("The fleet moved to trift, but trift's handover record is unreadable. Nothing is safe until it is put back or the fleet is recovered.");
   expect(screen.getByTestId('handover-detail').textContent).toContain(`${broken}.broken-1`);
   expect(commands('handover-detail')).toEqual(['svall fleet recover --force-owner <machine>']);
-  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^On trift, put the handover record back where Details says, restart the fleet's daemon there, then Check again/);
+  expect(linesOf('handover-way-out')).toEqual(["On trift, put the handover record back where Details says, restart the fleet's daemon there, then Check again.",
+    'Or run the fleet on a machine you name, from the state it holds:', 'svall fleet recover --force-owner <machine>']);
   expect(commands('handover-way-out')).toEqual(['svall fleet recover --force-owner <machine>']);
   expect(screen.getByTestId('handover-follow')).toBeTruthy();
   expect(attaches(send)).toBe(0);
@@ -738,7 +745,10 @@ test('a generation the gateway does not share names the restart and the recovery
   say(openAtChecks('generation_mismatch', `This Mac holds this fleet for ${MAC} at generation 4, and the gateway for ${MAC} at 0`));
   const hint = screen.getByTestId('handover-blocker-generation_mismatch').querySelector('em')!;
   expect([...hint.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
-  expect(hint.textContent).toMatch(/restart Svall's daemon on This Mac/);
+  // each command alone on its line, under what it is for
+  expect([...hint.querySelectorAll('.ho-line')].map((l) => l.textContent)).toEqual(['Another handover or a recovery moved the fleet since This Mac last heard, or the gateway was set up again.',
+    'This says which:', 'svall handover status', "With nothing open, restart Svall's daemon on This Mac; it takes the gateway's newer record.",
+    'A gateway set up again needs:', 'svall fleet recover --force-owner local']);
 });
 
 test('the sheet says when Abort stops being possible: once the commit begins, and not before', () => {

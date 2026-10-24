@@ -485,7 +485,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
   const svall = ctx.svall ?? 'svall';
   switch (b.code) {
     case 'identity_mismatch':
-      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message.\nA machine set up again needs adding and making the gateway again.';
+      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message.\nA machine set up again needs adding and making the gateway again.\nSee "A gateway set up again" in Moving a fleet.';
     case 'transaction_open':
       return 'Another handover of this fleet is still open: Resume or Abort it first, whichever is safe.';
     case 'incompatible_adapter':
@@ -493,7 +493,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'home_mismatch':
       return ctx.pull
         ? `This Mac's home is not the one this handover was sent to: start a new handover.`
-        : `The home on ${linux} is not the one this handover was sent to. Add the machine again as this says, then start a new handover:\n\`${svall} host doctor ${linux}\``;
+        : `The home on ${linux} is not the one this handover was sent to.\nAdd the machine again as this says:\n\`${svall} host doctor ${linux}\`\nThen start a new handover.`;
     case 'parent_missing':
       return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
     case 'worktree_unresolved':
@@ -513,7 +513,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'transcript_missing':
       return `The agent never reported a transcript, so its hooks are not working:\n\`${svall} doctor\`\nTo move without that conversation, exit the agent and try again.`;
     case 'ssh_interactive':
-      return `In Terminal, ssh once to the destination ${linux} was added with and answer what it asks.\nKeep a key's passphrase in the agent, then try again:\n\`ssh-add --apple-use-keychain\``;
+      return `In Terminal, ssh once to the destination ${linux} was added with and answer what it asks.\nKeep a key's passphrase in the agent:\n\`ssh-add --apple-use-keychain\`\nThen try again.`;
     case 'platform_unsupported':
       return 'If the repository runs there, add the platform to its .svall/handover.json.\nOtherwise close the characters working in it.';
     case 'rsync_unsupported':
@@ -530,7 +530,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
       return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {
       const owner = !ctx.pull ? 'local' : machineName(ctx.source) ? ctx.source : '<machine>';
-      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again. This says which:\n\`${svall} handover status\`\n`
+      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again.\nThis says which:\n\`${svall} handover status\`\n`
         + `With nothing open, restart Svall's daemon on ${ctx.source}; it takes the gateway's newer record.\nA gateway set up again needs:\n\`${svall} fleet recover --force-owner ${owner}\``;
     }
     case 'agent_working':
@@ -539,11 +539,11 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
       return `It waits on an answer: answer it in its terminal and try again.\nOr Interrupt and carry: it stops with Escape and resumes from its transcript on ${ctx.destination}.`;
     case 'agent_unsettled':
       return 'Something still runs in that terminal after the interrupt: a command the agent started, or a hook of your own.\n'
-        + `Terminate and carry ends it in every terminal named here; the agent resumes from its transcript on ${ctx.destination}.`;
+        + `Terminate and carry ends it in every terminal named here.\nThe agent resumes from its transcript on ${ctx.destination}.`;
     case 'shell_busy':
       return `Terminate and carry ends the command in every terminal named here.\nThe shell opens again in its folder on ${ctx.destination}.`;
     case 'destination_diverged': case 'destination_occupied': {
-      if (b.code === 'destination_occupied' || b.entity?.kind !== 'character') return `Archive and carry moves what is there on ${ctx.destination} aside to a timestamped folder; nothing is deleted.`;
+      if (b.code === 'destination_occupied' || b.entity?.kind !== 'character') return `Archive and carry moves what is there on ${ctx.destination} aside to a timestamped folder beside it; nothing is deleted.`;
       const id = OPENCODE_SESSION.exec(b.message)?.[1];
       return `The copy of this session on ${ctx.destination} went on there. ` + (id
         ? `To keep it, run these on ${ctx.destination}, then Try again:\n\`opencode session export --standalone ${id} > keep.json\`\n\`opencode session delete --standalone ${id}\``
@@ -574,7 +574,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'authority_unreachable':
       return `The gateway could not say who owns this fleet.\nCheck ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} under Settings → Machines, then try again.`;
     case 'authority_corrupt':
-      return `The gateway on ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} cannot read its record of this fleet.\nPut a readable record back there, or recover the fleet in a terminal:\n\`${svall} fleet recover\``;
+      return `The gateway on ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} cannot read its record of this fleet.\nPut a readable record back there, or replace the gateway:\n\`${svall} fleet recover --force-owner <machine> --gateway <other machine>\``;
     case 'agent_cli_missing':
       return "Install it on the machine the message names, where Svall's daemon finds it, then try again.";
     case 'agent_logged_out':
@@ -584,7 +584,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
       return `On ${ctx.destination}, run this, then try again:\n\`svall setup\``;
     case 'path_unsupported':
       return b.entity?.kind === 'character'
-        ? 'Move what it names, cd that terminal to a folder that travels, or close the character; then try again.'
+        ? 'Do one of these, then try again:\n- move what it names\n- cd that terminal to a folder that travels\n- close the character'
         : `Follow the message, then try again:\n- move what it names out of the folder that carries it\n- fix handover.exclude in fleet.json\n- make the folder writable on ${ctx.destination}`;
     default:
       return undefined;
@@ -657,7 +657,7 @@ export function planOf(choice: Choice, b: Blocker, ctx: HintContext, names?: Nam
   switch (choice) {
     case 'interrupt': return `${who} will be stopped with Escape and resume from its transcript on ${ctx.destination}.`;
     case 'terminate': return `What runs in ${who}'s terminal ends; the shell reopens in its folder on ${ctx.destination}.`;
-    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? 'that folder'} on ${ctx.destination} moves aside first, to a timestamped folder.`;
+    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? 'that folder'} on ${ctx.destination} moves aside first, to a timestamped folder beside it.`;
     case 'carry': return `${who}'s folder will be carried whole, with the repositories in it.`;
   }
 }
