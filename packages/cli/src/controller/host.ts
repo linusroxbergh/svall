@@ -736,7 +736,8 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
           throw new StepError(`svall uninstall exited ${r.code} on ${entry.record.ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,
             `${onThere(entry.record.ssh, 'svall uninstall')} and see what stops it; svall host remove ${name} --forget drops the route and leaves the machine as it is`);
         }
-        return { value: true, detail: r.stdout.trim().split('\n').at(-1) ?? 'svall uninstall' };
+        // its last line can name a command for that machine, such as the rm -rf of the fleets it kept
+        return { value: true, detail: `on ${entry.record.ssh}: ${r.stdout.trim().split('\n').at(-1) || 'svall uninstall'}` };
       } catch (err) {
         if (err instanceof StepError) throw err;
         throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
