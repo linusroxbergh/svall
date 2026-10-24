@@ -210,9 +210,10 @@ export class Scribe {
     if (!transcript.trim()) { this.seen.set(id, { lastPassAt: this.now(), path, bytes }); return []; }
     const others = Object.values(state.robots).filter((o) => o.id !== id).map((o) => o.name);
     const prLinks = prEvidence(c, transcript, tail);
+    const columns = placing(state) ? state.columns : undefined;
     let answer: RobotAnswer;
     try {
-      answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks, placing(state) ? state.columns : undefined)));
+      answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks, columns)));
     } catch (e) {
       const last = this.seen.get(id) ?? { lastPassAt: 0, path, bytes: 0 };
       const failures = (last.failures ?? 0) + 1;
@@ -221,7 +222,8 @@ export class Scribe {
     }
     // a names-only pass leaves this transcript's note and links to the next pass
     if (!namesOnly) this.seen.set(id, { lastPassAt: this.now(), path, bytes });
-    return this.writeRobot(c, answer, [transcript, ...prLinks].join('\n'), namesOnly);
+    // a column answered without the board in the prompt places nothing
+    return this.writeRobot(c, columns ? answer : { ...answer, column: undefined }, [transcript, ...prLinks].join('\n'), namesOnly);
   }
 
   // each field is written only if nobody changed it while the model was thinking

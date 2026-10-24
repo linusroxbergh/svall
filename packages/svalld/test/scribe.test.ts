@@ -280,6 +280,17 @@ describe('Scribe, automatically', () => {
     }
   });
 
+  it('takes no column from a pass whose prompt had no board, though placing came on during it', async () => {
+    let w!: ReturnType<typeof world>;
+    w = world(() => { w.store.update((d) => { delete d.placingAsk; }); return JSON.stringify({ column: 'Done' }); });
+    w.island('i1');
+    w.robot('a');
+    w.scribe.tick();
+    await settle();
+    expect(w.calls[0].prompt).not.toContain('Column');
+    expect(w.store.state.robots.a).not.toHaveProperty('column');
+  });
+
   it('never moves a robot placed by hand, before the pass or during it, nor to a column the board lacks', async () => {
     let w!: ReturnType<typeof world>;
     w = world(({ prompt }) => {
