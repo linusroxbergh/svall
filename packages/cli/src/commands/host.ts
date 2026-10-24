@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from '@svall/svalld/atomic';
 import { configDir, machineId } from '@svall/svalld/machine';
-import { askpassPath, isRelease, releaseRoot, releaseVersion } from '@svall/svalld/release';
+import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { printResult, table } from '../format.js';
@@ -51,7 +51,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string): HostDeps {
     openMaster: (destination) => SshMaster.open({ destination }),
     interactiveSsh,
     fetch: (url) => fetch(url),
-    controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot() },
+    controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot(), signed: releaseSigned() },
     machineId: () => machineId(dir),
     homedir: os.homedir(),
     verify: sshVerify({ allowedSigners: controllerSigners() }),

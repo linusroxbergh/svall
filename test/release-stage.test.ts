@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carryCompanions, companionAssets, nodeRuntime, PINS, pinnedRsync, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
+import { carryCompanions, companionAssets, nodeRuntime, PINS, pinnedRsync, releaseKey, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -86,6 +86,50 @@ describe('the companions a controller release carries', () => {
     const published = temp();
     carryCompanions(published, companionAssets({ dir, version: 'v1.2.3', urlBase: 'https://example.test/r' }), dir);
     expect(fs.readdirSync(published)).toEqual([]);
+  });
+});
+
+describe('the key a local build signs with', () => {
+  const saved = process.env.SVALL_RELEASE_KEY;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.SVALL_RELEASE_KEY;
+    else process.env.SVALL_RELEASE_KEY = saved;
+  });
+
+  /** A key made for the test, and signers that list it alone. */
+  const signer = (): { key: string; signers: string } => {
+    const dir = temp();
+    const key = path.join(dir, 'key');
+    execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'svall-release', '-f', key]);
+    const signers = path.join(dir, 'allowed_signers');
+    fs.writeFileSync(signers, `svall-release namespaces="svall-release" ${fs.readFileSync(`${key}.pub`, 'utf8').split(' ').slice(0, 2).join(' ')}\n`);
+    return { key, signers };
+  };
+
+  it('is none without SVALL_RELEASE_KEY, so the build marks its release unsigned', () => {
+    delete process.env.SVALL_RELEASE_KEY;
+    expect(releaseKey()).toBeUndefined();
+  });
+
+  it('is either key the signers list, so a second key can take over from the first', () => {
+    const [first, second] = [signer(), signer()];
+    fs.appendFileSync(first.signers, fs.readFileSync(second.signers));
+    for (const { key } of [first, second]) {
+      process.env.SVALL_RELEASE_KEY = key;
+      expect(releaseKey(first.signers)).toBe(key);
+    }
+  });
+
+  it('refuses a key the signers do not list, the committed ones included, before anything is built', () => {
+    const [listed, other] = [signer(), signer()];
+    process.env.SVALL_RELEASE_KEY = other.key;
+    expect(() => releaseKey(listed.signers)).toThrow(`the public half of SVALL_RELEASE_KEY ${other.key} is not in ${listed.signers}`);
+    expect(() => releaseKey()).toThrow(/is not in \S+\/scripts\/release\/allowed_signers/);
+  });
+
+  it('refuses a file that is no key', () => {
+    process.env.SVALL_RELEASE_KEY = path.join(temp(), 'missing');
+    expect(() => releaseKey()).toThrow(`SVALL_RELEASE_KEY ${process.env.SVALL_RELEASE_KEY} cannot sign`);
   });
 });
 

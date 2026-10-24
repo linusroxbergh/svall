@@ -56,3 +56,14 @@ export function releaseVersion(): string {
     return 'dev';
   }
 }
+
+/** Whether this release was built with the release key: it carries a signature and no unsigned mark. */
+export function releaseSigned(): boolean {
+  const dir = root();
+  if (!dir || !fs.existsSync(path.join(dir, 'SHA256SUMS.sig'))) return false;
+  try {
+    return (JSON.parse(fs.readFileSync(path.join(dir, 'release.json'), 'utf8')) as { unsigned?: unknown }).unsigned !== true;
+  } catch {
+    return false;
+  }
+}

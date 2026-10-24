@@ -1,5 +1,6 @@
 #!/bin/sh
 # Builds, signs, notarizes and packages Svall into dist/, writes its appcast and latest.json, and uploads them to svall.dev.
+# SVALL_RELEASE_KEY, which only --adhoc goes without, signs the controller and companion the app carries.
 # --adhoc does the same unsigned and stops before notarizing and uploading. SVALL_NOTES names a Markdown file the update
 # dialog shows as this version's notes, above those of every release since the installed one.
 set -eu
@@ -41,6 +42,10 @@ if [ -z "$ADHOC" ]; then
   # installed copies take only updates signed by this key, and generate_appcast signs with the one in the keychain
   [ "$("$(scripts/sparkle-tools.sh)/generate_keys" -p)" = "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' apps/desktop/mac/Info.plist)" ] ||
     fail "SUPublicEDKey in apps/desktop/mac/Info.plist is not the key generate_keys -p prints, so this release could never update itself"
+  # the controller and companion the app carries are signed with a key scripts/release/allowed_signers lists
+  : "${SVALL_RELEASE_KEY:?set SVALL_RELEASE_KEY to the release signing key; see docs/integration.md}"
+  node -e 'import(process.argv[1]).then((m) => m.releaseKey())' "$ROOT/scripts/release-stage.mjs" ||
+    fail "SVALL_RELEASE_KEY cannot sign this release"
   : "${SVALL_HOST:?set SVALL_HOST to the ssh host of the server}" "${SVALL_SITE_DIR:?set SVALL_SITE_DIR to the site folder on it}"
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
   LATEST="$(curl -sS -w '\n%{http_code}' https://svall.dev/latest.json)" || fail "could not read https://svall.dev/latest.json"

@@ -80,7 +80,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     openMaster: (destination) => SshMaster.open({ destination, socketDir: ssh.socketDir }),
     interactiveSsh: () => Promise.resolve({ code: 0, stderr: '' }),
     fetch: () => Promise.reject(new Error('no download in this test')),
-    controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release') },
+    controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release'), signed: true },
     machineId: () => MAC,
     homedir: work,
     verify: (dir, id) => signer.verify(dir, id),
@@ -167,6 +167,7 @@ describe('host add', () => {
       'svall connection-info', 'svall gateway', 'sh -c',
     ]);
     expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on its own private fleet, its gateway authority answers, and tmux opens and closes a window there' });
+    expect(step('release').at(-1)?.detail).toMatch(/^1\.2\.3 for linux-arm64 from the archive you named \(signed\)$/);
   });
 
   it('fails the probe on a gateway authority that does not answer, or a tmux that cannot open a window, and registers nothing', async () => {
@@ -748,6 +749,19 @@ describe('host doctor', () => {
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.map((c) => c.name)).toEqual(expect.arrayContaining(['systemd', 'linger', 'release', 'space']));
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
+  });
+
+  it('says whether the machine\'s release and this controller\'s are signed, taking a release that does not say as unsigned', async () => {
+    const release = async (version: Record<string, unknown>, signed: boolean) => {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...version }) });
+      ssh.reply(['svall-space'], { stdout: DF });
+      const report = await doctorHost('trift', deps({ registry: registered(), controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: work, signed } }));
+      return report.checks.find((c) => c.name === 'release')?.detail;
+    };
+    expect(await release({ signed: true }, true)).toBe(`1.2.3 (signed), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (signed), protocol ${PROTOCOL_VERSION}`);
+    expect(await release({}, false)).toBe(`1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}`);
   });
 
   it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {

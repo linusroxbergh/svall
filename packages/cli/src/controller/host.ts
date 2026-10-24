@@ -46,7 +46,7 @@ export type HostDeps = {
   /** one ssh the user can answer: a new host key, a passphrase, a password; stderr: the last of what ssh said */
   interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
   fetch: FetchLike;
-  controller: { release: string; protocol: number; releaseRoot: string };
+  controller: { release: string; protocol: number; releaseRoot: string; signed: boolean };
   /** this Mac's own id: the owner a fleet's first authority record names */
   machineId(): MachineId;
   homedir: string;
@@ -207,7 +207,7 @@ async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[
 }
 
 type RemoteDoctor = { checks: Check[] };
-type RemoteVersion = { release: string; protocol: number; machineId: string };
+type RemoteVersion = { release: string; protocol: number; machineId: string; signed?: boolean };
 
 function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<RemoteDoctor> {
   const named = (name: string) => report.checks.find((c) => c.name === name);
@@ -291,6 +291,8 @@ async function addProbe(master: SshMaster, entry: MachineEntry, home: string, re
   return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, its gateway authority answers, and tmux opens and closes a window there` };
 }
 
+const signedWord = (signed?: boolean): string => (signed ? 'signed' : 'unsigned');
+
 async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<Outcome<CompanionArchive & { allowUnsigned: boolean }>> {
   let archive = o.release;
   let from = 'the archive you named';
@@ -306,7 +308,7 @@ async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<O
   }
   const companion = await inspectCompanion(archive, { verify: d.verify });
   requireCompatible(companion, { ...d.controller, arch, allowUnsigned });
-  return { value: { ...companion, allowUnsigned }, detail: `${companion.version} for ${companion.platform} from ${from}${companion.signed ? '' : ' (unsigned)'}` };
+  return { value: { ...companion, allowUnsigned }, detail: `${companion.version} for ${companion.platform} from ${from} (${signedWord(companion.signed)})` };
 }
 
 const remotePaths = (home: string, version: string) => ({
@@ -496,7 +498,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
       checks.push({
         name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
-        detail: `${v.release}, protocol ${v.protocol}; this controller runs ${d.controller.release}, protocol ${d.controller.protocol}`,
+        detail: `${v.release} (${signedWord(v.signed)}), protocol ${v.protocol}; this controller runs ${d.controller.release} (${signedWord(d.controller.signed)}), protocol ${d.controller.protocol}`,
       });
     } catch (err) { checks.push(failed('release', err)); }
     try {
