@@ -4,7 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character, type TerminalSlot } from '@svall/protocol';
 import { running, settle } from './agent/reducer.js';
-import { hooksFor } from './hooks/receiver.js';
+import { claudeTranscript, hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
 import type { Store } from './store.js';
 import { shq } from './text.js';
@@ -34,6 +34,15 @@ export function freshCommand(revive: string, kind: AgentKind, sessionId: string)
   const resume = kind === 'codex' ? /^codex resume -c tui\.resume_cwd=session(.*) (\S+)$/ : kind === 'opencode' ? /^opencode(.*) -s (\S+)$/ : /^claude(.*) --resume (\S+)$/;
   const m = resume.exec(revive);
   return m?.[2] === sessionId ? `${kind}${m[1]}` : kind;
+}
+
+/** The fresh start, with its launch flags, of a dormant terminal whose Claude resume names a session that saved no
+ *  transcript, as one never prompted leaves: Claude has nothing to resume it from. */
+export function unsaved(t: TerminalSlot): string | undefined {
+  const a = t.agent;
+  const revive = t.revive?.command;
+  if (a?.kind !== 'claude' || !a.transcriptPath || !revive?.startsWith('claude ') || !revive.endsWith(` --resume ${a.sessionId}`)) return undefined;
+  return fs.existsSync(claudeTranscript(a.transcriptPath, a.sessionId)) ? undefined : freshCommand(revive, 'claude', a.sessionId);
 }
 
 // a terminal without a window keeps its directory and the command that brings its session back. `flags` are the

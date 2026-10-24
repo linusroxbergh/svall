@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Character, FleetState } from '@svall/protocol';
-import { drowsy, freshCommand, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, RESUME_NOTE } from '../src/dormancy.js';
+import { drowsy, freshCommand, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, unsaved, RESUME_NOTE } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -252,6 +252,34 @@ describe('freshCommand', () => {
   it('starts the bare agent from a resume of another session, or of none', () => {
     expect(freshCommand(`claude --effort 'high' --resume ${SID}`, 'claude', 'another')).toBe('claude');
     expect(freshCommand('', 'codex', SID)).toBe('codex');
+  });
+});
+
+describe('unsaved', () => {
+  let projects: string;
+  beforeAll(() => { projects = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-unsaved-')), 'projects'); fs.mkdirSync(path.join(projects, '-a'), { recursive: true }); fs.mkdirSync(path.join(projects, '-b')); });
+  afterAll(() => fs.rmSync(path.dirname(projects), { recursive: true, force: true }));
+  const slot = (over: Partial<Agent> = {}, command = `claude --effort 'high' --resume ${SID}`) =>
+    char({ tmux: undefined, revive: { command }, agent: agent({ transcriptPath: path.join(projects, '-a', `${SID}.jsonl`), ...over }) });
+
+  it('starts claude afresh with its flags when the session it resumes saved no transcript, as one never prompted', () => {
+    expect(unsaved(slot())).toBe("claude --effort 'high'");
+  });
+
+  it('resumes a session whose transcript is on disk, in its own project or another one a resume elsewhere left it in', () => {
+    fs.writeFileSync(path.join(projects, '-b', `${SID}.jsonl`), '');
+    expect(unsaved(slot())).toBeUndefined();
+    fs.writeFileSync(path.join(projects, '-a', `${SID}.jsonl`), '');
+    expect(unsaved(slot())).toBeUndefined();
+  });
+
+  it("leaves a session with no transcript on record, a revive that resumes no session of it, and any other agent's", () => {
+    const missing = path.join(projects, '-a', 'f0f0f0f0-0000-4000-8000-000000000000.jsonl');
+    expect(unsaved(slot({ transcriptPath: undefined }))).toBeUndefined();
+    expect(unsaved(slot({ transcriptPath: missing }, 'claude --resume f0f0f0f0-1111-4000-8000-000000000000'))).toBeUndefined();
+    expect(unsaved(slot({ transcriptPath: missing }, `: --resume ${SID}`))).toBeUndefined();
+    expect(unsaved(slot({ kind: 'codex', transcriptPath: missing }, `codex resume -c tui.resume_cwd=session ${SID}`))).toBeUndefined();
+    expect(unsaved(char({ revive: undefined }))).toBeUndefined();
   });
 });
 
