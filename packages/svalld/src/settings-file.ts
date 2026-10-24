@@ -11,6 +11,31 @@ export type JsonSettings = { file: string; text?: string; settings: Record<strin
 /** Whether two JSON values hold the same. */
 export const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const sorted = (v: unknown): unknown => (Array.isArray(v) ? v.map(sorted)
+  : isObject(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
+// a file whose keys only stand in another order holds the same settings
+const sameSettings = (a: unknown, b: unknown): boolean => same(sorted(a), sorted(b));
+
+// `next` with each key `was` held where it stood there, and any new one after them; list items pair up by place
+function inOrder(next: unknown, was: unknown): unknown {
+  if (Array.isArray(next)) return next.map((v, i) => inOrder(v, Array.isArray(was) ? was[i] : undefined));
+  if (!isObject(next) || !isObject(was)) return next;
+  const keys = [...Object.keys(was).filter((k) => k in next), ...Object.keys(next).filter((k) => !(k in was))];
+  return Object.fromEntries(keys.map((k) => [k, inOrder(next[k], was[k])]));
+}
+
+/** `next` as JSON written the way `text`, which held `was`, is: its key order, indent and trailing newline, and only ASCII if it held only ASCII. */
+function formatLike(text: string | undefined, was: unknown, next: Record<string, unknown>): string {
+  if (text === undefined) return `${JSON.stringify(next, null, 2)}\n`;
+  const lead = /^[ \t]+(?=")/m.exec(text)?.[0];
+  // a file written on one line stays on one; one with nothing nested to tell by gets two spaces
+  const indent = lead ?? (/^\{\s*"/.test(text.trim()) && !text.trim().includes('\n') ? undefined : 2);
+  let out = JSON.stringify(inOrder(next, was), null, indent);
+  if (!/[^\x00-\x7f]/.test(text)) out = out.replace(/[\u0080-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return text.endsWith('\n') ? `${out}\n` : out;
+}
+
 export function readJsonSettings(file: string): JsonSettings {
   if (!fs.existsSync(file)) return { file, settings: {} };
   const text = fs.readFileSync(file, 'utf8');
@@ -23,7 +48,7 @@ export function readJsonSettings(file: string): JsonSettings {
 
 /** Throws when `next` changes a file that links into a folder that cannot be written, such as home-manager's store. */
 export function requireWritable(current: JsonSettings, next: Record<string, unknown>): void {
-  if (current.text === undefined || same(current.settings, next)) return;
+  if (current.text === undefined || sameSettings(current.settings, next)) return;
   const real = fs.realpathSync(current.file);
   try {
     fs.accessSync(path.dirname(real), fs.constants.W_OK);
@@ -34,7 +59,7 @@ export function requireWritable(current: JsonSettings, next: Record<string, unkn
 
 // an unchanged file is left as it is, so repeated runs leave no pile of backups
 export function writeJsonSettings(current: JsonSettings, next: Record<string, unknown>, what: string): string[] {
-  if (same(current.settings, next)) return [];
+  if (sameSettings(current.settings, next)) return [];
   requireWritable(current, next);
   const done: string[] = [];
   // a linked file (stow, home-manager) is written where it points, with the mode it had
@@ -49,7 +74,7 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
     done.push(`backup -> ${backup}`);
   }
   fs.mkdirSync(path.dirname(current.file), { recursive: true });
-  writeAtomic(file, JSON.stringify(next, null, 2) + '\n', { mode, perProcess: true });
+  writeAtomic(file, formatLike(current.text, current.settings, next), { mode, perProcess: true });
   // the umask narrows the mode a file is created with, so the one it had is set again
   if (mode !== undefined) fs.chmodSync(file, mode);
   done.push(`${what} -> ${current.file}`);

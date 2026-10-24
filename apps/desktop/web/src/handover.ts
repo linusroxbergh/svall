@@ -561,6 +561,8 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
       return 'The agent CLI versions differ between the two machines.';
     case 'codex_trust':
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
+    case 'codex_hooks':
+      return `Codex on ${ctx.destination} stops at "Hooks need review" until it trusts Svall's hooks, and its characters stay dormant.\nStart codex there and choose "Trust all and continue".`;
     case 'codex_sandbox':
       return `Codex on ${ctx.destination} cannot sandbox its commands, so it asks before each one.\nFix what the message names there.`;
     case 'claude_trust':
@@ -618,7 +620,7 @@ export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'dest
 }
 
 // warnings about what the user meets on the destination, which stay in sight while the rest fold away
-const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'codex_sandbox', 'config_difference'];
+const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'codex_hooks', 'codex_sandbox', 'config_difference'];
 export const staysInSight = (w: Warning): boolean => AFTER_MOVE.includes(w.code);
 
 /** `names` with each root that lands at another path named by where it lands, for what is about the destination. */

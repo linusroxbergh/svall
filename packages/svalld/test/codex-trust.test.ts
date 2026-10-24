@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { askCodexTrust, ourTrust } from '../src/codex-trust.js';
+import { askCodexTrust, ourTrust } from '../src/codex/trust.js';
 
 const SCRIPT = '/u/.svall/hooks/agent-hook.mjs';
 const hook = (command: string, trustStatus: string) => ({ command, trustStatus, sourcePath: '/u/.codex/hooks.json' });

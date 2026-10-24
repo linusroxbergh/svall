@@ -460,7 +460,9 @@ one you turn off it takes them out:
   OpenCode plugin.
 
 A change to the Claude Code or Codex file keeps a `.bak-<time>` copy. Setup
-also writes:
+and uninstall write one only when what it holds changes, keeping its key
+order, indent and final newline, and `\u` escapes in a file of plain ASCII.
+Setup also writes:
 
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`, one per
   fleet, which the app uses to start each daemon.

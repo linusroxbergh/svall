@@ -191,7 +191,9 @@ character, and after the move its row says that it waits.
 
 - **Claude** asks whether to trust the folder, with "No, exit" preselected: choose "Yes, I trust this folder".
 - **Claude in Bypass Permissions mode** asks once per machine: choose "Yes, I accept".
-- **Codex** asks whether to trust the folder: answer it in that terminal.
+- **Codex** asks whether to trust the folder: answer it in that terminal. A Codex that has not trusted Svall's hooks
+  stops at its "Hooks need review" screen first: the checks warn (`codex_hooks`), and a character that resumes there
+  is left dormant until you trust them.
 - **OpenCode** asks nothing.
 
 Svall never writes an agent's own settings to answer these for you.

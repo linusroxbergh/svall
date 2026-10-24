@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { isOurs } from '@svall/svalld/paths';
+import { isOurs } from '../paths.js';
 
 export type HookTrust = { trusted: number; untrusted: number };
 
