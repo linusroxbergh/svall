@@ -1,0 +1,134 @@
+<svg width="336" height="452" viewBox="88 24 336 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="belly-title belly-desc" class="r90" data-idle="blink blink peer peer shift draft" data-work="clack clack draft shift peer blink"><style>
+.r90[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r90-blink .4s ease-in-out}
+.r90[data-act=peer] .belly{animation:r90-lean 1.8s ease-in-out}
+.r90[data-act=peer] .head{animation:r90-tilt 1.8s ease-in-out}
+.r90[data-act=peer] .eyes{animation:r90-look 1.8s ease-in-out}
+.r90[data-act=peer] .pipe{animation:r90-lag 1.8s ease-in-out}
+.r90[data-act=shift] .bot{animation:r90-shift 1.8s ease-in-out}
+.r90[data-act=shift] .arm-l,.r90[data-act=shift] .arm-r{animation:r90-counter 1.8s ease-in-out}
+.r90[data-act=draft] .draft{animation:r90-spin 2s ease-in-out}
+.r90[data-act=draft] .vent{animation:r90-glow 2s ease-in-out}
+.r90[data-act=draft] .belly{animation:r90-puff 2s ease-in-out}
+.r90[data-act=draft] .pipe{animation:r90-chuff 2s ease-in-out}
+.r90[data-act=draft] .arm-l{animation:r90-nudge 2s ease-in-out}
+.r90[data-act=draft] .head{animation:r90-nod 2s ease-in-out}
+.r90[data-act=draft] .eyes{animation:r90-down 2s ease-in-out}
+.r90[data-act=clack] .arm-r{animation:r90-lift 1.6s ease-in-out}
+.r90[data-act=clack] .jaw-a{animation:r90-jaw-a 1.6s ease-in-out}
+.r90[data-act=clack] .jaw-b{animation:r90-jaw-b 1.6s ease-in-out}
+.r90[data-act=clack] .arm-l{animation:r90-brace 1.6s ease-in-out}
+.r90[data-act=clack] .belly{animation:r90-lean-r 1.6s ease-in-out}
+.r90[data-act=clack] .head{animation:r90-cock 1.6s ease-in-out}
+.r90[data-act=clack] .eyes{animation:r90-side 1.6s ease-in-out}
+/* the whole stove rocks on one foot's outer edge or the other: translate(±110px) moves the pivot there */
+@keyframes r90-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r90-lean{0%,100%{transform:none}18%,40%{transform:rotate(-1.2deg)}58%,78%{transform:rotate(1deg)}91%{transform:rotate(-.3deg)}}
+@keyframes r90-tilt{0%,100%{transform:none}18%,40%{transform:rotate(-3deg)}58%,78%{transform:rotate(2.6deg)}91%{transform:rotate(-.6deg)}}
+@keyframes r90-look{0%,100%{transform:none}14%,40%{transform:translate(-6px,1px)}54%,78%{transform:translate(6px,1px)}}
+@keyframes r90-lag{0%,100%{transform:none}22%{transform:rotate(4deg)}40%{transform:rotate(-1.5deg)}62%{transform:rotate(-4deg)}80%{transform:rotate(1.5deg)}93%{transform:rotate(-.5deg)}}
+@keyframes r90-shift{0%,100%{transform:translate(0) rotate(0) translate(0)}24%{transform:translate(-110px) rotate(-1.4deg) translate(110px)}54%{transform:translate(110px) rotate(1.1deg) translate(-110px)}80%{transform:translate(-110px) rotate(-.4deg) translate(110px)}}
+@keyframes r90-counter{0%,100%{transform:none}30%{transform:rotate(4deg)}60%{transform:rotate(-3deg)}85%{transform:rotate(1.2deg)}}
+@keyframes r90-spin{0%{transform:none}14%{transform:rotate(-24deg)}70%{transform:rotate(372deg)}83%{transform:rotate(356deg)}92%{transform:rotate(361deg)}100%{transform:rotate(360deg)}}
+@keyframes r90-glow{0%,22%,82%,100%{fill:#3d4853}44%,62%{fill:#d39a45}}
+@keyframes r90-puff{0%,100%{transform:none}14%{transform:scale(.995,1.01)}40%,56%{transform:scale(1.022,.982)}70%{transform:scale(.992,1.008)}84%{transform:scale(1.004,.997)}}
+@keyframes r90-chuff{0%,38%,100%{transform:none}46%{transform:scale(1.04,1.14)}55%{transform:scale(.98,.93)}65%{transform:scale(1.01,1.04)}76%{transform:none}}
+@keyframes r90-nudge{0%,100%{transform:none}10%{transform:rotate(-3deg)}26%{transform:rotate(-9deg)}40%{transform:rotate(2deg)}52%{transform:rotate(-1deg)}62%{transform:none}}
+@keyframes r90-nod{0%,100%{transform:none}20%,70%{transform:translateY(2px)}}
+@keyframes r90-down{0%,100%{transform:none}18%,72%{transform:translateY(4px)}}
+@keyframes r90-lift{0%,100%{transform:none}22%{transform:rotate(-13deg)}36%,64%{transform:rotate(-11deg)}80%{transform:rotate(3deg)}92%{transform:rotate(-1deg)}}
+@keyframes r90-jaw-a{0%,24%,40%,56%,100%{transform:none}32%,48%{transform:rotate(-12deg)}}
+@keyframes r90-jaw-b{0%,24%,40%,56%,100%{transform:none}32%,48%{transform:rotate(12deg)}}
+@keyframes r90-brace{0%,100%{transform:none}30%{transform:rotate(3deg)}70%{transform:rotate(-1deg)}}
+@keyframes r90-lean-r{0%,100%{transform:none}24%,66%{transform:rotate(1deg)}84%{transform:rotate(-.3deg)}}
+@keyframes r90-cock{0%,100%{transform:none}20%,66%{transform:rotate(2.5deg)}84%{transform:rotate(-.5deg)}}
+@keyframes r90-side{0%,100%{transform:none}16%,70%{transform:translate(6px,2px)}}
+</style>
+  <title id="belly-title">Belly — pot-belly stove robot</title>
+  <desc id="belly-desc">A chubby jade enamel pot-belly stove robot with two eyes behind the arched mica windows of its feed door, a domed lid and a short flue pipe with a damper on top, a draft wheel on its round belly, stove-pipe arms ending in a poker and a pair of tongs, on splayed cast legs with round feet.</desc>
+  <g class="bot" style="transform-origin:256px 476px">
+  <!-- Splayed cast legs and round feet -->
+  <path d="M186 392L222 392L206 448L166 448Z" fill="#3d4853"/>
+  <path d="M326 392L290 392L306 448L346 448Z" fill="#3d4853"/>
+  <path d="M179.6 410H216.9L214 420H176Z" fill="#697785"/>
+  <path d="M332.4 410H295.1L298 420H336Z" fill="#697785"/>
+  <path d="M146 476v-6q0-32 40-32t40 32v6Z" fill="#2b7a66"/>
+  <path d="M286 476v-6q0-32 40-32t40 32v6Z" fill="#2b7a66"/>
+  <path d="M198 439q26 6 28 31v6h-14v-6q0-18-14-31Z" fill="#1d5c4c"/>
+  <path d="M338 439q26 6 28 31v6h-14v-6q0-18-14-31Z" fill="#1d5c4c"/>
+  <!-- Cast base ring -->
+  <rect x="156" y="364" width="200" height="30" rx="10" fill="#3d4853"/>
+  <path d="M166 364H346q10 0 10 10v2H156v-2q0-10 10-10Z" fill="#697785"/>
+  <g class="belly" style="transform-origin:256px 386px">
+  <!-- Round enamel belly -->
+  <ellipse cx="256" cy="286" rx="124" ry="100" fill="#1d5c4c"/>
+  <ellipse cx="249" cy="286" rx="117" ry="100" fill="#2b7a66"/>
+  <path d="M176 268a104 88 0 0 1 40-52" fill="none" stroke="#4c9e86" stroke-width="10" stroke-linecap="round"/>
+  <!-- Draft wheel -->
+  <circle cx="256" cy="292" r="38" fill="#3d4853"/>
+  <g class="draft" style="transform-origin:256px 292px">
+  <circle cx="256" cy="292" r="29" fill="#697785"/>
+  <path class="vent" d="M277.17 300.99A23 23 0 0 1 264.99 313.17L259.52 300.28A9 9 0 0 0 264.28 295.52Z" fill="#3d4853"/>
+  <path class="vent" d="M247.01 313.17A23 23 0 0 1 234.83 300.99L247.72 295.52A9 9 0 0 0 252.48 300.28Z" fill="#3d4853"/>
+  <path class="vent" d="M234.83 283.01A23 23 0 0 1 247.01 270.83L252.48 283.72A9 9 0 0 0 247.72 288.48Z" fill="#3d4853"/>
+  <path class="vent" d="M264.99 270.83A23 23 0 0 1 277.17 283.01L264.28 288.48A9 9 0 0 0 259.52 283.72Z" fill="#3d4853"/>
+  <circle cx="256" cy="292" r="6" fill="#92a1b2"/>
+  <circle cx="278.6" cy="269.4" r="6" fill="#f6c354"/>
+  </g>
+  <!-- Collar -->
+  <rect x="178" y="182" width="156" height="22" rx="6" fill="#3d4853"/>
+  <path d="M184 182H328q6 0 6 6v1H178v-1q0-6 6-6Z" fill="#697785"/>
+  <g class="head" style="transform-origin:256px 186px">
+  <!-- Firebox head with the feed door -->
+  <rect x="184" y="106" width="144" height="80" rx="14" fill="#2b7a66"/>
+  <path d="M198 106h116q14 0 14 14v4H184v-4q0-14 14-14Z" fill="#4c9e86"/>
+  <path d="M310 108h4q14 0 14 14v50q0 14-14 14h-4Z" fill="#1d5c4c"/>
+  <rect x="206" y="120" width="100" height="54" rx="10" fill="#697785"/>
+  <rect x="202" y="130" width="8" height="8" rx="2" fill="#3d4853"/>
+  <rect x="202" y="156" width="8" height="8" rx="2" fill="#3d4853"/>
+  <path d="M216 166V146a18 18 0 0 1 36 0V166Z" fill="#3d4853"/>
+  <path d="M260 166V146a18 18 0 0 1 36 0V166Z" fill="#3d4853"/>
+  <g class="eyes">
+  <circle cx="234" cy="148" r="11" fill="#79d6eb"/>
+  <circle cx="278" cy="148" r="11" fill="#79d6eb"/>
+  <circle cx="238" cy="144" r="4" fill="#fffae0"/>
+  <circle cx="282" cy="144" r="4" fill="#fffae0"/>
+  </g>
+  <!-- Domed lid -->
+  <rect x="180" y="100" width="152" height="12" rx="5" fill="#3d4853"/>
+  <path d="M188 102A68 28 0 0 1 324 102Z" fill="#1d5c4c"/>
+  <path d="M188 102A62 28 0 0 1 312 102Z" fill="#2b7a66"/>
+  <path d="M204 94a62 24 0 0 1 34-14" fill="none" stroke="#4c9e86" stroke-width="6" stroke-linecap="round"/>
+  <!-- Flue pipe with a damper -->
+  <g class="pipe" style="transform-origin:256px 82px">
+  <rect x="236" y="70" width="40" height="12" rx="3" fill="#3d4853"/>
+  <rect x="242" y="30" width="28" height="44" fill="#697785"/>
+  <rect x="242" y="30" width="8" height="44" fill="#92a1b2"/>
+  <rect x="263" y="30" width="7" height="44" fill="#3d4853"/>
+  <rect x="236" y="24" width="40" height="10" rx="3" fill="#3d4853"/>
+  <rect x="226" y="49" width="60" height="6" rx="3" fill="#3d4853"/>
+  <circle cx="288" cy="52" r="6" fill="#f6c354"/>
+  </g>
+  </g>
+  <!-- Stove-pipe arms with a poker and tongs -->
+  <g class="arm-l" style="transform-origin:152px 240px">
+  <path d="M152 240c-36 10-50 42-46 104" fill="none" stroke="#92a1b2" stroke-width="24"/>
+  <path d="M152 240c-36 10-50 42-46 104" fill="none" stroke="#3d4853" stroke-width="24" stroke-dasharray="3 13"/>
+  <rect x="92" y="336" width="28" height="16" rx="4" fill="#2b7a66"/>
+  <path d="M106 352V400" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <path d="M106 384q-14 0-16-14" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="152" cy="240" r="20" fill="#3d4853"/>
+  <circle cx="152" cy="240" r="9" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:360px 240px">
+  <path d="M360 240c36 10 50 42 46 104" fill="none" stroke="#92a1b2" stroke-width="24"/>
+  <path d="M360 240c36 10 50 42 46 104" fill="none" stroke="#3d4853" stroke-width="24" stroke-dasharray="3 13"/>
+  <rect x="392" y="336" width="28" height="16" rx="4" fill="#2b7a66"/>
+  <g class="jaw-a" style="transform-origin:406px 374px"><path d="M398 352L412 396q2 8-6 10" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g class="jaw-b" style="transform-origin:406px 374px"><path d="M414 352L400 396q-2 8 6 10" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <circle cx="406" cy="374" r="5" fill="#92a1b2"/>
+  <circle cx="360" cy="240" r="20" fill="#3d4853"/>
+  <circle cx="360" cy="240" r="9" fill="#92a1b2"/>
+  </g>
+  </g>
+  </g>
+</svg>

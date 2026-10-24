@@ -1,4 +1,4 @@
-<svg width="212" height="428" viewBox="150 50 212 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="valve-title valve-desc" class="r56" data-idle="blink blink shift shrug tap" data-work="twist twist jolt jolt shift tap"><style>
+<svg width="276" height="428" viewBox="118 50 276 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="valve-title valve-desc" class="r56" data-idle="blink blink shift shrug tap" data-work="twist twist jolt jolt shift tap"><style>
 .r56[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r56-blink .4s ease-in-out}
 .r56[data-act=shift] .bot{animation:r56-rock-r 1.9s ease-in-out}
 .r56[data-act=shift] .bot2{animation:r56-rock-l 1.9s ease-in-out}
@@ -63,12 +63,12 @@
 @keyframes r56-open1{0%,80%,100%{transform:none}30%,56%{transform:rotate(20deg)}}
 @keyframes r56-open2{0%,80%,100%{transform:none}30%,56%{transform:rotate(-20deg)}}
 @keyframes r56-duck{0%,100%{transform:translateY(0) rotate(0)}26%,54%{transform:translateY(2px) rotate(-2.5deg)}76%{transform:translateY(-.5px) rotate(0)}}
-@keyframes r56-raise{0%,100%{transform:none}30%,66%{transform:rotate(75deg)}84%{transform:rotate(-3deg)}94%{transform:rotate(1deg)}}
-@keyframes r56-tap{0%,100%{transform:none}32%{transform:rotate(-230deg)}40%{transform:rotate(-222deg)}46%{transform:rotate(-230deg)}52%{transform:rotate(-222deg)}60%,66%{transform:rotate(-230deg)}86%{transform:rotate(6deg)}95%{transform:rotate(-2deg)}}
+@keyframes r56-raise{0%,100%{transform:none}30%,66%{transform:rotate(76deg)}84%{transform:rotate(-3deg)}94%{transform:rotate(1deg)}}
+@keyframes r56-tap{0%,100%{transform:none}32%{transform:rotate(-218deg)}40%{transform:rotate(-210deg)}46%{transform:rotate(-218deg)}52%{transform:rotate(-210deg)}60%,66%{transform:rotate(-218deg)}86%{transform:rotate(6deg)}95%{transform:rotate(-2deg)}}
 @keyframes r56-tapped{0%,38%,47%,60%,100%{transform:none}42%,54%{transform:rotate(1.4deg)}}
 @keyframes r56-glance{0%,100%{transform:none}22%,70%{transform:translateX(-3px)}}
-@keyframes r56-reach{0%,100%{transform:none}26%,68%{transform:rotate(11.6deg)}84%{transform:rotate(-2deg)}}
-@keyframes r56-cross{0%,100%{transform:none}30%{transform:rotate(90deg)}38%,66%{transform:rotate(86deg)}86%{transform:rotate(-6deg)}94%{transform:rotate(2deg)}}
+@keyframes r56-reach{0%,100%{transform:none}26%,68%{transform:rotate(47deg)}84%{transform:rotate(-3deg)}}
+@keyframes r56-cross{0%,100%{transform:none}30%{transform:rotate(73deg)}38%,66%{transform:rotate(69deg)}86%{transform:rotate(-6deg)}94%{transform:rotate(2deg)}}
 @keyframes r56-turn{0%,38%,66%,100%{transform:none}46%,56%{transform:rotate(-16deg)}}
 @keyframes r56-grip1{0%,88%,100%{transform:none}18%,74%{transform:rotate(18deg)}32%,64%{transform:rotate(-3deg)}}
 @keyframes r56-grip2{0%,88%,100%{transform:none}18%,74%{transform:rotate(-18deg)}32%,64%{transform:rotate(3deg)}}
@@ -84,96 +84,96 @@
 @keyframes r56-gape1{0%,6%,54%,100%{transform:none}14%,30%{transform:rotate(24deg)}42%{transform:rotate(-5deg)}}
 @keyframes r56-gape2{0%,6%,54%,100%{transform:none}14%,30%{transform:rotate(-24deg)}42%{transform:rotate(5deg)}}
 @keyframes r56-wob-l{0%,90%,100%{transform:translateY(0) rotate(0)}10%,30%{transform:translateY(3px) rotate(0)}20%{transform:translateY(-1.5px) rotate(0)}40%{transform:translateY(1.5px) rotate(-3deg)}48%,62%{transform:translateY(1.5px) rotate(0)}72%{transform:translateY(1px) rotate(-1.2deg)}80%{transform:translateY(.6px) rotate(0)}}
-@keyframes r56-wob-r{0%,48%,62%,80%,90%,100%{transform:none}55%{transform:rotate(2.4deg)}85%{transform:rotate(.6deg)}}
+@keyframes r56-wob-r{0%,48%,62%,80%,90%,100%{transform:none}55%{transform:rotate(2.1deg)}85%{transform:rotate(.6deg)}}
 @keyframes r56-wide{0%,6%,40%,100%{transform:none}12%,28%{transform:scale(1.25)}}
 @keyframes r56-glow{0%,72%,100%{fill:#f6c354}12%,36%{fill:#ffe48a}}
 </style>
   <title id="valve-title">Valve — vacuum tube robot</title>
-  <desc id="valve-desc">A slim burnt orange robot whose head is a tall glass vacuum tube on a pinned slate base, with a glowing filament grid and two small eyes inside the glass, a row of knobs and a meter on its chest, ring jointed arms with pincers and legs on round feet.</desc>
-  <g class="bot" style="transform-origin:317px 476px"><g class="bot2" style="transform-origin:195px 476px">
+  <desc id="valve-desc">A broad burnt orange robot whose head is a tall glass vacuum tube on a pinned slate base, with a glowing filament grid and two small eyes inside the glass, a row of knobs and a meter on its chest, ring jointed arms with pincers and legs on round feet.</desc>
+  <g class="bot" style="transform-origin:329px 476px"><g class="bot2" style="transform-origin:183px 476px">
   <!-- Legs on round feet -->
-  <path d="M226 352v88m60-88v88" stroke="#697785" stroke-width="14"/>
-  <circle cx="226" cy="396" r="12" fill="#3d4853"/>
-  <circle cx="286" cy="396" r="12" fill="#3d4853"/>
-  <circle cx="226" cy="396" r="5" fill="#92a1b2"/>
-  <circle cx="286" cy="396" r="5" fill="#92a1b2"/>
-  <path d="M198 470v-4q0-28 28-28t28 28v4Zm60 0v-4q0-28 28-28t28 28v4Z" fill="#e27b31"/>
-  <path d="M238 441q16 8 16 25v4h-12v-4q0-16-4-25Zm60 0q16 8 16 25v4h-12v-4q0-16-4-25Z" fill="#b05d23"/>
-  <path d="M195 466h62v10h-62Zm60 0h62v10h-62Z" fill="#3d4853"/>
+  <path d="M214 352v88m84-88v88" stroke="#697785" stroke-width="14"/>
+  <circle cx="214" cy="396" r="12" fill="#3d4853"/>
+  <circle cx="298" cy="396" r="12" fill="#3d4853"/>
+  <circle cx="214" cy="396" r="5" fill="#92a1b2"/>
+  <circle cx="298" cy="396" r="5" fill="#92a1b2"/>
+  <path d="M186 470v-4q0-28 28-28t28 28v4Zm84 0v-4q0-28 28-28t28 28v4Z" fill="#e27b31"/>
+  <path d="M226 441q16 8 16 25v4h-12v-4q0-16-4-25Zm84 0q16 8 16 25v4h-12v-4q0-16-4-25Z" fill="#b05d23"/>
+  <path d="M183 466h62v10h-62Zm84 0h62v10h-62Z" fill="#3d4853"/>
   <g class="body" style="transform-origin:256px 354px">
-  <!-- Slim body with knobs and a meter -->
-  <rect x="206" y="214" width="100" height="140" rx="18" fill="#e27b31"/>
-  <path d="M224 214h64q18 0 18 18H206q0-18 18-18Z" fill="#f0995a"/>
-  <path d="M286 216q20 4 20 22v98q0 16-20 18Z" fill="#b05d23"/>
-  <circle cx="226" cy="262" r="11" fill="#3d4853"/>
+  <!-- Broad body with knobs and a meter -->
+  <rect x="183" y="214" width="146" height="140" rx="18" fill="#e27b31"/>
+  <path d="M201 214h110q18 0 18 18H183q0-18 18-18Z" fill="#f0995a"/>
+  <path d="M309 216q20 4 20 22v98q0 16-20 18Z" fill="#b05d23"/>
+  <circle cx="216" cy="262" r="11" fill="#3d4853"/>
   <circle cx="256" cy="262" r="11" fill="#3d4853"/>
-  <circle cx="286" cy="262" r="11" fill="#3d4853"/>
-  <circle cx="226" cy="262" r="6" fill="#697785"/>
+  <circle cx="296" cy="262" r="11" fill="#3d4853"/>
+  <circle cx="216" cy="262" r="6" fill="#697785"/>
   <circle cx="256" cy="262" r="6" fill="#697785"/>
-  <circle cx="286" cy="262" r="6" fill="#697785"/>
-  <path d="M226 252v5m30-5v5m30-5v5" stroke="#fffae0" stroke-width="3" stroke-linecap="round"/>
-  <rect x="220" y="286" width="72" height="40" rx="6" fill="#3d4853"/>
-  <rect x="226" y="292" width="60" height="28" rx="3" fill="#fff8de"/>
+  <circle cx="296" cy="262" r="6" fill="#697785"/>
+  <path d="M216 252v5m40-5v5m40-5v5" stroke="#fffae0" stroke-width="3" stroke-linecap="round"/>
+  <rect x="210" y="286" width="92" height="40" rx="6" fill="#3d4853"/>
+  <rect x="216" y="292" width="80" height="28" rx="3" fill="#fff8de"/>
   <path d="m234 302 4 4m10-9 2 5m12-6v5m12-4-2 5m14 0-4 4" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
   <g class="needle" style="transform-origin:256px 318px"><path d="m256 318 14-14" stroke="#b05d23" stroke-width="3" stroke-linecap="round"/></g>
   <circle cx="256" cy="318" r="4" fill="#3d4853"/>
   <!-- Ring jointed arms with pincers -->
-  <g class="arm-l" style="transform-origin:206px 240px">
-    <path d="M206 240l-34 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-    <circle cx="206" cy="240" r="16" fill="#3d4853"/>
-    <circle cx="206" cy="240" r="7" fill="#92a1b2"/>
-    <g class="fore-l" style="transform-origin:172px 270px">
-      <path d="M172 270v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-      <rect x="160" y="318" width="24" height="14" rx="4" fill="#b05d23"/>
+  <g class="arm-l" style="transform-origin:183px 240px">
+    <path d="M183 240l-44 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+    <circle cx="183" cy="240" r="16" fill="#3d4853"/>
+    <circle cx="183" cy="240" r="7" fill="#92a1b2"/>
+    <g class="fore-l" style="transform-origin:139px 270px">
+      <path d="M139 270v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+      <rect x="127" y="318" width="24" height="14" rx="4" fill="#b05d23"/>
       <g class="jaw" style="transform:scale(0)">
-        <g class="pl1" style="transform-origin:164px 332px"><path d="M164 332q-8 14 2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
-        <g class="pl2" style="transform-origin:182px 332px"><path d="M182 332q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+        <g class="pl1" style="transform-origin:131px 332px"><path d="M131 332q-8 14 2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+        <g class="pl2" style="transform-origin:149px 332px"><path d="M149 332q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
       </g>
     </g>
-    <circle cx="172" cy="270" r="12" fill="#3d4853"/>
-    <circle cx="172" cy="270" r="5" fill="#92a1b2"/>
+    <circle cx="139" cy="270" r="12" fill="#3d4853"/>
+    <circle cx="139" cy="270" r="5" fill="#92a1b2"/>
   </g>
-  <g class="arm-r" style="transform-origin:306px 240px">
-    <path d="M306 240l34 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-    <circle cx="306" cy="240" r="16" fill="#3d4853"/>
-    <circle cx="306" cy="240" r="7" fill="#92a1b2"/>
-    <g class="fore-r" style="transform-origin:340px 270px">
-      <path d="M340 270v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-      <g class="hand-r" style="transform-origin:340px 322px">
-        <rect x="328" y="318" width="24" height="14" rx="4" fill="#b05d23"/>
+  <g class="arm-r" style="transform-origin:329px 240px">
+    <path d="M329 240l44 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+    <circle cx="329" cy="240" r="16" fill="#3d4853"/>
+    <circle cx="329" cy="240" r="7" fill="#92a1b2"/>
+    <g class="fore-r" style="transform-origin:373px 270px">
+      <path d="M373 270v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+      <g class="hand-r" style="transform-origin:373px 322px">
+        <rect x="361" y="318" width="24" height="14" rx="4" fill="#b05d23"/>
         <g class="jaw" style="transform:scale(0)">
-          <g class="pr1" style="transform-origin:332px 332px"><path d="M332 332q-8 14 2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
-          <g class="pr2" style="transform-origin:350px 332px"><path d="M350 332q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+          <g class="pr1" style="transform-origin:365px 332px"><path d="M365 332q-8 14 2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+          <g class="pr2" style="transform-origin:383px 332px"><path d="M383 332q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
         </g>
       </g>
     </g>
-    <circle cx="340" cy="270" r="12" fill="#3d4853"/>
-    <circle cx="340" cy="270" r="5" fill="#92a1b2"/>
+    <circle cx="373" cy="270" r="12" fill="#3d4853"/>
+    <circle cx="373" cy="270" r="5" fill="#92a1b2"/>
   </g>
-  <g class="jaws"><path d="M164 332q-8 14 2 26m16-26q8 14-2 26M332 332q-8 14 2 26m16-26q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="jaws"><path d="M131 332q-8 14 2 26m16-26q8 14-2 26M365 332q-8 14 2 26m16-26q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
   <!-- Socket and pins -->
-  <rect x="214" y="206" width="84" height="12" rx="4" fill="#3d4853"/>
-  <path d="M228 196v12m18-12v12m20-12v12m18-12v12" stroke="#92a1b2" stroke-width="6"/>
+  <rect x="206" y="206" width="100" height="12" rx="4" fill="#3d4853"/>
+  <path d="M222 196v12m22-12v12m24-12v12m22-12v12" stroke="#92a1b2" stroke-width="6"/>
   <!-- Vacuum tube head -->
-  <g class="head" style="transform-origin:212px 200px"><g class="tube" style="transform-origin:300px 200px">
-  <rect x="212" y="170" width="88" height="30" rx="8" fill="#3d4853"/>
-  <rect x="212" y="170" width="88" height="8" rx="4" fill="#697785"/>
+  <g class="head" style="transform-origin:204px 200px"><g class="tube" style="transform-origin:308px 200px">
+  <rect x="204" y="170" width="104" height="30" rx="8" fill="#3d4853"/>
+  <rect x="204" y="170" width="104" height="8" rx="4" fill="#697785"/>
   <path d="M250 60q6-10 12 0Z" fill="#c9eef8"/>
-  <path d="M218 172V96q0-38 38-38t38 38v76Z" fill="#c9eef8"/>
-  <path d="M272 62q22 10 22 34v76h-14V96q0-22-8-34Z" fill="#a6dfee"/>
-  <path d="M236 90v70m40-70v70" stroke="#92a1b2" stroke-width="3"/>
-  <path class="fil" d="M242.5 92h3v34h-3Zm8 0h3v34h-3Zm8 0h3v34h-3Zm8 0h3v34h-3Z" fill="#f6c354"/>
-  <path d="M240 100h32m-32 12h32m-32 12h32" stroke="#bc943d" stroke-width="2"/>
-  <rect x="234" y="84" width="44" height="6" rx="2" fill="#3d4853"/>
-  <rect x="230" y="134" width="52" height="22" rx="11" fill="#3d4853"/>
+  <path d="M210 172V96q0-38 46-38t46 38v76Z" fill="#c9eef8"/>
+  <path d="M280 62q22 10 22 34v76h-16V96q0-22-6-34Z" fill="#a6dfee"/>
+  <path d="M230 90v70m52-70v70" stroke="#92a1b2" stroke-width="3"/>
+  <path class="fil" d="M239.5 92h3v34h-3Zm10 0h3v34h-3Zm10 0h3v34h-3Zm10 0h3v34h-3Z" fill="#f6c354"/>
+  <path d="M236 100h40m-40 12h40m-40 12h40" stroke="#bc943d" stroke-width="2"/>
+  <rect x="230" y="84" width="52" height="6" rx="2" fill="#3d4853"/>
+  <rect x="226" y="134" width="60" height="22" rx="11" fill="#3d4853"/>
   <g class="eyes">
-  <circle cx="245" cy="145" r="7" fill="#79d6eb"/>
-  <circle cx="267" cy="145" r="7" fill="#79d6eb"/>
-  <path d="M250 140a7 7 0 0 1-5 12 7 7 0 0 0 5-12Zm22 0a7 7 0 0 1-5 12 7 7 0 0 0 5-12Z" fill="#4fb0c5"/>
-  <circle cx="247" cy="143" r="2.5" fill="#fffae0"/>
-  <circle cx="269" cy="143" r="2.5" fill="#fffae0"/>
+  <circle cx="243" cy="145" r="7" fill="#79d6eb"/>
+  <circle cx="269" cy="145" r="7" fill="#79d6eb"/>
+  <path d="M248 140a7 7 0 0 1-5 12 7 7 0 0 0 5-12Zm26 0a7 7 0 0 1-5 12 7 7 0 0 0 5-12Z" fill="#4fb0c5"/>
+  <circle cx="245" cy="143" r="2.5" fill="#fffae0"/>
+  <circle cx="271" cy="143" r="2.5" fill="#fffae0"/>
   </g>
-  <path d="M227 152V100" stroke="#fffae0" stroke-width="6" stroke-linecap="round"/>
+  <path d="M219 152V100" stroke="#fffae0" stroke-width="6" stroke-linecap="round"/>
   </g></g>
   </g>
   </g></g>
