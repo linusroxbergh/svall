@@ -21,9 +21,21 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
   return [...words, t.agent.sessionId].join(' ');
 }
 
-/** The command that starts a new session with the launch flags `revive`, as `reviveCommand` built it for `sessionId`, resumes with. */
+/**
+ * The command that resumes a session from the folder `cwd`, a revive opens its window in: one Codex last recorded working
+ * in a folder this machine lacks, as a handover between homes leaves it, resumes there with that folder, which it then
+ * records, so the next revive needs nothing more. Any other is `revive` as it is.
+ */
+export function resumeHere(revive: string, cwd: string, recorded: string | undefined): string {
+  const m = /^codex resume -c tui\.resume_cwd=session( .*)$/.exec(revive);
+  if (!m || !recorded || fs.existsSync(recorded)) return revive;
+  return `codex resume -C ${shq(cwd)} -c tui.resume_cwd=current${m[1]}`;
+}
+
+/** The command that starts a new session with the launch flags `revive`, as `reviveCommand` or `resumeHere` built it for `sessionId`, resumes with. */
 export function freshCommand(revive: string, kind: AgentKind, sessionId: string): string {
-  const resume = kind === 'codex' ? /^codex resume -c tui\.resume_cwd=session(.*) (\S+)$/ : kind === 'opencode' ? /^opencode(.*) -s (\S+)$/ : /^claude(.*) --resume (\S+)$/;
+  const resume = kind === 'codex' ? /^codex resume(?: -C '(?:[^']|'\\'')*')? -c tui\.resume_cwd=(?:session|current)(.*) (\S+)$/
+    : kind === 'opencode' ? /^opencode(.*) -s (\S+)$/ : /^claude(.*) --resume (\S+)$/;
   const m = resume.exec(revive);
   return m?.[2] === sessionId ? `${kind}${m[1]}` : kind;
 }
@@ -47,6 +59,11 @@ export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
 export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, background agents and background commands '
   + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
   + 'and carry on with the task.';
+
+/** The resume note, saying also that the session's folder `moved` to another path, which the conversation so far does not know. */
+export const resumeNote = (moved?: { from: string; to: string }): string => (moved
+  ? `${RESUME_NOTE} Your working folder moved from ${moved.from} to ${moved.to}: paths earlier in this conversation under ${moved.from} are now under ${moved.to}.`
+  : RESUME_NOTE);
 
 // a revive's SessionStart gets the whole brief, so what the session was told before is never read again
 export const dropBrief = (t: TerminalSlot): void => { if (t.agent) delete t.agent.brief; };

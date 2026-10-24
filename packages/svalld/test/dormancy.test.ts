@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Character, FleetState } from '@svall/protocol';
-import { drowsy, freshCommand, markDormant, rememberFlags, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
+import { drowsy, freshCommand, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, RESUME_NOTE } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -252,5 +252,31 @@ describe('freshCommand', () => {
   it('starts the bare agent from a resume of another session, or of none', () => {
     expect(freshCommand(`claude --effort 'high' --resume ${SID}`, 'claude', 'another')).toBe('claude');
     expect(freshCommand('', 'codex', SID)).toBe('codex');
+  });
+
+  it('reads the launch flags past the folder a Codex resume after a move names', () => {
+    expect(freshCommand(`codex resume -C '/home/ada/it'\\''s here' -c tui.resume_cwd=current --yolo -m 'gpt-6' ${SID}`, 'codex', SID)).toBe("codex --yolo -m 'gpt-6'");
+    expect(freshCommand(resumeHere(`codex resume -c tui.resume_cwd=session --yolo ${SID}`, '/home/ada/a b', '/nonexistent/a b'), 'codex', SID)).toBe('codex --yolo');
+  });
+});
+
+describe('resumeHere', () => {
+  const plain = `codex resume -c tui.resume_cwd=session -m 'gpt-6' ${SID}`;
+
+  it('resumes Codex in the folder the window opens in while the one its rollout last recorded is not on this machine', () => {
+    expect(resumeHere(plain, "/home/ada/it's app", '/Users/ada/app')).toBe(`codex resume -C '/home/ada/it'\\''s app' -c tui.resume_cwd=current -m 'gpt-6' ${SID}`);
+  });
+
+  it('leaves a resume whose recorded folder is here, or unknown, and any other agent\'s, as it is', () => {
+    expect(resumeHere(plain, '/home/ada/app', os.tmpdir())).toBe(plain);
+    expect(resumeHere(plain, '/home/ada/app', undefined)).toBe(plain);
+    expect(resumeHere(`claude --resume ${SID}`, '/home/ada/app', '/Users/ada/app')).toBe(`claude --resume ${SID}`);
+  });
+});
+
+describe('resumeNote', () => {
+  it('tells a session whose folder moved where its paths are now', () => {
+    expect(resumeNote()).toBe(RESUME_NOTE);
+    expect(resumeNote({ from: '/Users/ada/app', to: '/home/ada/app' })).toBe(`${RESUME_NOTE} Your working folder moved from /Users/ada/app to /home/ada/app: paths earlier in this conversation under /Users/ada/app are now under /home/ada/app.`);
   });
 });
