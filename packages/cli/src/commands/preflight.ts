@@ -42,7 +42,7 @@ async function tmux(d: PreflightDeps): Promise<Check> {
       : { name: 'tmux', status: 'ok', detail: v };
   } catch (e) {
     const install = linux ? 'sudo apt install tmux' : 'brew install tmux';
-    return { name: 'tmux', status: 'fail', detail: missing(e) ? `not found on PATH: ${install}` : (e as Error).message };
+    return missing(e) ? { name: 'tmux', status: 'fail', detail: `not found on PATH: ${install}`, run: install } : { name: 'tmux', status: 'fail', detail: (e as Error).message };
   }
 }
 
@@ -81,14 +81,15 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   }
   if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
   const login = await signedIn(d, kind);
+  const signIn = login === false ? { run: a.loginHint } : {};
   if ((d.handover || !a.handoverFloor) && !versionOk(a, version)) {
     const old = `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}`;
-    return { name: kind, status: 'warn', detail: login === false ? `${old}; not signed in: ${a.loginHint}` : old };
+    return { name: kind, status: 'warn', detail: login === false ? `${old}; not signed in: ${a.loginHint}` : old, ...signIn };
   }
   if (login === undefined) return { name: kind, status: 'warn', detail: `${version}; couldn't tell whether it is signed in` };
   return login
     ? { name: kind, status: 'ok', detail: `${version}, signed in` }
-    : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` };
+    : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}`, ...signIn };
 }
 
 async function agentChecks(d: PreflightDeps): Promise<Check[]> {
@@ -126,7 +127,8 @@ const execFileP = promisify(execFile);
 const unitAgentPath = (): string =>
   unitPath({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX });
 
-export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform): PreflightDeps {
+/** `agentEnv`: the agent homes the daemon is given, which every call on the daemon's PATH runs with. */
+export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform, agentEnv: Record<string, string> = {}): PreflightDeps {
   let mainAgent: AgentKind | undefined;
   try { mainAgent = fleetMainAgent(home, configuredMainAgent(resolvePaths(home))); } catch { /* doctor's config check reports it */ }
   // a Linux machine runs Svall only to take fleets handed over
@@ -136,7 +138,7 @@ export function realPreflightDeps(home: string, platform: NodeJS.Platform = proc
     // a login probe, the one call given the fleet's keys, must not hold up install when it hangs
     run: async (cmd, args, o) => (await execFileP(cmd, args, {
       timeout: o?.env ? 5_000 : 10_000,
-      ...((o?.path || o?.env) && { env: { ...process.env, ...o.env, ...(o.path && { PATH: o.path }) } }),
+      ...((o?.path || o?.env) && { env: { ...process.env, ...(o.path && agentEnv), ...o.env, ...(o.path && { PATH: o.path }) } }),
     })).stdout,
     node: process.version,
     pathEnv: process.env.PATH ?? '',

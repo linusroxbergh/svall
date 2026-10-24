@@ -29,6 +29,7 @@ describe('preflight of an agent CLI below its version floor', () => {
     expect(claude).toEqual({
       name: 'claude', status: 'warn',
       detail: '2.1.250 (Claude Code): Svall needs 2.1.251 or newer; update Claude Code; not signed in: claude auth login',
+      run: 'claude auth login',
     });
     expect(d.calls).toContain('claude auth status --json');
   });
@@ -51,7 +52,7 @@ describe('preflight of OpenCode', () => {
     const opencode = async (listed: object[]) => (await preflight(deps({
       'opencode --version': 'opencode v2.0.27\n', 'opencode auth list --standalone --format json': `${JSON.stringify(listed)}\n`,
     }))).find((c) => c.name === 'opencode');
-    expect(await opencode([])).toEqual({ name: 'opencode', status: 'warn', detail: 'opencode v2.0.27, not signed in: opencode auth login' });
+    expect(await opencode([])).toEqual({ name: 'opencode', status: 'warn', detail: 'opencode v2.0.27, not signed in: opencode auth login', run: 'opencode auth login' });
     expect((await opencode([{ id: 'mcp_linear' }]))?.status).toBe('warn');
     expect(await opencode([{ id: 'openai' }])).toEqual({ name: 'opencode', status: 'ok', detail: 'opencode v2.0.27, signed in' });
   });

@@ -35,7 +35,8 @@ const PROVISION_TIMEOUT = 120_000;
 const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
-export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string };
+// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
+export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string };
 // stopped: the step a run failed at, past which nothing ran
 export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
 
@@ -58,10 +59,10 @@ export type AddOptions = { name: string; ssh: string; release?: string; allowUns
 
 /** A step that could not finish, with the one thing the user can do about it. */
 class StepError extends Error {
-  constructor(readonly detail: string, readonly action?: string) { super(detail); }
+  constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string };
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string };
 
 /** The step events a host command emits, and the actions they leave the user with. */
 class Runner {
@@ -84,13 +85,13 @@ class Runner {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
       this.failed = step;
       this.todo(e.action ?? e.detail);
-      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}) });
+      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}) });
       throw e;
     }
     if (r.action) this.todo(r.action);
     this.emit({
       step, status: r.status ?? 'ok',
-      ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}),
+      ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}),
     });
     return r.value;
   }
@@ -149,6 +150,7 @@ async function osProbe(master: SshMaster): Promise<Outcome<{ arch: string }>> {
 
 // nothing here is ever run: an action names the machine to run it on, and the user runs it
 const onThere = (destination: string, how: string): string => `ssh ${destination}, then ${how}`;
+const there = (destination: string, command: string): { action: string; run: string } => ({ action: onThere(destination, command), run: command });
 
 function toolsProbe(out: string, destination: string): Outcome<void> {
   const found = new Map(out.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/) as [string, string]));
@@ -158,7 +160,10 @@ function toolsProbe(out: string, destination: string): Outcome<void> {
   if (missing.some((t) => t === 'systemctl' || t === 'loginctl')) {
     throw new StepError(`${missing.join(', ')} missing: this machine has no systemd user services, which the companion needs`);
   }
-  if (packages.length) throw new StepError(`${missing.join(', ')} missing`, onThere(destination, `sudo apt install ${packages.join(' ')}`));
+  if (packages.length) {
+    const apt = there(destination, `sudo apt install ${packages.join(' ')}`);
+    throw new StepError(`${missing.join(', ')} missing`, apt.action, apt.run);
+  }
   throw new StepError(`${missing.join(', ')} missing`, onThere(destination, 'install Tailscale from https://tailscale.com/download/linux'));
 }
 
@@ -183,7 +188,7 @@ function lingerProbe(out: string, user: string, destination: string): Outcome<bo
     ? { value: true, detail: `${tried ? 'turned on' : 'on'} for ${user}: the fleet keeps running after you log out` }
     : {
       value: false, status: 'warn', detail: `off for ${user}${tried ? ', and the system refused to turn it on' : ''}: the fleet stops when you log out`,
-      action: onThere(destination, `sudo loginctl enable-linger ${user}`),
+      ...there(destination, `sudo loginctl enable-linger ${user}`),
     };
 }
 
@@ -206,7 +211,8 @@ async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[
   }
 }
 
-type RemoteDoctor = { checks: Check[] };
+// daemonEnv: the agent homes the login shell there sets, which setup hands the daemon; a doctor from before it says none
+type RemoteDoctor = { checks: Check[]; daemonEnv?: Record<string, string> };
 type RemoteVersion = { release: string; protocol: number; machineId: string; signed?: boolean };
 
 function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<RemoteDoctor> {
@@ -219,27 +225,29 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   });
   const linger = named('linger');
   const command = linger?.status === 'warn' ? /(?:sudo )?loginctl enable-linger \S+/.exec(linger.detail)?.[0] : undefined;
-  const action = command ? onThere(destination, command) : undefined;
-  return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
+  return { value: report, detail: units.join('; '), ...(command ? { status: 'warn' as const, ...there(destination, command) } : {}) };
 }
 
 // the companion doctor's checks of each agent's Svall hooks and of Codex's sandbox, whose details end with what to do there
 const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['codex hooks', 'codex sandbox'], opencode: ['opencode plugin'] };
 
 /**
- * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of, and the
- * companion doctor's checks of that agent: every one of them is something to go and do, never something that stops setup.
+ * The agent checks, on the PATH and with the agent homes the companion's units run with, which a login over ssh does not
+ * see all of, and the companion doctor's checks of that agent: every one of them is something to go and do, never
+ * something that stops setup.
  */
 async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<void> {
   const PATH = unitPath({ runtime: releaseRuntime(path.posix.join(o.svallBase, 'current')), homedir: o.home, prefix: o.svallBase });
+  const homes = Object.entries(o.report.daemonEnv ?? {}).filter(([k]) => /^[A-Z][A-Z0-9_]*$/.test(k)).map(([k, v]) => shq(`${k}=${v}`));
   for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
-      const call = (args: string[]) => master.run(['env', shq(`PATH=${PATH}`), a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
-      const todo = (detail: string, how: string): Outcome<void> => ({ value: undefined, status: 'warn', detail, action: `ssh ${o.destination}, then ${how}` });
+      const call = (args: string[]) => master.run(['env', shq(`PATH=${PATH}`), ...homes, a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
+      const todo = (detail: string, how: string, command?: string): Outcome<void> =>
+        ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
       const v = await call(['--version']);
-      // env exits 127 for a program it finds nowhere on that PATH
-      if (v.code === 127) return todo(`${kind} is not installed on this machine`, `install ${a.label}`);
+      // env exits 127 for a program it finds nowhere on that PATH; setup writes Svall's hooks only for the agents it finds
+      if (v.code === 127) return todo(`${kind} is not installed on this machine`, `install ${a.label}, then svall setup`, a.installCommand);
       const version = v.stdout.trim().split('\n')[0];
       if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
       if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
@@ -248,9 +256,10 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
         const checks = o.report.checks.filter((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
         if (!checks.length) return { value: undefined, detail: `${version}, logged in` };
         const how = (detail: string) => { const at = detail.lastIndexOf(': '); return at < 0 ? detail : detail.slice(at + 2); };
-        return todo(`${version}, logged in; ${checks.map((c) => `the ${c.name} check there says ${c.detail}`).join('; ')}`, checks.map((c) => how(c.detail)).join('; and '));
+        return todo(`${version}, logged in; ${checks.map((c) => `the ${c.name} check there says ${c.detail}`).join('; ')}`, checks.map((c) => how(c.detail)).join('; and '),
+          checks.find((c) => c.run)?.run);
       }
-      return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);
+      return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint, a.loginHint);
     });
   }
 }
@@ -526,8 +535,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   return { machine: entry.record.name, checks, ...(release && { release }) };
 }
 
-const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } =>
-  ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; ') });
+const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
+  ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });
 
 const rollbackTo = (name: string): string => `svall host upgrade ${name} --rollback <release> puts back a release kept there`;
 
