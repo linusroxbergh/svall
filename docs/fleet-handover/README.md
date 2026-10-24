@@ -21,6 +21,7 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
   (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux and passes at every integrated head; a
   release installs fresh on x86-64 and arm64; real Claude, Codex and OpenCode sessions resumed both ways on
   linus-vault at 10447557, 18082655 and 14377218 (`ledger/pr2-onmachine-report-10447557.md`).
+- **Shipped:** PR #2 merged to main on 2026-10-24 (fb27df87, main 0.14.0 merged in first) and released as Svall 0.15.0 (1077), notarized, with the flag off by default.
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
@@ -48,14 +49,12 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 Paths inside the ledger point at the old locations. `.superpowers/sdd/2026-09-20-fleet-handover/` is
 now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now `spec.md` / `plan.md`.
 
-## Owed before this can ship
+## Owed before the flag defaults on
 
-- **The by-eye pass in the built app at the final head:** Add Machine, the Machines list and switch, the
+- **The by-eye pass in the released app (0.15.0):** Add Machine, the Machines list and switch, the
   review step and Move, the sheet rebuilding after a relaunch, terminal re-attach after an SSH drop, and a
   round trip both ways on linus-vault. `ledger/pr2-onmachine-env.md` and `/Users/Shared/svall-m4/kit/STEPS.md`
   have the steps and how to open the test build against the test HOME without touching the owner's own app.
-- **A notarized `pnpm release` dry run.** Merging puts the companion into the next public DMG whatever the
-  flag says; Gatekeeper, the carried rsync and node have not been through notarization.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
   needs `--allow-unsigned`; a release tag stops at once when the committed signers don't pin its key.
 - **CI.** Actions jobs do not start on this repo because of billing. `ci.yml` has no Playwright step, and its
