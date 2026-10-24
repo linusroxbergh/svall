@@ -138,6 +138,13 @@ test("the dock shows the machine's name and Handover whole beside the utilities 
     expect(await box.evaluate((e) => e.scrollWidth <= e.clientWidth), id).toBe(true);
   }
   await expect(page.getByTestId('load-tab')).toBeVisible();
+  // the collapsed rail stacks them as one chip
+  await page.getByTestId('sidebar-hide').click();
+  await expect(page.getByTestId('utility-dock')).toHaveAttribute('data-collapsed', 'true');
+  const owner = (await page.getByTestId('owner-badge').boundingBox())!;
+  const tab = (await page.getByTestId('handover-tab').boundingBox())!;
+  expect([tab.x, tab.width, tab.height]).toEqual([owner.x, owner.width, owner.height]);
+  expect(tab.y).toBeCloseTo(owner.y + owner.height, 0);
 });
 
 test('Handover is a utility tab: its label shows whole where the dock has room for it, and its glyph alone where not', async ({ page, svall }) => {
@@ -154,6 +161,10 @@ test('Handover is a utility tab: its label shows whole where the dock has room f
   await page.mouse.move(grip.x + 120, y, { steps: 4 });
   await page.mouse.up();
   await expect(label).toBeVisible();
+  const box = (await tab.boundingBox())!;
+  const glyph = (await tab.locator('.use-glyph').boundingBox())!;
+  expect(Math.abs(glyph.x + glyph.width / 2 - (box.x + box.width / 2))).toBeLessThanOrEqual(0.5);
+  expect(glyph.y + glyph.height).toBeLessThan((await label.boundingBox())!.y);
   for (const id of ['handover-tab', 'load-tab', 'settings-open']) {
     expect(await page.getByTestId(id).locator('.use-tab-label').evaluate((e) => e.scrollWidth <= e.clientWidth), id).toBe(true);
   }

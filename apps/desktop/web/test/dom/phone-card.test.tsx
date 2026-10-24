@@ -56,6 +56,7 @@ test('pins, removes and adds context as the whole list', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Remove plan.md' }));
   expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr] });
   expect(screen.queryByRole('button', { name: 'Remove the PR' })).toBeNull();
+  expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => screen.getByLabelText('Add a url or path').getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   fireEvent.change(screen.getByLabelText('Add a url or path'), { target: { value: ' https://herdr.dev/docs ' } });
   fireEvent.submit(screen.getByLabelText('Add a url or path').closest('form')!);
   expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr, plan, { kind: 'other', ref: 'https://herdr.dev/docs', label: '', source: 'manual' }] });

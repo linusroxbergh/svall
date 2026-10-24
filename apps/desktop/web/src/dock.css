@@ -38,7 +38,8 @@
 .use-owner + .use-handover:hover { background: var(--fill-2); }
 .use[data-collapsed="true"] .use-tab, .use[data-collapsed="true"] .use-owner { flex: none; width: 100%; height: 36px; }
 .use[data-collapsed="true"] .use-owner:has(+ .use-handover) { border-radius: var(--r-sm) var(--r-sm) 0 0; }
-.use[data-collapsed="true"] .use-owner + .use-handover { margin: calc(-1 * var(--sp-xs)) 0 0; border-radius: 0 0 var(--r-sm) var(--r-sm); }
+/* content-box like the owner's span, so the rail's two halves of the chip are one size */
+.use[data-collapsed="true"] .use-owner + .use-handover { box-sizing: content-box; margin: calc(-1 * var(--sp-xs)) 0 0; border-radius: 0 0 var(--r-sm) var(--r-sm); }
 .use[data-collapsed="true"] .use-tab-label { display: none; }
 .use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
   padding: var(--sp-2xl) var(--sp-3xl); pointer-events: auto; }
