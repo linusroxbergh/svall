@@ -83,6 +83,7 @@ export const PATH_FIELDS: Record<string, PathField> = {
   'MachineRecord.home': LOCAL,
   'MachineRecord.svallBase': LOCAL,
   'TransferManifestV1.home': LOCAL,
+  'TransferManifestV1.destinationHome': LOCAL,
   'TransferManifestV1.git[].commonDir': LOCAL,
   'TransferManifestV1.git[].main.path': LOCAL,
   'TransferManifestV1.git[].main.gitDir': LOCAL,

@@ -202,6 +202,7 @@ export async function buildManifest(
     fromMachineId: inventory.fromMachineId,
     toMachineId: inventory.toMachineId,
     home: inventory.home,
+    destinationHome: inventory.destinationHome,
     fleet: inventory.fleet,
     snapshot: inventory.snapshot,
     excludes: inventory.excludes,

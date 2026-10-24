@@ -221,7 +221,7 @@ const MACHINES = {
   },
 };
 const MANIFEST = {
-  version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: UUID_A, toMachineId: UUID_B, home: '/Users/linus',
+  version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: UUID_A, toMachineId: UUID_B, home: '/Users/linus', destinationHome: '/Users/linus',
   fleet: FleetConfig.parse({ id: UUID_A }), snapshot: emptyState(), excludes: [],
   roots: [{ id: 'r_1', kind: 'cwd', entry: 'dir', path: '/Users/linus/p', files: [] }],
   sessions: [],

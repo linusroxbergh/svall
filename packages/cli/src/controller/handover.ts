@@ -562,7 +562,8 @@ export class Handover {
       const wrong = m.transactionId !== tx ? `handover ${m.transactionId}` : m.generation !== generation ? `generation ${m.generation}`
         : m.fromMachineId !== source.route.machineId || m.toMachineId !== destination.route.machineId ? `a move from ${m.fromMachineId} to ${m.toMachineId}`
           : m.fleet.id !== this.d.fleetId ? `fleet ${m.fleet.id}`
-            : m.home !== source.home ? 'a home other than the one it was sent' : undefined;
+            : m.home !== source.home ? 'a home other than the one it was sent'
+              : m.destinationHome !== destination.home ? 'a destination home other than the one it was sent' : undefined;
       if (wrong) throw new Stopped('freeze', `${source.route.name} froze with a manifest for ${wrong}`, PRE_COMMIT);
       const digest = manifestDigest(m);
       if (this.journal.manifestDigest && digest !== this.journal.manifestDigest) {

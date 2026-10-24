@@ -239,6 +239,21 @@ describe('one home on both machines', () => {
     expect(out).toMatchObject({ status: 'interrupted', phase: 'freeze', error: expect.stringContaining('a home other than the one it was sent') });
     expect(w.ops).not.toContain('trift:handover.claim');
   });
+
+  it('stops before any root is claimed when the source froze for a destination home other than the one it was sent', async () => {
+    const w = new World();
+    const freeze = w.source.answers['handover.freeze'];
+    w.source.answers['handover.freeze'] = (async (p: never) => {
+      const r = await (freeze as (x: never) => Promise<{ manifest: FrozenManifest }>)(p);
+      const manifest = { ...r.manifest, destinationHome: '/home/ada' };
+      w.source.kept = manifest;
+      w.source.journal!.digest = manifestDigest(manifest);
+      return { manifest };
+    }) as never;
+    const out = await controller(w).start(trift, {});
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'freeze', error: expect.stringContaining('a destination home other than the one it was sent') });
+    expect(w.ops).not.toContain('trift:handover.claim');
+  });
 });
 
 describe('preflight', () => {

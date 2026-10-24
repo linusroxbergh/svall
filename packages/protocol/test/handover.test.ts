@@ -13,6 +13,7 @@ const MANIFEST = {
   fromMachineId: UUID_B,
   toMachineId: UUID_A,
   home: '/Users/linus',
+  destinationHome: '/Users/linus',
   fleet: FleetConfig.parse({ id: UUID_A }),
   snapshot: emptyState(),
   excludes: ['node_modules/'],

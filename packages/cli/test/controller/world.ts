@@ -44,7 +44,7 @@ export function manifestFor(tx: string | undefined, from = mac, to = trift): Fro
   });
   return {
     version: TRANSFER_SCHEMA_VERSION, transactionId: tx as string, generation: G, fromMachineId: from, toMachineId: to,
-    home: HOME, fleet: FleetConfig.parse({ id: fleetId, gatewayMachineId: trift }),
+    home: HOME, destinationHome: HOME, fleet: FleetConfig.parse({ id: fleetId, gatewayMachineId: trift }),
     snapshot: FleetState.parse(snapshot), excludes: ['node_modules/', 'logs/'],
     roots: [
       { id: 'r_app', kind: 'repo', entry: 'dir', path: at('app'), files: [file('a.txt'), file('Readme.md'), file('README.md')] },
