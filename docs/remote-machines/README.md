@@ -32,6 +32,5 @@ The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` co
 
 ## How it is distributed
 
-Svall.app carries the x86-64 Linux companion `svall host add` installs ([arm64](setup.md#the-companion-release) takes
-one more command). Releases are signed, and every install checks the signature;
-[the security notes](../security/fleet-handover.md) cover how.
+Svall.app carries the x86-64 and arm64 Linux companions `svall host add` installs. Releases are signed, and every
+install checks the signature; [the security notes](../security/fleet-handover.md) cover how.

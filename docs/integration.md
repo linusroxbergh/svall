@@ -172,7 +172,7 @@ scripts/integration/fresh-install.sh --out /tmp/fresh-install
 
 | Option | What it does |
 | --- | --- |
-| `--release <dir>`, `--upgrade <dir>` | Use these two releases, each a folder `scripts/release-build.sh` wrote, instead of building both from the checkout. Only macOS builds them, so elsewhere both are needed. A release built with `--url-base http://127.0.0.1:<port>/<path>` is served from its folder and downloaded; any other is installed by path. |
+| `--release <dir>`, `--upgrade <dir>` | Use these two releases, each a folder `scripts/release-build.sh` wrote, instead of building both from the checkout. Only macOS builds them, so elsewhere both are needed. A release built with `--url-base http://127.0.0.1:<port>/<path>` is served from its folder and downloaded, one built with `--url-base companions` carries its companions as Svall.app does, and any other is installed by path. |
 | `--out <dir>` | Where the logs go (default a new folder under the system temp folder). |
 | `--keep` | Leave the machine running, and the controller's home and ssh files in place. |
 
@@ -205,6 +205,8 @@ logs.
    - A release whose manifest pins its companion on this host's loopback takes the app's route: no `--release`, so
      the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
      caches it. The release step names that URL, and the cached file is the pinned companion.
+   - A release that carries its companions, as Svall.app does, takes the same route from its own tree: the release step
+     names the companion's `file:` URL inside it.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
    - Either way, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The

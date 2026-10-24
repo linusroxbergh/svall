@@ -3,7 +3,8 @@
 # carries (`svall host add`), then `svall host upgrade` to a second release and `svall setup --rollback` back. It builds
 # both releases from this checkout with scripts/release-build.sh (macOS only) unless --release and --upgrade name
 # folders that build wrote, and runs fresh-install.mjs, which says what it checks. A release built with a --url-base on
-# http://127.0.0.1:<port>/ is served by the run and downloaded, as the app does; any other is installed by path.
+# http://127.0.0.1:<port>/ is served by the run and downloaded, one built with --url-base companions carries its
+# companions and takes them from its own tree, as Svall.app does, and any other is installed by path.
 #
 #   scripts/integration/fresh-install.sh [--release <dir> --upgrade <dir>] [--out <dir>] [--keep]
 #

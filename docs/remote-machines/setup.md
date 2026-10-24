@@ -134,25 +134,9 @@ not logged in. Put the key in the fleet's `.env`, which the checks read each tim
 ### The companion release
 
 `svall host add` installs the companion matching the Mac's release exactly: a handover needs the same release on both
-machines. It takes the one Svall.app carries, checks it against the digest the app's release pins, and checks its
-signature against the keys the app's release lists. The `release` step says whether the companion is signed, and
-`svall host doctor` says it of the machine's release and the Mac's.
-
-- Svall.app carries a companion for x86-64 Linux only. For an arm64 machine, take the one of the same release from
-  its GitHub release, the tag `v<version>` that `svall version` shows:
-
-  ```sh
-  curl -fLO https://github.com/linusroxbergh/svall/releases/download/v<version>/svall-companion-v<version>-linux-arm64.tar.gz
-  svall host add studio --ssh ada@studio --release svall-companion-v<version>-linux-arm64.tar.gz
-  ```
-
-- A local `pnpm app:build` without `SVALL_RELEASE_KEY` is unsigned, and is named by `git describe`. Build its arm64
-  companion from the same checkout under that name, and add `--allow-unsigned`:
-
-  ```sh
-  pnpm release:companion --out /tmp/companions --arch arm64 --version <name>
-  svall host add studio --ssh ada@studio --release /tmp/companions/svall-companion-<name>-linux-arm64.tar.gz --allow-unsigned
-  ```
+machines. It takes the one Svall.app carries for the machine's architecture, x86-64 or arm64, checks it against the
+digest the app's release pins, and checks its signature against the keys the app's release lists. The `release` step
+says whether the companion is signed, and `svall host doctor` says it of the machine's release and the Mac's.
 
 - `--release <archive>` installs that archive instead. A signed one must be signed by a key the Mac's release lists;
   `--allow-unsigned` accepts one without a signature. See [the security notes](../security/fleet-handover.md) for how

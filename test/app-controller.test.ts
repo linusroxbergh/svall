@@ -55,7 +55,11 @@ describe('the controller release build.sh carries', () => {
     expect(carry('release', 'release').calls.join('\n')).toContain('/Contents/Resources/release/');
   });
 
-  it('pins the companion it carries by a path inside the release, never by one on the builder\'s disk', () => {
+  it('carries a companion for each architecture a Linux machine can have', () => {
+    expect(carry('release', 'release').calls.find((c) => c.includes('build-companion.mjs'))).toContain(' --arch x64,arm64 ');
+  });
+
+  it('pins the companions it carries by a path inside the release, never by one on the builder\'s disk', () => {
     const { mac, calls } = carry('release', 'release');
     const controller = calls.find((c) => c.includes('build-controller.mjs'));
     expect(controller).toContain(' --companion-url-base companions ');
