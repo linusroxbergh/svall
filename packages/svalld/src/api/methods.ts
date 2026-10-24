@@ -65,6 +65,7 @@ export const handlers: Handlers = {
   'robots.set': (p, { fleet }) => { fleet.setRobots(p.enabled); return {}; },
   'dormancy.set': (p, { fleet }) => { fleet.setDormancy(p.hours); return {}; },
   'mainAgent.set': (p, { fleet }) => { fleet.setMainAgent(p.agent); return {}; },
+  'model.set': (p, { fleet }) => { fleet.setModel(p.of, p.model); return {}; },
   'fleets.list': async (_p, { fleets }) => ({ fleets: await fleets.list() }),
   'fleets.create': async (p, { fleets }) => ({ home: await fleets.create(p.name) }),
   'fleets.start': async (p, { fleets }) => ({ home: await fleets.start(p.home) }),

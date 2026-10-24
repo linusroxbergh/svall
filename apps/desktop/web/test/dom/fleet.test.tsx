@@ -142,12 +142,12 @@ test('a character made on mission control from the phone starts the home command
   render(<Fleet onOpen={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'New robot on mission control' }));
   await act(async () => {});
-  expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model sonnet' });
+  expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model opus' });
 
   render(<NewCharacter islandId="home" onClose={() => {}} onCreated={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'Create' }));
   await act(async () => {});
-  expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model sonnet' });
+  expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model opus' });
   call.mockImplementation(() => Promise.resolve({}));
 });
 

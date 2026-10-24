@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
+import { AGENTS } from '../src/agents.js';
 import { agentKindOf, isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
@@ -60,6 +61,12 @@ describe('withStandalone', () => {
     expect(withStandalone('codex resume --no-daemon s1')).toBe('codex resume --no-daemon s1');
     expect(withStandalone('codex --remote unix://')).toBe('codex --remote unix://');
     expect(withStandalone("codex --add-dir '/w/a --remote b'")).toBe("codex --no-daemon -c check_for_update_on_startup=false --add-dir '/w/a --remote b'");
+  });
+
+  it("launches mission control's crew on the model Settings picked", () => {
+    expect(withStandalone(AGENTS.claude.crewCommand('sonnet'))).toBe('claude --model sonnet');
+    expect(withStandalone(AGENTS.codex.crewCommand('gpt-6-astra'))).toBe('codex --no-daemon -c check_for_update_on_startup=false -m gpt-6-astra');
+    expect(withStandalone(AGENTS.opencode.crewCommand('opencode/big-pickle'))).toBe('opencode --standalone');
   });
 });
 

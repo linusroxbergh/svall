@@ -359,7 +359,7 @@ describe('home', () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     await startHomeAction({ api, store }, { label: 'organise', prompt: '/svall-organise' });
-    expect(calls).toEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', name: 'organise', command: 'claude --model sonnet', run: '/svall-organise' } }]);
+    expect(calls).toEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', name: 'organise', command: 'claude --model opus', run: '/svall-organise' } }]);
     expect(store.getState().selectedId).toBe('c_new');
     expect(store.getState().toast).toEqual({ text: 'organise started', tone: 'ok' });
   });
@@ -410,7 +410,7 @@ describe('home', () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
-    expect(calls).toStrictEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', command: 'claude --model sonnet', run: 'regroup the fleet' } }]);
+    expect(calls).toStrictEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', command: 'claude --model opus', run: 'regroup the fleet' } }]);
     expect(store.getState().toast).toEqual({ text: 'bright otter started', tone: 'ok' });
   });
 
@@ -544,7 +544,7 @@ describe('a new character', () => {
   it('starts the home command on mission control, and a shell anywhere else', async () => {
     const c = made();
     await newCharacterOn(c, 'home');
-    expect(created(c).command).toBe('claude --model sonnet');
+    expect(created(c).command).toBe('claude --model opus');
     c.calls.length = 0;
     await newCharacterOn(c, 'i_a');
     expect(created(c)).not.toHaveProperty('command');
@@ -562,7 +562,7 @@ describe('a new character', () => {
     const c = made();
     c.store.getState().applyPatch([{ op: 'add', path: '/agentsFound', value: ['codex'] }]);
     await newCharacterOn(c, 'home');
-    expect(created(c).command).toBe('claude --model sonnet');
+    expect(created(c).command).toBe('claude --model opus');
     expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
   });
 });

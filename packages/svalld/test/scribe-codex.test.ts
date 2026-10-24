@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Config, scribeModel } from '../src/config.js';
+import { Config, ownModel } from '../src/config.js';
 import { codexRunner } from '../src/scribe/codex.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -73,10 +73,12 @@ describe('scribe config', () => {
     expect(() => Config.parse({ scribe: { agent: 'cursor' } })).toThrow();
   });
 
-  it('gives scribe.model to the CLI it was set for', () => {
-    expect(scribeModel({ model: 'haiku' }, 'claude')).toBe('haiku');
-    expect(scribeModel({ model: 'haiku' }, 'codex')).toBeUndefined();
-    expect(scribeModel({ agent: 'codex', model: 'gpt-6-luna' }, 'codex')).toBe('gpt-6-luna');
-    expect(scribeModel({ agent: 'codex', model: 'gpt-6-luna' }, 'claude')).toBeUndefined();
+  it("gives a model to its own CLI, and one Settings lists for another CLI to none", () => {
+    expect(ownModel('claude', 'haiku')).toBe('haiku');
+    expect(ownModel('codex', 'haiku')).toBeUndefined();
+    expect(ownModel('codex', 'gpt-6-luna')).toBe('gpt-6-luna');
+    expect(ownModel('claude', 'gpt-6-luna')).toBeUndefined();
+    expect(ownModel('opencode', 'opencode/big-pickle')).toBe('opencode/big-pickle');
+    expect(ownModel('claude', undefined)).toBeUndefined();
   });
 });

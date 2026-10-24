@@ -39,6 +39,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'robots.set': 'mutation',
   'dormancy.set': 'mutation',
   'mainAgent.set': 'mutation',
+  'model.set': 'mutation',
   'usage.get': 'read',
   'load.get': 'read',
   // listing, creating and starting other fleets on this Mac leaves this one alone

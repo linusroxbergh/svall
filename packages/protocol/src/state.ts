@@ -37,6 +37,8 @@ export const AgentKind = z.enum(['claude', 'codex', 'opencode']);
 export type AgentKind = z.infer<typeof AgentKind>;
 
 export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
+// the models each CLI's --model takes, that Settings offers; OpenCode's are a provider's, left to its config
+export const MODELS: Record<AgentKind, string[]> = { claude: ['haiku', 'sonnet', 'opus', 'fable'], codex: ['gpt-6-luna', 'gpt-6-astra', 'gpt-6-sol'], opencode: [] };
 
 // where a session a fresh start left behind stays: its transcript, or OpenCode's own store, which Svall's log only mirrors
 export const keptSession = (a: { kind: AgentKind; sessionId: string; transcriptPath?: string }): string =>
@@ -123,10 +125,12 @@ export type HomeAction = z.infer<typeof HomeAction>;
 // where a new character starts when it has no character beside it to take a directory from
 export const DEFAULT_CWD = '~';
 
-// the home island's crew cwd, the command a button types to start an agent, and the buttons themselves
+// the home island's crew cwd, the command a button types to start an agent, its model, and the buttons themselves
 export const Home = z.object({
   cwd: z.string().default('~/.svall/home'),
-  command: z.string().default('claude --model sonnet'),
+  command: z.string().default('claude --model opus'),
+  // the model the crew runs; absent, the CLI picks its own
+  model: z.string().optional(),
   actions: z.array(HomeAction).default([
     { label: 'update info', prompt: '/svall-update-info' },
     { label: 'status', prompt: '/svall-status' },
@@ -218,6 +222,8 @@ export const FleetState = z.object({
   agentsFound: z.array(AgentKind).optional(),
   // the agent the scribe runs: fleet.json's scribe.agent, else the main agent
   scribeAgent: AgentKind.optional(),
+  // the model the scribe runs; absent, the CLI picks its own
+  scribeModel: z.string().optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
 

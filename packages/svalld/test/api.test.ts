@@ -136,7 +136,7 @@ runIf('API', () => {
     // the shell a new fleet opens with
     expect(Object.keys(snap.result.characters)).toHaveLength(1);
     expect(snap.result.islands.home.kind).toBe('home');
-    expect(snap.result.home.command).toBe('claude --model sonnet');
+    expect(snap.result.home.command).toBe('claude --model opus');
     good.ws.close();
   });
 

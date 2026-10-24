@@ -2640,7 +2640,7 @@ runIf('Fleet', () => {
     expect(fs.existsSync(path.join(svallHome, 'mc/CLAUDE.md'))).toBe(true);
     const home = store.state.islands.home;
     expect(home).toMatchObject({ id: 'home', kind: 'home', name: 'mission control', size: { w: 8, h: 4 }, seed: 7 });
-    expect(store.state.home.command).toBe('claude --model sonnet');
+    expect(store.state.home.command).toBe('claude --model opus');
     expect(() => fleet.deleteIsland('home')).toThrow(/mission control cannot be deleted/);
     const updated = fleet.updateIsland('home', { name: 'hq', position: { x: 50, y: 50 }, size: { w: 20, h: 9 } });
     expect(updated.name).toBe('hq');
@@ -2682,11 +2682,30 @@ runIf('Fleet', () => {
 
   it("starts mission control's crew on the main agent unless config.json names a command", async () => {
     const both = await boot({ agentsFound: ['claude', 'codex'] });
-    expect(both.store.state.home.command).toBe('claude --model sonnet');
+    expect(both.store.state.home.command).toBe('claude --model opus');
     both.fleet.setMainAgent('codex');
     expect(both.store.state.home.command).toBe('codex');
     expect((await boot({ agentsFound: ['codex'] })).store.state.home.command).toBe('codex');
     expect((await boot({ agentsFound: ['codex'], homeCommand: 'my-agent --flag' })).store.state.home.command).toBe('my-agent --flag');
+  });
+
+  it("sets the crew's and the scribe's model in fleet.json, mirrors each into the fleet, and leaves one of another CLI behind an agent change", async () => {
+    const { fleet, store, home } = await boot({ agentsFound: ['claude', 'codex'] });
+    expect(store.state.home.model).toBe('opus');
+    expect(store.state.scribeModel).toBe('haiku');
+    fleet.setModel('home', 'sonnet');
+    fleet.setModel('scribe', 'opus');
+    expect(store.state.home).toMatchObject({ command: 'claude --model sonnet', model: 'sonnet' });
+    expect(store.state.scribeModel).toBe('opus');
+    const saved = JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8'));
+    expect(saved.home).toEqual({ model: 'sonnet' });
+    expect(saved.scribe).toEqual({ model: 'opus' });
+    fleet.setMainAgent('codex');
+    expect(store.state.home).toMatchObject({ command: 'codex', model: undefined });
+    expect(store.state.scribeModel).toBe('gpt-6-luna');
+    fleet.setModel('home', 'gpt-6-astra');
+    expect(store.state.home).toMatchObject({ command: 'codex -m gpt-6-astra', model: 'gpt-6-astra' });
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8'))).toMatchObject({ mainAgent: 'codex', home: { model: 'gpt-6-astra' }, scribe: { model: 'opus' } });
   });
 
   it('places crew on home slots and refuses other cells', async () => {

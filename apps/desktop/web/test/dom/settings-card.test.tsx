@@ -191,6 +191,28 @@ test('main agent picks between the CLIs svalld finds', () => {
   expect(call).toHaveBeenCalledWith('mainAgent.set', { agent: 'codex' });
 });
 
+test("mission control's and the scribe's model pick among their CLI's models, and are not offered for a CLI whose models Settings does not list", () => {
+  const f = fleet();
+  act(() => store.getState().setFleet({ ...f, mainAgent: 'claude', agentsFound: ['claude', 'codex'], home: { ...f.home, model: 'opus' }, scribeAgent: 'claude', scribeModel: 'haiku' }));
+  render(<SettingsCard />);
+  show('fleet');
+  const crew = screen.getByTestId('set-home-model') as HTMLSelectElement;
+  expect(crew.value).toBe('opus');
+  expect([...crew.options].map((o) => o.value)).toEqual(['haiku', 'sonnet', 'opus', 'fable']);
+  fireEvent.change(crew, { target: { value: 'sonnet' } });
+  expect(call).toHaveBeenCalledWith('model.set', { of: 'home', model: 'sonnet' });
+  const scribe = screen.getByTestId('set-scribe-model') as HTMLSelectElement;
+  expect(scribe.value).toBe('haiku');
+  fireEvent.change(scribe, { target: { value: 'opus' } });
+  expect(call).toHaveBeenCalledWith('model.set', { of: 'scribe', model: 'opus' });
+  // a codex crew on its own model, and an opencode scribe, whose model is its provider's
+  act(() => store.getState().setFleet({ ...f, mainAgent: 'codex', agentsFound: ['codex', 'opencode'], home: { ...f.home, command: 'codex' }, scribeAgent: 'opencode' }));
+  const codex = screen.getByTestId('set-home-model') as HTMLSelectElement;
+  expect(codex.value).toBe('');
+  expect([...codex.options].map((o) => o.value)).toEqual(['', 'gpt-6-luna', 'gpt-6-astra', 'gpt-6-sol']);
+  expect(screen.queryByTestId('set-scribe-model')).toBeNull();
+});
+
 test('main agent disables a CLI svalld does not find', () => {
   act(() => store.getState().setFleet({ ...fleet(), mainAgent: 'claude', agentsFound: ['claude'] }));
   render(<SettingsCard />);
