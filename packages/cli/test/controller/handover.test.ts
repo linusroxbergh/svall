@@ -7,6 +7,7 @@ import { AUTHORITY_SCHEMA_VERSION, FleetId, MachineId, PROTOCOL_VERSION, type Bl
 import { AuthorityClient } from '@svall/svalld/gateway/client';
 import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { manifestDigest, spaceNeed, type ScanFs } from '@svall/svalld/handover/manifest';
+import { docsRenames } from '@svall/svalld/handover/relocate';
 import { replicaRoots } from '@svall/svalld/handover/replicas';
 import { resolvePaths } from '@svall/svalld/paths';
 import { entryEvent } from '../../src/controller/events.js';
@@ -941,6 +942,22 @@ describe('preflight', () => {
       code: 'path_unsupported', entity: { kind: 'git', id: 'g_app' },
       message: `${at('app.git')} is on trift as well, and git worktree repair would tie the copy that lands at /home/ada/app.git to it; move ${at('app.git')} aside on trift first`,
     }]);
+  });
+
+  it('blocks a destination with another home where the docs hold a folder by the name a rename gives another', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.destinationHome = '/home/ada';
+      for (const x of r.manifest.sessions) x.destinationHome = x.destinationHome!.replace(HOME, '/home/ada');
+      r.manifest.snapshot.characters.c_cy = char('c_cy', 'cy', at('app'), { islandId: 'i_work' });
+      const [{ from, to }] = docsRenames(r.manifest);
+      r.manifest.roots.push({ id: 'r_docs', kind: 'docs', entry: 'dir', path: at('.svall/docs'), files: [file(`${from}/a.md`), file(`${to}/b.md`)] });
+      return r;
+    }) as never;
+    const pre = await controller(w).preflight(trift, {});
+    expect(pre.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', entity: { kind: 'root', id: 'r_docs' } })]);
   });
 
   it('blocks a root outside the home whose folder the destination lacks, naming that folder, and takes one whose folder is there', async () => {

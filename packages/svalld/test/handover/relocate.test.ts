@@ -160,18 +160,40 @@ describe('destinationView', () => {
   });
 });
 
-describe('docsBlockers', () => {
-  const [from, to] = [`repos/${repoSlug('/Users/ada/app')}`, `repos/${repoSlug('/home/ada/app')}`];
-  const withDocs = (...dirs: string[]): TransferManifestV1 => {
-    const m = manifest('/home/ada');
+describe('docsRenames and docsBlockers', () => {
+  const slug = (p: string): string => `repos/${repoSlug(p)}`;
+  const [from, to] = [slug('/Users/ada/app'), slug('/home/ada/app')];
+  /** The manifest with a docs root holding `dirs`, and a character standing in each of `cwds` beside c1. */
+  const withDocs = (dirs: string[], cwds: string[] = [], m = manifest('/home/ada')): TransferManifestV1 => {
+    const snapshot = structuredClone(m.snapshot);
+    cwds.forEach((cwd, i) => { snapshot.characters[`c${i + 2}`] = char(`c${i + 2}`, { cwd }); });
     const files = dirs.map((d) => ({ type: 'file' as const, path: `${d}/n.md`, mode: 0o644, size: 1, mtimeMs: 0, sha256: SHA }));
-    return { ...m, roots: [...m.roots, { id: 'r_d', kind: 'docs', entry: 'dir', path: '/Users/ada/.svall/docs', files }] };
+    return { ...m, snapshot, roots: [...m.roots, { id: 'r_d', kind: 'docs', entry: 'dir', path: `${m.home}/.svall/docs`, files }] };
   };
 
-  it('renames the folder of each repository that moves, and refuses only docs that hold both names', () => {
-    expect(docsRenames(withDocs())).toEqual([{ from, to }]);
-    expect(docsBlockers(withDocs(from))).toEqual([]);
-    expect(docsBlockers(withDocs(to))).toEqual([]);
-    expect(docsBlockers(withDocs(from, to))).toEqual([expect.objectContaining({ code: 'path_unsupported', entity: { kind: 'root', id: 'r_d' } })]);
+  it('renames the folder of each repository or folder that moves, both ways, and none outside the home', () => {
+    expect(docsRenames(withDocs([], ['~', '/Volumes/work/repo']))).toEqual([{ from, to }, { from: slug('/Users/ada'), to: slug('/home/ada') }]);
+    expect(docsRenames({ ...destinationView(manifest('/home/ada')), destinationHome: '/Users/ada' })).toEqual([{ from: to, to: from }]);
+  });
+
+  it('refuses docs that hold both names, two folders that take one name, or a name another rename leaves', () => {
+    expect(docsBlockers(withDocs([from]))).toEqual([]);
+    expect(docsBlockers(withDocs([to]))).toEqual([]);
+    expect(docsBlockers(withDocs([from, to]))).toEqual([expect.objectContaining({ code: 'path_unsupported', entity: { kind: 'root', id: 'r_d' } })]);
+    const spellings = ['/Users/ada/tool', '/Users/ada/x/../tool'];
+    expect(docsBlockers(withDocs(spellings.map(slug), spellings))).toHaveLength(2);
+    expect(docsBlockers(withDocs([slug('/Users/ada/x')], ['/Users/ada/x', '/Users/ada/linux/x'], manifest('/Users/ada/linux')))).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('a name another of its folders takes or leaves') }),
+    ]);
+  });
+
+  it('refuses docs whose repos folder is a link only when a folder in it would be renamed', () => {
+    const linked = (m: TransferManifestV1): TransferManifestV1 => {
+      const docs = withDocs([], [], m);
+      docs.roots.at(-1)!.files.push({ type: 'symlink', path: 'repos', target: '/Volumes/notes' });
+      return docs;
+    };
+    expect(docsBlockers(linked(manifest('/home/ada')))).toEqual([expect.objectContaining({ message: expect.stringContaining('/Users/ada/.svall/docs/repos is a link') })]);
+    expect(docsBlockers(linked(manifest('/Users/ada')))).toEqual([]);
   });
 });

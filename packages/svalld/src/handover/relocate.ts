@@ -83,24 +83,33 @@ export function destinationView(m: TransferManifestV1): TransferManifestV1 {
  * The repository docs folders a move between homes renames, relative to the docs root: each is named for its main root's
  * path, so the folder a character's repository or folder names on the source is named for where that lands.
  */
-export function docsRenames(sent: Pick<TransferManifestV1, 'home' | 'destinationHome' | 'snapshot'>): { from: string; to: string }[] {
-  const r: Relocation = { from: sent.home, to: sent.destinationHome };
+export function docsRenames(sent: TransferManifestV1): { from: string; to: string }[] {
+  const there = destinationView(sent).snapshot.characters;
   const renames = new Map<string, string>();
-  for (const c of Object.values(sent.snapshot.characters)) {
-    const root = repoRootOf(c, sent.home);
-    const there = root && relocate(root, r);
-    if (root && there !== root) renames.set(docsDir('', 'repo', repoSlug(root)), docsDir('', 'repo', repoSlug(there!)));
+  for (const [id, c] of Object.entries(sent.snapshot.characters)) {
+    const [from, to] = [repoRootOf(c, sent.home), repoRootOf(there[id], sent.destinationHome)];
+    if (!from || !to || repoSlug(from) === repoSlug(to)) continue;
+    renames.set(docsDir('', 'repo', repoSlug(from)), docsDir('', 'repo', repoSlug(to)));
   }
   return [...renames].map(([from, to]) => ({ from, to }));
 }
 
-/** A docs folder the move renames whose new name the carried docs hold as well. */
-export function docsBlockers(sent: Pick<TransferManifestV1, 'home' | 'destinationHome' | 'snapshot' | 'roots'>): Blocker[] {
+/**
+ * A docs folder the move cannot rename: its new name is one the carried docs hold, another folder takes too or another
+ * rename leaves, or the folders lie behind a link.
+ */
+export function docsBlockers(sent: TransferManifestV1): Blocker[] {
   const docs = sent.roots.find((r) => r.kind === 'docs');
   if (!docs) return [];
+  const entity = { kind: 'root' as const, id: docs.id };
   const held = (dir: string): boolean => docs.files.some((f) => holds(dir, f.path));
-  return docsRenames(sent).filter(({ from, to }) => held(from) && held(to)).map(({ from, to }) => ({
-    code: 'path_unsupported', entity: { kind: 'root', id: docs.id },
-    message: `${docs.path} holds ${to} as well as ${from}, which the handover renames to it where the fleet lands; move one of them out of ${docs.path}`,
-  }));
+  const renames = docsRenames(sent);
+  if (renames.length && docs.files.some((f) => f.path === 'repos' && f.type === 'symlink')) {
+    return [{ code: 'path_unsupported', entity, message: `${docs.path}/repos is a link, so the handover cannot rename the folders in it for where the fleet lands; make it a folder` }];
+  }
+  return renames.filter((x) => held(x.from) && (held(x.to) || renames.some((y) => y !== x && (y.from === x.to || (y.to === x.to && held(y.from))))))
+    .map(({ from, to }) => ({
+      code: 'path_unsupported', entity,
+      message: `${docs.path} holds ${from}, which the handover renames to ${to} where the fleet lands, a name ${held(to) ? 'it holds as well' : 'another of its folders takes or leaves'}; move one of them out of ${docs.path}`,
+    }));
 }

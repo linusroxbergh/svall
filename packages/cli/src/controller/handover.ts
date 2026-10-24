@@ -14,7 +14,7 @@ import { canonicalDigest } from '@svall/svalld/handover/hash';
 import { settle } from '@svall/svalld/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
 import { holds } from '@svall/svalld/handover/portable-path';
-import { destinationView, relocate } from '@svall/svalld/handover/relocate';
+import { destinationView, docsBlockers, relocate } from '@svall/svalld/handover/relocate';
 import { caseCollisions, rootCollisions } from '@svall/svalld/handover/probe';
 import { ARCHIVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
 import { resumeFolders } from '@svall/svalld/handover/sessions/registry';
@@ -1031,6 +1031,7 @@ export class Handover {
       ...r.roots.flatMap((x) => (x.check.ok || archived.has(x.id) ? [] : [x.check.blocker])),
       ...await this.lostCommits(source, destination, sent, r.unproven, 'begin'),
       ...staleBlockers(sent, where, (p) => !(r.missing ?? []).includes(p)),
+      ...docsBlockers(sent),
     ];
     for (const c of r.commands ?? []) {
       blockers.push({

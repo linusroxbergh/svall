@@ -3154,8 +3154,10 @@ describe("a moved fleet's repository docs, between accounts with different homes
   it('are renamed for where each repository or folder lands, found there, and sealed under those names for the way back', async () => {
     const s = await docsScene();
     const landed = await transfer(s.paths, s.manifest, (p) => p);
-    const d = daemon(s);
+    const flushed: string[][] = [];
+    const d = daemon(s, { syncRoots: async (_roots, files) => { flushed.push([...files]); } });
     const { preparedDigest } = await d.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed });
+    expect(flushed.at(-1)).toContain(path.join(s.paths.docs, 'repos'));
     d.gateway.commit(preparedDigest);
     await d.handover.activate({ transactionId: TX, generation: 5 });
     await d.handover.complete({ transactionId: TX, generation: 5 });
@@ -3189,7 +3191,21 @@ describe("a moved fleet's repository docs, between accounts with different homes
       fs.writeFileSync(path.join(taken, 'old.md'), 'old\n');
     });
     const r = await refusal(daemon(s).handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest }));
-    expect(blockersOf(r)).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`holds repos/${repoSlug(path.join(s.linux, 'work/app'))} as well as repos/${repoSlug(path.join(s.macHome, 'work/app'))}`) })]);
+    expect(blockersOf(r)).toEqual([expect.objectContaining({
+      code: 'path_unsupported', message: expect.stringContaining(`holds repos/${repoSlug(path.join(s.macHome, 'work/app'))}, which the handover renames to repos/${repoSlug(path.join(s.linux, 'work/app'))} where the fleet lands, a name it holds as well`),
+    })]);
+    expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(false);
+  });
+
+  it('refuses a prepare that finds a new name taken here, as the excludes kept it from the copy, before it renames anything', async () => {
+    const s = await docsScene();
+    const landed = await transfer(s.paths, s.manifest, (p) => p);
+    const [from, to] = [path.join(s.macHome, 'work/app'), path.join(s.linux, 'work/app')].map((p) => docsDir(s.paths.docs, 'repo', repoSlug(p)));
+    fs.mkdirSync(path.join(to, 'build'), { recursive: true });
+    fs.writeFileSync(path.join(to, 'build/x'), 'x\n');
+    const r = await refusal(daemon(s).handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed }));
+    expect(blockersOf(r)).toEqual([expect.objectContaining({ code: 'path_unsupported', message: `${to} is on this machine already, so ${from} cannot take its name; move ${to} aside` })]);
+    expect(listDocsIn(from)).toEqual(['app']);
   });
 });
 

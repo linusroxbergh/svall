@@ -561,7 +561,15 @@ export class DestinationHandover {
     });
     if (blockers.length) throw blocked(blockers);
 
-    const git = gitProblems(m, [...at.values()]);
+    // the docs folder of each repository a move between homes renames, named for where its main root landed
+    const docs = carried.find((r) => r.kind === 'docs');
+    const docsAt = docs && at.get(docs.id)!;
+    const renames = docsAt ? docsRenames(p.manifest).map((x) => ({ ...x, fromAt: path.posix.join(docsAt, x.from), toAt: path.posix.join(docsAt, x.to) })) : [];
+    // a name the copy left taken here, as one the excludes kept from its --delete
+    const taken = renames.filter((x) => present(x.fromAt) && present(x.toAt)).map((x): Blocker => ({
+      code: 'path_unsupported', entity: { kind: 'root', id: docs!.id }, message: `${x.toAt} is on this machine already, so ${x.fromAt} cannot take its name; move ${x.toAt} aside`,
+    }));
+    const git = [...gitProblems(m, [...at.values()]), ...taken];
     if (git.length) throw blocked(git);
     // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
     const here = [...at.values()];
@@ -587,10 +595,6 @@ export class DestinationHandover {
       const rel = path.posix.relative(common, file);
       return rel === 'config' || (rel.startsWith('worktrees/') && !keep.has(rel.split('/')[1]));
     });
-    // the docs folder of each repository a move between homes renames, named for where its main root landed
-    const docs = carried.find((r) => r.kind === 'docs');
-    const docsAt = docs && at.get(docs.id)!;
-    const renames = docsAt ? docsRenames(p.manifest).map((x) => ({ ...x, fromAt: path.posix.join(docsAt, x.from), toAt: path.posix.join(docsAt, x.to) })) : [];
     // the docs root's files by the names they now have, as the renames left them however far they got
     const renamed = (files: readonly TransferFile[]): TransferFile[] => {
       const done = renames.filter((x) => present(x.toAt) && !present(x.fromAt));
@@ -614,11 +618,7 @@ export class DestinationHandover {
     };
     let graphs: Blocker[];
     try {
-      for (const x of renames) {
-        if (!present(x.fromAt)) continue;
-        if (present(x.toAt)) throw new Error(`${x.toAt} is here already, so ${x.fromAt} cannot take its name`);
-        fs.renameSync(x.fromAt, x.toAt);
-      }
+      for (const x of renames) if (present(x.fromAt)) fs.renameSync(x.fromAt, x.toAt);
       graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames, moved });
     } finally {
       // what Complete seals, or an abort leaves claimable: what landed, with what the import wrote however far it got and
