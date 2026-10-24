@@ -1150,6 +1150,12 @@ describe('the human reading of what a row names', () => {
     expect(printed).toContain("  ! ada's session: rsync exited 23");
     expect(printed).toContain("  ✗ ada's session: the source kept changing (external_writer)");
   });
+
+  it('offers to archive a root the destination holds by where it lands there', () => {
+    const names = { characters: {}, roots: { r_app: '/Users/ada/app' }, landing: { r_app: '/home/ada/app' } };
+    const diverged: Blocker = { code: 'destination_diverged', message: '/home/ada/app changed', entity: { kind: 'root', id: 'r_app' } };
+    expect(options([diverged], 'prepare', names).find((o) => o.key === 'a')?.label).toMatch(/^Archive \/home\/ada\/app: /);
+  });
 });
 
 describe('the human reading of a session the destination went on with', () => {
