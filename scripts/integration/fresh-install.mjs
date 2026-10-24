@@ -249,7 +249,8 @@ const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsyn
 
 // with no --release the controller downloads the companion its manifest pins, checks its digest and caches it
 const named = (rel) => (rel.served ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
-const from = (rel) => `${rel.version} for linux-${o.arch} from ${rel.served ? rel.url : 'the archive you named'}${rel.unsigned ? ' (unsigned)' : ''}`;
+const signed = (rel) => (rel.unsigned ? 'unsigned' : 'signed');
+const from = (rel) => `${rel.version} for linux-${o.arch} from ${rel.served ? rel.url : 'the archive you named'} (${signed(rel)})`;
 
 function downloaded(rel, label) {
   if (!rel.served) return;
@@ -300,7 +301,7 @@ function doctor(rel, label) {
   for (const name of ['systemd', 'gateway', 'linger', 'svalld', 'release', 'home']) {
     check(`${label} doctor ${name}`, checks[name]?.status === 'ok', () => brief(checks[name]));
   }
-  check(`${label} doctor release`, checks.release?.detail?.startsWith(`${rel.version}, protocol`), () => brief(checks.release));
+  check(`${label} doctor release`, checks.release?.detail?.startsWith(`${rel.version} (${signed(rel)}), protocol`), () => brief(checks.release));
 }
 
 function upgrade(b) {
