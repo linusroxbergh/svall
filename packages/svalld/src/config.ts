@@ -6,7 +6,7 @@ import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId }
 import { writeJsonAtomic } from './atomic.js';
 import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
-import { HOME_CWD, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
+import { HOME_CWD, PRIVATE, profileHome, profileHomeCwd, profileOf, variantOf } from './profile.js';
 import { variant } from './runtime.js';
 
 const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
@@ -155,8 +155,10 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (l
   }
   // last, so a fleet.json is only ever there once the split behind it is whole; and never replaced, so two starts run on one id
   if (!has(paths.fleetConfig)) {
+    // a profile that has never run gets a mission control folder of its own; one that has keeps the folder its crew is in
+    const cwd = has(paths.state) ? undefined : profileHomeCwd(paths.home);
     try {
-      createDurable(paths.fleetConfig, split?.fleet ?? { id: newFleetId() }, { mode: 0o600 });
+      createDurable(paths.fleetConfig, split?.fleet ?? { id: newFleetId(), ...(cwd && { home: { cwd } }) }, { mode: 0o600 });
       wrote.push(paths.fleetConfig);
     } catch (e) { if (errno(e) !== 'EEXIST') throw e; }
   }

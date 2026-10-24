@@ -55,3 +55,10 @@ export function profileOf(home: string, homedir = os.homedir()): string {
   const base = path.basename(home);
   return base.startsWith(homePrefix) ? base.slice(homePrefix.length) : base;
 }
+
+/** The mission control folder a new fleet at `home` names in its fleet.json: a profile's own, in its fleet home; none for
+ *  any other fleet, which keeps HOME_CWD. */
+export function profileHomeCwd(home: string, homedir = os.homedir()): string | undefined {
+  const name = profileOf(home, homedir);
+  return name !== PRIVATE && path.resolve(home) === profileHome(name, homedir) ? `~/${path.basename(home)}/home` : undefined;
+}
