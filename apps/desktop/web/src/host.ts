@@ -13,14 +13,16 @@ export type MachineNames = Record<string, string>;
 
 // an id says nothing to a person; one inside a path names a file, and stays
 const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
-const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+export const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+
+export const withoutGenerations = (text: string): string => text
+  .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
+  .replace(/ at generation \d+/g, '');
 
 /** A step's words with a machine this Mac knows by its name, any other as another machine, and no other id or generation. */
 function withoutIds(text: string, names: MachineNames): string {
   const machine = (id: string) => names[id] ?? 'another machine';
-  return text
-    .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
-    .replace(/ at generation \d+/g, '')
+  return withoutGenerations(text)
     .replace(ids(' \\(UUID\\)'), '')
     .replace(ids('\\banswered with fleetId UUID, not UUID'), 'answered for another fleet')
     .replace(ids('\\banswered with machineId (UUID), not UUID'), (_, id: string) => `answered as ${machine(id)}`)
@@ -120,7 +122,7 @@ export const OP_TITLE: Record<HostOp, string> = {
 /** How a finished run ends: what it did, what is left, and the one step the panel offers next. */
 export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' | 'rollback' };
 
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 /** `gateway`: the machine this fleet names as its gateway, before which nothing is ready for handover. */
 export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome {

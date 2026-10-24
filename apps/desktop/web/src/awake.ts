@@ -47,7 +47,7 @@ export function awakeHold(need: Need, o: { mode: KeepAwake; now: number }): { re
 }
 
 /** A helper the page follows that has said something: idle sleep would cut the ssh and rsync under it, wherever the fleet runs. */
-export const handingOver = (run: HandoverRun | undefined): boolean =>
+const handingOver = (run: HandoverRun | undefined): boolean =>
   !!run?.following && !!(run.transactionId || run.preflight || run.status);
 
 /** Has the shell hold the Mac awake while the fleet or a handover needs it, under the reason why, and let go once neither does.

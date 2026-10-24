@@ -12,33 +12,19 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { flags, harness } from '../integration/harness.mjs';
+import { flags, harness, machines } from '../integration/harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const o = flags(process.argv.slice(2));
-// apart from an integration run's machines, which are svall-local and svall-remote
-const prefix = o.prefix ?? 'svall-bench';
-const L = `${prefix}-local`;
-const R = `${prefix}-remote`;
-const NET = `${prefix}-it`;
-// each machine's account home, as the integration run that provisions them leaves it
-const HOMES = { [L]: '/Users/svall', [R]: '/home/svall' };
 const NODE = '/opt/it/node/bin/node';
 const BENCH = '/opt/it/bench.mjs';
-const userEnv = (machine) => [`HOME=${HOMES[machine]}`, 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
-  'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
 
 if (!o.out) throw new Error('--out <dir> is required');
 const out = path.resolve(o.out);
 const repos = o.repos === 'none' ? [] : String(o.repos ?? 'small,large,many').split(',');
 const { say, docker } = harness(out);
-
-function sh(machine, script, opts = {}) {
-  const who = opts.root ? [] : ['-u', 'svall', '-w', HOMES[machine], ...userEnv(machine)];
-  const r = docker(['exec', '-i', ...who, machine, 'bash', '-lc', script], { input: '' });
-  if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
-  return r;
-}
+// apart from an integration run's machines, which are svall-local and svall-remote
+const { L, R, NET, HOMES, userEnv, sh } = machines(o.prefix ?? 'svall-bench', docker);
 // the last line of NDJSON, or a whole document `svall --json` prints indented
 const json = (machine, script) => {
   const text = sh(machine, script).stdout.trim();

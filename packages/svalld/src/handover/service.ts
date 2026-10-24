@@ -295,14 +295,11 @@ export class HandoverService {
   write(journal: HandoverJournal): void {
     this.deps.journal.write(journal);
     this.state = { kind: 'open', journal };
-    this.emit({ event: 'handover.changed', data: { transactionId: journal.transactionId, phase: journal.phase } });
   }
 
   close(): void {
-    const last = this.open();
     this.deps.journal.close();
     this.state = { kind: 'none' };
-    if (last) this.emit({ event: 'handover.changed', data: { transactionId: last.transactionId, phase: last.phase } });
   }
 
   /** Reports how far one robot or root has come. */

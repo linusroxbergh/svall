@@ -86,7 +86,7 @@ describe('svall argument parsing', () => {
       registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: '/opt/svall', gateway: false }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
       registry.save();
       // a companion running another fleet refuses at once, so the command ends after one ask
-      ssh.answer({ fleetId: '77777777-2222-3333-4444-555555555555', machineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 1, token: 't' });
+      ssh.answer({ fleetId: '77777777-2222-3333-4444-555555555555', machineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 1, token: 't', fleetHome: '/home/linus/.svall' });
       const r = await run({ HOME: home, SVALL_HOME: fleet, SVALL_CONFIG_DIR: config }, '--host', 'trift', 'status');
       expect(r.code).toBe(1);
       expect(ssh.remoteCalls().filter((w) => w.includes('connection-info'))).toEqual([['/opt/svall/current/bin/svall', 'connection-info', '--json', '-p', 'work']]);
@@ -456,7 +456,7 @@ describe('svall setup --agents', () => {
       }
       // the first setup writes every fleet's plist; their daemons then run this version, so nothing else restarts them
       expect((await run({ HOME: home, PATH }, 'setup', '--no-launchctl', '--agents', 'claude,codex')).code).toBe(0);
-      for (const name of ['work', 'own']) fs.writeFileSync(path.join(home, `.svall-${name}`, 'version'), 'dev');
+      for (const name of ['work', 'own']) fs.writeFileSync(path.join(home, `.svall-${name}`, 'version'), 'dev\n4242\n');
       const r = await run({ HOME: home, PATH }, 'setup', '--agents', 'codex');
       expect(r.code).toBe(0);
       // the private fleet's reload starts its running daemon again; only the inheriting fleet is restarted
@@ -489,7 +489,7 @@ describe('svall setup --agents', () => {
       expect(kicked().filter((l) => !l.endsWith(LAUNCHD_LABEL))).toEqual([label('open')]);
       // a daemon of another version is restarted only while it runs
       fs.writeFileSync(log, '');
-      for (const name of ['open', 'shut']) fs.writeFileSync(path.join(home, `.svall-${name}`, 'version'), 'old');
+      for (const name of ['open', 'shut']) fs.writeFileSync(path.join(home, `.svall-${name}`, 'version'), 'old\n4242\n');
       expect((await run({ HOME: home, PATH }, 'setup', '--agents', 'claude')).code).toBe(0);
       expect(kicked().filter((l) => !l.endsWith(LAUNCHD_LABEL))).toEqual([label('open')]);
     } finally {

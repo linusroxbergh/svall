@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { MachineId, OwnerRecord } from '@svall/protocol';
-import { writeJsonAtomic } from '@svall/svalld/atomic';
+import { writeDurable } from '@svall/svalld/handover/durable';
 import { OwnerCache } from '@svall/svalld/ownership/state';
 import { resolvePaths } from '@svall/svalld/paths';
 
@@ -26,7 +26,7 @@ export function readRoute(fleetHome: string): CachedRoute | undefined {
 }
 
 export function writeRoute(fleetHome: string, route: CachedRoute): void {
-  writeJsonAtomic(routeFile(fleetHome), route);
+  writeDurable(routeFile(fleetHome), route);
 }
 
 /** The record this machine's daemon holds: what a cached local route is checked against. */

@@ -86,10 +86,10 @@ describe('fleetHomes', () => {
 
   it('lists a fleet whose home is named for a command svall keeps, which no -p reaches but uninstall still stops', () => {
     const u = makeHome();
-    for (const d of ['.svall-host', '.svall-fleet', '.svall-work', '.svall-gateway', '.svall-help', '.svall-status']) fs.mkdirSync(path.join(u, d));
-    for (const d of ['.svall-host', '.svall-fleet', '.svall-work', '.svall-help', '.svall-status']) fs.writeFileSync(path.join(u, d, 'fleet.json'), '{}');
+    for (const d of ['.svall-host', '.svall-fleet', '.svall-robot', '.svall-work', '.svall-gateway', '.svall-help', '.svall-status']) fs.mkdirSync(path.join(u, d));
+    for (const d of ['.svall-host', '.svall-fleet', '.svall-robot', '.svall-work', '.svall-help', '.svall-status']) fs.writeFileSync(path.join(u, d, 'fleet.json'), '{}');
     // no fleet can be named help or status, so such a folder is the user's
-    expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall-fleet', '.svall-host', '.svall-work']);
+    expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall-fleet', '.svall-host', '.svall-robot', '.svall-work']);
     expect(fleetData({ homedir: u, appDests: [], fromApp: true })).toEqual(fleetHomes(u));
   });
 });

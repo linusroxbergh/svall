@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
 import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
-import { writeJsonAtomic } from '@svall/svalld/atomic';
+import { writeDurable } from '@svall/svalld/handover/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
@@ -111,14 +111,14 @@ export function lastChecks(dir: string): Record<string, LastCheck> {
 function recordCheck(dir: string, id: MachineId, report: HostReport | undefined): void {
   const count = (status: string) => report?.checks.filter((c) => c.status === status).length ?? 0;
   const check: LastCheck = { at: Date.now(), failed: report ? count('fail') : 1, warned: count('warn'), ...(report?.release && { release: report.release }) };
-  writeJsonAtomic(checksFile(dir), { ...lastChecks(dir), [id]: check });
+  writeDurable(checksFile(dir), { ...lastChecks(dir), [id]: check });
 }
 
 /** Drops a machine's last check, as it leaves the registry; the file goes with the last one. */
 export function forgetCheck(dir: string, id: string): void {
   const { [id]: gone, ...rest } = lastChecks(dir);
   if (!gone) return;
-  if (Object.keys(rest).length) writeJsonAtomic(checksFile(dir), rest);
+  if (Object.keys(rest).length) writeDurable(checksFile(dir), rest);
   else fs.rmSync(checksFile(dir), { force: true });
 }
 

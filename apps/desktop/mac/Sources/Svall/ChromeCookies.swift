@@ -12,9 +12,7 @@ enum ChromeCookies {
 
     // Local State names every profile; a directory without a cookie file has nothing to give
     static func profiles() -> [Profile] {
-        guard let data = FileManager.default.contents(atPath: root + "/Local State"),
-              let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let cache = (state["profile"] as? [String: Any])?["info_cache"] as? [String: Any] else { return [] }
+        guard let cache = (readJSON(root + "/Local State")?["profile"] as? [String: Any])?["info_cache"] as? [String: Any] else { return [] }
         return cache.keys.sorted()
             .filter { FileManager.default.fileExists(atPath: "\(root)/\($0)/Cookies") }
             .map { Profile(dir: $0, name: ((cache[$0] as? [String: Any])?["name"] as? String) ?? $0) }

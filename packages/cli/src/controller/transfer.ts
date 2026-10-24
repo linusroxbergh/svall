@@ -132,7 +132,7 @@ const lastLines = (text: string): string => text.trim().split('\n').slice(-STDER
 
 /** One name for a scan's content: paths, content and modes, whatever the clock says. */
 const scanDigest = (files: readonly TransferFile[]): string => crypto.createHash('sha256').update(JSON.stringify(
-  [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  [...files].sort((a, b) => byCodeUnit(a.path, b.path))
     .map((f) => (f.type === 'file' ? [f.path, f.sha256, f.mode] : [f.path, '->', f.target])),
 )).digest('hex');
 

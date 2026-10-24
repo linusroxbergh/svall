@@ -95,10 +95,6 @@
   --ease: cubic-bezier(.22,.7,.24,1);
   --ease-out: cubic-bezier(.16,1,.3,1);   /* a settle or a landing: fast out, long tail */
   --cell: 44px;
-  --card-w: calc(var(--cell) * 2.56);
-  --card-h: calc(var(--cell) * 2.90 * 1.05);
-  --sb-w: 258px;
-  --side-w: 320px;
   --disc-side: 52px;    /* the robot in the side card's header */
   --utility-dock-h: 64px;
 
@@ -113,7 +109,7 @@
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
   --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em;

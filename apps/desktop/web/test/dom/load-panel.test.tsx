@@ -15,7 +15,7 @@ const reads = () => calls().filter(([m]) => m === 'load.get').length;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { LoadPanel } = await import('../../src/LoadPanel.js');
-const { ConfirmSleep } = await import('../../src/ConfirmSleep.js');
+const { ConfirmSleep } = await import('../../src/Confirm.js');
 const { useLoad } = await import('../../src/load.js');
 
 beforeEach(() => {
@@ -67,7 +67,7 @@ test('Sleep puts an idle robot to sleep at once, and asks first of a working one
   expect(screen.getByText('c1 is working. Sleep anyway?')).toBeTruthy();
   // a reflex Enter keeps it
   expect(document.activeElement).toBe(screen.getByTestId('confirm-sleep-cancel'));
-  fireEvent.click(screen.getByTestId('confirm-sleep'), { detail: 1 });
+  fireEvent.click(screen.getByTestId('confirm-sleep-sleep'), { detail: 1 });
   expect(calls()).toContainEqual(['robot.sleep', { id: 'c1' }]);
   expect(store.getState().sleepingRobot).toBeUndefined();
 });

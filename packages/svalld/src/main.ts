@@ -15,7 +15,6 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { fleetAuthority } from './gateway/client.js';
 import { openJournal } from './handover/journal.js';
-import { ProcessTable } from './handover/processes.js';
 import { HandoverService } from './handover/service.js';
 import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
 import type { Authority } from './handover/source.js';
@@ -27,7 +26,7 @@ import { configDir, copiedRemedy, machineIdentity, machineIdFailure, rebindMachi
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
-import { claudePaths, fleetKeys, installedScripts, resolvePaths, type Paths } from './paths.js';
+import { claudePaths, fleetKeys, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
@@ -220,7 +219,6 @@ async function start(opts: Options): Promise<Daemon> {
     authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
     source: {
       paths, store, fleet, tmux, viewers: terminals, log,
-      processes: (signal) => ProcessTable.read({ signal, scripts: installedScripts(paths.home) }),
       authority,
     },
     destination: {

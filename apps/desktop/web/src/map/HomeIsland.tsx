@@ -1,6 +1,7 @@
 import type { Robot, ContextItem, Home as HomeConfig, HomeAction, Island } from '@svall/protocol';
 import { useMemo, useState } from 'react';
 import type { DropTarget } from '../drop.js';
+import { stop } from '../hooks.js';
 import type { DisplayStatus } from '../selectors.js';
 import { theme } from '../theme.js';
 import { Chevron } from './Chevron.js';
@@ -11,7 +12,6 @@ import { Token } from './Token.js';
 import type { Drag, PointerHandlers } from './types.js';
 
 const PAD_CELLS = theme.pad / theme.cell;
-const stop = (e: React.PointerEvent) => e.stopPropagation();
 
 // the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land
 // shrinks by `scale` towards the bottom centre, its cards stand at `cards`, and the row stays full size above them

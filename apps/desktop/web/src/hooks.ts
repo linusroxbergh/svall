@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type FunctionComponent } from 'react';
+import { memo, useEffect, useLayoutEffect, useState, type FunctionComponent, type SyntheticEvent } from 'react';
 import { useStore } from 'zustand';
 import type { AppActions, AppState, AppStore } from './store/index.js';
 
@@ -9,6 +9,17 @@ export function setAppStore(store: AppStore): void { current = store; }
 export function useApp<T>(selector: (s: AppState & AppActions) => T): T {
   if (!current) throw new Error('setAppStore() before rendering');
   return useStore(current, selector);
+}
+
+// while `on`, calls `measure` now and again whenever anything scrolls or the window resizes
+export function useMeasure(on: boolean, measure: () => void): void {
+  useLayoutEffect(() => {
+    if (!on) return;
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => { window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); };
+  }, [on]);
 }
 
 // redraws every `ms`, for a label that counts from a moment no patch restates
@@ -33,3 +44,5 @@ const sameItems = (a: unknown, b: unknown, same: (x: unknown, y: unknown) => boo
  *  so every handler given to such a component must read refs or the store, not the render that made it. */
 export const memoByValue = <P extends object>(component: FunctionComponent<P>) =>
   memo(component, (a, b) => sameItems(a, b, (x, y) => sameItems(x, y, handlerOrSame)));
+
+export const stop = (e: SyntheticEvent): void => e.stopPropagation();

@@ -52,7 +52,7 @@ const ED_RESUME = `opencode -s ${ED_SESSION}`;
 const OC_SERVER = 'opencode serve --stdio';
 
 /** What a process that dies at a failpoint throws: nothing after it runs. */
-export class Crash extends Error {
+class Crash extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'Crash';
@@ -67,7 +67,7 @@ const alive = (life: Life): void => {
   if (life.dead) throw new Crash(`${life.side} #${life.epoch} is gone`);
 };
 
-export const settle = async (): Promise<void> => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
+const settle = async (): Promise<void> => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
 const wire = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T);
 const noGit: GitRunner = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git' });
 
@@ -822,7 +822,7 @@ export class World {
 }
 
 /** Everything under `dir`, by its path there. */
-export const entries = (dir: string): string[] => (fs.existsSync(dir) ? (fs.readdirSync(dir, { recursive: true }) as string[]).sort() : []);
+const entries = (dir: string): string[] => (fs.existsSync(dir) ? (fs.readdirSync(dir, { recursive: true }) as string[]).sort() : []);
 
 /**
  * Where the fleet came to rest: whole on one machine, nothing open anywhere, no file a transaction wrote left behind,

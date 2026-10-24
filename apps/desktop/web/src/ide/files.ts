@@ -1,11 +1,10 @@
 import type { Api } from '../api.js';
+import { basename } from '../paths.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, getBuffer, isDirty, loadBuffer, markSaved, replaceText, select } from './buffers.js';
 import { editorExtensions, languageFor } from './codemirror.js';
 
 type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
-
-const name = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
 
 const saveListeners = new Set<(d: FilesDeps, id: string, path: string) => void>();
 
@@ -18,7 +17,7 @@ export function onSaved(listener: (d: FilesDeps, id: string, path: string) => vo
 export async function openFile(d: FilesDeps, id: string, path: string): Promise<void> {
   if (!getBuffer(id, path)) {
     try {
-      const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(name(path))]);
+      const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
       loadBuffer(id, path, text, mtimeMs, [editorExtensions(() => { void saveFile(d, id, path); }), lang ?? []]).root = root;
     } catch (e) {
       d.store.getState().showToast(`${path}: ${(e as Error).message}`);

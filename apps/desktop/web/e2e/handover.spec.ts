@@ -3,32 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
 import type { HandoverPhase } from '@svall/protocol';
-import { expect, test, type Svall } from './fixtures.js';
-import type { FromShell, ToShell } from '../src/bridge.js';
+import { expect, nativeShell, receive, sent, test, type Svall } from './fixtures.js';
+import type { ToShell } from '../src/bridge.js';
 import type { HandoverEvent } from '../src/handover.js';
 
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-
-/** A stand-in for the native shell: it answers the connection, names the gateway, and records what the page asks for. */
-async function fakeShell(page: Page, port: number, token: string, handoverEnabled = true, gateway: string | null = 'studio', profile?: string): Promise<void> {
-  await page.addInitScript(({ port, token, handoverEnabled, gateway, profile }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') {
-        setTimeout(() => {
-          w.__svall.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, ...(gateway && { gateway }), ...(profile && { profile }) }));
-          w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token }));
-        }, 0);
-      }
-    } } } };
-  }, { port, token, handoverEnabled, gateway, profile });
-}
-
-const sent = (page: Page) => page.evaluate(() => (window as unknown as Shell).__sent);
-const receive = (page: Page, msg: FromShell) => page.evaluate((m) => (window as unknown as Shell).__svall.receive(JSON.stringify(m)), msg);
+/** A stand-in for the native shell that names the gateway. */
+const fakeShell = (page: Page, port: number, token: string, handoverEnabled = true, gateway: string | null = 'studio', profile?: string) =>
+  nativeShell(page, { port, token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, ...(gateway && { gateway }), ...(profile && { profile }) } });
 const say = async (page: Page, ...events: HandoverEvent[]) => { for (const event of events) await receive(page, { type: 'handover.event', event }); };
 const changed = (...phases: HandoverPhase[]): HandoverEvent[] => phases.map((phase) => ({ event: 'handover.changed', data: { transactionId: 'tx1', phase } }));
 const robot = (id: string, phase: HandoverPhase, more: { done?: number; total?: number; error?: string; notice?: string } = {}): HandoverEvent =>

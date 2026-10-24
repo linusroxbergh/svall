@@ -65,7 +65,7 @@ describe('launch', () => {
     const f = fake({ answer: 'y' });
     await launch(work, f.deps);
     expect(f.prompts).toEqual(['create profile work at /u/.svall-work? [y/N] ']);
-    expect(f.setups).toEqual([{ home: work.home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: '/u/Library/LaunchAgents', launchctl: false, port: 0 }]);
+    expect(f.setups).toEqual([{ home: work.home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: '/u/Library/LaunchAgents', port: 0 }]);
     expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', '/u/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.work.plist']]);
     expect(f.calls.at(-1)).toEqual(['open', ['-n', '--env', 'SVALL_HOME=/u/.svall-work', '-b', 'io.github.linusroxbergh.svall']]);
   });

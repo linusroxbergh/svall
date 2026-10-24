@@ -8,7 +8,7 @@ import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../o
 import { claudePaths, resolvePaths } from '../paths.js';
 import { profileHome } from '../profile.js';
 import { systemdDir } from '../release.js';
-import { writeAtomic } from '../jsonfile.js';
+import { writeDurable } from '../handover/durable.js';
 import type { Runtime } from '../runtime.js';
 import { readJsonSettings } from '../settings-file.js';
 import { setupFleetHome, setupUser } from '../setup.js';
@@ -139,7 +139,7 @@ export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitD
   for (const unit of [svalldUnit(o), ...(fleetOnly ? [] : [gatewayUnit(o)])]) {
     const file = path.join(o.unitDir, unit.name);
     if (readOrUndefined(file) === unit.text) continue;
-    writeAtomic(file, unit.text, { perProcess: true });
+    writeDurable(file, Buffer.from(unit.text), { mode: 0o644 });
     done.push(`systemd unit -> ${file}`);
   }
   return done;

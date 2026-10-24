@@ -62,6 +62,17 @@ export function describeVersion(repo = REPO) {
   return version;
 }
 
+/** A build script's `--name value` arguments; --out is required. */
+export function options(argv) {
+  const o = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (!argv[i].startsWith('--') || argv[i + 1] === undefined) throw new Error(`bad argument: ${argv[i]}`);
+    o[argv[i].slice(2)] = argv[i += 1];
+  }
+  if (!o.out) throw new Error('--out <dir> is required');
+  return o;
+}
+
 async function download(url, dest) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);

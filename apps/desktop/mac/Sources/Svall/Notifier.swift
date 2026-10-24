@@ -67,10 +67,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     // a key is a terminal surface key: a robot's second terminal carries a -2 suffix
     private static func robotId(_ key: String) -> String { key.hasSuffix("-2") ? String(key.dropLast(2)) : key }
 
-    func post(key: String, title: String, subtitle: String, body: String, sound: Bool, actions: Bool, promptId: String?) {
+    func post(key: String, title: String, body: String, sound: Bool, actions: Bool, promptId: String?) {
         let content = UNMutableNotificationContent()
         content.title = title
-        content.subtitle = [subtitle, SvallHome.fleetName ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        content.subtitle = SvallHome.fleetName ?? ""
         content.body = body
         content.sound = sound ? .default : nil
         if actions { content.categoryIdentifier = Self.blocked }
@@ -122,8 +122,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         DispatchQueue.main.async {
             if owner == self.home { self.deliver(key: key, action: action, promptId: promptId); return }
             // another fleet's banner: its instance takes the click, and the front with it, once it's really that fleet's app
-            if action == "open", let pid = SvallHome.appPid(of: owner), let app = NSRunningApplication(processIdentifier: pid),
-               app.bundleIdentifier == Bundle.main.bundleIdentifier {
+            if action == "open", let app = SvallHome.runningApp(of: owner) {
                 NSApp.yieldActivation(to: app)
             }
             DistributedNotificationCenter.default().postNotificationName(Self.forward, object: owner, userInfo: ["key": key, "action": action, "promptId": promptId], deliverImmediately: true)

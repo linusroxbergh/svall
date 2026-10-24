@@ -7,7 +7,7 @@ import {
 import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
 import { initConfig, loadConfig, peekConfig, reservedFleetNames } from './config.js';
-import { writeAtomic } from './jsonfile.js';
+import { writeDurable } from './handover/durable.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
 import { machineId } from './machine.js';
 import { installOpencodePlugin, opencodePluginCurrent, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
@@ -24,7 +24,7 @@ export function installHookScripts(paths: Paths, helper: string | undefined = ho
   // a hook may be reading a script as it is replaced, so an unchanged one stays and a changed one is renamed into place
   for (const [name, dest] of [[HOOK_SCRIPT, paths.hookScript], ['claude-status.mjs', paths.statusScript]]) {
     const text = fs.readFileSync(path.join(hooksSrc, name), 'utf8');
-    if (readOrUndefined(dest) !== text) writeAtomic(dest, text, { perProcess: true });
+    if (readOrUndefined(dest) !== text) writeDurable(dest, Buffer.from(text), { mode: 0o644 });
   }
   const tmp = `${paths.hookHelper}.${process.pid}.tmp`;
   try {
@@ -77,7 +77,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
       done.push(`backup -> ${backup}`);
     }
     const rules = fs.readFileSync(path.join(template, '.claude/rules/svall.md'), 'utf8');
-    writeAtomic(agentsMd, `${agentsHeader}\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`, { perProcess: true });
+    writeDurable(agentsMd, Buffer.from(`${agentsHeader}\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`), { mode: 0o644 });
     done.push(`home AGENTS.md -> ${agentsMd}`);
   }
   fs.cpSync(path.join(template, '.claude/skills'), path.join(dir, '.agents/skills'), { recursive: true, force: true });
@@ -90,7 +90,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   // an older svalld allowed only `svall char`, which the rules now call `svall robot`
   const current = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
   if (current !== read) {
-    writeAtomic(settings, current!, { perProcess: true });
+    writeDurable(settings, Buffer.from(current!), { mode: 0o644 });
     done.push(`home settings -> ${settings}`);
   }
   if (current === shipped) return done;
@@ -100,7 +100,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
     fs.copyFileSync(settings, backup);
     done.push(`backup -> ${backup}`);
   }
-  writeAtomic(settings, shipped, { perProcess: true });
+  writeDurable(settings, Buffer.from(shipped), { mode: 0o644 });
   done.push(`home settings -> ${settings}`);
   return done;
 }
@@ -118,13 +118,11 @@ export function setupFleetHome(o: FleetHome): string[] {
   return done;
 }
 
-export type HomeSetup = FleetHome & { label: string; runtime: Runtime; launchAgentsDir: string; launchctl: boolean };
+export type HomeSetup = FleetHome & { label: string; runtime: Runtime; launchAgentsDir: string };
 
 export async function setupHome(o: HomeSetup): Promise<string[]> {
   const done = setupFleetHome(o);
   done.push(`launchd plist -> ${writePlist(o)}`);
-
-  if (o.launchctl) done.push(await bootstrapAgent(o.launchAgentsDir, o.label));
   return done;
 }
 
@@ -140,7 +138,7 @@ export async function refreshFleetPlists(o: { homes: string[]; runtime: Runtime;
     if (owner) { done.push(`left ${home}, which ${owner} runs`); continue; }
     // one fleet that cannot be set up, such as one whose config svalld would refuse, must not cost the others their refresh
     try {
-      done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false }));
+      done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir }));
       // a fleet the user left stopped stays stopped
       if (o.launchctl && await isLoaded(label)) {
         done.push(await bootstrapAgent(o.launchAgentsDir, label));
@@ -259,7 +257,7 @@ export function setupState(o: SetupOptions): SetupState {
 export async function runSetup(o: SetupOptions & { launchctl: boolean; replaceSettings?: boolean }): Promise<string[]> {
   // read again here, as a run decides what to do seconds before it writes, and an agent may have changed its file since
   const state = setupState(o);
-  const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
+  const home = await setupHome({ ...o, label: LAUNCHD_LABEL });
   const user = setupUser({ ...o, settings: state.settings, codexHooks: state.codexHooks, replaceSettings: o.replaceSettings ?? true });
   for (const [current, next, what] of state.removals) user.push(...writeJsonSettings(current, next, what));
   user.push(...(state.opencodeWanted ? installOpencodePlugin(o.opencode) : removeOpencodePlugin(o.opencode)));

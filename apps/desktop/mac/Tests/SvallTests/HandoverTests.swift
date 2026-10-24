@@ -27,13 +27,10 @@ private struct FakeHandover {
 final class HandoverTests: XCTestCase {
     private func fake(launcher: [String], launcherExit: Int32 = 0, attach: [String], attachThen: String = "",
                       status: [String] = [], statusExit: Int32 = 0, forgetExit: Int32 = 0) throws -> FakeHandover {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-handover-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let dir = try temporaryDirectory("svall-handover")
         let argv = dir.appendingPathComponent("argv"), stdin = dir.appendingPathComponent("stdin"), events = dir.appendingPathComponent("events.ndjson")
         let say = { (lines: [String]) in lines.map { "printf '%s\\n' '\($0)'" }.joined(separator: "\n") }
-        let script = """
-        #!/bin/sh
+        let path = try fakeHelper(prints: [], then: """
         printf '%s\\n' "$*" >> '\(argv.path)'
         case " $* " in
           *" status "*)
@@ -52,11 +49,7 @@ final class HandoverTests: XCTestCase {
             echo 'svall: launcher said this on stderr' >&2
             exit \(launcherExit) ;;
         esac
-
-        """
-        let path = dir.appendingPathComponent("svall").path
-        try script.write(toFile: path, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+        """)
         return FakeHandover(executable: path, argv: argv, stdin: stdin, events: events)
     }
 
@@ -132,8 +125,7 @@ final class HandoverTests: XCTestCase {
     }
 
     func testTheSwitchRunsSvallHandoverOnOrOffAndSaysWhyNot() throws {
-        let argv = NSTemporaryDirectory() + "svall-switch-\(UUID().uuidString)"
-        addTeardownBlock { try? FileManager.default.removeItem(atPath: argv) }
+        let argv = try temporaryDirectory("svall-switch").appendingPathComponent("argv").path
         let svall = try fakeHelper(prints: [], then: """
         printf '%s\\n' "$*" >> '\(argv)'
         case "$*" in *off*) echo 'svall: this fleet names a gateway, so handover stays on' >&2; exit 1 ;; esac
@@ -356,11 +348,10 @@ final class HandoverTests: XCTestCase {
     }
 
     func testTheGatewayIsTheMachineTheFleetNamesInTheRegistry() throws {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-gw-\(UUID().uuidString)")
+        let root = try temporaryDirectory("svall-gw")
         let home = root.appendingPathComponent("home"), config = root.appendingPathComponent("config")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let id = "0b9d6c3e-1f2a-4b5c-8d7e-9f0a1b2c3d4e"
         try #"{"machines":{"\#(id)":{"name":"studio","gateway":true},"11111111-1f2a-4b5c-8d7e-9f0a1b2c3d4e":{"name":"mac","gateway":false}}}"#
             .write(to: config.appendingPathComponent("machines.json"), atomically: true, encoding: .utf8)

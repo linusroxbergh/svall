@@ -1,5 +1,5 @@
 import type { FleetState } from '@svall/protocol';
-import { shortPath } from '../resources/model.js';
+import { shortPath } from '../paths.js';
 import { robotsOf, startCwd } from '../selectors.js';
 
 export type CwdChoice = { path: string; label: string };

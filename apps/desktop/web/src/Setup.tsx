@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AGENT_LABEL, type AgentKind, type SetupPlan } from '@svall/protocol';
 import { copyText, createBridge, openUrl, type Bridge } from './bridge.js';
 import { AS_TYPED } from './Field.js';
-import { shortPath } from './resources/model.js';
+import { shortPath } from './paths.js';
 
 export function Setup() {
   const [bridge] = useState(createBridge);

@@ -2,6 +2,7 @@ import type { Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { chordFor } from './keys.js';
+import { basename } from './paths.js';
 import { flushDocs } from './resources/autosave.js';
 import { statusOf } from './selectors.js';
 import type { IdeState } from './store/ide.js';
@@ -13,8 +14,7 @@ export const QUIT_FLUSH_MS = 3000;
 /** The files whose edits a quit would drop, by name, or by path where two share a name. */
 export const unsavedFiles = (ide: Record<string, IdeState>): string[] => {
   const paths = Object.values(ide).flatMap((s) => s.dirty);
-  const name = (path: string) => path.slice(path.lastIndexOf('/') + 1);
-  return paths.map((p) => (paths.filter((q) => name(q) === name(p)).length > 1 ? p : name(p)));
+  return paths.map((p) => (paths.filter((q) => basename(q) === basename(p)).length > 1 ? p : basename(p)));
 };
 
 /** Tells the shell which chord quits, and answers it before a quit: the docs waiting to be saved are written, the files still

@@ -45,7 +45,7 @@ Runs on macOS 15+ on Apple silicon. Wraps the Claude Code, Codex and OpenCode CL
 
 ## Evidence on Hand
 
-- Real app screenshot: `assets/svall_overview.jpg` (shows work-specific names; not for the site).
+- Real app screenshot: `assets/svall_overview.jpg`.
 - No users, stars, testimonials or benchmarks to cite. Do not invent any.
 
 ## Product Principles

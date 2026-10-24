@@ -34,7 +34,6 @@ export interface Staged {
 
 export function stageArchive(archive: string, staging: string, o?: VerifyOptions): Staged;
 export function installRelease(o: InstallOptions): Installed;
-export function main(argv: string[]): Installed;
 
 export interface RolledBack {
   prefix: string;

@@ -1,10 +1,10 @@
-// a newline in any value would end the row mid-table, so every cell is one line
-const cell = (v: string): string => v.replace(/\s+/g, ' ').trim();
+import { oneLine } from '@svall/svalld/text';
 
 export function table(rows: Record<string, string>[]): string {
   if (rows.length === 0) return '(none)';
   const cols = Object.keys(rows[0]);
-  const at = (r: Record<string, string>, c: string) => cell(r[c] ?? '');
+  // a newline in any value would end the row mid-table, so every cell is one line
+  const at = (r: Record<string, string>, c: string) => oneLine(r[c] ?? '');
   const width = cols.map((c) => Math.max(c.length, ...rows.map((r) => at(r, c).length)));
   const line = (vals: string[]) => vals.map((v, i) => v.padEnd(width[i])).join('  ').trimEnd();
   return [line(cols), ...rows.map((r) => line(cols.map((c) => at(r, c))))].join('\n');

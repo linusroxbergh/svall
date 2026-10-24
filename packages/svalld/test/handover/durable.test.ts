@@ -3,7 +3,6 @@ import path from 'node:path';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DURABLE_TEMP, DurableJson, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../../src/handover/durable.js';
-import { writeJsonAtomic } from '../../src/atomic.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
 afterEach(cleanHomes);
@@ -202,14 +201,5 @@ describe('DurableJson', () => {
     const file = path.join(makeHome(), 'rec.json');
     expect(() => new DurableJson(Rec, file).write({ n: 'three' } as never)).toThrow();
     expect(fs.existsSync(file)).toBe(false);
-  });
-});
-
-describe('writeJsonAtomic', () => {
-  it('still writes mode 0600 json through the durable writer', () => {
-    const file = path.join(makeHome(), 'owner.json');
-    writeJsonAtomic(file, { a: 1 });
-    expect(fs.readFileSync(file, 'utf8')).toBe('{\n  "a": 1\n}\n');
-    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   });
 });

@@ -69,10 +69,7 @@ final class ShellRouter {
         browsers.onOpened = { [weak self] from, tab, url in self?.bridge.send(.browserOpened(from: from, tab: tab, url: url)) }
         browsers.onClosed = { [weak self] tab in self?.bridge.send(.browserClosed(tab: tab)) }
 
-        let helper = ControllerProcess.locate().map {
-            ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
-        }
-        remote = RemoteConnection(helper: helper, local: { SvallHome.connection() }, localOnly: { !SvallHome.namesGateway() },
+        remote = RemoteConnection(helper: Self.connect(), local: { SvallHome.connection() }, localOnly: { !SvallHome.namesGateway() },
                                   cachedHere: { RemoteConnection.cachedRouteIsHere(home: SvallHome.path, configDir: SvallHome.configDir) })
         remote.onConnection = { [weak self] connection in
             guard self?.listening == true else { return }
@@ -95,8 +92,8 @@ final class ShellRouter {
         handover?.onExit = { [weak self] code, error in self?.bridge.send(.handoverExit(code: code, error: error)) }
         // the move is done: where the fleet runs now is asked afresh, rather than on the old helper's next tick
         handover?.onMoved = { [weak self] in
-            guard let helper = ControllerProcess.locate() else { return }
-            self?.remote.reconnect(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+            guard let helper = Self.connect() else { return }
+            self?.remote.reconnect(with: helper)
         }
 
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
@@ -354,8 +351,8 @@ final class ShellRouter {
             holding = !rects.isEmpty || !passive.isEmpty
             surfaces.setCutout(rects: rects, passive: passive)
             browsers.setCutout(rects: rects, passive: passive)
-        case .notifyPost(let key, let title, let subtitle, let body, let sound, let actions, let promptId):
-            notifier.post(key: key, title: title, subtitle: subtitle, body: body, sound: sound, actions: actions, promptId: promptId)
+        case .notifyPost(let key, let title, let body, let sound, let actions, let promptId):
+            notifier.post(key: key, title: title, body: body, sound: sound, actions: actions, promptId: promptId)
         case .notifyRemove(let key):
             notifier.remove(key: key)
         case .notifyEnable:
@@ -373,8 +370,8 @@ final class ShellRouter {
             awake.hold(reason, battery: battery ?? false)
         case .connectionRetry:
             // a helper that gave up waits to be stopped; one still retrying starts over from the first wait
-            guard let helper = ControllerProcess.locate() else { return }
-            remote.retry(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+            guard let helper = Self.connect() else { return }
+            remote.retry(with: helper)
         case .connectionHere:
             if let why = remote.openHere() { bridge.send(.notice(text: why)) }
         }
@@ -389,7 +386,7 @@ final class ShellRouter {
     private func openFleet(_ home: String, quit: Bool) {
         // the picker gives way to the fleet it opened without asking
         let done = { [weak self] in if quit, self?.quitFlow.pending != true { NSApp.terminateQuietly() } }
-        if let pid = SvallHome.appPid(of: home), let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == Bundle.main.bundleIdentifier {
+        if let app = SvallHome.runningApp(of: home) {
             app.activate()
             return done()
         }
@@ -430,9 +427,7 @@ final class ShellRouter {
             }
             // the version a helper gave up on may be the gateway's, which the upgrade has just changed
             if op == .upgrade || op == .rollback, code == 0, args.name == SvallHome.gatewayName() {
-                self?.remote.retryIfIdle(with: ControllerProcess.locate().map {
-                    ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
-                })
+                self?.remote.retryIfIdle(with: Self.connect())
             }
         }
         do { try child.start() } catch {
@@ -479,9 +474,12 @@ final class ShellRouter {
 
     // `svall host enable`, from the page or a terminal, can name a gateway for a fleet whose window went without a helper
     private func followGateway() {
-        remote.followIfGatewayNamed(with: ControllerProcess.locate().map {
-            ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
-        })
+        remote.followIfGatewayNamed(with: Self.connect())
+    }
+
+    /// A `svall connect` helper for this window's fleet; nil in a build with no svall beside it.
+    private static func connect() -> ControllerProcess? {
+        ControllerProcess.locate().map { ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)) }
     }
 
     // read afresh each time: the gateway and handover.enabled change when svall host rewrites fleet.json

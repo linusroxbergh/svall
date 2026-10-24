@@ -11,7 +11,7 @@ const one = (dir, pattern) => {
   if (!hit) throw new Error(`no licence matching ${pattern} in ${dir}: run pnpm app:build first`);
   return path.join(dir, hit);
 };
-// the vendor folders of the node, tmux and Sparkle this build ships, which app-build.sh names
+// the folders of the node, tmux and Sparkle this build ships, which app-build.sh names
 const [nodeDir, tmux, sparkleDir] = process.argv.slice(2);
 if (!sparkleDir) throw new Error('usage: licenses.mjs <node dir> <tmux dir> <sparkle dir>');
 // the MIT text, for a package that names the licence but ships no copy of it

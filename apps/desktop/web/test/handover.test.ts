@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
   actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, namesOn, needsUser,
-  blockerSide, goOn, restingLine, restPlan, rowText, sectionStates, shortPath, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
+  blockerSide, goOn, restingLine, restPlan, rowText, sectionStates, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
+import { shortPath } from '../src/paths.js';
 import { chr } from './fixtures.js';
 
 const tx = 'tx-1';
@@ -134,7 +135,7 @@ describe('the handover a sheet follows', () => {
     expect(shortPath('/Users/ada', '/Users/ada')).toBe('~');
     expect(shortPath('/Users/Shared/proj', '/Users/ada')).toBe('/Users/Shared/proj');
     expect(shortPath('/Users/adam/x', '/Users/ada')).toBe('/Users/adam/x');
-    expect(shortPath('/home/bo/app')).toBe('/home/bo/app');
+    expect(shortPath('/home/bo/app')).toBe('~/app');
   });
 
   it('paces the whole transfer from the bytes sent since its first row, once a few seconds have passed', () => {

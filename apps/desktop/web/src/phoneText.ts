@@ -1,6 +1,5 @@
 import type { PhoneSession } from '@svall/protocol';
-
-const pad = (n: number): string => String(n).padStart(2, '0');
+import { pad } from './usageText.js';
 
 /** Who has the phone page open right now: the line the corner panel and the settings row both carry,
  *  each with its own word for nobody, since the settings row has a label to lean on. */

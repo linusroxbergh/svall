@@ -7,10 +7,11 @@ import { openFile } from '../ide/files.js';
 import { Tree } from '../ide/Tree.js';
 import { followLink } from '../LinkAsk.js';
 import { LinkIcon } from '../map/LinkIcon.js';
+import { shortPath } from '../paths.js';
 import { createDoc, deleteDoc, deleteResource, renameDoc } from './docs.js';
 import { chooseResource } from './choose.js';
 import { openedItself } from './keys.js';
-import { badgeOf, countsBySource, isCard, isField, kindLabel, kindOf, kindRows, qualifierOf, shelfSource, shortPath, tierOf, visible, whereGroups, whereTier, type CardItem, type Item, type Kind, type Source, type Tier, type What } from './model.js';
+import { badgeOf, countsBySource, isCard, isField, kindLabel, kindOf, kindRows, qualifierOf, shelfSource, tierOf, visible, whereGroups, whereTier, type CardItem, type Item, type Kind, type Source, type Tier, type What } from './model.js';
 
 const NONE: string[] = [];
 

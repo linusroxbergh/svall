@@ -29,11 +29,6 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
       printResult(island, json(), () => island.id);
     }));
 
-  cmd.command('rename <id> <name>').description('rename an island').action((id: string, name: string) => withFleet(connect, async (c, state) => {
-    const island = await c.call('island.update', { id: islandId(state, id), name });
-    printResult(island, json(), () => `${island.id} ${island.name}`);
-  }));
-
   contextOptions(cmd.command('update <id>').description("change an island's name, description, place, size, context or instructions")
     .option('--name <n>').option('--description <d>').option('--at <x,y>').option('--size <w,h>'))
     .action((id: string, o: { name?: string; description?: string; at?: string; size?: string; instructions?: string } & ContextFlags) => withFleet(connect, async (c, state) => {

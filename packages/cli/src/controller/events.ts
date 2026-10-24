@@ -41,23 +41,11 @@ export function entryEvent(transactionId: string, p: EntryProgress, archivedTo?:
   };
 }
 
-/**
- * Hands events to whoever watches until they let go; after that the transaction goes on without an audience.
- * A watcher that throws is let go too, so a closed pipe never stops a move. The record gets every event, and
- * one that throws is skipped.
- */
+/** Hands every event to the record; one that throws is skipped. */
 export class Observer {
-  private detached = false;
-
-  constructor(private emit?: (e: HandoverEvent) => void, private record?: (e: HandoverEvent) => void) {}
+  constructor(private record?: (e: HandoverEvent) => void) {}
 
   send(e: HandoverEvent): void {
     try { this.record?.(e); } catch { /* a record that fails never stops a move */ }
-    if (this.detached || !this.emit) return;
-    try { this.emit(e); } catch { this.detached = true; }
-  }
-
-  detach(): void {
-    this.detached = true;
   }
 }

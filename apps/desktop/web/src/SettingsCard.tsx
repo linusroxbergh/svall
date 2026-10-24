@@ -12,7 +12,7 @@ import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
-import { directoryName } from './selectors.js';
+import { directoryName, NO_AGENTS } from './selectors.js';
 import { canFill, OPACITY, zoomBy, type KeepAwake, type NotifySettings, type Settings } from './settings.js';
 
 const set = (patch: Partial<Settings>) => app.store.getState().setSettings(patch);
@@ -82,9 +82,6 @@ function Dormancy() {
     </div>
   );
 }
-
-// a stable identity, so a selector defaulting to "no CLIs found" does not retrigger on every render
-const NO_AGENTS: AgentKind[] = [];
 
 function MainAgent() {
   const main = useApp((s) => s.fleet.mainAgent ?? 'claude');

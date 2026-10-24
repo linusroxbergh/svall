@@ -7,9 +7,7 @@ vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModu
 
 const { NewRobot } = await import('../../src/NewRobot.js');
 const { MissionPrompt } = await import('../../src/MissionPrompt.js');
-const { ConfirmClose } = await import('../../src/ConfirmClose.js');
-const { ConfirmSleep } = await import('../../src/ConfirmSleep.js');
-const { ConfirmDeleteIsland } = await import('../../src/ConfirmDeleteIsland.js');
+const { ConfirmClose, ConfirmSleep, ConfirmDeleteIsland } = await import('../../src/Confirm.js');
 const { Sidebar } = await import('../../src/Sidebar.js');
 const { dispatchKey, installKeyHandlers } = await import('../../src/keyboard.js');
 

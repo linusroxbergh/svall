@@ -1,7 +1,5 @@
-import { expect, test } from './fixtures.js';
-import type { FromShell, ToShell } from '../src/bridge.js';
-
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
+import { expect, nativeShell, receive, sent, test } from './fixtures.js';
+import type { ToShell } from '../src/bridge.js';
 
 // what `svall host add --json` prints, one object per line, with a token in the line a failure carries
 const ADD_STEPS = [
@@ -17,27 +15,8 @@ const ADD_STEPS = [
   { step: 'probe', status: 'fail', detail: 'ws://127.0.0.1:47800 refused token=s3cr3t', action: 'ssh linus@studio and run svall doctor' },
 ] as const;
 
-/** A stand-in for the native shell: it answers the connection and plays a host run back to the page. */
-async function fakeShell(page: import('@playwright/test').Page, port: number, token: string): Promise<void> {
-  await page.addInitScript(({ port, token }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') {
-        setTimeout(() => {
-          w.__svall.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: false }));
-          w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token }));
-        }, 0);
-      }
-    } } } };
-  }, { port, token });
-}
-
-const sent = (page: import('@playwright/test').Page) => page.evaluate(() => (window as unknown as Shell).__sent);
-const receive = (page: import('@playwright/test').Page, msg: FromShell) =>
-  page.evaluate((m) => (window as unknown as Shell).__svall.receive(JSON.stringify(m)), msg);
+const fakeShell = (page: import('@playwright/test').Page, port: number, token: string) =>
+  nativeShell(page, { port, token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: false } });
 const handoverOn = (page: import('@playwright/test').Page) =>
   receive(page, { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true });
 

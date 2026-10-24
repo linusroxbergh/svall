@@ -763,6 +763,24 @@ describe('preflight', () => {
     }
   });
 
+  it('counts a far gateway whose version names no authority schema as on another one', async () => {
+    const ssh = installFakeSsh();
+    const masters = new Masters();
+    try {
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: trift }, null, 2) });
+      const gateway = {
+        id: trift,
+        record: { name: 'trift', ssh: 'trift.test', platform: 'linux' as const, arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall', gateway: true },
+      };
+      const err = await authorityOp(gateway, mac, masters, { schema: true })('get', fleetId).catch((e: unknown) => e);
+      expect(err).toMatchObject({ kind: 'version', message: expect.stringContaining('trift runs no gateway authority schema') });
+      expect(ssh.remoteCalls().filter((w) => w.includes('owner'))).toEqual([]);
+    } finally {
+      await masters.close();
+      ssh.clean();
+    }
+  });
+
   it('blocks as incompatible_protocol, naming it, on a gateway that answers on another authority schema', async () => {
     const w = new World();
     const said = `trift runs gateway authority schema ${AUTHORITY_SCHEMA_VERSION + 1}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade trift`;
@@ -1503,16 +1521,14 @@ describe('cancellation', () => {
     expect(settledOn(w)).toBe('source');
   });
 
-  it('after Commit, only stops telling the observer, and the move goes on to completion', async () => {
+  it('after Commit, only lets the watcher go, and the move goes on to completion', async () => {
     const w = new World();
     const c = controller(w);
     const commit = w.gateway.commit;
     w.gateway.commit = async (p) => { const r = await commit(p); c.cancel(); return r; };
     const out = await c.start(trift, {});
     expect(out).toEqual({ status: 'detached', transactionId: 'tx-1' });
-    const seen = w.events.length;
     expect(await c.finished).toMatchObject({ status: 'complete' });
-    expect(w.events.length).toBe(seen);
     expect(w.ops).not.toContain('gateway:abort');
     expect(settledOn(w)).toBe('destination');
   });
@@ -1531,22 +1547,17 @@ describe('cancellation', () => {
     const commit = w.gateway.commit;
     w.gateway.commit = async (p) => { const r = await commit(p); c.cancel(); return r; };
     expect(await c.start(trift, {})).toEqual({ status: 'detached', transactionId: 'tx-1' });
-    const seen = w.events.length;
     await c.finished;
-    expect(w.events.length).toBe(seen);
-    expect(recorded.slice(0, seen)).toEqual(w.events);
     expect(recorded).toContainEqual({ event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'activate' } });
     expect(recorded.at(-1)).toEqual({ event: 'handover.result', data: expect.objectContaining({ status: 'complete' }) });
   });
 
-  it('relays what a daemon reports of its own rest and activation to the watcher and the record alike', async () => {
+  it('relays what a daemon reports of its own rest and activation to the record', async () => {
     const w = new World();
-    const recorded: HandoverEvent[] = [];
-    const c = controller(w, { record: (e) => recorded.push(e) });
+    const c = controller(w);
     const row: HandoverEvent = { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c_ada', phase: 'freeze' } };
     c.relay(row);
     expect(w.events).toEqual([row]);
-    expect(recorded).toEqual([row]);
   });
 
   it('while activation runs, lets the watcher go at once and leaves activation to finish', async () => {
@@ -2422,7 +2433,7 @@ describe('the real adapters', () => {
     expect(silent).not.toBeInstanceOf(Refused);
   });
 
-  it('relays the daemon\'s own handover rows as they arrive and never its phases, reads the gateway\'s record, and keeps its token to scrub', async () => {
+  it('relays the daemon\'s own handover rows as they arrive and nothing else it pushes, reads the gateway\'s record, and keeps its token to scrub', async () => {
     const prefix = makeHome();
     const home = makeHome();
     const saved = process.env.SVALL_GATEWAY_PREFIX;
@@ -2437,8 +2448,6 @@ describe('the real adapters', () => {
         if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
         const req = JSON.parse(raw.toString()) as { id: number; method: string };
         ws.send(JSON.stringify({ event: 'state.patch', data: { ops: [] } }));
-        // the daemon's journal reports its own step on every write: only the controller says where the handover is
-        ws.send(JSON.stringify({ event: 'handover.changed', data: { transactionId: 'tx-9', phase: 'freeze' } }));
         ws.send(JSON.stringify({ event: 'handover.entity', data: row }));
         ws.send(JSON.stringify({ id: req.id, result: {} }));
       });

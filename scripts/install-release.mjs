@@ -179,7 +179,7 @@ function options(argv) {
   return o;
 }
 
-export function main(argv) {
+function main(argv) {
   const o = options(argv);
   const signers = o['allowed-signers'] ?? allowedSigners();
   return installRelease({

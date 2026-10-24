@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { app, deps } from './boot.js';
-import { useApp } from './hooks.js';
+import { useApp, useMeasure } from './hooks.js';
 import { chooseResource } from './resources/choose.js';
 import { reloadResources } from './resources/load.js';
 import { placeTip } from './settings.js';
@@ -72,21 +72,15 @@ export function AgentProfilePick({ id }: { id: string }) {
 
   // the menu hangs under the field or flips over it, capped at the room the card has there; it is fixed to the window,
   // so the section it sits in does not clip it, and placed again when that section scrolls
-  useLayoutEffect(() => {
+  useMeasure(open, () => {
     const at = row.current, el = menu.current;
-    if (!open || !at || !el) return;
-    const measure = () => {
-      const r = at.getBoundingClientRect();
-      const panel = at.closest('.side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
-      const { above, maxHeight } = placeTip(r, el.scrollHeight, panel);
-      setPlace({ left: r.left, width: r.width, maxHeight: maxHeight || undefined,
-        ...(above ? { bottom: window.innerHeight - r.top + 5 } : { top: r.bottom + 5 }) });
-    };
-    measure();
-    window.addEventListener('scroll', measure, true);
-    window.addEventListener('resize', measure);
-    return () => { window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); };
-  }, [open]);
+    if (!at || !el) return;
+    const r = at.getBoundingClientRect();
+    const panel = at.closest('.side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+    const { above, maxHeight } = placeTip(r, el.scrollHeight, panel);
+    setPlace({ left: r.left, width: r.width, maxHeight: maxHeight || undefined,
+      ...(above ? { bottom: window.innerHeight - r.top + 5 } : { top: r.bottom + 5 }) });
+  });
   useEffect(() => { if (open) menu.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }); }, [open, active]);
 
   return (

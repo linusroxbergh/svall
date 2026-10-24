@@ -1,4 +1,5 @@
 import type { Blocker, HandoverChoices, HandoverEntityKind, HandoverPhase, MachineId, ManifestSummary, Warning } from './handover.js';
+import type { Result } from './messages.js';
 
 // what the handover helper prints as NDJSON and the app reads: `svall handover --json`, its status and its replay
 
@@ -6,7 +7,7 @@ import type { Blocker, HandoverChoices, HandoverEntityKind, HandoverPhase, Machi
 export type SafeAction = 'resume' | 'abort';
 
 /** One robot as its destination brought it up; `notice` is what one that came up still waits on in its terminal. */
-export type RobotResult = { id: string; ok: boolean; error?: string; notice?: string };
+export type RobotResult = Result<'handover.activate'>['robots'][number];
 
 /**
  * Why a run that stopped part way offers nothing safe: whether its commit landed is unknown, the gateway could not be

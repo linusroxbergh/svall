@@ -17,19 +17,9 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { signManifest, writeManifest } from './release-manifest.mjs';
-import { describeVersion, pinnedRsync, releaseKey, RSYNC_CONFIGURE, stageRelease } from './release-stage.mjs';
+import { describeVersion, options, pinnedRsync, releaseKey, RSYNC_CONFIGURE, stageRelease } from './release-stage.mjs';
 
 const run = (exe, argv, o = {}) => execFileSync(exe, argv, { stdio: ['ignore', 'pipe', 'inherit'], ...o });
-
-function options(argv) {
-  const o = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    if (!argv[i].startsWith('--') || argv[i + 1] === undefined) throw new Error(`bad argument: ${argv[i]}`);
-    o[argv[i].slice(2)] = argv[i += 1];
-  }
-  if (!o.out) throw new Error('--out <dir> is required');
-  return o;
-}
 
 const o = options(process.argv.slice(2));
 if (process.platform !== 'darwin') throw new Error(`the controller is a macOS release; this is ${process.platform}`);

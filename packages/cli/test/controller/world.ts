@@ -68,7 +68,7 @@ export function manifestFor(tx: string | undefined, from = mac, to = trift): Fro
 
 export const info = (machineId: MachineId, over: Partial<SystemInfo> = {}): SystemInfo => ({
   machineId, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
-  platform: machineId === mac ? 'darwin' : 'linux', arch: 'arm64', git: '2.43.0',
+  platform: machineId === mac ? 'darwin' : 'linux', arch: 'arm64', git: '2.43.0', heapLimit: 2 ** 32,
   agentAdapters: [
     { kind: 'claude', version: '2.1.280', adapter: 1, home: at('.claude'), loggedIn: true, hooks: true },
     { kind: 'codex', version: '0.156.1', adapter: 1, home: at('.codex'), loggedIn: true, hooks: true },
@@ -532,7 +532,7 @@ export function controller(w: World, o: Partial<HandoverDeps> = {}): Handover {
   return new Handover({
     fleetId, store: w.store, gateway: w.gateway, local: mac, machines: [mac, trift],
     side: async (id) => w.side(id), route: (id) => w.side(id).route, transfer: w.transfer, rsync: async () => '/opt/rsync', stateDir: '/tmp/svall-controller',
-    clock: { now: () => w.now, sleep: async () => {} }, emit: (e) => w.events.push(e), retry: { attempts: 3, firstDelayMs: 1 },
+    clock: { now: () => w.now, sleep: async () => {} }, record: (e) => w.events.push(e), retry: { attempts: 3, firstDelayMs: 1 },
     ...o,
   });
 }

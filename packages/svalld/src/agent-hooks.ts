@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { codexHookCommand, type CodexPaths } from './codex/install.js';
 import { hooksFor } from './hooks/receiver.js';
-import { HOOK_GUARD, helperBeside, helperOr, isOurs, resolvePaths } from './paths.js';
+import { HOOK_GUARD, helperBeside, helperOr, isOurs, nodeRun, resolvePaths } from './paths.js';
 import { variantOf } from './profile.js';
 import { bundled } from './runtime.js';
 import { readJsonSettings, readOrUndefined, requireWritable, same, writeJsonSettings, type JsonSettings } from './settings-file.js';
@@ -152,9 +152,6 @@ export function unmergeStatusLine(settings: Record<string, unknown>, script: str
   else delete out.statusLine;
   return out;
 }
-
-// the node setup ran with, or the one on PATH once a version manager has removed it
-export const nodeRun = (node: string, script: string): string => `n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)}`;
 
 // runs `then` for an agent whose fleet is the other variant's, so the release's and Svall Dev's commands start nothing
 // for each other's agents; a home named like neither is Svall Dev's, as the scripts and the helper decide

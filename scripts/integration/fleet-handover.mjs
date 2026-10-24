@@ -15,22 +15,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { brief, flags, harness, last, lines, same } from './harness.mjs';
+import { brief, flags, harness, last, lines, machines, same } from './harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const o = flags(process.argv.slice(2));
-const prefix = o.prefix ?? 'svall';
-const L = `${prefix}-local`;
-const R = `${prefix}-remote`;
-const NET = `${prefix}-it`;
-const HOMES = { [L]: '/Users/svall', [R]: '/home/svall' };
 // each agent robot: the flag its revive names its session with, and where it works in its machine's home
 const AGENTS = [
   { key: 'agent', kind: 'claude', resume: '--resume', dir: 'src/app-wt' },
   { key: 'oc', kind: 'opencode', resume: '-s', dir: 'src/app' },
 ];
-const userEnv = (machine) => [`HOME=${HOMES[machine]}`, 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
-  'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
 // pre-commit boundaries abort back to the source; post-commit ones resume onto the destination
 const POST = new Set(['commit', 'activate']);
 
@@ -39,14 +32,7 @@ const archive = path.resolve(o.archive);
 const image = o.image ?? 'svall-it:latest';
 const out = o.out ? path.resolve(o.out) : fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-handover-'));
 const { say, docker, check, step, booted } = harness(out);
-
-/** A login shell on a machine, as svall unless `root`; throws on a nonzero exit unless `ok: false`. */
-function sh(machine, script, opts = {}) {
-  const who = opts.root ? [] : ['-u', 'svall', '-w', HOMES[machine], ...userEnv(machine)];
-  const r = docker(['exec', '-i', ...who, machine, 'bash', '-lc', script], { input: opts.input ?? '' });
-  if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
-  return r;
-}
+const { L, R, NET, HOMES, sh } = machines(o.prefix ?? 'svall', docker);
 
 // ---------------------------------------------------------------------------------------------- machines
 

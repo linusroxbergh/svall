@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { onPath } from '../agents.js';
 import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
 import { ControlClient } from './control.js';
@@ -18,12 +18,8 @@ const SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'dash']);
 export function resolveTmux(): string {
   const own = helper('tmux') ?? releaseTmux();
   if (own) return own;
-  for (const dir of (process.env.PATH ?? '').split(':')) {
-    if (!dir) continue;
-    const candidate = path.join(dir, 'tmux');
-    try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch { /* next dir */ }
-  }
-  return 'tmux';
+  const dir = onPath('tmux', process.env.PATH ?? '');
+  return dir ? path.join(dir, 'tmux') : 'tmux';
 }
 
 /**

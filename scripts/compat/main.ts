@@ -59,7 +59,7 @@ export function checkInstalled(r: Report, bin: string = AGENTS[r.kind].bin): voi
   }
 }
 
-export function format(reports: Report[]): string {
+function format(reports: Report[]): string {
   return reports.map((r) => {
     const head = `${r.kind} ${r.version ?? '?'} (installed: ${r.installed ?? 'none'}): ${r.problems.length ? 'NEEDS A LOOK' : 'ok'}`;
     const lines = [...r.problems, ...r.notes, ...(r.added.length ? [`new events: ${r.added.join(', ')}`] : [])];

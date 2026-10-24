@@ -225,13 +225,12 @@ runIf('Fleet layout', () => {
     expect(inset(store.state.islands[a.id].size, moved.cell)).toBeGreaterThanOrEqual(CREW_INSET);
   });
 
-  it('gives each new robot a portrait of its own, and robot.update swaps it', async () => {
+  it('gives each new robot a portrait of its own', async () => {
     const { fleet } = await boot();
     const a = fleet.createIsland({ name: 'a' });
     const one = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     const two = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
     expect(PORTRAITS).toContain(one.portrait);
     expect(two.portrait).not.toBe(one.portrait);
-    expect(fleet.updateRobot(one.id, { portrait: 'walrus' }).portrait).toBe('walrus');
   });
 });

@@ -70,7 +70,7 @@ describe('fleet names', () => {
 });
 
 describe('fleetControl', () => {
-  it('lists each fleet with its name, this window\'s, the running ones and the ones a window shows', async () => {
+  it('lists each fleet with its name, this window\'s and the ones a window shows', async () => {
     const u = makeHome();
     const priv = fleetAt(u, '.svall');
     const work = fleetAt(u, '.svall-work', { name: 'office' });
@@ -78,11 +78,11 @@ describe('fleetControl', () => {
     fs.writeFileSync(path.join(work, 'app.pid'), `4242\t${work}`);
     // a pid file left by a crash, now naming another process
     fs.writeFileSync(path.join(side, 'app.pid'), `99\t${side}`);
-    const f = fake(u, { up: [work], apps: [4242] });
+    const f = fake(u, { apps: [4242] });
     expect(await fleetControl(priv, f.deps).list()).toEqual([
-      { home: priv, name: 'private', current: true, running: true, windowOpen: false },
-      { home: side, name: 'side', current: false, running: false, windowOpen: false },
-      { home: work, name: 'office', current: false, running: true, windowOpen: true },
+      { home: priv, name: 'private', current: true, windowOpen: false },
+      { home: side, name: 'side', current: false, windowOpen: false },
+      { home: work, name: 'office', current: false, windowOpen: true },
     ]);
   });
 
@@ -92,7 +92,7 @@ describe('fleetControl', () => {
     const f = fake(u);
     const home = await fleetControl(priv, f.deps).create('work');
     expect(home).toBe(path.join(u, '.svall-work'));
-    expect(f.setups).toEqual([{ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: f.deps.launchAgentsDir, launchctl: false, port: 0 }]);
+    expect(f.setups).toEqual([{ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: f.deps.launchAgentsDir, port: 0 }]);
     expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', path.join(f.deps.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist')]]);
     expect(f.up.has(home)).toBe(true);
   });

@@ -167,7 +167,7 @@ and migrated:
   "home": { "cwd": "~/.svall/home", "command": "claude --model sonnet" },
   "defaultCwd": "~",
   "scribe": { "agent": "claude", "model": "sonnet" },
-  "mobile": { "enabled": true, "logins": ["you@example.com"] },
+  "mobile": { "logins": ["you@example.com"] },
   "handover": {
     "exclude": [],
     "excludeDefaults": true,
@@ -973,7 +973,8 @@ system.info            {} -> { machineId, release, protocol, stateSchema,
 ownership.get          {} -> { fleetId, generation, ownerMachineId, frozen, transaction? }
 handover.preflight     { toMachineId } -> { manifestSummary, blockers, warnings }
 handover.freeze        { transactionId, generation, choices } -> { manifest }
-handover.prepare       { transactionId, generation, snapshot, manifestDigest, controllerId? } -> {}
+handover.prepare       { transactionId, generation, manifest, manifestDigest, landed,
+                         controllerId? } -> { preparedDigest }
 handover.activate      { transactionId, generation, committed? } -> { robots: [...] }
 handover.abort         { transactionId, generation } -> {}
 handover.status        {} -> { transaction?, quarantined? }
@@ -1000,9 +1001,7 @@ because routes and SSH aliases are controller-local.
 Events:
 
 ```text
-event ownership.changed  { generation, ownerMachineId }
-event handover.changed   { transactionId, phase }
-event handover.entity    { transactionId, kind, id, phase, done?, total?, error? }
+event handover.entity  { transactionId, kind, id, phase, done?, total?, error? }
 ```
 
 ---

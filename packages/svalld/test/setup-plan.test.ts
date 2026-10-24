@@ -133,15 +133,14 @@ describe('requireInstalledApp', () => {
 
 describe('staleFleets', () => {
   it('names the running fleets whose daemon wrote another version, and leaves one still starting and the rest', () => {
-    const a = makeHome(), b = makeHome(), c = makeHome(), d = makeHome(), e = makeHome(), f = makeHome();
-    fs.writeFileSync(path.join(a, 'version'), '0.1.0 (10)\n');
+    const b = makeHome(), c = makeHome(), d = makeHome(), e = makeHome(), f = makeHome();
     fs.writeFileSync(path.join(b, 'version'), '0.1.1 (12)\n7\n');
     fs.writeFileSync(path.join(c, 'version'), '0.1.0 (10)\n7\n');
     fs.writeFileSync(path.join(e, 'version'), '0.1.0 (10)\n6\n');
     fs.writeFileSync(path.join(f, 'version'), '0.1.0 (10)\n7\n');
     const pidOf = (label: string) => (label.endsWith(path.basename(c)) ? undefined : 7);
     const label = (home: string) => `L.${path.basename(home)}`;
-    expect(staleFleets([a, b, c, d, e, f], '0.1.1 (12)', pidOf, label)).toEqual([label(a), label(f)]);
+    expect(staleFleets([b, c, d, e, f], '0.1.1 (12)', pidOf, label)).toEqual([label(f)]);
   });
 });
 

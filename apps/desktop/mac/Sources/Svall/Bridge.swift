@@ -42,7 +42,7 @@ enum ToShell: Decodable {
     case browserFill(tab: String)
     case browserFocus(tab: String)
     case shellCutout(rects: [WebRect], passive: [WebRect])
-    case notifyPost(key: String, title: String, subtitle: String, body: String, sound: Bool, actions: Bool, promptId: String?)
+    case notifyPost(key: String, title: String, body: String, sound: Bool, actions: Bool, promptId: String?)
     case notifyRemove(key: String)
     case notifyEnable
     case notifySettings
@@ -69,7 +69,7 @@ enum ToShell: Decodable {
     case connectionRetry
     case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -99,7 +99,7 @@ enum ToShell: Decodable {
         case "browser.fill": self = .browserFill(tab: try c.decode(String.self, forKey: .tab))
         case "browser.focus": self = .browserFocus(tab: try c.decode(String.self, forKey: .tab))
         case "shell.cutout": self = .shellCutout(rects: try c.decode([WebRect].self, forKey: .rects), passive: try c.decode([WebRect].self, forKey: .passive))
-        case "notify.post": self = .notifyPost(key: try c.decode(String.self, forKey: .key), title: try c.decode(String.self, forKey: .title), subtitle: try c.decode(String.self, forKey: .subtitle), body: try c.decode(String.self, forKey: .body), sound: try c.decode(Bool.self, forKey: .sound), actions: try c.decode(Bool.self, forKey: .actions), promptId: try c.decodeIfPresent(String.self, forKey: .promptId))
+        case "notify.post": self = .notifyPost(key: try c.decode(String.self, forKey: .key), title: try c.decode(String.self, forKey: .title), body: try c.decode(String.self, forKey: .body), sound: try c.decode(Bool.self, forKey: .sound), actions: try c.decode(Bool.self, forKey: .actions), promptId: try c.decodeIfPresent(String.self, forKey: .promptId))
         case "notify.remove": self = .notifyRemove(key: try c.decode(String.self, forKey: .key))
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings

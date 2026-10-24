@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/main.ts",
     "./agents": "./src/agents.ts",
+    "./agent/reducer": "./src/agent/reducer.ts",
     "./claude": "./src/claude.ts",
     "./paths": "./src/paths.ts",
     "./log": "./src/log.ts",
@@ -13,7 +14,6 @@
     "./test-helpers": "./test/helpers.ts",
     "./config": "./src/config.ts",
     "./machine": "./src/machine.ts",
-    "./atomic": "./src/atomic.ts",
     "./handover/portable-path": "./src/handover/portable-path.ts",
     "./handover/inventory": "./src/handover/inventory.ts",
     "./handover/divergence": "./src/handover/divergence.ts",

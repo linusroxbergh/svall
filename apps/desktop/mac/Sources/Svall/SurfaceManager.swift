@@ -26,7 +26,7 @@ enum AttachCommand {
 
     // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name.
     // nil while the route is unknown, or its master is gone: a session is attached only where the helper says it lives
-    static func build(route: ConnectionRoute, attach: WebAttach, tmux: String = SvallHome.tmuxBinary,
+    static func build(route: ConnectionRoute, attach: WebAttach, tmux: String,
                       masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
         let target = "=" + attach.session
         let session = "-S \(quote(attach.socket)) attach -t \(quote(target))"
@@ -73,16 +73,14 @@ enum MachineCommand {
 struct MachineStart {
     private let text: String?
     private let began: Date
-    private let quiet: TimeInterval, deadline: TimeInterval
+    private let quiet: TimeInterval = 0.8, deadline: TimeInterval = 30
     private var last: String?
     private var since: Date?
     private(set) var up = false
 
-    init(typing text: String?, at now: Date, quiet: TimeInterval = 0.8, deadline: TimeInterval = 30) {
+    init(typing text: String?, at now: Date) {
         self.text = text.flatMap { MachineCommand.typeable($0) ? $0 : nil }
         began = now
-        self.quiet = quiet
-        self.deadline = deadline
     }
 
     /// What to type now that the screen reads `screen`.
@@ -96,17 +94,12 @@ struct MachineStart {
     }
 }
 
-private struct Attached {
-    let rect: WebRect, attach: WebAttach, opacity: Double?
-    var hidden = false
-}
-
 /// Creates, positions, hides and frees one SurfaceView per robot id, above the webview.
 final class SurfaceManager {
     private let makeView: (String, NSRect) -> SurfaceView?
     private let overlay: OverlayViews<SurfaceView>
-    // what each surface was asked for with, so a route that is back can be attached to again
-    private var attached: [String: Attached] = [:]
+    // surfaces attached, or waiting on a route, which rebuild() tells the page exited so it asks for a fresh attach
+    private var attached: Set<String> = []
     // terminals on another machine, which a change of the fleet's route leaves open
     private var machines: Set<String> = []
     var route: () -> ConnectionRoute = { .local }
@@ -144,7 +137,6 @@ final class SurfaceManager {
             view.isHidden = false
             view.setOccluded(!windowVisible)
             view.alphaValue = opacity ?? 1
-            attached[id] = attached[id].map { Attached(rect: rect, attach: $0.attach, opacity: opacity) }
             return
         }
         if let machine { return open(id: id, rect: rect, machine: machine, opacity: opacity) }
@@ -153,13 +145,13 @@ final class SurfaceManager {
         // a local attach runs this Mac's tmux, decided here; a remote one runs the far tmux the page names
         let binary = SvallHome.tmuxBinary
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else {
-            // the helper is opening a route, or opening one again: the session is remembered and attached once it is online
-            attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
+            // the helper is opening a route, or opening one again: once it is online rebuild() has the page ask again
+            attached.insert(id)
             return
         }
         let program = switch route { case .remote: "ssh"; default: binary }
         guard make(id: id, command: command, program: program, rect: rect, opacity: opacity) != nil else { return }
-        attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
+        attached.insert(id)
     }
 
     /// A terminal on another machine, with what the page asked for typed once its prompt is up. An ssh that ends before
@@ -211,19 +203,17 @@ final class SurfaceManager {
     }
 
     func move(id: String, rect: WebRect) {
-        attached[id] = attached[id].map { Attached(rect: rect, attach: $0.attach, opacity: $0.opacity, hidden: $0.hidden) }
         overlay.move(id, rect: rect)
     }
 
     func hide(id: String) {
-        attached[id]?.hidden = true
         guard let view = overlay[id] else { return }
         overlay.hide(id)
         view.setOccluded(true)
     }
 
     func close(id: String) {
-        attached[id] = nil
+        attached.remove(id)
         machines.remove(id)
         overlay.close(id)
     }
@@ -241,14 +231,14 @@ final class SurfaceManager {
     /// After a reconnection or a new owner, tmux has destroyed each viewer session its client left, so every
     /// surface is let go and the page told it exited, to ask the daemon for a fresh attach.
     func rebuild() {
-        for id in Set(overlay.views.keys).union(attached.keys).subtracting(machines) {
+        for id in Set(overlay.views.keys).union(attached).subtracting(machines) {
             close(id: id)
             onExited(id)
         }
     }
 
     func closeAll() {
-        attached = [:]
+        attached = []
         machines = []
         overlay.closeAll()
     }

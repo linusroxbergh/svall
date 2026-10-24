@@ -5,7 +5,6 @@ import {
   CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, MachinePath, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
   TransferRoot, Warning,
 } from './handover.js';
-import { Portrait } from './portraits.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
@@ -100,7 +99,7 @@ export const PREPARE_TIMEOUT_MS = 10 * 60_000;
 export const ACTIVATE_TIMEOUT_MS = 10 * 60_000;
 export const COMPLETE_TIMEOUT_MS = 2 * 60_000;
 // how long taking a forced record may take, since the machine it names reopens the terminals its handover rested
-export const ADOPT_TIMEOUT_MS = 2 * 60_000;
+const ADOPT_TIMEOUT_MS = 2 * 60_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -159,8 +158,8 @@ export const ResourceSource = z.object({
 });
 export type ResourceSource = z.infer<typeof ResourceSource>;
 
-// a fleet on this Mac: running when its daemon answers, windowOpen when an app instance shows it
-export const FleetEntry = z.object({ home: z.string(), name: z.string(), current: z.boolean(), running: z.boolean(), windowOpen: z.boolean() });
+// a fleet on this Mac: windowOpen when an app instance shows it
+export const FleetEntry = z.object({ home: z.string(), name: z.string(), current: z.boolean(), windowOpen: z.boolean() });
 export type FleetEntry = z.infer<typeof FleetEntry>;
 
 export const methods = {
@@ -191,7 +190,7 @@ export const methods = {
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // '' clears it
-      agentProfile: z.string().optional(), portrait: Portrait.optional(), figure: z.number().int().min(1).optional(), keepHere: z.boolean().optional(),
+      agentProfile: z.string().optional(), figure: z.number().int().min(1).optional(), keepHere: z.boolean().optional(),
     }),
     result: Robot,
   },
@@ -382,10 +381,6 @@ export type Result<M extends MethodName> = z.infer<(typeof methods)[M]['result']
 export const Request = z.object({ id: z.number(), method: z.string(), params: z.unknown().optional() });
 export type Request = z.infer<typeof Request>;
 
-// what a failed call names its failure by; anything else a handler throws answers internal
-export const ERROR_CODES = ['unknown_method', 'forbidden', 'invalid_params', 'internal', 'invalid', 'not_found', 'dormant', 'blocked', 'gone', 'exists', 'too_large', 'binary', 'no_repo'] as const;
-export type ErrorCode = (typeof ERROR_CODES)[number];
-
 export class ApiError extends Error {
   constructor(public code: string, message: string, public data?: Record<string, unknown>) { super(message); }
 }
@@ -417,8 +412,6 @@ export type Event =
   | { event: 'term.resync'; data: { id: string; screen: string } }
   | { event: 'repo.changed'; data: { id: string } }
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
-  | { event: 'ownership.changed'; data: { generation: number; ownerMachineId: MachineId } }
-  | { event: 'handover.changed'; data: { transactionId: string; phase: HandoverPhase } }
   // counts and phases only: a manifest travels as the freeze result, never as an event
   | { event: 'handover.entity'; data: { transactionId: string; kind: HandoverEntityKind; id: string; phase: HandoverPhase; done?: number; total?: number; error?: string; notice?: string } };
 

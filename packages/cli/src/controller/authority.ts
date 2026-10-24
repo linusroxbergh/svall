@@ -32,7 +32,8 @@ export async function remoteOwner(o: OwnerRequest): Promise<OwnerAnswer> {
 }
 
 /** One operation on the authority this machine serves, over its own socket; a socket that does not answer is `disconnected`. */
-export async function localOwner(op: string, fleetId: string, params?: Record<string, unknown>, prefix = gatewayPrefix()): Promise<OwnerAnswer> {
+export async function localOwner(op: string, fleetId: string, params?: Record<string, unknown>): Promise<OwnerAnswer> {
+  const prefix = gatewayPrefix();
   let client: AuthorityClient;
   try { client = await AuthorityClient.connect(prefix); } catch (e) {
     return { error: { code: 'disconnected', message: `the gateway authority did not answer on ${gatewayPaths(prefix).socket}: ${String(e)}` } };

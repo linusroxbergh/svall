@@ -5,13 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper, unmergeHooks, unmergeStatusLine,
+  claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, mergeCodexHooks, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexHookCommand, codexPaths } from '../src/codex/install.js';
 import { opencodePaths } from '../src/opencode/install.js';
 import { CLAUDE_HOOKS } from '../src/hooks/receiver.js';
 import { launchdPlist, plistCurrent, plistRun, takenOverBy } from '../src/launchd.js';
-import { isOurs, resolvePaths } from '../src/paths.js';
+import { isOurs, nodeRun, resolvePaths } from '../src/paths.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel, profileOf } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime, releaseRuntime, type Runtime } from '../src/runtime.js';
 import { readJsonSettings, writeJsonSettings } from '../src/settings-file.js';
@@ -935,7 +935,7 @@ describe('refreshFleetPlists', () => {
     const work = path.join(u, '.svall-work');
     fs.mkdirSync(work);
     const now = bundleRuntime('/Applications/Svall.app');
-    await setupHome({ home: work, label: profileLabel('work'), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la, launchctl: false });
+    await setupHome({ home: work, label: profileLabel('work'), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la });
     await refreshFleetPlists({ homes: [profileHome(PRIVATE), work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
     expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: now })).toBe(true);
     expect(fs.existsSync(path.join(la, `${LAUNCHD_LABEL}.plist`))).toBe(false);
@@ -951,7 +951,7 @@ describe('refreshFleetPlists', () => {
     fs.mkdirSync(path.dirname(other.daemon[0]), { recursive: true });
     fs.writeFileSync(other.daemon[0], '');
     const now = bundleRuntime('/Applications/Svall.app');
-    await setupHome({ home: work, label: profileLabel('work'), runtime: other, launchAgentsDir: la, launchctl: false });
+    await setupHome({ home: work, label: profileLabel('work'), runtime: other, launchAgentsDir: la });
     await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
     expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: other })).toBe(true);
     await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: true });
@@ -964,7 +964,7 @@ describe('refreshFleetPlists', () => {
     const [bad, work] = [path.join(u, '.svall-bad'), path.join(u, '.svall-work')];
     for (const home of [bad, work]) {
       fs.mkdirSync(home);
-      await setupHome({ home, label: profileLabel(profileOf(home)), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la, launchctl: false });
+      await setupHome({ home, label: profileLabel(profileOf(home)), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la });
     }
     fs.rmSync(path.join(bad, 'fleet.json'));
     for (const f of ['config.json', 'config.json.bak']) fs.writeFileSync(path.join(bad, f), '{}');
@@ -992,7 +992,7 @@ describe('setupHome', () => {
     const root = makeHome();
     const home = path.join(root, '.svall-work');
     const launchAgentsDir = path.join(root, 'LaunchAgents');
-    const lines = await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime, launchAgentsDir, launchctl: false, port: 0 });
+    const lines = await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime, launchAgentsDir, port: 0 });
     expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8'))).toMatchObject({ port: 0 });
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
     const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist'), 'utf8');
@@ -1005,14 +1005,14 @@ describe('setupHome', () => {
   it('keeps the settings an existing config already holds', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), '{"port":47900}\n');
-    await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 });
+    await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), port: 0 });
     expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8')).port).toBe(47900);
     expect(fs.readFileSync(path.join(home, 'config.json.bak'), 'utf8')).toBe('{"port":47900}\n');
   });
 
   it('says where it moved a config.json an older release wrote beside fleet.json', async () => {
     const home = makeHome();
-    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents') };
     await setupHome(o);
     fs.writeFileSync(path.join(home, 'config.json'), '{}\n');
     const lines = await setupHome(o);
@@ -1022,7 +1022,7 @@ describe('setupHome', () => {
 
   it('starts the daemon PATH at a Homebrew node folder that an upgrade keeps', async () => {
     const home = makeHome();
-    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 };
+    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), port: 0 };
     const pathEnv = () => /<key>PATH<\/key><string>([^<]*)/.exec(fs.readFileSync(path.join(o.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.x.plist'), 'utf8'))?.[1];
     const execPath = process.execPath;
     try {
@@ -1042,7 +1042,7 @@ describe('setupHome', () => {
 
   it('adds the folder this shell finds claude in to the daemon PATH when it is not a usual one', async () => {
     const home = makeHome();
-    const o = { home, label: LAUNCHD_LABEL, runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    const o = { home, label: LAUNCHD_LABEL, runtime, launchAgentsDir: path.join(home, 'LaunchAgents') };
     const pathEnv = () => /<key>PATH<\/key><string>([^<]*)/.exec(fs.readFileSync(path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`), 'utf8'))?.[1];
     const pnpmHome = path.join(home, 'Library', 'pnpm');
     fs.mkdirSync(pnpmHome, { recursive: true });
@@ -1078,7 +1078,7 @@ describe('setupHome', () => {
 
   it('calls a plist current while it is what setup writes now for this checkout, and the node it names is still there', async () => {
     const home = makeHome();
-    const o = { home, label: LAUNCHD_LABEL, runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    const o = { home, label: LAUNCHD_LABEL, runtime, launchAgentsDir: path.join(home, 'LaunchAgents') };
     const plist = path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
     expect(plistCurrent(o)).toBe(false);
     await setupHome(o);
@@ -1115,7 +1115,7 @@ describe('setupHome', () => {
   it('calls a release plist current while it runs that release, and not once it runs another one or the checkout', async () => {
     const home = makeHome();
     const release = path.join(makeHome(), 'current');
-    const o = { home, label: LAUNCHD_LABEL, runtime: releaseRuntime(release), launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    const o = { home, label: LAUNCHD_LABEL, runtime: releaseRuntime(release), launchAgentsDir: path.join(home, 'LaunchAgents') };
     expect(plistCurrent(o)).toBe(false);
     await setupHome(o);
     expect(plistCurrent(o)).toBe(true);
@@ -1125,7 +1125,7 @@ describe('setupHome', () => {
 
   it('passes the Claude and Codex homes on to the daemon when they are set', async () => {
     const home = makeHome();
-    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 };
+    const o = { home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), port: 0 };
     const plist = () => fs.readFileSync(path.join(o.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.x.plist'), 'utf8');
     await setupHome(o);
     expect(plist()).not.toMatch(/CLAUDE_CONFIG_DIR|CODEX_HOME/);
@@ -1154,7 +1154,7 @@ describe('a bundled runtime', () => {
   it('writes a plist whose program is the app\'s node and whose PATH leaves Helpers out', async () => {
     const home = makeHome();
     const agents = path.join(home, 'agents');
-    await setupHome({ home, label: LAUNCHD_LABEL, runtime: bundle, launchAgentsDir: agents, launchctl: false });
+    await setupHome({ home, label: LAUNCHD_LABEL, runtime: bundle, launchAgentsDir: agents });
     const text = fs.readFileSync(path.join(agents, `${LAUNCHD_LABEL}.plist`), 'utf8');
     expect(plistRun(text).program).toEqual(bundle.daemon);
     expect(plistRun(text).path.some((d) => d.includes('/Contents/Helpers'))).toBe(false);

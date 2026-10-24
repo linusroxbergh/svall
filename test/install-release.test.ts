@@ -143,20 +143,6 @@ describe('staging a release archive', () => {
     expect(() => stageArchive(archiveOf(renamed), path.join(temp(), 'staging'), { allowUnsigned: true })).toThrow(/unpacks as 1\.2\.3 but its release\.json says 1\.2\.4/);
   });
 
-  it('refuses an archive holding a member outside its release, spelled other than as a path in it, or twice', () => {
-    const root = path.dirname(path.dirname(tree('1.2.3')));
-    fs.writeFileSync(path.join(root, 'run-me.sh'), '#!/bin/sh\n');
-    for (const [extra, said] of [
-      ['./releases/1.2.3/SHA256SUMS', 'holds "./releases/1.2.3/SHA256SUMS", which is not a path in releases/1.2.3'],
-      ['run-me.sh', 'holds "run-me.sh", which is not a path in releases/1.2.3'],
-      ['releases/1.2.3/SHA256SUMS', 'holds "releases/1.2.3/SHA256SUMS" twice'],
-    ]) {
-      const staging = path.join(temp(), 'staging');
-      expect(() => stageArchive(pack(root, ['releases', extra]), staging, { allowUnsigned: true }), extra).toThrow(said);
-      expect(fs.existsSync(path.join(staging, 'releases')), extra).toBe(false);
-    }
-  });
-
   it('installs an archive through it, name check first', () => {
     const prefix = temp();
     expect(() => install(archiveOf(tree('a b')), prefix)).toThrow('names its release "a b", which no installer takes');

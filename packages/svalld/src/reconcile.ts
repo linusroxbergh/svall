@@ -17,7 +17,7 @@ export const snapshot = (state: FleetState): Before =>
 
 // the slot a live window leaves behind: at the window's own path, with nothing left to revive unless it is `carried`.
 // tmux reports no path while a setuid program such as sudo runs in the pane
-export function attachSlot(slot: TerminalSlot | undefined, w: LiveWindow, carried = false): TerminalSlot {
+function attachSlot(slot: TerminalSlot | undefined, w: LiveWindow, carried = false): TerminalSlot {
   const next = { unread: false, ...slot, cwd: w.path || (slot?.cwd ?? ''), tmux: { windowId: w.windowId, paneId: w.paneId } };
   delete next.resumeError;
   if (!carried) delete next.revive;

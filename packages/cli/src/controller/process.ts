@@ -6,8 +6,6 @@ const KILL_GRACE = 2000;
 export type RunResult = { code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; truncated: boolean };
 
 export type RunOptions = {
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
   timeoutMs: number;
   signal?: AbortSignal;
   maxOutputBytes?: number;
@@ -26,7 +24,7 @@ export function redact(text: string, secrets: string[]): string {
  */
 export function runProcess(exe: string, argv: string[], o: RunOptions): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(exe, argv, { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+    const child = spawn(exe, argv, { stdio: ['pipe', 'pipe', 'pipe'], detached: true });
     const max = o.maxOutputBytes ?? MAX_OUTPUT_BYTES;
     const held = { stdout: '', stderr: '', truncated: false };
     const take = (stream: 'stdout' | 'stderr') => (chunk: Buffer) => {

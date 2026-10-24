@@ -5,6 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { z } from 'zod';
 import { HandoverChoices, type HandoverEvent } from '@svall/protocol';
+import { running } from '@svall/svalld/agent/reducer';
 import { defaultSocketDir, ownSocketDir } from './ssh.js';
 
 // the longest Unix socket path macOS takes, 104 bytes with its NUL; Linux takes more
@@ -69,11 +70,7 @@ function startedAt(pid: number): number | undefined {
  * the lock was written. One started since, after a reboot or a kill, has only been given the same pid.
  */
 function holds(pid: number, at: number): boolean {
-  try {
-    process.kill(pid, 0);
-  } catch (e) {
-    if (errno(e) !== 'EPERM') return false;
-  }
+  if (!running(pid)) return false;
   const started = startedAt(pid);
   return started === undefined || started <= at;
 }

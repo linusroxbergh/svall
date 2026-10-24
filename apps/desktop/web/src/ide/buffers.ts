@@ -8,7 +8,7 @@ export type Buffer = { state: EditorState; saved: Text; mtimeMs: number; diskMti
 const buffers = new Map<string, Buffer>();
 const views = new Map<string, EditorView>();
 const listeners = new Map<string, Set<(text: string) => void>>();
-const key = (id: string, path: string) => `${id}\0${path}`;
+export const key = (id: string, path: string): string => `${id}\0${path}`;
 const notify = (k: string, text: string): void => { for (const listener of listeners.get(k) ?? []) listener(text); };
 
 export const isDirty = (b: Buffer): boolean => !b.state.doc.eq(b.saved);

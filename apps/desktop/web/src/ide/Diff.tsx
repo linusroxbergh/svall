@@ -2,6 +2,7 @@ import { unifiedMergeView } from '@codemirror/merge';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useEffect, useRef } from 'react';
+import { basename } from '../paths.js';
 import { languageFor, readOnlyExtensions } from './codemirror.js';
 
 type Props = { path: string; before?: string; after?: string; binary?: true };
@@ -15,7 +16,7 @@ export function Diff({ path, before, after, binary }: Props) {
     if (!el || binary) return;
     let view: EditorView | undefined;
     let live = true;
-    languageFor(path.slice(path.lastIndexOf('/') + 1)).then((lang) => {
+    languageFor(basename(path)).then((lang) => {
       if (!live) return;
       view = new EditorView({
         parent: el,

@@ -4,6 +4,7 @@ import { app, deps } from '../boot.js';
 import { FollowTextarea } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { Editor } from '../ide/Editor.js';
+import { basename } from '../paths.js';
 import { asDoc } from './docEditor.js';
 import { isFresh, letGo } from './docs.js';
 import { DocHeader } from './DocHeader.js';
@@ -35,7 +36,7 @@ export function EditorPane({ onClose }: { onClose(): void }) {
   // the row whose file or folder holds the shown file names its tier, source and kind; a file with no such row shows its name alone
   const home = shown && sources.flatMap((s) => s.groups.flatMap((g) => g.items.map((i) => ({ s, g, i }))))
     .find(({ i }) => i.open?.rootId === shown.rootId && (i.open.path === shown.path || (i.open.folder !== undefined && shown.path.startsWith(`${i.open.folder}/`))));
-  const file = shown?.path.slice(shown.path.lastIndexOf('/') + 1);
+  const file = shown && basename(shown.path);
   const doc = !field && shown !== undefined && isDoc(sources, shown.rootId, shown.path);
   // a doc hides its frontmatter and saves itself; letting go saves what waits, or drops a blank one this session made
   useEffect(() => {

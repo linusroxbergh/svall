@@ -5,12 +5,15 @@ import { NodeClient } from './client.js';
 import { ROOT, readInfo, startDaemon, stopDaemon, type DaemonInfo } from './daemon.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
-import { SETTINGS_KEY, TOUR_KEY } from '../src/store/index.js';
+import { HALF_KEY, SETTINGS_KEY, TOUR_KEY } from '../src/store/index.js';
 
 export const FAKE_CLAUDE = `node ${path.join(ROOT, 'packages/svalld/test/fixtures/fake-claude.mjs')}`;
 
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
+type State = Extract<FromShell, { type: 'connection.state' }>;
+// __state: what the shell says about the connection each time the page asks for it, which a spec may move on
+export type Shell = { __sent: ToShell[]; __state?: State; __svall: { receive(json: string): void } };
 type NativeShell = { sent(): Promise<ToShell[]>; receive(m: FromShell): Promise<void> };
+type Reply = { port: number; token: string; info?: Extract<FromShell, { type: 'shell.info' }>; state?: State };
 
 export type Svall = DaemonInfo & {
   api: NodeClient;
@@ -43,30 +46,16 @@ export const test = base.extend<{ svall: Svall }>({
             try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch { /* seeded where there is a store */ }
           }, { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1 }) });
           // specs click the map beside an open half card, so it opens at half the map rather than the first-use size
-          await page.addInitScript(() => {
-            try { if (localStorage.getItem('svall.card.half') === null) localStorage.setItem('svall.card.half', JSON.stringify({ w: 0.5, h: 0.5 })); } catch { /* seeded where there is a store */ }
-          });
+          await page.addInitScript((key) => {
+            try { if (localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify({ w: 0.5, h: 0.5 })); } catch { /* seeded where there is a store */ }
+          }, HALF_KEY);
         }
         await page.goto(`/?port=${info.port}&token=${info.token}&view=${view}`);
         await expect(page.getByTestId(view)).toBeVisible();
         // the world's layout lands a frame after the view; window.__map appears with it
         if (view === 'map') await page.waitForFunction(() => '__map' in window);
       },
-      nativeShell: async () => {
-        await page.addInitScript(({ port, token }) => {
-          const w = window as unknown as Shell & { webkit: unknown };
-          w.__sent = [];
-          w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-            const m = JSON.parse(json) as ToShell;
-            w.__sent.push(m);
-            if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
-          } } } };
-        }, { port: svall.port, token: svall.token });
-        return {
-          sent: () => page.evaluate(() => (window as unknown as Shell).__sent),
-          receive: (m) => page.evaluate((json) => (window as unknown as Shell).__svall.receive(json), JSON.stringify(m)),
-        };
-      },
+      nativeShell: () => nativeShell(page, { port: svall.port, token: svall.token }),
       stopDaemon: async () => { svall.api.close(); await stopDaemon(home); },
       startDaemon: async () => { const next = await startDaemon(home); svall.pid = next.pid; svall.api = await NodeClient.connect(next.port, next.token); },
     };
@@ -81,6 +70,29 @@ export const test = base.extend<{ svall: Svall }>({
     svall.api.close();
   },
 });
+
+export const sent = (page: Page) => page.evaluate(() => (window as unknown as Shell).__sent);
+export const receive = (page: Page, m: FromShell) => page.evaluate((json) => (window as unknown as Shell).__svall.receive(json), JSON.stringify(m));
+
+// a stand-in for the native shell: it records what the page sends and answers each connection request with info, the daemon and state
+export async function nativeShell(page: Page, reply: Reply): Promise<NativeShell> {
+  await page.addInitScript((r: Reply) => {
+    const w = window as unknown as Shell & { webkit: unknown };
+    w.__sent = [];
+    w.__state = r.state;
+    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
+      const m = JSON.parse(json) as ToShell;
+      w.__sent.push(m);
+      if (m.type !== 'connection') return;
+      setTimeout(() => {
+        if (r.info) w.__svall.receive(JSON.stringify(r.info));
+        w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port: r.port, token: r.token }));
+        if (w.__state) w.__svall.receive(JSON.stringify(w.__state));
+      }, 0);
+    } } } };
+  }, reply);
+  return { sent: () => sent(page), receive: (m) => receive(page, m) };
+}
 
 // the fit ease keeps shifting the layout for a few frames after the view opens, a move, or a panel taking width, so
 // the layout is read a beat apart until two reads agree (waitForFunction would take the returned promise as a pass)

@@ -132,7 +132,7 @@ async function daemon(o: { release?: () => string; accepts?: () => boolean } = {
   wss.on('connection', (ws) => ws.on('message', (raw) => {
     const msg = JSON.parse(raw.toString()) as { id?: number; token?: string };
     ws.send(JSON.stringify(msg.token !== undefined
-      ? { id: 0, result: { ok: msg.token === TOKEN && (o.accepts?.() ?? true) } }
+      ? { id: 0, result: { ok: msg.token === TOKEN && (o.accepts?.() ?? true), protocol: PROTOCOL_VERSION } }
       : { id: msg.id, result: { version: 1, fleet: 'private', release: o.release?.() ?? '1.2.3' } }));
   }));
   return { port: (wss.address() as { port: number }).port, close: () => new Promise<void>((r) => wss.close(() => r())) };
@@ -155,7 +155,7 @@ describe('host add', () => {
   it('probes, installs, checks and registers the machine', async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
 
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
     await d.close();
@@ -189,7 +189,7 @@ describe('host add', () => {
       ssh.reply([...match], reply);
       healthy();
       const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
       events = [];
       const registry = MachineRegistry.load(path.join(work, 'config'));
       const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
@@ -203,7 +203,7 @@ describe('host add', () => {
   it('fails the probe on a daemon that answers from another release than the one installed, and registers nothing', async () => {
     healthy();
     const d = await daemon({ release: () => '1.2.2' });
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
@@ -225,7 +225,7 @@ describe('host add', () => {
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     healthy();
     const d = await daemon({ release: () => '1.2.2' });
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.2', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.2', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
     return out;
@@ -252,7 +252,7 @@ describe('host add', () => {
     ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.154.2\n' });
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.21\n' });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login', run: 'claude auth login' });
@@ -274,7 +274,7 @@ describe('host add', () => {
     ssh.reply([...env, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
     ssh.reply([...env, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278 (Claude Code), logged in' });
@@ -287,7 +287,7 @@ describe('host add', () => {
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
     ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stderr: 'Error: no credentials\n', code: 1 });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.22, not logged in', action: 'ssh trift.test, then opencode auth login' });
@@ -298,7 +298,7 @@ describe('host add', () => {
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
     ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: '[]\n' });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.22, not logged in', action: 'ssh trift.test, then opencode auth login' });
@@ -307,7 +307,7 @@ describe('host add', () => {
   it('names an agent CLI the unit\'s PATH does not hold as one to install', async () => {
     healthy({ agents: false });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     // setup writes Svall's hooks only for the agents it finds, so one installed later needs it again
@@ -330,7 +330,7 @@ describe('host add', () => {
     ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: '[{"id":"openai"}]\n' });
     const mac = [{ kind: 'claude', version: '2.1.310' }, { kind: 'codex', version: '0.162.1' }, { kind: 'opencode', version: '2.0.22' }] as const;
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([...mac]) }));
     await d.close();
     // each machine alone is fine; only a handover between them stops
@@ -347,7 +347,7 @@ describe('host add', () => {
   it("names no update for an agent behind only on this Mac's side, as the terminal it would be typed in is the machine's", async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([{ kind: 'claude', version: '2.1.270' }]) }));
     await d.close();
     expect(step('versions').at(-1)).toEqual({
@@ -359,7 +359,7 @@ describe('host add', () => {
   it("adds the machine without comparing when this Mac's own daemon cannot be asked", async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.reject(new Error('svalld is not running (no port file)')) }));
     await d.close();
     expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'not compared: svalld is not running (no port file)' });
@@ -378,7 +378,7 @@ describe('host add', () => {
       ssh.clearReplies();
       healthy({ agents: false });
       const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
       const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
       await d.close();
       return out;
@@ -401,7 +401,7 @@ describe('host add', () => {
     const plugin = `not installed in ${HOME}/.config/opencode/plugins/svall.js: svall setup`;
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'opencode plugin', status: 'fail', detail: plugin, run: 'svall setup' }] }) });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
@@ -423,7 +423,7 @@ describe('host add', () => {
     const run = 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'ok', detail: 'trusted' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run }] }) });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     const codex = step('codex').at(-1)!;
@@ -441,7 +441,7 @@ describe('host add', () => {
     const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex robot asks before each one: ${fix}`;
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run: 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict' }] }) });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     // the doctor shown once that terminal ends lists the sandbox on its own, with its own command
@@ -455,7 +455,7 @@ describe('host add', () => {
     const blocked = 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex robot asks before each one: sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted }, { name: 'codex sandbox', status: 'warn', detail: blocked }] }) });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('codex').at(-1)).toMatchObject({
@@ -468,7 +468,7 @@ describe('host add', () => {
   it('writes the registry record under the machine id the companion reports', async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const registry = MachineRegistry.load(path.join(work, 'config'));
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
@@ -484,7 +484,7 @@ describe('host add', () => {
   it('never lets the companion token out in an event', async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(JSON.stringify(events)).not.toContain(TOKEN);
@@ -513,7 +513,7 @@ describe('host add', () => {
   it('takes a far home other than this Mac\'s, and registers the machine at it', async () => {
     healthy({ home: ELSEWHERE });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
@@ -591,7 +591,7 @@ describe('host add', () => {
     ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.1.3  protocol version 31\n' });
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('rsync').at(-1)).toMatchObject({
@@ -604,7 +604,7 @@ describe('host add', () => {
   it('checks the tmux the units start once the release is installed, which is the release\'s own', async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('tmux').at(-1)).toMatchObject({ status: 'ok', detail: "tmux 3.7c, Svall's own" });
@@ -615,7 +615,7 @@ describe('host add', () => {
   it('warns about a machine\'s tmux too old for Shift+Enter without blocking, for a release that carries none', async () => {
     healthy({ tmux: { stdout: '/usr/bin/tmux\ntmux 3.4\n' } });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('tmux').at(-1)).toMatchObject({ status: 'warn', detail: 'tmux 3.4 from /usr/bin/tmux: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4' });
@@ -647,7 +647,7 @@ describe('host add', () => {
   it('turns lingering on where it is off, and leaves nothing to do when the system lets it', async () => {
     healthy({ linger: 'Linger=no\nLinger=yes\n' });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(ssh.remoteCalls().find((c) => c.includes('svall-linger'))?.join(' ')).toContain('loginctl enable-linger "$USER"');
@@ -660,7 +660,7 @@ describe('host add', () => {
     const off = { status: 'warn', detail: 'off for linus: the fleet stops when you log out; run sudo loginctl enable-linger linus' };
     healthy({ linger: 'Linger=no\nLinger=no\n', doctor: doctorJson(off) });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('linger').at(-1)).toMatchObject({
@@ -679,7 +679,7 @@ describe('host add', () => {
     ssh.reply(['doctor', '--json'], { stdout: failing, code: 1 });
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('service').at(-1)).toMatchObject({ status: 'ok' });
@@ -689,7 +689,7 @@ describe('host add', () => {
   it('names each step once, so the checklist never opens a phase twice', async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
@@ -737,7 +737,7 @@ describe('host add', () => {
   it('installs the workspace companion an unsigned development build pins, with no flag from the app', async () => {
     healthy();
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const companion = archive({ signed: false });
     const sha256 = crypto.createHash('sha256').update(fs.readFileSync(companion)).digest('hex');
     fs.mkdirSync(path.join(work, 'release'), { recursive: true });
@@ -797,7 +797,7 @@ describe('host add', () => {
       events = [];
       healthy();
       const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
       const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
       await d.close();
       return out;
@@ -839,7 +839,7 @@ describe('host add', () => {
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
       healthy();
       const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: OTHER_MAC, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      ssh.answer({ fleetId: FLEET, machineId: OTHER_MAC, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
       const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
       await d.close();
       expect(out.result).toBe('actions');
@@ -903,7 +903,7 @@ esac
       gateway(registry);
       healthy();
       const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
       const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
       await d.close();
       expect(out.result).toBe('ready');
@@ -1150,7 +1150,7 @@ describe('host upgrade', () => {
 base='${base}'
 now() { basename "$(readlink "$base/current")"; }
 case "$1" in
-  connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN })}' ;;
+  connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
   version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2)}' ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   setup)
@@ -1617,7 +1617,7 @@ esac
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off' }).replace('"tmux 3.4"}', '"tmux 3.4"},{"name":"hooks","status":"fail","detail":"not installed"}'), code: 1 });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     await d.close();
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
@@ -1654,7 +1654,7 @@ esac
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     await d.close();
     expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/svall/staging-1.2.3`, `${HOME}/.cache/svall/companion-1.2.3.tar.gz`]);

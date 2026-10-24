@@ -1,11 +1,9 @@
 import fs from 'node:fs';
 import WebSocket from 'ws';
-import { peekConfig } from '@svall/svalld/config';
-import { ProtocolMismatch } from '@svall/svalld/fleets';
+import { handshake, handshakeHome, ProtocolMismatch } from '@svall/svalld/fleets';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
 import { SHIM, profileLabel } from '@svall/svalld/profile';
-import { variant } from '@svall/svalld/runtime';
-import { ApiError, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import { ApiError, PART_BYTES, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
 import { resolveTarget, type Target } from './target.js';
 
 // a wedged daemon must not hang the control loop, which shells out to svall and expects it to return.
@@ -21,14 +19,6 @@ export const restartHint = (t: Target): string => (t.managed
 
 /** The doctor that checks a fleet; an ad-hoc home is found again through the same $SVALL_HOME. */
 const doctorHint = (t: Target): string => (t.managed ? `${SHIM} -p ${t.name} doctor` : `${SHIM} doctor`);
-
-const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => {
-  let timer: NodeJS.Timeout;
-  return Promise.race([
-    p.finally(() => clearTimeout(timer)),
-    new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
-  ]);
-};
 
 export class Client {
   private next = 1;
@@ -74,49 +64,12 @@ export class Client {
     if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
       throw new Error(`svalld is not running (no ${paths.port}): it runs while Svall is open on this fleet; \`${doctorHint(resolveTarget({ env: home }))}\` says more`);
     }
-    const port = Number(fs.readFileSync(paths.port, 'utf8'));
-    return Client.connectEndpoint({
-      url: `ws://${peekConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(),
-      ...(!anyProtocol && { mismatch: (speaks: string) => {
-        const fix = variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`';
-        return `the svalld of ${home} ${speaks} and this build speaks ${PROTOCOL_VERSION}: ${fix}, or ${restartHint(resolveTarget({ env: home }))}`;
-      } }),
-    });
+    return new Client(await handshakeHome(home, CONNECT_TIMEOUT, { anyProtocol, restart: restartHint(resolveTarget({ env: home })) }));
   }
 
-  /**
-   * A daemon at an endpoint this process was handed: the one here, or the near end of a tunnel. Given
-   * `mismatch`, one that speaks another protocol is refused with what it says.
-   */
-  static async connectEndpoint({ url, token, maxPayload = MAX_REQUEST_BYTES, mismatch }: { url: string; token: string; maxPayload?: number; mismatch?: (speaks: string) => string }): Promise<Client> {
-    const ws = new WebSocket(url, { maxPayload });
-    try {
-      await deadline(new Promise<void>((resolve, reject) => {
-        ws.once('open', () => resolve());
-        ws.once('error', (e) => reject(new Error(`svalld not reachable on ${url}: ${e.message}`)));
-      }), CONNECT_TIMEOUT, `svalld did not accept a connection on ${url} within ${CONNECT_TIMEOUT}ms`);
-      ws.send(JSON.stringify({ token }));
-      await deadline(new Promise<void>((resolve, reject) => {
-        ws.once('message', (raw) => {
-          let msg: { result?: { ok?: boolean; protocol?: number } };
-          try { msg = JSON.parse(raw.toString()); } catch { msg = {}; }
-          if (!msg.result?.ok) { reject(new Error('svalld refused the token')); return; }
-          const theirs = msg.result.protocol;
-          if (mismatch && theirs !== PROTOCOL_VERSION) {
-            // a daemon from before the handshake carried a version sends none
-            reject(new ProtocolMismatch(mismatch(theirs === undefined ? 'predates the protocol check' : `speaks protocol ${theirs}`)));
-            return;
-          }
-          resolve();
-        });
-        ws.once('close', (code) => reject(new Error(`svalld closed the connection (${code})`)));
-      }), CONNECT_TIMEOUT, `svalld did not answer the handshake within ${CONNECT_TIMEOUT}ms`);
-    } catch (err) {
-      // a socket left open keeps a caller that handles the error from exiting
-      ws.terminate();
-      throw err;
-    }
-    return new Client(ws);
+  /** A daemon at an endpoint this process was handed: the one here, or the near end of a tunnel. */
+  static async connectEndpoint(o: { url: string; token: string; maxPayload?: number }): Promise<Client> {
+    return new Client(await handshake({ ...o, timeoutMs: CONNECT_TIMEOUT }));
   }
 
   /** Whether the socket has closed or is closing, so that nothing sent on it is answered. */

@@ -39,7 +39,7 @@ struct StderrTail {
 }
 
 /// A route to the machine that owns the fleet: the SSH master the helper holds open to reach it.
-struct RemoteRoute: Equatable {
+struct RemoteRoute: Equatable, Decodable {
     let name: String, destination: String, controlSocket: String
 }
 
@@ -52,10 +52,9 @@ enum ControllerEvent: Equatable {
     case ownerChanged(owner: String)
 
     private struct Line: Decodable {
-        struct Remote: Decodable { let name: String, destination: String, controlSocket: String }
         let type: String
         let owner: String?, host: String?, port: Int?, token: String?, kind: String?, message: String?, machine: String?, destination: String?
-        let remote: Remote?
+        let remote: RemoteRoute?
     }
 
     static func decode(_ line: String) -> ControllerEvent? {
@@ -65,8 +64,7 @@ enum ControllerEvent: Equatable {
             return line.owner.map { .connecting(owner: $0) }
         case "online":
             guard let host = line.host, let port = line.port, let token = line.token else { return nil }
-            return .online(connection: SvallConnection(host: host, port: port, token: token),
-                           remote: line.remote.map { RemoteRoute(name: $0.name, destination: $0.destination, controlSocket: $0.controlSocket) })
+            return .online(connection: SvallConnection(host: host, port: port, token: token), remote: line.remote)
         case "error":
             guard let kind = line.kind, let message = line.message else { return nil }
             return .error(kind: kind, message: message, machine: line.machine, destination: line.destination)
@@ -90,7 +88,7 @@ final class ControllerProcess {
     }
 
     static func connectArguments(profile: String?) -> [String] {
-        ["connect", "--json"] + (profile.map { ["-p", $0] } ?? [])
+        ["connect", "--json"] + profileFlag(profile)
     }
 
     private let child: LineChild
@@ -162,6 +160,11 @@ extension String {
     func allowed(by pattern: String) -> Bool { range(of: pattern, options: .regularExpression) != nil }
 }
 
+/// svall's flag for a named profile's fleet.
+func profileFlag(_ profile: String?) -> [String] {
+    profile.map { ["-p", $0] } ?? []
+}
+
 /// A machine's registry name: the only name `svall host` and `svall handover` take for one.
 let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
 
@@ -203,7 +206,7 @@ enum HostCommand {
 /// One run of the bundled `svall host …`: its steps go to the page as the child prints them, and it
 /// is killed when the page cancels or the window goes.
 final class HostProcess {
-    struct Step: Codable, Equatable {
+    struct Step: Decodable, Equatable {
         let step: String, status: String
         let detail: String?, action: String?
         // a next command toward `action`'s fix, for the user to run on the machine; more steps may remain

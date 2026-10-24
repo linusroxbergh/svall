@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
-import { writeJsonAtomic } from './atomic.js';
 import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
 import { HOME_CWD, PRIVATE, profileHome, profileHomeCwd, profileOf, variantOf } from './profile.js';
@@ -154,7 +153,7 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (l
   const wrote: string[] = [];
   const split = has(backup) && !has(paths.fleetConfig) ? splitLegacy(backup) : undefined;
   if (split || !has(paths.nodeConfig)) {
-    writeJsonAtomic(paths.nodeConfig, split?.node ?? seed);
+    writeDurable(paths.nodeConfig, split?.node ?? seed);
     wrote.push(paths.nodeConfig);
   }
   // last, so a fleet.json is only ever there once the split behind it is whole; and never replaced, so two starts run on one id

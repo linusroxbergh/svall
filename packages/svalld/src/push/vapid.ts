@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import webpush from 'web-push';
-import { writeJsonAtomic } from '../jsonfile.js';
+import { writeDurable } from '../handover/durable.js';
 
 export type Vapid = { publicKey: string; privateKey: string };
 
@@ -15,6 +15,6 @@ export function readOrCreateVapid(file: string): Vapid {
     throw new Error(`${file} is missing publicKey or privateKey; move it aside to start over`);
   }
   const keys = webpush.generateVAPIDKeys();
-  writeJsonAtomic(file, keys, { mode: 0o600 });
+  writeDurable(file, keys);
   return keys;
 }

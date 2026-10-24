@@ -11,7 +11,7 @@ import { exportSnapshot, holds, realPath } from './portable-path.js';
 import { absoluteProblem, filesProblem } from './replicas.js';
 
 /** Whether `p` lies inside one of `dirs`, each side read by its real path. */
-export function within(p: string, dirs: readonly string[]): boolean {
+function within(p: string, dirs: readonly string[]): boolean {
   const real = realPath(path.posix.resolve(p));
   return dirs.some((d) => holds(realPath(path.posix.resolve(d)), real));
 }

@@ -1,4 +1,4 @@
-import { getBuffer, replaceText } from '../ide/buffers.js';
+import { getBuffer, key, replaceText } from '../ide/buffers.js';
 import { closeFile, openFile } from '../ide/files.js';
 import { flushDoc } from './autosave.js';
 import { reloadResources, type ResourcesDeps } from './load.js';
@@ -15,7 +15,6 @@ const refuse = (d: ResourcesDeps, text: string): false => { d.store.getState().s
 
 // the docs this session made, until the editor lets go of each; only such a doc left blank is thrown away
 const fresh = new Set<string>();
-const key = (rootId: string, path: string): string => `${rootId}\0${path}`;
 export const isFresh = (rootId: string, path: string): boolean => fresh.has(key(rootId, path));
 
 /** Writes <slug>.md under the root and opens it. A taken or empty name is said, and nothing is written. */

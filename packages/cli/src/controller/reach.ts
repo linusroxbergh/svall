@@ -1,21 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { AUTHORITY_SCHEMA_VERSION, FleetConfig, type FleetId, type MachineId, type MethodName } from '@svall/protocol';
+import { AUTHORITY_SCHEMA_VERSION, type FleetId, type MachineId, type MethodName } from '@svall/protocol';
+import { readFleetConfig } from '@svall/svalld/config';
 import type { OwnerAnswer } from '@svall/svalld/gateway/client';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svallExe } from '@svall/svalld/release';
 import { ApiError, Client } from '../client.js';
 import { localOwner, remoteOwner } from './authority.js';
-import { identify, remoteConnectionInfo } from './connection.js';
+import { connectForwarded, identify } from './connection.js';
 import { Handover, NoRoute, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from './handover.js';
-import { redact } from './process.js';
 import { fileStore, type Route } from './recovery.js';
 import { MachineRegistry, type MachineEntry } from './registry.js';
 import { rememberOwner } from './route.js';
 import { resolveRsync } from './rsync.js';
 import { SshError, SshMaster } from './ssh.js';
-
-const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** One ssh master a machine, opened when first needed and again once it stops answering, until `close`. */
 export class Masters {
@@ -56,10 +54,10 @@ export function authorityOp(entry: MachineEntry, localId: MachineId, masters: Ma
       const master = await masters.for(entry);
       if (!identified.has(master)) {
         const said = await identify(master, entry);
-        const schema = Number(/^\s*"authoritySchema":\s*(\d+)/m.exec(said ?? '')?.[1] ?? AUTHORITY_SCHEMA_VERSION);
-        if (o.schema && schema !== AUTHORITY_SCHEMA_VERSION) {
+        const schema = /^\s*"authoritySchema":\s*(\d+)/m.exec(said ?? '')?.[1];
+        if (o.schema && said !== undefined && Number(schema) !== AUTHORITY_SCHEMA_VERSION) {
           const name = entry.record.name;
-          throw new SshError('version', `${name} runs gateway authority schema ${schema}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade ${name} or this machine, whichever is older`);
+          throw new SshError('version', `${name} runs ${schema === undefined ? 'no gateway authority schema' : `gateway authority schema ${schema}`}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade ${name} or this machine, whichever is older`);
         }
         identified.add(master);
       }
@@ -127,23 +125,15 @@ export function reconnecting(connect: () => Promise<Reached>, first?: Reached): 
   return { call: call as Daemon['call'], close: drop };
 }
 
-/** A daemon of this fleet as one open client, and what a far one said to reach it: its token, and where the fleet lies there. */
-export type Opened = { client: Client; token?: string; fleetHome?: string };
+/** A daemon of this fleet as one open client, where the fleet lies on its machine, and the token a far one said to reach it. */
+export type Opened = { client: Client; token?: string; fleetHome: string };
 
 /** This fleet's daemon on `entry`: the one here directly, another through a forward over its master, its token kept in memory. */
 export async function openDaemon(entry: MachineEntry, o: { localId: MachineId; fleetHome: string; fleetId: FleetId; profile?: string; masters: Masters }): Promise<Opened> {
-  if (entry.id === o.localId) return { client: await Client.connect(o.fleetHome) };
-  const master = await o.masters.for(entry);
-  const info = await remoteConnectionInfo(master, entry, { fleetId: o.fleetId, profile: o.profile });
-  const forward = await master.forward(info.port);
-  try {
-    const client = await Client.connectEndpoint({ url: `ws://127.0.0.1:${forward.localPort}`, token: info.token });
-    client.onClose(() => { void forward.cancel().catch(() => undefined); });
-    return { client, token: info.token, ...(info.fleetHome && { fleetHome: info.fleetHome }) };
-  } catch (e) {
-    await forward.cancel().catch(() => undefined);
-    throw new Error(`${entry.record.name}: ${redact(messageOf(e), [info.token])}`);
-  }
+  if (entry.id === o.localId) return { client: await Client.connect(o.fleetHome), fleetHome: o.fleetHome };
+  const { client, info, forward } = await connectForwarded(await o.masters.for(entry), entry, { fleetId: o.fleetId, profile: o.profile });
+  client.onClose(() => { void forward.cancel().catch(() => undefined); });
+  return { client, token: info.token, fleetHome: info.fleetHome };
 }
 
 export type Connected = {
@@ -158,11 +148,11 @@ export type Connected = {
  * every other machine and the gateway over one ssh master each, with the tokens held only in memory.
  */
 export function connectHandover(o: {
-  fleetHome: string; profile?: string; registry?: MachineRegistry; emit?: HandoverDeps['emit']; record?: HandoverDeps['record']; decide?: HandoverDeps['decide'];
+  fleetHome: string; profile?: string; registry?: MachineRegistry; record?: HandoverDeps['record']; decide?: HandoverDeps['decide'];
 }): Connected {
   const registry = o.registry ?? MachineRegistry.load();
   const file = resolvePaths(o.fleetHome).fleetConfig;
-  const fleet = FleetConfig.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+  const fleet = readFleetConfig({ fleetConfig: file });
   if (!fleet.gatewayMachineId) throw new Error(`${file} names no gateway, so no other machine can be handed this fleet`);
   const gateway = registry.get(fleet.gatewayMachineId);
   if (!gateway) throw new Error(`${file} names gateway ${fleet.gatewayMachineId}, which is not a machine in the registry${registry.setAside()}`);
@@ -201,10 +191,6 @@ export function connectHandover(o: {
     const first = await open();
     const daemon = reconnecting(async () => (await open()).client, first.client);
     daemons.push(daemon);
-    if (!first.fleetHome) {
-      daemon.close();
-      throw new Error(`${entry.record.name} did not say where this fleet lies there`);
-    }
     return { route, daemon, home: entry.record.home, master: () => masters.for(entry), fleetHome: first.fleetHome };
   };
 
@@ -213,7 +199,7 @@ export function connectHandover(o: {
   const secrets = (): string[] => tokens.filter(Boolean);
   const handover: Handover = new Handover({
     fleetId: fleet.id, store: fileStore(dir), stateDir: dir, local: registry.localId, machines: [...new Set([registry.localId, gateway.id])],
-    gateway: authority, side, route: (id) => routeOf(entryOf(id)), rsync: () => resolveRsync(), emit: o.emit, record: o.record, decide: o.decide, secrets,
+    gateway: authority, side, route: (id) => routeOf(entryOf(id)), rsync: () => resolveRsync(), record: o.record, decide: o.decide, secrets,
     moved: (record) => rememberOwner(o.fleetHome, record),
   });
   return {

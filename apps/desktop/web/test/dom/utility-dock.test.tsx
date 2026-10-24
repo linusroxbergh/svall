@@ -7,7 +7,7 @@ call.mockImplementation(() => new Promise(() => {}));
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { UtilityDock } = await import('../../src/UtilityDock.js');
-const { ConfirmSleep } = await import('../../src/ConfirmSleep.js');
+const { ConfirmSleep } = await import('../../src/Confirm.js');
 
 beforeEach(() => {
   freshStore();

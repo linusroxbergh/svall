@@ -19,7 +19,7 @@ const REMOTE = MachineId.parse('66666666-7777-8888-9999-aaaaaaaaaaaa');
 const TOKEN = 'remote-token-never-on-disk';
 
 const description = (o: { port: number } & Partial<Record<string, unknown>>) => ({
-  fleetId: FLEET, machineId: REMOTE, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: TOKEN, ...o,
+  fleetId: FLEET, machineId: REMOTE, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: TOKEN, fleetHome: '/home/linus/.svall', ...o,
 });
 
 describe('remote connections', () => {
@@ -141,7 +141,7 @@ describe('remote connections', () => {
     const seen: string[] = [];
     wss.on('connection', (ws) => ws.on('message', (raw) => {
       seen.push(JSON.parse(raw.toString()).token);
-      ws.send(JSON.stringify({ id: 0, result: { ok: true } }));
+      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
     }));
     ssh.answer(description({ port: (wss.address() as { port: number }).port }));
 
@@ -158,7 +158,7 @@ describe('remote connections', () => {
   it('lets go of its forward and its master once its client closes', async () => {
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));
-    wss.on('connection', (ws) => ws.on('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true } }))));
+    wss.on('connection', (ws) => ws.on('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }))));
     ssh.answer(description({ port: (wss.address() as { port: number }).port }));
 
     const client = await connectRemote({ registry, machine: 'trift', fleetHome: home });

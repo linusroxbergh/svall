@@ -10,7 +10,7 @@ export const DEFAULT_HALF_CARD: HalfCard = { w: 0.94, h: 0.92 };
 export const HALF_CARD_RANGE = { min: 0.22, max: 0.98 };
 // the resources shelf sizes the same way, as a fraction of the room over mission control; the first leaves a twentieth around it
 export const DEFAULT_RESOURCE_SIZE: HalfCard = { w: 0.9, h: 0.9 };
-const clampHalf = (v: number): number => Math.min(HALF_CARD_RANGE.max, Math.max(HALF_CARD_RANGE.min, v));
+export const clampHalf = (v: number): number => Math.min(HALF_CARD_RANGE.max, Math.max(HALF_CARD_RANGE.min, v));
 // the widths of the shelf's Where and Which columns, in pixels; What is fixed and the editor takes what is left
 export type ResourceCols = { rail: number; list: number };
 export const DEFAULT_RESOURCE_COLS: ResourceCols = { rail: 216, list: 262 };
@@ -52,7 +52,7 @@ export type AppStorage = {
 const FOCUS_KEY = 'svall.focused';
 const VIEW_KEY = 'svall.view';
 const SIDEBAR_KEY = 'svall.sidebar.open';
-const HALF_KEY = 'svall.card.half';
+export const HALF_KEY = 'svall.card.half';
 const COLS_KEY = 'svall.resources.cols';
 const SIZE_KEY = 'svall.resources.size';
 const GROUPS_KEY = 'svall.resources.tiers';

@@ -1,38 +1,14 @@
-import type { Page } from '@playwright/test';
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION } from '@svall/protocol';
-import { expect, test } from './fixtures.js';
-import type { FromShell, ToShell } from '../src/bridge.js';
+import { expect, nativeShell, test, type Shell } from './fixtures.js';
+import type { FromShell } from '../src/bridge.js';
 import { FAR_ANSWER_MS } from '../src/host.js';
 import { theme } from '../src/theme.js';
 
 type State = Extract<FromShell, { type: 'connection.state' }>;
-// __state: what the shell says about the connection each time the page asks for it, which a test may move on
-type Shell = { __sent: ToShell[]; __state?: State; __svall: { receive(json: string): void } };
-type Reply = { port: number; token: string; info: Extract<FromShell, { type: 'shell.info' }>; state?: State };
-
-// a stand-in for the native shell: it records what the page sends and answers the connection request
-async function fakeShell(page: Page, reply: Reply): Promise<() => Promise<ToShell[]>> {
-  await page.addInitScript((r: Reply) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.__state = r.state;
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type !== 'connection') return;
-      setTimeout(() => {
-        w.__svall.receive(JSON.stringify(r.info));
-        w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port: r.port, token: r.token }));
-        if (w.__state) w.__svall.receive(JSON.stringify(w.__state));
-      }, 0);
-    } } } };
-  }, reply);
-  return () => page.evaluate(() => (window as unknown as Shell).__sent);
-}
 
 test('the connect screen names the daemon log and shows its last lines', async ({ page }) => {
-  const sent = await fakeShell(page, {
+  const { sent } = await nativeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z error svalld failed to start: listen EADDRINUSE'], op: false },
   });
@@ -47,7 +23,7 @@ test('the connect screen names the daemon log and shows its last lines', async (
 });
 
 test('the connect screen asks for svall setup while the daemon has never logged', async ({ page }) => {
-  await fakeShell(page, { port: 0, token: '', info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
+  await nativeShell(page, { port: 0, token: '', info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
   await page.clock.install();
   await page.goto('/');
   await page.clock.fastForward(theme.connectGraceMs);
@@ -55,7 +31,7 @@ test('the connect screen asks for svall setup while the daemon has never logged'
 });
 
 test('a fleet on another machine that cannot be reached says so in place of the advice for this Mac', async ({ page }) => {
-  await fakeShell(page, {
+  await nativeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z svalld stopped'], op: false, handoverEnabled: true, gateway: 'studio' },
     state: { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' },
@@ -70,7 +46,7 @@ test('a fleet on another machine that cannot be reached says so in place of the 
 });
 
 test('a fleet on this Mac whose gateway did not answer says so, and offers the copy here when the shell has one', async ({ page }) => {
-  const sent = await fakeShell(page, {
+  const { sent } = await nativeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio', copyHere: true },
     state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'unreachable', machine: 'studio', destination: 'linus@studio',
@@ -89,7 +65,7 @@ test('a fleet on this Mac whose gateway did not answer says so, and offers the c
 });
 
 test('a fleet on this Mac whose connection helper has not answered says so in place of the advice for its own daemon', async ({ page }) => {
-  await fakeShell(page, {
+  await nativeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
     state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'helper', message: 'the connection helper has not answered in 10 s' },
@@ -104,7 +80,7 @@ test('a fleet on this Mac whose connection helper has not answered says so in pl
 });
 
 test('a fleet on this Mac that asks for handover keeps the advice for its own daemon', async ({ page }) => {
-  await fakeShell(page, {
+  await nativeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
     state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'daemon_down', message: 'svalld is not running' },
@@ -118,7 +94,7 @@ test('a fleet on this Mac that asks for handover keeps the advice for its own da
 });
 
 test('a fleet on a machine on another version opens the machines panel on it, and nothing runs until asked', async ({ page }) => {
-  const sent = await fakeShell(page, {
+  const { sent } = await nativeShell(page, {
     port: 0, token: '',
     info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
     state: { type: 'connection.state', state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' },
@@ -146,7 +122,7 @@ test('a fleet on another machine that is online but not loaded yet is still star
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await new Promise((r) => wss.once('listening', r));
   try {
-    const sent = await fakeShell(page, {
+    const { sent } = await nativeShell(page, {
       port: (wss.address() as { port: number }).port, token: 't',
       info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z svalld stopped'], op: false, handoverEnabled: true, gateway: 'studio' },
       state: { type: 'connection.state', state: 'online', owner: 'studio' },
@@ -172,7 +148,7 @@ test('the connect screen says the fleet is starting at first, and shows the log 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await new Promise((r) => wss.once('listening', r));
   try {
-    await fakeShell(page, {
+    await nativeShell(page, {
       port: (wss.address() as { port: number }).port, token: 't',
       info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z error svalld failed to start: listen EADDRINUSE'], op: false },
     });
@@ -193,7 +169,7 @@ test('a daemon on another protocol asks for a reinstall', async ({ page }) => {
   wss.on('connection', (ws) => ws.once('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION + 1 } }))));
   await new Promise((r) => wss.once('listening', r));
   try {
-    await fakeShell(page, {
+    await nativeShell(page, {
       port: (wss.address() as { port: number }).port, token: 't',
       info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false },
     });

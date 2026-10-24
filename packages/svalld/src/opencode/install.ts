@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { writeAtomic } from '../jsonfile.js';
+import { writeDurable } from '../handover/durable.js';
 import { SHIM } from '../profile.js';
 import { assetDir } from '../runtime.js';
 import { readOrUndefined } from '../settings-file.js';
@@ -33,7 +33,7 @@ export function installOpencodePlugin(o: OpencodePaths): string[] {
   if (opencodePluginCurrent(readOrUndefined(o.plugin))) return [];
   fs.mkdirSync(path.dirname(o.plugin), { recursive: true });
   // an OpenCode starting now may be reading the old file
-  writeAtomic(o.plugin, pluginText(), { perProcess: true });
+  writeDurable(o.plugin, Buffer.from(pluginText()), { mode: 0o644 });
   return [`opencode plugin -> ${o.plugin}`];
 }
 
@@ -81,6 +81,6 @@ export function linkOpencodeConfig(dir: string, o: OpencodePaths, replaced: stri
     fs.rmSync(here, { force: true });
     fs.symlinkSync(path.join(o.dir, name), here);
   });
-  if (readOrUndefined(path.join(dir, SERVICE)) !== SERVICE_OFF) writeAtomic(path.join(dir, SERVICE), SERVICE_OFF, { perProcess: true });
+  if (readOrUndefined(path.join(dir, SERVICE)) !== SERVICE_OFF) writeDurable(path.join(dir, SERVICE), Buffer.from(SERVICE_OFF), { mode: 0o644 });
   return failed;
 }

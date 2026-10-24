@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { app } from '../boot.js';
-import { useApp } from '../hooks.js';
+import { stop, useApp } from '../hooks.js';
 import { countOf } from '../resources/model.js';
 import { theme } from '../theme.js';
 import { coastPath } from './coast.js';
@@ -9,10 +9,8 @@ import { ISLET, type Placement } from './resources.js';
 
 const SEED = 'resources';
 const TOWER = './resources/lighthouse2.svg';
-// a double-click that reached the map would make an island
-const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-// the islet and compact pill are one door: they open on All or close the shelf
+// the islet and compact pill are one door: they open on All or close the shelf, and stop a double-click, which on the map would make an island
 const press = () => {
   const s = app.store.getState();
   if (s.resourcesOpen) s.toggleResources(false);

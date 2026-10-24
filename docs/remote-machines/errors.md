@@ -356,6 +356,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `hook receiver` | both | The daemon's hook socket answers. |
 | `hooks` | both | Claude Code's settings hold Svall's hooks. |
 | `codex hooks` | both | Codex's hooks are installed, current and trusted. |
+| `codex sandbox` | Linux | Where AppArmor restricts user namespaces, `codex sandbox -- true` runs. It warns when AppArmor keeps bwrap from making Codex's user namespace, so a Codex robot asks before each command, and names the commands that install Codex's AppArmor profile for bwrap. |
 | `opencode plugin` | both | Svall's OpenCode plugin is installed and current, in the config folder the daemon's `XDG_CONFIG_HOME` names. |
 | `systemd` | Linux | The fleet's `svall-svalld@<fleet>` unit runs. |
 | `gateway` | Linux | The `svall-gateway` unit runs, and names the cause when a home too long for its socket keeps it restarting. |
