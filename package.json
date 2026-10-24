@@ -23,8 +23,7 @@
     "release": "scripts/release.sh",
     "site:build": "pnpm --filter @svall/desktop-web build:site",
     "site:shots": "node scripts/site-shots.mjs",
-    "site:deploy": "scripts/site-deploy.sh",
-    "release:companion": "node scripts/build-companion.mjs"
+    "site:deploy": "scripts/site-deploy.sh"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",

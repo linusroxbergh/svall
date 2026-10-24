@@ -9,21 +9,18 @@ scripts/ghostty-kit.sh current || scripts/ghostty-kit.sh ahead || scripts/ghostt
 pnpm --filter @svall/desktop-web build
 pnpm --filter @svall/desktop-web build:mobile
 node scripts/runtime-bundle.mjs
-NODE="$(scripts/node-fetch.sh)"
 TMUX="$(scripts/tmux-build.sh)"
 apps/desktop/mac/build.sh release
 
 APP="$ROOT/apps/desktop/mac/build.noindex/Svall.app"
 mkdir -p "$APP/Contents/Helpers"
-cp "$NODE" "$TMUX" "$APP/Contents/Helpers/"
-# the carried controller runs the app's own node, through a link release-scan never sees, so the app holds one copy
-CARRIED="$APP/Contents/Resources/release/node/bin/node"
-cmp -s "$NODE" "$CARRIED" ||
-  { echo "the release carries another node than $NODE: pin one Node in scripts/node-fetch.sh and scripts/release/pins.json" >&2; exit 1; }
-ln -sf ../../../../Helpers/node "$CARRIED"
+# one node for the app and its carried controller, which reaches it through a link release-scan never sees
+NODE="$APP/Contents/Resources/release/node"
+cp "$NODE/bin/node" "$TMUX" "$APP/Contents/Helpers/"
+ln -sf ../../../../Helpers/node "$NODE/bin/node"
 rsync -a --delete apps/desktop/mac/build.noindex/runtime/ "$APP/Contents/Resources/runtime/"
 SPARKLE="$(scripts/sparkle-tools.sh)"
-node scripts/licenses.mjs "$(dirname "$NODE")" "$(dirname "$TMUX")" "$(dirname "$SPARKLE")" >/dev/null
+node scripts/licenses.mjs "$NODE" "$(dirname "$TMUX")" "$(dirname "$SPARKLE")" >/dev/null
 # beside the NOTICE and licence texts build.sh put there
 rsync -a apps/desktop/mac/build.noindex/licenses/ "$APP/Contents/Resources/Licenses/"
 # nested code is signed before the bundle that seals it

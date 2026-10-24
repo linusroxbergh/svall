@@ -1,4 +1,4 @@
-// What the integration drivers share: the command line, the run log, docker, and the checks each step collects.
+// What the integration drivers share: the command line, the run log, docker, the two machines and each step's checks.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -69,4 +69,23 @@ export function harness(out) {
   }
 
   return { log, say, docker, check, step, booted };
+}
+
+/**
+ * The two machines a run named `prefix` makes, their network, and their accounts' homes: local's where a Mac's is, remote's
+ * where Linux's is. `sh` is a login shell on one, as svall unless `root`; it throws on a nonzero exit unless `ok: false`.
+ */
+export function machines(prefix, docker) {
+  const L = `${prefix}-local`;
+  const R = `${prefix}-remote`;
+  const HOMES = { [L]: '/Users/svall', [R]: '/home/svall' };
+  const userEnv = (machine) => [`HOME=${HOMES[machine]}`, 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
+    'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
+  function sh(machine, script, opts = {}) {
+    const who = opts.root ? [] : ['-u', 'svall', '-w', HOMES[machine], ...userEnv(machine)];
+    const r = docker(['exec', '-i', ...who, machine, 'bash', '-lc', script], { input: opts.input ?? '' });
+    if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
+    return r;
+  }
+  return { L, R, NET: `${prefix}-it`, HOMES, userEnv, sh };
 }

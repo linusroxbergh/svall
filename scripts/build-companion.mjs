@@ -15,17 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { signManifest, writeManifest } from './release-manifest.mjs';
-import { describeVersion, releaseKey, stageRelease } from './release-stage.mjs';
-
-function options(argv) {
-  const o = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    if (!argv[i].startsWith('--') || argv[i + 1] === undefined) throw new Error(`bad argument: ${argv[i]}`);
-    o[argv[i].slice(2)] = argv[i += 1];
-  }
-  if (!o.out) throw new Error('--out <dir> is required');
-  return o;
-}
+import { describeVersion, options, releaseKey, stageRelease } from './release-stage.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

@@ -30,7 +30,4 @@ export function writeManifest(dir: string, meta: Record<string, unknown>): { ent
 export function signManifest(dir: string, keyFile: string): void;
 export function signArchive(archive: string, keyFile: string): void;
 export function sshVerify(o: { allowedSigners: string }): Verify;
-export function archiveRelease(archive: string, listing: string): { version: string; members: string[] };
-export function verifySignature(dir: string, o?: VerifyOptions): boolean;
 export function verifyRelease(dir: string, o?: VerifyOptions): { release: Release; entries: Entry[]; signed: boolean; signer?: string };
-export function verifyTree(dir: string, o?: VerifyOptions): { release: Release; entries: Entry[] };

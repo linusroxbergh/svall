@@ -14,5 +14,4 @@ export function stageRelease(o: { out: string; version: string; platform: string
 export function releaseKey(signers?: string): string | undefined;
 export function packageLicence(dir: string): { name: string; version: string; license: string; file: string };
 export function phonePackages(repo?: string): string[];
-export const RSYNC_CONFIGURE: string[];
 export function pinnedRsync(arch: string, o?: { vendor?: string; fresh?: boolean }): Promise<{ version: string; binary: string; licence: string; tarball: string; sha256: string }>;

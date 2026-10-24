@@ -69,13 +69,13 @@
       <div class="nm">${state}</div><div class="stage"></div>
       <div class="foot">${work ? '<span class="dots"><i></i><i></i><i></i></span>' : ''}${TG}</div></div>${work ? '<span class="gem"></span>' : ''}</div>`;
   };
-  const BASE = { idle: [...motion.REST.idle], working: [...motion.REST.working] };
+  const BASE = { ...motion.REST };
   const often = document.getElementById('often');
   const s = (ms) => (ms / 1000).toFixed(1).replace(/\.0$/, '');
   const setOften = () => {
-    for (const k in BASE) motion.REST[k] = BASE[k].map((v) => v / often.value);
+    for (const k in BASE) motion.REST[k] = BASE[k] / often.value;
     document.getElementById('oftenTxt').textContent =
-      `×${often.value}: idle rests ${s(motion.REST.idle[0])}–${s(motion.REST.idle[1])}s, working ${s(motion.REST.working[0])}–${s(motion.REST.working[1])}s`;
+      `×${often.value}: idle rests ${s(motion.REST.idle)}s, working ${s(motion.REST.working)}s, ±10%`;
     motion.retime();
   };
   often.oninput = setOften;

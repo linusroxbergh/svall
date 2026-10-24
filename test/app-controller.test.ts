@@ -93,31 +93,24 @@ describe('the node the carried controller runs', () => {
   const from = 'APP="$ROOT/apps/desktop/mac/build.noindex/Svall.app"\n';
   const block = build.slice(build.indexOf(from) + from.length, build.indexOf('rsync -a --delete apps/desktop/mac/build.noindex/runtime/'));
 
-  // app-build.sh from where build.sh has left the app to where it adds the runtime, over an app that carries `carried`
-  function helpers(carried: string) {
+  // app-build.sh from where build.sh has left the app to where it adds the runtime
+  function helpers() {
     const dir = temp();
     const app = path.join(dir, 'Svall.app');
     const node = path.join(app, 'Contents/Resources/release/node/bin/node');
     fs.mkdirSync(path.dirname(node), { recursive: true });
-    fs.writeFileSync(node, carried, { mode: 0o755 });
-    fs.writeFileSync(path.join(dir, 'node'), 'node v24.21.0\n', { mode: 0o755 });
+    fs.writeFileSync(node, 'node v24.21.0\n', { mode: 0o755 });
     fs.writeFileSync(path.join(dir, 'tmux'), 'tmux\n', { mode: 0o755 });
-    const r = spawnSync('sh', ['-c', `set -eu\nAPP="${app}"\nNODE="${dir}/node"\nTMUX="${dir}/tmux"\n${block}`], { encoding: 'utf8' });
+    const r = spawnSync('sh', ['-c', `set -eu\nAPP="${app}"\nTMUX="${dir}/tmux"\n${block}`], { encoding: 'utf8' });
     return { app, node, r };
   }
 
   it('is the app\'s own, through a link that stays inside the bundle', () => {
-    const { app, node, r } = helpers('node v24.21.0\n');
+    const { app, node, r } = helpers();
     expect(r.status, r.stderr).toBe(0);
     expect(fs.readlinkSync(node)).toBe('../../../../Helpers/node');
     expect(fs.realpathSync(node)).toBe(path.join(app, 'Contents/Helpers/node'));
-  });
-
-  it('stops the build when the release carries another node than the app ships', () => {
-    const { node, r } = helpers('node v24.99.0\n');
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain('scripts/release/pins.json');
-    expect(fs.lstatSync(node).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(node, 'utf8')).toBe('node v24.21.0\n');
   });
 });
 

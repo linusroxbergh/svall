@@ -1,9 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
-    ".": { "entry": ["scripts/**/*.mjs", "test/*.test.ts"] },
-    "packages/svalld": { "entry": ["hooks/*.mjs", "test/fixtures/*.{mjs,cjs}"] }
+    ".": { "entry": ["scripts/**/*.{mjs,js}", "test/*.test.ts"] },
+    "packages/cli": { "entry": ["test/fixtures/*.{mjs,ts}"] },
+    "packages/svalld": { "entry": ["hooks/*.{mjs,js}", "test/fixtures/*.{mjs,cjs}"] }
   },
-  "ignoreBinaries": ["ditto", "hdiutil", "iconutil", "infocmp", "magick", "sips", "swiftc"],
+  "ignoreFiles": ["**/*.d.mts"],
+  "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "mkfifo", "pmset", "script", "shasum", "sips", "ssh-keygen", "swiftc"],
   "ignoreExportsUsedInFile": { "type": true, "interface": true }
 }

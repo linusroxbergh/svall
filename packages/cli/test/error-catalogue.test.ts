@@ -42,7 +42,7 @@ const named = {
   statuses: (text: string) => all(text, /\|\s*\{\s*status: '([^']+)'/g),
   events: (text: string) => all(text, /event: '(handover\.[^']+)'/g),
   steps: (text: string) => all(text, /run\.step\('([^']+)'/g),
-  checks: (text: string) => [...all(text, /name: '([^']+)'/g), ...all(text, /(?:failed|unitCheck)\('([^']+)'/g)],
+  checks: (text: string) => [...all(text, /name(?::| =) '([^']+)'/g), ...all(text, /(?:failed|unitCheck)\('([^']+)'/g)],
   failures: (text: string) => all(text, /new AuthorityFailure\('([^']+)'/g),
 };
 
@@ -98,7 +98,7 @@ describe('the error catalogue', () => {
     expect(named.steps("await run.step('agent-login', f); await run.step('rsync2', g);")).toEqual(['agent-login', 'rsync2']);
     expect(named.statuses("  | { status: 'timed_out'; phase: HandoverPhase }")).toEqual(['timed_out']);
     expect(named.events("  | { event: 'handover.gave_up'; data: { pid: number } }")).toEqual(['handover.gave_up']);
-    expect(named.checks("{ name: 'gh-auth', status: 'ok' }; checks.push(failed('disk2', err));")).toEqual(['gh-auth', 'disk2']);
+    expect(named.checks("{ name: 'gh-auth', status: 'ok' }; const name = 'disk 3'; checks.push(failed('disk2', err));")).toEqual(['gh-auth', 'disk 3', 'disk2']);
     expect(named.failures("throw new AuthorityFailure('socket_2big', message);")).toEqual(['socket_2big']);
     expect(() => union("export type SshErrorKind = TunnelKind | 'auth';", 'export type SshErrorKind =')).toThrow(/not a union of string literals/);
     expect(() => fieldValues("  | { state: 'absent' }\n  | { state: GoneState; message: string };", 'state')).toThrow(/not a union of string literals/);

@@ -26,24 +26,10 @@ while [ $# -gt 0 ]; do
 done
 
 docker info >/dev/null 2>&1 || { echo "handover.sh: docker is not running" >&2; exit 2; }
-platform=$(docker info --format '{{.Architecture}}')
-case $platform in
-  aarch64 | arm64) arch=arm64 ;;
-  x86_64 | amd64) arch=x64 ;;
-  *) echo "handover.sh: no companion is built for $platform" >&2; exit 2 ;;
-esac
 
 out=${out:-$(mktemp -d "${TMPDIR:-/tmp}/handover-bench.XXXXXX")}
 mkdir -p "$out"
 if [ -z "$reuse" ]; then
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
-  if [ -z "$archive" ]; then
-    [ -d "$repo/apps/desktop/web/dist-mobile" ] || pnpm --dir "$repo" --filter @svall/desktop-web build:mobile
-    node "$repo/scripts/build-companion.mjs" --out "$work/companion" --arch "$arch" >"$work/companion.json"
-    archive=$(ls "$work"/companion/svall-companion-*-linux-"$arch".tar.gz)
-  fi
-  docker build -q -t svall-it:latest "$repo/scripts/integration" >/dev/null
-  node "$repo/scripts/integration/fleet-handover.mjs" --archive "$archive" --image svall-it:latest --scenarios none --keep --out "$out/setup" --prefix "$prefix"
+  "$repo/scripts/integration/fleet-handover.sh" ${archive:+--archive "$archive"} --scenarios none --keep --out "$out/setup" --prefix "$prefix"
 fi
 node "$repo/scripts/bench/handover.mjs" --out "$out" --prefix "$prefix" ${pass[@]+"${pass[@]}"}
