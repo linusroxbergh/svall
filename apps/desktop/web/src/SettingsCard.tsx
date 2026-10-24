@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, type PushStatus } from '@svall/protocol';
-import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setRobots, setScribe, setWorktrees } from './actions.js';
+import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
 import { holdCutout } from './cutout.js';
@@ -221,7 +221,6 @@ function Scribe() {
   const scribeAgent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
   const flip = () => setScribe(deps(), !on);
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
-  const robots = useApp((s) => !s.fleet.animals);
   return (
     <>
       <div className="rows">
@@ -242,15 +241,6 @@ function Scribe() {
         <div className="row">
           <span>work in worktrees<Info id="worktrees">Each agent in a git repo is told to make a new worktree for its task and leave the main checkout alone unless you say so.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={worktrees} data-testid="set-worktrees" onClick={() => setWorktrees(deps(), !worktrees)}>{worktrees ? 'on' : 'off'}</button></b>
-        </div>
-        <div className="row">
-          <span>characters<Info id="robots">How characters look, here and on your phone.</Info></span>
-          <b className="set-pick" role="radiogroup" aria-label="Characters">
-            {(['animals', 'robots'] as const).map((k) => (
-              <button key={k} className="set-switch" role="radio" aria-checked={robots === (k === 'robots')} data-pick={k}
-                onClick={() => setRobots(deps(), k === 'robots')}>{k}</button>
-            ))}
-          </b>
         </div>
         <Dormancy />
         {app.bridge.present && <RemoteMachines />}

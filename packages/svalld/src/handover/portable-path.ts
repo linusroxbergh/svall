@@ -159,7 +159,7 @@ export const NOT_BOUND: readonly string[] = [
   'FleetState.characters.*.second.unread', 'FleetState.characters.*.second.agent.kind', 'FleetState.characters.*.second.agent.status',
   'FleetState.characters.*.second.agent.contextPct', 'FleetState.characters.*.second.agent.background', 'FleetState.characters.*.second.agent.lastPrompt.at',
   'FleetState.characters.*.second.agent.lastActivityAt',
-  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.worktreesOff', 'FleetState.animals', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
+  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.worktreesOff', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
   'FleetConfig.mainAgent', 'FleetConfig.scribe.agent', 'FleetConfig.handover.enabled', 'FleetConfig.handover.excludeDefaults', 'FleetConfig.handover.transferFleetEnv',
 ];
 

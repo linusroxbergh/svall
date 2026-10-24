@@ -218,7 +218,9 @@ runIf('Fleet', () => {
     await fleet.openSecond(c.id);
     const paneId = store.state.characters[c.id].second!.tmux!.paneId;
     const sessionId = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
-    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+    const transcriptPath = path.join(home, `${sessionId}.jsonl`);
+    fs.writeFileSync(transcriptPath, '');
+    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath, status: 'idle', lastActivityAt: 1 }; });
     // typed at once: two polls of the pane at a shell would take the agent as ended before the window goes
     await tmux.run('send-keys', '-t', paneId, 'exit', 'Enter');
     await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
@@ -800,6 +802,47 @@ runIf('Fleet', () => {
     await sleepWith('claude', path.join(home, 'gone', 'deeper'));
     store.update((d) => { delete d.characters[c.id].repo; });
     expect(await revivedIn()).toBe(fs.realpathSync(home));
+  });
+
+  it('starts a Claude session that saved no transcript afresh on revive, and resumes one that did', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const transcriptPath = path.join(home, 'projects', '-tmp', `${SID}.jsonl`);
+    const sleep = async () => {
+      const { tmux: t } = store.state.characters[c.id];
+      if (t) await tmux.killWindow(t.windowId);
+      await waitFor(() => store.state.characters[c.id].tmux === undefined);
+      store.update((d) => {
+        d.characters[c.id].revive = { command: `claude --effort 'xhigh' --resume ${SID}` };
+        d.characters[c.id].agent = { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 1, transcriptPath };
+      });
+    };
+    // what a revive types, kept from the pane so no real agent starts
+    const typed = vi.spyOn(tmux, 'sendLine').mockResolvedValue(undefined);
+    await sleep();
+    await fleet.reviveCharacter(c.id);
+    expect(typed).toHaveBeenLastCalledWith(expect.any(String), "claude --effort 'xhigh'", true);
+    // the new session reports itself as it starts
+    expect(store.state.characters[c.id].agent).toBeUndefined();
+
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(transcriptPath, '');
+    await sleep();
+    await fleet.reviveCharacter(c.id);
+    expect(typed).toHaveBeenLastCalledWith(expect.any(String), `claude --effort 'xhigh' --resume ${SID}`, true);
+    expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
+
+    // a dormant second terminal's, too
+    const other = 'a1b2c3d4-0000-4000-8000-000000000001';
+    store.update((d) => {
+      d.characters[c.id].second = {
+        cwd: '/tmp', unread: false, revive: { command: `claude --resume ${other}` },
+        agent: { kind: 'claude', sessionId: other, status: 'idle', lastActivityAt: 1, transcriptPath: path.join(home, 'projects', '-tmp', `${other}.jsonl`) },
+      };
+    });
+    await fleet.openSecond(c.id);
+    expect(typed).toHaveBeenLastCalledWith(expect.any(String), 'claude', true);
+    expect(store.state.characters[c.id].second?.agent).toBeUndefined();
   });
 
   it('takes away a prompt file left over when a character starts without a prompt', async () => {
@@ -3093,13 +3136,8 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(c.id);
   });
 
-  it('keeps the robots switch in the fleet, on unless turned off, and a character\'s robot apart from its animal', async () => {
-    const { fleet, store } = await boot();
-    expect(store.state).not.toHaveProperty('animals');
-    fleet.setRobots(false);
-    expect(store.state.animals).toBe(true);
-    fleet.setRobots(true);
-    expect(store.state).not.toHaveProperty('animals');
+  it('keeps a character\'s robot apart from its portrait', async () => {
+    const { fleet } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'robots' }).id, cwd: '/tmp' });
     expect(fleet.updateCharacter(c.id, { robot: 42 })).toMatchObject({ robot: 42, portrait: c.portrait });
     await fleet.closeCharacter(c.id);

@@ -73,6 +73,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
             skipPid: o.fromApp ? process.ppid : undefined,
             unitDir: unitDirOf(os.homedir()),
             prefix: DEFAULT_PREFIX,
+            cache: path.join(os.homedir(), '.cache', 'svall'),
             force,
             forceFleets,
           }),

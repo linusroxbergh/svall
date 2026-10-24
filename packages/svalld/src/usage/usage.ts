@@ -1,12 +1,16 @@
+import path from 'node:path';
 import type { FleetState, UsageSnapshot, UsageWindow } from '@svall/protocol';
 import { lastTokenCount, type RawRateLimits, type RawRateWindow } from '../agent/codex-transcript.js';
 import { readTail as readFileTail } from '../agent/transcript.js';
 import { spawnClaude } from '../claude.js';
+import { codexPaths } from '../codex/install.js';
+import { accountLine, codexAccount } from './account.js';
 
 export type FetchUsage = () => Promise<UsageSnapshot>;
 
 const TIMEOUT_MS = 20_000;
 const REQUEST_ID = 'u1';
+const INIT_ID = 'i1';
 
 type RawWindow = { utilization?: number | null; resets_at?: string | null } | null;
 type RawLimits = {
@@ -15,6 +19,7 @@ type RawLimits = {
   model_scoped?: { display_name?: string; utilization?: number | null; resets_at?: string | null }[];
 };
 type RawUsage = { subscription_type?: string | null; rate_limits_available?: boolean; rate_limits?: RawLimits | null };
+type RawInit = { account?: { email?: unknown } | null };
 
 const windowOf = (key: string, label: string, w: RawWindow): UsageWindow[] =>
   w && typeof w.utilization === 'number' ? [{ key, label, pct: w.utilization, ...(w.resets_at ? { resetsAt: w.resets_at } : {}) }] : [];
@@ -36,8 +41,8 @@ function toSnapshot(raw: RawUsage): UsageSnapshot {
 }
 
 // a headless Claude that runs no model turn: one control request over stdin answers with the plan's
-// rate-limit windows and costs nothing. skip_behaviors keeps it off a scan of every transcript
-// touched in the last seven days
+// rate-limit windows and costs nothing, and its initialize reply names the login they belong to.
+// skip_behaviors keeps it off a scan of every transcript touched in the last seven days
 export function usageFetcher(o: { cwd: string; envFile: string; timeoutMs?: number }): FetchUsage {
   return () => new Promise((resolve, reject) => {
     const proc = spawnClaude({
@@ -57,7 +62,7 @@ export function usageFetcher(o: { cwd: string; envFile: string; timeoutMs?: numb
     };
     const timer = setTimeout(() => finish(() => reject(new Error(`claude usage read timed out after ${timeoutMs}ms`))), timeoutMs);
 
-    let err = '', buf = '';
+    let err = '', buf = '', account: string | undefined;
     // claude is resolved from PATH and its output shape is not ours, so a reply that reads
     // nothing like one answers the caller rather than throwing past the promise
     proc.stdout.setEncoding('utf8').on('data', (d: string) => {
@@ -67,16 +72,22 @@ export function usageFetcher(o: { cwd: string; envFile: string; timeoutMs?: numb
         while ((nl = buf.indexOf('\n')) !== -1) {
           const line = buf.slice(0, nl);
           buf = buf.slice(nl + 1);
-          let msg: { type?: string; response?: { subtype?: string; request_id?: string; error?: unknown; response?: RawUsage } } | null;
+          let msg: { type?: string; response?: { subtype?: string; request_id?: string; error?: unknown; response?: RawUsage & RawInit } } | null;
           try { msg = JSON.parse(line); } catch { continue; }
-          if (msg?.type !== 'control_response' || msg.response?.request_id !== REQUEST_ID) continue;
+          if (msg?.type !== 'control_response') continue;
           const r = msg.response;
+          if (r?.request_id === INIT_ID) {
+            const email = r.subtype === 'success' ? r.response?.account?.email : undefined;
+            if (typeof email === 'string' && email) account = email;
+            continue;
+          }
+          if (r?.request_id !== REQUEST_ID) continue;
           if (r.subtype !== 'success' || !r.response) {
             finish(() => reject(new Error(`claude usage read failed: ${String(r.error ?? r.subtype).slice(0, 300)}`)));
             return;
           }
           const snapshot = toSnapshot(r.response);
-          finish(() => resolve(snapshot));
+          finish(() => resolve(account ? { ...snapshot, account } : snapshot));
           return;
         }
       } catch (e) {
@@ -89,10 +100,10 @@ export function usageFetcher(o: { cwd: string; envFile: string; timeoutMs?: numb
     proc.on('close', (code) => finish(() => reject(new Error(`claude exited ${code}: ${(err || buf).trim().slice(0, 300)}`))));
 
     proc.stdin.on('error', () => {});
-    proc.stdin.write(JSON.stringify({
-      type: 'control_request', request_id: REQUEST_ID,
-      request: { subtype: 'get_usage', skip_behaviors: true },
-    }) + '\n');
+    proc.stdin.write([
+      { type: 'control_request', request_id: INIT_ID, request: { subtype: 'initialize' } },
+      { type: 'control_request', request_id: REQUEST_ID, request: { subtype: 'get_usage', skip_behaviors: true } },
+    ].map((m) => JSON.stringify(m) + '\n').join(''));
   });
 }
 
@@ -136,6 +147,14 @@ const CODEX_TAIL = 64 * 1024;
 // panel asks: nothing is remembered, and a reading is no older than the last turn of an open session
 export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string }): FetchUsage {
   const tail = o.readTail ?? ((file: string) => readFileTail(file, CODEX_TAIL));
+  // the login line names only the plans whose windows show
+  const withAccount = (snapshot: UsageSnapshot, claude: UsageSnapshot | undefined, codex: boolean): UsageSnapshot => {
+    const account = accountLine([
+      ...(claude?.windows.length ? [{ agent: 'Claude', email: claude.account }] : []),
+      ...(codex ? [{ agent: 'Codex', email: codexAccount(path.join(codexPaths().dir, 'auth.json')) }] : []),
+    ]);
+    return account ? { ...snapshot, account } : snapshot;
+  };
   return async () => {
     const agents = Object.values(o.state().characters).flatMap((c) => (c.tmux && c.agent ? [c.agent] : []));
     const newest = agents
@@ -146,9 +165,9 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
     if (!agents.length) return { available: true, idle: true, windows: [] };
     // OpenCode runs on any provider and reports no plan's limits
     if (agents.every((a) => a.kind === 'opencode')) return { available: false, windows: [] };
-    if (!agents.some((a) => a.kind === 'claude')) return { available: true, windows: codex };
+    if (!agents.some((a) => a.kind === 'claude')) return withAccount({ available: true, windows: codex }, undefined, codex.length > 0);
     // a claude that is logged out or slow must not take the codex windows down with it
     const claude = await o.claude().catch((e: unknown): UsageSnapshot => { if (!codex.length) throw e; return { available: false, windows: [] }; });
-    return { available: claude.available || codex.length > 0, windows: [...claude.windows, ...codex] };
+    return withAccount({ available: claude.available || codex.length > 0, windows: [...claude.windows, ...codex] }, claude, codex.length > 0);
   };
 }

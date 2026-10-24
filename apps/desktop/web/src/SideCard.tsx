@@ -1,4 +1,4 @@
-import { stepPortrait, type Character, type ContextItem, type Params } from '@svall/protocol';
+import type { Character, ContextItem, Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { saveCharacter, saveCharacterContext, setStar } from './actions.js';
@@ -11,7 +11,7 @@ import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
-import { portraitTint, portraitUrl, robotOf, robotUrl, stepRobot } from './portraits.js';
+import { robotOf, robotUrl, stepRobot } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
@@ -47,17 +47,12 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
 }
 
 function PortraitPicker({ id, portrait, robot }: Pick<Character, 'id' | 'portrait' | 'robot'>) {
-  const robots = useApp((s) => !s.fleet.animals);
-  const kind = robots ? 'robot' : 'animal';
-  const step = (by: 1 | -1) => saveCharacter(deps(), id,
-    robots ? { robot: stepRobot(robotOf({ portrait, robot }), by) } : { portrait: stepPortrait(portrait, by) });
+  const step = (by: 1 | -1) => saveCharacter(deps(), id, { robot: stepRobot(robotOf({ portrait, robot }), by) });
   return (
-    <div className="side-portrait" data-testid="side-portrait" data-portrait={portrait}>
-      <button className="pnav" data-testid="portrait-prev" aria-label={`Previous ${kind}`} onClick={() => step(-1)}>‹</button>
-      {robots
-        ? <img className="side-robot" src={robotUrl(robotOf({ portrait, robot }))} alt="robot" draggable={false} />
-        : <span className="pdisc" data-tint={portraitTint(portrait)}><img className="portrait-img" src={portraitUrl(portrait)} alt={portrait} draggable={false} /></span>}
-      <button className="pnav" data-testid="portrait-next" aria-label={`Next ${kind}`} onClick={() => step(1)}>›</button>
+    <div className="side-portrait" data-testid="side-portrait">
+      <button className="pnav" data-testid="portrait-prev" aria-label="Previous robot" onClick={() => step(-1)}>‹</button>
+      <img className="side-robot" src={robotUrl(robotOf({ portrait, robot }))} alt="robot" draggable={false} />
+      <button className="pnav" data-testid="portrait-next" aria-label="Next robot" onClick={() => step(1)}>›</button>
     </div>
   );
 }

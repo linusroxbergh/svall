@@ -144,7 +144,7 @@ export const HandoverIssueCode = z.enum([
   'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
-  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'codex_sandbox', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
+  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'codex_hooks', 'codex_sandbox', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
   'too_many_files', 'repository_unused', 'linger_off',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;

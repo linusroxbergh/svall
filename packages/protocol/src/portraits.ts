@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// slugs of the svg files in the desktop app's public/animals
+// a character's portrait name: a new character takes one no one else wears, and the name picks its default robot
 export const PORTRAITS = [
   'bat', 'bear', 'beaver', 'camel', 'cat', 'chameleon',
   'cheetah', 'cow', 'deer', 'duck', 'eagle', 'elephant',
@@ -13,12 +13,6 @@ export const PORTRAITS = [
 
 export const Portrait = z.enum(PORTRAITS);
 export type Portrait = z.infer<typeof Portrait>;
-
-// one step around the ring, in either direction
-export const stepPortrait = (p: Portrait, step: 1 | -1): Portrait => {
-  const i = PORTRAITS.indexOf(p);
-  return PORTRAITS[(i + step + PORTRAITS.length) % PORTRAITS.length];
-};
 
 // a portrait no one else wears, while there are any left
 export function randomPortrait(taken: ReadonlySet<string> = new Set()): Portrait {

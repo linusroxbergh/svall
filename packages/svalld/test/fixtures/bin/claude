@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Test double for `claude` on PATH, so a test never spends the real account: answers its version, its sign-in and the usage
-// control request, fails a resume as the real one fails a session it does not hold, and exits quietly for anything else svalld might spawn.
+// Test double for `claude` on PATH, so a test never spends the real account: answers its version, its sign-in, and the
+// initialize and usage control requests, fails a resume as the real one fails a session it does not hold, and exits quietly for anything else svalld might spawn.
 import readline from 'node:readline';
 
 const args = process.argv.slice(2);
@@ -29,9 +29,10 @@ const usage = {
 for await (const line of readline.createInterface({ input: process.stdin })) {
   let msg;
   try { msg = JSON.parse(line); } catch { continue; }
-  if (msg?.request?.subtype !== 'get_usage') continue;
+  const response = { initialize: { account: { email: 'linus@example.com' } }, get_usage: usage }[msg?.request?.subtype];
+  if (!response) continue;
   process.stdout.write(JSON.stringify({
     type: 'control_response',
-    response: { subtype: 'success', request_id: msg.request_id, response: usage },
+    response: { subtype: 'success', request_id: msg.request_id, response },
   }) + '\n');
 }

@@ -366,6 +366,35 @@ describe('host add', () => {
     expect(out.result).toBe('ready');
   });
 
+  it('notes an agent CLI no fleet on this Mac runs, and asks for it once a fleet does or its state cannot be read', async () => {
+    const fleet = (name: string, state?: object) => {
+      const home = path.join(work, name);
+      fs.mkdirSync(home, { recursive: true });
+      fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID() }));
+      if (state) fs.writeFileSync(path.join(home, 'state.json'), JSON.stringify({ ...emptyState(), ...state }));
+    };
+    const add = async () => {
+      events.length = 0;
+      ssh.clearReplies();
+      healthy({ agents: false });
+      const d = await daemon();
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+      await d.close();
+      return out;
+    };
+    fleet('.svall', { mainAgent: 'claude', scribeAgent: 'codex', scribeOff: true });
+    const out = await add();
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then install Claude Code, then svall setup' });
+    for (const kind of ['codex', 'opencode']) {
+      expect(step(kind).at(-1)).toEqual({ step: kind, status: 'skip', detail: `${kind} is not installed on this machine, and no fleet on this Mac runs it` });
+    }
+    expect(out.actions).toEqual(['ssh trift.test, then install Claude Code, then svall setup']);
+    fleet('.svall-work');
+    await add();
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then install OpenCode, then svall setup' });
+  });
+
   it('names what Svall\'s hooks there still need, from the companion\'s own doctor, without stopping setup', async () => {
     const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
     const disabled = `${HOME}/.claude/settings.json sets disableAllHooks, so no character gets a status; remove it`;
@@ -377,13 +406,13 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
     // a fix that is no one command to type leaves the step without one
-    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: `2.1.278 (Claude Code), logged in; the hooks check there says ${disabled}`, action: `ssh trift.test, then ${disabled}` });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), logged in; the hooks check there fails', action: `ssh trift.test, then ${disabled}` });
     expect(step('claude').at(-1)).not.toHaveProperty('run');
     expect(step('codex').at(-1)).toMatchObject({
-      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex hooks check there says ${untrusted}`,
+      status: 'warn', detail: 'codex-cli 0.156.1, logged in; the codex hooks check there says not trusted yet',
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks', run: 'codex',
     });
-    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says ${plugin}`, action: 'ssh trift.test, then svall setup', run: 'svall setup' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says not installed in ${HOME}/.config/opencode/plugins/svall.js`, action: 'ssh trift.test, then svall setup', run: 'svall setup' });
     expect(out.result).toBe('actions');
     expect(registry.get('trift')?.id).toBe(REMOTE);
   });
@@ -397,9 +426,12 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('codex').at(-1)).toMatchObject({
-      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked}`, action: `ssh trift.test, then ${fix}`, run,
+    const codex = step('codex').at(-1)!;
+    expect(codex).toMatchObject({
+      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked.slice(0, blocked.lastIndexOf(': '))}`, action: `ssh trift.test, then ${fix}`, run,
     });
+    // each fix once on the line: what is wrong in the detail, what to do in the action
+    expect(`${codex.detail} -> ${codex.action}`.split(fix)).toHaveLength(2);
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok' });
   });
 
@@ -428,7 +460,7 @@ describe('host add', () => {
     await d.close();
     expect(step('codex').at(-1)).toMatchObject({
       status: 'warn',
-      detail: `codex-cli 0.156.1, logged in; the codex hooks check there says ${untrusted}; the codex sandbox check there says ${blocked}`,
+      detail: 'codex-cli 0.156.1, logged in; the codex hooks check there says not trusted yet; the codex sandbox check there says AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex character asks before each one',
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
     });
   });
@@ -948,6 +980,37 @@ describe('host doctor', () => {
     }
     expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
+  });
+
+  it("drops a removed machine's check, and the file with the last one", async () => {
+    const config = path.join(work, 'config');
+    fs.mkdirSync(config, { recursive: true });
+    const check = { at: 1, failed: 0, warned: 0 };
+    fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify({ [REMOTE]: check, [OTHER_MAC]: check }));
+    const { forgetCheck, lastChecks } = await import('../src/commands/host.js');
+    forgetCheck(config, REMOTE);
+    expect(lastChecks(config)).toEqual({ [OTHER_MAC]: check });
+    forgetCheck(config, REMOTE);
+    expect(lastChecks(config)).toEqual({ [OTHER_MAC]: check });
+    forgetCheck(config, OTHER_MAC);
+    expect(fs.existsSync(path.join(config, 'checks.json'))).toBe(false);
+  });
+
+  it("keeps a machine's check while host remove leaves it in the registry, and drops it with --forget", async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.save();
+    const check = { at: 1, failed: 0, warned: 0 };
+    fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify({ [REMOTE]: check, [OTHER_MAC]: check }));
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await hostCommands(() => true, () => config).parseAsync(['remove', 'trift'], { from: 'user' }).catch(() => undefined);
+      expect(lastChecks(config)).toEqual({ [REMOTE]: check, [OTHER_MAC]: check });
+      await hostCommands(() => true, () => config).parseAsync(['remove', 'trift', '--forget'], { from: 'user' });
+      expect(lastChecks(config)).toEqual({ [OTHER_MAC]: check });
+    } finally { out.mockRestore(); process.exitCode = 0; }
   });
 
   it('keeps a check that could not reach the machine as failed, so host list never shows an older ready', async () => {
@@ -1537,6 +1600,7 @@ esac
     registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
     for (const run of [() => upgradeHost('trift', {}, deps({ registry })), () => rollbackHost('trift', {}, deps({ registry }))]) {
       events.length = 0;
+      ssh.clearReplies();
       expect((await run()).result).toBe('actions');
       expect(step('master').at(-1)).toMatchObject({ status: 'fail', action: 'ssh refused.test once in Terminal and see what it answers, then run this again' });
     }

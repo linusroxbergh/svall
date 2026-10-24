@@ -591,6 +591,7 @@ describe('what each blocker and warning is explained with', () => {
     expect(diff).toMatch(/version/);
     expect(diff).not.toMatch(/MCP|skill/i);
     expect(blockerHint({ code: 'codex_trust', message: 'Codex asks…' }, ctx)).toMatch(/trust.*each moved folder/);
+    expect(blockerHint({ code: 'codex_hooks', message: 'Codex on studio has not trusted…' }, ctx)).toMatch(/studio.*"Hooks need review"[\s\S]*"Trust all and continue"/);
   });
 
   it('warns of the trust question Claude asks, whose preselected answer quits it', () => {

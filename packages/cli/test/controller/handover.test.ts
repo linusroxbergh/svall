@@ -492,6 +492,21 @@ describe('preflight', () => {
     expect((await trust()).map((x) => x.code)).toEqual(['codex_trust']);
   });
 
+  it("warns that a resumed Codex stops at its review of Svall's hooks where the destination's Codex has not trusted them", async () => {
+    const w = new World();
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    let untrusted: string[] | undefined = ['codex'];
+    w.destination.answers['handover.inspect'] = ((p: unknown) => ({ ...inspect(p), ...(untrusted && { hooksUntrusted: untrusted }) })) as never;
+    const hooks = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'codex_hooks');
+
+    expect(await hooks()).toEqual([{
+      code: 'codex_hooks',
+      message: 'Codex on trift has not trusted Svall\'s hooks yet, so a Codex character resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks',
+    }]);
+    untrusted = undefined;
+    expect(await hooks()).toEqual([]);
+  });
+
   it('blocks at the checks a carried repository naming a command git would run on the destination, whose global config does not set it the same', async () => {
     const w = new World();
     const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;

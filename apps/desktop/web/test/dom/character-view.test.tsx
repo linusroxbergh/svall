@@ -5,7 +5,7 @@ import path from 'node:path';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
-import { portraitUrl } from '../../src/portraits.js';
+import { robotUrl } from '../../src/portraits.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { chr, fleet } from '../fixtures.js';
 
@@ -263,7 +263,7 @@ test('a portrait resolves from the root on a page opened at a character', () => 
   document.head.innerHTML = /<head>([\s\S]*)<\/head>/.exec(page)![1];
   try {
     history.replaceState(null, '', '/char/c0');
-    expect(new URL(portraitUrl('fox'), document.baseURI).pathname).toBe('/animals/fox.svg');
+    expect(new URL(robotUrl(1), document.baseURI).pathname).toBe('/robots/robot-01.svg');
   } finally {
     document.head.innerHTML = head;
   }

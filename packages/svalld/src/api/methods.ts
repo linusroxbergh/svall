@@ -62,7 +62,6 @@ export const handlers: Handlers = {
   'scribe.sweep': async (p, { fleet }) => ({ lines: await fleet.sweep(p) }),
   'scribe.set': (p, { fleet }) => { fleet.setScribe(p.enabled); return {}; },
   'worktrees.set': (p, { fleet }) => { fleet.setWorktrees(p.enabled); return {}; },
-  'robots.set': (p, { fleet }) => { fleet.setRobots(p.enabled); return {}; },
   'dormancy.set': (p, { fleet }) => { fleet.setDormancy(p.hours); return {}; },
   'mainAgent.set': (p, { fleet }) => { fleet.setMainAgent(p.agent); return {}; },
   'model.set': (p, { fleet }) => { fleet.setModel(p.of, p.agent, p.model); return {}; },

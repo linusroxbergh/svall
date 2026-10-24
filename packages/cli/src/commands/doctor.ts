@@ -26,7 +26,7 @@ import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
 import { MARK, grouped, renderGroups, useColor, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
-import { askCodexTrust, type HookTrust } from '../codex-trust.js';
+import { askCodexTrust, type HookTrust } from '@svall/svalld/codex/trust';
 import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';

@@ -11,6 +11,18 @@ export type JsonSettings = { file: string; text?: string; settings: Record<strin
 /** Whether two JSON values hold the same. */
 export const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+/** `next`, whose keys keep the order the file's had, as JSON written the way `text` is: its indent, line endings and trailing newline, and only ASCII if it held only ASCII. */
+function formatLike(text: string | undefined, next: Record<string, unknown>): string {
+  if (text === undefined) return `${JSON.stringify(next, null, 2)}\n`;
+  const lead = /^[ \t]+(?=")/m.exec(text)?.[0];
+  // a file written on one line stays on one; one with nothing nested to tell by gets two spaces
+  const indent = lead ?? (/^\{\s*"/.test(text.trim()) && !text.trim().includes('\n') ? undefined : 2);
+  let out = JSON.stringify(next, null, indent);
+  if (!/[^\x00-\x7f]/.test(text)) out = out.replace(/[\u0080-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  if (text.endsWith('\n')) out += '\n';
+  return text.includes('\r\n') ? out.replace(/\n/g, '\r\n') : out;
+}
+
 export function readJsonSettings(file: string): JsonSettings {
   if (!fs.existsSync(file)) return { file, settings: {} };
   const text = fs.readFileSync(file, 'utf8');
@@ -49,7 +61,7 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
     done.push(`backup -> ${backup}`);
   }
   fs.mkdirSync(path.dirname(current.file), { recursive: true });
-  writeAtomic(file, JSON.stringify(next, null, 2) + '\n', { mode, perProcess: true });
+  writeAtomic(file, formatLike(current.text, next), { mode, perProcess: true });
   // the umask narrows the mode a file is created with, so the one it had is set again
   if (mode !== undefined) fs.chmodSync(file, mode);
   done.push(`${what} -> ${current.file}`);

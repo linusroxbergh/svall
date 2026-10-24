@@ -7,7 +7,7 @@ import { FleetState } from '../src/state.js';
 const SHAPES: Record<number, string> = {
   7: '67857c366a165d29',
   8: '01d8dd099a4299ad',
-  9: 'd3b3ddd0508ec5f4',
+  9: '0948919b0399c74d',
 };
 
 // a refine is a custom check, and its function cannot be read

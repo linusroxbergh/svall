@@ -99,7 +99,7 @@
   --card-h: calc(var(--cell) * 2.90 * 1.05);
   --sb-w: 258px;
   --side-w: 320px;
-  --disc-side: 52px;    /* the portrait disc in the side card's header */
+  --disc-side: 52px;    /* the robot in the side card's header */
   --utility-dock-h: 64px;
 
   /* spacing: every gap and padding is one of these rungs */
@@ -139,12 +139,11 @@
   /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
   --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
 
-  /* islands: the cream card, its disc, the sea and the lamp */
+  /* islands: the cream card, the sea and the lamp */
   --cream: #FFFDF4;
-  --white: #FFFFFF;     /* a disc's shine, and the ground a QR code needs */
+  --white: #FFFFFF;
   --card-0: #EDE5CF; --card-1: #E2D7BE; --card-2: #D4C6A7;
   --card-tint: #786844; --card-band: #B4A175;
-  --disc-0: #F6F4EA; --disc-1: #ECE5D1; --disc-2: #D3C6A8;
   --shell-dim: #9AA7B2;
   --lamp: #FFE28C;
   --map-0: #4B5F72; --map-1: #374959; --map-2: #26303D;

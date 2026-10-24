@@ -9,7 +9,7 @@ import {
   type Agent, type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
   type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
-import { readComposer } from '../agent/composer.js';
+import { codexHooksReview, readComposer } from '../agent/composer.js';
 import { NodeFile, mergeConfig, namedGateway, type Config } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
@@ -19,6 +19,7 @@ import type { Logger } from '../log.js';
 import { opencodeFolders } from '../opencode/install.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { codexPaths } from '../codex/install.js';
+import type { HookTrust } from '../codex/trust.js';
 import { claudePaths, expandHome, installedScripts, type Paths } from '../paths.js';
 import { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
@@ -67,6 +68,8 @@ export type DestinationDeps = {
   concurrency?: number;
   /** How to run an agent CLI that reads a session into its own database. */
   cli?: CliRun;
+  /** Whether this machine's Codex, keeping its files in `codexHome`, has trusted Svall's hooks, read without running it. */
+  codexTrust?: (codexHome: string) => HookTrust | undefined;
   /** How to flush the roots that landed, and each file in them, to disk. */
   syncRoots?: (roots: readonly string[], files: readonly string[]) => Promise<void>;
   log: Logger;
@@ -294,9 +297,10 @@ export class DestinationHandover {
       const bypassWarned: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
       for (const f of bypassing) if (!(await this.bypassAccepted(f))) bypassWarned.push({ kind: f.kind, cwd: f.cwd });
       const commands = await this.commandsUnset(p.git ?? []);
+      const hooksUntrusted = await this.hooksUntrusted(p.resumes ?? []);
       return {
         roots, folders: probeFolders(p.folders, this.d.probeFs), ...(p.links && { missing }), ...(stays.unproven.length && { unproven: stays.unproven }),
-        ...(p.resumes && { untrusted }), ...(bypassing.length && { bypassWarned }), ...(commands.length && { commands }),
+        ...(p.resumes && { untrusted }), ...(bypassing.length && { bypassWarned }), ...(commands.length && { commands }), ...(hooksUntrusted.length && { hooksUntrusted }),
       };
     });
   }
@@ -310,6 +314,13 @@ export class DestinationHandover {
       if (!(e instanceof GitFailure)) throw e;
     }
     return out;
+  }
+
+  /** The agents of `resumes` whose CLI here has not trusted Svall's hooks: only Codex asks that, at its start. */
+  private async hooksUntrusted(resumes: readonly ResumeFolder[]): Promise<AgentKind[]> {
+    if (!this.d.codexTrust || !resumes.some((f) => f.kind === 'codex')) return [];
+    const { home } = await this.cli('codex');
+    return home && this.d.codexTrust(home)?.untrusted ? ['codex'] : [];
   }
 
   /** Whether this machine's agent CLI of `folder`'s kind resumes there without first asking whether to trust it. */
@@ -1065,7 +1076,9 @@ export class DestinationHandover {
       if (look?.held === 'agent') {
         since ??= now;
         ran = true;
-        if (prompt && slot?.tmux && await this.prompted(slot.tmux.paneId, kind)) return 'ready';
+        const screen = slot?.tmux && (prompt || kind === 'codex') ? await this.d.tmux.screen(slot.tmux.paneId).catch(() => undefined) : undefined;
+        if (kind === 'codex' && screen && codexHooksReview(screen)) return { failed: `but ${kind} stopped at its "Hooks need review" screen, which waits for an answer before it resumes` };
+        if (prompt && screen && readComposer(kind, screen) === 'empty') return 'ready';
         if (now - since >= settleMs) return 'running';
         if (now >= end) return { failed: `but ${kind} did not start that session within ${Math.round(waitMs / 1000)} s and may be waiting at a prompt there` };
       } else {
@@ -1096,11 +1109,6 @@ export class DestinationHandover {
       if (slot && carried && slot.agent?.sessionId === carried.agent.sessionId) slot.revive = { ...carried.revive };
     });
     if (windowId) await boundary('destination.activate.kill', () => this.d.tmux.killWindow(windowId));
-  }
-
-  // whether a pane shows its agent's empty prompt line; a screen that cannot be read shows none
-  private prompted(paneId: string, kind: AgentKind): Promise<boolean> {
-    return this.d.tmux.screen(paneId).then((sc) => readComposer(kind, sc) === 'empty', () => false);
   }
 
   // whether the notice already shows on a pane's screen, typed or run; a screen that cannot be read shows nothing

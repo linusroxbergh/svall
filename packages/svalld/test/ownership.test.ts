@@ -279,9 +279,9 @@ describe('the mutation fence', () => {
     }
   });
 
-  it('refuses starring a character, unstarring one, and picking robots, on an inactive replica and while frozen', async () => {
+  it('refuses starring a character, unstarring one, and updating one, on an inactive replica and while frozen', async () => {
     for (const [o, code] of [[inactive(), 'not_owner'], [await frozen(), 'frozen']] as const) {
-      for (const method of ['char.star', 'char.unstar', 'char.update', 'robots.set'] as const) {
+      for (const method of ['char.star', 'char.unstar', 'char.update'] as const) {
         const res = await call(o, method);
         expect('error' in res && res.error.code, method).toBe(code);
       }

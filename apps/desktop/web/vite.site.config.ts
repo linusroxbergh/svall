@@ -6,7 +6,6 @@ import { defineConfig, type Plugin } from 'vite';
 // the page's fonts and art are the app's own, copied beside it on every build
 const ASSETS: Record<string, string> = {
   fonts: 'public/fonts',
-  animals: 'public/animals',
   robots: 'public/robots',
   'icon.svg': 'public/icons/icon.svg',
   'icon-180.png': 'public/icons/icon-180.png',
@@ -15,7 +14,12 @@ const ASSETS: Record<string, string> = {
 const appAssets = (): Plugin => ({
   name: 'site-assets',
   writeBundle({ dir }) {
-    for (const [to, from] of Object.entries(ASSETS)) fs.cpSync(path.resolve(import.meta.dirname, from), path.join(dir!, '..', to), { recursive: true });
+    for (const [to, from] of Object.entries(ASSETS)) {
+      // replaced, not merged: a file the app no longer has must not stay behind to be deployed
+      const dest = path.join(dir!, '..', to);
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.cpSync(path.resolve(import.meta.dirname, from), dest, { recursive: true });
+    }
   },
 });
 

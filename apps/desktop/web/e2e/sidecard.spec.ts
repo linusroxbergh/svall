@@ -1,23 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
+import { robotOf, robotUrl, stepRobot } from '../src/portraits.js';
 import { theme } from '../src/theme.js';
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 
-test('the side card arrows cycle the portrait', async ({ page, svall }) => {
+test('the side card arrows cycle the robot', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('portrait') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'portrait' });
   await svall.open();
   await page.getByTestId(`sb-char-${c.id}`).click();
-  const shown = page.getByTestId('side-card').getByTestId('side-portrait');
+  const shown = page.getByTestId('side-card').getByTestId('side-portrait').locator('img');
 
-  await expect(shown).toHaveAttribute('data-portrait', c.portrait);
+  const robot = robotOf(c);
+  await expect(shown).toHaveAttribute('src', robotUrl(robot));
   await page.getByTestId('portrait-next').click();
-  await expect(shown).not.toHaveAttribute('data-portrait', c.portrait);
-  const next = (await shown.getAttribute('data-portrait'))!;
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].portrait).toBe(next);
+  await expect(shown).toHaveAttribute('src', robotUrl(stepRobot(robot, 1)));
+  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].robot).toBe(stepRobot(robot, 1));
   await page.getByTestId('portrait-prev').click();
-  await expect(shown).toHaveAttribute('data-portrait', c.portrait);
+  await expect(shown).toHaveAttribute('src', robotUrl(robot));
 });
 
 test('a note written elsewhere shows in the side card, but not over one being typed', async ({ page, svall }) => {

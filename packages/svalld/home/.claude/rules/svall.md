@@ -20,7 +20,7 @@ An ambiguous name is refused with the ids to pick from.
 
 A robot is one tmux window on the map: a plain shell, or a Claude Code, Codex
 or OpenCode session. Commands and `--json` call it a character (`svall char`,
-`characters`), and Settings can draw it as an animal.
+`characters`).
 States: `working`, `idle`, `blocked` (waiting on a permission or a question),
 `done` (`*` means nobody has looked at it yet), `shell`, `dormant`
 (its window is gone, because its agent sat idle past the wait set in Settings,

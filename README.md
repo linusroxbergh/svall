@@ -271,7 +271,8 @@ The first build takes several minutes and about 1.5 GB of disk.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
 - **Settings** (Cmd+,): this machine, browser, keyboard, notifications, phone,
   and the fleet's name, main agent, scribe, their models and idle timeout. `Usage`, next to
-  it, shows the plan limits of your running agents without using any.
+  it, shows the plan limits of your running agents without using any, and the
+  login they belong to.
 
 ### Keyboard
 
@@ -460,7 +461,9 @@ one you turn off it takes them out:
   OpenCode plugin.
 
 A change to the Claude Code or Codex file keeps a `.bak-<time>` copy. Setup
-also writes:
+and uninstall rewrite the file only when its settings change, keeping its key
+order, indent, line endings and final newline, and a file of plain ASCII in
+plain ASCII. Setup also writes:
 
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`, one per
   fleet, which the app uses to start each daemon.
@@ -549,6 +552,5 @@ The first `pnpm e2e` needs
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The animal and robot portraits, the lighthouse
-icon and the fonts are not MIT. The portraits' and fonts' folders each have a
-licence file, and the lighthouse is Flaticon art under the animals' licence.
+MIT, see [`LICENSE`](LICENSE). The fonts are not MIT; their folder has a licence
+file.
