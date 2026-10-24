@@ -111,7 +111,7 @@ test('Markdown preview shows the app\'s own images and never asks another origin
     const editor = page.getByTestId('editor');
     await editor.getByRole('button', { name: 'Preview' }).click();
     const preview = editor.getByTestId('markdown-preview');
-    await expect.poll(() => preview.getByRole('img', { name: 'bat' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(() => preview.getByRole('img', { name: 'robot' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
     await expect.poll(() => preview.getByRole('img', { name: 'tracker' }).evaluate((i: HTMLImageElement) => i.complete)).toBe(true);
     expect(await preview.getByRole('img', { name: 'tracker' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(0);
     expect(asked).toBe(0);
