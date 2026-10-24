@@ -13,7 +13,7 @@ import { resolveTmux } from '@svall/svalld/tmux';
 import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
-import type { HookTrust } from '../src/codex-trust.js';
+import type { HookTrust } from '@svall/svalld/codex/trust';
 import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, type DoctorDeps, type Report } from '../src/commands/doctor.js';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 

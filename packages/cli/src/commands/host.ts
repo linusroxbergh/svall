@@ -114,6 +114,14 @@ function recordCheck(dir: string, id: MachineId, report: HostReport | undefined)
   writeJsonAtomic(checksFile(dir), { ...lastChecks(dir), [id]: check });
 }
 
+/** Drops a machine's last check, as it leaves the registry; the file goes with the last one. */
+export function forgetCheck(dir: string, id: string): void {
+  const { [id]: gone, ...rest } = lastChecks(dir);
+  if (!gone) return;
+  if (Object.keys(rest).length) writeJsonAtomic(checksFile(dir), rest);
+  else fs.rmSync(checksFile(dir), { force: true });
+}
+
 /** One machine as `host list --json` gives it: no ssh for this one, the fleets here it is the gateway of, and its last check. */
 export type MachineRow = { name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[]; check?: LastCheck };
 
@@ -201,8 +209,11 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .description('uninstall Svall on the machine and drop its route')
     .argument('<name>', 'the machine in the registry')
     .option('--forget', 'drop the route for a machine that cannot be reached, leaving it untouched')
-    .action((name: string, o: { forget?: boolean }) =>
-      runFlow(json(), (out) => outcomeText(out, 'remove', name, o), (d) => removeHost(name, o, d), dir()));
+    .action(async (name: string, o: { forget?: boolean }) => {
+      const id = MachineRegistry.load(dir()).get(name)?.id;
+      await runFlow(json(), (out) => outcomeText(out, 'remove', name, o), (d) => removeHost(name, o, d), dir());
+      if (id && !MachineRegistry.load(dir()).get(id)) forgetCheck(dir(), id);
+    });
 
   host.command('enable')
     .description('name this machine the gateway for a fleet')

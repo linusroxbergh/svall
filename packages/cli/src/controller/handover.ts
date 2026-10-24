@@ -1092,6 +1092,10 @@ export class Handover {
       blockers,
       warnings: [
         ...notices, ...danglingLinks(links, new Set(r.missing ?? []), where), ...trustWarnings(m, resuming.filter(asks), where), ...bypassWarnings(m, resuming.filter(warns), where),
+        ...(r.hooksUntrusted?.includes('codex') ? [{
+          code: 'codex_hooks' as const,
+          message: `Codex on ${where} has not trusted Svall's hooks yet, so a Codex character resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks`,
+        }] : []),
       ],
     };
   }

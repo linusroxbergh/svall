@@ -7,7 +7,7 @@ import { RESOURCE_COL_RANGE } from '../src/store/index.js';
 import { theme } from '../src/theme.js';
 import { expect, setMapWidth, test } from './fixtures.js';
 
-// a five-slot home and the islet fit as a centred pair from 1064px of map; this leaves 1841px past the sidebar
+// a five-slot home and the islet fit as a centred pair from 1086px of map; this leaves 1841px past the sidebar
 const WIDE = { width: 2100, height: 1000 };
 
 // typing into a doc's text waits for CodeMirror to hold the keys

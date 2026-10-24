@@ -734,6 +734,18 @@ esac
     expect(fs.readFileSync(settingsPath, 'utf8')).not.toContain('agent-hook.mjs');
   });
 
+  it('takes back hooks from a file of plain ASCII that holds their non-ASCII path escaped', async () => {
+    const home = path.join(makeHome(), 'jöran');
+    fs.mkdirSync(home);
+    const settingsPath = path.join(home, 'claude-settings.json');
+    fs.writeFileSync(settingsPath, '{"model":"opus"}\n');
+    const paths = { home, settingsPath, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false };
+    await runSetup({ ...paths, agents: ['claude'] });
+    expect(fs.readFileSync(settingsPath, 'utf8')).toContain('j\\u00f6ran');
+    await runSetup({ ...paths, agents: ['claude'], integrations: ['codex'] });
+    expect(fs.readFileSync(settingsPath, 'utf8')).toBe('{"model":"opus"}\n');
+  });
+
   it('writes no Codex hooks while Codex is turned off, even with its folder there, and takes back ones already there', async () => {
     const home = makeHome();
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
