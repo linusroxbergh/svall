@@ -1,3 +1,5 @@
+Svall itself is GPL-3.0-or-later, Copyright (c) 2026 Linus Roxbergh; the licence is LICENSE.gpl-3.0 beside this file.
+
 Svall.app links GhosttyKit, Ghostty built as a library, and carries Ghostty's resources. They hold the
 software below, each under its own licence: Ghostty's is in LICENSE.ghostty beside this file, the GPL-3.0 in
 LICENSE.gpl-3.0 and bash-preexec's in LICENSE.bash-preexec, and each other component's is at the address named with

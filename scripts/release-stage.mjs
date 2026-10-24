@@ -329,7 +329,7 @@ function stageLicenses(stage, inputs) {
   for (const f of fs.readdirSync(path.join(stage, 'web-mobile'), { recursive: true }).map(String).filter((f) => LICENCE_FILE.test(path.basename(f)) || /^OFL\./.test(path.basename(f))).sort()) {
     lines.push(noticeLine(`the files in web-mobile/${path.dirname(f)}/`, 'as its file says', `web-mobile/${f}`));
   }
-  const own = [noticeLine('Svall', 'MIT', 'licenses/svall-LICENSE'), noticeLine('Node.js runtime (node/), with the libraries it bundles', 'MIT and others', 'licenses/node-LICENSE')];
+  const own = [noticeLine('Svall', 'GPL-3.0-or-later', 'licenses/svall-LICENSE'), noticeLine('Node.js runtime (node/), with the libraries it bundles', 'MIT and others', 'licenses/node-LICENSE')];
   fs.writeFileSync(path.join(licenses, 'NOTICE'), `This release carries the software below, each under its own licence, in the file named beside it.\n\n${[...own, ...lines.sort()].join('')}`);
   return [...new Set(names)].sort();
 }
