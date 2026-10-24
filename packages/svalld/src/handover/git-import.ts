@@ -7,6 +7,7 @@ import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.
 import { writeDurable } from './durable.js';
 import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, runsHere, said, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
+import { relocate, type Relocation } from './relocate.js';
 
 /** What `git init` probes of the filesystem a Git directory sits on; `precomposeUnicode` only where git probes it, on macOS. */
 export type FsRules = { ignoreCase: boolean; precomposeUnicode?: boolean };
@@ -57,10 +58,11 @@ async function reaches(tips: readonly string[], commit: string, at: string, git:
 
 /**
  * The registrations of a graph this machine keeps through a handover: each one the manifest does not carry whose
- * worktree is here. A kept HEAD commit that none of the source's tips reaches, as far as this machine's own objects
- * can tell, is unproven: the tips it does not know may reach it, and only the source can say.
+ * worktree is here, where `moving` puts a path of the source's home. A kept HEAD commit that none of the source's tips
+ * reaches, as far as this machine's own objects can tell, is unproven: the tips it does not know may reach it, and only
+ * the source can say.
  */
-export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'git'> = {}): Promise<{ kept: KeptWorktree[]; unproven: KeptCommit[] }> {
+export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'git'> & { moving?: Relocation } = {}): Promise<{ kept: KeptWorktree[]; unproven: KeptCommit[] }> {
   const git = deps.git ?? handoverGit;
   const registrations = path.join(g.commonDir, 'worktrees');
   let ids: string[] = [];
@@ -71,7 +73,8 @@ export async function keptWorktrees(g: ReceivedGraph, deps: Pick<ImportDeps, 'gi
     const registration = path.join(registrations, name);
     let gitfile: string;
     try { gitfile = fs.readFileSync(path.join(registration, 'gitdir'), 'utf8').trim(); } catch { continue; }
-    const at = path.dirname(path.resolve(registration, gitfile));
+    const named = path.dirname(path.resolve(registration, gitfile));
+    const at = deps.moving ? relocate(named, deps.moving) : named;
     if (!gitfile || !fs.existsSync(at)) continue;
     kept.push({ name, registration, path: at });
     const head = await git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], at);
@@ -132,10 +135,11 @@ const refusal = (e: unknown): e is Error => e instanceof GitFailure || typeof (e
 const unresolved = (e: Error, entity: HandoverEntity): Blocker => ({ code: 'worktree_unresolved', message: e.message, entity });
 
 /**
- * Takes one copied graph as it came: the keys `git init` probes follow this filesystem, and each registration neither
- * carried nor kept here goes while its branch stays. Then git has to read the graph as the source left it.
+ * Takes one copied graph as it came: the keys `git init` probes follow this filesystem, each registration neither
+ * carried nor kept here goes while its branch stays, and a graph that `moved` to another home has its linked worktrees
+ * repaired. Then git has to read the graph as the source left it.
  */
-async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
+async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[]; moved?: boolean } = {}): Promise<Blocker[]> {
   const git = deps.git ?? handoverGit;
   const common = graph.commonDir;
   try {
@@ -148,11 +152,30 @@ async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly
     const keep = new Set([...graph.worktrees.map((w) => path.basename(w.gitDir)), ...(deps.kept ?? [])]);
     const ids = held ? fs.readdirSync(registrations) : [];
     for (const id of ids.filter((x) => !keep.has(x))) fs.rmSync(path.join(registrations, id), { recursive: true, force: true });
+    if (deps.moved && graph.worktrees.length) await repair(graph, deps.kept ?? [], git);
   } catch (e) {
     if (!refusal(e)) throw e;
     return [unresolved(e, { kind: 'git', id: graph.id })];
   }
   return validateGraph(graph, deps);
+}
+
+const readOr = (file: string): string | undefined => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } };
+
+/**
+ * Points each carried linked worktree and its registration at each other where they landed. `git worktree repair`
+ * mends only the paths it is named, and its pass over every registration must leave each kept worktree's links as they were.
+ */
+async function repair(graph: GitGraph, kept: readonly string[], git: GitRunner): Promise<void> {
+  const links = kept.flatMap((name) => {
+    const gitdir = path.join(graph.commonDir, 'worktrees', name, 'gitdir');
+    const named = readOr(gitdir)?.trim();
+    return named ? [gitdir, path.resolve(path.dirname(gitdir), named)] : [gitdir];
+  });
+  const before = links.map(readOr);
+  await must(git, ['worktree', 'repair', ...graph.worktrees.map((w) => w.path)], graph.main?.path ?? graph.commonDir);
+  const changed = links.filter((f, i) => readOr(f) !== before[i]);
+  if (changed.length) throw new GitFailure(`git worktree repair changed ${changed.join(', ')}, which belong to worktrees that stay on this machine`);
 }
 
 const short = (head: string | null): string => head?.slice(0, 12) ?? 'no commit';
@@ -231,7 +254,7 @@ export async function validateGraph(graph: GitGraph, deps: Pick<ImportDeps, 'git
  * describes blocks: it would arrive without the graph its worktrees need.
  */
 export async function importGraphs(
-  manifest: Pick<TransferManifestV1, 'roots' | 'git'>, deps: ImportDeps & { kept?: Record<string, readonly string[]> } = {},
+  manifest: Pick<TransferManifestV1, 'roots' | 'git'>, deps: ImportDeps & { kept?: Record<string, readonly string[]>; moved?: boolean } = {},
 ): Promise<Blocker[]> {
   const graphs = manifest.git ?? [];
   const described = new Set(graphs.flatMap((g) => [g.commonDir, ...(g.main ? [g.main.path] : []), ...g.worktrees.map((w) => w.path)]));

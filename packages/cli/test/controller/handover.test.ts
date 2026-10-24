@@ -921,6 +921,28 @@ describe('preflight', () => {
     expect(pre.warnings).toContainEqual(expect.objectContaining({ code: 'destination_diverged', message: expect.stringMatching(/^\/home\/ada\/app is archived when the handover claims it/) }));
   });
 
+  it('blocks a destination with another home that still holds a place a carried graph moves from', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    const checkout = (p: string, gitDir: string) => ({ path: p, gitDir, head: null, branch: null, status: [], index: 'a'.repeat(64), characters: [] });
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.destinationHome = '/home/ada';
+      for (const x of r.manifest.sessions) x.destinationHome = x.destinationHome!.replace(HOME, '/home/ada');
+      r.manifest.git = [{ id: 'g_app', commonDir: at('app.git'), main: checkout(at('app'), at('app.git')), worktrees: [checkout(at('app/.claude/worktrees/x'), at('app.git/worktrees/x'))], unused: [], stash: [] }];
+      return r;
+    }) as never;
+    let links: string[] = [];
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: { links?: string[] }) => ({ ...inspect(p), missing: (links = p.links ?? []).filter((l) => l !== at('app.git')) })) as never;
+    const pre = await controller(w).preflight(trift, {});
+    expect(links).toEqual([at('app.git'), at('app/.claude/worktrees/x')]);
+    expect(pre.blockers).toEqual([{
+      code: 'path_unsupported', entity: { kind: 'git', id: 'g_app' },
+      message: `${at('app.git')} is on trift as well, and git worktree repair would tie the copy that lands at /home/ada/app.git to it; move ${at('app.git')} aside on trift first`,
+    }]);
+  });
+
   it('blocks a root outside the home whose folder the destination lacks, naming that folder, and takes one whose folder is there', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };

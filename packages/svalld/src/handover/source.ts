@@ -23,6 +23,7 @@ import type { Tmux } from '../tmux/tmux.js';
 import { boundary } from './failpoints.js';
 import { extensionBlockers, gitVersion, readExtensions } from './git-extensions.js';
 import { discoverGit } from './git-graph.js';
+import { relocationBlockers } from './git-relocate.js';
 import { canonicalJson } from './hash.js';
 import { buildInventory, expandExcludes, settle, type Inventory, type InventoryRoot, type MachineMaps } from './inventory.js';
 import { SourceJournal } from './journal.js';
@@ -503,7 +504,10 @@ export class SourceHandover {
     if (!inventory.git?.length) return [];
     const git = this.d.git ?? handoverGit;
     const graphs = await Promise.all(inventory.git.map(async (g) => ({ id: g.id, commonDir: g.commonDir, ...(await readExtensions(g.commonDir, git)) })));
-    return extensionBlockers(graphs, { destination: info.git, source: await gitVersion(git) });
+    return [
+      ...extensionBlockers(graphs, { destination: info.git, source: await gitVersion(git) }),
+      ...await relocationBlockers(inventory.git, { from: inventory.home, to: inventory.destinationHome }, git),
+    ];
   }
 
   /** The inventory of `state`, with every repository graph a character stands in read from Git. */

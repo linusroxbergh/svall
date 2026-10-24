@@ -309,12 +309,8 @@ export const runsHere = (key: string): boolean => key !== 'core.sshcommand';
 export async function repoCommands(
   commonDir: string, checkouts: readonly Pick<GitCheckout, 'path' | 'gitDir'>[], git: GitRunner,
 ): Promise<(GitCommand & { own: boolean })[]> {
-  const gitDirs = new Set(submoduleDirs(path.join(commonDir, 'modules')));
-  const seen = new Set(checkouts.map((c) => c.gitDir));
-  for (const c of checkouts) for (const d of await submodulesOf(c.path, git, seen)) gitDirs.add(d);
-  const places: { at: string; cwd: string; gitDir?: string }[] = [...checkouts.map((c) => ({ at: c.path, cwd: c.path })), ...[...gitDirs].map((at) => ({ at, cwd: commonDir, gitDir: at }))];
   const found: (GitCommand & { own: boolean })[] = [];
-  for (const { at, cwd, gitDir } of places) {
+  for (const { at, cwd, gitDir } of await repoPlaces(commonDir, checkouts, git)) {
     const all = await settings(git, cwd, gitDir);
     const own = ownSettings(all);
     // the last value of a key is the one git uses
@@ -323,6 +319,30 @@ export async function repoCommands(
     for (const [key, value] of [...values].sort(([a], [b]) => byCodeUnit(a, b))) found.push({ at, key, value, own: own.has(`${key}\n${value}`) });
   }
   return found;
+}
+
+// where git reads each config of a graph: each checkout, and the Git directory of each submodule under `commonDir` or in a checkout
+async function repoPlaces(commonDir: string, checkouts: readonly Pick<GitCheckout, 'path' | 'gitDir'>[], git: GitRunner): Promise<{ at: string; cwd: string; gitDir?: string }[]> {
+  const gitDirs = new Set(submoduleDirs(path.join(commonDir, 'modules')));
+  const seen = new Set(checkouts.map((c) => c.gitDir));
+  for (const c of checkouts) for (const d of await submodulesOf(c.path, git, seen)) gitDirs.add(d);
+  return [...checkouts.map((c) => ({ at: c.path, cwd: c.path })), ...[...gitDirs].map((at) => ({ at, cwd: commonDir, gitDir: at }))];
+}
+
+// a setting git reads a path from as it stands: the condition of an include, or the value
+const PATH_KEY = /^(core\.worktree|core\.hookspath|includeif\.gitdir(\/i)?:.*\.path)$/;
+
+/**
+ * Each setting of a repository's own or worktree config that names a path, by where it is read, and the Git directory
+ * of each submodule.
+ */
+export async function repoPaths(commonDir: string, checkouts: readonly Pick<GitCheckout, 'path' | 'gitDir'>[], git: GitRunner): Promise<{ settings: GitCommand[]; gitDirs: string[] }> {
+  const settingsFound: GitCommand[] = [];
+  const places = await repoPlaces(commonDir, checkouts, git);
+  for (const { at, cwd, gitDir } of places) {
+    for (const s of await settings(git, cwd, gitDir)) if ((s.scope === 'local' || s.scope === 'worktree') && PATH_KEY.test(s.key)) settingsFound.push({ at, key: s.key, value: s.value });
+  }
+  return { settings: settingsFound, gitDirs: places.flatMap((p) => (p.gitDir ? [p.gitDir] : [])) };
 }
 
 const command = (s: Setting): boolean => COMMAND.test(s.key) && !(s.key === 'core.fsmonitor' && BOOLEAN.test(s.value));

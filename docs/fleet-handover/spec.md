@@ -515,14 +515,27 @@ Transfer carries the common Git directory, per-worktree index and metadata, and 
 directory. On the destination the importer:
 
 1. removes worktree registrations not present in the manifest from the destination copy without
-   removing their branch refs, keeping each one whose worktree folder exists on the destination;
-   preflight and the claim block when such a kept worktree sits at a commit the returning copy
-   would not hold;
-2. verifies `git worktree list`, `git status` and staged changes against the manifest.
+   removing their branch refs, keeping each one whose worktree folder exists on the destination,
+   read where a path under the source's home lands; preflight and the claim block when such a kept
+   worktree sits at a commit the returning copy would not hold;
+2. between accounts with different homes, runs `git worktree repair` from the main checkout, naming
+   each carried linked worktree where it landed. That rewrites each one's `.git` file and its
+   registration's `gitdir`, which the seal records and the prepare flushes; a kept worktree's links
+   must come through byte for byte;
+3. verifies `git worktree list`, `git status` and staged changes against the manifest.
 
-The importer never runs `git worktree prune` or `git worktree repair`. With the same paths every
-gitfile and registration already names the right place, and prune would drop registrations whose
-worktrees have not arrived yet.
+The importer never runs `git worktree prune`, which would drop registrations whose worktrees have
+not arrived yet, and runs `git worktree repair` only as above: named no path it mends nothing that
+moved, and with the same paths every gitfile and registration already names the right place.
+
+Repair rewrites nothing else, so between different homes preflight and the claim block a graph that
+names a path under the source's home in a way the move would leave pointing at the source: a main
+checkout's `.git` file, `core.worktree`, `core.hooksPath`, an `includeIf "gitdir:"` condition, or
+objects borrowed through `objects/info/alternates` from outside the repository. A graph with
+submodules whose checkouts would not all move together is blocked too, since a submodule finds its
+Git directory by a relative path. They also block while any place a carried graph moves from is on
+the destination as well, as on an account that still holds a same-home copy: repair would tie the
+landed copy to the old one and point a worktree kept there at the copy.
 
 Submodules remain their own repository graph when a character works inside one. Otherwise their
 working directories and gitlink state travel with the containing graph. A submodule's `origin`
