@@ -1,4 +1,4 @@
-// node scripts/robot-motion/preview.mjs [port] — serves the motion preview on localhost (robots stay on this machine)
+// node scripts/robot-motion/preview.mjs [port] — serves the motion preview on localhost
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';

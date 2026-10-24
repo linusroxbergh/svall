@@ -57,5 +57,4 @@ each rest and each action's speed varied by ±10%. As an `<img>` (fleet list, pi
   agreeing; prints card-size peaks and writes frame sheets (the still pose, then start → end). Read the sheets: parts
   turn at their joints, nothing detaches or opens a gap. Exits non-zero on a problem.
 - `node scripts/robot-motion/preview.mjs [port]` serves a page of every robot with motion, large and on map cards,
-  with buttons per action and a frequency slider. Robots 01–20 and 38 are licensed art that stays on this machine:
-  never publish the page or the sheets.
+  with buttons per action and a frequency slider.

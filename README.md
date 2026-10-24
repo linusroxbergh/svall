@@ -549,5 +549,5 @@ The first `pnpm e2e` needs
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The robot portraits and the fonts are not MIT;
-their folders each have a licence file.
+MIT, see [`LICENSE`](LICENSE). The fonts are not MIT; their folder has a licence
+file.
