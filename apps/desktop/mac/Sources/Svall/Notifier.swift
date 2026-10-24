@@ -122,8 +122,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         DispatchQueue.main.async {
             if owner == self.home { self.deliver(key: key, action: action, promptId: promptId); return }
             // another fleet's banner: its instance takes the click, and the front with it, once it's really that fleet's app
-            if action == "open", let pid = SvallHome.appPid(of: owner), let app = NSRunningApplication(processIdentifier: pid),
-               app.bundleIdentifier == Bundle.main.bundleIdentifier {
+            if action == "open", let app = SvallHome.runningApp(of: owner) {
                 NSApp.yieldActivation(to: app)
             }
             DistributedNotificationCenter.default().postNotificationName(Self.forward, object: owner, userInfo: ["key": key, "action": action, "promptId": promptId], deliverImmediately: true)

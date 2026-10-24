@@ -194,12 +194,9 @@ final class RemoteConnection {
     /// Whether the route the controller last cached names this Mac at the generation its daemon holds, as `svall connect`
     /// trusts it while the gateway does not answer.
     static func cachedRouteIsHere(home: String, configDir: String) -> Bool {
-        func json(_ file: String) -> [String: Any]? {
-            FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        }
-        guard let route = json(home + "/controller/route.json"), let me = json(configDir + "/machine.json")?["id"] as? String,
+        guard let route = readJSON(home + "/controller/route.json"), let me = SvallHome.machineId(in: configDir),
               route["ownerMachineId"] as? String == me, let generation = route["generation"] as? Int else { return false }
-        return json(home + "/owner.json")?["generation"] as? Int == generation
+        return readJSON(home + "/owner.json")?["generation"] as? Int == generation
     }
 
     private func handle(_ event: ControllerEvent) {

@@ -1,9 +1,14 @@
 import AppKit
 
-struct SvallConnection: Encodable, Equatable {
+struct SvallConnection: Equatable {
     let host: String
     let port: Int
     let token: String
+}
+
+/// A JSON file's top-level object; nil when the file is missing or holds anything else.
+func readJSON(_ file: String) -> [String: Any]? {
+    FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
 }
 
 enum SvallHome {
@@ -33,9 +38,7 @@ enum SvallHome {
 
     /// Whether this fleet's config asks for handover: what every control for another machine waits on.
     static func handoverEnabled(at home: String = path) -> Bool {
-        guard let data = FileManager.default.contents(atPath: home + "/fleet.json"),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let handover = json["handover"] as? [String: Any] else { return false }
+        guard let handover = readJSON(home + "/fleet.json")?["handover"] as? [String: Any] else { return false }
         return handover["enabled"] as? Bool ?? false
     }
 
@@ -59,38 +62,38 @@ enum SvallHome {
 
     /// Whether fleet.json names a gateway at all: a fleet with none has only ever run on this Mac.
     static func namesGateway(home: String = path) -> Bool {
-        guard let data = FileManager.default.contents(atPath: home + "/fleet.json"),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = json["gatewayMachineId"] as? String else { return false }
+        guard let id = readJSON(home + "/fleet.json")?["gatewayMachineId"] as? String else { return false }
         return !id.isEmpty
     }
 
     /// The registry name of the machine fleet.json names as its gateway, which a handover can move the fleet to.
     static func gatewayName(home: String = path, configDir: String = configDir) -> String? {
-        let json = { (file: String) in FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
-        guard let id = json(home + "/fleet.json")?["gatewayMachineId"] as? String,
-              let machines = json(configDir + "/machines.json")?["machines"] as? [String: Any],
-              let record = machines[id] as? [String: Any] else { return nil }
-        return record["name"] as? String
+        (readJSON(home + "/fleet.json")?["gatewayMachineId"] as? String).flatMap { machineName($0, in: configDir) }
     }
 
-    /// The last lines of the daemon log, read from its end so a large log costs no more than a small one.
-    static func logTail(_ lines: Int = 20) -> [String] {
+    /// This Mac's machine id.
+    static func machineId(in configDir: String) -> String? {
+        readJSON(configDir + "/machine.json")?["id"] as? String
+    }
+
+    /// The name this Mac's registry gives machine `id`.
+    static func machineName(_ id: String, in configDir: String) -> String? {
+        ((readJSON(configDir + "/machines.json")?["machines"] as? [String: Any])?[id] as? [String: Any])?["name"] as? String
+    }
+
+    /// The last 20 lines of the daemon log, read from its end so a large log costs no more than a small one.
+    static func logTail() -> [String] {
         guard let handle = FileHandle(forReadingAtPath: path + "/svalld.log") else { return [] }
         defer { try? handle.close() }
         let end = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: end > 16_384 ? end - 16_384 : 0)
         let text = String(decoding: handle.readDataToEndOfFile(), as: UTF8.self)
-        return Array(text.split(separator: "\n").suffix(lines).map(String.init))
-    }
-
-    private static func json(_ file: String) -> [String: Any]? {
-        FileManager.default.contents(atPath: path + "/" + file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        return Array(text.split(separator: "\n").suffix(20).map(String.init))
     }
 
     static func connection() -> SvallConnection? {
         guard let port = read("port").flatMap(Int.init), let token = read("token"), !token.isEmpty else { return nil }
-        return SvallConnection(host: json("node.json")?["host"] as? String ?? "127.0.0.1", port: port, token: token)
+        return SvallConnection(host: readJSON(path + "/node.json")?["host"] as? String ?? "127.0.0.1", port: port, token: token)
     }
 
     /// Opened from Finder, Spotlight or the Dock, which name no fleet.
@@ -127,7 +130,7 @@ enum SvallHome {
 
     /// The fleet's own name: fleet.json's, else its directory's; nil for a private fleet with neither.
     static var fleetName: String? {
-        (json("fleet.json")?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
+        (readJSON(path + "/fleet.json")?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
     }
 
     static var appName: String {
@@ -156,8 +159,7 @@ enum SvallHome {
             guard errno != EWOULDBLOCK else {
                 close(fd)
                 NSLog("svall: another window holds %@", path)
-                if let other = appPid(of: path), let app = NSRunningApplication(processIdentifier: other),
-                   app.bundleIdentifier == Bundle.main.bundleIdentifier { app.activate() }
+                runningApp(of: path)?.activate()
                 return false
             }
             // a file system without locks, a network one say, leaves the home unguarded
@@ -180,7 +182,7 @@ enum SvallHome {
 
     // emptied rather than removed, so a launch that opened the file as this one quit locks the one the next launch sees
     static func release() {
-        guard held >= 0, read("app.pid")?.split(separator: "\t").first.flatMap({ Int32($0) }) == pid else { return }
+        guard held >= 0, appPid(of: path) == pid else { return }
         ftruncate(held, 0)
     }
 
@@ -190,5 +192,12 @@ enum SvallHome {
         let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t", maxSplits: 1)
         guard parts.count == 2, String(parts[1]) == home else { return nil }
         return Int32(parts[0])
+    }
+
+    /// The running instance of this app that holds `home`, as its app.pid names it.
+    static func runningApp(of home: String) -> NSRunningApplication? {
+        guard let pid = appPid(of: home), let app = NSRunningApplication(processIdentifier: pid),
+              app.bundleIdentifier == Bundle.main.bundleIdentifier else { return nil }
+        return app
     }
 }

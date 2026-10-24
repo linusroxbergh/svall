@@ -3,9 +3,8 @@ import XCTest
 
 final class UpdatesTests: XCTestCase {
     func testAnUpdateWaitsWhileAnotherMachineRunsAFleetOfThisMac() throws {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-updates-\(UUID().uuidString)")
+        let root = try temporaryDirectory("svall-updates")
         let config = root.appendingPathComponent(".config/svall")
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let write = { (file: String, text: String) in
             let url = root.appendingPathComponent(file)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

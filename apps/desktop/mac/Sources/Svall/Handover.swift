@@ -30,10 +30,6 @@ enum TerminateShells: Codable, Equatable {
 
 /// The argv of `svall handover …`: a detached start, resume or abort, and the `attach` that follows each.
 enum HandoverCommand {
-    private static func prefix(_ profile: String?) -> [String] {
-        profile.map { ["-p", $0] } ?? []
-    }
-
     /// `to` is `local` or the fleet's gateway by its registry name; nothing else is a destination. `check` runs the checks alone.
     static func start(to: String, choices: HandoverChoices?, gateway: String?, profile: String?, check: Bool = false) -> [String]? {
         guard to == "local" || to == gateway, to.allowed(by: machineNamePattern), !handoverWords.contains(to) else { return nil }
@@ -50,15 +46,15 @@ enum HandoverCommand {
             flags += ["--archive", root]
         }
         if choices?.carryUnused == true { flags.append("--carry-unused") }
-        return prefix(profile) + ["handover", to, "--json", "--detach"] + flags
+        return profileFlag(profile) + ["handover", to, "--json", "--detach"] + flags
     }
 
-    static func resume(profile: String?) -> [String] { prefix(profile) + ["handover", "--resume", "--json", "--detach"] }
-    static func abort(profile: String?) -> [String] { prefix(profile) + ["handover", "--abort", "--json", "--detach"] }
-    static func attach(profile: String?) -> [String] { prefix(profile) + ["handover", "attach", "--json"] }
-    static func status(profile: String?) -> [String] { prefix(profile) + ["handover", "status", "--json"] }
-    static func forget(profile: String?) -> [String] { prefix(profile) + ["handover", "--forget", "--json"] }
-    static func enabled(_ on: Bool, profile: String?) -> [String] { prefix(profile) + ["handover", on ? "on" : "off"] }
+    static func resume(profile: String?) -> [String] { profileFlag(profile) + ["handover", "--resume", "--json", "--detach"] }
+    static func abort(profile: String?) -> [String] { profileFlag(profile) + ["handover", "--abort", "--json", "--detach"] }
+    static func attach(profile: String?) -> [String] { profileFlag(profile) + ["handover", "attach", "--json"] }
+    static func status(profile: String?) -> [String] { profileFlag(profile) + ["handover", "status", "--json"] }
+    static func forget(profile: String?) -> [String] { profileFlag(profile) + ["handover", "--forget", "--json"] }
+    static func enabled(_ on: Bool, profile: String?) -> [String] { profileFlag(profile) + ["handover", on ? "on" : "off"] }
 }
 
 /// The remote machines switch: `svall handover on|off`, which keeps fleet.json's other keys and refuses off while the fleet names a gateway.
@@ -139,27 +135,18 @@ final class HandoverSession {
         // the page follows the run this starts, and nothing of the one it followed before
         following?.stop()
         following = nil
-        let child = LineChild(executable: executable, arguments: argv, stdin: false)
         var detached = false, said = false
-        child.onLine = { [weak self] text in
-            guard let self, !stopped, let line = HandoverLine.decode(text) else { return }
+        try run(argv, line: { [weak self] line in
             said = true
             if line.event == "handover.detached" { detached = true }
-            onLine(line)
-        }
-        child.onExit = { [weak self] code, stderr in
-            guard let self, !stopped else { return }
-            launcher = nil
+            self?.onLine(line)
+        }) { [weak self] code, stderr in
+            guard let self else { return }
             if code == 0, detached {
                 do { try attach() } catch { onExit(1, "\(error)") }
                 return
             }
             onExit(code == 0 ? 1 : code, said ? nil : stderr.joined(separator: "\n"))
-        }
-        launcher = child
-        do { try child.start() } catch {
-            launcher = nil
-            throw error
         }
     }
 

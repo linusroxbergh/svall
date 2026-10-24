@@ -57,18 +57,15 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     /// Why an update waits: a fleet home here whose fleet.json names a gateway and whose owner.json names another machine
     /// than this one, read from files alone; nil while this Mac runs every fleet it has.
     static func deferral(homeDirectory: String = NSHomeDirectory(), configDir: String = SvallHome.configDir) -> String? {
-        func json(_ file: String) -> [String: Any]? {
-            FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        }
-        guard let me = json(configDir + "/machine.json")?["id"] as? String else { return nil }
+        guard let me = SvallHome.machineId(in: configDir) else { return nil }
         for name in ((try? FileManager.default.contentsOfDirectory(atPath: homeDirectory)) ?? []).sorted() {
             let home = homeDirectory + "/" + name
             // the profiles svall names fleets by, which leave out Svall Dev's
             guard let profile = SvallHome.fleetProfile(of: home, in: homeDirectory),
                   profile.range(of: #"^(?!dev(-|$))[a-z][a-z0-9-]*$"#, options: .regularExpression) != nil,
-                  let fleet = json(home + "/fleet.json"), fleet["gatewayMachineId"] is String,
-                  let owner = json(home + "/owner.json")?["ownerMachineId"] as? String, owner != me else { continue }
-            let machine = ((json(configDir + "/machines.json")?["machines"] as? [String: Any])?[owner] as? [String: Any])?["name"] as? String ?? owner
+                  let fleet = readJSON(home + "/fleet.json"), fleet["gatewayMachineId"] is String,
+                  let owner = readJSON(home + "/owner.json")?["ownerMachineId"] as? String, owner != me else { continue }
+            let machine = SvallHome.machineName(owner, in: configDir) ?? owner
             let named = (fleet["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? profile
             let svall = profile == "private" ? "svall" : "svall -p \(profile)"
             return "\(named) runs on \(machine), which an update that changes Svall's protocol leaves out of reach until svall host upgrade \(machine); \(svall) handover local brings it back first, and Check for Updates again installs it now"

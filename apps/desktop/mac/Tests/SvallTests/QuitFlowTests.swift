@@ -79,8 +79,7 @@ final class QuitFlowTests: XCTestCase {
     }
 
     func testAHandoverRunsWhileALiveProcessHoldsItsLock() throws {
-        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-quit-\(UUID().uuidString)")
-        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let home = try temporaryDirectory("svall-quit")
         let lock = home.appendingPathComponent("controller/handover.lock")
         try FileManager.default.createDirectory(at: lock.deletingLastPathComponent(), withIntermediateDirectories: true)
         XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
@@ -109,8 +108,7 @@ final class QuitFlowTests: XCTestCase {
     }
 
     func testAHandoverIsOpenWhileTheControllerOrTheDaemonKeepsAJournalOfIt() throws {
-        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-quit-\(UUID().uuidString)")
-        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let home = try temporaryDirectory("svall-quit")
         let write = { (file: String) in
             let url = home.appendingPathComponent(file)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

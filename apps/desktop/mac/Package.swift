@@ -15,15 +15,9 @@ let package = Package(
             path: "Sources/Svall",
             linkerSettings: [
                 .linkedLibrary("c++"),
-                .linkedFramework("AppKit"),
-                .linkedFramework("WebKit"),
-                .linkedFramework("Carbon"),
                 .linkedFramework("Metal"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("IOSurface"),
-                .linkedFramework("IOKit"),
-                .linkedFramework("UniformTypeIdentifiers"),
-                .linkedFramework("UserNotifications"),
             ]
         ),
         // the hook and statusline helper svalld copies into every fleet's hooks folder

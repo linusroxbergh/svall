@@ -257,9 +257,7 @@ final class HostProcessTests: XCTestCase {
     }
 
     func testTheHandoverControlsFollowTheFleetsOwnConfig() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-home-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let dir = try temporaryDirectory("svall-home")
         let fleet = dir.appendingPathComponent("fleet.json").path
 
         XCTAssertFalse(SvallHome.handoverEnabled(at: dir.path))

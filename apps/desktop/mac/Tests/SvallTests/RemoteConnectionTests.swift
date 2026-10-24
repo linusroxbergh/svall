@@ -171,11 +171,10 @@ final class RemoteConnectionTests: XCTestCase {
     }
 
     func testTheCachedRouteNamesThisMacOnlyAtTheGenerationItsDaemonHolds() throws {
-        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-route-\(UUID().uuidString)")
+        let home = try temporaryDirectory("svall-route")
         let config = home.appendingPathComponent("config")
         try FileManager.default.createDirectory(at: home.appendingPathComponent("controller"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
         let me = "11111111-2222-3333-4444-555555555555"
         let write = { (file: String, text: String) in try text.write(to: home.appendingPathComponent(file), atomically: true, encoding: .utf8) }
         let here = { RemoteConnection.cachedRouteIsHere(home: home.path, configDir: config.path) }
@@ -520,9 +519,8 @@ final class RemoteConnectionTests: XCTestCase {
     }
 
     func testTheCopyHereIsOfferedOnlyWhileItsDaemonRunsAndNoRouteWasCached() throws {
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent("svall-copy-\(UUID().uuidString)").path
+        let home = try temporaryDirectory("svall-copy").path
         try FileManager.default.createDirectory(atPath: home + "/controller", withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: home) }
         XCTAssertTrue(RemoteConnection.copyHere(home: home, daemon: true))
         XCTAssertFalse(RemoteConnection.copyHere(home: home, daemon: false))
         try #"{"ownerMachineId":"x","generation":3}"#.write(toFile: home + "/controller/route.json", atomically: true, encoding: .utf8)

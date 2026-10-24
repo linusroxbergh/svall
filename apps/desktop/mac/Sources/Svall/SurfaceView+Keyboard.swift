@@ -38,15 +38,15 @@ extension SurfaceView {
         syncPreedit(clearIfNeeded: markedTextBefore)
 
         if let list = keyTextAccumulator, !list.isEmpty {
-            for text in list { _ = keyAction(action, event: event, translationEvent: translationEvent, text: text) }
+            for text in list { keyAction(action, event: event, translationEvent: translationEvent, text: text) }
         } else {
-            _ = keyAction(action, event: event, translationEvent: translationEvent, text: translationEvent.ghosttyCharacters,
-                          composing: markedText.length > 0 || markedTextBefore)
+            keyAction(action, event: event, translationEvent: translationEvent, text: translationEvent.ghosttyCharacters,
+                      composing: markedText.length > 0 || markedTextBefore)
         }
     }
 
     override func keyUp(with event: NSEvent) {
-        _ = keyAction(GHOSTTY_ACTION_RELEASE, event: event)
+        keyAction(GHOSTTY_ACTION_RELEASE, event: event)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -113,21 +113,21 @@ extension SurfaceView {
             }
             if sidePressed { action = GHOSTTY_ACTION_PRESS }
         }
-        _ = keyAction(action, event: event)
+        keyAction(action, event: event)
     }
 
-    private func keyAction(_ action: ghostty_input_action_e, event: NSEvent, translationEvent: NSEvent? = nil, text: String? = nil, composing: Bool = false) -> Bool {
-        guard let surface else { return false }
+    private func keyAction(_ action: ghostty_input_action_e, event: NSEvent, translationEvent: NSEvent? = nil, text: String? = nil, composing: Bool = false) {
+        guard let surface else { return }
         var keyEvent = event.ghosttyKeyEvent(action, translationMods: translationEvent?.modifierFlags)
         keyEvent.composing = composing
         // control characters are encoded by Ghostty itself
         if let text, !text.isEmpty, let first = text.utf8.first, first >= 0x20 {
             return text.withCString { ptr in
                 keyEvent.text = ptr
-                return ghostty_surface_key(surface, keyEvent)
+                ghostty_surface_key(surface, keyEvent)
             }
         }
-        return ghostty_surface_key(surface, keyEvent)
+        ghostty_surface_key(surface, keyEvent)
     }
 
     // MARK: NSTextInputClient

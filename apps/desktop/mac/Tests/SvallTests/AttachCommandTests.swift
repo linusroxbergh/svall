@@ -56,9 +56,7 @@ final class AttachCommandTests: XCTestCase {
     /// ssh joins the words after the destination into one line, and the far login shell splits it
     /// again: a fake ssh on PATH does both, so this is the argv the far tmux is handed.
     func testTheFarShellGetsTheTmuxSocketAndSessionAsOneWordEach() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-ssh-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let dir = try temporaryDirectory("svall-ssh")
         let ssh = dir.appendingPathComponent("ssh").path
         try "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift 2\nexec /bin/sh -c \"printf '%s\\\\n' $*\"\n"
             .write(toFile: ssh, atomically: true, encoding: .utf8)
@@ -83,9 +81,7 @@ final class AttachCommandTests: XCTestCase {
     /// libghostty runs the command as `exec -l <command>` with TERM=xterm-ghostty, which ssh would hand the far
     /// tmux; a Linux machine has no terminfo for it, and tmux there refuses to attach.
     func testTheFarSideIsHandedXterm256color() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-ssh-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let dir = try temporaryDirectory("svall-ssh")
         let ssh = dir.appendingPathComponent("ssh").path
         try "#!/bin/sh\necho \"$TERM\"\n".write(toFile: ssh, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ssh)
