@@ -76,13 +76,13 @@
 .tok:hover,.tok.sel{z-index:30}
 /* the card sits pressed into the ground: a soft darker patch behind it, left in place when the card lifts */
 .tok::before{content:'';position:absolute;z-index:-1;pointer-events:none;
-  inset:calc(var(--tok)*-.2) calc(var(--tok)*-.2) calc(var(--tok)*-.18);border-radius:calc(var(--tok)*.33);
+  inset:calc(var(--tok)*-.2) calc(var(--tok)*-.2) calc(var(--tok)*-.18);border-radius:calc(var(--tok)*.31);
   background:color-mix(in srgb, var(--grass-press) 30%, transparent);filter:blur(calc(var(--tok)*.14))}
 .home .tok::before{background:color-mix(in srgb, var(--home-sand-press) 30%, transparent)}
 .tok.drag::before{display:none}
 
 .tok .card{position:relative;width:var(--card-w);height:var(--card-h);
-  border-radius:calc(var(--tok)*.14);
+  border-radius:calc(var(--tok)*.12);
   display:flex;flex-direction:column;overflow:hidden;
   /* the map's grain inked in the card's tint; --grain offsets it so neighbours differ */
   background:url('../assets/card-grain.png') var(--grain, 0 0)/96px 96px,
@@ -96,7 +96,7 @@
              inset 0 calc(var(--tok)*-.1) calc(var(--tok)*.16) calc(var(--tok)*-.1) color-mix(in srgb, var(--card-tint) 22%, transparent)}
 /* a printed frame between the edge band and the foot */
 .tok .card::before{content:'';position:absolute;z-index:8;pointer-events:none;
-  inset:calc(var(--tok)*.25) calc(var(--tok)*.08) calc(var(--tok)*.54);border-radius:calc(var(--tok)*.05);
+  inset:calc(var(--tok)*.25) calc(var(--tok)*.08) calc(var(--tok)*.54);border-radius:calc(var(--tok)*.04);
   border:1px solid color-mix(in srgb, var(--card-tint) 20%, transparent)}
 .tok:hover .card{transform:translateY(-6px);
   box-shadow:0 2px 0 color-mix(in srgb, var(--card-tint) 12%, transparent),
@@ -197,7 +197,7 @@
 .tok .rail{position:absolute;z-index:9;right:calc(var(--tok)*-.36);
   top:calc(var(--tok)*.09);bottom:calc(var(--tok)*.46);
   display:flex;flex-direction:column;justify-content:center;gap:calc(var(--tok)*.08)}
-.tok .chip{width:calc(var(--tok)*.72);height:calc(var(--tok)*.72);border-radius:26%;
+.tok .chip{width:calc(var(--tok)*.72);height:calc(var(--tok)*.72);border-radius:22%;
   padding:0;box-sizing:border-box;
   display:grid;place-items:center;flex:none;cursor:pointer;
   font-size:calc(var(--tok)*.34);font-weight:var(--w-bold);letter-spacing:0;line-height:1;

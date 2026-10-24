@@ -46,7 +46,7 @@ final class BrowserDialog: NSView, NSTextFieldDelegate {
         panel.material = .popover
         panel.state = .active
         panel.wantsLayer = true
-        panel.layer?.cornerRadius = 10
+        panel.layer?.cornerRadius = 8
         panel.layer?.masksToBounds = true
         panel.translatesAutoresizingMaskIntoConstraints = false
         panel.addSubview(stack)

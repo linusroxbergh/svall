@@ -131,7 +131,7 @@ export function Tour() {
   const k = (id: Parameters<typeof keyLabel>[0]) => keyLabel(id, bindings) ?? '';
   const last = step === STEPS.length - 1;
   const ring = { left: Math.max(box.left - 6, 3), top: Math.max(box.top - 6, 3), right: Math.min(box.right + 6, innerWidth - 3), bottom: Math.min(box.bottom + 6, innerHeight - 3) };
-  const radius = clamp((box.radius ?? 14) + 6, 10, (ring.bottom - ring.top) / 2);
+  const radius = clamp((box.radius ?? 12) + 6, 10, (ring.bottom - ring.top) / 2);
   return (
     <>
       <div className="tour-ring" style={{ left: ring.left, top: ring.top, width: ring.right - ring.left, height: ring.bottom - ring.top, borderRadius: radius }} />
