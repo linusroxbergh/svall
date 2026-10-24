@@ -12,7 +12,7 @@ import {
 import { readAgentProfile } from '../../src/agent-profiles.js';
 import { startApi } from '../../src/api/server.js';
 import { Config, loadConfig } from '../../src/config.js';
-import { docFolders, docsDir, fleetDir, repoSlug } from '../../src/docs.js';
+import { docFolders, docsDir, fleetDir, listDocs, repoSlug } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
 import { AuthorityFailure } from '../../src/gateway/authority.js';
 import { armFailpoints } from '../../src/handover/failpoints.js';
@@ -89,6 +89,7 @@ function tree(dir: string): Record<string, string> {
 }
 
 const mode = (file: string): string => (fs.statSync(file).mode & 0o777).toString(8);
+const listDocsIn = (dir: string): (string | undefined)[] => listDocs(dir).map((x) => x.description);
 
 /** The gateway as this daemon asks it. */
 class Gateway implements Authority {
@@ -3116,6 +3117,95 @@ describe("a moved fleet's docs and agent profiles", () => {
       expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: built.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
     }
     expect(replicaRoots(built.manifest).map((r) => r.kind).sort()).toEqual(['cwd', 'docs', 'home', 'profiles']);
+  });
+});
+
+describe("a moved fleet's repository docs, between accounts with different homes", () => {
+  /** The Mac at `mac`, with app's docs and those of a folder named from the home, handed to this machine at `linux`. */
+  async function docsScene(also?: (at: { macDocs: string; linux: string }) => void) {
+    const base = fs.realpathSync(makeHome());
+    const [macHome, linux] = [path.join(base, 'mac'), path.join(base, 'linux')];
+    const [macFleet, home] = [path.join(macHome, '.svall'), path.join(linux, '.svall')];
+    const island: Island = { id: 'i_work', name: 'work', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
+    const ada = char('c_ada', path.join(macHome, 'work/app'), { islandId: island.id });
+    const bo = char('c_bo', '~/work/tool', { islandId: island.id });
+    for (const d of [ada.cwd, path.join(macHome, 'work/tool'), path.join(macHome, 'mc'), path.join(linux, 'work'), home]) fs.mkdirSync(d, { recursive: true });
+    const macDocs = resolvePaths(macFleet).docs;
+    for (const root of [ada.cwd, path.join(macHome, 'work/tool')]) {
+      const dir = docsDir(macDocs, 'repo', repoSlug(root));
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'notes.md'), `---\ndescription: ${path.basename(root)}\n---\n`);
+    }
+    also?.({ macDocs, linux });
+    const state = emptyState();
+    state.islands[island.id] = island;
+    for (const c of [ada, bo]) state.characters[c.id] = rested(c);
+    const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' } });
+    const inventory = buildInventory(state, { fleet }, { source: { machineId: mac, home: macHome, fleetHome: macFleet }, destination: { machineId: trift, home: linux, fleetHome: home } });
+    const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
+    expect(built.blockers.map((b) => b.code)).toEqual(['home_mismatch']);
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, gatewayMachineId: trift })));
+    fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 4, ownerMachineId: mac }));
+    const store = Store.load(paths.state, () => {});
+    return { macHome, linux, paths, store, probes: [] as AgentProbe[], manifest: built.manifest, digest: manifestDigest(built.manifest), island };
+  }
+
+  it('are renamed for where each repository or folder lands, found there, and sealed under those names for the way back', async () => {
+    const s = await docsScene();
+    const landed = await transfer(s.paths, s.manifest, (p) => p);
+    const flushed: string[][] = [];
+    const d = daemon(s, { syncRoots: async (_roots, files) => { flushed.push([...files]); } });
+    const { preparedDigest } = await d.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed });
+    expect(flushed.at(-1)).toContain(path.join(s.paths.docs, 'repos'));
+    d.gateway.commit(preparedDigest);
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    await d.handover.complete({ transactionId: TX, generation: 5 });
+
+    const ada = s.store.state.characters.c_ada;
+    expect(ada.cwd).toBe(path.join(s.linux, 'work/app'));
+    expect(docFolders(s.paths.docs, s.store.state.islands[s.island.id], ada).find((f) => f.tier === 'repo')!.docs.map((x) => x.description)).toEqual(['app']);
+    expect(listDocsIn(docsDir(s.paths.docs, 'repo', repoSlug(path.join(s.linux, 'work/tool'))))).toEqual(['tool']);
+    expect(fs.readdirSync(path.join(s.paths.docs, 'repos')).sort()).toEqual([repoSlug(path.join(s.linux, 'work/app')), repoSlug(path.join(s.linux, 'work/tool'))].sort());
+    const docs = destinationView(s.manifest).roots.find((r) => r.kind === 'docs')!;
+    expect(await new ReplicaStore({ fleetId, paths: s.paths }).inspect(docs, { transactionId: 'tx-2', excludes: s.manifest.excludes })).toMatchObject({ ok: true, kind: 'replica' });
+  });
+
+  it.each(['destination.prepare.seal', 'destination.prepare.sync'] as const)('are renamed once and sealed as they stand when prepare runs again after the daemon died before %s', async (step) => {
+    const s = await docsScene();
+    const landed = await transfer(s.paths, s.manifest, (p) => p);
+    const params = { transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed };
+    const d = daemon(s);
+    const disarm = armFailpoints((name, edge) => { if (name === step && edge === 'before') throw new Error('svalld died'); });
+    try { await expect(d.handover.prepare(params)).rejects.toThrow('svalld died'); } finally { disarm(); }
+    await d.start().handover.prepare(params);
+    const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
+    const docs = seal.roots.find((r) => r.kind === 'docs')!;
+    expect(docs.files!.map((f) => f.path).sort()).toEqual([path.join(s.linux, 'work/app'), path.join(s.linux, 'work/tool')].map((p) => `repos/${repoSlug(p)}/notes.md`).sort());
+  });
+
+  it('refuses a claim whose docs hold a folder by the name a rename would give another, before it reserves anything', async () => {
+    const s = await docsScene(({ macDocs, linux }) => {
+      const taken = docsDir(macDocs, 'repo', repoSlug(path.join(linux, 'work/app')));
+      fs.mkdirSync(taken, { recursive: true });
+      fs.writeFileSync(path.join(taken, 'old.md'), 'old\n');
+    });
+    const r = await refusal(daemon(s).handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest }));
+    expect(blockersOf(r)).toEqual([expect.objectContaining({
+      code: 'path_unsupported', message: expect.stringContaining(`holds repos/${repoSlug(path.join(s.macHome, 'work/app'))}, which the handover renames to repos/${repoSlug(path.join(s.linux, 'work/app'))} where the fleet lands, a name it holds as well`),
+    })]);
+    expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(false);
+  });
+
+  it('refuses a prepare that finds a new name taken here, as the excludes kept it from the copy, before it renames anything', async () => {
+    const s = await docsScene();
+    const landed = await transfer(s.paths, s.manifest, (p) => p);
+    const [from, to] = [path.join(s.macHome, 'work/app'), path.join(s.linux, 'work/app')].map((p) => docsDir(s.paths.docs, 'repo', repoSlug(p)));
+    fs.mkdirSync(path.join(to, 'build'), { recursive: true });
+    fs.writeFileSync(path.join(to, 'build/x'), 'x\n');
+    const r = await refusal(daemon(s).handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed }));
+    expect(blockersOf(r)).toEqual([expect.objectContaining({ code: 'path_unsupported', message: `${to} is on this machine already, so ${from} cannot take its name; move ${to} aside` })]);
+    expect(listDocsIn(from)).toEqual(['app']);
   });
 });
 

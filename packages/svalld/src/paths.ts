@@ -89,9 +89,9 @@ export const realPath = (p: string): string => {
   try { return fs.realpathSync(p); } catch { return p; }
 };
 
-export function expandHome(p: string): string {
-  if (p === '~') return os.homedir();
-  return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
+export function expandHome(p: string, home = os.homedir()): string {
+  if (p === '~') return home;
+  return p.startsWith('~/') ? path.join(home, p.slice(2)) : p;
 }
 
 export type ClaudePaths = { dir: string; json: string };

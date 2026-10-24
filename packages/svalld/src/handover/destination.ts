@@ -40,7 +40,7 @@ import { adapterFor, cliRunner, installSession, placeTranscripts, resumeFolder, 
 import { SessionError, type CliRun, type SessionAdapter } from './sessions/types.js';
 import type { Authority } from './source.js';
 import { holds, realPath } from './portable-path.js';
-import { destinationView, relocate, relocationProblem } from './relocate.js';
+import { destinationView, docsBlockers, docsRenames, relocate, relocationProblem } from './relocate.js';
 import { gitProblems, importState, landedProblem, linkProblem, manifestProblems, sessionProblems } from './validate.js';
 
 export type DestinationDeps = {
@@ -405,7 +405,7 @@ export class DestinationHandover {
     const archive = p.archive?.map((name) => relocate(name, { from: p.manifest.home, to: m.home }));
     if (this.open(tx)?.preparedDigest) throw notReady(`handover ${tx} is prepared on this machine, so nothing more is copied into its roots`);
     // each root where it lands here, before any is reserved
-    const unsafe = [...this.homeProblem(p.manifest), ...manifestProblems(m, []), ...staleBlockers(p.manifest, 'this machine', present)];
+    const unsafe = [...this.homeProblem(p.manifest), ...manifestProblems(m, []), ...staleBlockers(p.manifest, 'this machine', present), ...docsBlockers(p.manifest)];
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
@@ -517,7 +517,7 @@ export class DestinationHandover {
     if (unverified) throw notReady(`the transfer verified nothing in root ${unverified.id} (${unverified.path})`);
     const imported = importState(m);
     const homes = Object.fromEntries((await this.agents()).map((a) => [a.kind, a.home]));
-    const found = [...manifestProblems(m, p.landed), ...sessionProblems(m, homes), ...staleBlockers(p.manifest, 'this machine', present)];
+    const found = [...manifestProblems(m, p.landed), ...sessionProblems(m, homes), ...staleBlockers(p.manifest, 'this machine', present), ...docsBlockers(p.manifest)];
     if (found.length) throw blocked(found);
     let state: FleetState;
     try { state = FleetState.parse(placeTranscripts(imported.state, m.sessions)); } catch (e) {
@@ -561,7 +561,15 @@ export class DestinationHandover {
     });
     if (blockers.length) throw blocked(blockers);
 
-    const git = gitProblems(m, [...at.values()]);
+    // the docs folder of each repository a move between homes renames, named for where its main root landed
+    const docs = carried.find((r) => r.kind === 'docs');
+    const docsAt = docs && at.get(docs.id)!;
+    const renames = docsAt ? docsRenames(p.manifest).map((x) => ({ ...x, fromAt: path.posix.join(docsAt, x.from), toAt: path.posix.join(docsAt, x.to) })) : [];
+    // a name the copy left taken here, as one the excludes kept from its --delete
+    const taken = renames.filter((x) => present(x.fromAt) && present(x.toAt)).map((x): Blocker => ({
+      code: 'path_unsupported', entity: { kind: 'root', id: docs!.id }, message: `${x.toAt} is on this machine already, so ${x.fromAt} cannot take its name; move ${x.toAt} aside`,
+    }));
+    const git = [...gitProblems(m, [...at.values()]), ...taken];
     if (git.length) throw blocked(git);
     // rsync leaves what it wrote in the page cache, and a copy lost to a power cut after the commit would be carried back over the good one
     const here = [...at.values()];
@@ -587,6 +595,14 @@ export class DestinationHandover {
       const rel = path.posix.relative(common, file);
       return rel === 'config' || (rel.startsWith('worktrees/') && !keep.has(rel.split('/')[1]));
     });
+    // the docs root's files by the names they now have, as the renames left them however far they got
+    const renamed = (files: readonly TransferFile[]): TransferFile[] => {
+      const done = renames.filter((x) => present(x.toAt) && !present(x.fromAt));
+      return files.map((f) => {
+        const x = done.find((n) => holds(n.from, f.path));
+        return x ? { ...f, path: x.to + f.path.slice(x.from.length) } : f;
+      });
+    };
     // what landed in a root, with each path the import writes as it now stands there: read whole where a common directory
     // is, and else each repaired file alone
     const asImported = async (r: TransferRoot): Promise<TransferFile[]> => {
@@ -597,10 +613,12 @@ export class DestinationHandover {
         ((await scanPath(file, () => false, this.d.scanFs))?.files ?? []).map((f) => ({ ...f, path: path.posix.relative(root, file) }));
       const scanned = read ? (await scanPath(root, rootMatcher(r.kind, m.excludes), this.d.scanFs))?.files ?? []
         : (await Promise.all(repaired.filter((f) => holds(root, f)).map(alone))).flat();
-      return [...p.landed.find((x) => x.id === r.id)!.files.filter((f) => !there(f)), ...scanned.filter(there)];
+      const landed = p.landed.find((x) => x.id === r.id)!.files;
+      return [...(r === docs ? renamed(landed) : landed).filter((f) => !there(f)), ...scanned.filter(there)];
     };
     let graphs: Blocker[];
     try {
+      for (const x of renames) if (present(x.fromAt)) fs.renameSync(x.fromAt, x.toAt);
       graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames, moved });
     } finally {
       // what Complete seals, or an abort leaves claimable: what landed, with what the import wrote however far it got and
@@ -629,7 +647,9 @@ export class DestinationHandover {
     const unread = await this.importSessions(tx, m, run);
     if (unread.length) throw blocked(unread);
     // and what the import wrote since
-    await boundary('destination.prepare.sync', () => flush([...graphsHere(m).map((g) => path.join(g.commonDir, 'config')), ...repaired]));
+    await boundary('destination.prepare.sync', () => flush([
+      ...graphsHere(m).map((g) => path.join(g.commonDir, 'config')), ...repaired, ...new Set(renames.map((x) => path.posix.dirname(x.toAt))),
+    ]));
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);
