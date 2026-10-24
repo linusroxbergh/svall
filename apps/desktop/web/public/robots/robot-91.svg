@@ -1,0 +1,127 @@
+<svg width="340" height="452" viewBox="86 24 340 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hydrant-title hydrant-desc" class="r91" data-idle="blink blink peer peer shift flush" data-work="spray spray flush shift peer blink"><style>
+.r91[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r91-blink .4s ease-in-out}
+.r91[data-act=peer] .barrel{animation:r91-lean 1.8s ease-in-out}
+.r91[data-act=peer] .bonnet{animation:r91-tilt 1.8s ease-in-out}
+.r91[data-act=peer] .eyes{animation:r91-look 1.8s ease-in-out}
+.r91[data-act=shift] .bot{animation:r91-shift 1.8s ease-in-out}
+.r91[data-act=shift] .arm-l,.r91[data-act=shift] .arm-r{animation:r91-counter 1.8s ease-in-out}
+.r91[data-act=flush] .nut{animation:r91-spin 1.9s ease-in-out}
+.r91[data-act=flush] .barrel{animation:r91-surge 1.9s ease-in-out}
+.r91[data-act=flush] .bonnet{animation:r91-clatter 1.9s ease-in-out}
+.r91[data-act=flush] .eyes{animation:r91-up 1.9s ease-in-out}
+.r91[data-act=flush] .arm-l{animation:r91-jolt-l 1.9s ease-in-out}
+.r91[data-act=flush] .arm-r{animation:r91-jolt-r 1.9s ease-in-out .1s}
+.r91[data-act=flush] .fore-l{animation:r91-flop-l 1.9s ease-in-out .08s}
+.r91[data-act=flush] .fore-r{animation:r91-flop-r 1.9s ease-in-out .15s}
+.r91[data-act=spray] .arm-r{animation:r91-raise 1.8s ease-in-out}
+.r91[data-act=spray] .fore-r{animation:r91-aim 1.8s ease-in-out}
+.r91[data-act=spray] .arm-l{animation:r91-brace 1.8s ease-in-out}
+.r91[data-act=spray] .barrel{animation:r91-recoil 1.8s ease-in-out}
+.r91[data-act=spray] .eyes{animation:r91-watch 1.8s ease-in-out}
+/* the bonnet tips on one flange corner or the other and the hydrant rocks on one foot's outer edge: translate(±Npx) moves each pivot there */
+@keyframes r91-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r91-lean{0%,100%{transform:none}18%,40%{transform:rotate(-1deg)}58%,78%{transform:rotate(.8deg)}91%{transform:rotate(-.2deg)}}
+@keyframes r91-tilt{0%,100%{transform:translate(0) rotate(0) translate(0)}18%,40%{transform:translate(-96px) rotate(-3deg) translate(96px)}58%,78%{transform:translate(96px) rotate(2.6deg) translate(-96px)}91%{transform:translate(-96px) rotate(-.6deg) translate(96px)}}
+@keyframes r91-look{0%,100%{transform:none}14%,40%{transform:translate(-7px,1px)}54%,78%{transform:translate(7px,1px)}}
+@keyframes r91-shift{0%,100%{transform:translate(0) rotate(0) translate(0)}24%{transform:translate(-80px) rotate(-1.3deg) translate(80px)}54%{transform:translate(80px) rotate(1deg) translate(-80px)}80%{transform:translate(-80px) rotate(-.35deg) translate(80px)}}
+@keyframes r91-counter{0%,100%{transform:none}30%{transform:rotate(4deg)}60%{transform:rotate(-3deg)}85%{transform:rotate(1.2deg)}}
+@keyframes r91-spin{0%{transform:none}12%{transform:rotate(-20deg)}62%{transform:rotate(380deg)}76%{transform:rotate(354deg)}88%{transform:rotate(362deg)}100%{transform:rotate(360deg)}}
+@keyframes r91-surge{0%,100%{transform:none}18%{transform:rotate(0deg) scale(1.012,.99)}28%{transform:rotate(.9deg) scale(1.02,.982)}34%{transform:rotate(-.9deg) scale(1.02,.982)}40%{transform:rotate(.8deg) scale(1.022,.98)}46%{transform:rotate(-.7deg) scale(1.02,.982)}54%{transform:rotate(.4deg) scale(1.01,.99)}66%{transform:rotate(-.2deg) scale(.995,1.006)}80%{transform:rotate(0deg) scale(1.003,.998)}}
+@keyframes r91-clatter{0%,24%,34%,46%,100%{transform:none}29%{transform:translateY(-6px)}40%{transform:translateY(-4px)}}
+@keyframes r91-up{0%,100%{transform:none}12%,62%{transform:translateY(-3px)}}
+@keyframes r91-jolt-l{0%,24%,100%{transform:none}32%{transform:rotate(8deg)}44%{transform:rotate(-4deg)}56%{transform:rotate(1.5deg)}66%{transform:none}}
+@keyframes r91-jolt-r{0%,24%,100%{transform:none}32%{transform:rotate(-8deg)}44%{transform:rotate(4deg)}56%{transform:rotate(-1.5deg)}66%{transform:none}}
+@keyframes r91-flop-l{0%,24%,100%{transform:none}34%{transform:rotate(-6deg)}46%{transform:rotate(5deg)}58%{transform:rotate(-2deg)}70%{transform:none}}
+@keyframes r91-flop-r{0%,24%,100%{transform:none}34%{transform:rotate(6deg)}46%{transform:rotate(-5deg)}58%{transform:rotate(2deg)}70%{transform:none}}
+@keyframes r91-raise{0%,100%{transform:none}20%{transform:rotate(-7deg)}30%,64%{transform:rotate(-9deg)}80%{transform:rotate(2deg)}92%{transform:rotate(-.5deg)}}
+@keyframes r91-aim{0%,100%{transform:none}22%{transform:rotate(30deg)}30%{transform:rotate(40deg)}36%{transform:rotate(36deg)}42%{transform:rotate(40deg)}48%{transform:rotate(36deg)}54%{transform:rotate(40deg)}62%{transform:rotate(38deg)}80%{transform:rotate(-4deg)}92%{transform:rotate(1deg)}}
+@keyframes r91-brace{0%,100%{transform:none}28%{transform:rotate(3deg)}64%{transform:rotate(2deg)}84%{transform:rotate(-1deg)}}
+@keyframes r91-recoil{0%,100%{transform:none}30%{transform:rotate(-.9deg)}36%{transform:rotate(-.5deg)}42%{transform:rotate(-.9deg)}48%{transform:rotate(-.5deg)}54%{transform:rotate(-.9deg)}66%{transform:rotate(-.6deg)}82%{transform:rotate(.3deg)}}
+@keyframes r91-watch{0%,100%{transform:none}16%,70%{transform:translate(6px,3px)}}
+</style>
+  <title id="hydrant-title">Hydrant — fire hydrant robot</title>
+  <desc id="hydrant-desc">A chubby crimson fire hydrant robot with a pentagon operating nut on its domed bonnet, two eyes on a slate band under the bolted bonnet flange, a capped pumper outlet on its bulging barrel, side outlet caps as shoulders, jointed arms with brass couplings ending in a hydrant wrench and a brass hose nozzle, on a bolted base flange with stubby legs and round feet.</desc>
+  <g class="bot" style="transform-origin:256px 476px">
+  <!-- Stubby legs and round feet -->
+  <rect x="196" y="392" width="40" height="54" fill="#3d4853"/>
+  <rect x="276" y="392" width="40" height="54" fill="#3d4853"/>
+  <path d="M196 412h40v10h-40Zm80 0h40v10h-40Z" fill="#697785"/>
+  <path d="M176 476v-6q0-32 40-32t40 32v6Zm80 0v-6q0-32 40-32t40 32v6Z" fill="#c22f44"/>
+  <path d="M228 440q28 6 28 30v6h-16v-6q0-20-12-30Zm80 0q28 6 28 30v6h-16v-6q0-20-12-30Z" fill="#921f33"/>
+  <!-- Bulging barrel -->
+  <g class="barrel" style="transform-origin:256px 384px">
+  <!-- barrel top hidden under the bonnet flange, shown when the bonnet tips -->
+  <rect x="176" y="140" width="142" height="16" fill="#c22f44"/>
+  <rect x="318" y="140" width="18" height="16" fill="#921f33"/>
+  <path d="M176 154H336C360 182 372 236 372 284C372 330 362 360 348 380H164C150 360 140 330 140 284C140 236 152 182 176 154Z" fill="#c22f44"/>
+  <path d="M318 154H336C360 182 372 236 372 284C372 330 362 360 348 380H328C344 358 352 330 352 284C352 238 342 184 318 154Z" fill="#921f33"/>
+  <path d="M178 184C166 210 160 246 160 284C160 318 166 342 174 362C172 336 172 310 172 284C172 250 174 214 178 184Z" fill="#e05263"/>
+  <!-- Capped pumper outlet -->
+  <circle cx="256" cy="290" r="36" fill="#3d4853"/>
+  <circle cx="256" cy="290" r="27" fill="#921f33"/>
+  <path d="M256 279L266.5 286.6L262.5 298.9H249.5L245.5 286.6Z" fill="#697785"/>
+  </g>
+  <!-- Bolted base flange -->
+  <rect x="156" y="374" width="200" height="20" rx="6" fill="#921f33"/>
+  <circle cx="178" cy="384" r="4" fill="#3d4853"/>
+  <circle cx="217" cy="384" r="4" fill="#3d4853"/>
+  <circle cx="256" cy="384" r="4" fill="#3d4853"/>
+  <circle cx="295" cy="384" r="4" fill="#3d4853"/>
+  <circle cx="334" cy="384" r="4" fill="#3d4853"/>
+  <g class="barrel" style="transform-origin:256px 384px">
+  <!-- Eye band -->
+  <rect x="198" y="164" width="116" height="38" rx="19" fill="#3d4853"/>
+  <g class="eyes">
+  <circle cx="234" cy="183" r="11" fill="#79d6eb"/>
+  <circle cx="278" cy="183" r="11" fill="#79d6eb"/>
+  <circle cx="238" cy="179" r="4" fill="#fffae0"/>
+  <circle cx="282" cy="179" r="4" fill="#fffae0"/>
+  </g>
+  <!-- Domed bonnet with the operating nut -->
+  <g class="bonnet" style="transform-origin:256px 154px">
+  <rect x="246" y="50" width="20" height="24" fill="#3d4853"/>
+  <g class="nut" style="transform-origin:256px 42px">
+  <path d="M256 24L273.1 36.4L266.6 56.6H245.4L238.9 36.4Z" fill="#3d4853"/>
+  <path d="M256 32L264.6 38.2L261.3 48.3H250.7L247.4 38.2Z" fill="#697785"/>
+  </g>
+  <path d="M172 142A84 72 0 0 1 340 142Z" fill="#921f33"/>
+  <path d="M172 142A78 72 0 0 1 328 142Z" fill="#c22f44"/>
+  <path d="M192 126a76 62 0 0 1 38-42" fill="none" stroke="#e05263" stroke-width="8" stroke-linecap="round"/>
+  <rect x="160" y="136" width="192" height="18" rx="6" fill="#921f33"/>
+  <circle cx="182" cy="145" r="4" fill="#3d4853"/>
+  <circle cx="224" cy="145" r="4" fill="#3d4853"/>
+  <circle cx="288" cy="145" r="4" fill="#3d4853"/>
+  <circle cx="330" cy="145" r="4" fill="#3d4853"/>
+  </g>
+  <!-- Side outlets, arms with a hydrant wrench and a hose nozzle -->
+  <rect x="120" y="208" width="32" height="32" fill="#921f33"/>
+  <g class="arm-l" style="transform-origin:114px 224px">
+  <path d="M114 240L104 296" fill="none" stroke="#697785" stroke-width="24"/>
+  <g class="fore-l" style="transform-origin:104px 296px">
+  <path d="M104 296V346" fill="none" stroke="#697785" stroke-width="24"/>
+  <rect x="88" y="336" width="32" height="14" rx="3" fill="#f6c354"/>
+  <rect x="98" y="348" width="12" height="8" fill="#3d4853"/>
+  <path d="M123 374a19 19 0 1 1-38 0a19 19 0 1 1 38 0ZM104 365l8.6 6.2-3.3 10.1h-10.6l-3.3-10.1Z" fill="#3d4853" fill-rule="evenodd"/>
+  </g>
+  <circle cx="104" cy="296" r="15" fill="#3d4853"/>
+  <circle cx="104" cy="296" r="6" fill="#92a1b2"/>
+  <rect x="102" y="200" width="24" height="48" rx="5" fill="#3d4853"/>
+  <circle cx="114" cy="224" r="7" fill="#697785"/>
+  </g>
+  <rect x="360" y="208" width="32" height="32" fill="#921f33"/>
+  <g class="arm-r" style="transform-origin:398px 224px">
+  <path d="M398 240L408 296" fill="none" stroke="#697785" stroke-width="24"/>
+  <g class="fore-r" style="transform-origin:408px 296px">
+  <path d="M408 296V346" fill="none" stroke="#697785" stroke-width="24"/>
+  <rect x="392" y="336" width="32" height="14" rx="3" fill="#f6c354"/>
+  <path d="M394 350H422L415 392H401Z" fill="#f6c354"/>
+  <rect x="399" y="390" width="18" height="10" rx="3" fill="#3d4853"/>
+  </g>
+  <circle cx="408" cy="296" r="15" fill="#3d4853"/>
+  <circle cx="408" cy="296" r="6" fill="#92a1b2"/>
+  <rect x="386" y="200" width="24" height="48" rx="5" fill="#3d4853"/>
+  <circle cx="398" cy="224" r="7" fill="#697785"/>
+  </g>
+  </g>
+  </g>
+</svg>
