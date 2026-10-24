@@ -8,6 +8,7 @@ import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
+import { recordedTrust } from './codex/trust.js';
 import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig, setGateway } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
@@ -27,7 +28,7 @@ import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, installedScripts, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
-import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
+import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
@@ -220,7 +221,11 @@ async function start(opts: Options): Promise<Daemon> {
       processes: (signal) => ProcessTable.read({ signal, scripts: installedScripts(paths.home) }),
       authority,
     },
-    destination: { paths, config, store, fleet, tmux, log, authority },
+    destination: {
+      paths, config, store, fleet, tmux, log, authority,
+      // Svall's hooks run the private fleet's script, whichever fleet sets them up
+      codexTrust: (codexHome) => recordedTrust(codexHome, resolvePaths(profileHome(PRIVATE)).hookScript),
+    },
   });
   const journal = handover.journalState();
   await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !config.gatewayMachineId });

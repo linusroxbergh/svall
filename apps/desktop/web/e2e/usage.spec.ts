@@ -19,6 +19,8 @@ test('the usage tab tells nothing until it is opened, then reads the plan limits
   await expect.poll(async () => (await svall.api.call('state.get', {})).characters[agent.id].agent?.kind).toBe('claude');
 
   await tab.click();
+  // the login the limits belong to sits small under the title
+  await expect(page.getByTestId('usage-account')).toHaveText('linus@example.com');
   const rows = page.getByTestId('usage-windows').locator('.use-win');
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText('Session');

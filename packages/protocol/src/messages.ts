@@ -34,9 +34,11 @@ export type UsageWindow = z.infer<typeof UsageWindow>;
 
 // available is false for the logins plan limits do not cover: an API key, Bedrock, Vertex
 // idle is a fleet with no agent running, which is when no plan is asked about
+// account names the login(s) the windows belong to, when known
 export const UsageSnapshot = z.object({
   available: z.boolean(),
   idle: z.boolean().optional(),
+  account: z.string().optional(),
   windows: z.array(UsageWindow),
 });
 export type UsageSnapshot = z.infer<typeof UsageSnapshot>;
@@ -315,6 +317,8 @@ export const methods = {
       untrusted: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
       // the folders of `resumes` asking for bypass mode whose agent here warns about that mode before it resumes there
       bypassWarned: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
+      // the agents of `resumes` whose CLI here has not trusted Svall's hooks, and so stops at its review of them before it resumes
+      hooksUntrusted: z.array(AgentKind).optional(),
       // the command settings of `git` that git would run here and this machine's own config does not set the same, by where each is read
       // `conditional`: no repository is at `at` here yet, and this machine's global config holds includes conditional on where one is
       commands: z.array(z.object({ graph: z.string(), at: z.string(), keys: z.array(z.string()), conditional: z.boolean().optional() })).optional(),

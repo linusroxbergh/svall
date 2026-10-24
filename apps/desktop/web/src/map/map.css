@@ -244,7 +244,7 @@
   /* a narrow map shrinks the islet rather than dropping it, and it shrinks towards its waterline */
   transform-origin:50% 100%;
   /* the tower's height gives way with the window; --foot, the height it stands at up the rock, comes from the islet */
-  --lh:clamp(81px,12.3vh,116px)}
+  --lh:clamp(93px,14.1vh,133px)}
 .res-islet .island{position:absolute}
 .res-islet .island svg{display:block;overflow:visible;pointer-events:none}
 /* the footing: a lit top face over a darker side, both widening with the tower */

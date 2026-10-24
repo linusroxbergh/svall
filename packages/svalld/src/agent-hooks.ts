@@ -13,14 +13,19 @@ type HookEntry = { type: string; command?: string; timeout?: number; async?: boo
 type HookGroup = { matcher?: string; hooks?: HookEntry[] };
 type StatusLine = { type?: string; command?: string };
 
-// an entry from an earlier setup is rewritten whole, so a moved node, a changed command or a changed flag is repaired
+// an entry from an earlier setup is rewritten whole, so a moved node, a changed command or a changed flag is repaired;
+// its keys keep their places, so a file that already holds it is left unwritten
 function mergeOurHooks(settings: Record<string, unknown>, events: readonly string[], entryFor: (ev: string) => HookEntry, script: string, group: Omit<HookGroup, 'hooks'>): Record<string, unknown> {
   const out = structuredClone(settings);
   const hooks = ((out.hooks ??= {}) as Record<string, HookGroup[]>);
   for (const ev of events) {
     const groups = (hooks[ev] ??= []);
     const ours = groups.flatMap((g) => g.hooks ?? []).filter((h) => isOurs(h.command, script));
-    for (const h of ours) { delete h.async; Object.assign(h, entryFor(ev)); }
+    for (const h of ours) {
+      const entry = entryFor(ev);
+      if (!('async' in entry)) delete h.async;
+      Object.assign(h, entry);
+    }
     if (!ours.length) groups.push({ ...group, hooks: [entryFor(ev)] });
   }
   return out;
@@ -233,7 +238,9 @@ export type Removal = [JsonSettings, Record<string, unknown>, string];
 export function hookRemovals(o: { home: string; settingsPath: string; codex: CodexPaths; claudeWanted: boolean; codexWanted: boolean }): Removal[] {
   const paths = resolvePaths(o.home);
   const holdsOurs = (file: string): boolean => {
-    const text = readOrUndefined(file) ?? '';
+    let text = readOrUndefined(file) ?? '';
+    // a file of plain ASCII holds a path outside it escaped
+    try { text = JSON.stringify(JSON.parse(text)); } catch { /* readJsonSettings says what is wrong with it */ }
     return text.includes(paths.hookScript) || text.includes(paths.statusScript);
   };
   const removals: Removal[] = [];

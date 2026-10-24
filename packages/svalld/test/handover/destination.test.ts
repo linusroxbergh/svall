@@ -156,6 +156,8 @@ class Crew {
   stopped = new Set<string>();
   /** terminals whose agent shows its empty prompt line once its window opens */
   prompts = new Set<string>();
+  /** terminals whose agent shows Codex's review of untrusted hooks once its window opens */
+  reviews = new Set<string>();
   /**
    * terminals whose window opens and then never another step, as the daemon dies there: with its resume typed and
    * not entered, or entered with the agent starting and its SessionStart gone with that daemon
@@ -199,7 +201,8 @@ class Crew {
     capture: async (paneId) => Buffer.from((this.byPane(paneId)?.screen ?? []).join('\r\n')),
     screen: async (paneId) => {
       const w = this.byPane(paneId);
-      if (w && this.prompts.has(w.key)) return parseScreen(fs.readFileSync(path.join(import.meta.dirname, '../fixtures/composer', `${w.command}-empty.txt`), 'utf8'));
+      const shows = w && (this.reviews.has(w.key) ? 'codex-hooks-review' : this.prompts.has(w.key) ? `${w.command}-empty` : undefined);
+      if (shows) return parseScreen(fs.readFileSync(path.join(import.meta.dirname, '../fixtures/composer', `${shows}.txt`), 'utf8'));
       return { rows: w?.screen ?? [], cursor: 0, shown: false, command: w?.command ?? '' };
     },
   };
@@ -385,7 +388,7 @@ function daemon(
   s: { paths: Paths; store: Store; probes: AgentProbe[]; manifest: Pick<TransferManifestV1, 'destinationHome'> },
   o: {
     concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]>; cli?: CliRun; log?: Logger;
-    syncRoots?: DestinationDeps['syncRoots'];
+    syncRoots?: DestinationDeps['syncRoots']; codexTrust?: DestinationDeps['codexTrust'];
   } = {},
 ) {
   const gateway = new Gateway();
@@ -402,7 +405,7 @@ function daemon(
       source: idleSides(s.paths, { store: s.store }).source,
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
-        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.destinationHome), ...(o.cli && { cli: o.cli }), ...(o.syncRoots && { syncRoots: o.syncRoots }), log: o.log ?? silentLogger,
+        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.destinationHome), ...(o.cli && { cli: o.cli }), ...(o.syncRoots && { syncRoots: o.syncRoots }), ...(o.codexTrust && { codexTrust: o.codexTrust }), log: o.log ?? silentLogger,
       },
     });
     const events: Event[] = [];
@@ -1609,6 +1612,24 @@ describe('destination activate', () => {
     expect(d.crew.window('c_dee')?.command).toBe('codex');
     expect(s.store.state.characters.c_dee.tmux?.paneId).toBe(d.crew.window('c_dee')!.paneId);
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
+  });
+
+  it("leaves a resumed Codex that stops at its review of Svall's hooks dormant with its session, as not resumed", async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_dee');
+    d.crew.reviews.add('c_dee');
+    fs.writeFileSync(path.join(s.dst, '.codex/config.toml'), `[projects."${path.join(s.dst, 'work/demo')}"]\ntrust_level = "trusted"\n`);
+
+    const { r, at } = await activateBy(d);
+
+    expect(at).toBeLessThan(3000);
+    expect(r.characters.find((c) => c.id === 'c_dee')).toMatchObject({
+      ok: false, error: `dee's terminal resumed codex session ${CODEX_ID}, but codex stopped at its "Hooks need review" screen, which waits for an answer before it resumes, so it is dormant again with that session; revive it to see`,
+    });
+    expect(d.crew.log).toContain('kill c_dee');
+    expect(s.store.state.characters.c_dee.tmux).toBeUndefined();
+    expect(s.store.state.characters.c_dee.agent?.sessionId).toBe(CODEX_ID);
   });
 
   it("counts a resumed Codex whose prompt does not show up once its pane has run Codex through the settle, and says that is all it saw", async () => {
@@ -2868,6 +2889,22 @@ describe('destination inspect', () => {
     fs.rmSync(path.join(s.dst, '.codex/config.toml'));
     expect((await inspect([{ kind: 'codex', cwd: bo }])).untrusted).toEqual([{ kind: 'codex', cwd: bo }]);
     expect((await inspect(undefined)).untrusted).toBeUndefined();
+  });
+
+  it("says this machine's Codex has not trusted Svall's hooks when a Codex character resumes here, asking its own Codex home", async () => {
+    const s = await scene({ land: false });
+    const asked: string[] = [];
+    let untrusted = 4;
+    const d = daemon(s, { codexTrust: (home) => { asked.push(home); return { trusted: 0, untrusted }; } });
+    const inspect = (resumes: ParsedParams<'handover.inspect'>['resumes']) => d.handover.inspect({ roots: [], excludes: [], folders: [], resumes });
+    const codex = path.join(s.dst, 'work/bo');
+
+    expect((await inspect([{ kind: 'codex', cwd: codex }])).hooksUntrusted).toEqual(['codex']);
+    expect(asked).toEqual([s.probes.find((p) => p.kind === 'codex')!.home]);
+    expect((await inspect([{ kind: 'claude', cwd: codex }])).hooksUntrusted).toBeUndefined();
+    expect(asked).toHaveLength(1);
+    untrusted = 0;
+    expect((await inspect([{ kind: 'codex', cwd: codex }])).hooksUntrusted).toBeUndefined();
   });
 
   it("names each carried folder this machine's Claude would ask to trust, by the config in its own Claude home, apart from Codex's in the same folder", async () => {

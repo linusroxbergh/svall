@@ -80,7 +80,7 @@ const transcript = (v: unknown): string | undefined => {
 
 // Claude's SessionStart on a resume from another folder names that folder's project, which holds no file of the
 // session; its transcript is then the newest one another project of the same projects folder holds under its id
-function claudeTranscript(file: string, id: string | undefined): string {
+export function claudeTranscript(file: string, id: string | undefined): string {
   const projects = path.dirname(path.dirname(file));
   if (!id || path.basename(file) !== `${id}.jsonl` || path.basename(projects) !== 'projects' || fs.existsSync(file)) return file;
   let names: string[];
