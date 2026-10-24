@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { contextKind, type ContextItem } from '@svall/protocol';
+import { AS_TYPED } from './Field.js';
 import { followLink } from './LinkAsk.js';
 import { LinkIcon } from './map/LinkIcon.js';
 import { linkText } from './map/tokenText.js';
@@ -33,7 +34,7 @@ export function AddLink({ id, ids, onAdd }: { id: string; ids: { ref: string; ad
   };
   return (
     <div className="addlink">
-      <input className="fld" placeholder="Add a url or path" value={ref} data-testid={ids.ref} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} onChange={(e) => setRef(e.target.value)} />
+      <input className="fld" placeholder="Add a url or path" value={ref} data-testid={ids.ref} {...AS_TYPED} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} onChange={(e) => setRef(e.target.value)} />
       <button className="btn sm" data-testid={ids.add} onClick={add}>Add</button>
     </div>
   );

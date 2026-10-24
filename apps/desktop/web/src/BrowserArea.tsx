@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ellipsis } from '@svall/protocol';
 import { activateBrowserTab, closeBrowserTab } from './actions.js';
 import { app, deps } from './boot.js';
+import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { keyTip } from './keys.js';
 import { canFill } from './settings.js';
@@ -94,7 +95,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
         <button data-testid="browser-forward" disabled={!view?.canGoForward} onClick={() => active && app.browser().go(active, 'forward')}>›</button>
         <button data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, view?.loading ? 'stop' : 'reload')}>{view?.loading ? '×' : '↻'}</button>
         <input ref={input} data-testid="browser-address" className="fld mono" value={shown} placeholder="Search or enter a url"
-          spellCheck={false} onChange={(e) => setDraft(e.target.value)} onFocus={(e) => e.target.select()}
+          {...AS_TYPED} onChange={(e) => setDraft(e.target.value)} onFocus={(e) => e.target.select()}
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit();
             // the page's own Escape would close the card around the field

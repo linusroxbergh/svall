@@ -1,6 +1,7 @@
 import { deletable, type ResourceItem } from '@svall/protocol';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
+import { AS_TYPED } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { openFile } from '../ide/files.js';
 import { Tree } from '../ide/Tree.js';
@@ -17,7 +18,7 @@ const NONE: string[] = [];
 function NameField({ testid, initial, onCommit, onDone }: { testid: string; initial: string; onCommit(v: string): void; onDone(): void }) {
   const [v, setV] = useState(initial);
   return (
-    <input className="fld res-find res-name" data-testid={testid} autoFocus placeholder="name" aria-label="Doc name" value={v}
+    <input className="fld res-find res-name" data-testid={testid} autoFocus placeholder="name" aria-label="Doc name" value={v} {...AS_TYPED}
       onChange={(e) => setV(e.target.value)} onBlur={onDone}
       onKeyDown={(e) => { if (e.key === 'Enter') { onCommit(v); onDone(); } if (e.key === 'Escape') { e.stopPropagation(); onDone(); } }} />
   );
@@ -32,7 +33,7 @@ function NewDocField({ label, onCommit, onDone }: { label: string; onCommit(v: s
   return (
     <label className="res-newdoc">
       <span>{label}</span>
-      <input ref={input} className="fld" data-testid="resources-new-doc-name" placeholder="name, then Enter" value={v}
+      <input ref={input} className="fld" data-testid="resources-new-doc-name" placeholder="name, then Enter" value={v} {...AS_TYPED}
         onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') void onCommit(v).then((made) => { if (made) onDone(); });
@@ -173,7 +174,7 @@ export function List() {
   }, [source?.rootId, what, only?.id]);
   return (
     <div className="res-list" data-testid="resources-list">
-      <input className="fld res-find" data-testid="resources-filter" placeholder="filter" aria-label="Filter resources" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className="fld res-find" data-testid="resources-filter" placeholder="filter" aria-label="Filter resources" value={query} {...AS_TYPED} onChange={(e) => setQuery(e.target.value)} />
       {source && <Kinds source={source} what={what} />}
       <div className="res-rows">
         {tier ? <TierRows tier={tier} query={query} /> : (

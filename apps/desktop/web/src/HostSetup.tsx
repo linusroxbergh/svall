@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
+import { AS_TYPED } from './Field.js';
 import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
@@ -114,9 +115,9 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
         </span>
       </div>
       <div className="host-form">
-        <input className="fld" data-testid="host-name" placeholder="machine name" aria-label="Machine name"
+        <input className="fld" data-testid="host-name" placeholder="machine name" aria-label="Machine name" {...AS_TYPED}
           value={name} onChange={(e) => setName(e.target.value.trim())} />
-        <input className="fld" data-testid="host-ssh" placeholder="ssh destination, e.g. linus@studio" aria-label="Ssh destination"
+        <input className="fld" data-testid="host-ssh" placeholder="ssh destination, e.g. linus@studio" aria-label="Ssh destination" {...AS_TYPED}
           value={ssh} onChange={(e) => setSsh(e.target.value.trim())} />
       </div>
       <div className="acts">

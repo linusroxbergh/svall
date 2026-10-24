@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ResourceSource } from '@svall/protocol';
 import { app } from '../boot.js';
+import { AS_TYPED } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { countsBySource, qualifierOf, tierOf, tierWhere, whereGroups, whereTier, type Tier } from './model.js';
 
@@ -47,7 +48,7 @@ export function Where() {
   const counts = useMemo(() => countsBySource(sources, fleet), [sources, fleet]);
   return (
     <nav className="res-tree" aria-label="Sources">
-      <input className="fld res-find" data-testid="resources-source-find" placeholder="find a source" aria-label="Find a source" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className="fld res-find" data-testid="resources-source-find" placeholder="find a source" aria-label="Find a source" value={query} {...AS_TYPED} onChange={(e) => setQuery(e.target.value)} />
       {groups.map((g) => {
         // a query shows what it found without asking for the folder to be opened first
         const shown = open.includes(g.tier) || (query.trim() !== '' && g.count > 0);

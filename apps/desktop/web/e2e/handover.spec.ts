@@ -140,6 +140,25 @@ test("the dock shows the machine's name and Handover whole beside the utilities 
   await expect(page.getByTestId('load-tab')).toBeVisible();
 });
 
+test('Handover is a utility tab: its label shows whole where the dock has room for it, and its glyph alone where not', async ({ page, svall }) => {
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  const tab = page.getByTestId('handover-tab');
+  const label = tab.locator('.use-tab-label');
+  await expect(tab.locator('.use-glyph')).toBeVisible();
+  await expect(label).toBeHidden();
+  const grip = (await page.getByTestId('side-drag-sidebar').boundingBox())!;
+  const y = grip.y + grip.height / 4;
+  await page.mouse.move(grip.x + grip.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 120, y, { steps: 4 });
+  await page.mouse.up();
+  await expect(label).toBeVisible();
+  for (const id of ['handover-tab', 'load-tab', 'settings-open']) {
+    expect(await page.getByTestId(id).locator('.use-tab-label').evaluate((e) => e.scrollWidth <= e.clientWidth), id).toBe(true);
+  }
+});
+
 test('with no gateway the sheet says where one is set up, and offers only This Mac', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token, true, null);
   await svall.open();

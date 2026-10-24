@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ComponentProps } from 'react';
 
-// a fleet name is lowercase only, so macOS may not capitalise, correct or complete it
+// a name, path, url or ssh destination is kept as typed: macOS may not capitalise, correct or complete it
 export const AS_TYPED = { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'off' } as const;
 
 // onSave returns false to decline an edit, which puts the fleet's value back
