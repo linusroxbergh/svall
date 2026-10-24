@@ -103,9 +103,8 @@ describe('the signers a release trusts', () => {
     }
   });
 
-  it('refuses every signed release while no release key is committed', () => {
+  it('refuses a release signed by a key the committed signers do not list', () => {
     const committed = path.join(checkout, 'scripts/release/allowed_signers');
-    if (fs.readFileSync(committed, 'utf8').split('\n').some((l) => l.trim() && !l.trim().startsWith('#'))) return;
     const stage = fixture();
     signManifest(stage, ephemeralSigner().key);
     expect(() => verifyRelease(stage, { verify: sshVerify({ allowedSigners: committed }) })).toThrow(/not signed by svall-release/);

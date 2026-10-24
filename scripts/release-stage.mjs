@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { NAMESPACE, signManifest, sshVerify, SUMS } from './release-manifest.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PINS = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/release/pins.json'), 'utf8'));
@@ -371,4 +372,28 @@ export async function stageRelease(o) {
   };
 }
 
-export const releaseKey = () => process.env.SVALL_RELEASE_KEY || undefined;
+/**
+ * The key SVALL_RELEASE_KEY names, once a signature it makes verifies against `signers`, so a build never signs a release
+ * every installer refuses.
+ */
+export function releaseKey(signers = path.join(REPO, 'scripts/release/allowed_signers')) {
+  const key = process.env.SVALL_RELEASE_KEY;
+  if (!key) return undefined;
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-key-'));
+  try {
+    fs.writeFileSync(path.join(probe, SUMS), 'probe\n');
+    try {
+      signManifest(probe, path.resolve(key));
+    } catch (e) {
+      throw new Error(`SVALL_RELEASE_KEY ${key} cannot sign: ${String(e.stderr ?? '').trim() || e.message}`);
+    }
+    try {
+      sshVerify({ allowedSigners: signers })(probe, NAMESPACE);
+    } catch {
+      throw new Error(`the public half of SVALL_RELEASE_KEY ${key} is not in ${signers}; add it as that file's header says`);
+    }
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+  return key;
+}

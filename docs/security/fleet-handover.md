@@ -47,6 +47,18 @@ under which licences, and which risks are accepted. Tests are named by file unde
   directions. The release workflow hands the key only to the steps that check it, sign and publish, never to the
   build; see `docs/integration.md`. (`test/release-stage.test.ts` "hands the signing key only to the steps that check
   it and sign…", "%s runs every action at a commit, never at a tag that can move")
+- **Release keys.** `scripts/release/allowed_signers` lists two ed25519 keys under the principal `svall-release`: the
+  release key, which the `SVALL_RELEASE_KEY` secret and the publishing Mac hold, and a backup key kept offline. Every
+  release carries the file. The controller checks a companion against its own copy, and a machine checks an upgrade
+  against the copy its installed release carries. A build given `SVALL_RELEASE_KEY` refuses, before it builds
+  anything, a key the committed file does not list, and `pnpm release` refuses to run without one.
+  (`test/release-stage.test.ts` "refuses a key the signers do not list…", "is either key the signers list…";
+  `svalld/test/release.test.ts` "refuses a release signed by a key the committed signers do not list")
+- **Retiring a key**, lost or leaked: sign the next release with the backup key, and in that release list a new backup
+  in place of the retired key. A machine on any signed release takes it, as its installed signers list the backup, and
+  from then on refuses the retired key. A machine not yet upgraded still trusts the retired key, but its controller
+  hands it only releases the controller's own signers vouch for. Losing both keys leaves every machine refusing new
+  releases until `svall host remove` and `svall host add` install it afresh.
 - **On the controller**, before any upload:
   - a companion the controller's own manifest names, carried in its release or downloaded, must match the digest
     that manifest pins;

@@ -152,6 +152,7 @@ describe('svall argument parsing', () => {
     const v = JSON.parse(r.stdout);
     expect(v).toMatchObject({
       release: 'dev',
+      signed: false,
       protocol: PROTOCOL_VERSION,
       stateSchema: emptyState().version,
       transferSchema: TRANSFER_SCHEMA_VERSION,
@@ -159,6 +160,18 @@ describe('svall argument parsing', () => {
       runtime: { node: process.version, platform: process.platform, arch: process.arch },
     });
     expect((await run({}, 'version')).stdout).toContain('protocol');
+  });
+
+  it('says whether its release was built signed: with a signature and no unsigned mark', async () => {
+    const root = makeHome();
+    const signed = async () => JSON.parse((await run({ SVALL_RELEASE_ROOT: root }, 'version', '--json')).stdout).signed;
+    fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3' }));
+    expect(await signed()).toBe(false);
+    fs.writeFileSync(path.join(root, 'SHA256SUMS.sig'), 'a signature');
+    expect(await signed()).toBe(true);
+    expect((await run({ SVALL_RELEASE_ROOT: root }, 'version')).stdout).toContain('release          1.2.3 (signed)\n');
+    fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3', unsigned: true }));
+    expect(await signed()).toBe(false);
   });
 
   it('answers an ownership question on the gateway socket under the prefix it was given', async () => {
