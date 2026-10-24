@@ -271,7 +271,8 @@ The first build takes several minutes and about 1.5 GB of disk.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
 - **Settings** (Cmd+,): this machine, browser, keyboard, notifications, phone,
   and the fleet's name, main agent, scribe and idle timeout. `Usage`, next to
-  it, shows the plan limits of your running agents without using any.
+  it, shows the plan limits of your running agents without using any, and the
+  login they belong to.
 
 ### Keyboard
 

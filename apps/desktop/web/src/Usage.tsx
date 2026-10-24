@@ -41,8 +41,11 @@ export function UsagePanel() {
   if (snapshot.idle) return <div className="use-note" data-testid="usage-idle">No agent is running.</div>;
   if (!snapshot.windows.length) return <div className="use-note" data-testid="usage-waiting">No plan limits reported yet.</div>;
   return (
-    <div className="use-wins" data-testid="usage-windows">
-      {snapshot.windows.map((w) => <Limit key={w.key} label={w.label} pct={w.pct} resetsAt={w.resetsAt} now={now} />)}
-    </div>
+    <>
+      {snapshot.account && <div className="use-account" data-testid="usage-account">{snapshot.account}</div>}
+      <div className="use-wins" data-testid="usage-windows">
+        {snapshot.windows.map((w) => <Limit key={w.key} label={w.label} pct={w.pct} resetsAt={w.resetsAt} now={now} />)}
+      </div>
+    </>
   );
 }
