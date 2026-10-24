@@ -539,7 +539,7 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint({ code: 'rsync_unsupported', message: 'studio has openrsync' }, ctx)).toMatch(/On studio, install rsync 3\.2\.3/);
     const link = (message: string) => blockerHint({ code: 'path_symlinked', message, entity: { kind: 'root', id: 'r_a' } }, ctx);
     expect(link('/w/app leads to /v/app through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use /v/app instead')).toMatch(/real path/);
-    expect(link('/w/app leads to /d/app on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first'))
+    expect(link('/w/app leads to /d/app on this machine through a symbolic link; a folder lands at the path the handover gives it here, the one Git and the agents record, so that link has to go first'))
       .toMatch(/on studio/);
   });
 
