@@ -46,14 +46,14 @@ if [ -d "$ROOT/apps/desktop/web/dist" ]; then
 fi
 
 # a release build of Svall.app carries the controller it installs: production svall and svalld, the pinned
-# Node runtime, the phone page, the rsync 3.x macOS does not have, and the linux-x64 companion Add Machine
-# installs, pinned by its path in the release. pnpm release names it by the tag it pushes, other builds by git describe
+# Node runtime, the phone page, the rsync 3.x macOS does not have, and the linux-x64 and linux-arm64 companions Add
+# Machine installs, each pinned by its path in the release. pnpm release names it by the tag it pushes, other builds by git describe
 if [ "$CONFIG" = release ] && [ "$VARIANT" = release ]; then
   RELEASE="$MAC/build.noindex/release"
   COMPANIONS="$MAC/build.noindex/companions"
   VERSION="${SVALL_RELEASE_NAME:-$(node -e 'import(process.argv[1]).then((m) => console.log(m.describeVersion()))' "$ROOT/scripts/release-stage.mjs")}"
   rm -rf "$RELEASE" "$COMPANIONS"
-  node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build.noindex/companions.json"
+  node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64,arm64 --version "$VERSION" >"$MAC/build.noindex/companions.json"
   node "$ROOT/scripts/build-controller.mjs" --out "$RELEASE" --version "$VERSION" \
     --companion-url-base companions --companions "$COMPANIONS" >"$MAC/build.noindex/release.json"
   node "$ROOT/scripts/release-scan.mjs" "$RELEASE/releases/"*/ "$COMPANIONS"/*.tar.gz

@@ -53,9 +53,9 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await expect(page.getByTestId('host-setup')).toBeVisible();
   // before any run, what the machine needs
   await expect(page.getByTestId('host-intro')).toContainText('same path as yours on this Mac');
-  // the app carries the x86-64 companion only
-  await expect(page.getByTestId('host-intro')).toContainText('Add machine installs Svall on an x86-64 machine');
-  await expect(page.getByTestId('host-intro')).toContainText('add an arm64 one with svall host add … --release');
+  // the app carries the x86-64 and arm64 companions
+  await expect(page.getByTestId('host-intro')).toContainText('on x86-64 or arm64');
+  await expect(page.getByTestId('host-intro')).not.toContainText('--release');
 
   // a name the registry would refuse never reaches the shell
   await page.getByTestId('host-name').fill('Studio');

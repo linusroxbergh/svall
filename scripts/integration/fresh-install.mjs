@@ -10,12 +10,13 @@
 // a second fleet (`svall host enable`), checks the units run that release and nothing else, upgrades to
 // the second release (`svall host upgrade`), then goes back with `svall setup --rollback` on the machine, checking the
 // units each time. A release that pins its companion on this host's loopback is served from its folder and downloaded,
-// as the app does; any other is named by path with --release.
+// and one that carries it, as Svall.app's does, takes it from its own tree; any other is named by path with --release.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { brief, flags, harness, lines } from './harness.mjs';
 
 const M = 'svall-fresh';
@@ -66,6 +67,8 @@ function release(dir, name) {
   return {
     name, version, root, manifest, companion, packed, url,
     served: typeof url === 'string' && LOOPBACK.test(url),
+    // a path inside the release, as `--url-base companions` pins it
+    carried: typeof url === 'string' && !URL.canParse(url),
     native: manifest.platform === `${process.platform}-${process.arch}`,
     unsigned: manifest.unsigned === true,
   };
@@ -247,14 +250,17 @@ const ADVICE = new Set(['claude', 'codex', 'opencode']);
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
   'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
 
-// with no --release the controller downloads the companion its manifest pins, checks its digest and caches it
-const named = (rel) => (rel.served ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
+// with no --release the controller fetches the companion its manifest pins, checks its digest and caches it
+const named = (rel) => (rel.served || rel.carried ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
+// a carried one is named by its file: URL under the release root the controller's shim resolves
+const pinnedAt = (rel) => (rel.served ? rel.url : pathToFileURL(path.join(fs.realpathSync(rel.root), rel.url)).href);
 const signedWord = (rel) => (rel.unsigned ? 'unsigned' : 'signed');
-const from = (rel) => `${rel.version} for linux-${o.arch} from ${rel.served ? rel.url : 'the archive you named'} (${signedWord(rel)})`;
+const from = (rel) => `${rel.version} for linux-${o.arch} from ${rel.served || rel.carried ? pinnedAt(rel) : 'the archive you named'} (${signedWord(rel)})`;
+const route = (rel) => (rel.served ? ', downloaded' : rel.carried ? ', carried' : ', by path');
 
 function downloaded(rel, label) {
-  if (!rel.served) return;
-  const file = path.join(HOME, '.local/share/svall/companions', path.basename(new URL(rel.url).pathname));
+  if (!rel.served && !rel.carried) return;
+  const file = path.join(HOME, '.local/share/svall/companions', path.basename(rel.companion));
   check(`${label} downloaded`, fs.existsSync(file) && sha256(file) === sha256(rel.companion), () => `${file} is not the pinned companion`);
 }
 
@@ -277,8 +283,8 @@ function hostAdd(a) {
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
-    && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code', 'ssh fresh, then install Codex',
-      'ssh fresh, then install OpenCode']), () => brief(result));
+    && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',
+      'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup']), () => brief(result));
 }
 
 /** A second fleet whose gateway the machine is, as a handover moves one: its own daemon's unit on the machine. */
@@ -312,7 +318,7 @@ function upgrade(b) {
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
   for (const s of steps) check(`host upgrade ${s.step}`, s.status === 'ok', () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
-  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'release', 'upload', 'install', 'probe']),
+  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe']),
     () => brief(steps.map((s) => s.step)));
   check('host upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
   check('host upgrade release', steps.find((s) => s.step === 'release')?.detail === from(b), () => brief(steps.find((s) => s.step === 'release')));
@@ -339,14 +345,14 @@ try {
   server = await serve([a, b]);
   say(`   logs in ${out}; controller home ${HOME}`);
   step(`a clean Ubuntu 24.04 ${o.arch} machine, an account at the controller's home path`, machine);
-  step(`host add from ${a.version}${a.served ? ', downloaded' : ', by path'}`, () => hostAdd(a));
+  step(`host add from ${a.version}${route(a)}`, () => hostAdd(a));
   step(`host enable --fleet ${FLEET}`, () => enable(a));
   step('after a restart with no login, both fleets and the gateway run the release', () => {
     reboot();
     runs('added', a, [a.version]);
     doctor(a, 'added');
   });
-  step(`host upgrade to ${b.version}${b.served ? ', downloaded' : ', by path'}`, () => {
+  step(`host upgrade to ${b.version}${route(b)}`, () => {
     upgrade(b);
     runs('upgraded', b, [a.version, b.version]);
     doctor(b, 'upgraded');

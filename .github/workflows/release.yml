@@ -97,7 +97,7 @@ jobs:
           scripts/release-build.sh --out "$RUNNER_TEMP/release" --version "$GITHUB_REF_NAME"
           --url-base "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
       # the release a fresh install upgrades to; never published, but served on the fresh-install runner's loopback so
-      # that the upgrade downloads its companion as the app does
+      # that the upgrade downloads its companion by its manifest's pin
       - name: Build and scan the upgrade
         run: >-
           scripts/release-build.sh --out "$RUNNER_TEMP/upgrade" --version "$GITHUB_REF_NAME-next"

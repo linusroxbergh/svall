@@ -320,8 +320,8 @@ bundle on the Node it carries, with the phone assets and templates beside them; 
 `~/.local/bin/svall` point into the app. Beside that runtime it carries the controller release in
 `Contents/Resources/release`: `release.json` naming the release, the rsync 3.x macOS lacks, the
 askpass the first SSH connection asks through, the allowed signers a companion is checked against,
-a pinned Node with the `svall` the app's helpers run, and the x86-64 Linux companion under
-`companions/`, which `release.json` pins by its path in the release and its digest. `pnpm release`
+a pinned Node with the `svall` the app's helpers run, and the x86-64 and arm64 Linux companions under
+`companions/`, which `release.json` pins by their paths in the release and their digests. `pnpm release`
 names the release after the tag it pushes, `v<CFBundleShortVersionString>`; a local
 `pnpm app:build` names it by `git describe`. Svall Dev carries no controller release, so it has no
 connection helper and opens its fleets on this Mac only. Neither ordinary Mac use nor remote setup
@@ -343,8 +343,8 @@ unpacked tree must still carry the checksum file the signature covered.
 
 The remote machine does not need a repository clone, pnpm, Node, Xcode, Zig or Ghostty. The Mac app
 takes the companion its release manifest names for the machine's architecture, verifies the digest,
-and uploads it over SSH; another archive of the same release, such as the arm64 companion, is named
-with `--release`. A development build may instead upload the current workspace artifact explicitly.
+and uploads it over SSH; another archive of the same release is named with `--release`. A
+development build may instead upload the current workspace artifact explicitly.
 
 On the Linux machine, releases install without root under:
 
