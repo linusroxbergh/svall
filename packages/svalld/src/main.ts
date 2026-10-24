@@ -8,7 +8,7 @@ import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { askCodexTrust } from './codex/trust.js';
+import { recordedTrust } from './codex/trust.js';
 import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig, setGateway } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
@@ -224,7 +224,7 @@ async function start(opts: Options): Promise<Daemon> {
     destination: {
       paths, config, store, fleet, tmux, log, authority,
       // Svall's hooks run the private fleet's script, whichever fleet sets them up
-      codexTrust: (codexHome) => askCodexTrust({ codexHome, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
+      codexTrust: (codexHome) => recordedTrust(codexHome, resolvePaths(profileHome(PRIVATE)).hookScript),
     },
   });
   const journal = handover.journalState();

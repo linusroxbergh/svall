@@ -562,7 +562,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'codex_trust':
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
     case 'codex_hooks':
-      return `Codex on ${ctx.destination} stops at "Hooks need review" until it trusts Svall's hooks, and its characters stay dormant.\nStart codex there and choose "Trust all and continue".`;
+      return `Codex on ${ctx.destination} stops at "Hooks need review" until it trusts Svall's hooks.\nStart codex there and choose "Trust all and continue".`;
     case 'codex_sandbox':
       return `Codex on ${ctx.destination} cannot sandbox its commands, so it asks before each one.\nFix what the message names there.`;
     case 'claude_trust':

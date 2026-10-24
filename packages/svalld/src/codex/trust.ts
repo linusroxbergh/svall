@@ -1,4 +1,8 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { parse as parseToml } from 'smol-toml';
+import { realPath } from '../handover/portable-path.js';
 import { isOurs } from '../paths.js';
 
 export type HookTrust = { trusted: number; untrusted: number };
@@ -13,6 +17,33 @@ export function ourTrust(result: unknown, script: string): HookTrust | undefined
   if (!hooks.length) return undefined;
   const trusted = hooks.filter((h) => h?.trustStatus === 'trusted').length;
   return { trusted, untrusted: hooks.length - trusted };
+}
+
+/**
+ * Svall's hooks in `codexHome`'s hooks.json that Codex has a trust record for in config.toml, keyed
+ * `<hooks file>:<event>:<group>:<handler>`, read without starting Codex; one changed since it was trusted counts as trusted.
+ */
+export function recordedTrust(codexHome: string, script: string): HookTrust | undefined {
+  const file = path.join(codexHome, 'hooks.json');
+  const config = path.join(codexHome, 'config.toml');
+  const trust = { trusted: 0, untrusted: 0 };
+  try {
+    const events: Record<string, { hooks?: { command?: unknown }[] }[]> = JSON.parse(fs.readFileSync(file, 'utf8')).hooks ?? {};
+    const state: Record<string, { trusted_hash?: unknown } | undefined> = fs.existsSync(config)
+      ? (parseToml(fs.readFileSync(config, 'utf8')) as { hooks?: { state?: Record<string, { trusted_hash?: unknown }> } }).hooks?.state ?? {} : {};
+    const files = [file, realPath(file)];
+    for (const [event, groups] of Object.entries(events)) {
+      const label = event.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+      groups.forEach((g, i) => (g.hooks ?? []).forEach((h, j) => {
+        if (!isOurs(h?.command, script)) return;
+        const held = files.some((f) => typeof state[`${f}:${label}:${i}:${j}`]?.trusted_hash === 'string');
+        trust[held ? 'trusted' : 'untrusted'] += 1;
+      }));
+    }
+  } catch {
+    return undefined;
+  }
+  return trust.trusted + trust.untrusted ? trust : undefined;
 }
 
 // codex app-server is experimental: any failure or unknown answer is "couldn't tell", within timeoutMs

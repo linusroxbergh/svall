@@ -68,8 +68,8 @@ export type DestinationDeps = {
   concurrency?: number;
   /** How to run an agent CLI that reads a session into its own database. */
   cli?: CliRun;
-  /** Whether this machine's Codex, keeping its files in `codexHome`, has trusted Svall's hooks. */
-  codexTrust?: (codexHome: string) => Promise<HookTrust | undefined>;
+  /** Whether this machine's Codex, keeping its files in `codexHome`, has trusted Svall's hooks, read without running it. */
+  codexTrust?: (codexHome: string) => HookTrust | undefined;
   /** How to flush the roots that landed, and each file in them, to disk. */
   syncRoots?: (roots: readonly string[], files: readonly string[]) => Promise<void>;
   log: Logger;
@@ -320,7 +320,7 @@ export class DestinationHandover {
   private async hooksUntrusted(resumes: readonly ResumeFolder[]): Promise<AgentKind[]> {
     if (!this.d.codexTrust || !resumes.some((f) => f.kind === 'codex')) return [];
     const { home } = await this.cli('codex');
-    return home && (await this.d.codexTrust(home))?.untrusted ? ['codex'] : [];
+    return home && this.d.codexTrust(home)?.untrusted ? ['codex'] : [];
   }
 
   /** Whether this machine's agent CLI of `folder`'s kind resumes there without first asking whether to trust it. */

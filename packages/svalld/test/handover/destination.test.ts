@@ -2895,7 +2895,7 @@ describe('destination inspect', () => {
     const s = await scene({ land: false });
     const asked: string[] = [];
     let untrusted = 4;
-    const d = daemon(s, { codexTrust: async (home) => { asked.push(home); return { trusted: 0, untrusted }; } });
+    const d = daemon(s, { codexTrust: (home) => { asked.push(home); return { trusted: 0, untrusted }; } });
     const inspect = (resumes: ParsedParams<'handover.inspect'>['resumes']) => d.handover.inspect({ roots: [], excludes: [], folders: [], resumes });
     const codex = path.join(s.dst, 'work/bo');
 

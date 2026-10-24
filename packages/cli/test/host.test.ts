@@ -996,6 +996,23 @@ describe('host doctor', () => {
     expect(fs.existsSync(path.join(config, 'checks.json'))).toBe(false);
   });
 
+  it("keeps a machine's check while host remove leaves it in the registry, and drops it with --forget", async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.save();
+    const check = { at: 1, failed: 0, warned: 0 };
+    fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify({ [REMOTE]: check, [OTHER_MAC]: check }));
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await hostCommands(() => true, () => config).parseAsync(['remove', 'trift'], { from: 'user' }).catch(() => undefined);
+      expect(lastChecks(config)).toEqual({ [REMOTE]: check, [OTHER_MAC]: check });
+      await hostCommands(() => true, () => config).parseAsync(['remove', 'trift', '--forget'], { from: 'user' });
+      expect(lastChecks(config)).toEqual({ [OTHER_MAC]: check });
+    } finally { out.mockRestore(); process.exitCode = 0; }
+  });
+
   it('keeps a check that could not reach the machine as failed, so host list never shows an older ready', async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);

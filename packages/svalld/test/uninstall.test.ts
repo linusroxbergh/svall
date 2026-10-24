@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
+  claudeHooksCurrent, codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
 import { installOpencodePlugin, opencodePaths } from '../src/opencode/install.js';
@@ -297,6 +297,11 @@ describe('runUninstall', () => {
     expect(fs.readFileSync(f.settingsPath, 'utf8')).not.toBe(text);
     await runUninstall(f.o);
     expect(fs.readFileSync(f.settingsPath, 'utf8')).toBe(text);
+    const crlf = '{\r\n  "model": "opus"\r\n}\r\n';
+    fs.writeFileSync(f.settingsPath, crlf);
+    await runSetup(f.o);
+    await runUninstall(f.o);
+    expect(fs.readFileSync(f.settingsPath, 'utf8')).toBe(crlf);
   });
 
   it('leaves a settings file whose keys only stand in another order than its own as it is', async () => {
@@ -306,6 +311,7 @@ describe('runUninstall', () => {
       : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reversed(x)])) : v);
     const reordered = `${JSON.stringify(reversed(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))), null, 2)}\n`;
     fs.writeFileSync(f.settingsPath, reordered);
+    expect(claudeHooksCurrent(JSON.parse(reordered), f.home)).toBe(true);
     const backups = () => fs.readdirSync(path.dirname(f.settingsPath)).filter((n) => n.includes('.bak-')).length;
     const before = backups();
     await runSetup(f.o);

@@ -501,7 +501,7 @@ describe('preflight', () => {
 
     expect(await hooks()).toEqual([{
       code: 'codex_hooks',
-      message: 'Codex on trift has not trusted Svall\'s hooks yet, so a Codex character resumed there stops at its "Hooks need review" screen and is left dormant; start codex there and choose "Trust all and continue", or trust them in /hooks',
+      message: 'Codex on trift has not trusted Svall\'s hooks yet, so a Codex character resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks',
     }]);
     untrusted = undefined;
     expect(await hooks()).toEqual([]);

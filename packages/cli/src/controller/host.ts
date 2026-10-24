@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, FleetId, FleetState, MachineId, MachineRecord, type AgentKind } from '@svall/protocol';
+import { FleetConfig, FleetId, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
@@ -261,7 +261,7 @@ function fleetAgents(homedir: string): Set<AgentKind> | undefined {
   const kinds = new Set<AgentKind>();
   for (const home of homes) {
     let state: FleetState;
-    try { state = FleetState.parse(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8'))); } catch { return undefined; }
+    try { state = migrateState(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8'))).state; } catch { return undefined; }
     for (const c of Object.values(state.characters)) for (const k of [c.agent?.kind, c.second?.agent?.kind]) if (k) kinds.add(k);
     for (const k of [state.mainAgent, state.scribeOff ? undefined : state.scribeAgent]) if (k) kinds.add(k);
   }
