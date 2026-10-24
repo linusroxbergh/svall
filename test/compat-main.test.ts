@@ -63,7 +63,7 @@ test('an installed CLI\'s help is read for each flag, and a help that prints not
   const lines = (...entries: string[]) => `printf '${entries.map((e) => `  ${e}  x\\n`).join('')}'`;
   fs.writeFileSync(bin, ['#!/bin/sh', 'case "$1 $2" in',
     '"--version ") echo "codex-cli 9.9.9";;',
-    `"--help ") ${lines('resume', 'exec', 'login')};;`,
+    `"--help ") ${lines('resume', 'exec', 'login', '-m, --model')};;`,
     `"exec --help") ${lines('--json', '-m, --model', '-c, --config', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o, --output-last-message')};;`,
     `"login --help") ${lines('status')};;`,
     'esac', ''].join('\n'), { mode: 0o755 });
