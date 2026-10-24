@@ -74,7 +74,7 @@ the first failed step. The output folder holds:
 
 1. **Provisioning.**
    - `svall setup` starts the daemon unit.
-   - Every `host add` step is `ok`. The only warnings allowed are tmux 3.4 and the missing Codex.
+   - Every `host add` step is `ok`. The only warning allowed is the missing Codex.
    - `handover.enabled` is turned on, and `host enable` makes remote the gateway.
 2. **The fixture.** Repo `~/src/app` has:
    - a linked worktree `~/src/app-wt`;
@@ -206,8 +206,8 @@ logs.
      the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
      caches it. The release step names that URL, and the cached file is the pinned companion.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
-   - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, and Claude Code, Codex and OpenCode not
-     installed. The linger step turns lingering on.
+   - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The
+     linger step turns lingering on, and the tmux step finds the release's own.
    - The result lists exactly three things to do: the three installs.
 4. **A second fleet.** The run runs `svall host enable --fleet work` from a controller-side fleet `work`: the machine
    provisions its own copy under `svall-svalld@work.service`.

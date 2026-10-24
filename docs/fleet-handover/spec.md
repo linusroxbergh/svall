@@ -68,8 +68,9 @@ The first published release supports:
   `/Users/linus`, set with `useradd -m -d` or `usermod -d`. A symlink is not enough, because the
   working directory a process reports is the resolved path, and Git and the agents record that;
 - systemd user services on Linux;
-- tmux 3.x and Git on both machines; tmux 3.5 or newer is recommended, because Shift+Enter needs
-  its `extended-keys-format`, and Ubuntu 24.04 ships 3.4;
+- Git on both machines, and tmux 3.x on the Mac; tmux 3.5 or newer is recommended, because Shift+Enter
+  needs its `extended-keys-format`. Ubuntu 24.04 ships 3.4, so the Linux companion carries its own tmux
+  3.7c, built on Ubuntu 22.04, the oldest release it supports;
 - rsync 3.2.3 or newer on both machines. Ubuntu 22.04 and later ship it; macOS ships openrsync,
   which cannot protect remote arguments or report byte progress, so the desktop release bundles
   its own rsync, and a Mac without it has none a handover runs: only Linux falls back to the
@@ -362,14 +363,15 @@ rollback (after a reinstall under the same name, the newest other release) and r
 
 1. Open an interactive SSH connection so the user can verify a new host key and complete any SSH
    authentication.
-2. Read the remote home, OS and architecture; require Ubuntu (an LTS release passes, another warns)
+2. Read the remote home, OS and architecture; require Ubuntu 22.04 or newer (an LTS release passes, another warns)
    and a home path equal to the Mac's. A different home stops setup with the commands that create
    an account whose home matches.
-3. Check Tailscale, tmux, Git, rsync and systemd user services. A tmux older than 3.5 is a warning
-   naming the Shift+Enter limitation, not a blocker, and so is an rsync older than 3.2.3. Missing
+3. Check Tailscale, Git, rsync and systemd user services. An rsync older than 3.2.3 is a warning,
+   not a blocker. Missing
    system packages are shown with a copyable apt command. Svall never runs sudo: the step's
    action names the command for the user to run in a terminal of their own.
-4. Upload and verify the matching companion release.
+4. Upload and verify the matching companion release. Once it is installed, check the tmux its units
+   start: a tmux older than 3.5 is a warning naming the Shift+Enter limitation, not a blocker.
 5. Install `svall-gateway.service` and an `svall-svalld@<fleet>.service` template as
    systemd user units. Units use absolute paths through `current`, a resolved PATH that holds
    `~/.opencode/bin`, `Restart=always` and logs under the Svall data directory; each fleet's unit

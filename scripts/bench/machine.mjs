@@ -21,6 +21,8 @@ import readline from 'node:readline';
 const HOME = os.homedir();
 const FLEET = path.join(HOME, '.svall');
 const SVALL = path.join(HOME, '.local', 'bin', 'svall');
+// the tmux the release carries, which serves the fleet's socket; Ubuntu's older client cannot talk to it
+const TMUX = path.join(HOME, '.local', 'share', 'svall', 'current', 'bin', 'tmux');
 const UNIT = 'svall-svalld@private.service';
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
@@ -268,7 +270,7 @@ async function flood(o) {
     samples.push(status(pid).rss);
   }
   fromDaemon.resume();
-  const tmux = (...args) => execFileSync('tmux', ['-S', path.join(FLEET, 'tmux.sock'), ...args], { encoding: 'utf8' });
+  const tmux = (...args) => execFileSync(TMUX, ['-S', path.join(FLEET, 'tmux.sock'), ...args], { encoding: 'utf8' });
   const pane = tmux('list-panes', '-a', '-F', '#{window_name} #{pane_id}').split('\n').find((l) => l.startsWith(`${id} `))?.split(' ')[1];
   if (pane) tmux('send-keys', '-t', pane, 'C-c');
   await sleep(2000);

@@ -90,11 +90,11 @@ export class TerminalHub {
     await this.resizeFor(viewer, id, c.tmux.windowId, cols, rows);
   }
 
-  async attach(id: string, term?: 2): Promise<{ socket: string; session: string }> {
+  async attach(id: string, term?: 2): Promise<{ socket: string; session: string; tmux: string }> {
     const { windowId } = this.fleet.terminal(id, term).tmux;
     const session = viewerSession(id, term);
     await this.tmux.attachSession(session, windowId);
-    return { socket: this.tmux.socket, session };
+    return { socket: this.tmux.socket, session, tmux: this.tmux.binary };
   }
 
   /** Lets go of every desktop terminal attached to either of a character's terminals. */

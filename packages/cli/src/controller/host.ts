@@ -116,8 +116,8 @@ const sh = (name: string, script: string, ...args: string[]): string[] =>
   ['sh', '-c', shq(script), shq(name), ...args.map(shq)];
 
 const WHICH = 'for c in "$@"; do if command -v "$c" >/dev/null 2>&1; then echo "$c yes"; else echo "$c no"; fi; done';
-const TOOLS = ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'];
-const APT: Record<string, string> = { tmux: 'tmux', git: 'git', rsync: 'rsync' };
+const TOOLS = ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'];
+const APT: Record<string, string> = { git: 'git', rsync: 'rsync' };
 const ARCHES: Record<string, string> = { aarch64: 'arm64', arm64: 'arm64', x86_64: 'x64', amd64: 'x64' };
 
 async function probe(master: SshMaster, argv: string[], what: string): Promise<string> {
@@ -141,6 +141,8 @@ async function osProbe(master: SshMaster): Promise<Outcome<{ arch: string }>> {
   const id = field(osRelease, 'ID');
   const versionId = field(osRelease, 'VERSION_ID');
   if (id !== 'ubuntu') throw new StepError(`${field(osRelease, 'NAME') || id || 'this machine'} is not Ubuntu; the companion supports the Ubuntu LTS releases`);
+  // the companion's tmux is built against 22.04's glibc, and an older rsync is below the floor a handover needs
+  if (!(Number(versionId.split('.')[0]) >= 22)) throw new StepError(`Ubuntu ${versionId} is older than 22.04, the oldest release the companion runs on`);
   const release = `Ubuntu ${versionId} ${arch}`;
   return isLts(versionId)
     ? { value: { arch }, detail: `${release} (LTS)` }
@@ -223,6 +225,22 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
 
+/** The PATH the companion's units run with, and so the one its daemon finds tmux and the agent CLIs on. */
+const unitPathOf = (home: string, svallBase: string): string =>
+  unitPath({ runtime: releaseRuntime(path.posix.join(svallBase, 'current')), homedir: home, prefix: svallBase });
+
+/** The tmux the units start: the companion's own, or the machine's for a release that carries none. */
+async function tmuxCheck(master: SshMaster, o: { destination: string; home: string; svallBase: string }): Promise<Outcome<void>> {
+  const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, o.svallBase)}`), ...sh('svall-tmux-version', 'command -v tmux && tmux -V')], { timeoutMs: PROBE_TIMEOUT });
+  const [where, version] = r.stdout.trim().split('\n');
+  if (!where) throw new StepError('tmux missing: this release carries none, and the machine has none', onThere(o.destination, 'sudo apt install tmux'));
+  if (r.code !== 0) throw new StepError(`${where} -V exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  const whose = where.startsWith(`${o.svallBase}/`) ? "Svall's own" : `from ${where}`;
+  return tmuxTooOld(version)
+    ? { value: undefined, status: 'warn', detail: `${version} ${whose}: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4` }
+    : { value: undefined, detail: `${version}, ${whose}` };
+}
+
 // the companion doctor's checks of each agent's Svall hooks and of Codex's sandbox, whose details end with what to do there
 const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['codex hooks', 'codex sandbox'], opencode: ['opencode plugin'] };
 
@@ -231,7 +249,7 @@ const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['
  * companion doctor's checks of that agent: every one of them is something to go and do, never something that stops setup.
  */
 async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<void> {
-  const PATH = unitPath({ runtime: releaseRuntime(path.posix.join(o.svallBase, 'current')), homedir: o.home, prefix: o.svallBase });
+  const PATH = unitPathOf(o.home, o.svallBase);
   for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
@@ -285,8 +303,7 @@ async function addProbe(master: SshMaster, entry: MachineEntry, home: string, re
   const answer = await remoteOwner({ master, exe: svallExe(entry.record.svallBase), op: 'get', fleetId: crypto.randomUUID() }).catch((e: Error) => ({ error: { code: 'disconnected', message: e.message } }));
   // any answer of the authority's own will do, as it knows no fleet this probe names
   if ('error' in answer && (answer.error.code === 'disconnected' || answer.error.code === 'timeout')) throw new StepError(answer.error.message);
-  const PATH = unitPath({ runtime: releaseRuntime(path.posix.join(entry.record.svallBase, 'current')), homedir: home, prefix: entry.record.svallBase });
-  const r = await master.run(['env', shq(`PATH=${PATH}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
+  const r = await master.run(['env', shq(`PATH=${unitPathOf(home, entry.record.svallBase)}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
   if (r.code !== 0) throw new StepError(`tmux could not open a window there (exit ${r.code}): ${r.stderr.trim().slice(0, 200) || 'no output'}`);
   return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, its gateway authority answers, and tmux opens and closes a window there` };
 }
@@ -380,12 +397,6 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       });
 
       await run.step('tools', async () => toolsProbe(await probe(master, sh('svall-tools', WHICH, ...TOOLS), 'command -v'), o.ssh));
-      await run.step('tmux', async () => {
-        const version = (await probe(master, ['tmux', '-V'], 'tmux -V')).trim();
-        return tmuxTooOld(version)
-          ? { value: undefined, status: 'warn' as const, detail: `${version}: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4` }
-          : { value: undefined, detail: version };
-      });
       await run.step('rsync', async () => {
         const line = (await probe(master, sh('svall-rsync', 'rsync --version | head -1'), 'rsync --version')).trim();
         const r = rsyncVersion(line);
@@ -410,6 +421,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         });
         return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
       });
+      await run.step('tmux', () => tmuxCheck(master, { destination: o.ssh, home, svallBase: remote.svallBase }));
 
       const report = await run.step('service', async () => serviceOutcome(await remoteJson<RemoteDoctor>(master, remote.svallBase, ['doctor', '--json'], 'svall doctor --json'), o.ssh));
       const machine = await run.step('identity', async () => {

@@ -56,7 +56,7 @@ Type=simple
 ExecStart="/home/linus/.local/share/svall/current/bin/svalld"
 Environment="SVALL_HOME=/home/linus/.svall"
 Environment="HOME=/home/linus"
-Environment="PATH=/home/linus/.local/share/svall/current/node/bin:/home/linus/.local/bin:/home/linus/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/linus/.local/share/svall/current/node/bin:/home/linus/.local/share/svall/current/bin:/home/linus/.local/bin:/home/linus/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
 Environment=LANG=C.UTF-8
 Restart=always
 RestartSec=2
@@ -83,7 +83,7 @@ After=network.target
 Type=simple
 ExecStart="/home/linus/.local/share/svall/current/bin/svall" "gateway" "serve"
 Environment="HOME=/home/linus"
-Environment="PATH=/home/linus/.local/share/svall/current/node/bin:/home/linus/.local/bin:/home/linus/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/linus/.local/share/svall/current/node/bin:/home/linus/.local/share/svall/current/bin:/home/linus/.local/bin:/home/linus/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
 Environment=LANG=C.UTF-8
 Restart=always
 RestartSec=2
@@ -113,7 +113,7 @@ WantedBy=default.target
     // Environment expands a specifier but never a variable
     expect(unit.text).toContain('Environment="SVALL_HOME=/tmp/x y%%z/$home/.svall-work"\n');
     expect(unit.text).toContain('Environment="HOME=/tmp/x y%%z/$home"\n');
-    expect(unit.text).toContain('Environment="PATH=/tmp/x y%%z/$home/.local/share/svall/current/node/bin:/tmp/x y%%z/$home/.local/bin:/tmp/x y%%z/$home/.opencode/bin:/usr/local/bin:/usr/bin:/bin"\n');
+    expect(unit.text).toContain('Environment="PATH=/tmp/x y%%z/$home/.local/share/svall/current/node/bin:/tmp/x y%%z/$home/.local/share/svall/current/bin:/tmp/x y%%z/$home/.local/bin:/tmp/x y%%z/$home/.opencode/bin:/usr/local/bin:/usr/bin:/bin"\n');
     expect(unit.text).toContain('StandardOutput=append:/tmp/x y%%z/$home/.local/share/svall/log/svall-svalld@work.log\n');
     expect(unit.text).toContain('StandardError=append:/tmp/x y%%z/$home/.local/share/svall/log/svall-svalld@work.log\n');
     expect(unit.text).toContain('Description=Svall daemon for the work fleet\n');
@@ -123,7 +123,7 @@ WantedBy=default.target
     const unit = gatewayUnit(odd);
     expect(unit.text).toContain('ExecStart="/tmp/x y%%z/$home/.local/share/svall/current/bin/svall" "gateway" "serve"\n');
     expect(unit.text).toContain('Environment="HOME=/tmp/x y%%z/$home"\n');
-    expect(unit.text).toContain('Environment="PATH=/tmp/x y%%z/$home/.local/share/svall/current/node/bin:/tmp/x y%%z/$home/.local/bin:/tmp/x y%%z/$home/.opencode/bin:/usr/local/bin:/usr/bin:/bin"\n');
+    expect(unit.text).toContain('Environment="PATH=/tmp/x y%%z/$home/.local/share/svall/current/node/bin:/tmp/x y%%z/$home/.local/share/svall/current/bin:/tmp/x y%%z/$home/.local/bin:/tmp/x y%%z/$home/.opencode/bin:/usr/local/bin:/usr/bin:/bin"\n');
     expect(unit.text).toContain('StandardOutput=append:/tmp/x y%%z/$home/.local/share/svall/log/svall-gateway.log\n');
   });
 

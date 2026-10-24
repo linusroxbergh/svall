@@ -44,9 +44,29 @@ jobs:
             echo signed=false >> "$GITHUB_OUTPUT"
           fi
 
+  # the tmux each Linux companion carries, built in an Ubuntu 22.04 container on its own architecture, as the Mac build
+  # job has no docker
+  tmux:
+    strategy:
+      matrix:
+        include:
+          - { arch: x64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: scripts/tmux-build.sh --linux ${{ matrix.arch }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: tmux-linux-${{ matrix.arch }}
+          path: vendor/tmux
+          if-no-files-found: error
+          retention-days: 1
+
   # the key never reaches this job, so nothing the install or the bundlers run can read it
   build:
-    needs: key
+    needs: [key, tmux]
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -65,6 +85,13 @@ jobs:
             vendor/rsync
             vendor/node
           key: vendor-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/release/pins.json') }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: tmux-linux-*
+          path: vendor/tmux
+          merge-multiple: true
+      # an artifact keeps no file modes, and tmux-build.sh takes only an executable tmux as built
+      - run: chmod 755 vendor/tmux/*/tmux
       - name: Build and scan the release
         run: >-
           scripts/release-build.sh --out "$RUNNER_TEMP/release" --version "$GITHUB_REF_NAME"

@@ -80,10 +80,10 @@ export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
   };
 }
 
-// the release's own runtime first, so the daemon starts the node it was built against; OpenCode's installer puts it in
-// ~/.opencode/bin, which the Mac's plist reaches through the login shell's PATH
+// the release's own runtime and tmux first, so the daemon and its terminals start what it was built with; OpenCode's
+// installer puts it in ~/.opencode/bin, which the Mac's plist reaches through the login shell's PATH
 export const unitPath = (o: UnitOptions): string => [
-  o.runtime.release ? path.join(o.runtime.release, 'node', 'bin') : path.dirname(process.execPath),
+  ...(o.runtime.release ? [path.join(o.runtime.release, 'node', 'bin'), path.join(o.runtime.release, 'bin')] : [path.dirname(process.execPath)]),
   path.join(o.homedir, '.local', 'bin'), path.join(o.homedir, '.opencode', 'bin'), '/usr/local/bin', '/usr/bin', '/bin',
 ].join(':');
 

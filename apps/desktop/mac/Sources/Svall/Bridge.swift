@@ -3,6 +3,8 @@ import WebKit
 
 struct WebAttach: Decodable {
     let socket: String, session: String
+    /// The tmux that serves the socket, which a terminal on another machine runs there.
+    var tmux: String? = nil
 }
 
 /// Messages from the webview. Mirrors ToShell in apps/desktop/web/src/bridge.ts.

@@ -29,7 +29,9 @@ const ELSEWHERE = `${HOME}-elsewhere`;
 const BASE = `${HOME}/.local/share/svall`;
 const SVALL = `${BASE}/current/bin/svall`;
 // the PATH the companion's units run with, and so the one its daemon finds the agent CLIs on
-const UNIT_PATH = `PATH=${BASE}/current/node/bin:${HOME}/.local/bin:${HOME}/.opencode/bin:/usr/local/bin:/usr/bin:/bin`;
+const UNIT_PATH = `PATH=${BASE}/current/node/bin:${BASE}/current/bin:${HOME}/.local/bin:${HOME}/.opencode/bin:/usr/local/bin:/usr/bin:/bin`;
+// what the tmux on that PATH answers: where it is, then its version
+const OWN_TMUX = `${BASE}/current/bin/tmux\ntmux 3.7c\n`;
 
 const OS_RELEASE = 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="24.04"\nVERSION="24.04.1 LTS (Noble Numbat)"\n';
 const DF = 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 60000000 20000000 40000000 34% /\n';
@@ -89,12 +91,11 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
 }
 
 /** Everything a healthy Ubuntu companion answers, in the order `host add` asks for it. */
-function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean } = {}): void {
+function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean; tmux?: { stdout?: string; stderr?: string; code?: number } } = {}): void {
   ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
   ssh.reply(['cat', '/etc/os-release'], { stdout: o.osRelease ?? OS_RELEASE });
   ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
-  ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
-  ssh.reply(['tmux', '-V'], { stdout: 'tmux 3.4\n' });
+  ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
   ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.2.7  protocol version 31\n' });
   ssh.reply(['svall-space'], { stdout: DF });
   ssh.reply(['svall-linger'], { stdout: o.linger ?? 'Linger=yes\n' });
@@ -103,6 +104,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['svall-unpack'], {});
   ssh.reply(['rm'], {});
   ssh.reply(['setup'], { stdout: 'release 1.2.3 installed\n' });
+  ssh.reply(['svall-tmux-version'], o.tmux ?? { stdout: OWN_TMUX });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
   ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
   ssh.reply(['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ error: { code: 'not_found', message: 'the gateway holds no record for that fleet' } })}\n`, code: 1 });
@@ -155,14 +157,14 @@ describe('host add', () => {
     // each step names the machine, never its id
     expect(JSON.stringify(events)).not.toContain(REMOTE);
     const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : w[0] === 'env' ? `${w[2]} ${w[3]}` : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
-    expect(order.slice(0, 8)).toEqual([
+    expect(order.slice(0, 7)).toEqual([
       'uname -sm', 'cat /etc/os-release',
       'printf "%s\\n%s\\n" "$', 'for c in "$@"; do if',
-      'tmux -V', 'rsync --version | he', 'df -Pk "$HOME"', 'l=$(loginctl show-us',
+      'rsync --version | he', 'df -Pk "$HOME"', 'l=$(loginctl show-us',
     ]);
-    expect(order.slice(8)).toEqual([
+    expect(order.slice(7)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
-      'svall doctor', 'svall version',
+      'sh -c', 'svall doctor', 'svall version',
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall gateway', 'sh -c',
     ]);
@@ -429,11 +431,18 @@ describe('host add', () => {
     expect(ssh.remoteCalls().some((w) => w.includes('setup'))).toBe(false);
   });
 
+  it('stops on an Ubuntu older than 22.04, whose glibc the companion\'s tmux does not run on', async () => {
+    healthy({ osRelease: 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="20.04"\n' });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    expect(out).toMatchObject({ result: 'actions', stopped: 'os' });
+    expect(step('os').at(-1)).toMatchObject({ status: 'fail', detail: 'Ubuntu 20.04 is older than 22.04, the oldest release the companion runs on' });
+  });
+
   it('names the apt command for the packages the machine is missing', async () => {
-    healthy({ tools: ['tailscale', 'git', 'systemctl', 'loginctl'] });
+    healthy({ tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
-    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install tmux rsync' });
+    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git rsync' });
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 
@@ -451,15 +460,32 @@ describe('host add', () => {
     expect(step('registry').at(-1)).toMatchObject({ status: 'ok' });
   });
 
-  it('warns about a tmux too old for Shift+Enter without blocking', async () => {
+  it('checks the tmux the units start once the release is installed, which is the release\'s own', async () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('tmux').at(-1)).toMatchObject({ status: 'warn' });
-    expect(step('tmux').at(-1)?.detail).toContain('Shift+Enter');
+    expect(step('tmux').at(-1)).toMatchObject({ status: 'ok', detail: "tmux 3.7c, Svall's own" });
+    expect(ssh.remoteCalls().find((c) => c.includes('svall-tmux-version'))?.slice(0, 2)).toEqual(['env', UNIT_PATH]);
     expect(out.result).toBe('ready');
+  });
+
+  it('warns about a machine\'s tmux too old for Shift+Enter without blocking, for a release that carries none', async () => {
+    healthy({ tmux: { stdout: '/usr/bin/tmux\ntmux 3.4\n' } });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('tmux').at(-1)).toMatchObject({ status: 'warn', detail: 'tmux 3.4 from /usr/bin/tmux: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4' });
+    expect(out.result).toBe('ready');
+  });
+
+  it('stops with the apt command where neither the release nor the machine has a tmux', async () => {
+    healthy({ tmux: { code: 1 } });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    expect(out).toMatchObject({ result: 'actions', stopped: 'tmux', actions: ['ssh trift.test, then sudo apt install tmux'] });
+    expect(step('install').at(-1)).toMatchObject({ status: 'ok' });
   });
 
   it('turns lingering on where it is off, and leaves nothing to do when the system lets it', async () => {
@@ -512,8 +538,8 @@ describe('host add', () => {
     await d.close();
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
-      'name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger',
-      'release', 'upload', 'install', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry',
+      'name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger',
+      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry',
     ]);
   });
 
@@ -683,8 +709,8 @@ describe('host add', () => {
       gateway(registry, far);
       for (const [match, stdout] of [
         [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${far}\nlinus\n`],
-        [['svall-tools'], ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
-        [['tmux', '-V'], 'tmux 3.4\n'], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+        [['svall-tools'], ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+        [['svall-tmux-version'], OWN_TMUX], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
       ] as [string[], string][]) ssh.reply(match, { stdout });
       for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
       ssh.execute({ rsync: '/usr/bin/rsync' });
@@ -1021,8 +1047,8 @@ esac
     fs.writeFileSync(file, JSON.stringify(saved));
     for (const [match, stdout] of [
       [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${work}/far\nlinus\n`],
-      [['svall-tools'], ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
-      [['tmux', '-V'], 'tmux 3.4\n'], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+      [['svall-tools'], ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+      [['svall-tmux-version'], OWN_TMUX], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
     ] as [string[], string][]) ssh.reply(match, { stdout });
     for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
     const intruder = ephemeralSigner(work);

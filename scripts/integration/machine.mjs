@@ -16,6 +16,8 @@ import readline from 'node:readline';
 
 const HOME = os.homedir();
 const FLEET = path.join(HOME, '.svall');
+// the tmux the release carries, which serves the fleet's socket; Ubuntu's older client cannot talk to it
+const TMUX = path.join(HOME, '.local/share/svall/current/bin/tmux');
 const MOCK = '/opt/it/claude.mjs';
 const REPOS = ['src/app', 'src/app-wt'];
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -149,7 +151,7 @@ function sessions() {
 async function snap(o) {
   const info = await settled(() => rpc('system.info'));
   const state = await settled(() => rpc('state.get'));
-  const listed = run('tmux', ['-S', path.join(FLEET, 'tmux.sock'), 'list-windows', '-a', '-F', '#{window_name}|#{pane_pid}|#{pane_current_command}']);
+  const listed = run(TMUX, ['-S', path.join(FLEET, 'tmux.sock'), 'list-windows', '-a', '-F', '#{window_name}|#{pane_pid}|#{pane_current_command}']);
   // a machine that let the fleet go runs no tmux server for it at all
   const windows = (/^ERROR \d+: no server running/.test(listed) ? '' : listed)
     .split('\n').filter(Boolean).map((l) => { const [name, pid, command] = l.split('|'); return { name, pid: Number(pid), command }; });

@@ -152,31 +152,31 @@ describe('a step by name', () => {
 
 describe('the attended checklist', () => {
   it('names the phase each step belongs to, in the order the steps arrived', () => {
-    const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tmux', 'ok'), step('release', 'ok'),
+    const steps = [step('ssh', 'ok'), step('master', 'ok'), step('rsync', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
       ['Reaching the machine', ['ssh', 'master']],
-      ['What the machine needs', ['tmux']],
-      ['Svall on the machine', ['release']],
+      ['What the machine needs', ['rsync']],
+      ['Svall on the machine', ['release', 'tmux']],
       ['Agent logins', ['claude', 'codex', 'opencode']],
       ['Trying it out', ['probe']],
     ]);
   });
 
   it('opens a phase again when a later step comes back to it', () => {
-    expect(groupSteps([step('ssh', 'ok'), step('tmux', 'ok'), step('master', 'ok')]).map((g) => g.label))
+    expect(groupSteps([step('ssh', 'ok'), step('rsync', 'ok'), step('master', 'ok')]).map((g) => g.label))
       .toEqual(['Reaching the machine', 'What the machine needs', 'Reaching the machine']);
   });
 
   it('calls no phase by the name of a step in it', () => {
-    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
-      'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'probe', 'rollback', 'registry'];
+    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
+      'tmux', 'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
-    const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload',
-      'install', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
+    const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload',
+      'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
     const remove = ['machine', 'fleet', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);

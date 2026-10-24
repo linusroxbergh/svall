@@ -26,7 +26,7 @@ describe('messages', () => {
   });
   it('term.attach takes an id and returns how to attach', () => {
     expect(methods['term.attach'].params.parse({ id: 'c_a' })).toEqual({ id: 'c_a' });
-    expect(methods['term.attach'].result.parse({ socket: '/tmp/x/tmux.sock', session: 'v-c_a' }).session).toBe('v-c_a');
+    expect(methods['term.attach'].result.parse({ socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux' })).toEqual({ socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux' });
   });
   it('char.move takes an island and a cell', () => {
     expect(methods['char.move'].params.parse({ id: 'c', islandId: 'i', cell: { x: 1, y: 2 } })).toEqual({ id: 'c', islandId: 'i', cell: { x: 1, y: 2 } });

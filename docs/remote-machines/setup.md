@@ -8,14 +8,15 @@ machine needs, how to add it, and how to look after it.
 
 | | Mac | Linux machine |
 | --- | --- | --- |
-| System | macOS 15 or newer | Ubuntu LTS, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and any other system is refused. |
-| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and needs no clone, pnpm or build tools. |
+| System | macOS 15 or newer | Ubuntu LTS 22.04 or newer, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and an older Ubuntu or any other system is refused. |
+| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and tmux and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
-| Tools | tmux, Git | tmux 3.x, Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install tmux git rsync`) |
+| Tools | tmux, Git | Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install git rsync`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
 | Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
 
-tmux 3.5 or newer is recommended on both, because Shift+Enter needs it; Ubuntu 24.04 ships 3.4, which works otherwise.
+On the Mac, tmux 3.5 or newer is recommended, because Shift+Enter needs it. The Linux machine runs the tmux 3.7c Svall
+brings, as Ubuntu 24.04 ships 3.4.
 
 The Mac's bundled rsync is the one a handover uses; `svall doctor` checks it.
 
@@ -67,10 +68,11 @@ Both run the same steps and show each as it finishes:
 1. **Reaching the machine.** One interactive ssh, so you can accept the host key and log in, then one control
    connection for the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
 2. **What the machine needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
-   Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering,
+   Tailscale, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering,
    which it turns on where it is off.
 3. **Svall on the machine.** The Linux release matching this Mac's own release, checked against the digest this
-   Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
+   Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there,
+   and the tmux it brings checked.
 4. **Running Svall there.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
@@ -156,7 +158,7 @@ release and result of its last check, each with the buttons below.
 | Command | In the app | What it does |
 | --- | --- | --- |
 | `svall host list` | Settings → Machines | Every machine in the registry, with its id, the fleets on this Mac it is the gateway of, and its last check. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path; `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path; `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends with ready and the number of warnings, or the checks that block a handover. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a handover. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads. |
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
@@ -187,11 +189,12 @@ On the Linux machine itself:
 
 On the Linux machine, all under the account:
 
-- `~/.local/share/svall/releases/<version>` and `current`, the release; `~/.local/bin/svall` points into it.
-  Each install keeps the release before it, for a rollback, and removes older ones.
+- `~/.local/share/svall/releases/<version>` and `current`, the release, with the tmux the fleet's terminals run in
+  (`bin/tmux`); `~/.local/bin/svall` points into it. Each install keeps the release before it, for a rollback, and
+  removes older ones.
 - `~/.config/systemd/user/svall-gateway.service`, and one `svall-svalld@<fleet>.service` per fleet. Each fleet's
   unit carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `OPENCODE_DB` the
-  account's login shell sets. Both units' `PATH` holds `~/.local/bin` and `~/.opencode/bin`, where OpenCode's
+  account's login shell sets. Both units' `PATH` holds the release's `bin`, `~/.local/bin` and `~/.opencode/bin`, where OpenCode's
   installer puts it.
 - `~/.config/opencode/plugins/svall.js` (under `XDG_CONFIG_HOME` when the login shell sets it), Svall's OpenCode
   plugin, when OpenCode is installed and the fleet does not turn it off.

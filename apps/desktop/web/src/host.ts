@@ -39,8 +39,9 @@ const plainStep = (text: string, names: MachineNames): string => withoutIds(with
 /** The phases the checklist shows, and the steps `svall host …` emits inside each. */
 const PHASES = [
   { phase: 'connect', label: 'Reaching the machine', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger'] },
-  { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'uninstall'] },
+  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger'] },
+  // the tmux the units start, which the release installed carries
+  { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'tmux', 'uninstall'] },
   { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'authority', 'fleet'] },
   { phase: 'agents', label: 'Agent logins', steps: ['claude', 'codex', 'opencode'] },
   // an upgrade puts the release before back when its probe fails

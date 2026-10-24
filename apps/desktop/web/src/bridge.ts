@@ -2,7 +2,7 @@ import type { AgentKind, ContextItem, HandoverChoices } from '@svall/protocol';
 import type { HandoverEvent } from './handover.js';
 
 export type Rect = { x: number; y: number; width: number; height: number };
-export type Attach = { socket: string; session: string };
+export type Attach = { socket: string; session: string; tmux: string };
 export type Connection = { host: string; port: number; token: string };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone

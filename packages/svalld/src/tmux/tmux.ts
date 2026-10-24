@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
 import { ControlClient } from './control.js';
 
@@ -15,7 +16,7 @@ const KEEP_WINDOW = '_keep';
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'dash']);
 
 export function resolveTmux(): string {
-  const own = helper('tmux');
+  const own = helper('tmux') ?? releaseTmux();
   if (own) return own;
   for (const dir of (process.env.PATH ?? '').split(':')) {
     if (!dir) continue;
