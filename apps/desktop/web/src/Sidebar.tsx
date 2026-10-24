@@ -258,6 +258,20 @@ function Starred() {
   );
 }
 
+// the press brings up Sparkle's window for the release update.available named
+function UpdateRow() {
+  const version = useApp((s) => s.update);
+  if (!version) return null;
+  return (
+    <button className="sb-update" data-testid="sidebar-update" onClick={() => app.bridge.send({ type: 'update.install' })}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14" />
+      </svg>
+      Update to {version}
+    </button>
+  );
+}
+
 export function Sidebar() {
   const fleet = useApp((s) => s.fleet);
   const active = useApp((s) => s.active);
@@ -312,6 +326,7 @@ export function Sidebar() {
           );
         })}
       </div>
+      <UpdateRow />
     </aside>
   );
 }
