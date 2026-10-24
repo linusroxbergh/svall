@@ -8,8 +8,9 @@ import { realDeps } from '@svall/svalld/mobile';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
-import { ownRuntime } from '@svall/svalld/runtime';
+import { ownRuntime, type Runtime } from '@svall/svalld/runtime';
 import { cliCommand } from '@svall/svalld/setup';
+import { shq } from '@svall/svalld/text';
 import { appQuit, fleetData, fleetHomes, libraryData, purge, runUninstall, UninstallRefused } from '@svall/svalld/uninstall';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { REFUSED } from '../controller/host.js';
@@ -35,6 +36,10 @@ export async function uninstall(o: { purge: boolean; force?: boolean; forceFleet
   if (!yes) return { done, kept: data };
   return { done: [...done, ...await d.purge(data)], kept: [] };
 }
+
+// the shims are gone by now, and a `svall` left on PATH may be the other build's; a companion's release went with them
+export const keptLine = (kept: string[], r: Runtime): string =>
+  `kept ${kept.join(', ')}; ${r.release ? `rm -rf ${kept.map(shq).join(' ')}` : `${cliCommand(r)} uninstall --purge`} deletes them`;
 
 export function uninstallCommand(json: () => boolean, run: typeof runUninstall = runUninstall): Command {
   return new Command('uninstall')
@@ -89,8 +94,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
       // the app deletes its Library data itself once it has quit, as it would write it back while it runs
       printResult(o.fromApp ? { ...r, library: libraryData(os.homedir()) } : r, json(), () => [
         ...(r.done.length ? r.done : ['nothing to remove']),
-        // the shims are gone by now, and a `svall` left on PATH may be the other build's
-        ...(r.kept.length ? [`kept ${r.kept.join(', ')}; ${cliCommand(ownRuntime())} uninstall --purge deletes them`] : []),
+        ...(r.kept.length ? [keptLine(r.kept, ownRuntime())] : []),
       ].join('\n'));
     });
 }
