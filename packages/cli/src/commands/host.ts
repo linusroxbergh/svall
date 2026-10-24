@@ -10,6 +10,7 @@ import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
+import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
 import { addHost, doctorHost, enableHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
@@ -17,6 +18,7 @@ import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { targetFor } from '../target.js';
 import { MARK, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
+import { withClient } from './fleet.js';
 
 /**
  * Where the first ssh asks its questions: the terminal, or a dialog when there is none, as when the
@@ -52,6 +54,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string): HostDeps {
     interactiveSsh,
     fetch: (url) => fetch(url),
     controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot(), signed: releaseSigned() },
+    localAgents: () => withClient(() => Client.connect(), async (c) => (await c.call('system.info', {})).agentAdapters).catch(() => undefined),
     machineId: () => machineId(dir),
     homedir: os.homedir(),
     verify: sshVerify({ allowedSigners: controllerSigners() }),

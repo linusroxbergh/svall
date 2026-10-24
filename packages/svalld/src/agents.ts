@@ -11,6 +11,8 @@ type AgentAdapter = {
   installUrl: string;
   // the vendor's own installer for the CLI; the desktop apps don't put the command on PATH
   installCommand: string;
+  // the CLI's own update to its latest release, whichever way it was installed
+  updateCommand: string;
   minVersion?: Version;
   // minVersion is only what a handover needs, so a fleet that never hands over runs on older
   handoverFloor?: true;
@@ -26,7 +28,7 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
     // the oldest release whose sessions a handover carries, which a fixture holds
     label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251], handoverFloor: true,
-    installCommand: 'curl -fsSL https://claude.ai/install.sh | bash',
+    installCommand: 'curl -fsSL https://claude.ai/install.sh | bash', updateCommand: 'claude update',
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
     loginHint: 'claude auth login',
@@ -34,14 +36,14 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
   },
   codex: {
     label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 156, 0],
-    installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+    installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', updateCommand: 'codex update',
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
     crewCommand: 'codex',
   },
   opencode: {
     label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/v2/docs/', minVersion: [2, 0, 22],
-    installCommand: 'curl -fsSL https://opencode.ai/v2/install | bash',
+    installCommand: 'curl -fsSL https://opencode.ai/v2/install | bash', updateCommand: 'opencode upgrade',
     // its login is a model provider's login or key, which auth list names; an MCP server's is an integration too. A
     // private server leaves the user's shared background service unstarted
     loginArgs: ['auth', 'list', '--standalone', '--format', 'json'],
@@ -72,6 +74,9 @@ export function parseVersion(text: string): Version | undefined {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(text);
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined;
 }
+
+/** The release a CLI names in its `--version` line, whatever it wraps it in. */
+export const versionOf = (text: string): string | undefined => /\d+\.\d+\.\d+[0-9A-Za-z.+-]*/.exec(text)?.[0];
 
 // a version line that can't be read passes, so a new format never blocks anyone
 export function versionOk(a: Pick<AgentAdapter, 'minVersion'>, text: string): boolean {

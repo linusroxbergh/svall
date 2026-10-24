@@ -1,9 +1,6 @@
 import path from 'node:path';
 import { SessionError, type SessionFs } from './types.js';
 
-/** The release a CLI names in its `--version` line, whatever it wraps it in. */
-export const versionOf = (text: string): string | undefined => /\d+\.\d+\.\d+[0-9A-Za-z.+-]*/.exec(text)?.[0];
-
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 const unreadable = (file: string, e: unknown): SessionError => new SessionError('path_unsupported', `${file}: ${(e as NodeJS.ErrnoException).code ?? String(e)}`);
 

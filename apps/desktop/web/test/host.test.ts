@@ -155,12 +155,12 @@ describe('a step by name', () => {
 describe('the attended checklist', () => {
   it('names the phase each step belongs to, in the order the steps arrived', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('rsync', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
-                   step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('probe', 'ok')];
+                   step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('versions', 'warn'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
       ['Reaching the machine', ['ssh', 'master']],
       ['What the machine needs', ['rsync']],
       ['Svall on the machine', ['release', 'tmux']],
-      ['Agent logins', ['claude', 'codex', 'opencode']],
+      ['Agent logins', ['claude', 'codex', 'opencode', 'versions']],
       ['Trying it out', ['probe']],
     ]);
   });
@@ -172,13 +172,13 @@ describe('the attended checklist', () => {
 
   it('calls no phase by the name of a step in it', () => {
     const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
-      'tmux', 'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'probe', 'rollback', 'registry'];
+      'tmux', 'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
     const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload',
-      'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
+      'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
     const remove = ['machine', 'fleet', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);

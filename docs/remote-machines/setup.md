@@ -13,7 +13,7 @@ machine needs, how to add it, and how to look after it.
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
 | Tools | tmux, Git | Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install git rsync`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
-| Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
+| Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same, each at the release the Mac runs, since a handover each way needs the destination's release at least the source's |
 
 On the Mac, tmux 3.5 or newer is recommended, because Shift+Enter needs it. The Linux machine runs the tmux 3.7c Svall
 brings, as Ubuntu 24.04 ships 3.4.
@@ -73,7 +73,8 @@ Both run the same steps and show each as it finishes:
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
    own `svall doctor` finds them. Each agent is asked on the `PATH` and with the `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and
-   `XDG_*` folders the Svall daemon runs with, which setup takes from your login shell there.
+   `XDG_*` folders the Svall daemon runs with, which setup takes from your login shell there. **Agent versions**
+   compares each with this Mac's, as its own daemon finds it.
 6. **Trying it out.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **This Mac's list of machines.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
@@ -105,6 +106,9 @@ nothing typed. From a terminal on the Mac, each action names the command and the
   from has none either and its agent has answered there: then the checks only warn.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
   them with `/hooks`.
+- An agent at another release than this Mac's: the side behind, and the vendor's update to run there,
+  `ssh ada@studio, then claude update`, or `on this Mac, run claude update`. `codex update` and `opencode upgrade` do
+  the same for Codex and OpenCode. An update goes to the latest release, so the other machine may then be behind.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
   `svall doctor` says to do there.
 - Codex's sandbox kept from starting by AppArmor, as on Ubuntu 24.04, where a Codex character would ask before each

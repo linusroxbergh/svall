@@ -7,7 +7,7 @@ import {
   type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession, type Warning,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
-import { AGENTS, compareVersions, versionOk } from '../../agents.js';
+import { AGENTS, compareVersions, versionOf, versionOk } from '../../agents.js';
 import { characterKeyEnv } from '../../claude.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
@@ -18,7 +18,6 @@ import { holds } from '../portable-path.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { opencodeAdapter } from './opencode.js';
-import { versionOf } from './records.js';
 import { SessionError, type CliRun, type SessionAdapter } from './types.js';
 
 /** Every session adapter, each for one agent kind from its minimum release on. */
