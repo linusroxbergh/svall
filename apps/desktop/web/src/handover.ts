@@ -262,18 +262,18 @@ export function wayOut(run: HandoverRun, ctx: Pick<HintContext, 'destination' | 
   const s = verdictOf(run);
   const stop = s ? undefined : stopOf(run.result);
   if (s?.standing === 'superseded' || stop === 'superseded') {
-    return `\`${svall} handover status\` says where the fleet stands now. Forget is enough when another handover or a recovery moved it on; `
-      + `if the gateway was set up again, \`${svall} fleet recover --force-owner local\` then makes this Mac the fleet's owner.`;
+    return `Where the fleet stands now:\n\`${svall} handover status\`\nForget is enough if another handover or a recovery moved it on.\n`
+      + `If the gateway was set up again, make this Mac the fleet's owner:\n\`${svall} fleet recover --force-owner local\``;
   }
   if (s?.standing === 'unknown' || stop === 'commit_unknown' || stop === 'gateway_unknown') {
     const gateway = ctx.gateway && machineName(ctx.gateway) ? ctx.gateway : '<gateway>';
-    return `Once the gateway answers, \`${svall} handover status\` says what is safe; \`${svall} host doctor ${gateway}\` checks the link to it meanwhile. `
-      + `If it is gone for good, \`${svall} fleet recover --force-owner local\` runs the fleet on this Mac alone, or \`${svall} fleet recover --force-owner local --gateway <machine>\` `
-      + 'with another machine as its gateway.';
+    return `Once the gateway answers, this says what is safe:\n\`${svall} handover status\`\nMeanwhile, check the link to it:\n\`${svall} host doctor ${gateway}\`\n`
+      + `If it is gone for good, run the fleet on this Mac alone:\n\`${svall} fleet recover --force-owner local\`\n`
+      + `Or with another machine as its gateway:\n\`${svall} fleet recover --force-owner local --gateway <machine>\``;
   }
   if (lostJournal(s) || stop === 'journal_lost') {
-    return `On ${ctx.destination}, put the handover record back where the details say and restart the fleet's daemon there, then Check again; `
-      + `or \`${svall} fleet recover --force-owner <machine>\` runs the fleet on the machine you name, from the state it holds.`;
+    return `On ${ctx.destination}, put the handover record back where Details says, restart the fleet's daemon there, then Check again.\n`
+      + `Or run the fleet on a machine you name, from the state it holds:\n\`${svall} fleet recover --force-owner <machine>\``;
   }
   return undefined;
 }
@@ -485,107 +485,107 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
   const svall = ctx.svall ?? 'svall';
   switch (b.code) {
     case 'identity_mismatch':
-      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message. A machine set up again is added and made the gateway again, as "A gateway set up again" in Moving a fleet says.';
+      return 'A machine, the fleet or the gateway is not the one this handover expects: follow the message.\nA machine set up again needs adding and making the gateway again.';
     case 'transaction_open':
-      return 'Another handover of this fleet is still open: finish it with Resume or Abort, whichever its status says is safe, before a new one.';
+      return 'Another handover of this fleet is still open: Resume or Abort it first, whichever is safe.';
     case 'incompatible_adapter':
-      return "Update the agent CLI on the machine the message names; for a file in a session, move it out of that session's folder.";
+      return "Update the agent CLI on the machine the message names.\nFor a file in a session, move it out of that session's folder.";
     case 'home_mismatch':
       return ctx.pull
-        ? `This Mac's account no longer has the home this handover was sent to: start a new handover.`
-        : `The account on ${linux} no longer has the home this handover was sent to: add the machine again as \`${svall} host doctor ${linux}\` says, then start a new handover.`;
+        ? `This Mac's home is not the one this handover was sent to: start a new handover.`
+        : `The home on ${linux} is not the one this handover was sent to. Add the machine again as this says, then start a new handover:\n\`${svall} host doctor ${linux}\``;
     case 'parent_missing':
       return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
     case 'worktree_unresolved':
-      return 'Put the folder back or close the character; `git status` in it says what Git sees.';
+      return 'Put the folder back or close the character.\nWhat Git sees, run in the folder:\n`git status`';
     case 'worktree_unused':
-      return 'Commit or stash its work on a branch, unlock it, or `git worktree remove` it.';
+      return 'Commit or stash its work on a branch, unlock it, or remove it:\n`git worktree remove <path>`';
     case 'destination_no_space':
       return `Free space on ${ctx.destination}, or leave build output out with handover.exclude in fleet.json.`;
     case 'path_collision':
       return `Rename one of the files on ${ctx.source}, or move the file in the way on ${ctx.destination}.`;
     case 'path_symlinked':
       return blockerSide(b) === 'destination'
-        ? `Remove the link on ${ctx.destination}, or rename the folder there to the path the handover gives it, as the message says; then try again.`
-        : "Use the real path the message names: cd there in the character's terminal, or change the context item or home.cwd that names the link.";
+        ? `Remove the link on ${ctx.destination}, or rename the folder there as the message says; then try again.`
+        : "Use the real path the message names.\ncd there in the character's terminal, or change the context item or home.cwd that names the link.";
     case 'mission_control_shared':
-      return 'Give one of the fleets a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
+      return 'Give one fleet a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
     case 'transcript_missing':
-      return `An agent that never reported a transcript has no working hooks: run \`${svall} doctor\`. To move without that conversation, exit the agent and try again.`;
+      return `The agent never reported a transcript, so its hooks are not working:\n\`${svall} doctor\`\nTo move without that conversation, exit the agent and try again.`;
     case 'ssh_interactive':
-      return `Run ssh once in Terminal to the destination ${linux} was added with and answer what it asks, and keep a key's passphrase in the agent with \`ssh-add --apple-use-keychain\`; then try again.`;
+      return `In Terminal, ssh once to the destination ${linux} was added with and answer what it asks.\nKeep a key's passphrase in the agent, then try again:\n\`ssh-add --apple-use-keychain\``;
     case 'platform_unsupported':
-      return "If the repository runs there, add the platform to its .svall/handover.json; otherwise close the characters working in it.";
+      return 'If the repository runs there, add the platform to its .svall/handover.json.\nOtherwise close the characters working in it.';
     case 'rsync_unsupported':
-      return `On ${linux}, install rsync 3.2.3 or newer (\`sudo apt install rsync\`); on this Mac, \`${svall} doctor\` checks the one Svall brings.`;
+      return `On ${linux}, install rsync 3.2.3 or newer:\n\`sudo apt install rsync\`\nOn this Mac, this checks the rsync Svall brings:\n\`${svall} doctor\``;
     case 'linger_off':
-      return `On ${linux}, run the loginctl enable-linger command the message names, so the fleet keeps running there while no one is logged in; then try again.`;
+      return `On ${linux}, run the loginctl enable-linger command the message names, then try again.\nIt keeps the fleet running there while no one is logged in.`;
     case 'git_mismatch':
-      return `Try again, which copies again. If it repeats, compare \`git status\` on both machines; a clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
+      return `Try again, which copies again. If it repeats, compare on both machines:\n\`git status\`\nA clean filter such as Git LFS needs setting up on ${ctx.destination}.`;
     case 'git_extension':
       return `Update or install git on ${ctx.destination}.`;
     case 'git_config_command':
-      return `Set each command up the same in ${ctx.destination}'s global git config (\`git config --global <key> <command>\`), or remove it with \`git config --unset <key>\` in the repository.`;
+      return `Set each command up the same in ${ctx.destination}'s global git config:\n\`git config --global <key> <command>\`\nOr remove it in the repository:\n\`git config --unset <key>\``;
     case 'manifest_too_large': case 'too_many_files':
       return 'Leave generated folders out with handover.exclude in fleet.json.';
     case 'generation_mismatch': {
       const owner = !ctx.pull ? 'local' : machineName(ctx.source) ? ctx.source : '<machine>';
-      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again; \`${svall} handover status\` says which. `
-        + `With nothing open, restart Svall's daemon on ${ctx.source}, which takes the gateway's newer record; a gateway set up again needs \`${svall} fleet recover --force-owner ${owner}\`.`;
+      return `Another handover or a recovery moved the fleet since ${ctx.source} last heard, or the gateway was set up again. This says which:\n\`${svall} handover status\`\n`
+        + `With nothing open, restart Svall's daemon on ${ctx.source}; it takes the gateway's newer record.\nA gateway set up again needs:\n\`${svall} fleet recover --force-owner ${owner}\``;
     }
     case 'agent_working':
-      return `Continue waiting lets it finish its turn. Interrupt and carry stops every agent still at work with Escape; each resumes from its transcript on ${ctx.destination}.`;
+      return `Continue waiting lets it finish its turn.\nInterrupt and carry stops every agent at work with Escape; each resumes from its transcript on ${ctx.destination}.`;
     case 'agent_blocked':
-      return `It is waiting on an answer: answer it in its terminal and try again, or Interrupt and carry, which stops it with Escape; it resumes from its transcript on ${ctx.destination}.`;
+      return `It waits on an answer: answer it in its terminal and try again.\nOr Interrupt and carry: it stops with Escape and resumes from its transcript on ${ctx.destination}.`;
     case 'agent_unsettled':
-      return 'Something in that terminal still runs after the interrupt: a command the agent started, or a hook of your own. Terminate and carry ends whatever still runs there, in every terminal named here; the agent resumes from its transcript on '
-        + `${ctx.destination}.`;
+      return 'Something still runs in that terminal after the interrupt: a command the agent started, or a hook of your own.\n'
+        + `Terminate and carry ends it in every terminal named here; the agent resumes from its transcript on ${ctx.destination}.`;
     case 'shell_busy':
-      return `Terminate and carry ends the command it names, in every terminal named here; the shell opens again in its folder on ${ctx.destination}.`;
+      return `Terminate and carry ends the command in every terminal named here.\nThe shell opens again in its folder on ${ctx.destination}.`;
     case 'destination_diverged': case 'destination_occupied': {
-      if (b.code === 'destination_occupied' || b.entity?.kind !== 'character') return `Archive and carry first moves what is there on ${ctx.destination} aside, to a timestamped folder beside it; nothing is deleted.`;
+      if (b.code === 'destination_occupied' || b.entity?.kind !== 'character') return `Archive and carry moves what is there on ${ctx.destination} aside to a timestamped folder; nothing is deleted.`;
       const id = OPENCODE_SESSION.exec(b.message)?.[1];
       return `The copy of this session on ${ctx.destination} went on there. ` + (id
-        ? `To keep it, run opencode session export --standalone ${id} > keep.json on ${ctx.destination}, then opencode session delete --standalone ${id}, then Try again.`
+        ? `To keep it, run these on ${ctx.destination}, then Try again:\n\`opencode session export --standalone ${id} > keep.json\`\n\`opencode session delete --standalone ${id}\``
         : `Move the file the message names aside on ${ctx.destination}, then Try again.`);
     }
     case 'repository_unused':
       return `Carry the folder whole copies those repositories to ${ctx.destination} with it.`;
     case 'character_pinned':
-      return `${who} is marked Keep on this machine: turn that off on ${who}'s card to hand the fleet over.`;
+      return `${who} is set to Keep on this machine: turn that off on ${who}'s card.`;
     case 'external_writer':
       return ctx.pull
-        ? `Something kept writing there, on ${ctx.source} or in its copy on ${ctx.destination}: close whatever writes there, then try again.`
-        : 'Something kept writing there: close whatever writes there, then try again.';
+        ? `Something kept writing there, on ${ctx.source} or in its copy on ${ctx.destination}.\nClose whatever writes there, then try again.`
+        : 'Something kept writing there: close it, then try again.';
     case 'config_difference':
       return 'The agent CLI versions differ between the two machines.';
     case 'codex_trust':
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
     case 'codex_sandbox':
-      return `Codex on ${ctx.destination} cannot sandbox the commands it runs, so it asks before each one until you fix what the message names there.`;
+      return `Codex on ${ctx.destination} cannot sandbox its commands, so it asks before each one.\nFix what the message names there.`;
     case 'claude_trust':
-      return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I trust this folder".`;
+      return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}.\n"No, exit" is preselected: choose "Yes, I trust this folder".`;
     case 'claude_bypass':
-      return `Claude warns about Bypass Permissions mode when a moved character resumes in it on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I accept", once for that machine.`;
+      return `Claude warns about Bypass Permissions mode when a moved character resumes in it on ${ctx.destination}.\n"No, exit" is preselected: choose "Yes, I accept", once for that machine.`;
     case 'incompatible_release': case 'incompatible_protocol': case 'incompatible_schema': {
       const linux = ctx.pull ? ctx.source : ctx.destination;
-      return `Both machines need the same Svall release: Upgrade ${linux} under Settings → Machines. If it runs a newer release than this Mac, update this Mac first.`;
+      return `Both machines need the same Svall release: Upgrade ${linux} under Settings → Machines.\nIf it runs a newer release than this Mac, update this Mac first.`;
     }
     case 'authority_unreachable':
-      return `The fleet's gateway could not say who owns this fleet: Check ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} under Settings → Machines, then try again.`;
+      return `The gateway could not say who owns this fleet.\nCheck ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} under Settings → Machines, then try again.`;
     case 'authority_corrupt':
-      return `The gateway on ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} cannot read its record of this fleet: put a readable record back there, or run svall fleet recover in a terminal.`;
+      return `The gateway on ${ctx.gateway ?? (ctx.pull ? ctx.source : ctx.destination)} cannot read its record of this fleet.\nPut a readable record back there, or recover the fleet in a terminal:\n\`${svall} fleet recover\``;
     case 'agent_cli_missing':
       return "Install it on the machine the message names, where Svall's daemon finds it, then try again.";
     case 'agent_logged_out':
       // as a warning, the agent answers with no login on the source too, and its message says when one is needed
       return warning ? undefined : `Log it in on ${ctx.destination}, in a terminal there. A login never moves with the fleet.`;
     case 'agent_hooks_missing':
-      return `Run svall setup on ${ctx.destination}, then try again.`;
+      return `On ${ctx.destination}, run this, then try again:\n\`svall setup\``;
     case 'path_unsupported':
       return b.entity?.kind === 'character'
-        ? 'Move what it names, or cd that terminal to a folder that travels, or close the character; then try again.'
-        : `Follow the message: move what it names out of the folder that carries it, fix handover.exclude in fleet.json, or make the folder writable on ${ctx.destination}; then try again.`;
+        ? 'Move what it names, cd that terminal to a folder that travels, or close the character; then try again.'
+        : `Follow the message, then try again:\n- move what it names out of the folder that carries it\n- fix handover.exclude in fleet.json\n- make the folder writable on ${ctx.destination}`;
     default:
       return undefined;
   }
@@ -656,8 +656,8 @@ export function planOf(choice: Choice, b: Blocker, ctx: HintContext, names?: Nam
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
   switch (choice) {
     case 'interrupt': return `${who} will be stopped with Escape and resume from its transcript on ${ctx.destination}.`;
-    case 'terminate': return `What runs in ${who}'s terminal will be ended; the shell reopens in its folder on ${ctx.destination}.`;
-    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? 'that folder'} on ${ctx.destination} will be set aside first, to a timestamped folder beside it.`;
+    case 'terminate': return `What runs in ${who}'s terminal ends; the shell reopens in its folder on ${ctx.destination}.`;
+    case 'archive': return `What is at ${entityLabel(b.entity, ctx.name, names, b.message, ctx.home) ?? 'that folder'} on ${ctx.destination} moves aside first, to a timestamped folder.`;
     case 'carry': return `${who}'s folder will be carried whole, with the repositories in it.`;
   }
 }
@@ -752,10 +752,10 @@ function progressText(row: Row): string {
 const label = (id: SectionId) => SECTIONS.find((s) => s.id === id)!.label;
 
 const notKnown = (destination: string, why: string) => `Whether the fleet moved to ${destination} is not known yet: ${why}.`;
-const NOT_ASKED = 'The gateway could not be asked, so whether a handover of this fleet is open is not known.';
-const SUPERSEDED = "The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.";
+const NOT_ASKED = 'The gateway could not be asked whether a handover of this fleet is open.';
+const SUPERSEDED = "The gateway has moved on past this handover. Forget drops this Mac's record of it.";
 const lostLine = (destination: string) =>
-  `The fleet moved to ${destination}, but ${destination}'s record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.`;
+  `The fleet moved to ${destination}, but ${destination}'s handover record is unreadable. Nothing is safe until it is put back or the fleet is recovered.`;
 
 /** Why a run that stopped has nothing safe, where its stop says more than its error. */
 function stopLine(r: Extract<Outcome, { status: 'interrupted' }>, destination: string): string | undefined {
@@ -778,10 +778,10 @@ function standingLine(s: Verdict, destination: string): string {
       return s.standing === 'committed'
         ? `The fleet is ${destination}'s now, and stopped before its characters resumed there.`
         : `The fleet runs on ${destination} now; what the handover left open there is still to finish.`;
-    case 'returned': return 'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.';
+    case 'returned': return 'The gateway let go of this handover; the fleet stays where it was. Abort finishes letting go.';
     case 'superseded': return SUPERSEDED;
     case 'unknown': return s.transactionId ? notKnown(destination, 'the gateway has not answered') : NOT_ASKED;
-    case 'none': return s.safe.includes('abort') ? 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.' : 'No handover of this fleet is open.';
+    case 'none': return s.safe.includes('abort') ? 'The gateway never began this handover; nothing moved. Abort clears what is left of it.' : 'No handover of this fleet is open.';
   }
 }
 

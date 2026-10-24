@@ -235,17 +235,17 @@ describe('what the sheet offers', () => {
       [said('moved', ['resume'], `the gateway has moved this fleet to ${studio} at generation 4; what ${id} left open is only to be finished`, 'activate'),
         'The fleet runs on the other machine now; what the handover left open there is still to finish.'],
       [said('committed', [], `${id} moved this fleet to ${studio}, whose handover journal could not be read and was moved to /home/ada/.svall/handover.json.broken-1; nothing is safe until someone looks at that machine`, 'activate', 'studio'),
-        "The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered."],
+        "The fleet moved to studio, but studio's handover record is unreadable. Nothing is safe until it is put back or the fleet is recovered."],
       [said('returned', ['abort'], `the gateway no longer holds ${id}, and the fleet is ${mac}'s at generation 3; its abort is only to be finished`, 'freeze'),
-        'The gateway let go of this handover, and the fleet stays where it was; Abort finishes letting go.'],
+        'The gateway let go of this handover; the fleet stays where it was. Abort finishes letting go.'],
       [said('superseded', [], `the gateway holds this fleet for ${studio} at generation 5 in handover 9b1d…, past ${id}`),
-        "The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it."],
+        "The gateway has moved on past this handover. Forget drops this Mac's record of it."],
       [said('unknown', [], `the gateway cannot say whether ${id} committed (ssh: connect to host studio port 22: Operation timed out); nothing is safe until it answers`, 'commit', 'studio'),
         'Whether the fleet moved to studio is not known yet: the gateway has not answered.'],
-      [said('none', ['abort'], 'the gateway never began this handover; nothing moved'), 'The gateway never began this handover, so nothing moved; Abort clears what is left of it.'],
+      [said('none', ['abort'], 'the gateway never began this handover; nothing moved'), 'The gateway never began this handover; nothing moved. Abort clears what is left of it.'],
       [said('none', [], 'no handover of this fleet is open anywhere'), 'No handover of this fleet is open.'],
       [headline(play([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway could not be asked (timed out), so whether a handover of this fleet is open there is unknown' } }], followRun()), 'studio'),
-        'The gateway could not be asked, so whether a handover of this fleet is open is not known.'],
+        'The gateway could not be asked whether a handover of this fleet is open.'],
     ];
     for (const [line, want] of lines) {
       expect(line).toBe(want);
@@ -322,11 +322,11 @@ describe('what the sheet offers', () => {
     expect(headline(stopped('commit', [], 'gateway_unknown'), 'studio')).toBe('Whether the fleet moved to studio is not known yet: the gateway could not be asked.');
     const lost = stopped('activate', [], 'journal_lost');
     expect(isCommitted(lost)).toBe(true);
-    expect(headline(lost, 'studio')).toBe("The fleet moved to studio, but studio's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.");
+    expect(headline(lost, 'studio')).toBe("The fleet moved to studio, but studio's handover record is unreadable. Nothing is safe until it is put back or the fleet is recovered.");
     // a stop at the commit that is not about the commit says what it is about
     const past = stopped('commit', [], 'superseded');
     expect(isCommitted(past)).toBe(false);
-    expect(headline(past, 'studio')).toBe("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
+    expect(headline(past, 'studio')).toBe("The gateway has moved on past this handover. Forget drops this Mac's record of it.");
     expect(headline(stopped('begin', [], 'invalid', 'no machine spare in the registry'), 'studio')).toBe('Stopped at Checks: no machine spare in the registry');
     expect(isCommitted(stopped('commit', ['resume']))).toBe(true);
     expect(isCommitted(stopped('commit', ['resume', 'abort']))).toBe(false);
@@ -527,14 +527,14 @@ describe('what each blocker and warning is explained with', () => {
     expect(terminal).toMatch(/cd that terminal/);
     const folder = blockerHint({ code: 'path_unsupported', message: 'handover.exclude pattern "[" cannot be read by rsync', entity: { kind: 'root', id: 'r_a' } }, ctx);
     expect(folder).not.toMatch(/terminal/);
-    expect(folder).toMatch(/handover\.exclude.*writable on studio/);
+    expect(folder).toMatch(/handover\.exclude.*writable on studio/s);
     expect(blockerHint({ code: 'path_unsupported', message: 'the destination keeps this fleet\'s docs at another path' }, ctx)).toBe(folder);
   });
 
   it('sends a home the destination no longer has to host doctor for the Linux machine, and only to a new handover for this Mac', () => {
     const mismatch = { code: 'home_mismatch' as const, message: "this account's home is /home/ada2, and the handover was sent to /home/ada" };
     expect(blockerHint(mismatch, ctx)).toMatch(/`svall host doctor studio`/);
-    expect(blockerHint(mismatch, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toBe("This Mac's account no longer has the home this handover was sent to: start a new handover.");
+    expect(blockerHint(mismatch, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toBe("This Mac's home is not the one this handover was sent to: start a new handover.");
   });
 
   it('gives every code that blocks a line on what to do', () => {
@@ -548,7 +548,7 @@ describe('what each blocker and warning is explained with', () => {
   it('says on which machine to fix what only that machine can', () => {
     // the registry's ssh destination can differ from the machine's name, so no command names one
     const ssh = blockerHint({ code: 'ssh_interactive', message: 'ssh would have to ask before it could go on' }, ctx);
-    expect(ssh).toMatch(/ssh once in Terminal to the destination studio was added with/);
+    expect(ssh).toMatch(/ssh once to the destination studio was added with/);
     expect(ssh).not.toMatch(/`ssh /);
     expect(blockerHint({ code: 'ssh_interactive', message: 'ssh would ask' }, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/destination studio was added with/);
     expect(blockerHint({ code: 'parent_missing', message: '/opt/w is missing on the destination' }, ctx)).toMatch(/on studio/);
@@ -561,7 +561,7 @@ describe('what each blocker and warning is explained with', () => {
 
   it("covers both reasons Codex there cannot sandbox its commands, AppArmor's and any other", () => {
     const other = blockerHint({ code: 'codex_sandbox', message: 'On studio, codex sandbox -- true fails there (bwrap: no such file): run it there to see why' }, ctx);
-    expect(other).toBe('Codex on studio cannot sandbox the commands it runs, so it asks before each one until you fix what the message names there.');
+    expect(other).toBe('Codex on studio cannot sandbox its commands, so it asks before each one.\nFix what the message names there.');
   });
 
   it('points a kept character at its toggle', () => {
@@ -605,12 +605,12 @@ describe('what each blocker and warning is explained with', () => {
 
   it('sends a gateway that could not be asked, or cannot read its record, to the Linux machine, whichever way the fleet moves', () => {
     for (const run of [ctx, { ...ctx, destination: 'This Mac', source: 'studio', pull: true }]) {
-      expect(blockerHint({ code: 'authority_unreachable', message: 'this machine could not ask its gateway' }, run)).toMatch(/gateway.*Check studio/);
-      expect(blockerHint({ code: 'authority_corrupt', message: 'the gateway cannot read its record' }, run)).toMatch(/studio.*readable record.*svall fleet recover/);
+      expect(blockerHint({ code: 'authority_unreachable', message: 'this machine could not ask its gateway' }, run)).toMatch(/gateway.*Check studio/s);
+      expect(blockerHint({ code: 'authority_corrupt', message: 'the gateway cannot read its record' }, run)).toMatch(/studio.*readable record.*`svall fleet recover`/s);
     }
     // a gateway that answered with a failure is not said to be silent, and one on a third machine is named
     const third = { ...ctx, gateway: 'vault' };
-    expect(blockerHint({ code: 'authority_unreachable', message: 'the gateway would not begin this handover: internal' }, third)).toMatch(/could not say who owns this fleet: Check vault/);
+    expect(blockerHint({ code: 'authority_unreachable', message: 'the gateway would not begin this handover: internal' }, third)).toMatch(/could not say who owns this fleet\.\nCheck vault/);
     expect(blockerHint({ code: 'authority_unreachable', message: 'x' }, third)).not.toMatch(/did not answer/);
     expect(blockerHint({ code: 'authority_corrupt', message: 'x' }, third)).toMatch(/The gateway on vault/);
   });
@@ -648,7 +648,7 @@ describe('what each blocker and warning is explained with', () => {
     expect(missing).toMatch(/Install it on the machine the message names/);
     expect(missing).not.toMatch(/studio/);
     expect(blockerHint({ code: 'agent_logged_out', message: 'claude is not logged in on the destination' }, ctx)).toMatch(/on studio.*never moves/);
-    expect(blockerHint({ code: 'agent_hooks_missing', message: "Svall's hooks are not installed for codex" }, ctx)).toMatch(/svall setup on studio/);
+    expect(blockerHint({ code: 'agent_hooks_missing', message: "Svall's hooks are not installed for codex" }, ctx)).toMatch(/On studio.*`svall setup`/s);
   });
 });
 

@@ -30,7 +30,7 @@ export function MachineActions({ name }: { name: string }) {
         onClick={() => store().openHostTerminal(name)}>Terminal</button>
       {gateway !== name && (
         <button className="btn set-open" data-testid="machine-enable" disabled={running}
-          title="Make this machine the gateway that keeps this fleet's ownership record; the fleet stays on this Mac" onClick={() => run('enable')}>Make gateway</button>
+          title="It keeps this fleet's ownership record; the fleet stays on this Mac" onClick={() => run('enable')}>Make gateway</button>
       )}
       <button className="btn set-open dan" data-testid="machine-remove" disabled={running} title="Uninstall Svall on this machine and drop its route" onClick={() => ask(false)}>Remove</button>
       <button className="btn set-open dan" data-testid="machine-forget" disabled={running}
@@ -107,11 +107,12 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
   return (
     <>
       <div className="host-note" data-testid="host-intro">
-        <span>
-          The machine needs Ubuntu LTS 22.04 or newer with systemd, on x86-64 or arm64, and an account reached over ssh,
-          whose home need not be yours on this Mac. Add machine installs Svall there and lists anything left for you to do.
-          Then Make it this fleet&apos;s gateway, and Handover can move the fleet there.
-        </span>
+        <span>Svall installs itself there over ssh and lists what is left for you to do.</span>
+        <ul>
+          <li>Ubuntu 22.04 LTS or newer, with systemd</li>
+          <li>x86-64 or arm64</li>
+          <li>An account you reach over ssh, with any home</li>
+        </ul>
       </div>
       <div className="host-form">
         <input className="fld" data-testid="host-name" placeholder="machine name" aria-label="Machine name"
@@ -196,9 +197,10 @@ export function HostSetup() {
             {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
             {confirm && (
               <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
-                {confirm.forget
-                  ? `Forgetting ${confirm.name} leaves Svall installed on it and drops its route here. Nothing on that machine is uninstalled, and a fleet it owns stays where it is.`
-                  : `Removing ${confirm.name} uninstalls Svall there and drops its route here. The fleets on it and their files stay on that machine.`}
+                <span>
+                  {confirm.forget ? `Forget drops the route to ${confirm.name} and leaves the machine as it is.` : `Remove uninstalls Svall on ${confirm.name} and drops its route.`}
+                  <span className="ho-sub">{confirm.forget ? 'Svall stays installed there, and a fleet it owns stays where it is.' : 'Its fleets and their files stay on that machine.'}</span>
+                </span>
                 <div className="acts">
                   <button className="btn dan" data-testid="host-confirm-yes"
                     onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>

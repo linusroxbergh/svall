@@ -173,7 +173,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   await page.getByTestId('handover-tab').click();
   // before anything starts, what a handover moves, with a gateway to move to
-  await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you choose Move');
+  await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you confirm');
   await expect(page.getByTestId('handover-no-gateway')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-local')).toHaveCount(0);
   await page.getByTestId('handover-to-gateway').click();
@@ -186,7 +186,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await say(page, checks, { event: 'handover.result', data: { status: 'ready' } });
   await receive(page, { type: 'handover.exit', code: 0 });
   await expect(page.getByTestId('handover-summary')).toContainText('1 folder, 120 files, 40.0 MB, 1 session');
-  await expect(page.getByTestId('handover-rest-shell')).toContainText('close; each shell reopens in its folder on studio');
+  await expect(page.getByTestId('handover-rest-shell')).toContainText('close; each reopens in its folder on studio');
   await expect(page.getByTestId('handover-rest-shell')).toContainText('ada');
   await expect(page.getByTestId('handover-section-rest')).toHaveAttribute('data-state', 'pending');
   expect((await sent(page)).some((m) => m.type === 'term.close')).toBe(false);
@@ -345,7 +345,7 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   await expect(page.getByTestId('handover-headline')).toHaveText('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
   await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-route')).toHaveText('This Mac→studio');
-  await expect(page.getByTestId('handover-footnote')).toHaveText('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
+  await expect(page.getByTestId('handover-footnote').locator('.ho-line')).toHaveText(['Resume goes on from where it stopped.', 'Abort gives the fleet back to This Mac.']);
   await expect(page.getByTestId('handover-section-transfer')).toHaveAttribute('data-state', 'stopped');
   await expect(page.getByTestId('handover-resume')).toHaveText('Resume');
   await expect(page.getByTestId('handover-abort')).toBeVisible();
@@ -453,7 +453,7 @@ test('a journal the gateway has moved on from offers Forget, and a standing with
     standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: `the gateway holds this fleet for ${STUDIO} at generation 5 in handover 9b1d0c3e-7f2a-4d6b-8e5c-1a0f9d3b7c24, past ${TX}`,
   } }] });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
-  await expect(page.getByTestId('handover-headline')).toHaveText("The gateway has moved on past this handover, so nothing is left to resume or abort; Forget drops this Mac's record of it.");
+  await expect(page.getByTestId('handover-headline')).toHaveText("The gateway has moved on past this handover. Forget drops this Mac's record of it.");
   await expect(page.getByTestId('handover-way-out').locator('code')).toHaveText(['svall -p work handover status', 'svall -p work fleet recover --force-owner local']);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(RAW);
   await expect(page.getByTestId('handover-resume')).toHaveCount(0);
