@@ -70,7 +70,7 @@ describe('fleet names', () => {
 });
 
 describe('fleetControl', () => {
-  it('lists each fleet with its name, this window\'s, the running ones and the ones a window shows', async () => {
+  it('lists each fleet with its name, this window\'s and the ones a window shows', async () => {
     const u = makeHome();
     const priv = fleetAt(u, '.svall');
     const work = fleetAt(u, '.svall-work', { name: 'office' });
@@ -78,11 +78,11 @@ describe('fleetControl', () => {
     fs.writeFileSync(path.join(work, 'app.pid'), `4242\t${work}`);
     // a pid file left by a crash, now naming another process
     fs.writeFileSync(path.join(side, 'app.pid'), `99\t${side}`);
-    const f = fake(u, { up: [work], apps: [4242] });
+    const f = fake(u, { apps: [4242] });
     expect(await fleetControl(priv, f.deps).list()).toEqual([
-      { home: priv, name: 'private', current: true, running: true, windowOpen: false },
-      { home: side, name: 'side', current: false, running: false, windowOpen: false },
-      { home: work, name: 'office', current: false, running: true, windowOpen: true },
+      { home: priv, name: 'private', current: true, windowOpen: false },
+      { home: side, name: 'side', current: false, windowOpen: false },
+      { home: work, name: 'office', current: false, windowOpen: true },
     ]);
   });
 

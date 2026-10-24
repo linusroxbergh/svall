@@ -32,8 +32,8 @@ describe('banners for a handover while the app is in the background', () => {
     w.store.getState().handoverEvent({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'robot', id: 'c1', phase: 'freeze' } });
     w.store.getState().handoverEvent(result({ status: 'complete', transactionId: 'tx', generation: 2, robots: [] }));
     expect(w.posted()).toEqual([
-      { type: 'notify.post', key: 'handover', title: 'Handover waits for you', subtitle: '', body: 'One thing to decide before the fleet goes on.', sound: false, actions: false },
-      { type: 'notify.post', key: 'handover', title: 'Handover done', subtitle: '', body: 'The fleet runs on studio now.', sound: false, actions: false },
+      { type: 'notify.post', key: 'handover', title: 'Handover waits for you', body: 'One thing to decide before the fleet goes on.', sound: false, actions: false },
+      { type: 'notify.post', key: 'handover', title: 'Handover done', body: 'The fleet runs on studio now.', sound: false, actions: false },
     ]);
 
     w.store.getState().handoverFollow('studio');

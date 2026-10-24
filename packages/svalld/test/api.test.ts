@@ -33,7 +33,7 @@ const other = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const machines = {
   source: { home: '/Users/linus' },
   destination: {
-    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: 1, platform: 'linux', arch: 'x64', agentAdapters: [] },
+    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: 1, platform: 'linux', arch: 'x64', agentAdapters: [], heapLimit: 2 ** 32 },
     home: '/Users/linus', fleetHome: '/Users/linus/.svall',
   },
 };
@@ -86,7 +86,7 @@ describe('startApi', () => {
         store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
         push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
         claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
-        ownership: { onChange: () => () => {} } as never, handover: { onEvent: () => () => {} } as never,
+        ownership: {} as never, handover: { onEvent: () => () => {} } as never,
       })).rejects.toThrow(/EADDRINUSE/);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -244,27 +244,18 @@ runIf('API', () => {
     expect(await c.call('handover.preflight', { toMachineId: other })).toMatchObject({ error: { code: 'invalid_params' } });
   });
 
-  it('tells the desktop and the phone when ownership or a handover changes', async () => {
-    const { api, ownership, handover, config } = await boot();
+  it('tells the desktop and the phone how far a handover has come', async () => {
+    const { api, handover } = await boot();
     const desktop = await TestClient.connect(api.port, 'secret');
     const phone = await TestClient.phone(api.port);
     for (const c of [desktop, phone]) await c.call('state.get');
 
-    await ownership.freeze({ id: 'tx-1', fromMachineId: machineId(), toMachineId: other, phase: 'preparing', startedAt: 1 });
-    handover.write({
-      role: 'source', transactionId: 'tx-1', generation: 0, fleetId: config.id, fromMachineId: machineId(), toMachineId: other,
-      phase: 'freeze', stoppedTerminals: [], terminated: [], serverKills: [], updatedAt: 1,
-    });
     handover.emitEntity({ transactionId: 'tx-1', kind: 'robot', id: 'c1', phase: 'freeze' });
 
-    const moved = (c: TestClient): Event[] => c.events.filter((e) => e.event.startsWith('ownership.') || e.event.startsWith('handover.'));
+    const moved = (c: TestClient): Event[] => c.events.filter((e) => e.event.startsWith('handover.'));
     for (const c of [desktop, phone]) {
-      await waitFor(() => moved(c).length === 3);
-      expect(moved(c)).toEqual([
-        { event: 'ownership.changed', data: { generation: 0, ownerMachineId: machineId() } },
-        { event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } },
-        { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c1', phase: 'freeze' } },
-      ]);
+      await waitFor(() => moved(c).length === 1);
+      expect(moved(c)).toEqual([{ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'robot', id: 'c1', phase: 'freeze' } }]);
     }
   });
 

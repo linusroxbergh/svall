@@ -354,8 +354,8 @@ final class ShellRouter {
             holding = !rects.isEmpty || !passive.isEmpty
             surfaces.setCutout(rects: rects, passive: passive)
             browsers.setCutout(rects: rects, passive: passive)
-        case .notifyPost(let key, let title, let subtitle, let body, let sound, let actions, let promptId):
-            notifier.post(key: key, title: title, subtitle: subtitle, body: body, sound: sound, actions: actions, promptId: promptId)
+        case .notifyPost(let key, let title, let body, let sound, let actions, let promptId):
+            notifier.post(key: key, title: title, body: body, sound: sound, actions: actions, promptId: promptId)
         case .notifyRemove(let key):
             notifier.remove(key: key)
         case .notifyEnable:

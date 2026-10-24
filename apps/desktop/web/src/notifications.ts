@@ -24,7 +24,6 @@ function noticeFor(v: NoticeView, s: Session, status: PushStatus): Notice {
   return {
     key: s.key,
     title: blocked ? `${who} needs you` : `${who} is done`,
-    subtitle: '',
     // a blocked agent's question, or the API error that ended a turn
     body: s.agent?.prompt ?? '',
     sound: v.settings.sound,
@@ -61,7 +60,7 @@ export function decide(prev: NoticeView, next: NoticeView, posted: Posted): { po
 }
 
 export const answerFailed = (name: string, key: string, sound: boolean): Notice =>
-  ({ key, title: `${name}: answer didn't send`, subtitle: '', body: '', sound, actions: false });
+  ({ key, title: `${name}: answer didn't send`, body: '', sound, actions: false });
 
 const viewOf = (s: App): NoticeView =>
   ({ fleet: s.fleet, loaded: s.loaded, active: s.active, viewed: viewedId(s), settings: s.settings.notifications, permission: s.notifyPermission });

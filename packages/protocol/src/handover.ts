@@ -50,7 +50,7 @@ export const MachinePath = z.string()
   .refine((p) => !p.split('/').includes('..'), 'an absolute path that climbs nowhere');
 
 /** A Git object by its full name, SHA-1 or SHA-256, which git never reads as an option. */
-export const ObjectName = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, 'a full hex object name');
+const ObjectName = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, 'a full hex object name');
 
 /**
  * One machine in the controller's registry. A machine reached directly has no `ssh`.
@@ -347,13 +347,12 @@ export const HandoverTransactionStatus = TransactionRecord.extend({ phase: Hando
 export type HandoverTransactionStatus = z.infer<typeof HandoverTransactionStatus>;
 
 /** A handover journal a machine holds open; `generation` is the one the handover moves the fleet to. */
-export const JournalInfo = z.object({
+const JournalInfo = z.object({
   role: z.enum(['source', 'destination']),
   transactionId: TransactionId,
   generation: Generation,
   phase: HandoverPhase,
 });
-export type JournalInfo = z.infer<typeof JournalInfo>;
 
 /** Which machine holds the fleet, at which generation, and whether it still accepts mutations. */
 export const OwnershipInfo = z.object({
@@ -391,7 +390,7 @@ export const SystemInfo = z.object({
   // `git --version`'s number; absent where git cannot run
   git: z.string().optional(),
   // the daemon's V8 heap_size_limit in bytes, which bounds the files a handover may carry
-  heapLimit: z.number().int().positive().optional(),
+  heapLimit: z.number().int().positive(),
   // whether a Linux account's services run while no one is logged in; absent on a Mac, or where loginctl cannot say
   linger: z.object({ user: z.string(), on: z.boolean() }).optional(),
 });

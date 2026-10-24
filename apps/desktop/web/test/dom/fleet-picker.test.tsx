@@ -5,9 +5,9 @@ import type { FleetEntry } from '@svall/protocol';
 import { bridge, call, freshStore, sent, store } from './harness.js';
 
 const FLEETS: FleetEntry[] = [
-  { home: '/u/.svall', name: 'home', current: true, running: true, windowOpen: true },
-  { home: '/u/.svall-work', name: 'work', current: false, running: true, windowOpen: true },
-  { home: '/u/.svall-side', name: 'side', current: false, running: false, windowOpen: false },
+  { home: '/u/.svall', name: 'home', current: true, windowOpen: true },
+  { home: '/u/.svall-work', name: 'work', current: false, windowOpen: true },
+  { home: '/u/.svall-side', name: 'side', current: false, windowOpen: false },
 ];
 let startFails: string | undefined;
 call.mockImplementation(async (method: string, p?: unknown) => {

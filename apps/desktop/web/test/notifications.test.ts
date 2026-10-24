@@ -25,14 +25,14 @@ const done = patch(fleet(), 'c1', { agent: agent('done'), unread: true });
 describe('decide', () => {
   it('posts a blocked banner with what the agent asked, and Approve/Deny on the main terminal', () => {
     const d = decide(look(working), look(blocked), new Map());
-    expect(d.post).toEqual([{ key: 'c1', title: 'c1 on beta needs you', subtitle: '', body: 'Bash: rm -rf dist', sound: true, actions: true }]);
+    expect(d.post).toEqual([{ key: 'c1', title: 'c1 on beta needs you', body: 'Bash: rm -rf dist', sound: true, actions: true }]);
     expect(d.remove).toEqual([]);
     expect([...d.posted]).toEqual([['c1', 'blocked']]);
   });
 
   it('posts a done banner with no body and no buttons', () => {
     const d = decide(look(working), look(done), new Map());
-    expect(d.post).toEqual([{ key: 'c1', title: 'c1 on beta is done', subtitle: '', body: '', sound: true, actions: false }]);
+    expect(d.post).toEqual([{ key: 'c1', title: 'c1 on beta is done', body: '', sound: true, actions: false }]);
   });
 
   it('names the island in lowercase', () => {
@@ -52,7 +52,7 @@ describe('decide', () => {
   it('posts a second terminal under its own key, with no buttons', () => {
     const second = (status: AgentStatus) => patch(working, 'c1', { second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status), unread: false } });
     const d = decide(look(second('working')), look(second('blocked')), new Map());
-    expect(d.post).toEqual([{ key: 'c1-2', title: 'c1 on beta needs you', subtitle: '', body: '', sound: true, actions: false }]);
+    expect(d.post).toEqual([{ key: 'c1-2', title: 'c1 on beta needs you', body: '', sound: true, actions: false }]);
   });
 
   it('posts nothing for the first snapshot, an unchanged status, or a done already read', () => {
@@ -122,7 +122,7 @@ describe('decide', () => {
 
 describe('answerFailed', () => {
   it('replaces the session banner with one that says so, with no buttons', () => {
-    expect(answerFailed('otter', 'c1', true)).toEqual({ key: 'c1', title: "otter: answer didn't send", subtitle: '', body: '', sound: true, actions: false });
+    expect(answerFailed('otter', 'c1', true)).toEqual({ key: 'c1', title: "otter: answer didn't send", body: '', sound: true, actions: false });
   });
 });
 
@@ -153,7 +153,7 @@ describe('followNotifications', () => {
   it('posts when a robot turns blocked, and takes the banner down once it moves on', () => {
     const { store, bridge } = setup();
     store.getState().setFleet(blocked);
-    expect(bridge.sent).toContainEqual({ type: 'notify.post', key: 'c1', title: 'c1 on beta needs you', subtitle: '', body: 'Bash: rm -rf dist', sound: true, actions: true });
+    expect(bridge.sent).toContainEqual({ type: 'notify.post', key: 'c1', title: 'c1 on beta needs you', body: 'Bash: rm -rf dist', sound: true, actions: true });
     store.getState().setFleet(working);
     expect(bridge.sent.at(-1)).toEqual({ type: 'notify.remove', key: 'c1' });
   });
@@ -214,7 +214,7 @@ describe('followNotifications', () => {
   });
 
   it('says so when the answer did not reach the daemon', async () => {
-    const failed = { type: 'notify.post', key: 'c1', title: "c1: answer didn't send", subtitle: '', body: '', sound: true, actions: false };
+    const failed = { type: 'notify.post', key: 'c1', title: "c1: answer didn't send", body: '', sound: true, actions: false };
     const refused = setup({ api: answering(() => Promise.reject(new Error('refused'))) });
     refused.bridge.emit({ type: 'notify.action', key: 'c1', action: 'deny', promptId: 'q1' });
     await vi.waitFor(() => expect(refused.bridge.sent).toContainEqual(failed));
@@ -244,7 +244,7 @@ describe('followNotifications', () => {
   it('says so when the daemon never comes online within the wait', async () => {
     vi.useFakeTimers();
     try {
-      const failed = { type: 'notify.post', key: 'c1', title: "c1: answer didn't send", subtitle: '', body: '', sound: true, actions: false };
+      const failed = { type: 'notify.post', key: 'c1', title: "c1: answer didn't send", body: '', sound: true, actions: false };
       const store = createAppStore();
       const bridge = fakeBridge();
       followNotifications({ store, bridge, api: () => undefined });

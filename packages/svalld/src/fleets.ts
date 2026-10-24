@@ -130,13 +130,12 @@ export async function answers(home: string): Promise<{ close(): void }> {
 export function fleetControl(current: string, d: FleetDeps) {
   const here = path.resolve(current);
   return {
-    list: (): Promise<FleetEntry[]> => Promise.all(homesIn(d.homedir).map(async (home) => ({
+    list: async (): Promise<FleetEntry[]> => homesIn(d.homedir).map((home) => ({
       home,
       name: displayName(home, d.homedir),
       current: home === here,
-      running: home === here || await d.connect(home).then((c) => { c.close(); return true; }, () => false),
       windowOpen: appPid(home, d) !== undefined,
-    }))),
+    })),
     create: async (name: string): Promise<string> => {
       const problem = fleetNameProblem(name, takenNames(d.homedir));
       if (problem) throw new Invalid(problem);

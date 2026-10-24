@@ -14,7 +14,7 @@ class Socket {
   asked(method: string): number { return this.sent.find((m) => m.method === method)!.id!; }
 }
 
-const FLEET = { home: '/u/.svall', name: 'private', current: true, running: true, windowOpen: true };
+const FLEET = { home: '/u/.svall', name: 'private', current: true, windowOpen: true };
 
 // the shell answers each ask for the connection with this port, 0 while svalld has none
 let port = 0;

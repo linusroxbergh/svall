@@ -34,7 +34,7 @@ const manifest = {
 const machines = {
   source: { home: '/Users/linus' },
   destination: {
-    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: 1, platform: 'linux' as const, arch: 'x64', agentAdapters: [] },
+    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: 1, platform: 'linux' as const, arch: 'x64', agentAdapters: [], heapLimit: 2 ** 32 },
     home: '/Users/linus', fleetHome: '/Users/linus/.svall',
   },
 };
@@ -287,7 +287,7 @@ describe('HandoverService', () => {
     await expect(handover.abort({ transactionId: 'tx-1', generation: 4 })).rejects.toThrow('this test runs no handover phase');
   });
 
-  it('tells its listeners about every journal write, close and entity report', () => {
+  it('tells its listeners about every entity report', () => {
     const { handover } = boot({ record: { generation: 4, ownerMachineId: me } });
     const seen: Event[] = [];
     const off = handover.onEvent((e) => seen.push(e));
@@ -298,9 +298,7 @@ describe('HandoverService', () => {
     off();
     handover.write(source());
     expect(seen).toEqual([
-      { event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } },
       { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'root', id: 'repo', phase: 'transfer', done: 1, total: 2 } },
-      { event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } },
     ]);
   });
 });

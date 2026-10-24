@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Robot, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MachineId, MobileStatus, PART_BYTES,
+  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Robot, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
   PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, TRANSFER_SCHEMA_VERSION, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
@@ -203,7 +203,7 @@ describe('protocol version', () => {
   });
 
   it('was 17 with fleets listed, started and named from the app', () => {
-    expect(methods['fleets.list'].result.safeParse({ fleets: [{ home: '/u/.svall', name: 'private', current: true, running: true, windowOpen: true }] }).success).toBe(true);
+    expect(methods['fleets.list'].result.safeParse({ fleets: [{ home: '/u/.svall', name: 'private', current: true, windowOpen: true }] }).success).toBe(true);
     expect(methods['fleets.create'].params.safeParse({ name: 'work' }).success).toBe(true);
     expect(methods['fleets.start'].params.safeParse({ home: '/u/.svall-work' }).success).toBe(true);
     expect(methods['fleet.rename'].params.safeParse({ name: 'home' }).success).toBe(true);
@@ -229,6 +229,7 @@ const MACHINES = {
     info: {
       machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: TRANSFER_SCHEMA_VERSION,
       platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
+      heapLimit: 2 ** 32,
     },
     home: '/Users/linus',
     fleetHome: '/Users/linus/.svall',
@@ -243,8 +244,7 @@ const MANIFEST = {
 
 // every event name the union carries; the compiler refuses a missing or a stray one
 const EVENT_NAMES = {
-  'state.patch': true, 'term.output': true, 'term.resync': true, 'repo.changed': true, 'mobile.phones': true,
-  'ownership.changed': true, 'handover.changed': true, 'handover.entity': true,
+  'state.patch': true, 'term.output': true, 'term.resync': true, 'repo.changed': true, 'mobile.phones': true, 'handover.entity': true,
 } satisfies Record<Event['event'], true>;
 
 describe('ownership and handover methods', () => {
@@ -263,7 +263,7 @@ describe('ownership and handover methods', () => {
   it('says what a machine is and what it can run', () => {
     const info = {
       machineId: UUID_A, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: TRANSFER_SCHEMA_VERSION,
-      platform: 'darwin', arch: 'arm64',
+      platform: 'darwin', arch: 'arm64', heapLimit: 2 ** 32,
       agentAdapters: [{ kind: 'claude', version: '2.0.1', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: false }, { kind: 'codex', adapter: 1 }],
     };
     expect(methods['system.info'].result.parse(info)).toEqual(info);
@@ -421,12 +421,10 @@ describe('ownership and handover methods', () => {
 describe('handover events', () => {
   it('carries ids, phases and counts, never a manifest', () => {
     const events: Event[] = [
-      { event: 'ownership.changed', data: { generation: 5, ownerMachineId: MachineId.parse(UUID_B) } },
-      { event: 'handover.changed', data: { transactionId: 't1', phase: 'commit' } },
       { event: 'handover.entity', data: { transactionId: 't1', kind: 'root', id: 'r_1', phase: 'transfer', done: 1, total: 2 } },
     ];
-    expect(events.map((e) => e.event)).toEqual(['ownership.changed', 'handover.changed', 'handover.entity']);
-    expect(Object.keys(EVENT_NAMES)).toEqual(['state.patch', 'term.output', 'term.resync', 'repo.changed', 'mobile.phones', 'ownership.changed', 'handover.changed', 'handover.entity']);
+    expect(events.map((e) => e.event)).toEqual(['handover.entity']);
+    expect(Object.keys(EVENT_NAMES)).toEqual(['state.patch', 'term.output', 'term.resync', 'repo.changed', 'mobile.phones', 'handover.entity']);
   });
 });
 

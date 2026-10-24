@@ -178,8 +178,8 @@ function oversize(m: TransferManifestV1, cap: number): Blocker | undefined {
 export const HEAP_PER_FILE = 8 * 1024;
 
 /** More files than the daemon with the smaller heap holds through a handover: the manifest, what landed, their JSON and the scans. */
-function crowded(files: number, own: number, destination: number | undefined): Blocker | undefined {
-  const [heap, whose] = destination !== undefined && destination < own ? [destination, "the destination's"] : [own, "this machine's"];
+function crowded(files: number, own: number, destination: number): Blocker | undefined {
+  const [heap, whose] = destination < own ? [destination, "the destination's"] : [own, "this machine's"];
   const most = Math.floor(heap / 2 / HEAP_PER_FILE);
   return files <= most ? undefined : {
     code: 'too_many_files',

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type Portrait, type TerminalSlot } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -600,7 +600,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   updateRobot(id: string, patch: {
-    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait; figure?: number; keepHere?: boolean;
+    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; figure?: number; keepHere?: boolean;
   }): Robot {
     const current = this.robot(id);
     if (patch.islandId) this.island(patch.islandId);
@@ -613,7 +613,6 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => {
       const c = d.robots[id];
       if (patch.name !== undefined) c.name = patch.name;
-      if (patch.portrait !== undefined) c.portrait = patch.portrait;
       if (patch.figure !== undefined) c.figure = patch.figure;
       if (patch.note !== undefined) setNote(c, patch.note);
       if (patch.instructions !== undefined) c.instructions = patch.instructions;

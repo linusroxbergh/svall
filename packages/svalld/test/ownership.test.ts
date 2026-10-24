@@ -222,17 +222,6 @@ describe('ownership state', () => {
     }
   });
 
-  it('tells every listener when the record changes', async () => {
-    const home = makeHome();
-    const o = load(home);
-    const seen: boolean[] = [];
-    const off = o.onChange((r) => seen.push(r.frozen === true));
-    await o.freeze(transaction);
-    await o.unfreeze();
-    off();
-    await o.surrender();
-    expect(seen).toEqual([true, false]);
-  });
 });
 
 describe('the mutation fence', () => {
@@ -491,7 +480,7 @@ runIf('a daemon starting with a gateway', () => {
     const destination = {
       info: {
         machineId: other, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
-        platform: 'linux', arch: 'x64', agentAdapters: [], git: '2.43.0',
+        platform: 'linux', arch: 'x64', agentAdapters: [], git: '2.43.0', heapLimit: 2 ** 32,
       },
       home, fleetHome: path.join(home, '.svall'),
     };

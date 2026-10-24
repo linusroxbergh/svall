@@ -30,7 +30,7 @@ export function followHandoverNotices({ store, bridge }: { store: AppStore; brid
     const n = s.settings.notifications;
     if (s.handover === prev.handover || !s.handover || s.active || !n.on || s.notifyPermission !== 'granted') return;
     const notice = handoverNotice(prev.handover, s.handover, destinationName(destinationOf(s.handover, s.connection?.owner, s.shell?.gateway)));
-    if (notice) bridge.send({ type: 'notify.post', key: KEY, ...notice, subtitle: '', sound: n.sound, actions: false });
+    if (notice) bridge.send({ type: 'notify.post', key: KEY, ...notice, sound: n.sound, actions: false });
   });
   const offShell = bridge.onMessage((m) => { if (m.type === 'notify.open' && m.key === KEY) store.getState().toggleHandover(true); });
   return () => { offStore(); offShell(); };

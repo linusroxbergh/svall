@@ -73,7 +73,7 @@ const destinationInfo = (over: Partial<SystemInfo> = {}): SystemInfo => ({
   machineId: trift, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
   platform: 'linux', arch: 'x64',
   agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/home/linus/.claude', loggedIn: true, hooks: true }],
-  git: '2.43.0',
+  git: '2.43.0', heapLimit: 2 ** 32,
   ...over,
 });
 
@@ -239,10 +239,11 @@ function boot(o: Boot = {}) {
   };
   const start = () => {
     const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger, standalone: o.standalone });
-    const handover = new HandoverService({ ownership, journal: openJournal(paths), agents: async () => probes, fleet, ...idleSides(paths, { store }), source: deps });
+    const journal = openJournal(paths);
+    const handover = new HandoverService({ ownership, journal, agents: async () => probes, fleet, ...idleSides(paths, { store }), source: deps });
     const events: Event[] = [];
     handover.onEvent((e) => events.push(e));
-    return { ownership, handover, events };
+    return { ownership, journal, handover, events };
   };
   // a restarted daemon: the journal and owner.json read again, and put into the mode they call for
   const restart = async () => {
@@ -805,9 +806,8 @@ describe('source freeze', () => {
     const b = boot();
     b.gateway.begin();
     const order: string[] = [];
-    b.handover.onEvent((e) => {
-      if (e.event === 'handover.changed') order.push(`journal ${e.data.phase} ${JSON.stringify(ownerFile(b.paths).surrendered ?? false)}`);
-    });
+    const write = b.journal.write.bind(b.journal);
+    b.journal.write = (j) => { write(j); order.push(`journal ${j.phase} ${JSON.stringify(ownerFile(b.paths).surrendered ?? false)}`); };
 
     const { manifest } = await b.handover.freeze(b.freezeParams());
 
@@ -1153,7 +1153,9 @@ describe('source abort', () => {
     const b = await frozen();
     b.gateway.abort();
     const surrenderAtClose: unknown[] = [];
-    b.handover.onEvent((e) => { if (e.event === 'handover.changed') surrenderAtClose.push(ownerFile(b.paths).surrendered); });
+    const [write, close] = [b.journal.write.bind(b.journal), b.journal.close.bind(b.journal)];
+    b.journal.write = (j) => { write(j); surrenderAtClose.push(ownerFile(b.paths).surrendered); };
+    b.journal.close = () => { close(); surrenderAtClose.push(ownerFile(b.paths).surrendered); };
 
     expect(await b.handover.abort({ transactionId: TX, generation: 4 })).toEqual({});
 

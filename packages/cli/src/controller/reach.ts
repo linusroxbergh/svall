@@ -56,10 +56,10 @@ export function authorityOp(entry: MachineEntry, localId: MachineId, masters: Ma
       const master = await masters.for(entry);
       if (!identified.has(master)) {
         const said = await identify(master, entry);
-        const schema = Number(/^\s*"authoritySchema":\s*(\d+)/m.exec(said ?? '')?.[1] ?? AUTHORITY_SCHEMA_VERSION);
-        if (o.schema && schema !== AUTHORITY_SCHEMA_VERSION) {
+        const schema = /^\s*"authoritySchema":\s*(\d+)/m.exec(said ?? '')?.[1];
+        if (o.schema && said !== undefined && Number(schema) !== AUTHORITY_SCHEMA_VERSION) {
           const name = entry.record.name;
-          throw new SshError('version', `${name} runs gateway authority schema ${schema}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade ${name} or this machine, whichever is older`);
+          throw new SshError('version', `${name} runs ${schema === undefined ? 'no gateway authority schema' : `gateway authority schema ${schema}`}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade ${name} or this machine, whichever is older`);
         }
         identified.add(master);
       }

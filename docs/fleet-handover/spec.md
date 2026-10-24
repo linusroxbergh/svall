@@ -1000,9 +1000,7 @@ because routes and SSH aliases are controller-local.
 Events:
 
 ```text
-event ownership.changed  { generation, ownerMachineId }
-event handover.changed   { transactionId, phase }
-event handover.entity    { transactionId, kind, id, phase, done?, total?, error? }
+event handover.entity  { transactionId, kind, id, phase, done?, total?, error? }
 ```
 
 ---

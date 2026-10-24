@@ -763,6 +763,24 @@ describe('preflight', () => {
     }
   });
 
+  it('counts a far gateway whose version names no authority schema as on another one', async () => {
+    const ssh = installFakeSsh();
+    const masters = new Masters();
+    try {
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: trift }, null, 2) });
+      const gateway = {
+        id: trift,
+        record: { name: 'trift', ssh: 'trift.test', platform: 'linux' as const, arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall', gateway: true },
+      };
+      const err = await authorityOp(gateway, mac, masters, { schema: true })('get', fleetId).catch((e: unknown) => e);
+      expect(err).toMatchObject({ kind: 'version', message: expect.stringContaining('trift runs no gateway authority schema') });
+      expect(ssh.remoteCalls().filter((w) => w.includes('owner'))).toEqual([]);
+    } finally {
+      await masters.close();
+      ssh.clean();
+    }
+  });
+
   it('blocks as incompatible_protocol, naming it, on a gateway that answers on another authority schema', async () => {
     const w = new World();
     const said = `trift runs gateway authority schema ${AUTHORITY_SCHEMA_VERSION + 1}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade trift`;
@@ -2422,7 +2440,7 @@ describe('the real adapters', () => {
     expect(silent).not.toBeInstanceOf(Refused);
   });
 
-  it('relays the daemon\'s own handover rows as they arrive and never its phases, reads the gateway\'s record, and keeps its token to scrub', async () => {
+  it('relays the daemon\'s own handover rows as they arrive and nothing else it pushes, reads the gateway\'s record, and keeps its token to scrub', async () => {
     const prefix = makeHome();
     const home = makeHome();
     const saved = process.env.SVALL_GATEWAY_PREFIX;
@@ -2437,8 +2455,6 @@ describe('the real adapters', () => {
         if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
         const req = JSON.parse(raw.toString()) as { id: number; method: string };
         ws.send(JSON.stringify({ event: 'state.patch', data: { ops: [] } }));
-        // the daemon's journal reports its own step on every write: only the controller says where the handover is
-        ws.send(JSON.stringify({ event: 'handover.changed', data: { transactionId: 'tx-9', phase: 'freeze' } }));
         ws.send(JSON.stringify({ event: 'handover.entity', data: row }));
         ws.send(JSON.stringify({ id: req.id, result: {} }));
       });

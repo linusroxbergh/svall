@@ -24,7 +24,6 @@ export type OwnershipDeps = { paths: Paths; fleetId: FleetId; machineId: Machine
 
 /** Whether this machine may change this fleet, and the record that says so. */
 export class OwnershipState {
-  private listeners = new Set<(record: OwnerCache) => void>();
   private held?: string;
 
   private constructor(private file: DurableJson<OwnerCache>, private cache: OwnerCache, readonly machineId: MachineId, private copied?: string) {}
@@ -133,14 +132,8 @@ export class OwnershipState {
     this.persist({ ...record });
   }
 
-  onChange(fn: (record: OwnerCache) => void): () => void {
-    this.listeners.add(fn);
-    return () => { this.listeners.delete(fn); };
-  }
-
   private persist(next: OwnerCache): void {
     this.file.write(next);
     this.cache = next;
-    for (const fn of this.listeners) fn(next);
   }
 }

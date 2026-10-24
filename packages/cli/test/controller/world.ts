@@ -68,7 +68,7 @@ export function manifestFor(tx: string | undefined, from = mac, to = trift): Fro
 
 export const info = (machineId: MachineId, over: Partial<SystemInfo> = {}): SystemInfo => ({
   machineId, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
-  platform: machineId === mac ? 'darwin' : 'linux', arch: 'arm64', git: '2.43.0',
+  platform: machineId === mac ? 'darwin' : 'linux', arch: 'arm64', git: '2.43.0', heapLimit: 2 ** 32,
   agentAdapters: [
     { kind: 'claude', version: '2.1.280', adapter: 1, home: at('.claude'), loggedIn: true, hooks: true },
     { kind: 'codex', version: '0.156.1', adapter: 1, home: at('.codex'), loggedIn: true, hooks: true },

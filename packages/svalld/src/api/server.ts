@@ -123,12 +123,11 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     },
   };
   const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership };
-  // who the fleet belongs to and how far a handover has come reaches every screen watching it
+  // how far a handover has come reaches every screen watching it
   const viewers = new Set<Viewer>();
   const broadcast = (ev: Event): void => { for (const v of viewers) v.send(ev); };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
-    ownership.onChange((r) => broadcast({ event: 'ownership.changed', data: { generation: r.generation, ownerMachineId: r.ownerMachineId } })),
     handover.onEvent(broadcast),
   ];
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });

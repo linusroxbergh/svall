@@ -175,7 +175,7 @@ describe('Client', () => {
       ws.on('message', (raw) => {
         if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
         const req = JSON.parse(raw.toString()) as { id: number };
-        ws.send(JSON.stringify({ event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } }));
+        ws.send(JSON.stringify({ event: 'repo.changed', data: { id: 'c_1' } }));
         ws.send(JSON.stringify({ id: req.id, result: { answered: true } }));
       });
     });
@@ -187,7 +187,7 @@ describe('Client', () => {
     const seen: unknown[] = [];
     const stop = client.onEvent((e) => seen.push(e));
     expect(await client.call('state.get', {})).toEqual({ answered: true });
-    expect(seen).toEqual([{ event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } }]);
+    expect(seen).toEqual([{ event: 'repo.changed', data: { id: 'c_1' } }]);
     stop();
     await client.call('state.get', {});
     expect(seen).toHaveLength(1);
