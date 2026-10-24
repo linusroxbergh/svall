@@ -313,7 +313,7 @@ test('remote machines is a fleet switch svall writes to fleet.json, says what it
   act(() => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true }));
   expect(screen.getByTestId('set-handover').getAttribute('aria-checked')).toBe('true');
   expect(screen.getByTestId('settings-tab-machines')).toBeTruthy();
-  expect(screen.getByTestId('set-handover').closest('.row')?.textContent).toContain("kept in this fleet's fleet.json, so it moves with the fleet");
+  expect(screen.getByTestId('set-handover').closest('.row')?.textContent).toContain('Kept in fleet.json, so it moves with the fleet');
   const link = screen.getByRole('link', { name: 'Setting up a Linux machine' });
   fireEvent.click(link);
   expect(sent).toContainEqual({ type: 'openUrl', url: 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md' });

@@ -52,9 +52,9 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await page.getByTestId('machine-add').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
   // before any run, what the machine needs
-  await expect(page.getByTestId('host-intro')).toContainText('whose home need not be yours on this Mac');
+  await expect(page.getByTestId('host-intro')).toContainText('An account you reach over ssh, with any home');
   // the app carries the x86-64 and arm64 companions
-  await expect(page.getByTestId('host-intro')).toContainText('on x86-64 or arm64');
+  await expect(page.getByTestId('host-intro')).toContainText('x86-64 or arm64');
   await expect(page.getByTestId('host-intro')).not.toContainText('--release');
 
   // a name the registry would refuse never reaches the shell
@@ -244,7 +244,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
 
   await row.getByTestId('machine-remove').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'remove');
-  await expect(page.getByTestId('host-confirm')).toContainText('uninstalls Svall there');
+  await expect(page.getByTestId('host-confirm')).toContainText('uninstalls Svall on studio');
   expect(await starts()).toEqual([]);
   await page.getByTestId('host-confirm-no').click();
   await expect(page.getByTestId('host-confirm')).toHaveCount(0);
@@ -262,6 +262,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await page.getByTestId('host-close').click();
   await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
+  await expect(page.getByTestId('host-confirm')).toContainText('Svall stays installed there');
   expect(await starts()).toHaveLength(1);
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio', forget: true } });

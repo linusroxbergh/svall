@@ -14,6 +14,9 @@ vi.mock('../../src/boot.js', () => ({ app: { get store() { return store; }, brid
 const { HandoverSheet } = await import('../../src/HandoverSheet.js');
 const { HostSetup } = await import('../../src/HostSetup.js');
 
+// what a note says, line by line
+const linesOf = (id: string) => [...screen.getByTestId(id).querySelectorAll('.ho-line')].map((l) => l.textContent);
+
 const freeze: HandoverEvent = { event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } };
 const blocked: HandoverEvent = { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } };
 
@@ -60,6 +63,11 @@ test('a destination runs the checks alone and shows what moves and who stops bef
   store.setState({ handover: undefined });
   render(<HandoverSheet />);
   act(() => store.getState().toggleHandover(true));
+  // what moves folds away under the one line on what a handover does
+  const moves = screen.getByTestId('handover-what-moves');
+  expect(moves.querySelector('summary')?.textContent).toBe('What moves');
+  expect([...moves.querySelectorAll('.ho-more-body > span')].map((s) => s.textContent)).toEqual(['Islands, characters, repositories and agent sessions.',
+    'Agents resume from their transcripts.', 'Shells reopen in their folders; a command still running does not move.']);
   fireEvent.click(screen.getByTestId('handover-to-gateway'));
   expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift', check: true });
   act(() => {
@@ -70,7 +78,7 @@ test('a destination runs the checks alone and shows what moves and who stops bef
   expect(screen.getByTestId('handover-summary').textContent).toBe('2 folders, 120 files, 42.0 MB, 1 session');
   expect(screen.getByTestId('handover-rest-resume').textContent).toBe('ada stops now and resumes from its transcript on trift.');
   expect(screen.getByTestId('handover-rest-wait').textContent).toContain('bo is working: the handover waits up to three minutes');
-  expect(screen.getByTestId('handover-rest-shell').textContent).toContain('cy closes; the shell reopens in its folder on trift');
+  expect(screen.getByTestId('handover-rest-shell').textContent).toContain('cy closes and reopens in its folder on trift');
   expect(screen.getByTestId('handover-section-rest').getAttribute('data-state')).toBe('pending');
   expect(screen.getByTestId('handover-headline').textContent).toBe('Nothing stops the move to trift, and nothing has moved yet.');
 
@@ -106,6 +114,146 @@ test('a release blocker opens the machines panel on the Linux machine, in place 
   expect(screen.getByTestId('host-setup').querySelector('[data-testid="machine-upgrade"]')).not.toBeNull();
 });
 
+const nothingOpen: HandoverEvent = { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } };
+
+test('the sheet offers only where the fleet can go: the gateway from this Mac, and this Mac from the gateway', () => {
+  store.setState({ handover: undefined });
+  render(<HandoverSheet />);
+  act(() => { store.getState().toggleHandover(true); store.getState().handoverReplay([nothingOpen]); });
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to trift');
+  expect(screen.queryByTestId('handover-to-local')).toBeNull();
+  // with nothing open, the status says nothing the destination does not, and there is nowhere else to pick
+  expect(screen.queryByTestId('handover-footer')).toBeNull();
+  expect(screen.queryByTestId('handover-again')).toBeNull();
+
+  act(() => store.getState().setConnectionState({ state: 'online', owner: 'trift' }));
+  expect(screen.getByTestId('handover-to-local').textContent).toBe('Move to This Mac');
+  expect(screen.queryByTestId('handover-to-gateway')).toBeNull();
+});
+
+test('with nothing open but a leftover Abort clears, the footer keeps Abort beside the destination', () => {
+  const send = vi.spyOn(bridge, 'send');
+  store.setState({ handover: undefined });
+  render(<HandoverSheet />);
+  act(() => {
+    store.getState().toggleHandover(true);
+    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'none', journals: {}, action: 'finish-abort', safe: ['abort'], reason: 'the gateway never began this handover; nothing moved' } }]);
+  });
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to trift');
+  expect(screen.queryByTestId('handover-again')).toBeNull();
+  fireEvent.click(screen.getByTestId('handover-abort'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'handover.abort' });
+});
+
+const studio = { name: 'studio', id: 'm1', ssh: 'ada@studio', platform: 'linux-x64', gateway: false, fleets: [] };
+const noGateway = () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+  store.setState({ handover: undefined });
+};
+const gatewayNamed = (gateway: string) => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway });
+
+test('with no gateway, the sheet makes a machine this Mac knows the gateway, and is back with the move to it once that is done', () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => store.getState().toggleHandover(true));
+  expect(send).toHaveBeenCalledWith({ type: 'host.list' });
+  expect(screen.queryByTestId('handover-destinations')).toBeNull();
+  // a list that could not be read says so, rather than offering only Add machine
+  act(() => store.getState().setMachines([], 'svall host list failed'));
+  expect(screen.getByTestId('handover-no-gateway').textContent).toContain('svall host list failed');
+  send.mockClear();
+  fireEvent.click(screen.getByTestId('handover-machines-reload'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.list' });
+  act(() => store.getState().setMachines([studio]));
+  expect(screen.queryByTestId('handover-machines-reload')).toBeNull();
+  fireEvent.click(screen.getByTestId('handover-enable-studio'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  expect(screen.queryByTestId('handover-sheet')).toBeNull();
+  expect(screen.getByTestId('host-machine').textContent).toBe('studio');
+
+  // the shell names the gateway only after the run ends
+  act(() => store.getState().hostDone('enable', 0));
+  expect(screen.getByTestId('host-setup')).toBeTruthy();
+  act(() => gatewayNamed('studio'));
+  expect(screen.queryByTestId('host-setup')).toBeNull();
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to studio');
+});
+
+test('Add machine from the sheet makes the gateway by itself when the add leaves nothing to do, and waits for Make gateway when it does', () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  act(() => store.getState().setMachines([]));
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => store.getState().toggleHandover(true));
+  const add = () => {
+    fireEvent.click(screen.getByTestId('handover-add-machine'));
+    expect(screen.queryByTestId('handover-sheet')).toBeNull();
+    fireEvent.change(screen.getByTestId('host-name'), { target: { value: 'studio' } });
+    fireEvent.change(screen.getByTestId('host-ssh'), { target: { value: 'ada@studio' } });
+    fireEvent.click(screen.getByTestId('host-add'));
+  };
+  const registered = { step: 'registry', status: 'ok', detail: "studio is in this Mac's list of machines" } as const;
+
+  add();
+  act(() => {
+    store.getState().hostStep('add', { step: 'claude', status: 'warn', detail: 'not logged in', action: 'ssh ada@studio, then claude auth login' });
+    store.getState().hostStep('add', registered);
+    store.getState().hostDone('add', 1);
+  });
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'add', args: { name: 'studio', ssh: 'ada@studio' } });
+  expect(screen.getByTestId('host-action-claude')).toBeTruthy();
+  fireEvent.click(screen.getByTestId('host-next-gateway'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  act(() => { store.getState().hostDone('enable', 0); gatewayNamed('studio'); });
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to studio');
+
+  act(() => { noGateway(); store.getState().setMachines([]); });
+  add();
+  act(() => { store.getState().hostStep('add', registered); store.getState().hostDone('add', 0); });
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+});
+
+test("the panel's own Make gateway, after a failed one from the sheet, still brings the sheet back", () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  act(() => store.getState().setMachines([studio]));
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => store.getState().toggleHandover(true));
+  fireEvent.click(screen.getByTestId('handover-enable-studio'));
+  act(() => {
+    store.getState().hostStep('enable', { step: 'authority', status: 'fail', detail: 'studio did not answer' });
+    store.getState().hostDone('enable', 1);
+  });
+  fireEvent.click(screen.getByTestId('machine-enable'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  act(() => { store.getState().hostDone('enable', 0); gatewayNamed('studio'); });
+  expect(screen.queryByTestId('host-setup')).toBeNull();
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to studio');
+});
+
+test('an add from Settings leaves the gateway to the user, and Add machine in the sheet later does not act on it', () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => {
+    // a panel the sheet opened and the user closed leaves nothing behind for Settings' own add
+    store.getState().hostFromHandover();
+    store.getState().toggleHost(false);
+    store.getState().toggleHost(true);
+    store.getState().hostStarted('add', { name: 'studio', ssh: 'ada@studio' });
+    store.getState().hostStep('add', { step: 'registry', status: 'ok' });
+    store.getState().hostDone('add', 0);
+  });
+  expect(send).not.toHaveBeenCalled();
+  expect(screen.getByTestId('host-next-gateway')).toBeTruthy();
+
+  act(() => { store.getState().toggleHost(false); store.getState().toggleHandover(true); });
+  fireEvent.click(screen.getByTestId('handover-add-machine'));
+  expect(screen.getByTestId('host-name')).toBeTruthy();
+  expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ op: 'enable' }));
+});
+
 test('a folder that holds repositories no character works in blocks on its character until Carry the folder whole is chosen, and the start again carries it', () => {
   const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
@@ -124,7 +272,7 @@ test('a folder that holds repositories no character works in blocks on its chara
   expect(row.querySelector('.ho-more')?.textContent).toContain('cd that terminal to ~');
   expect(row.querySelector('.ho-more')?.textContent).toContain('Carry the folder whole copies those repositories to trift with it.');
   expect(screen.getByTestId('handover-headline').textContent).toBe('1 thing to settle before the fleet moves to trift. Nothing has moved.');
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('1 choice still open. Move to trift runs the checks again.');
+  expect(linesOf('handover-footnote')).toEqual(['1 choice still open.', 'Move to trift runs the checks again.']);
   expect(screen.getByTestId('handover-section-checks').dataset.state).toBe('waiting');
 
   // picking the choice settles the row: it says what will happen, and can be undone
@@ -134,7 +282,7 @@ test('a folder that holds repositories no character works in blocks on its chara
   expect(row.dataset.status).toBe('ok');
   expect(row.querySelector('.ho-plan')?.textContent).toBe("c1's folder will be carried whole, with the repositories in it.");
   expect(store.getState().handover?.choices).toEqual({ carryUnused: true });
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('Everything is settled: Move to trift runs the checks again and goes on.');
+  expect(screen.getByTestId('handover-footnote').textContent).toBe('All settled: Move to trift runs the checks again and goes on.');
   fireEvent.click(screen.getByTestId('handover-undo-carry'));
   expect(store.getState().handover?.choices).toEqual({});
   expect(row.dataset.status).toBe('fail');
@@ -166,7 +314,7 @@ test('stopped at the checks, every blocker names what it is about in words and h
   act(() => store.getState().handoverExit(1));
   expect(screen.getByTestId('handover-route').textContent).toBe('This Mac→trift');
   expect(screen.getByTestId('handover-headline').textContent).toBe('3 things to settle before the fleet moves to trift. Nothing has moved.');
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('2 choices still open; 1 thing to fix outside the sheet first. Move to trift runs the checks again.');
+  expect(linesOf('handover-footnote')).toEqual(['2 choices still open, 1 thing to fix outside the sheet.', 'Move to trift runs the checks again.']);
   const asked = screen.getByTestId('handover-blocker-agent_blocked');
   expect(asked.querySelector('.host-said')?.firstChild?.textContent).toBe('codex-r is waiting on an answer');
   expect(asked.querySelector('.ho-quote')?.textContent).toBe('Allow Codex to run `rm -rf dist`?');
@@ -174,7 +322,7 @@ test('stopped at the checks, every blocker names what it is about in words and h
   // each blocker's code, small, to look up in errors.md
   expect(asked.querySelector('.ho-code')?.textContent).toBe('agent_blocked');
   const stuck = screen.getByTestId('handover-blocker-path_unsupported');
-  expect(stuck.querySelector('em')?.textContent).toContain('cd that terminal to a folder that travels');
+  expect([...stuck.querySelectorAll('em .ho-line[data-item]')].map((l) => l.textContent)).toEqual(['move what it names', 'cd that terminal to a folder that travels', 'close the character']);
   expect(stuck.querySelector('[data-testid="handover-open-card"]')?.textContent).toBe('Open c2');
   const taken = screen.getByTestId('handover-blocker-destination_occupied');
   expect(taken.querySelector('.ho-who')?.textContent).toBe('~/src/beta');
@@ -204,7 +352,7 @@ test('the warnings that bite once the fleet has moved stay in sight, and only th
   for (const code of ['claude_trust', 'claude_bypass', 'config_difference']) {
     expect(screen.getByTestId(`handover-warning-${code}`).closest('details'), code).toBeNull();
   }
-  expect(screen.getByTestId('handover-warning-claude_trust').querySelector('em')?.textContent).toMatch(/"No, exit" preselected/);
+  expect(screen.getByTestId('handover-warning-claude_trust').querySelector('em')?.textContent).toMatch(/"No, exit" is preselected/);
   expect(screen.getByTestId('handover-notes').querySelector('summary')?.textContent).toBe('2 notes');
   expect(screen.getByTestId('handover-warning-env_file').closest('details')).not.toBeNull();
 });
@@ -305,7 +453,7 @@ test('a run that stopped before the commit offers Resume and Abort with what eac
       { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: `${TX} is preparing and has not committed; it can go on, or be aborted back to ${MAC}` } }]);
   });
   expect(screen.getByTestId('handover-headline').textContent).toBe('Stopped at Transferring files and sessions, before the commit: the fleet has not moved.');
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
+  expect(linesOf('handover-footnote')).toEqual(['Resume goes on from where it stopped.', 'Abort gives the fleet back to This Mac.']);
   expect(screen.getByTestId('handover-resume').textContent).toBe('Resume');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();
   expect(resumes(send)).toBe(0);
@@ -450,7 +598,7 @@ test('a handover already open at the checks is looked up, and the sheet offers w
   expect(screen.getByTestId('handover-resume').textContent).toBe('Resume');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();
   expect(screen.queryByTestId('handover-try-again')).toBeNull();
-  expect(screen.getByTestId('handover-footnote').textContent).toBe('Resume goes on from where it stopped; Abort gives the fleet back to This Mac.');
+  expect(linesOf('handover-footnote')).toEqual(['Resume goes on from where it stopped.', 'Abort gives the fleet back to This Mac.']);
   // with the status in, the blocker keeps its hint and code, not the ids its message names
   expect(screen.getByTestId('handover-blocker-transaction_open').textContent).toContain('transaction_open');
   expect(screen.getByTestId('handover-sheet').textContent).not.toMatch(new RegExp(`${TX}|${MAC}|generation`));
@@ -538,14 +686,17 @@ test('where nothing is safe or the gateway has moved on, the sheet names the com
   act(() => store.getState().handoverExit(1));
   const gone = ['svall handover status', 'svall host doctor trift', 'svall fleet recover --force-owner local', 'svall fleet recover --force-owner local --gateway <machine>'];
   expect(commands()).toEqual(gone);
-  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^Once the gateway answers, svall handover status says what is safe;.* If it is gone for good, svall fleet recover --force-owner local runs the fleet on this Mac alone/);
+  // each command stands alone on its line, under what it is for
+  expect(linesOf('handover-way-out')).toEqual(['Once the gateway answers, this says what is safe:', 'svall handover status', 'Meanwhile, check the link to it:', 'svall host doctor trift',
+    'If it is gone for good, run the fleet on this Mac alone:', 'svall fleet recover --force-owner local', 'Or with another machine as its gateway:', 'svall fleet recover --force-owner local --gateway <machine>']);
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
   expect(commands()).toEqual(gone);
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: TX, safe: [], reason: '' } }]));
   expect(commands()).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
-  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/Forget is enough when another handover or a recovery moved it on/);
+  expect(linesOf('handover-way-out')).toEqual(['Where the fleet stands now:', 'svall handover status', 'Forget is enough if another handover or a recovery moved it on.',
+    "If the gateway was set up again, make this Mac the fleet's owner:", 'svall fleet recover --force-owner local']);
 
   act(() => store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'open', journals: {}, action: 'continue', transactionId: TX, phase: 'transfer', safe: ['resume', 'abort'], reason: '' } }]));
   expect(screen.queryByTestId('handover-way-out')).toBeNull();
@@ -562,10 +713,11 @@ test('a stop with nothing safe names the way out for what stopped it, with what 
     detail: `${TX} moved this fleet to ${TRIFT}, whose handover journal could not be read and was moved to ${broken}.broken-1: on that machine, repair it and put it back at ${broken}, then restart the fleet's daemon there and resume; or \`svall fleet recover --force-owner <machine>\` names the machine to run the fleet, from the state it holds`,
   } });
   act(() => store.getState().handoverExit(1));
-  expect(screen.getByTestId('handover-headline').textContent).toBe("The fleet moved to trift, but trift's record of the handover could not be read: nothing is safe until it is put back or the fleet is recovered.");
+  expect(screen.getByTestId('handover-headline').textContent).toBe("The fleet moved to trift, but trift's handover record is unreadable. Nothing is safe until it is put back or the fleet is recovered.");
   expect(screen.getByTestId('handover-detail').textContent).toContain(`${broken}.broken-1`);
   expect(commands('handover-detail')).toEqual(['svall fleet recover --force-owner <machine>']);
-  expect(screen.getByTestId('handover-way-out').textContent).toMatch(/^On trift, put the handover record back where the details say and restart the fleet's daemon there, then Check again/);
+  expect(linesOf('handover-way-out')).toEqual(["On trift, put the handover record back where Details says, restart the fleet's daemon there, then Check again.",
+    'Or run the fleet on a machine you name, from the state it holds:', 'svall fleet recover --force-owner <machine>']);
   expect(commands('handover-way-out')).toEqual(['svall fleet recover --force-owner <machine>']);
   expect(screen.getByTestId('handover-follow')).toBeTruthy();
   expect(attaches(send)).toBe(0);
@@ -592,7 +744,10 @@ test('a generation the gateway does not share names the restart and the recovery
   say(openAtChecks('generation_mismatch', `This Mac holds this fleet for ${MAC} at generation 4, and the gateway for ${MAC} at 0`));
   const hint = screen.getByTestId('handover-blocker-generation_mismatch').querySelector('em')!;
   expect([...hint.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['svall handover status', 'svall fleet recover --force-owner local']);
-  expect(hint.textContent).toMatch(/restart Svall's daemon on This Mac/);
+  // each command alone on its line, under what it is for
+  expect([...hint.querySelectorAll('.ho-line')].map((l) => l.textContent)).toEqual(['Another handover or a recovery moved the fleet since This Mac last heard, or the gateway was set up again.',
+    'This says which:', 'svall handover status', "With nothing open, restart Svall's daemon on This Mac; it takes the gateway's newer record.",
+    'A gateway set up again needs:', 'svall fleet recover --force-owner local']);
 });
 
 test('the sheet says when Abort stops being possible: once the commit begins, and not before', () => {
@@ -605,7 +760,7 @@ test('the sheet says when Abort stops being possible: once the commit begins, an
   expect(screen.getByTestId('handover-section-verify').dataset.state).toBe('done');
   expect(screen.getByTestId('handover-section-commit').dataset.state).toBe('active');
   expect(screen.queryByTestId('handover-abort')).toBeNull();
-  expect(screen.getByTestId('handover-no-way-back').textContent).toBe('From here there is no way back: the gateway gives the fleet to trift, and the move can only go on.');
+  expect(screen.getByTestId('handover-no-way-back').textContent).toBe('No way back from here: the move to trift can only go on.');
 });
 
 test('a resume or abort that finds nothing safe has the sheet read the status, and says where things stand in its words', () => {

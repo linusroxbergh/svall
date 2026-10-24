@@ -10,6 +10,7 @@ import {
   type HandoverRun, type HintContext, type RestHow, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
+import { startHost } from './HostSetup.js';
 
 const MARK: Record<SectionState, string> = { pending: '·', active: '›', waiting: '!', done: '✓', stopped: '×' };
 
@@ -48,6 +49,11 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** Text with the commands it names, between backticks, as code a click selects whole. */
 const withCode = (text: string): ReactNode[] => text.split('`').map((part, i) => (i % 2 ? <code key={i} className="ho-cmd">{part}</code> : part));
 
+/** One idea per line, a command alone on its line, and a line that starts `- ` as an item of a list. */
+const lines = (text: string): ReactNode[] => text.split('\n').map((line, i) => (
+  <span key={i} className="ho-line" data-item={line.startsWith('- ') || undefined}>{withCode(line.replace(/^- /, ''))}</span>
+));
+
 function More({ label, children, testid }: { label: string; children: ReactNode; testid?: string }) {
   return (
     <details className="ho-more" data-testid={testid}>
@@ -80,7 +86,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
         {picked ? <span className="ho-plan">{planOf(choice!, b, ctx, names)}</span> : !answered(run, b) && problem}
         <small className="ho-code">{b.code}</small>
         {!picked && quote && <q className="ho-quote">{quote.slice(1, -1)}</q>}
-        {!picked && !choice && hint && <em>{withCode(hint)}</em>}
+        {!picked && !choice && hint && <em>{lines(hint)}</em>}
         {!warning && (
           <span className="ho-acts">
             {choice && (
@@ -100,7 +106,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
             )}
           </span>
         )}
-        {!picked && more.length > 0 && <More label="Details">{more.map((m, i) => <span key={i}>{withCode(m)}</span>)}</More>}
+        {!picked && more.length > 0 && <More label="Details">{more.map((m, i) => <span key={i}>{lines(m)}</span>)}</More>}
       </span>
     </div>
   );
@@ -144,9 +150,9 @@ const REST_TEXT: Record<RestHow, (one: boolean, to: string) => string> = {
   resume: (one, to) => (one ? `stops now and resumes from its transcript on ${to}.` : `stop now and resume from their transcripts on ${to}.`),
   wait: (one) => `${one ? 'is' : 'are'} working: the handover waits up to three minutes for ${one ? 'its turn' : 'each turn'} to end, then asks you.`,
   answer: (one) => `${one ? 'waits on an answer' : 'wait on answers'}: answer first, or interrupt when the handover asks.`,
-  background: (one) => `left ${one ? 'a command' : 'commands'} running in the background: the handover waits for ${one ? 'it' : 'them'} to end, or you terminate ${one ? 'it' : 'them'}.`,
-  shell: (one, to) => (one ? `closes; the shell reopens in its folder on ${to}, and a command still running there does not move.`
-    : `close; each shell reopens in its folder on ${to}, and a command still running there does not move.`),
+  background: (one) => `left ${one ? 'a command' : 'commands'} running in the background: the handover waits for ${one ? 'it' : 'them'}, or you end ${one ? 'it' : 'them'}.`,
+  shell: (one, to) => (one ? `closes and reopens in its folder on ${to}. A command still running does not move.`
+    : `close; each reopens in its folder on ${to}. A command still running does not move.`),
   dormant: (one) => (one ? 'is dormant and stays so.' : 'are dormant and stay so.'),
 };
 
@@ -181,7 +187,7 @@ function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run
         <span className="host-said">
           {done ? `${what} verified on ${ctx.destination}, ${formatBytes(t.totalBytes)}` : `${formatBytes(t.bytes)} of ${formatBytes(whole)} · ${t.done} of ${t.total} verified${pace ? ` · ${pace.text}` : ''}`}
           <span className="ho-bar ho-bar-all"><i style={{ width: `${Math.round(f * 100)}%` }} /></span>
-          {!done && !failed.length && <span className="ho-sub">Files already on {ctx.destination} are not sent again, so a bar can stop short until its folder is verified.</span>}
+          {!done && !failed.length && <span className="ho-sub">Files already on {ctx.destination} are skipped, so a bar can stop short until verified.</span>}
         </span>
       </div>
       {loud.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
@@ -257,7 +263,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
           : rows.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
       {id === 'commit' && (state === 'active' || done) && (
         <div className="host-step" data-testid="handover-no-way-back"><span className="host-mark" /><span className="host-said ho-sub">
-          From here there is no way back: the gateway gives the fleet to {ctx.destination}, and the move can only go on.
+          No way back from here: the move to {ctx.destination} can only go on.
         </span></div>
       )}
       {interrupt && (
@@ -272,24 +278,40 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
   );
 }
 
-function Destinations({ owner, gateway, onChose }: { owner: string; gateway?: string; onChose(): void }) {
-  const chose = (to: string) => { onChose(); start(to, {}, true); };
+/** No gateway to move to: a machine this Mac knows made the gateway, or a new one added, and back to the sheet after. */
+function NoGateway() {
+  const machines = useApp((s) => s.machines);
+  const error = useApp((s) => s.machinesError);
+  const running = useApp((s) => !!s.host?.running);
+  const list = () => { app.bridge.send({ type: 'host.list' }); };
+  useEffect(list, []);
+  const known = machines?.filter((m) => m.ssh) ?? [];
+  const enable = (name: string) => { store().hostFromHandover(name); startHost('enable', { name }); };
   return (
-    <div className="host-note" data-testid="handover-destinations">
-      Move this fleet to
+    <div className="host-note" data-testid="handover-no-gateway">
+      {error ?? (known.length ? "Make a machine this fleet's gateway to move the fleet there." : 'Add a Linux machine to move this fleet to.')}
       <div className="acts">
-        <button className="btn" data-testid="handover-to-local" disabled={owner === 'local'}
-          title={owner === 'local' ? 'The fleet runs on this Mac' : 'Bring the fleet back to this Mac'} onClick={() => chose('local')}>This Mac</button>
-        {gateway && (
-          <button className="btn" data-testid="handover-to-gateway" disabled={owner === gateway}
-            title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => chose(gateway)}>{gateway}</button>
-        )}
+        {error && <button className="btn" data-testid="handover-machines-reload" onClick={list}>Read again</button>}
+        {known.map((m) => (
+          <button key={m.id} className="btn pri" data-testid={`handover-enable-${m.name}`} disabled={running} onClick={() => enable(m.name)}>
+            Make {m.name} this fleet&apos;s gateway
+          </button>
+        ))}
+        <button className={known.length ? 'btn' : 'btn pri'} data-testid="handover-add-machine" disabled={running} onClick={() => store().hostFromHandover()}>Add machine</button>
       </div>
-      {!gateway && (
-        <div data-testid="handover-no-gateway">
-          No machine is this fleet&apos;s gateway yet: add one under Settings → Machines, then choose Make it this fleet&apos;s gateway.
-        </div>
-      )}
+    </div>
+  );
+}
+
+/** The one place the fleet can go: the gateway from this Mac, and this Mac from the gateway. */
+function Destination({ owner, gateway, onChose }: { owner: string; gateway?: string; onChose(): void }) {
+  const to = owner === 'local' ? gateway : 'local';
+  if (!to) return <NoGateway />;
+  return (
+    <div className="acts" data-testid="handover-destinations">
+      <button className="btn pri" data-testid={to === 'local' ? 'handover-to-local' : 'handover-to-gateway'} onClick={() => { onChose(); start(to, {}, true); }}>
+        Move to {destinationName(to)}
+      </button>
     </div>
   );
 }
@@ -314,18 +336,19 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
   if (r?.status === 'blocked' && !verdictOf(run)) {
     const open = r.blockers.filter((b) => choiceFor(b) && !chosen(run.choices, b)).length;
     const fix = r.blockers.filter((b) => !choiceFor(b)).length;
-    const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet first` : ''].filter(Boolean);
-    return { tone: 'stop', sub: parts.length ? `${parts.join('; ')}. Move to ${ctx.destination} runs the checks again.` : `Everything is settled: Move to ${ctx.destination} runs the checks again and goes on.` };
+    const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet` : ''].filter(Boolean);
+    return { tone: 'stop', sub: parts.length ? `${parts.join(', ')}.\nMove to ${ctx.destination} runs the checks again.` : `All settled: Move to ${ctx.destination} runs the checks again and goes on.` };
   }
-  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} runs the checks once more, then rests the characters above; until the commit, Abort gives the fleet back.` };
+  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} checks once more, then rests the characters above.\nUntil the commit, Abort gives the fleet back.` };
   const a = actionsOf(run);
-  if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped${a.abort ? `; Abort gives the fleet back to ${ctx.source}` : ''}.` };
+  if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped.${a.abort ? `\nAbort gives the fleet back to ${ctx.source}.` : ''}` };
   if (a.resume === 'Retry') return { tone: 'stop', sub: `Retry finishes resuming on ${ctx.destination}; nothing goes back from here.` };
   if (r || run.status || run.error) return { tone: 'stop' };
   return { tone: 'ok' };
 }
 
-function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onAgain(): void }) {
+// onAgain: how to pick another destination, while none is in sight
+function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onAgain?: () => void }) {
   const acts = actionsOf(run);
   const said = headline(run, ctx.destination);
   const way = wayOut(run, ctx);
@@ -356,11 +379,11 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
   return (
     <div className="ho-foot" data-testid="handover-footer" data-tone={tone}>
       {said && <div className="ho-status" data-testid="handover-headline" aria-live="polite">{said}</div>}
-      {sub && <div className="ho-sub" data-testid="handover-footnote">{sub}</div>}
-      {way && <div className="ho-sub" data-testid="handover-way-out">{withCode(way)}</div>}
+      {sub && <div className="ho-sub" data-testid="handover-footnote">{lines(sub)}</div>}
+      {way && <div className="ho-sub" data-testid="handover-way-out">{lines(way)}</div>}
       {detail && <More label="Details" testid="handover-detail">{withCode(detail)}</More>}
       {buttons.length > 0 && <div className="acts">{buttons}</div>}
-      {acts.start && (
+      {acts.start && onAgain && (
         <button className="btn ghost ho-again" data-testid="handover-again" onClick={onAgain}>Move the fleet somewhere else…</button>
       )}
     </div>
@@ -418,6 +441,8 @@ export function HandoverSheet() {
   const close = () => store().toggleHandover(false);
   const shown = !!run && !!(run.phase || run.preflight || run.result || run.status?.phase) && !picking;
   const choosing = !shown && actionsOf(run).start;
+  // with nothing open, the status has nothing to add to the destination above it
+  const idle = choosing && run?.status?.standing === 'none' && !run.status.safe.length;
 
   return (
     <div className="modal-back" data-testid="handover-sheet" onPointerDown={close}>
@@ -427,21 +452,24 @@ export function HandoverSheet() {
           {shown && to && <Route run={run} ctx={ctx} />}
         </div>
         <div className="ho-body">
-          {choosing && <Destinations owner={owner} gateway={gateway} onChose={() => setPicking(false)} />}
           {!shown && (
             <div className="host-note" data-testid="handover-intro">
-              A handover moves the whole fleet: its islands, characters, repositories and agent sessions. Agents resume from
-              their transcripts and shells reopen in their folders on the other machine; a command still running does not
-              move. Choosing a machine runs the checks alone, and nothing moves until you choose Move.
+              <span>A handover moves this whole fleet to another machine.<span className="ho-sub">The checks run first; nothing moves until you choose Move again.</span></span>
+              <More label="What moves" testid="handover-what-moves">
+                <span>Islands, characters, repositories and agent sessions.</span>
+                <span>Agents resume from their transcripts.</span>
+                <span>Shells reopen in their folders; a command still running does not move.</span>
+              </More>
             </div>
           )}
+          {choosing && <Destination owner={owner} gateway={gateway} onChose={() => setPicking(false)} />}
           {shown && (
             <div className="host-steps" data-testid="handover-sections">
               {sectionStates(run).map((s) => <Section key={s.id} {...s} run={run} ctx={ctx} />)}
             </div>
           )}
         </div>
-        {run && !picking && <Footer run={run} ctx={ctx} onAgain={() => setPicking(true)} />}
+        {run && !picking && !idle && <Footer run={run} ctx={ctx} onAgain={choosing ? undefined : () => setPicking(true)} />}
       </div>
     </div>
   );
