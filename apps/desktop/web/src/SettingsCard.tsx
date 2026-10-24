@@ -138,7 +138,7 @@ function RemoteMachines() {
   const away = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
   return (
     <div className="row">
-      <span>remote machines (experimental)<Info id="remote">Shows Settings → Machines, the Handover button and each card&apos;s keep on this machine switch, to move this fleet to a Linux machine and back. It is kept in this fleet&apos;s fleet.json, so it moves with the fleet. <a href={SETUP_DOC} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Setting up a Linux machine</a> walks through it.</Info></span>
+      <span>remote machines (experimental)<Info id="remote">Move this fleet to a Linux machine and back. Adds Machines here, Handover at the foot of the sidebar and each card&apos;s keep on this machine switch. Kept in fleet.json, so it moves with the fleet. <a href={SETUP_DOC} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Setting up a Linux machine</a></Info></span>
       <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-handover" disabled={!!away || (on && !!gateway)}
         title={away ? `The fleet runs on ${away}, which holds its setting` : on && gateway ? `${gateway} is this fleet's gateway: remove it under Machines first` : undefined}
         onClick={() => app.bridge.send({ type: 'handover.enable', on: !on })}>{on ? 'on' : 'off'}</button></b>
@@ -179,7 +179,7 @@ function Machines() {
         </div>
       )}
       <div className="row">
-        <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Svall installs itself there over ssh, checks what it needs, and reports what is still to do. <code>svall host</code> does the same from a terminal.</Info></span>
+        <span>another machine<Info id="hosts">Svall installs itself on a Linux machine over ssh and reports what is left to do. From a terminal: <code>svall host</code></Info></span>
         <b><button className="btn set-open" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
       </div>
     </div>

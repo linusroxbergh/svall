@@ -48,6 +48,11 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** Text with the commands it names, between backticks, as code a click selects whole. */
 const withCode = (text: string): ReactNode[] => text.split('`').map((part, i) => (i % 2 ? <code key={i} className="ho-cmd">{part}</code> : part));
 
+/** One idea per line, a command alone on its line, and a line that starts `- ` as an item of a list. */
+const lines = (text: string): ReactNode[] => text.split('\n').map((line, i) => (
+  <span key={i} className="ho-line" data-item={line.startsWith('- ') || undefined}>{withCode(line.replace(/^- /, ''))}</span>
+));
+
 function More({ label, children, testid }: { label: string; children: ReactNode; testid?: string }) {
   return (
     <details className="ho-more" data-testid={testid}>
@@ -80,7 +85,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
         {picked ? <span className="ho-plan">{planOf(choice!, b, ctx, names)}</span> : !answered(run, b) && problem}
         <small className="ho-code">{b.code}</small>
         {!picked && quote && <q className="ho-quote">{quote.slice(1, -1)}</q>}
-        {!picked && !choice && hint && <em>{withCode(hint)}</em>}
+        {!picked && !choice && hint && <em>{lines(hint)}</em>}
         {!warning && (
           <span className="ho-acts">
             {choice && (
@@ -100,7 +105,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
             )}
           </span>
         )}
-        {!picked && more.length > 0 && <More label="Details">{more.map((m, i) => <span key={i}>{withCode(m)}</span>)}</More>}
+        {!picked && more.length > 0 && <More label="Details">{more.map((m, i) => <span key={i}>{lines(m)}</span>)}</More>}
       </span>
     </div>
   );
@@ -144,9 +149,9 @@ const REST_TEXT: Record<RestHow, (one: boolean, to: string) => string> = {
   resume: (one, to) => (one ? `stops now and resumes from its transcript on ${to}.` : `stop now and resume from their transcripts on ${to}.`),
   wait: (one) => `${one ? 'is' : 'are'} working: the handover waits up to three minutes for ${one ? 'its turn' : 'each turn'} to end, then asks you.`,
   answer: (one) => `${one ? 'waits on an answer' : 'wait on answers'}: answer first, or interrupt when the handover asks.`,
-  background: (one) => `left ${one ? 'a command' : 'commands'} running in the background: the handover waits for ${one ? 'it' : 'them'} to end, or you terminate ${one ? 'it' : 'them'}.`,
-  shell: (one, to) => (one ? `closes; the shell reopens in its folder on ${to}, and a command still running there does not move.`
-    : `close; each shell reopens in its folder on ${to}, and a command still running there does not move.`),
+  background: (one) => `left ${one ? 'a command' : 'commands'} running in the background: the handover waits for ${one ? 'it' : 'them'}, or you end ${one ? 'it' : 'them'}.`,
+  shell: (one, to) => (one ? `closes and reopens in its folder on ${to}. A command still running does not move.`
+    : `close; each reopens in its folder on ${to}. A command still running does not move.`),
   dormant: (one) => (one ? 'is dormant and stays so.' : 'are dormant and stay so.'),
 };
 
@@ -181,7 +186,7 @@ function Transfer({ rows, ctx, run, done }: { rows: Row[]; ctx: HintContext; run
         <span className="host-said">
           {done ? `${what} verified on ${ctx.destination}, ${formatBytes(t.totalBytes)}` : `${formatBytes(t.bytes)} of ${formatBytes(whole)} · ${t.done} of ${t.total} verified${pace ? ` · ${pace.text}` : ''}`}
           <span className="ho-bar ho-bar-all"><i style={{ width: `${Math.round(f * 100)}%` }} /></span>
-          {!done && !failed.length && <span className="ho-sub">Files already on {ctx.destination} are not sent again, so a bar can stop short until its folder is verified.</span>}
+          {!done && !failed.length && <span className="ho-sub">Files already on {ctx.destination} are skipped, so a bar can stop short until verified.</span>}
         </span>
       </div>
       {loud.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
@@ -257,7 +262,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
           : rows.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
       {id === 'commit' && (state === 'active' || done) && (
         <div className="host-step" data-testid="handover-no-way-back"><span className="host-mark" /><span className="host-said ho-sub">
-          From here there is no way back: the gateway gives the fleet to {ctx.destination}, and the move can only go on.
+          No way back from here: the move to {ctx.destination} can only go on.
         </span></div>
       )}
       {interrupt && (
@@ -330,12 +335,12 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
   if (r?.status === 'blocked' && !verdictOf(run)) {
     const open = r.blockers.filter((b) => choiceFor(b) && !chosen(run.choices, b)).length;
     const fix = r.blockers.filter((b) => !choiceFor(b)).length;
-    const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet first` : ''].filter(Boolean);
-    return { tone: 'stop', sub: parts.length ? `${parts.join('; ')}. Move to ${ctx.destination} runs the checks again.` : `Everything is settled: Move to ${ctx.destination} runs the checks again and goes on.` };
+    const parts = [open ? `${open} ${open === 1 ? 'choice' : 'choices'} still open` : '', fix ? `${plural(fix, 'thing')} to fix outside the sheet` : ''].filter(Boolean);
+    return { tone: 'stop', sub: parts.length ? `${parts.join(', ')}.\nMove to ${ctx.destination} runs the checks again.` : `All settled: Move to ${ctx.destination} runs the checks again and goes on.` };
   }
-  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} runs the checks once more, then rests the characters above; until the commit, Abort gives the fleet back.` };
+  if (r?.status === 'ready' && actionsOf(run).tryAgain) return { tone: 'ok', sub: `Move to ${ctx.destination} checks once more, then rests the characters above.\nUntil the commit, Abort gives the fleet back.` };
   const a = actionsOf(run);
-  if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped${a.abort ? `; Abort gives the fleet back to ${ctx.source}` : ''}.` };
+  if (a.resume === 'Resume') return { tone: 'stop', sub: `Resume goes on from where it stopped.${a.abort ? `\nAbort gives the fleet back to ${ctx.source}.` : ''}` };
   if (a.resume === 'Retry') return { tone: 'stop', sub: `Retry finishes resuming on ${ctx.destination}; nothing goes back from here.` };
   if (r || run.status || run.error) return { tone: 'stop' };
   return { tone: 'ok' };
@@ -376,8 +381,8 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
   return (
     <div className="ho-foot" data-testid="handover-footer" data-tone={tone}>
       {said && <div className="ho-status" data-testid="handover-headline" aria-live="polite">{said}</div>}
-      {sub && <div className="ho-sub" data-testid="handover-footnote">{sub}</div>}
-      {way && <div className="ho-sub" data-testid="handover-way-out">{withCode(way)}</div>}
+      {sub && <div className="ho-sub" data-testid="handover-footnote">{lines(sub)}</div>}
+      {way && <div className="ho-sub" data-testid="handover-way-out">{lines(way)}</div>}
       {detail && <More label="Details" testid="handover-detail">{withCode(detail)}</More>}
       {buttons.length > 0 && <div className="acts">{buttons}</div>}
       {acts.start && onAgain && (
@@ -455,9 +460,12 @@ export function HandoverSheet() {
         <div className="ho-body">
           {!shown && (
             <div className="host-note" data-testid="handover-intro">
-              A handover moves the whole fleet: its islands, characters, repositories and agent sessions. Agents resume from
-              their transcripts and shells reopen in their folders on the other machine; a command still running does not
-              move. Choosing a machine runs the checks alone, and nothing moves until you choose Move.
+              <span>A handover moves this whole fleet to another machine.<span className="ho-sub">The checks run first; nothing moves until you choose Move again.</span></span>
+              <More label="What moves" testid="handover-what-moves">
+                <span>Islands, characters, repositories and agent sessions.</span>
+                <span>Agents resume from their transcripts.</span>
+                <span>Shells reopen in their folders; a command still running does not move.</span>
+              </More>
             </div>
           )}
           {choosing && <Destination owner={owner} gateway={gateway} onChose={() => setPicking(false)} />}
