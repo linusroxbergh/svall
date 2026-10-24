@@ -788,6 +788,20 @@ describe('preflight', () => {
     expect((await controller(moved.w).preflight(trift, {})).blockers).toEqual([]);
   });
 
+  it('asks the source about a kept commit by its own repository, when the destination has another home', async () => {
+    const lost = keptCommit({ reached: false, at: 'inspect' });
+    const preflight = lost.w.source.answers['handover.preflight'] as (p: unknown) => Promise<{ manifest: FrozenManifest }>;
+    lost.w.source.answers['handover.preflight'] = (async (p: unknown) => {
+      const r = await preflight(p);
+      r.manifest.destinationHome = '/home/ada';
+      for (const x of r.manifest.sessions) x.destinationHome = x.destinationHome!.replace(HOME, '/home/ada');
+      return r;
+    }) as never;
+    await controller(lost.w).preflight(trift, {});
+    expect(lost.asked.git).toEqual([expect.objectContaining({ commonDir: '/home/ada/app/.git' })]);
+    expect(lost.asked.reaches).toEqual([{ commits: [{ commonDir: '/Users/ada/app/.git', commit: lost.commit }] }]);
+  });
+
   it('asks the source again about a kept commit the claim cannot prove comes back, before anything is copied', async () => {
     const lost = keptCommit({ reached: false, at: 'claim' });
     const decided: Blocker[][] = [];
@@ -883,7 +897,7 @@ describe('preflight', () => {
     expect(w.source.freezes).toEqual([{ carryUnused: true }]);
   });
 
-  it('asks a destination with another home of each root, folder, link and resume where it lands there, and takes an archive named by either path', async () => {
+  it('asks a destination with another home of each root, folder, link and resume where it lands there, and takes an archive named by its path on the source', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
     w.source.answers['handover.preflight'] = ((p: unknown) => {

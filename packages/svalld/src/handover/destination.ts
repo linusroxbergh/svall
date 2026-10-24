@@ -57,7 +57,7 @@ export type DestinationDeps = {
   git?: GitRunner;
   install?: InstallFs;
   probeFs?: ProbeFs;
-  /** This account's home, which a fleet it receives has to share. */
+  /** This account's home, which a handover it receives has to be sent to. */
   homedir?: () => string;
   clock?: Clock;
   /** How long a resumed agent has to come up in its pane. */

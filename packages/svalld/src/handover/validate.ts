@@ -120,7 +120,7 @@ export type Imported = { state: FleetState; fleet: FleetConfig };
 
 /**
  * The manifest's snapshot and fleet.json as this machine runs them, at the current schema: every path as the
- * source recorded it, and every terminal dormant with no tmux ids and the command that resumes its agent.
+ * manifest gives it, and every terminal dormant with no tmux ids and the command that resumes its agent.
  * Transcripts are placed by the sessions carrying them.
  */
 export function importState(m: TransferManifestV1): Imported {

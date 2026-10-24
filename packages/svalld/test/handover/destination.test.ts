@@ -3083,8 +3083,8 @@ describe('destination complete, when a root cannot be sealed', () => {
 });
 
 describe('a fleet from an account with another home', () => {
-  const claimParams = (s: Scene): ParsedParams<'handover.claim'> =>
-    ({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+  const claimParams = (s: Scene, over: Partial<ParsedParams<'handover.claim'>> = {}): ParsedParams<'handover.claim'> =>
+    ({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, ...over });
   // a path of the Mac's home where it lands in this one
   const here = (s: Scene, p: string): string => path.join(s.dst, path.relative(s.src, p));
 
@@ -3106,8 +3106,39 @@ describe('a fleet from an account with another home', () => {
     const before = tree(s.base);
     const r = await refusal(daemon(s).handover.claim(claimParams(s)));
     expect(r.code).toBe('blocked');
-    expect(blockersOf(r)).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`${path.join(s.dst, 'odd.md')} lies in the destination's home ${s.dst} but not in this machine's home ${s.src}`) })]);
+    expect(blockersOf(r)).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`${path.join(s.dst, 'odd.md')} lies in the destination's home ${s.dst} but not in the source's home ${s.src}`) })]);
     expect(tree(s.base)).toEqual(before);
+  });
+
+  it('refuses a root the source did not spell plainly, as between equal homes, before it reserves anything', async () => {
+    const odd = { id: 'r_odd', kind: 'context' as const, entry: 'file' as const, files: [] };
+    const s = await scene({ relocate: true, land: false, tamper: (m) => { m.roots.push({ ...odd, path: `${m.home}/work/../odd.md` }); } });
+    const before = tree(s.base);
+    const r = await refusal(daemon(s).handover.claim(claimParams(s)));
+    expect(blockersOf(r)).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`"${s.src}/work/../odd.md" is not a plain absolute path`) })]);
+    expect(tree(s.base)).toEqual(before);
+  });
+
+  it('refuses a claim whose roots a link here leads elsewhere, read where they land here', async () => {
+    const s = await scene({
+      relocate: true, land: false,
+      before: ({ dst, base }) => { fs.mkdirSync(path.join(base, 'outside/work'), { recursive: true }); fs.symlinkSync(path.join(base, 'outside/work'), path.join(dst, 'work')); },
+    });
+    const r = await refusal(daemon(s).handover.claim(claimParams(s)));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({
+      code: 'path_symlinked', message: expect.stringContaining(`${path.join(s.dst, 'work/ada')} leads to ${path.join(s.base, 'outside/work/ada')} on this machine`),
+    }));
+  });
+
+  it('archives what is in the way of a root here that the user named by its path on the source', async () => {
+    const s = await scene({ relocate: true, land: false });
+    const ada = path.join(s.dst, 'work/ada');
+    fs.mkdirSync(ada, { recursive: true });
+    fs.writeFileSync(path.join(ada, 'mine.txt'), 'written here\n');
+    const id = s.manifest.roots.find((x) => x.path === path.join(s.src, 'work/ada'))!.id;
+    const taken = (await daemon(s).handover.claim(claimParams(s, { archive: [path.join(s.src, 'work/ada')] }))).roots.find((x) => x.id === id)!;
+    expect(taken.check).toEqual({ ok: true, path: ada, kind: 'absent' });
+    expect(fs.readFileSync(path.join(taken.archivedTo!, 'mine.txt'), 'utf8')).toBe('written here\n');
   });
 
   it('prepares the fleet with every path where it lands here, and each session placed byte for byte under this machine\'s agent home', async () => {
