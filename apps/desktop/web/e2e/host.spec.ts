@@ -52,7 +52,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await page.getByTestId('machine-add').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
   // before any run, what the machine needs
-  await expect(page.getByTestId('host-intro')).toContainText('same path as yours on this Mac');
+  await expect(page.getByTestId('host-intro')).toContainText('whose home need not be yours on this Mac');
   // the app carries the x86-64 and arm64 companions
   await expect(page.getByTestId('host-intro')).toContainText('on x86-64 or arm64');
   await expect(page.getByTestId('host-intro')).not.toContainText('--release');

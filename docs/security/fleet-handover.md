@@ -285,8 +285,8 @@ has a new id and never meets them.
   `codex_trust` and `claude_bypass` warnings, not the move.
 - **The process for each new Claude Code or Codex release:**
   1. record a fixture from it under `packages/svalld/test/fixtures/handover/<agent>/<version>`;
-  2. run the live probe (`packages/svalld/test/handover/sessions-live.test.ts` with `SVALL_LIVE_REMOTE`) between two
-     machines with the same home;
+  2. run the live probe (`packages/svalld/test/handover/sessions-live.test.ts` with `SVALL_LIVE_REMOTE`) between this
+     Mac and a Linux machine;
   3. raise the adapter's minimum only when an older release stops working.
 
   Until the probe passes, the release is untested with handover, not refused. OpenCode has an export fixture

@@ -470,7 +470,7 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
 
 export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry', carry: 'Carry the folder whole' };
 
-// home: the account's home, which is the same path on both machines, when the page knows it; svall: the command for this window's fleet;
+// home: this Mac's account home, when the page knows it; svall: the command for this window's fleet;
 // gateway: the fleet's gateway by its registry name
 export type HintContext = { destination: string; source: string; pull: boolean; home?: string; svall?: string; gateway?: string; name(id: string): string };
 
@@ -491,7 +491,9 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'incompatible_adapter':
       return "Update the agent CLI on the machine the message names; for a file in a session, move it out of that session's folder.";
     case 'home_mismatch':
-      return `The account on ${ctx.destination} no longer has the home this handover was sent to: add the machine again as \`${svall} host doctor\` says, then start a new handover.`;
+      return ctx.pull
+        ? `This Mac's account no longer has the home this handover was sent to: start a new handover.`
+        : `The account on ${linux} no longer has the home this handover was sent to: add the machine again as \`${svall} host doctor ${linux}\` says, then start a new handover.`;
     case 'parent_missing':
       return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
     case 'worktree_unresolved':

@@ -16,7 +16,7 @@ import type { SessionFs } from '../../src/handover/sessions/types.js';
 // in; each run costs a few tiny turns and removes every folder and session file it made on both.
 const REMOTE = process.env.SVALL_LIVE_REMOTE;
 const AGENTS = (process.env.SVALL_LIVE_AGENTS ?? 'claude,codex').split(',') as AgentKind[];
-const REASON = 'needs SVALL_LIVE_REMOTE: an ssh destination with this machine\'s home path and Claude Code and Codex logged in, as they are here';
+const REASON = 'needs SVALL_LIVE_REMOTE: an ssh destination with Claude Code and Codex logged in, as they are here';
 // a remote CLI other than the one on its PATH, such as an older release still installed there
 const REMOTE_BIN: Partial<Record<AgentKind, string>> = { claude: process.env.SVALL_LIVE_REMOTE_CLAUDE, codex: process.env.SVALL_LIVE_REMOTE_CODEX };
 

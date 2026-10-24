@@ -18,7 +18,7 @@ The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` co
 
 ## In short
 
-1. On the Linux machine, make an account whose home is the same path as yours on the Mac, such as `/Users/ada`.
+1. Reach an account on the Linux machine with `ssh`; its home need not be your Mac's ([home paths](setup.md#home-paths)).
 2. Turn on Settings → The fleet → **remote machines (experimental)**.
 3. Settings → Machines → **Add machine**, then **Make it this fleet's gateway**. Or from a terminal:
 

@@ -441,10 +441,8 @@ describe('host add', () => {
   it('stops at a home too long for the gateway\'s socket on Linux, naming the listen EINVAL it would otherwise crash on', async () => {
     // 66 bytes: its gateway socket, 42 bytes further on, is one past the 107 Linux holds
     const long = `/tmp/${'h'.repeat(61)}`;
-    vi.stubEnv('HOME', long);
-    ssh.reply(['svall-home'], { stdout: `${long}\nlinus\n` });
-    healthy();
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps()).finally(() => vi.unstubAllEnvs());
+    healthy({ home: long });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
     expect(step('home').at(-1)).toMatchObject({
       status: 'fail',
@@ -456,11 +454,22 @@ describe('host add', () => {
 
   it('takes a home just short enough for the gateway\'s socket', async () => {
     const long = `/tmp/${'h'.repeat(60)}`;
-    vi.stubEnv('HOME', long);
-    ssh.reply(['svall-home'], { stdout: `${long}\nlinus\n` });
-    healthy();
-    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps()).finally(() => vi.unstubAllEnvs());
+    healthy({ home: long });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(step('home').at(-1)).toMatchObject({ status: 'ok' });
+  });
+
+  it.each(['/home/linus/', '/home//linus', '/home/./linus'])('stops at a far home written another way, %s, which a path under it would not come back from', async (spelled) => {
+    healthy({ home: spelled });
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    expect(out.result).toBe('actions');
+    expect(step('home').at(-1)).toEqual({
+      step: 'home', status: 'fail',
+      detail: `${spelled} is linus's home there, which names /home/linus another way`,
+      action: 'make /home/linus the account\'s home on trift.test, then add the machine again',
+    });
+    expect(registry.get('trift')).toBeUndefined();
   });
 
   it('stops on a machine that is not Ubuntu', async () => {

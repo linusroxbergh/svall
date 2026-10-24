@@ -655,7 +655,7 @@ OpenCode's data, config, state and cache folders (`~/.local/share/opencode`, `~/
 holding one or lying in one, nor lands on one, except a root inside the `worktree` folder of the
 data folder. OpenCode makes the Git worktrees its agent asks for there, so such a root is the
 user's code, and a worktree there travels as any other worktree of the repository Git names, the
-main checkout with it. It lands at the same path, and the destination's OpenCode finds it through
+main checkout with it. It lands as any other path does, and the destination's OpenCode finds it through
 Git once the Git import has registered it.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
 afresh, blocks (`incompatible_adapter`) when an agent CLI the fleet runs is older on the destination
@@ -1096,8 +1096,8 @@ honest remapped URL when its preferred local port is occupied.
 - Verify destination divergence blocks and explicit archive preserves a recovery path.
 - Test case-colliding paths, symlinked cwds and a destination whose home path differs.
 - Keep real-session fixtures for Claude Code and Codex plus a live probe against the installed
-  release; copy each unchanged and run its resume command in an isolated account with the same home
-  path. OpenCode has neither; the container run's mock follows 2.0.22's export and import.
+  release; copy each unchanged and run its resume command in an isolated account on another
+  machine. OpenCode has neither; the container run's mock follows 2.0.22's export and import.
 - Test source changes during rsync and bounded stabilization retry.
 - Test protocol/release/adapter mismatch before freeze.
 - Integration-test local-to-Linux and Linux-to-local with two disposable machines or containers

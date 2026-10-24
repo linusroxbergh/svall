@@ -1002,6 +1002,24 @@ describe('source freeze', () => {
     expect(manifest.roots.find((x) => x.path === carried.dev)!.files.map((f) => f.path)).toContain('old-stuff/a.txt');
   });
 
+  withGit('refuses a repository a second terminal moved into unseen whose config names a path the move to another home leaves behind', async () => {
+    const b = boot({
+      realGit: true,
+      characters: (work) => [char('c_app', path.join(work, 'app'), { tmux: win(3), second: { cwd: path.join(work, 'app'), unread: false, tmux: win(4) } })],
+    });
+    for (const name of ['app', 'hooked']) {
+      fs.mkdirSync(path.join(b.work, name), { recursive: true });
+      repo(path.join(b.work, name), { 'a.txt': name });
+    }
+    const hooks = path.join(b.work, 'hooks');
+    execFileSync('git', ['config', 'core.hooksPath', hooks], { cwd: path.join(b.work, 'hooked') });
+    // its shell went into another repository since the fleet last read where it stands
+    b.world.panes.get('@4')!.path = path.join(b.work, 'hooked');
+    b.gateway.begin();
+    const r = await refusal(b.handover.freeze(b.freezeParams(b.machines({ home: '/home/linus' }))));
+    expect(r.data.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`core.hookspath names ${hooks}`) })]);
+  });
+
   it('finds a name it cannot carry, a transcript that is gone or a character kept here before it touches a terminal', async () => {
     const b = boot();
     b.gateway.begin();

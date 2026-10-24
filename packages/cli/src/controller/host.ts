@@ -395,6 +395,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       const { home, user } = await run.step('home', async () => {
         const remote = await homeProbe(master);
         if (!MachineRecord.shape.home.safeParse(remote.home).success) throw new StepError(`the remote $HOME is not an absolute path: ${JSON.stringify(remote.home)}`);
+        // a handover swaps the home on whole path components, which a home spelled another way never matches on the way back
+        const plain = path.posix.normalize(remote.home).replace(/(.)\/$/, '$1');
+        if (remote.home !== plain) {
+          throw new StepError(`${remote.home} is ${remote.user}'s home there, which names ${plain} another way`, `make ${plain} the account's home on ${o.ssh}, then add the machine again`);
+        }
         const tooLong = socketTooLong(gatewayPaths(remotePaths(remote.home, '').svallBase).socket, 'linux');
         if (tooLong) {
           throw new StepError(tooLong.message, `use an account on ${o.ssh} whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes`);

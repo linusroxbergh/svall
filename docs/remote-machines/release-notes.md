@@ -54,7 +54,7 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 ## Requirements
 
 - macOS 15 or newer, and Ubuntu LTS 22.04 or newer on x86-64 or arm64 with systemd user services and lingering.
-- The Linux account's home must be the same path as yours on the Mac, such as `/Users/ada`.
+- A Linux account whose home path is at most 65 bytes; it need not be your Mac's.
 - Tailscale and ssh between the two, and Git and rsync 3.2.3 or newer on the Linux machine, which runs the tmux
   Svall brings.
 - Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, logged in on each machine.
@@ -63,6 +63,6 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 ## Not yet
 
 - A stable phone URL that follows the fleet between machines, and forwarding a remote dev server's ports to the Mac.
-- More than one Linux machine per fleet, moving a single character or island, and machines whose home paths differ.
+- More than one Linux machine per fleet, and moving a single character or island.
 
 Known limitations are listed in [Moving a fleet](handover.md#known-limitations).

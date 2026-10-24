@@ -521,6 +521,12 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint({ code: 'path_unsupported', message: 'the destination keeps this fleet\'s docs at another path' }, ctx)).toBe(folder);
   });
 
+  it('sends a home the destination no longer has to host doctor for the Linux machine, and only to a new handover for this Mac', () => {
+    const mismatch = { code: 'home_mismatch' as const, message: "this account's home is /home/ada2, and the handover was sent to /home/ada" };
+    expect(blockerHint(mismatch, ctx)).toMatch(/`svall host doctor studio`/);
+    expect(blockerHint(mismatch, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toBe("This Mac's account no longer has the home this handover was sent to: start a new handover.");
+  });
+
   it('gives every code that blocks a line on what to do', () => {
     const only = ['env_file', 'credential_file', 'platform_heuristic', 'symlink_dangling', 'remote_local'];
     const missing = HandoverIssueCode.options.filter((code) => !only.includes(code) && !blockerHint({ code, message: 'it is so' }, ctx));

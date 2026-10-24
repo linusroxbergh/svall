@@ -21,10 +21,11 @@ const prefix = o.prefix ?? 'svall-bench';
 const L = `${prefix}-local`;
 const R = `${prefix}-remote`;
 const NET = `${prefix}-it`;
-const HOME = '/home/svall';
+// each machine's account home, as the integration run that provisions them leaves it
+const HOMES = { [L]: '/Users/svall', [R]: '/home/svall' };
 const NODE = '/opt/it/node/bin/node';
 const BENCH = '/opt/it/bench.mjs';
-const USER_ENV = ['HOME=/home/svall', 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
+const userEnv = (machine) => [`HOME=${HOMES[machine]}`, 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
   'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
 
 if (!o.out) throw new Error('--out <dir> is required');
@@ -33,7 +34,7 @@ const repos = o.repos === 'none' ? [] : String(o.repos ?? 'small,large,many').sp
 const { say, docker } = harness(out);
 
 function sh(machine, script, opts = {}) {
-  const who = opts.root ? [] : ['-u', 'svall', '-w', HOME, ...USER_ENV];
+  const who = opts.root ? [] : ['-u', 'svall', '-w', HOMES[machine], ...userEnv(machine)];
   const r = docker(['exec', '-i', ...who, machine, 'bash', '-lc', script], { input: '' });
   if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
   return r;
@@ -71,7 +72,7 @@ function measure(from, label, kind, run) {
   for (const m of [L, R]) {
     sh(m, 'mkdir -p /tmp/bench');
     start[m] = bench(m, 'daemon reset').rssKiB;
-    if (docker(['exec', '-d', '-u', 'svall', ...USER_ENV, m, NODE, BENCH, 'watch', stop]).code !== 0) throw new Error(`the watch on ${m} did not start`);
+    if (docker(['exec', '-d', '-u', 'svall', ...userEnv(m), m, NODE, BENCH, 'watch', stop]).code !== 0) throw new Error(`the watch on ${m} did not start`);
   }
   const before = power();
   const r = bench(L, `run ${hostOf(to)} --log /tmp/bench/${label}.ndjson`);
@@ -111,15 +112,16 @@ function island() {
 
 function repoRun(kind, isl) {
   let at = owner();
-  const dir = `${HOME}/bench/${kind}`;
-  const made = bench(at, `repo ${kind} ${dir}${o.files ? ` --files ${o.files}` : ''}${o['large-mib'] ? ` --large-mib ${o['large-mib']}` : ''}`);
-  say(`   ${kind}: ${made.tracked} tracked files at ${dir} on ${hostOf(at)}`);
-  const id = json(L, `svall --json char new --island ${isl} --cwd ${dir} --name bench-${kind}`).id;
+  // the repository on the machine that owns the fleet, which a handover moves into the other's home
+  const dir = (m) => `${HOMES[m]}/bench/${kind}`;
+  const made = bench(at, `repo ${kind} ${dir(at)}${o.files ? ` --files ${o.files}` : ''}${o['large-mib'] ? ` --large-mib ${o['large-mib']}` : ''}`);
+  say(`   ${kind}: ${made.tracked} tracked files at ${dir(at)} on ${hostOf(at)}`);
+  const id = json(L, `svall --json char new --island ${isl} --cwd ${dir(at)} --name bench-${kind}`).id;
   sh(L, 'sleep 2');
   at = measure(at, `${kind}-1-first`, kind, 'first');
-  bench(at, `touch ${dir} 10`);
+  bench(at, `touch ${dir(at)} 10`);
   at = measure(at, `${kind}-2-incremental`, kind, 'incremental');
-  bench(at, `touch ${dir} 10`);
+  bench(at, `touch ${dir(at)} 10`);
   at = measure(at, `${kind}-3-incremental`, kind, 'incremental');
   sh(L, `svall char close ${id}`);
   measure(at, `${kind}-4-fixture`, kind, 'fixture');
@@ -127,7 +129,7 @@ function repoRun(kind, isl) {
 
 function flood(isl) {
   const at = owner();
-  const id = json(L, `svall --json char new --island ${isl} --cwd ${HOME} --name bench-flood`).id;
+  const id = json(L, `svall --json char new --island ${isl} --cwd ${HOMES[at]} --name bench-flood`).id;
   sh(L, 'sleep 2');
   const r = bench(at, `flood ${id} --seconds ${o.seconds ?? 20}`);
   sh(L, `svall char close ${id}`);
