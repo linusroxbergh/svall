@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
-import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
+import { added, groupSteps, machineName, OP_TITLE, outcomeOf, runActions, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
 
@@ -138,6 +138,8 @@ export function HostSetup() {
   const terminal = useApp((s) => s.hostTerminal);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
+  const forHandover = useApp((s) => s.hostForHandover);
+  const gateway = useApp((s) => s.shell?.gateway);
   const shut = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -152,6 +154,16 @@ export function HostSetup() {
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [open]);
+
+  // for the handover sheet: an add with nothing left to do goes on to make the gateway, and the gateway made goes back to the sheet
+  useEffect(() => {
+    if (!forHandover || !run || run.running || run.code !== 0) return;
+    if (added(run) && !runActions(run).length) startHost('enable', { name: run.args.name });
+    else if (run.op === 'enable' && gateway === run.args.name) {
+      app.store.getState().toggleHost(false);
+      app.store.getState().toggleHandover(true);
+    }
+  }, [forHandover, run, gateway]);
 
   if (!open || !enabled) return null;
   const running = run?.running ?? false;

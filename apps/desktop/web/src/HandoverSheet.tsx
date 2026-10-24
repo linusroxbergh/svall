@@ -9,6 +9,7 @@ import {
   type HandoverRun, type HintContext, type RestHow, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
+import { startHost } from './HostSetup.js';
 
 const MARK: Record<SectionState, string> = { pending: '·', active: '›', waiting: '!', done: '✓', stopped: '×' };
 
@@ -271,24 +272,40 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
   );
 }
 
-function Destinations({ owner, gateway, onChose }: { owner: string; gateway?: string; onChose(): void }) {
-  const chose = (to: string) => { onChose(); start(to, {}, true); };
+/** No gateway to move to: a machine this Mac knows made the gateway, or a new one added, and back to the sheet after. */
+function NoGateway() {
+  const machines = useApp((s) => s.machines);
+  const error = useApp((s) => s.machinesError);
+  const running = useApp((s) => !!s.host?.running);
+  const list = () => { app.bridge.send({ type: 'host.list' }); };
+  useEffect(list, []);
+  const known = machines?.filter((m) => m.ssh) ?? [];
+  const enable = (name: string) => { store().hostFromHandover(name); startHost('enable', { name }); };
   return (
-    <div className="host-note" data-testid="handover-destinations">
-      Move this fleet to
+    <div className="host-note" data-testid="handover-no-gateway">
+      {error ?? (known.length ? "Make a machine this fleet's gateway to move the fleet there." : 'Add a Linux machine to move this fleet to.')}
       <div className="acts">
-        <button className="btn" data-testid="handover-to-local" disabled={owner === 'local'}
-          title={owner === 'local' ? 'The fleet runs on this Mac' : 'Bring the fleet back to this Mac'} onClick={() => chose('local')}>This Mac</button>
-        {gateway && (
-          <button className="btn" data-testid="handover-to-gateway" disabled={owner === gateway}
-            title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => chose(gateway)}>{gateway}</button>
-        )}
+        {error && <button className="btn" data-testid="handover-machines-reload" onClick={list}>Read again</button>}
+        {known.map((m) => (
+          <button key={m.id} className="btn pri" data-testid={`handover-enable-${m.name}`} disabled={running} onClick={() => enable(m.name)}>
+            Make {m.name} this fleet&apos;s gateway
+          </button>
+        ))}
+        <button className={known.length ? 'btn' : 'btn pri'} data-testid="handover-add-machine" disabled={running} onClick={() => store().hostFromHandover()}>Add machine</button>
       </div>
-      {!gateway && (
-        <div data-testid="handover-no-gateway">
-          No machine is this fleet&apos;s gateway yet: add one under Settings → Machines, then choose Make it this fleet&apos;s gateway.
-        </div>
-      )}
+    </div>
+  );
+}
+
+/** The one place the fleet can go: the gateway from this Mac, and this Mac from the gateway. */
+function Destination({ owner, gateway, onChose }: { owner: string; gateway?: string; onChose(): void }) {
+  const to = owner === 'local' ? gateway : 'local';
+  if (!to) return <NoGateway />;
+  return (
+    <div className="acts" data-testid="handover-destinations">
+      <button className="btn pri" data-testid={to === 'local' ? 'handover-to-local' : 'handover-to-gateway'} onClick={() => { onChose(); start(to, {}, true); }}>
+        Move to {destinationName(to)}
+      </button>
     </div>
   );
 }
@@ -324,7 +341,8 @@ function footerNote(run: HandoverRun, ctx: HintContext): { tone: 'ok' | 'wait' |
   return { tone: 'ok' };
 }
 
-function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onAgain(): void }) {
+// onAgain: how to pick another destination, while none is in sight
+function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onAgain?: () => void }) {
   const acts = actionsOf(run);
   const said = headline(run, ctx.destination);
   const way = wayOut(run, ctx);
@@ -362,7 +380,7 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
       {way && <div className="ho-sub" data-testid="handover-way-out">{withCode(way)}</div>}
       {detail && <More label="Details" testid="handover-detail">{withCode(detail)}</More>}
       {buttons.length > 0 && <div className="acts">{buttons}</div>}
-      {acts.start && (
+      {acts.start && onAgain && (
         <button className="btn ghost ho-again" data-testid="handover-again" onClick={onAgain}>Move the fleet somewhere else…</button>
       )}
     </div>
@@ -420,6 +438,8 @@ export function HandoverSheet() {
   const close = () => store().toggleHandover(false);
   const shown = !!run && !!(run.phase || run.preflight || run.result || run.status?.phase) && !picking;
   const choosing = !shown && actionsOf(run).start;
+  // with nothing open, the status has nothing to add to the destination above it
+  const idle = choosing && run?.status?.standing === 'none' && !run.status.safe.length;
 
   return (
     <div className="modal-back" data-testid="handover-sheet" onPointerDown={close}>
@@ -433,7 +453,6 @@ export function HandoverSheet() {
           {shown && to && <Route run={run} ctx={ctx} />}
         </div>
         <div className="ho-body">
-          {choosing && <Destinations owner={owner} gateway={gateway} onChose={() => setPicking(false)} />}
           {!shown && (
             <div className="host-note" data-testid="handover-intro">
               A handover moves the whole fleet: its islands, characters, repositories and agent sessions. Agents resume from
@@ -441,13 +460,14 @@ export function HandoverSheet() {
               move. Choosing a machine runs the checks alone, and nothing moves until you choose Move.
             </div>
           )}
+          {choosing && <Destination owner={owner} gateway={gateway} onChose={() => setPicking(false)} />}
           {shown && (
             <div className="host-steps" data-testid="handover-sections">
               {sectionStates(run).map((s) => <Section key={s.id} {...s} run={run} ctx={ctx} />)}
             </div>
           )}
         </div>
-        {run && !picking && <Footer run={run} ctx={ctx} onAgain={() => setPicking(true)} />}
+        {run && !picking && !idle && <Footer run={run} ctx={ctx} onAgain={choosing ? undefined : () => setPicking(true)} />}
       </div>
     </div>
   );

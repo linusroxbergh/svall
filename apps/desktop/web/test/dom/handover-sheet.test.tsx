@@ -106,6 +106,146 @@ test('a release blocker opens the machines panel on the Linux machine, in place 
   expect(screen.getByTestId('host-setup').querySelector('[data-testid="machine-upgrade"]')).not.toBeNull();
 });
 
+const nothingOpen: HandoverEvent = { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } };
+
+test('the sheet offers only where the fleet can go: the gateway from this Mac, and this Mac from the gateway', () => {
+  store.setState({ handover: undefined });
+  render(<HandoverSheet />);
+  act(() => { store.getState().toggleHandover(true); store.getState().handoverReplay([nothingOpen]); });
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to trift');
+  expect(screen.queryByTestId('handover-to-local')).toBeNull();
+  // with nothing open, the status says nothing the destination does not, and there is nowhere else to pick
+  expect(screen.queryByTestId('handover-footer')).toBeNull();
+  expect(screen.queryByTestId('handover-again')).toBeNull();
+
+  act(() => store.getState().setConnectionState({ state: 'online', owner: 'trift' }));
+  expect(screen.getByTestId('handover-to-local').textContent).toBe('Move to This Mac');
+  expect(screen.queryByTestId('handover-to-gateway')).toBeNull();
+});
+
+test('with nothing open but a leftover Abort clears, the footer keeps Abort beside the destination', () => {
+  const send = vi.spyOn(bridge, 'send');
+  store.setState({ handover: undefined });
+  render(<HandoverSheet />);
+  act(() => {
+    store.getState().toggleHandover(true);
+    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'none', journals: {}, action: 'finish-abort', safe: ['abort'], reason: 'the gateway never began this handover; nothing moved' } }]);
+  });
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to trift');
+  expect(screen.queryByTestId('handover-again')).toBeNull();
+  fireEvent.click(screen.getByTestId('handover-abort'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'handover.abort' });
+});
+
+const studio = { name: 'studio', id: 'm1', ssh: 'ada@studio', platform: 'linux-x64', gateway: false, fleets: [] };
+const noGateway = () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+  store.setState({ handover: undefined });
+};
+const gatewayNamed = (gateway: string) => store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway });
+
+test('with no gateway, the sheet makes a machine this Mac knows the gateway, and is back with the move to it once that is done', () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => store.getState().toggleHandover(true));
+  expect(send).toHaveBeenCalledWith({ type: 'host.list' });
+  expect(screen.queryByTestId('handover-destinations')).toBeNull();
+  // a list that could not be read says so, rather than offering only Add machine
+  act(() => store.getState().setMachines([], 'svall host list failed'));
+  expect(screen.getByTestId('handover-no-gateway').textContent).toContain('svall host list failed');
+  send.mockClear();
+  fireEvent.click(screen.getByTestId('handover-machines-reload'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.list' });
+  act(() => store.getState().setMachines([studio]));
+  expect(screen.queryByTestId('handover-machines-reload')).toBeNull();
+  fireEvent.click(screen.getByTestId('handover-enable-studio'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  expect(screen.queryByTestId('handover-sheet')).toBeNull();
+  expect(screen.getByTestId('host-machine').textContent).toBe('studio');
+
+  // the shell names the gateway only after the run ends
+  act(() => store.getState().hostDone('enable', 0));
+  expect(screen.getByTestId('host-setup')).toBeTruthy();
+  act(() => gatewayNamed('studio'));
+  expect(screen.queryByTestId('host-setup')).toBeNull();
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to studio');
+});
+
+test('Add machine from the sheet makes the gateway by itself when the add leaves nothing to do, and waits for Make gateway when it does', () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  act(() => store.getState().setMachines([]));
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => store.getState().toggleHandover(true));
+  const add = () => {
+    fireEvent.click(screen.getByTestId('handover-add-machine'));
+    expect(screen.queryByTestId('handover-sheet')).toBeNull();
+    fireEvent.change(screen.getByTestId('host-name'), { target: { value: 'studio' } });
+    fireEvent.change(screen.getByTestId('host-ssh'), { target: { value: 'ada@studio' } });
+    fireEvent.click(screen.getByTestId('host-add'));
+  };
+  const registered = { step: 'registry', status: 'ok', detail: "studio is in this Mac's list of machines" } as const;
+
+  add();
+  act(() => {
+    store.getState().hostStep('add', { step: 'claude', status: 'warn', detail: 'not logged in', action: 'ssh ada@studio, then claude auth login' });
+    store.getState().hostStep('add', registered);
+    store.getState().hostDone('add', 1);
+  });
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'add', args: { name: 'studio', ssh: 'ada@studio' } });
+  expect(screen.getByTestId('host-action-claude')).toBeTruthy();
+  fireEvent.click(screen.getByTestId('host-next-gateway'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  act(() => { store.getState().hostDone('enable', 0); gatewayNamed('studio'); });
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to studio');
+
+  act(() => { noGateway(); store.getState().setMachines([]); });
+  add();
+  act(() => { store.getState().hostStep('add', registered); store.getState().hostDone('add', 0); });
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+});
+
+test("the panel's own Make gateway, after a failed one from the sheet, still brings the sheet back", () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  act(() => store.getState().setMachines([studio]));
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => store.getState().toggleHandover(true));
+  fireEvent.click(screen.getByTestId('handover-enable-studio'));
+  act(() => {
+    store.getState().hostStep('enable', { step: 'authority', status: 'fail', detail: 'studio did not answer' });
+    store.getState().hostDone('enable', 1);
+  });
+  fireEvent.click(screen.getByTestId('machine-enable'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'host.start', op: 'enable', args: { name: 'studio' } });
+  act(() => { store.getState().hostDone('enable', 0); gatewayNamed('studio'); });
+  expect(screen.queryByTestId('host-setup')).toBeNull();
+  expect(screen.getByTestId('handover-to-gateway').textContent).toBe('Move to studio');
+});
+
+test('an add from Settings leaves the gateway to the user, and Add machine in the sheet later does not act on it', () => {
+  const send = vi.spyOn(bridge, 'send');
+  noGateway();
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => {
+    // a panel the sheet opened and the user closed leaves nothing behind for Settings' own add
+    store.getState().hostFromHandover();
+    store.getState().toggleHost(false);
+    store.getState().toggleHost(true);
+    store.getState().hostStarted('add', { name: 'studio', ssh: 'ada@studio' });
+    store.getState().hostStep('add', { step: 'registry', status: 'ok' });
+    store.getState().hostDone('add', 0);
+  });
+  expect(send).not.toHaveBeenCalled();
+  expect(screen.getByTestId('host-next-gateway')).toBeTruthy();
+
+  act(() => { store.getState().toggleHost(false); store.getState().toggleHandover(true); });
+  fireEvent.click(screen.getByTestId('handover-add-machine'));
+  expect(screen.getByTestId('host-name')).toBeTruthy();
+  expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ op: 'enable' }));
+});
+
 test('a folder that holds repositories no character works in blocks on its character until Carry the folder whole is chosen, and the start again carries it', () => {
   const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
