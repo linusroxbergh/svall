@@ -9,7 +9,7 @@ import { MachineId, SPACING, crewGrid, emptyState, isLand, landCells, sizeForCre
 import { readComposer } from '../src/agent/composer.js';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
-import { markDormant, markSlotDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
+import { markDormant, markSlotDormant, RESUME_NOTE, resumeNote, type Proc } from '../src/dormancy.js';
 import { Dormant, Invalid, NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
@@ -251,6 +251,20 @@ runIf('Fleet', () => {
     sleepWith('claude');
     await fleet.openSecond(c.id);
     expect((await tmux.listWindows()).find((w) => w.name === `${c.id}-2`)?.path).toBe(fs.realpathSync(home));
+  });
+
+  it('reopens a dormant Codex second terminal in its own folder while its rollout records one this machine lacks', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const transcriptPath = path.join(home, `${SID}.jsonl`);
+    fs.writeFileSync(transcriptPath, `${JSON.stringify({ type: 'turn_context', payload: { cwd: '/nonexistent/app' } })}\n`);
+    store.update((d) => {
+      d.characters[c.id].second = { cwd: '/tmp', unread: false, revive: { command: `codex resume -c tui.resume_cwd=session ${SID}` }, agent: { kind: 'codex', sessionId: SID, transcriptPath, status: 'idle', lastActivityAt: 1 } };
+    });
+    const typed = vi.spyOn(tmux, 'sendLine').mockImplementation(async () => {});
+    await fleet.openSecond(c.id);
+    expect(typed.mock.calls.map(([, text]) => text)).toEqual([`codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=current ${SID}`]);
+    typed.mockRestore();
   });
 
   it('lets a second terminal go with its window once a poll has seen its OpenCode, which sends no SessionEnd, quit to the shell', async () => {
@@ -944,6 +958,43 @@ runIf('Fleet', () => {
     const file = path.join(again.home, `${c.id}.prompt`);
     expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
     expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
+  });
+
+  it('tells an interrupted agent whose recorded folder is not on this machine where it works now', async () => {
+    const b = await boot();
+    const { c, transcriptPath } = await withAgent(b);
+    await b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.stopAll();
+    const note = async (cwd: string): Promise<string> => {
+      fs.writeFileSync(transcriptPath, `${JSON.stringify({ type: 'user', cwd })}\n`);
+      const again = await boot({ opening: true, state: structuredClone(b.store.state) });
+      vi.spyOn(again.tmux, 'sendLine').mockImplementation(async () => {});
+      await again.fleet.resumeInterrupted();
+      return fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8');
+    };
+    expect(await note('/nonexistent/app')).toBe(resumeNote({ from: '/nonexistent/app', to: '/tmp' }));
+    // a folder the shell went into that is still here moved nowhere
+    expect(await note(path.dirname(transcriptPath))).toBe(RESUME_NOTE);
+  });
+
+  it('resumes Codex in its own folder while its rollout records one this machine lacks, and as usual once it records that folder', async () => {
+    const b = await boot();
+    const { c, transcriptPath } = await withAgent(b, 'codex', 'sleep 600', 'codex');
+    const record = (cwd: string) => fs.appendFileSync(transcriptPath, `${JSON.stringify({ type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: { cwd } } })}\n`);
+    record('/nonexistent/app');
+    await b.fleet.stopAll();
+    const revive = async (): Promise<string[]> => {
+      const again = await boot({ opening: true, state: structuredClone(b.store.state) });
+      const typed: string[] = [];
+      vi.spyOn(again.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+      await again.fleet.reviveCharacter(c.id);
+      return typed;
+    };
+    const [moved] = await revive();
+    expect(moved).toMatch(new RegExp(`^codex resume .*-c tui\\.resume_cwd=current ${SID}$`));
+    record('/tmp');
+    const [plain] = await revive();
+    expect(plain).toMatch(new RegExp(`^codex resume .*-c tui\\.resume_cwd=session ${SID}$`));
   });
 
   it('resumes an interrupted agent a closed handover once rested, and leaves one an open handover carries', async () => {

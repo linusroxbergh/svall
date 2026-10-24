@@ -35,3 +35,30 @@ export function readTail(file: string, maxBytes = 512 * 1024): string {
     if (fd !== undefined) fs.closeSync(fd);
   }
 }
+
+// the folder a transcript line records its session working in: Claude's on each line, Codex's in each turn's context and
+// in the settings a resume applies
+function cwdOf(kind: AgentKind, line: string): string | undefined {
+  let j: { cwd?: unknown; type?: unknown; payload?: { cwd?: unknown; type?: unknown; thread_settings?: { cwd?: unknown } } };
+  try { j = JSON.parse(line); } catch { return undefined; }
+  const cwd = kind === 'claude' ? j.cwd
+    : j.type === 'turn_context' || j.type === 'session_meta' ? j.payload?.cwd
+      : j.type === 'event_msg' && j.payload?.type === 'thread_settings_applied' ? j.payload.thread_settings?.cwd : undefined;
+  return typeof cwd === 'string' && cwd.startsWith('/') ? cwd : undefined;
+}
+
+/** The folder a Claude or Codex transcript last records its session working in, read from its end; OpenCode records none. */
+export function recordedCwd(kind: AgentKind, file: string): string | undefined {
+  if (kind === 'opencode') return undefined;
+  for (const maxBytes of [512 * 1024, Infinity]) {
+    const text = readTail(file, maxBytes);
+    const lines = text.split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"cwd"')) continue;
+      const cwd = cwdOf(kind, lines[i]);
+      if (cwd) return cwd;
+    }
+    if (Buffer.byteLength(text) < maxBytes) return undefined;
+  }
+  return undefined;
+}

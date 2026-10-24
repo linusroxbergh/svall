@@ -2,11 +2,11 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Delivery, type FleetState, type Island, type Portrait } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Delivery, type FleetState, type Island, type Portrait, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
-import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
+import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
@@ -15,7 +15,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, exited, freshCommand, loseSecond, markDormant, processes, rememberFlags, RESUME_NOTE, runsAgent, sleepFlags, startFlags, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, freshCommand, loseSecond, markDormant, processes, rememberFlags, resumeHere, resumeNote, runsAgent, sleepFlags, startFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -778,16 +778,19 @@ export class Fleet extends EventEmitter<Events> {
       const delivery = prompt ? await this.run(id, prompt, true) : undefined;
       return { ...this.char(id), ...(delivery && { delivery }) };
     }
-    const w = await this.deps.tmux.newWindow(id, this.reviveCwd(c), this.charEnv(id));
+    const cwd = this.reviveCwd(c);
+    const w = await this.deps.tmux.newWindow(id, cwd, this.charEnv(id));
     if (!this.deps.store.state.characters[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no character ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
-    if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
+    const gone = fresh === undefined && (c.revive?.interrupted || c.agent?.kind === 'codex') ? this.goneFolder(c) : undefined;
+    const moved = gone ? { from: gone, to: cwd } : undefined;
+    if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
     const resuming = fresh === undefined ? resumeOf(this.deps.store.state.characters[id], this.carried(id), id) : undefined;
     try {
-      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
+      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
       this.deps.store.update((d) => {
         const cur = d.characters[id];
         cur.tmux = { windowId: w.windowId, paneId: w.paneId };
@@ -837,6 +840,13 @@ export class Fleet extends EventEmitter<Events> {
     return term === 2 ? this.openSecond(id, { command, prompt }) : this.reviveCharacter(id, prompt, command);
   }
 
+  // the folder a dormant terminal's transcript last records its session working in, when this machine lacks it, as a
+  // handover between homes leaves it
+  private goneFolder(t: TerminalSlot): string | undefined {
+    const recorded = t.agent?.transcriptPath && t.revive?.command ? recordedCwd(t.agent.kind, t.agent.transcriptPath) : undefined;
+    return recorded && !fs.existsSync(recorded) ? recorded : undefined;
+  }
+
   // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's character
   // goes back to its main checkout, any other to the nearest folder left. Codex resumes into the gone folder; OpenCode stops to ask
   private reviveCwd(c: Character, term?: 2): string {
@@ -873,7 +883,8 @@ export class Fleet extends EventEmitter<Events> {
     if (c.second?.tmux) return c;
     const cwd = c.second ? this.reviveCwd(c, 2) : c.cwd;
     const island = this.deps.store.state.islands[c.islandId];
-    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? c.second?.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]);
+    const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
+    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
     const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.charEnv(id, { SVALL_TERM: '2' }));
     if (!this.deps.store.state.characters[id]) {

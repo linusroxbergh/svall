@@ -21,6 +21,14 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
   return [...words, t.agent.sessionId].join(' ');
 }
 
+/**
+ * The command that resumes a session whose transcript last records a folder this machine lacks (`gone`), as a handover
+ * between homes leaves it: Codex then takes the folder its window opens in, which it records, so the next revive needs
+ * nothing more. Any other is `revive` as it is.
+ */
+export const resumeHere = (revive: string, gone: boolean): string =>
+  (gone ? revive.replace(/^codex resume -c tui\.resume_cwd=session /, 'codex resume -c tui.resume_cwd=current ') : revive);
+
 /** The command that starts a new session with the launch flags `revive`, as `reviveCommand` built it for `sessionId`, resumes with. */
 export function freshCommand(revive: string, kind: AgentKind, sessionId: string): string {
   const resume = kind === 'codex' ? /^codex resume -c tui\.resume_cwd=session(.*) (\S+)$/ : kind === 'opencode' ? /^opencode(.*) -s (\S+)$/ : /^claude(.*) --resume (\S+)$/;
@@ -47,6 +55,11 @@ export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
 export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, background agents and background commands '
   + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
   + 'and carry on with the task.';
+
+/** The resume note, saying also that the folder the session last worked in, `moved.from`, is not here, and that it works in `moved.to` now. */
+export const resumeNote = (moved?: { from: string; to: string }): string => (moved
+  ? `${RESUME_NOTE} The folder this session last worked in, ${moved.from}, is not on this machine; it works in ${moved.to} now, so check a path from earlier in this conversation before using it.`
+  : RESUME_NOTE);
 
 // a revive's SessionStart gets the whole brief, so what the session was told before is never read again
 export const dropBrief = (t: TerminalSlot): void => { if (t.agent) delete t.agent.brief; };

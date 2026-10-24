@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Character, FleetState } from '@svall/protocol';
-import { drowsy, freshCommand, markDormant, rememberFlags, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
+import { drowsy, freshCommand, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, RESUME_NOTE } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -252,5 +252,25 @@ describe('freshCommand', () => {
   it('starts the bare agent from a resume of another session, or of none', () => {
     expect(freshCommand(`claude --effort 'high' --resume ${SID}`, 'claude', 'another')).toBe('claude');
     expect(freshCommand('', 'codex', SID)).toBe('codex');
+  });
+});
+
+describe('resumeHere', () => {
+  const plain = `codex resume -c tui.resume_cwd=session -m 'gpt-6' ${SID}`;
+
+  it('resumes Codex in the folder the window opens in while the one its rollout last recorded is not on this machine', () => {
+    expect(resumeHere(plain, true)).toBe(`codex resume -c tui.resume_cwd=current -m 'gpt-6' ${SID}`);
+  });
+
+  it('leaves a resume whose recorded folder is here, and any other agent\'s, as it is', () => {
+    expect(resumeHere(plain, false)).toBe(plain);
+    expect(resumeHere(`claude --resume ${SID}`, true)).toBe(`claude --resume ${SID}`);
+  });
+});
+
+describe('resumeNote', () => {
+  it('tells a session whose folder is not on this machine where it works now', () => {
+    expect(resumeNote()).toBe(RESUME_NOTE);
+    expect(resumeNote({ from: '/Users/ada/app', to: '/home/ada/app' })).toBe(`${RESUME_NOTE} The folder this session last worked in, /Users/ada/app, is not on this machine; it works in /home/ada/app now, so check a path from earlier in this conversation before using it.`);
   });
 });

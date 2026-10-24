@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { condenseTurnsClaude as condenseTurns, interruptedAt, userPromptsClaude as userPrompts } from '../src/agent/claude-transcript.js';
-import { readTail } from '../src/agent/transcript.js';
+import { readTail, recordedCwd } from '../src/agent/transcript.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -194,6 +194,35 @@ describe('readTail', () => {
     expect(readTail(f, 3)).toBe('def');
     expect(readTail(f)).toBe('abcdef');
     expect(readTail('/nope')).toBe('');
+  });
+});
+
+describe('recordedCwd', () => {
+  const write = (lines: unknown[], pad = ''): string => {
+    const f = path.join(makeHome(), 't.jsonl');
+    fs.writeFileSync(f, lines.map((l) => `${JSON.stringify(l)}\n`).join('') + pad);
+    return f;
+  };
+
+  it('reads the folder a Codex rollout last records, from a turn\'s context or the settings a resume applied', () => {
+    const meta = { type: 'session_meta', payload: { cwd: '/Users/ada/app' } };
+    const turn = { type: 'turn_context', payload: { cwd: '/Users/ada/app/wt' } };
+    const resumed = { type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: { cwd: '/home/ada/app' } } };
+    const said = { type: 'response_item', payload: { type: 'function_call_output', cwd: '/elsewhere' } };
+    expect(recordedCwd('codex', write([meta]))).toBe('/Users/ada/app');
+    expect(recordedCwd('codex', write([meta, turn, said]))).toBe('/Users/ada/app/wt');
+    expect(recordedCwd('codex', write([meta, turn, resumed, said]))).toBe('/home/ada/app');
+  });
+
+  it('reads the folder a Claude transcript\'s last line with one records, past a tail longer than one read', () => {
+    const big = `${JSON.stringify({ type: 'assistant', message: { content: 'x'.repeat(600 * 1024) } })}\n`;
+    expect(recordedCwd('claude', write([{ type: 'user', cwd: '/Users/ada/app' }, { type: 'user', cwd: '/Users/ada/app/sub' }], big))).toBe('/Users/ada/app/sub');
+  });
+
+  it('finds none in a transcript that records none, one that is gone, or an OpenCode log', () => {
+    expect(recordedCwd('claude', write([{ type: 'summary' }]))).toBeUndefined();
+    expect(recordedCwd('codex', '/nope')).toBeUndefined();
+    expect(recordedCwd('opencode', write([{ cwd: '/Users/ada/app' }]))).toBeUndefined();
   });
 });
 

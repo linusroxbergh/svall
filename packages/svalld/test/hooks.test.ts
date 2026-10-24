@@ -115,6 +115,8 @@ describe('normalizeHook', () => {
       normalizeHook({ charId: 'c_1', hook: { hook_event_name: name, session_id, transcript_path } })?.transcriptPath;
     const moved = path.join(projects, '-src-alpha--wt-react-boilerplate', `${SID}.jsonl`);
     expect(hook('SessionStart', SID, moved)).toBe(kept);
+    // a handover between homes resumes it from the same folder under another home, whose project holds nothing either
+    expect(hook('SessionStart', SID, path.join(projects, '-home-me-src-alpha', `${SID}.jsonl`))).toBe(kept);
     expect(hook('Stop', SID, kept)).toBe(kept);
     // only a session's start is looked up: its later hooks name the file it writes
     expect(hook('Stop', SID, moved)).toBe(moved);
