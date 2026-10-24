@@ -55,11 +55,11 @@ runIf('desktop terminal attach', () => {
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     const hub = new TerminalHub(fleet, tmux, store, silentLogger);
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     return { fleet, tmux, store, hub, c, paths };
   }
 
-  it('creates a session holding only the character window and reports how to attach', async () => {
+  it('creates a session holding only the robot window and reports how to attach', async () => {
     const { tmux, hub, c, paths } = await boot();
     const r = await hub.attach(c.id);
     expect(r).toEqual({ socket: paths.tmuxSock, session: `v-${c.id}`, tmux: tmux.binary });
@@ -81,7 +81,7 @@ runIf('desktop terminal attach', () => {
     expect((await tmux.listSessions()).map((s) => s.name)).toEqual(expect.arrayContaining([`v-${c.id}`, `v-${c.id}-2`]));
   });
 
-  it('leaves the character and its second terminal live when their viewer sessions go', async () => {
+  it('leaves the robot and its second terminal live when their viewer sessions go', async () => {
     const { fleet, tmux, store, hub, c } = await boot();
     await fleet.openSecond(c.id);
     const main = await hub.attach(c.id);
@@ -89,7 +89,7 @@ runIf('desktop terminal attach', () => {
     // the poll puts both back, so a drop only shows while it lasts
     const lost = new Set<string>();
     const unsub = store.subscribe(() => {
-      const ch = store.state.characters[c.id];
+      const ch = store.state.robots[c.id];
       if (!ch?.tmux) lost.add('main');
       if (!ch?.second) lost.add('second');
     });
@@ -101,10 +101,10 @@ runIf('desktop terminal attach', () => {
     expect([...lost]).toEqual([]);
   });
 
-  it('dies with the character window', async () => {
+  it('dies with the robot window', async () => {
     const { tmux, hub, c, fleet } = await boot();
     await hub.attach(c.id);
-    await fleet.closeCharacter(c.id);
+    await fleet.closeRobot(c.id);
     await waitFor(async () => !(await tmux.hasSession(`v-${c.id}`)));
   });
 
@@ -175,9 +175,9 @@ runIf('desktop terminal attach', () => {
     expect(await tmux.run('list-clients', '-F', '#{session_name}')).not.toContain(second.session);
   });
 
-  it('expands ~ in a new character cwd', async () => {
+  it('expands ~ in a new robot cwd', async () => {
     const { fleet } = await boot();
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'y' }).id, cwd: '~' });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'y' }).id, cwd: '~' });
     expect(c.cwd).toBe(os.homedir());
   });
 });

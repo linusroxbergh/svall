@@ -1,26 +1,26 @@
 import { useRef, useState, type PointerEvent, type JSX } from 'react';
-import { starredOf, type Character, type Island } from '@svall/protocol';
-import { createCharacter } from '../actions.js';
+import { starredOf, type Robot, type Island } from '@svall/protocol';
+import { createRobot } from '../actions.js';
 import { useApp } from '../hooks.js';
-import { robotOf, robotUrl } from '../portraits.js';
+import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
-import { CloseCharacter } from './CloseCharacter.js';
+import { CloseRobot } from './CloseRobot.js';
 import { sections, statusLabel, subtitle, waiting } from './list.js';
 import { dragOffset, isSwipe, REVEAL, settle } from './swipe.js';
 import { IslandSheet } from './IslandSheet.js';
-import { NewCharacter } from './NewCharacter.js';
+import { NewRobot } from './NewRobot.js';
 import { NewIsland } from './NewIsland.js';
 import { Settings } from './Settings.js';
 
-type RowProps = { c: Character; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
+type RowProps = { c: Robot; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
 function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
   const status = statusOf(c);
   const sub = subtitle(c);
   const [drag, setDrag] = useState<number>();
   const touch = useRef<{ x: number; y: number; from: number; swiping: boolean }>(undefined);
-  // the click that ends a swipe must not open the character
+  // the click that ends a swipe must not open the robot
   const swiped = useRef(false);
   const offset = drag ?? (revealed ? -REVEAL : 0);
 
@@ -56,14 +56,14 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
       <div className="row-slide" data-dragging={drag !== undefined || undefined} style={{ transform: `translateX(${offset}px)` }}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
         <button type="button" className="row-main" onClick={tap}>
-          <span className="face robot"><img src={robotUrl(robotOf(c))} alt="" /></span>
+          <span className="face figure"><img src={figureUrl(figureOf(c))} alt="" /></span>
           <span className="row-text">
             <span className="row-name">{c.name}{wantsUser(c) && <i className="pip" />}</span>
             {sub && <span className="row-sub">{sub}</span>}
           </span>
         </button>
         {c.unread
-          ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('char.seen', { id: c.id })}>✓</button>
+          ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('robot.seen', { id: c.id })}>✓</button>
           : <span className="row-status">{statusLabel(status)}</span>}
       </div>
       <button type="button" className="row-close" style={{ width: REVEAL }} aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed}
@@ -72,7 +72,7 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
   );
 }
 
-type Open = { kind: 'island' } | { kind: 'char'; islandId: string } | { kind: 'islandMenu'; islandId: string } | { kind: 'settings' } | { kind: 'close'; id: string };
+type Open = { kind: 'island' } | { kind: 'robot'; islandId: string } | { kind: 'islandMenu'; islandId: string } | { kind: 'settings' } | { kind: 'close'; id: string };
 
 export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
   const fleet = useApp((s) => s.fleet);
@@ -93,7 +93,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     setAdding(true);
     setFailed(undefined);
     try {
-      const c = await createCharacter(phone.api(), { islandId, cwd: islandCwd(fleet, islandId), ...startOf(fleet, islandId) }, fleet.defaultCwd);
+      const c = await createRobot(phone.api(), { islandId, cwd: islandCwd(fleet, islandId), ...startOf(fleet, islandId) }, fleet.defaultCwd);
       onOpen(c.id);
     } catch (e) {
       setFailed({ islandId, message: (e as Error).message });
@@ -131,31 +131,31 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
           ))}
         </section>
       )}
-      {groups.map(({ island, characters }) => (
+      {groups.map(({ island, robots }) => (
         <section key={island.id}>
           <h2>
             <button type="button" className="fold" aria-expanded={!island.collapsed} onClick={() => fold(island)}>
               <i className="chev" />
               <span>{island.name}</span>
-              {island.collapsed && characters.length > 0 && (
-                <small>{characters.length}{characters.some(wantsUser) && <i className="pip" />}</small>
+              {island.collapsed && robots.length > 0 && (
+                <small>{robots.length}{robots.some(wantsUser) && <i className="pip" />}</small>
               )}
             </button>
             <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>
             <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding} onClick={() => void add(island.id)}>+</button>
           </h2>
           {failed?.islandId === island.id && <p className="sheet-error">{failed.message}</p>}
-          {!island.collapsed && characters.map((c) => (
+          {!island.collapsed && robots.map((c) => (
             <Row key={c.id} c={c} revealed={revealed === c.id} onOpen={onOpen} onReveal={setRevealed}
               onClose={(id) => { setRevealed(undefined); setSheet({ kind: 'close', id }); }} />
           ))}
         </section>
       ))}
       {sheet?.kind === 'island' && <NewIsland onClose={close} />}
-      {sheet?.kind === 'char' && <NewCharacter islandId={sheet.islandId} onClose={close} onCreated={(id) => { close(); onOpen(id); }} />}
-      {sheet?.kind === 'islandMenu' && <IslandSheet islandId={sheet.islandId} onClose={close} onNewCharacter={() => setSheet({ kind: 'char', islandId: sheet.islandId })} />}
+      {sheet?.kind === 'robot' && <NewRobot islandId={sheet.islandId} onClose={close} onCreated={(id) => { close(); onOpen(id); }} />}
+      {sheet?.kind === 'islandMenu' && <IslandSheet islandId={sheet.islandId} onClose={close} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
       {sheet?.kind === 'settings' && <Settings onClose={close} />}
-      {sheet?.kind === 'close' && <CloseCharacter id={sheet.id} onClose={close} />}
+      {sheet?.kind === 'close' && <CloseRobot id={sheet.id} onClose={close} />}
     </div>
   );
 }

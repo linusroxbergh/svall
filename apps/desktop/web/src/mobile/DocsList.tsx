@@ -6,8 +6,8 @@ import { docsOf } from '../resources/model.js';
 import { phone } from './boot.js';
 import { Sheet } from './Sheet.js';
 
-/** The docs of an island or a character, to read: the phone writes none. */
-export function DocsList({ tier, id }: { tier: 'island' | 'character'; id: string }): JSX.Element | null {
+/** The docs of an island or a robot, to read: the phone writes none. */
+export function DocsList({ tier, id }: { tier: 'island' | 'robot'; id: string }): JSX.Element | null {
   const sources = useApp((s) => s.resources);
   const [reading, setReading] = useState<{ item: ResourceItem; text?: string; error?: string }>();
   const asked = useRef(0);

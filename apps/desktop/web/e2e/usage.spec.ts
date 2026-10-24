@@ -15,8 +15,8 @@ test('the usage tab tells nothing until it is opened, then reads the plan limits
   await expect(page.getByTestId('usage-idle')).toHaveText('No agent is running.');
   await page.keyboard.press('Escape');
   const island = await svall.api.call('island.create', { name: svall.uniq('use') });
-  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[agent.id].agent?.kind).toBe('claude');
+  const agent = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[agent.id].agent?.kind).toBe('claude');
 
   await tab.click();
   // the login the limits belong to sits small under the title
@@ -44,7 +44,7 @@ test('the usage tab tells nothing until it is opened, then reads the plan limits
 
 test('the panel takes a hole in the terminal rather than the whole of it', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('use') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const { sent, receive } = await svall.nativeShell();
   await svall.open();
   const mark = async () => (await sent()).length;

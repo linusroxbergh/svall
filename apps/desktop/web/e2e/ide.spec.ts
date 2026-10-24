@@ -31,7 +31,7 @@ test('opens a folder git ignores, a shade back from the rest', async ({ page, sv
   fs.mkdirSync(path.join(dir, 'notes'));
   fs.writeFileSync(path.join(dir, 'notes/todo.md'), '# todo\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('ignored') });
-  await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
   await page.getByTestId('pane-left-files').click();
 
@@ -45,7 +45,7 @@ test('opens a folder git ignores, a shade back from the rest', async ({ page, sv
 test('the tree folds away and is dragged wider, and comes back that way after a reload', async ({ page, svall }) => {
   const dir = repo();
   const island = await svall.api.call('island.create', { name: svall.uniq('tree') });
-  await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
   await page.getByTestId('pane-left-files').click();
   const tree = page.getByTestId('files-tree');
@@ -78,7 +78,7 @@ test('Markdown preview shows unsaved edits and returns to the editable text', as
   const dir = repo();
   fs.writeFileSync(path.join(dir, 'README.md'), '# First\n\n- item\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('markdown') });
-  await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
   await page.getByTestId('pane-left-files').click();
   await page.getByTestId('tree-README.md').click();
@@ -104,7 +104,7 @@ test('Markdown preview shows the app\'s own images and never asks another origin
     const dir = repo();
     fs.writeFileSync(path.join(dir, 'README.md'), `![robot](/robots/robot-01.svg)\n\n![tracker](http://127.0.0.1:${(remote.address() as AddressInfo).port}/pixel.png)\n`);
     const island = await svall.api.call('island.create', { name: svall.uniq('markdown-images') });
-    await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
+    await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
     await svall.open();
     await page.getByTestId('pane-left-files').click();
     await page.getByTestId('tree-README.md').click();
@@ -127,7 +127,7 @@ test('Markdown preview follows disk changes and opens local files and sections',
   fs.writeFileSync(readme, '# Old\n');
   fs.writeFileSync(path.join(dir, 'docs/setup.md'), '# Setup\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('markdown-links') });
-  await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
   await page.getByTestId('pane-left-files').click();
   await page.getByTestId('tree-README.md').click();
@@ -146,9 +146,9 @@ test('Markdown preview follows disk changes and opens local files and sections',
 test('edits a file in the Files tab and sees the change in the Changes tab', async ({ page, svall }) => {
   const dir = repo();
   const island = await svall.api.call('island.create', { name: svall.uniq('ide') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'coder' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'coder' });
   await svall.open();
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
 
   // Files: the tree, a folder that opens, a file that opens in the editor
   await page.getByTestId('pane-left-files').click();
@@ -174,7 +174,7 @@ test('edits a file in the Files tab and sees the change in the Changes tab', asy
   await expect(page.getByTestId('changes')).toBeVisible();
   await expect(page.getByTestId('surface')).toHaveCount(0);
   await page.keyboard.press('Meta+1');
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
   await page.keyboard.press('Meta+4');
 
   // the file is modified against HEAD and the diff shows the new line
@@ -197,24 +197,24 @@ test('edits a file in the Files tab and sees the change in the Changes tab', asy
   await expect(page.getByTestId('editor')).toHaveAttribute('data-path', 'src/other.ts');
   await expect(page.getByTestId('file-tabs')).toContainText('other.ts');
   await page.keyboard.press('Meta+1');
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
   await page.keyboard.press('Meta+3');
   await expect(page.getByTestId('editor')).toHaveAttribute('data-path', 'src/other.ts');
 });
 
-test('a character in a worktree opens Changes against main', async ({ page, svall }) => {
+test('a robot in a worktree opens Changes against main', async ({ page, svall }) => {
   const dir = repo();
   const tree = path.join(dir, 'side');
   git(dir, 'worktree', 'add', '-q', '-b', 'side', tree);
   fs.writeFileSync(path.join(tree, 'src/hello.ts'), 'export const hello = 2;\n');
   git(tree, 'commit', '-qam', 'side work');
   const island = await svall.api.call('island.create', { name: svall.uniq('branched') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: tree, name: 'brancher' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: tree, name: 'brancher' });
   await svall.open();
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
   await page.keyboard.press('Meta+4');
 
-  // the branch's own commit is what the character has done, and HEAD alone would show nothing
+  // the branch's own commit is what the robot has done, and HEAD alone would show nothing
   await expect(page.getByTestId('base-main')).toHaveAttribute('data-active', 'true');
   await expect(page.getByTestId('change-row')).toHaveCount(1);
   await expect(page.getByTestId('change-row').first()).toContainText('src/hello.ts');
@@ -225,7 +225,7 @@ test('a character in a worktree opens Changes against main', async ({ page, sval
 test('a dirty buffer meets a changed disk with a banner, and a dirty tab asks before closing', async ({ page, svall }) => {
   const dir = repo();
   const island = await svall.api.call('island.create', { name: svall.uniq('ide') });
-  await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'coder' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'coder' });
   await svall.open();
   await page.getByTestId('pane-left-files').click();
   await page.getByTestId('tree-src').click();
@@ -262,14 +262,14 @@ test('the map card carries the same Files and Changes tabs, and the map stays pu
   const dir = repo();
   fs.writeFileSync(path.join(dir, 'src/hello.ts'), 'export const hello = 2;\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('ide-map') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'coder' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'coder' });
   await svall.open('map');
   // the sea is what the map last had pressed, which is when a double click on the map makes an island
   const sea = (await page.locator('.map-sea').boundingBox())!;
   await page.mouse.click(sea.x + 8, sea.y + 8);
-  await page.getByTestId(`sb-char-${c.id}`).dblclick();
+  await page.getByTestId(`sb-robot-${c.id}`).dblclick();
   const card = page.getByTestId('terminal-card');
-  await expect(card.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(card.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
 
   // Files: the terminal gives way, a file opens in the editor
   await card.getByTestId('pane-left-files').click();
@@ -302,11 +302,11 @@ test('the map card carries the same Files and Changes tabs, and the map stays pu
   expect({ style: await world.getAttribute('style'), islands: await islands.count() }).toEqual(before);
   expect(await page.getByTestId('map').evaluate((m) => [m.scrollLeft, m.scrollTop])).toEqual([0, 0]);
 
-  // the board shows the character where the card left it, the map brings it back in its card, and Cmd+1 is the terminal
+  // the board shows the robot where the card left it, the map brings it back in its card, and Cmd+1 is the terminal
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('pane-left-changes')).toHaveAttribute('data-active', 'true');
   await page.keyboard.press('Meta+m');
   await expect(card.getByTestId('changes')).toBeVisible();
   await page.keyboard.press('Meta+1');
-  await expect(card.getByTestId('surface')).toHaveAttribute('data-char', c.id);
+  await expect(card.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
 });

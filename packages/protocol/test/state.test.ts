@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, defaultHome, emptyState, isSessionId } from '../src/index.js';
+import { Agent, Robot, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, defaultHome, emptyState, isSessionId } from '../src/index.js';
 
 describe('state schemas', () => {
   it("trusts OpenCode's session ids as well as UUIDs, and nothing a shell would read more into", () => {
@@ -12,7 +12,7 @@ describe('state schemas', () => {
 
   it('accepts an empty fleet', () => {
     expect(FleetState.parse(emptyState())).toEqual({
-      version: 9, islands: {}, characters: {},
+      version: 10, islands: {}, robots: {},
       home: {
         cwd: '~/.svall/home', command: 'claude --model opus',
         actions: [
@@ -25,7 +25,7 @@ describe('state schemas', () => {
   });
 
   it('fills home from defaults when a state file has none', () => {
-    const s = FleetState.parse({ version: 9, islands: {}, characters: {} });
+    const s = FleetState.parse({ version: 10, islands: {}, robots: {} });
     expect(s.home.command).toBe('claude --model opus');
     expect(s.defaultCwd).toBe(DEFAULT_CWD);
     expect(s.home.actions.map((a) => a.label)).toEqual(['update info', 'status']);
@@ -39,8 +39,8 @@ describe('state schemas', () => {
     expect(() => Island.parse({ ...base, kind: 'boat' })).toThrow();
   });
 
-  it('accepts a plain-shell character without agent or tmux', () => {
-    const c = Character.parse({
+  it('accepts a plain-shell robot without agent or tmux', () => {
+    const c = Robot.parse({
       id: 'c_1', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'shell', portrait: 'owl', description: '', note: '', instructions: '',
       cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false,
     });
@@ -49,7 +49,7 @@ describe('state schemas', () => {
   });
 
   it('rejects an unknown agent status', () => {
-    expect(() => Character.parse({
+    expect(() => Robot.parse({
       id: 'c_1', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'x', portrait: 'owl', description: '', note: '', instructions: '', cwd: '/tmp', context: [],
       shell: { lastOutputAt: 0 }, unread: false,
       agent: { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'sleeping', lastActivityAt: 0 },
@@ -61,27 +61,27 @@ describe('state schemas', () => {
     expect(ContextItem.parse(item)).toEqual(item);
     expect(Island.parse({ id: 'i', name: 'n', description: '', instructions: 'never touch src/legacy', context: [item], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }).instructions)
       .toBe('never touch src/legacy');
-    expect(emptyState().version).toBe(9);
-    expect(STATE_SCHEMA_VERSION).toBe(9);
+    expect(emptyState().version).toBe(10);
+    expect(STATE_SCHEMA_VERSION).toBe(10);
   });
 
   it('keeps both terminals of an imported state that carries no tmux ids', () => {
-    const c = Character.parse({
+    const c = Robot.parse({
       id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'n', portrait: 'fox', note: '', instructions: '', context: [],
       cwd: '/work', shell: { lastOutputAt: 0 }, unread: false, revive: { command: 'claude --resume a' },
       second: { cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } },
     });
-    const s = FleetState.parse({ version: 9, islands: {}, characters: { c } });
-    expect(s.characters.c.revive).toEqual({ command: 'claude --resume a' });
-    expect(s.characters.c.second).toEqual({ cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } });
+    const s = FleetState.parse({ version: 10, islands: {}, robots: { c } });
+    expect(s.robots.c.revive).toEqual({ command: 'claude --resume a' });
+    expect(s.robots.c.second).toEqual({ cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } });
   });
 
-  it('a character may carry browser tabs and which one is active', () => {
+  it('a robot may carry browser tabs and which one is active', () => {
     const base = { id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'n', portrait: 'fox', note: '', instructions: '', context: [], cwd: '/tmp', shell: { lastOutputAt: 0 }, unread: false };
-    expect(Character.parse(base).browser).toBeUndefined();
-    const c = Character.parse({ ...base, browser: { tabs: [{ id: 't_abcd1234', url: 'https://example.com/', title: 'Example' }], active: 't_abcd1234' } });
+    expect(Robot.parse(base).browser).toBeUndefined();
+    const c = Robot.parse({ ...base, browser: { tabs: [{ id: 't_abcd1234', url: 'https://example.com/', title: 'Example' }], active: 't_abcd1234' } });
     expect(c.browser?.tabs[0].title).toBe('Example');
-    expect(() => Character.parse({ ...base, browser: { tabs: [{ id: '', url: 'x', title: '' }] } })).toThrow();
+    expect(() => Robot.parse({ ...base, browser: { tabs: [{ id: '', url: 'x', title: '' }] } })).toThrow();
   });
 });
 

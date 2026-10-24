@@ -42,7 +42,7 @@ const keepBlock = EditorState.transactionFilter.of((tr) => {
       if (from < to || insert) specs.push({ from, to, insert });
     });
     if (touched) {
-      // a moved line or swapped character that reaches into the block does not move at all
+      // a moved line or swapped robot that reaches into the block does not move at all
       if (tr.isUserEvent('move')) return [];
       const changes = tr.startState.changes(specs);
       const after: SelectionRange[] = [];

@@ -81,12 +81,12 @@ export function destinationView(m: TransferManifestV1): TransferManifestV1 {
 
 /**
  * The repository docs folders a move between homes renames, relative to the docs root: each is named for its main root's
- * path, so the folder a character's repository or folder names on the source is named for where that lands.
+ * path, so the folder a robot's repository or folder names on the source is named for where that lands.
  */
 export function docsRenames(sent: TransferManifestV1): { from: string; to: string }[] {
-  const there = destinationView(sent).snapshot.characters;
+  const there = destinationView(sent).snapshot.robots;
   const renames = new Map<string, string>();
-  for (const [id, c] of Object.entries(sent.snapshot.characters)) {
+  for (const [id, c] of Object.entries(sent.snapshot.robots)) {
     const [from, to] = [repoRootOf(c, sent.home), repoRootOf(there[id], sent.destinationHome)];
     if (!from || !to || repoSlug(from) === repoSlug(to)) continue;
     renames.set(docsDir('', 'repo', repoSlug(from)), docsDir('', 'repo', repoSlug(to)));

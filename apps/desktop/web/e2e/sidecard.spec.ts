@@ -1,55 +1,55 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
-import { robotOf, robotUrl, stepRobot } from '../src/portraits.js';
+import { figureOf, figureUrl, stepFigure } from '../src/portraits.js';
 import { theme } from '../src/theme.js';
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 
 test('the side card arrows cycle the robot', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('portrait') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'portrait' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'portrait' });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const shown = page.getByTestId('side-card').getByTestId('side-portrait').locator('img');
 
-  const robot = robotOf(c);
-  await expect(shown).toHaveAttribute('src', robotUrl(robot));
+  const figure = figureOf(c);
+  await expect(shown).toHaveAttribute('src', figureUrl(figure));
   await page.getByTestId('portrait-next').click();
-  await expect(shown).toHaveAttribute('src', robotUrl(stepRobot(robot, 1)));
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].robot).toBe(stepRobot(robot, 1));
+  await expect(shown).toHaveAttribute('src', figureUrl(stepFigure(figure, 1)));
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].figure).toBe(stepFigure(figure, 1));
   await page.getByTestId('portrait-prev').click();
-  await expect(shown).toHaveAttribute('src', robotUrl(robot));
+  await expect(shown).toHaveAttribute('src', figureUrl(figure));
 });
 
 test('a note written elsewhere shows in the side card, but not over one being typed', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('follow') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'follow' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'follow' });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const note = page.getByTestId('side-card').getByTestId('side-note');
-  await svall.api.call('char.update', { id: c.id, note: 'from the fleet' });
+  await svall.api.call('robot.update', { id: c.id, note: 'from the fleet' });
   await expect(note).toHaveValue('from the fleet');
 
   // focused but untouched, the field takes the fleet's value on blur and writes nothing back
   await note.focus();
-  await svall.api.call('char.update', { id: c.id, note: 'while focused' });
+  await svall.api.call('robot.update', { id: c.id, note: 'while focused' });
   await note.blur();
   await expect(note).toHaveValue('while focused');
 
   await note.fill('typing');
-  await svall.api.call('char.update', { id: c.id, note: 'written meanwhile' });
+  await svall.api.call('robot.update', { id: c.id, note: 'written meanwhile' });
   await expect(note).toHaveValue('typing');
   await note.blur();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].note).toBe('typing');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].note).toBe('typing');
 });
 
-test('edits a character from the side card', async ({ page, svall }) => {
+test('edits a robot from the side card', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('side') });
   const other = await svall.api.call('island.create', { name: svall.uniq('side-other') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'edit-me' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'edit-me' });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
-  // the board opens the side card with the character it shows
+  await page.getByTestId(`sb-robot-${c.id}`).click();
+  // the board opens the side card with the robot it shows
   const card = page.getByTestId('side-card');
   await expect(card).toBeVisible();
   await page.getByTestId('board-side').click();
@@ -59,32 +59,32 @@ test('edits a character from the side card', async ({ page, svall }) => {
 
   await card.getByTestId('side-name').fill('renamed');
   await card.getByTestId('side-name').press('Enter');
-  await expect(page.getByTestId(`sb-char-${c.id}`)).toContainText('renamed');
+  await expect(page.getByTestId(`sb-robot-${c.id}`)).toContainText('renamed');
   await expect(page.getByTestId(`tab-${c.id}`)).toContainText('renamed');
   await card.getByTestId('side-note').fill('what it does');
   await card.getByTestId('side-note').blur();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].note).toBe('what it does');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].note).toBe('what it does');
 
   await card.getByTestId('side-instructions').fill('merge without asking');
   await card.getByTestId('side-instructions').blur();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].instructions).toBe('merge without asking');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].instructions).toBe('merge without asking');
 
   await card.getByTestId('context-ref').fill('https://github.com/o/r/pull/7');
   await card.getByTestId('context-add').click();
   await expect(card.getByTestId('side-context')).toContainText('r #7');
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].context[0]?.kind).toBe('pr');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].context[0]?.kind).toBe('pr');
   await card.getByTestId('context-pin').first().click();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].context[0]?.pinned).toBe(true);
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].context[0]?.pinned).toBe(true);
   await card.getByTestId('context-ref').fill('/tmp');
   await card.getByTestId('context-add').click();
   await expect(card.getByTestId('side-context')).toContainText('tmp');
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].context[1]?.kind).toBe('folder');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].context[1]?.kind).toBe('folder');
   await card.getByTestId('context-remove').first().click();
   await expect(card.getByTestId('side-context')).not.toContainText('r #7');
 
   await card.getByTestId('side-island').selectOption(other.id);
   await expect(page.getByTestId(`sb-island-${other.id}`)).toHaveAttribute('data-selected', 'true');
-  await expect(page.getByTestId(`sb-folder-${other.id}`).getByTestId(`sb-char-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId(`sb-folder-${other.id}`).getByTestId(`sb-robot-${c.id}`)).toBeVisible();
 
   // the side card stays open across the views
   await page.keyboard.press('Meta+m');
@@ -96,7 +96,7 @@ test('edits a character from the side card', async ({ page, svall }) => {
 
   await card.getByTestId('side-close').click();
   await page.getByTestId('confirm-close-delete').click();
-  await expect(page.getByTestId(`sb-char-${c.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`sb-robot-${c.id}`)).toHaveCount(0);
   await expect(card).toBeHidden();
 });
 
@@ -133,8 +133,8 @@ test('edits an island from the side card on the map', async ({ page, svall }) =>
   await card.getByTestId('side-island-new').click();
   await expect(page.getByTestId('terminal-card')).toBeVisible();
   await expect(card.getByTestId('side-island-delete')).toHaveCount(0);
-  const created = (await page.getByTestId('terminal-card').getAttribute('data-char'))!;
-  await svall.api.call('char.close', { id: created });
+  const created = (await page.getByTestId('terminal-card').getAttribute('data-robot'))!;
+  await svall.api.call('robot.close', { id: created });
   await page.getByTestId(`island-label-${island.id}`).click();
   await expect(card.getByTestId('side-island-delete')).toBeVisible();
   await card.getByTestId('side-island-delete').click();
@@ -152,9 +152,9 @@ test('edits an island from the side card on the map', async ({ page, svall }) =>
 
 test('Cmd+Shift+S hides the sidebar and the side card together and brings them back', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('sides') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'sides' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'sides' });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   await expect(page.getByTestId('side-card')).toBeVisible();
   await page.keyboard.press('Meta+Shift+S');
   await expect(page.getByTestId('sidebar')).toHaveCount(0);
@@ -174,15 +174,15 @@ test('a dropped path lands on the island under the point', async ({ page, svall 
 
 test('the side card shows the last command and steps back through earlier ones', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('cmd') });
-  const shell = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'plain' });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].agent?.status, { timeout: 15_000 }).toBe('idle');
-  await svall.api.call('char.run', { id: c.id, text: 'plant the flag' });
-  await svall.api.call('char.run', { id: c.id, text: 'raise the sail' });
-  await expect.poll(async () => (await svall.api.call('char.prompts', { id: c.id })).prompts).toEqual(['raise the sail', 'plant the flag']);
+  const shell = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'plain' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].agent?.status, { timeout: 15_000 }).toBe('idle');
+  await svall.api.call('robot.run', { id: c.id, text: 'plant the flag' });
+  await svall.api.call('robot.run', { id: c.id, text: 'raise the sail' });
+  await expect.poll(async () => (await svall.api.call('robot.prompts', { id: c.id })).prompts).toEqual(['raise the sail', 'plant the flag']);
 
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const card = page.getByTestId('side-card');
   await expect(card.getByTestId('side-prompt-text')).toHaveText('raise the sail');
   await expect(card.getByTestId('side-prompt-pos')).toHaveText('1/2');
@@ -196,12 +196,12 @@ test('the side card shows the last command and steps back through earlier ones',
   await expect(card.getByTestId('side-prompt-next')).toBeDisabled();
 
   // a prompt sent while the card is open reaches it
-  await svall.api.call('char.run', { id: c.id, text: 'weigh anchor' });
+  await svall.api.call('robot.run', { id: c.id, text: 'weigh anchor' });
   await expect(card.getByTestId('side-prompt-text')).toHaveText('weigh anchor');
   await expect(card.getByTestId('side-prompt-pos')).toHaveText('1/3');
 
   // a shell has no agent, so it has no commands to show
-  await page.getByTestId(`sb-char-${shell.id}`).click();
+  await page.getByTestId(`sb-robot-${shell.id}`).click();
   await expect(page.getByTestId('side-prompt')).toHaveCount(0);
 });
 
@@ -262,10 +262,10 @@ test('a doc is deleted from the card without opening the shelf, and Undo brings 
 
 test('clicking the cwd copies it', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('copy') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'copy-cwd' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'copy-cwd' });
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const cwd = page.getByTestId('side-card').getByTestId('side-cwd');
   await cwd.click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(await cwd.textContent());
@@ -284,7 +284,7 @@ async function drag(page: Page, testId: string, dx: number): Promise<void> {
 
 test('both sidebars are dragged wider and come back that wide', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('grips') });
-  await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'grips' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'grips' });
   await svall.open('map');
   await page.getByTestId('side-show').click();
   const islands = await widthOf(page, 'sidebar');
@@ -301,11 +301,11 @@ test('both sidebars are dragged wider and come back that wide', async ({ page, s
   expect(await widthOf(page, 'fleet-summary')).toBeCloseTo(card + 70, -1);
 });
 
-test('a character takes an agent profile in the side card, and the shelf shows what it says', async ({ page, svall }) => {
+test('a robot takes an agent profile in the side card, and the shelf shows what it says', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('profile') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'profiled' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'profiled' });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const card = page.getByTestId('side-card');
   await expect(card.getByText('Agent instructions', { exact: true })).toBeVisible();
 
@@ -317,9 +317,9 @@ test('a character takes an agent profile in the side card, and the shelf shows w
   await pick.click();
   await card.getByTestId('side-agent-profile-opt-reviewer').click();
   await expect(pick).toHaveText('reviewer');
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].agentProfile).toBe('reviewer');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].agentProfile).toBe('reviewer');
   await expect(card.getByTestId('side-agent-profile-hint')).toContainText('Independently reviews completed code');
-  expect((await svall.api.call('char.show', { id: c.id })).text).toContain('Agent profile: reviewer — follow this role.');
+  expect((await svall.api.call('robot.show', { id: c.id })).text).toContain('Agent profile: reviewer — follow this role.');
 
   await card.getByTestId('side-agent-profile-view').click();
   await expect(page.getByTestId('resources-editor-crumb')).toHaveText(/Fleet\s*\/\s*.+\s*\/\s*Agent profiles\s*\/\s*reviewer\.md/);
@@ -338,7 +338,7 @@ test('a character takes an agent profile in the side card, and the shelf shows w
   await page.keyboard.press('Home');
   await page.keyboard.press('Enter');
   await expect(pick).toHaveText('No profile');
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].agentProfile).toBeUndefined();
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].agentProfile).toBeUndefined();
   await expect(card.getByTestId('side-agent-profile-hint')).toHaveCount(0);
 });
 
@@ -346,24 +346,24 @@ test('a profile whose file is gone is named missing, and the brief goes without 
   const file = path.join(svall.home, 'agent-profiles', 'fleeting.md');
   fs.writeFileSync(file, '---\ndescription: here for a moment\n---\n\nYou are fleeting.\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('gone') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'bereft', agentProfile: 'fleeting' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'bereft', agentProfile: 'fleeting' });
   fs.rmSync(file);
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const card = page.getByTestId('side-card');
   await expect(card.getByTestId('side-agent-profile')).toHaveText('fleeting (missing)');
   await expect(card.getByTestId('side-agent-profile-hint')).toHaveText('fleeting.md is not in the agent profiles folder');
   await expect(card.getByTestId('side-agent-profile-view')).toHaveCount(0);
-  expect((await svall.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');
+  expect((await svall.api.call('robot.show', { id: c.id })).text).not.toContain('Agent profile');
 });
 
 test('the card never scrolls: a section folds, a dragged one keeps its height, and a double-click fits it again', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('sections') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'sections' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'sections' });
   const context = Array.from({ length: 40 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
-  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(30), context });
+  await svall.api.call('robot.update', { id: c.id, note: 'line\n'.repeat(30), context });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const card = page.getByTestId('side-card');
   const scrolls = () => card.evaluate((el) => el.scrollHeight > el.clientHeight);
 
@@ -379,16 +379,16 @@ test('the card never scrolls: a section folds, a dragged one keeps its height, a
   for (const el of await card.locator('[data-testid^="sec-fold-"], [data-testid^="sec-grip-"]').all()) await expect(el).toBeInViewport();
   await card.getByTestId('side-island').focus();
   await expect(card.getByTestId('side-island')).toBeInViewport();
-  await expect(card.getByTestId('sec-fold-character.note')).toBeInViewport({ ratio: 1 });
+  await expect(card.getByTestId('sec-fold-robot.note')).toBeInViewport({ ratio: 1 });
   await page.setViewportSize({ width: 1280, height: 800 });
 
-  const details = card.getByTestId('sec-fold-character.details');
+  const details = card.getByTestId('sec-fold-robot.details');
   await details.click();
   await expect(details).toHaveAttribute('aria-expanded', 'false');
   await expect(card.getByTestId('side-island')).toHaveCount(0);
   await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
 
-  const grip = card.getByTestId('sec-grip-character.note');
+  const grip = card.getByTestId('sec-grip-robot.note');
   const note = grip.locator('..');
   const before = (await note.boundingBox())!.height;
   const at = (await grip.boundingBox())!;
@@ -402,7 +402,7 @@ test('the card never scrolls: a section folds, a dragged one keeps its height, a
 
   // the fold and the height outlive a reload
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   await expect(details).toHaveAttribute('aria-expanded', 'false');
   expect((await note.boundingBox())!.height).toBeCloseTo(before + 80, -1);
 
@@ -413,14 +413,14 @@ test('the card never scrolls: a section folds, a dragged one keeps its height, a
 
 test('a text section is as tall as its text', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('fit') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'fit' });
-  await svall.api.call('char.update', { id: c.id, note: 'one line' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'fit' });
+  await svall.api.call('robot.update', { id: c.id, note: 'one line' });
   await page.setViewportSize({ width: 1280, height: 1200 });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const note = page.getByTestId('side-note');
   const short = (await note.boundingBox())!.height;
-  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(12) });
+  await svall.api.call('robot.update', { id: c.id, note: 'line\n'.repeat(12) });
   await expect(note).toHaveValue('line\n'.repeat(12));
   await expect.poll(async () => (await note.boundingBox())!.height).toBeGreaterThan(short + 80);
   expect(await note.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
@@ -428,14 +428,14 @@ test('a text section is as tall as its text', async ({ page, svall }) => {
 
 test('an empty note or description opens six lines tall, and instructions three', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('rows'), position: { x: 0, y: 100 } });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'rows' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'rows' });
   await page.setViewportSize({ width: 1280, height: 1200 });
   const lines = (id: string) => page.getByTestId(id).evaluate((el) => {
     const s = getComputedStyle(el);
     return Math.round((el.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)) / parseFloat(s.lineHeight));
   });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   expect(await lines('side-note')).toBe(6);
   expect(await lines('side-instructions')).toBe(3);
   await svall.open('map');

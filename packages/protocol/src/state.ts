@@ -74,7 +74,7 @@ export const Agent = z.object({
   // is written after that hook, so this is what the last command reads until the entry lands.
   lastPrompt: z.object({ id: z.string(), text: z.string(), at: z.number() }).optional(),
   lastActivityAt: z.number(),
-  // the agent process the session runs in; a `claude -p` nested inside it shares the character, not the process
+  // the agent process the session runs in; a `claude -p` nested inside it shares the robot, not the process
   pid: z.number().int().optional(),
   // the launch flags a resume repeats, as ps showed the process at its start; what a dormancy without ps resumes with
   flags: z.array(z.string()).optional(),
@@ -92,7 +92,7 @@ export type Repo = z.infer<typeof Repo>;
 export const BrowserTab = z.object({ id: z.string().min(1), url: z.string(), title: z.string() });
 export type BrowserTab = z.infer<typeof BrowserTab>;
 
-// the tabs of a character's browser, kept here so they outlive the app; active is the one on screen
+// the tabs of a robot's browser, kept here so they outlive the app; active is the one on screen
 export const Browser = z.object({ tabs: z.array(BrowserTab), active: z.string().optional() });
 export type Browser = z.infer<typeof Browser>;
 
@@ -122,7 +122,7 @@ export const byIslandOrder = (a: Island, b: Island): number =>
 export const HomeAction = z.object({ label: z.string().min(1), prompt: z.string().min(1) });
 export type HomeAction = z.infer<typeof HomeAction>;
 
-// where a new character starts when it has no character beside it to take a directory from
+// where a new robot starts when it has no robot beside it to take a directory from
 export const DEFAULT_CWD = '~';
 
 // the home island's crew cwd, the command a button types to start an agent, its model, and the buttons themselves
@@ -144,7 +144,7 @@ const RestedBy = z.string().min(1).optional();
 // why a handover could not resume a terminal, kept while it lies dormant and cleared once it next comes up
 const ResumeError = z.string().optional();
 
-// one terminal of a character: its directory, its live tmux ids while it has a window, and the
+// one terminal of a robot: its directory, its live tmux ids while it has a window, and the
 // command that brings its session back once it has none
 export const TerminalSlot = z.object({
   cwd: z.string(),
@@ -158,8 +158,8 @@ export const TerminalSlot = z.object({
 });
 export type TerminalSlot = z.infer<typeof TerminalSlot>;
 
-// a character is its main terminal and all it knows beside it; its second terminal is a side shell beside the main one
-export const Character = TerminalSlot.extend({
+// a robot is its main terminal and all it knows beside it; its second terminal is a side shell beside the main one
+export const Robot = TerminalSlot.extend({
   id: z.string(),
   islandId: z.string(),
   cell: Cell,
@@ -169,7 +169,7 @@ export const Character = TerminalSlot.extend({
   noteSource: z.literal('manual').optional(),
   portrait: Portrait,
   // the number of its robot-NN.svg in the desktop app's public/robots; absent, its portrait picks one
-  robot: z.number().int().min(1).optional(),
+  figure: z.number().int().min(1).optional(),
   instructions: z.string(),
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),
@@ -177,7 +177,7 @@ export const Character = TerminalSlot.extend({
   panePath: z.string().optional(),
   repo: Repo.optional(),
   context: z.array(ContextItem),
-  // the pane's last output, kept current only while the character has no agent
+  // the pane's last output, kept current only while the robot has no agent
   shell: z.object({ lastOutputAt: z.number() }),
   // the window runs codex and no hook has come from it: codex skips a hook until it is trusted, without a word
   hint: z.enum(['codex-silent']).optional(),
@@ -190,17 +190,17 @@ export const Character = TerminalSlot.extend({
   // its place among the starred, lowest first; absent, it is not starred
   star: z.number().int().optional(),
 });
-export type Character = z.infer<typeof Character>;
+export type Robot = z.infer<typeof Robot>;
 
 /** The state.json schema this release reads and writes, which both machines of a handover have to share. */
-export const STATE_SCHEMA_VERSION = 9;
+export const STATE_SCHEMA_VERSION = 10;
 
 export const FleetState = z.object({
   version: z.literal(STATE_SCHEMA_VERSION),
   // the name fleet.json gives the fleet; absent, its directory names it
   name: z.string().optional(),
   islands: z.record(z.string(), Island),
-  characters: z.record(z.string(), Character),
+  robots: z.record(z.string(), Robot),
   home: Home.prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the scribe is switched off: no automatic pass runs and a sweep is refused
@@ -209,12 +209,12 @@ export const FleetState = z.object({
   scribeAsk: z.literal(true).optional(),
   // the last automatic or swept pass that failed, cleared by the next one that succeeds
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
-  // no character is told to work in a worktree
+  // no robot is told to work in a worktree
   worktreesOff: z.literal(true).optional(),
-  // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
+  // an agent idle this many hours is ended and its robot left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),
-  // the agent mission control's crew and `svall char new --run` start by default
+  // the agent mission control's crew and `svall robot new --run` start by default
   mainAgent: AgentKind.optional(),
   // the agent CLIs svalld finds on its PATH
   agentsFound: z.array(AgentKind).optional(),
@@ -225,9 +225,9 @@ export const FleetState = z.object({
 });
 export type FleetState = z.infer<typeof FleetState>;
 
-export const starredOf = (f: FleetState): Character[] =>
-  Object.values(f.characters).filter((c) => c.star !== undefined).sort((a, b) => a.star! - b.star!);
+export const starredOf = (f: FleetState): Robot[] =>
+  Object.values(f.robots).filter((c) => c.star !== undefined).sort((a, b) => a.star! - b.star!);
 
 export const DORMANT_AFTER_HOURS = 12;
 
-export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });
+export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, robots: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });

@@ -118,7 +118,7 @@ runIf('svalld bin', () => {
     const version = FleetState.shape.version.value;
     const state = path.join(home, 'state.json');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', port: 0 }));
-    fs.writeFileSync(state, JSON.stringify({ version: version + 1, islands: {}, characters: {} }));
+    fs.writeFileSync(state, JSON.stringify({ version: version + 1, islands: {}, robots: {} }));
     for (const at of [100, 200]) fs.writeFileSync(path.join(home, `state.json.v${version}-${at}`), '{}');
     const log = () => (fs.existsSync(resolvePaths(home).log) ? fs.readFileSync(resolvePaths(home).log, 'utf8') : '');
     const why = `move ${path.join(home, `state.json.v${version}-200`)} to ${state}; svalld starts once it is fixed`;

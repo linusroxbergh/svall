@@ -30,7 +30,7 @@ self.addEventListener('notificationclick', (e) => {
     e.waitUntil(fetch('/rpc', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 1, method: 'char.answer', params: { id, answer: e.action, promptId: e.notification.data.promptId } }),
+      body: JSON.stringify({ id: 1, method: 'robot.answer', params: { id, answer: e.action, promptId: e.notification.data.promptId } }),
     }).then((r) => r.json().catch(() => ({})).then((b) => {
       // the daemon reports a refused answer as a JSON-RPC error inside a 200
       if (!r.ok) throw new Error(String(r.status));
@@ -42,7 +42,7 @@ self.addEventListener('notificationclick', (e) => {
     )));
     return;
   }
-  const url = `/char/${encodeURIComponent(id)}`;
+  const url = `/robot/${encodeURIComponent(id)}`;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     const here = list.find((c) => c.url.endsWith(url));
     if (here) return here.focus();

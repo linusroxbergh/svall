@@ -189,24 +189,32 @@ describe('hookCommand and nodeRun', () => {
 
   it('runs the node setup ran with while it exists', () => {
     const { script, pinned } = scripts();
-    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_ROBOT_ID: 'c1' })).toBe('pinned\n');
     expect(sh(nodeRun(pinned, script))).toBe('pinned\n');
   });
 
   it('falls back to node on PATH once that node is gone', () => {
     const { dir, script } = scripts();
     const gone = path.join(dir, 'gone', 'node');
-    expect(sh(hookCommand(gone, script, 'codex'), { SVALL_CHAR_ID: 'c1' })).toBe('ran codex');
+    expect(sh(hookCommand(gone, script, 'codex'), { SVALL_ROBOT_ID: 'c1' })).toBe('ran codex');
     const wrapped = mergeStatusLine({ statusLine: { type: 'command', command: 'echo mine' } }, statusWrapper(gone, script), script);
-    expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_CHAR_ID: 'c1' })).toBe('ran echo mine');
+    expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_ROBOT_ID: 'c1' })).toBe('ran echo mine');
   });
 
-  it('skips node outside a character', () => {
+  it('skips node outside a robot', () => {
     const { script, pinned } = scripts();
-    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: '' })).toBe('');
-    expect(sh(statusWrapper(pinned, script), { SVALL_CHAR_ID: '' })).toBe('');
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_ROBOT_ID: '' })).toBe('');
+    expect(sh(statusWrapper(pinned, script), { SVALL_ROBOT_ID: '' })).toBe('');
     const wrapped = mergeStatusLine({ statusLine: { type: 'command', command: 'echo "args:$#"' } }, statusWrapper(pinned, script), script);
-    expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_CHAR_ID: '' })).toBe('args:0\n');
+    expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_ROBOT_ID: '' })).toBe('args:0\n');
+  });
+
+  it('runs the helper for a session an older svalld started, which carries SVALL_CHAR_ID', () => {
+    const { dir, script, pinned } = scripts();
+    fs.writeFileSync(path.join(dir, 'svall-hook'), '#!/bin/sh\necho "helper $*"\n', { mode: 0o755 });
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper claude \d+\n$/);
+    expect(sh(codexHookCommand(script), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper codex \d+\n$/);
+    expect(sh(statusWrapper(pinned, script), { SVALL_CHAR_ID: 'c1' })).toBe('helper status\n');
   });
 
   it('runs the helper beside the script while it is there and executable, with the arguments the script would get', () => {
@@ -214,14 +222,14 @@ describe('hookCommand and nodeRun', () => {
     const helper = path.join(dir, 'svall-hook');
     fs.writeFileSync(helper, '#!/bin/sh\necho "helper $*"\n', { mode: 0o755 });
     const wrapped = (inner: string) => (mergeStatusLine({ statusLine: { type: 'command', command: inner } }, statusWrapper(pinned, script), script) as { statusLine: { command: string } }).statusLine.command;
-    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper claude \d+\n$/);
-    expect(sh(codexHookCommand(script), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper codex \d+\n$/);
-    expect(sh(wrapped("echo it's mine"), { SVALL_CHAR_ID: 'c1' })).toBe("helper status echo it's mine\n");
-    expect(sh(statusWrapper(pinned, script), { SVALL_CHAR_ID: 'c1' })).toBe('helper status\n');
-    expect(sh(wrapped('echo mine'), { SVALL_CHAR_ID: '' })).toBe('mine\n');
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_ROBOT_ID: 'c1' })).toMatch(/^helper claude \d+\n$/);
+    expect(sh(codexHookCommand(script), { SVALL_ROBOT_ID: 'c1' })).toMatch(/^helper codex \d+\n$/);
+    expect(sh(wrapped("echo it's mine"), { SVALL_ROBOT_ID: 'c1' })).toBe("helper status echo it's mine\n");
+    expect(sh(statusWrapper(pinned, script), { SVALL_ROBOT_ID: 'c1' })).toBe('helper status\n');
+    expect(sh(wrapped('echo mine'), { SVALL_ROBOT_ID: '' })).toBe('mine\n');
     fs.chmodSync(helper, 0o644);
-    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
-    expect(sh(wrapped('echo mine'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_ROBOT_ID: 'c1' })).toBe('pinned\n');
+    expect(sh(wrapped('echo mine'), { SVALL_ROBOT_ID: 'c1' })).toBe('pinned\n');
   });
 
   it("starts nothing for an agent of the other variant's fleet, and still runs the wrapped statusline", () => {
@@ -233,7 +241,7 @@ describe('hookCommand and nodeRun', () => {
       const pinned = path.join(root, 'node');
       fs.writeFileSync(pinned, '#!/bin/sh\necho pinned\n', { mode: 0o755 });
       const status = (mergeStatusLine({ statusLine: { type: 'command', command: 'echo mine' } }, statusWrapper(pinned, script), script) as { statusLine: { command: string } }).statusLine.command;
-      const env = { SVALL_CHAR_ID: 'c1', SVALL_HOME: path.join(root, home) };
+      const env = { SVALL_ROBOT_ID: 'c1', SVALL_HOME: path.join(root, home) };
       return [sh(hookCommand(pinned, script, 'claude'), env), sh(status, env)];
     };
     expect(run('.svall', '.svall-dev')).toEqual(['', 'mine\n']);
@@ -509,7 +517,7 @@ describe('runSetup', () => {
     expect(shimsCurrent(shimDir, runtime)).toBe(false);
   });
 
-  it('runs the statusline you had without node outside a character, and once the script is gone', async () => {
+  it('runs the statusline you had without node outside a robot, and once the script is gone', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
     const settingsPath = path.join(home, 'claude-settings.json');
@@ -520,9 +528,9 @@ describe('runSetup', () => {
     const mark = path.join(home, 'node-ran');
     const preload = path.join(home, 'mark.cjs');
     fs.writeFileSync(preload, `require('fs').writeFileSync(${JSON.stringify(mark)}, '')\n`);
-    const run = (charId: string) => {
+    const run = (robotId: string) => {
       fs.rmSync(mark, { force: true });
-      return execFileSync('sh', ['-c', line], { env: { ...process.env, SVALL_CHAR_ID: charId, SVALL_HOME: home, NODE_OPTIONS: `--require ${preload}` }, encoding: 'utf8', input: '{}' });
+      return execFileSync('sh', ['-c', line], { env: { ...process.env, SVALL_ROBOT_ID: robotId, SVALL_HOME: home, NODE_OPTIONS: `--require ${preload}` }, encoding: 'utf8', input: '{}' });
     };
     expect(run('')).toBe('mine\n');
     expect(fs.existsSync(mark)).toBe(false);
@@ -803,9 +811,9 @@ esac
     expect(first.some((l) => l.startsWith('home skills ->'))).toBe(true);
     const settings = path.join(mc, '.claude/settings.json');
     const allow = JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow;
-    expect(allow).toContain('Bash(svall char update:*)');
+    expect(allow).toContain('Bash(svall robot update:*)');
     expect(allow).not.toContain('Bash(svall:*)');
-    expect(allow.some((a: string) => a.startsWith('Bash(svall char new') || a.startsWith('Bash(svall char run'))).toBe(false);
+    expect(allow.some((a: string) => a.startsWith('Bash(svall robot new') || a.startsWith('Bash(svall robot run'))).toBe(false);
     for (const skill of ['svall-organise', 'svall-rename', 'svall-update-info', 'svall-status']) {
       expect(fs.readFileSync(path.join(mc, '.claude/skills', skill, 'SKILL.md'), 'utf8')).toContain(`name: ${skill}`);
     }
@@ -821,7 +829,7 @@ esac
     fs.appendFileSync(path.join(mc, 'CLAUDE.md'), '- Launch every task in a fresh worktree.\n');
     fs.writeFileSync(settings, 'mine');
     const second = await runSetup(o);
-    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(svall char update:*)');
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(svall robot update:*)');
     const backup = second.find((l) => l.startsWith('backup ->') && l.includes('.claude/settings.json'));
     expect(backup).toBeDefined();
     expect(fs.readFileSync(backup!.split(' -> ')[1], 'utf8')).toBe('mine');
@@ -860,7 +868,7 @@ esac
     const mc = path.join(home, 'mc');
     installHomeTemplate(mc, { replaceSettings: false });
     const settings = path.join(mc, '.claude/settings.json');
-    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(svall char update:*)');
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(svall robot update:*)');
 
     const skill = path.join(mc, '.claude/skills/svall-rename/SKILL.md');
     const rules = path.join(mc, '.claude/rules/svall.md');
@@ -875,6 +883,21 @@ esac
     expect(fs.readFileSync(mine, 'utf8')).toBe('mine');
     expect(fs.readFileSync(settings, 'utf8')).toBe('mine');
     expect(done.some((l) => l.startsWith('backup ->'))).toBe(false);
+  });
+
+  it('a daemon start adds svall robot beside each svall char an older svalld allowed, keeping the rest', () => {
+    const mc = path.join(makeHome(), 'mc');
+    installHomeTemplate(mc, { replaceSettings: false });
+    const settings = path.join(mc, '.claude/settings.json');
+    const shipped: string[] = JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow;
+    const older = fs.readFileSync(settings, 'utf8').split('\n').filter((l) => !l.includes('svall char ')).join('\n')
+      .replaceAll('svall robot ', 'svall char ').replace('"Bash(svall status:*)"', '"Bash(git log:*)", "Bash(svall status:*)"');
+    fs.writeFileSync(settings, older);
+    installHomeTemplate(mc, { replaceSettings: false });
+    const migrated = fs.readFileSync(settings, 'utf8');
+    expect(JSON.parse(migrated).permissions.allow).toEqual(expect.arrayContaining([...shipped, 'Bash(git log:*)']));
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(migrated);
   });
 
   // Claude Code asks before a command holding a shell variable even when a rule allows it
@@ -896,7 +919,7 @@ esac
   it('allows a Codex crew exactly the svall commands a Claude crew is allowed', () => {
     const template = path.join(repoRoot, 'packages/svalld/home');
     const allow: string[] = JSON.parse(fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8')).permissions.allow;
-    // ["svall", "char", ["list", "read"]] allows svall char list and svall char read
+    // ["svall", "robot", ["list", "read"]] allows svall robot list and svall robot read
     const expand = (pattern: (string | string[])[]): string[] =>
       pattern.reduce<string[]>((heads, word) => heads.flatMap((h) => [word].flat().map((w) => `${h} ${w}`.trim())), ['']);
     const rules = fs.readFileSync(path.join(template, '.codex/rules/svall.rules'), 'utf8');
@@ -1142,7 +1165,7 @@ describe('a bundled runtime', () => {
 
   it("names the app's node in Codex's hook for when the helper is missing, falling back to the one on PATH", () => {
     expect(codexHookCommand('/h/.svall/hooks/agent-hook.mjs', '/A/node'))
-      .toBe(`[ -z "$SVALL_CHAR_ID" ] || { if [ -x '/h/.svall/hooks/svall-hook' ]; then '/h/.svall/hooks/svall-hook' codex "$PPID"; else n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; fi; }`);
+      .toBe(`[ -z "$SVALL_ROBOT_ID$SVALL_CHAR_ID" ] || { if [ -x '/h/.svall/hooks/svall-hook' ]; then '/h/.svall/hooks/svall-hook' codex "$PPID"; else n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; fi; }`);
   });
 });
 

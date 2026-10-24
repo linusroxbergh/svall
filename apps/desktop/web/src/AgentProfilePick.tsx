@@ -12,10 +12,10 @@ const NONE: never[] = [];
 
 type Opt = { value: string; name: string; detail?: string; error?: boolean; disabled?: boolean };
 
-/** The role a character plays, picked from the fleet's agent profiles; the line under it says what the role is without opening it. */
+/** The role a robot plays, picked from the fleet's agent profiles; the line under it says what the role is without opening it. */
 export function AgentProfilePick({ id }: { id: string }) {
-  const picked = useApp((s) => s.fleet.characters[id]?.agentProfile);
-  const running = useApp((s) => Boolean(s.fleet.characters[id]?.agent));
+  const picked = useApp((s) => s.fleet.robots[id]?.agentProfile);
+  const running = useApp((s) => Boolean(s.fleet.robots[id]?.agent));
   const fleet = useApp((s) => s.resources.find((r) => r.tier === 'fleet'));
   const items = fleet?.groups.find((g) => g.kind === 'agentProfiles')?.items ?? NONE;
   const current = picked === undefined ? undefined : items.find((i) => i.name === picked);
@@ -30,7 +30,7 @@ export function AgentProfilePick({ id }: { id: string }) {
   const pick = (v: string) => {
     if (v === MANAGE) { shelf(); return; }
     const toast = app.store.getState().showToast;
-    void deps().api.call('char.update', { id, agentProfile: v }).then(
+    void deps().api.call('robot.update', { id, agentProfile: v }).then(
       () => { if (v && running) toast(`${v} applies from the next prompt`, 'ok'); },
       (e: Error) => toast(e.message, 'error'));
     void reloadResources(deps());

@@ -17,8 +17,8 @@ function serve(protocol: number = PROTOCOL_VERSION): Promise<Server> {
         ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol } }));
         return;
       }
-      if (msg.method === 'state.get') ws.send(JSON.stringify({ id: msg.id, result: { version: 1, islands: {}, characters: {} } }));
-      else if (msg.method === 'char.seen') ws.send(JSON.stringify({ id: msg.id, error: { code: 'not_found', message: 'nope' } }));
+      if (msg.method === 'state.get') ws.send(JSON.stringify({ id: msg.id, result: { version: 1, islands: {}, robots: {} } }));
+      else if (msg.method === 'robot.seen') ws.send(JSON.stringify({ id: msg.id, error: { code: 'not_found', message: 'nope' } }));
       else if (msg.method === 'garbage') { ws.send('not json'); ws.send(JSON.stringify({ id: msg.id, result: {} })); }
       else if (msg.method === 'hang') { /* never answered */ }
       else if (msg.method === 'ping') { ws.send(JSON.stringify({ event: 'state.patch', data: { ops: [] } })); ws.send(JSON.stringify({ id: msg.id, result: {} })); }
@@ -53,8 +53,8 @@ describe('Api', () => {
     api.start();
     await until(() => opens === 1);
     expect(statuses).toEqual(['connecting', 'online']);
-    expect(await api.call('state.get', {})).toEqual({ version: 1, islands: {}, characters: {} });
-    await expect(api.call('char.seen', { id: 'x' })).rejects.toBeInstanceOf(ApiError);
+    expect(await api.call('state.get', {})).toEqual({ version: 1, islands: {}, robots: {} });
+    await expect(api.call('robot.seen', { id: 'x' })).rejects.toBeInstanceOf(ApiError);
     await api.call('ping' as never, {} as never);
     expect(events).toEqual(['state.patch']);
     await api.call('garbage' as never, {} as never);
@@ -147,7 +147,7 @@ describe('Api', () => {
     const warn = console.warn;
     console.warn = (...a: unknown[]) => { warned.push(a); };
     try {
-      api.fire('char.seen', { id: 'x' });
+      api.fire('robot.seen', { id: 'x' });
       await new Promise((r) => setTimeout(r, 0));
     } finally { console.warn = warn; }
     expect(warned).toHaveLength(1);

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
-import { FleetConfig, FleetId, MachineId, OwnerRecord, type Character, type MethodName, type Outcome } from '@svall/protocol';
+import { FleetConfig, FleetId, MachineId, OwnerRecord, type Robot, type MethodName, type Outcome } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { loadConfig } from '../../src/config.js';
 import { AuthorityClient } from '../../src/gateway/client.js';
@@ -122,7 +122,7 @@ export class Machine {
     const d = this.current;
     if (!d || d.life.dead) return false;
     try {
-      for (const m of ['term.attach', 'char.create', 'term.input'] as MethodName[]) guardMethod(d.ownership, m, 'app');
+      for (const m of ['term.attach', 'robot.create', 'term.input'] as MethodName[]) guardMethod(d.ownership, m, 'app');
       return true;
     } catch {
       return false;
@@ -192,7 +192,7 @@ export class Machine {
       this.w.guarded(life, `${this.name} open ${key}`);
       this.w.opened(this, key);
       if (this.servers.some((x) => x.name === key)) this.w.fail(`${this.name} opened ${key} beside the OpenCode server its closed window left running`);
-      const c = store.state.characters[id];
+      const c = store.state.robots[id];
       const slot = term ? c.second : c;
       if (slot?.tmux) return c;
       const command = slot?.revive?.command;
@@ -202,14 +202,14 @@ export class Machine {
       const session = !left && command && slot?.agent?.sessionId;
       if (session) setImmediate(() => { if (!life.dead) for (const fn of started) fn(id, term, session); });
       store.update((d) => {
-        const cur = d.characters[id];
+        const cur = d.robots[id];
         const s = term ? (cur.second ??= { cwd: cur.cwd, unread: false }) : cur;
         s.tmux = { windowId: win.windowId, paneId: win.paneId };
         if (!carried(id, term)) delete s.revive;
         delete s.resumeError;
       });
       this.w.check(`${this.name} opened ${key}`);
-      return store.state.characters[id];
+      return store.state.robots[id];
     };
     return {
       settle: async () => {},
@@ -230,7 +230,7 @@ export class Machine {
       reconcileNow,
       // every agent here is idle, so none is ever cut off mid-turn
       resumeInterrupted: async () => {},
-      reviveCharacter: (id: string) => open(id),
+      reviveRobot: (id: string) => open(id),
       openSecond: (id: string) => open(id, 2),
       onSessionStart: (fn: (id: string, term: 2 | undefined, sessionId: string) => void) => {
         started.add(fn);
@@ -245,7 +245,7 @@ export class Machine {
 const psArgs = (command: string): string =>
   (command.match(/(?:'[^']*'|\\.|[^\s'\\])+/g) ?? []).map((w) => w.replace(/'([^']*)'|\\(.)/g, (_, quoted, escaped) => quoted ?? escaped)).join(' ');
 
-const char = (id: string, cwd: string, over: Partial<Character> = {}): Character => ({
+const robot = (id: string, cwd: string, over: Partial<Robot> = {}): Robot => ({
   id, islandId: 'home', cell: { x: 0, y: 1 }, name: id.slice(2), portrait: 'fox', note: '', instructions: '', cwd, context: [],
   shell: { lastOutputAt: 0 }, unread: false, ...over,
 });
@@ -368,18 +368,18 @@ export class World {
     const store = Store.load(w.mac.paths.state, () => {});
     store.update((d) => {
       for (const c of [
-        char('c_ada', work('ada'), { tmux: { windowId: ada.windowId, paneId: ada.paneId }, second: { cwd: work('ada'), unread: false, tmux: { windowId: adaSecond.windowId, paneId: adaSecond.paneId } } }),
-        char('c_bo', work('bo'), { tmux: { windowId: bo.windowId, paneId: bo.paneId } }),
-        char('c_cy', work('cy'), {
+        robot('c_ada', work('ada'), { tmux: { windowId: ada.windowId, paneId: ada.paneId }, second: { cwd: work('ada'), unread: false, tmux: { windowId: adaSecond.windowId, paneId: adaSecond.paneId } } }),
+        robot('c_bo', work('bo'), { tmux: { windowId: bo.windowId, paneId: bo.paneId } }),
+        robot('c_cy', work('cy'), {
           agent: { kind: 'opencode', sessionId: CY_SESSION, transcriptPath: cyLog, status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${CY_SESSION}` },
         }),
-        char('c_di', work('di'), {
+        robot('c_di', work('di'), {
           tmux: { windowId: di.windowId, paneId: di.paneId }, agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 },
         }),
-        char('c_ed', work('ed'), {
+        robot('c_ed', work('ed'), {
           tmux: { windowId: ed.windowId, paneId: ed.paneId }, agent: { kind: 'opencode', sessionId: ED_SESSION, transcriptPath: edLog, status: 'idle', lastActivityAt: 0 },
         }),
-      ]) d.characters[c.id] = c;
+      ]) d.robots[c.id] = c;
     });
     await w.startGateway();
     const client = await AuthorityClient.connect(w.prefix);
@@ -850,7 +850,7 @@ export function settledOn(w: World): 'source' | 'destination' {
   expect(['opencode', ED_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_ed')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
   for (const m of [w.mac, w.trift]) expect(m.servers, m.name).toEqual([]);
-  // cy's and ed's OpenCode sessions are in the OpenCode of the machine running the fleet, each in its character's folder
+  // cy's and ed's OpenCode sessions are in the OpenCode of the machine running the fleet, each in its robot's folder
   expect(held(owner.opencode)[CY_SESSION]).toEqual({ info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES });
   expect(held(owner.opencode)[ED_SESSION]).toEqual({ info: { id: ED_SESSION, location: { directory: w.ed } }, messages: ED_MESSAGES });
   // and the other machine's OpenCode keeps a copy: the one the source carried, or the destination's own or the one that came

@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react';
 import type { Cell } from '@svall/protocol';
 import { app } from '../boot.js';
-import { charactersOf, mapIslandsSorted, statusOf } from '../selectors.js';
+import { robotsOf, mapIslandsSorted, statusOf } from '../selectors.js';
 import { worldCell, worldToScreen, type Layout } from './layout.js';
 import type { MapDump } from './types.js';
 
@@ -21,7 +21,7 @@ export function useDevHook(layoutRef: RefObject<Layout>, refits: RefObject<numbe
         return {
           scale: layoutRef.current.scale,
           islands: mapIslandsSorted(f).map((i) => ({ id: i.id, x: i.position.x, y: i.position.y, w: i.size.w, h: i.size.h })),
-          tokens: mapIslandsSorted(f).flatMap((i) => charactersOf(f, i.id).map((c) => ({
+          tokens: mapIslandsSorted(f).flatMap((i) => robotsOf(f, i.id).map((c) => ({
             id: c.id,
             cell: worldCell(i.position, c.cell),
             status: statusOf(c) as string,

@@ -22,9 +22,9 @@ afterEach(cleanHomes);
 describe('normalizeHook', () => {
   it("maps OpenCode's events, its ses_ ids and its log", () => {
     const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
-    const oc = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'opencode', pid: 42, hook: { session_id: OSID, ...hook } });
+    const oc = (hook: Record<string, unknown>) => normalizeHook({ robotId: 'c_1', backend: 'opencode', pid: 42, hook: { session_id: OSID, ...hook } });
     expect(oc({ hook_event_name: 'SessionStart', transcript_path: '/h/transcripts/opencode/x.jsonl', cwd: '/r' }))
-      .toEqual({ charId: 'c_1', backend: 'opencode', name: 'SessionStart', sessionId: OSID, transcriptPath: '/h/transcripts/opencode/x.jsonl', cwd: '/r', pid: 42 });
+      .toEqual({ robotId: 'c_1', backend: 'opencode', name: 'SessionStart', sessionId: OSID, transcriptPath: '/h/transcripts/opencode/x.jsonl', cwd: '/r', pid: 42 });
     expect(oc({ hook_event_name: 'UserPromptSubmit', prompt: 'go', prompt_id: 'msg_1' })?.prompt).toEqual({ id: 'msg_1', text: 'go' });
     expect(oc({ hook_event_name: 'StopFailure', message: 'rate limited' })).toMatchObject({ name: 'StopFailure', message: 'rate limited' });
     expect(oc({ hook_event_name: 'Notification' })).toBeUndefined();
@@ -33,24 +33,28 @@ describe('normalizeHook', () => {
     expect(oc({ hook_event_name: 'PreToolUse', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toBeUndefined();
   });
 
+  it('reads the charId an OpenCode plugin loaded by an older svalld sends as the robot id', () => {
+    expect(normalizeHook({ charId: 'c_1', backend: 'opencode', hook: { hook_event_name: 'SessionStart', session_id: 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn' } })?.robotId).toBe('c_1');
+    expect(normalizeStatus({ charId: 'c_1', status: { contextPct: 5 } })?.robotId).toBe('c_1');
+  });
   it('maps SessionStart with ids', () => {
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path: '/t.jsonl' } }))
-      .toEqual({ charId: 'c_1', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/t.jsonl' });
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path: '/t.jsonl' } }))
+      .toEqual({ robotId: 'c_1', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/t.jsonl' });
   });
   it('keeps the backend the hook script reported, and its model', () => {
-    const e = normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SessionStart', session_id: SID, model: 'gpt-5.1-codex-max' } });
+    const e = normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SessionStart', session_id: SID, model: 'gpt-5.1-codex-max' } });
     expect(e).toMatchObject({ backend: 'codex', model: 'gpt-5.1-codex-max' });
   });
   it('takes a script that names no backend for Claude Code, and refuses a backend it does not know', () => {
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop' } })?.backend).toBe('claude');
-    expect(normalizeHook({ charId: 'c_1', backend: 'cursor', hook: { hook_event_name: 'Stop' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Stop' } })?.backend).toBe('claude');
+    expect(normalizeHook({ robotId: 'c_1', backend: 'cursor', hook: { hook_event_name: 'Stop' } })).toBeUndefined();
   });
   it('pairs a codex prompt by the turn it opened', () => {
-    const e = normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 't1' } });
+    const e = normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 't1' } });
     expect(e?.prompt).toEqual({ id: 't1', text: 'go' });
   });
   it('lets a codex subagent work, ask for permission, start and stop, and nothing else of a subagent', () => {
-    const codex = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'codex', hook: { session_id: SID, agent_id: 'a1', ...hook } });
+    const codex = (hook: Record<string, unknown>) => normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { session_id: SID, agent_id: 'a1', ...hook } });
     expect(codex({ hook_event_name: 'PermissionRequest', message: 'remove the build folder' })).toMatchObject({ name: 'PermissionRequest', message: 'remove the build folder' });
     expect(codex({ hook_event_name: 'PreToolUse' })?.name).toBe('PreToolUse');
     expect(codex({ hook_event_name: 'SubagentStart' })).toMatchObject({ name: 'SubagentStart', agentId: 'a1', sessionId: SID });
@@ -58,13 +62,13 @@ describe('normalizeHook', () => {
     expect(codex({ hook_event_name: 'UserPromptSubmit', prompt: 'p', turn_id: 't' })).toBeUndefined();
   });
   it("leaves a subagent's own transcript out, which codex names on its events", () => {
-    const hook = (h: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'codex', hook: { session_id: SID, transcript_path: '/sub.jsonl', ...h } });
+    const hook = (h: Record<string, unknown>) => normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { session_id: SID, transcript_path: '/sub.jsonl', ...h } });
     expect(hook({ hook_event_name: 'PreToolUse', agent_id: 'a1' })?.transcriptPath).toBeUndefined();
     expect(hook({ hook_event_name: 'SubagentStart', agent_id: 'a1' })?.transcriptPath).toBeUndefined();
     expect(hook({ hook_event_name: 'PreToolUse' })?.transcriptPath).toBe('/sub.jsonl');
   });
   it("keeps a claude subagent's tool calls, questions and stop, named by the subagent, and nothing else of it", () => {
-    const sub = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', hook: { session_id: SID, agent_id: 'a95af83797c89a762', ...hook } });
+    const sub = (hook: Record<string, unknown>) => normalizeHook({ robotId: 'c_1', hook: { session_id: SID, agent_id: 'a95af83797c89a762', ...hook } });
     expect(sub({ hook_event_name: 'PreToolUse' })).toMatchObject({ name: 'PreToolUse', agentId: 'a95af83797c89a762' });
     expect(sub({ hook_event_name: 'PermissionRequest' })).toMatchObject({ name: 'PermissionRequest', agentId: 'a95af83797c89a762' });
     expect(sub({ hook_event_name: 'SubagentStart' })).toMatchObject({ name: 'SubagentStart', agentId: 'a95af83797c89a762' });
@@ -76,32 +80,32 @@ describe('normalizeHook', () => {
     expect(sub({ hook_event_name: 'PreToolUse', agent_id: 'x'.repeat(300) })).toBeUndefined();
   });
   it("names no subagent on a claude main-thread event or a codex subagent's", () => {
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PermissionRequest' } })?.agentId).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PreToolUse', agent_id: 'a1' } })?.agentId).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PermissionRequest' } })?.agentId).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PreToolUse', agent_id: 'a1' } })?.agentId).toBeUndefined();
   });
   it('knows no event a backend does not send', () => {
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PostToolUseFailure' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUse', tool_name: 'Bash' } })).toMatchObject({ name: 'PostToolUse', toolName: 'Bash' });
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUseFailure' } })?.name).toBe('PostToolUseFailure');
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Interrupt' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'StopFailure' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'StopFailure', message: 'x' } })).toMatchObject({ name: 'StopFailure', message: 'x' });
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Interrupt', session_id: SID } })).toMatchObject({ name: 'Interrupt', sessionId: SID });
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PostToolUseFailure' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PostToolUse', tool_name: 'Bash' } })).toMatchObject({ name: 'PostToolUse', toolName: 'Bash' });
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PostToolUseFailure' } })?.name).toBe('PostToolUseFailure');
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Interrupt' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'StopFailure' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'StopFailure', message: 'x' } })).toMatchObject({ name: 'StopFailure', message: 'x' });
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Interrupt', session_id: SID } })).toMatchObject({ name: 'Interrupt', sessionId: SID });
   });
   it('drops a session id that is not a UUID', () => {
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: 'x; rm -rf ~' } })?.sessionId).toBeUndefined();
-    expect(normalizeStatus({ charId: 'c_1', status: { sessionId: '$(touch /tmp/p)', contextPct: 1 } })?.sessionId).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: 'x; rm -rf ~' } })?.sessionId).toBeUndefined();
+    expect(normalizeStatus({ robotId: 'c_1', status: { sessionId: '$(touch /tmp/p)', contextPct: 1 } })?.sessionId).toBeUndefined();
   });
   it('ignores a transcript path that is not an absolute jsonl file', () => {
     const hook = (transcript_path: string) =>
-      normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path } });
+      normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path } });
     expect(hook('/Users/me/.ssh/id_rsa')?.transcriptPath).toBeUndefined();
     expect(hook('relative.jsonl')?.transcriptPath).toBeUndefined();
   });
   it('ignores a transcript path longer than a path can be', () => {
     const hook = (transcript_path: string) =>
-      normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path } });
+      normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path } });
     expect(hook(`/${'x'.repeat(1000)}.jsonl`)?.transcriptPath).toBe(`/${'x'.repeat(1000)}.jsonl`);
     expect(hook(`/${'x'.repeat(5000)}.jsonl`)?.transcriptPath).toBeUndefined();
   });
@@ -112,7 +116,7 @@ describe('normalizeHook', () => {
     fs.writeFileSync(kept, '{}\n');
     fs.mkdirSync(path.join(projects, '-src-beta'));
     const hook = (name: string, session_id: string, transcript_path: string) =>
-      normalizeHook({ charId: 'c_1', hook: { hook_event_name: name, session_id, transcript_path } })?.transcriptPath;
+      normalizeHook({ robotId: 'c_1', hook: { hook_event_name: name, session_id, transcript_path } })?.transcriptPath;
     const moved = path.join(projects, '-src-alpha--wt-react-boilerplate', `${SID}.jsonl`);
     expect(hook('SessionStart', SID, moved)).toBe(kept);
     // a handover between homes resumes it from the same folder under another home, whose project holds nothing either
@@ -133,12 +137,12 @@ describe('normalizeHook', () => {
     expect(hook('SessionStart', fresh, path.join(projects, '-src-beta', `${fresh}.jsonl`))).toBe(path.join(projects, '-src-beta', `${fresh}.jsonl`));
   });
   it('keeps an absolute cwd only', () => {
-    const hook = (cwd: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PreToolUse', cwd } });
+    const hook = (cwd: string) => normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PreToolUse', cwd } });
     expect(hook('/repo/.claude/worktrees/x')?.cwd).toBe('/repo/.claude/worktrees/x');
     expect(hook('relative')?.cwd).toBeUndefined();
   });
   it('keeps the submitted prompt with its id, and only on UserPromptSubmit', () => {
-    const hook = (h: Record<string, unknown>) => normalizeHook({ charId: 'c_1', hook: h })?.prompt;
+    const hook = (h: Record<string, unknown>) => normalizeHook({ robotId: 'c_1', hook: h })?.prompt;
     expect(hook({ hook_event_name: 'UserPromptSubmit', prompt: ' hoist the sail ', prompt_id: 'p1' })).toEqual({ id: 'p1', text: 'hoist the sail' });
     expect(hook({ hook_event_name: 'UserPromptSubmit', prompt: 'x'.repeat(9000), prompt_id: 'p1' })?.text).toHaveLength(4000);
     expect(hook({ hook_event_name: 'UserPromptSubmit', prompt: 'hoist' })).toBeUndefined();
@@ -146,7 +150,7 @@ describe('normalizeHook', () => {
     expect(hook({ hook_event_name: 'Stop', prompt: 'hoist', prompt_id: 'p1' })).toBeUndefined();
   });
   it('leaves out a turn the harness opened by itself', () => {
-    const hook = (p: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'UserPromptSubmit', prompt: p, prompt_id: 'p1' } })?.prompt;
+    const hook = (p: string) => normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'UserPromptSubmit', prompt: p, prompt_id: 'p1' } })?.prompt;
     expect(hook('<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n</task-notification>')).toBeUndefined();
     expect(hook('Another Claude session sent a message:\n<agent-message from="a1">done</agent-message>')).toBeUndefined();
     expect(hook('<agent-message from="a1">\n[Subagent hand-back] done\n</agent-message>')).toBeUndefined();
@@ -155,16 +159,16 @@ describe('normalizeHook', () => {
     expect(hook('read the <task-notification> tag')).toEqual({ id: 'p1', text: 'read the <task-notification> tag' });
   });
   it('keeps the notification type', () => {
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Notification', notification_type: 'permission_prompt' } })?.notificationType)
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Notification', notification_type: 'permission_prompt' } })?.notificationType)
       .toBe('permission_prompt');
   });
   it('keeps the notification message, cut to 500 characters', () => {
-    const h = normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'x'.repeat(600) } });
+    const h = normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'x'.repeat(600) } });
     expect(h?.message).toHaveLength(500);
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Notification', message: '' } })?.message).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Notification', message: '' } })?.message).toBeUndefined();
   });
   it('counts the background agents and shells still running at Stop, not monitors', () => {
-    const stop = (background_tasks: unknown) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks } });
+    const stop = (background_tasks: unknown) => normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks } });
     expect(stop([
       { id: 'a1', type: 'subagent', status: 'running' },
       { id: 'w1', type: 'workflow', status: 'pending' },
@@ -178,52 +182,52 @@ describe('normalizeHook', () => {
     expect(stop('junk')?.backgroundAgentIds).toBeUndefined();
   });
   it("names the background shells at Stop, and the task a Monitor started, which Claude Code lists as a shell", () => {
-    const stop = normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks: [{ id: 'a1', type: 'subagent' }, { id: 'b1', type: 'shell' }, { type: 'shell' }] } });
+    const stop = normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks: [{ id: 'a1', type: 'subagent' }, { id: 'b1', type: 'shell' }, { type: 'shell' }] } });
     expect(stop).toMatchObject({ backgroundTasks: 3, backgroundShells: ['b1'] });
-    const started = (hook_event_name: string, tool_name: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name, tool_name, task_id: 'b1' } })?.monitor;
+    const started = (hook_event_name: string, tool_name: string) => normalizeHook({ robotId: 'c_1', hook: { hook_event_name, tool_name, task_id: 'b1' } })?.monitor;
     expect(started('PostToolUse', 'Monitor')).toBe('b1');
     expect(started('PostToolUse', 'Bash')).toBeUndefined();
     expect(started('PreToolUse', 'Monitor')).toBeUndefined();
     expect(started('PostToolUse', 'shell')).toBeUndefined();
-    const opencode = (tool_name: string) => normalizeHook({ charId: 'c_1', backend: 'opencode', hook: { hook_event_name: 'PostToolUse', tool_name, task_id: 'sh_1' } })?.monitor;
+    const opencode = (tool_name: string) => normalizeHook({ robotId: 'c_1', backend: 'opencode', hook: { hook_event_name: 'PostToolUse', tool_name, task_id: 'sh_1' } })?.monitor;
     expect(opencode('shell')).toBe('sh_1');
     expect(opencode('read')).toBeUndefined();
   });
   it('drops subagent events, unknown events and malformed input', () => {
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'sub' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SubagentStop' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStart' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStart', agent_id: 'a 1' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Bogus', agent_id: 'a1' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'sub' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'SubagentStop' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStart' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStart', agent_id: 'a 1' } })).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'Bogus', agent_id: 'a1' } })).toBeUndefined();
     expect(normalizeHook({ hook: { hook_event_name: 'Stop' } })).toBeUndefined();
     expect(normalizeHook('junk')).toBeUndefined();
   });
   it('keeps term 2 and nothing else as the terminal', () => {
     const hook = { hook_event_name: 'Stop' };
-    expect(normalizeHook({ charId: 'c_a', term: 2, hook })).toEqual({ charId: 'c_a', backend: 'claude', name: 'Stop', term: 2 });
-    expect(normalizeHook({ charId: 'c_a', term: 1, hook })).toEqual({ charId: 'c_a', backend: 'claude', name: 'Stop' });
-    expect(normalizeHook({ charId: 'c_a', term: '2', hook })).toEqual({ charId: 'c_a', backend: 'claude', name: 'Stop' });
+    expect(normalizeHook({ robotId: 'c_a', term: 2, hook })).toEqual({ robotId: 'c_a', backend: 'claude', name: 'Stop', term: 2 });
+    expect(normalizeHook({ robotId: 'c_a', term: 1, hook })).toEqual({ robotId: 'c_a', backend: 'claude', name: 'Stop' });
+    expect(normalizeHook({ robotId: 'c_a', term: '2', hook })).toEqual({ robotId: 'c_a', backend: 'claude', name: 'Stop' });
   });
   it('keeps the pid of the agent that ran the hook, when it is one', () => {
     const hook = { hook_event_name: 'SessionStart', session_id: SID };
-    expect(normalizeHook({ charId: 'c_a', pid: 4242, hook })?.pid).toBe(4242);
-    for (const pid of [0, -1, 1.5, '4242', null]) expect(normalizeHook({ charId: 'c_a', pid, hook })?.pid).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_a', pid: 4242, hook })?.pid).toBe(4242);
+    for (const pid of [0, -1, 1.5, '4242', null]) expect(normalizeHook({ robotId: 'c_a', pid, hook })?.pid).toBeUndefined();
   });
 });
 
 describe('normalizeStatus', () => {
   it('reads the context window Claude Code hands its statusline', () => {
-    expect(normalizeStatus({ charId: 'c_1', status: { sessionId: SID, contextPct: 9.4, model: 'claude-opus-5' } }))
-      .toEqual({ charId: 'c_1', contextPct: 9.4, sessionId: SID, model: 'claude-opus-5' });
+    expect(normalizeStatus({ robotId: 'c_1', status: { sessionId: SID, contextPct: 9.4, model: 'claude-opus-5' } }))
+      .toEqual({ robotId: 'c_1', contextPct: 9.4, sessionId: SID, model: 'claude-opus-5' });
   });
   it('clamps the percentage and drops a reading without one', () => {
-    expect(normalizeStatus({ charId: 'c_1', status: { contextPct: 140 } })?.contextPct).toBe(100);
-    expect(normalizeStatus({ charId: 'c_1', status: { model: 'x' } })).toBeUndefined();
+    expect(normalizeStatus({ robotId: 'c_1', status: { contextPct: 140 } })?.contextPct).toBe(100);
+    expect(normalizeStatus({ robotId: 'c_1', status: { model: 'x' } })).toBeUndefined();
     expect(normalizeStatus({ status: { contextPct: 5 } })).toBeUndefined();
   });
   it('keeps term 2 as the terminal', () => {
-    expect(normalizeStatus({ charId: 'c_a', term: 2, status: { contextPct: 40 } })).toEqual({ charId: 'c_a', contextPct: 40, term: 2 });
-    expect(normalizeStatus({ charId: 'c_a', status: { contextPct: 40 } })).toEqual({ charId: 'c_a', contextPct: 40 });
+    expect(normalizeStatus({ robotId: 'c_a', term: 2, status: { contextPct: 40 } })).toEqual({ robotId: 'c_a', contextPct: 40, term: 2 });
+    expect(normalizeStatus({ robotId: 'c_a', status: { contextPct: 40 } })).toEqual({ robotId: 'c_a', contextPct: 40 });
   });
 });
 
@@ -258,7 +262,7 @@ describe('hook receiver', () => {
       await new Promise<void>((resolve, reject) => {
         const socket = net.createConnection(sock);
         socket.once('error', reject);
-        socket.once('connect', () => socket.end(JSON.stringify({ charId: 'c_9', hook: {
+        socket.once('connect', () => socket.end(JSON.stringify({ robotId: 'c_9', hook: {
           hook_event_name: 'Stop', session_id: SID,
         } }) + '\n', resolve));
       });
@@ -273,15 +277,15 @@ describe('hook receiver', () => {
     const events: SocketEvent[] = [];
     const said: string[] = [];
     const r = await startHookReceiver(sock, (e) => { events.push(e); }, { info() {}, error: (m) => said.push(m) });
-    const good = JSON.stringify({ charId: 'c_9', hook: { hook_event_name: 'Stop', session_id: SID } });
+    const good = JSON.stringify({ robotId: 'c_9', hook: { hook_event_name: 'Stop', session_id: SID } });
     await new Promise<void>((resolve) => {
       const c = net.createConnection(sock, () => {
-        c.write(JSON.stringify({ charId: 'c_9', hook: { hook_event_name: 'Stop', message: 'x'.repeat(400_000) } }) + '\n');
+        c.write(JSON.stringify({ robotId: 'c_9', hook: { hook_event_name: 'Stop', message: 'x'.repeat(400_000) } }) + '\n');
         c.end(good + '\n', resolve);
       });
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
     expect(said).toEqual(['hook line dropped: over the 262144 byte cap']);
     await r.close();
   });
@@ -291,7 +295,7 @@ describe('hook receiver', () => {
     const events: SocketEvent[] = [];
     const said: string[] = [];
     const r = await startHookReceiver(sock, (e) => { events.push(e); }, { info() {}, error: (m) => said.push(m) });
-    const good = JSON.stringify({ charId: 'c_9', hook: { hook_event_name: 'Stop', session_id: SID } });
+    const good = JSON.stringify({ robotId: 'c_9', hook: { hook_event_name: 'Stop', session_id: SID } });
     const c = net.createConnection(sock);
     await new Promise<void>((resolve) => c.on('connect', () => resolve()));
     c.write('x'.repeat(300_000));
@@ -318,8 +322,8 @@ describe('hook receiver', () => {
       const c = net.createConnection(sock, () => c.write(JSON.stringify(line) + '\n'));
       c.on('data', (d: Buffer) => { buf += d.toString(); if (buf.includes('\n')) { c.end(); resolve(buf); } });
     });
-    expect(await ask({ charId: 'c_9', hook: { hook_event_name: 'SessionStart', session_id: SID } })).toBe('{"additionalContext":""}\n');
-    expect(await ask({ charId: 'c_9', hook: { hook_event_name: 'UserPromptSubmit', session_id: SID } })).toBe('{"additionalContext":""}\n');
+    expect(await ask({ robotId: 'c_9', hook: { hook_event_name: 'SessionStart', session_id: SID } })).toBe('{"additionalContext":""}\n');
+    expect(await ask({ robotId: 'c_9', hook: { hook_event_name: 'UserPromptSubmit', session_id: SID } })).toBe('{"additionalContext":""}\n');
     expect(said).toEqual(['hook line ignored: Error: boom', 'hook line ignored: Error: later']);
     await r.close();
   });
@@ -329,7 +333,7 @@ describe('hook receiver', () => {
     const r = await startHookReceiver(sock, async () => { await new Promise((res) => setTimeout(res, 20)); return 'brief'; }, silentLogger);
     const reply = await new Promise<string>((resolve) => {
       let buf = '';
-      const c = net.createConnection(sock, () => c.write(JSON.stringify({ charId: 'c_9', hook: { hook_event_name: 'UserPromptSubmit', session_id: SID } }) + '\n'));
+      const c = net.createConnection(sock, () => c.write(JSON.stringify({ robotId: 'c_9', hook: { hook_event_name: 'UserPromptSubmit', session_id: SID } }) + '\n'));
       c.on('data', (d: Buffer) => { buf += d.toString(); if (buf.includes('\n')) { c.end(); resolve(buf); } });
     });
     expect(reply).toBe('{"additionalContext":"brief"}\n');
@@ -385,11 +389,11 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
     await new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID, transcript_path: '/t1.jsonl' }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID, transcriptPath: '/t1.jsonl' } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID, transcriptPath: '/t1.jsonl' } });
     await r.close();
   });
 
@@ -412,14 +416,14 @@ describe.each(runners)('$name', (run) => {
     // the shell a hook command runs in is the agent's child, so its $PPID is the agent: here, this test
     for (const command of [hookCommand(process.execPath, installed, 'claude'), codexHookCommand(installed)]) {
       await new Promise<void>((resolve, reject) => {
-        const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+        const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
         p.stdin!.end(JSON.stringify({ ...kept, tool_input: { command: 'ls' }, permission_mode: 'default' }));
       });
     }
     await waitFor(() => lines.length === 2);
     expect(lines.sort((a, b) => a.backend.localeCompare(b.backend))).toEqual([
-      { charId: 'c_9', backend: 'claude', pid: process.pid, hook: kept },
-      { charId: 'c_9', backend: 'codex', pid: process.pid, hook: kept },
+      { robotId: 'c_9', backend: 'claude', pid: process.pid, hook: kept },
+      { robotId: 'c_9', backend: 'codex', pid: process.pid, hook: kept },
     ]);
     server.close();
   });
@@ -429,14 +433,14 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
     await new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({
         hook_event_name: 'PreToolUse', session_id: SID, transcript_path: '/t1.jsonl', tool_name: 'Write',
         tool_input: { content: 'x'.repeat(64 * 1024) },
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PreToolUse', sessionId: SID, transcriptPath: '/t1.jsonl', toolName: 'Write' } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'claude', name: 'PreToolUse', sessionId: SID, transcriptPath: '/t1.jsonl', toolName: 'Write' } });
     await r.close();
   });
 
@@ -445,14 +449,14 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
     await new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook('codex'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook('codex'), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({
         hook_event_name: 'PermissionRequest', session_id: SID, tool_name: 'Bash',
         tool_input: { command: 'rm -rf build', description: 'remove the build folder' },
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder', toolName: 'Bash' } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder', toolName: 'Bash' } });
     await r.close();
   });
 
@@ -461,14 +465,14 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
     await new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook('codex'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook('codex'), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({
         hook_event_name: 'PreToolUse', session_id: SID, tool_name: 'request_user_input',
         tool_input: { questions: [{ id: 'ship', header: 'Ship', question: 'Ship it now?', options: [{ label: 'Yes', description: 'Go.' }] }] },
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PreToolUse', sessionId: SID, message: 'Ship it now?', toolName: 'request_user_input' } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'codex', name: 'PreToolUse', sessionId: SID, message: 'Ship it now?', toolName: 'request_user_input' } });
     await r.close();
   });
 
@@ -477,14 +481,14 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
     await new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({
         hook_event_name: 'PostToolUse', session_id: SID, tool_name: 'Monitor',
         tool_input: { command: 'tail -f log', description: 'log' }, tool_response: { taskId: 'b9x', timeoutMs: 0, persistent: true },
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b9x' } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b9x' } });
     await r.close();
   });
 
@@ -497,7 +501,7 @@ describe.each(runners)('$name', (run) => {
       { hook_event_name: 'StopFailure', session_id: SID, error: 'overloaded' },
     ]) {
       await new Promise<void>((resolve, reject) => {
-        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
         p.stdin!.end(JSON.stringify(payload));
       });
     }
@@ -510,14 +514,14 @@ describe.each(runners)('$name', (run) => {
     const home = makeHome();
     const events: SocketEvent[] = [];
     const ran = new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID }));
     });
     await new Promise((res) => setTimeout(res, 600));
     const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
     await ran;
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
+    expect(events[0]).toEqual({ hook: { robotId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
     await r.close();
   });
 
@@ -527,7 +531,7 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); return ''; }, silentLogger);
     await new Promise<void>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID, prompt: 'x'.repeat(1024 * 1024), prompt_id: 'p1' }));
     });
     await waitFor(() => events.length === 1);
@@ -535,9 +539,9 @@ describe.each(runners)('$name', (run) => {
     await r.close();
   });
 
-  it('exits 0 without a char id or without a socket, giving up on the socket within a few seconds', async () => {
+  it('exits 0 without a robot id or without a socket, giving up on the socket within a few seconds', async () => {
     const home = makeHome();
-    for (const env of [{ SVALL_HOME: home }, { SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' }]) {
+    for (const env of [{ SVALL_HOME: home }, { SVALL_HOME: home, SVALL_ROBOT_ID: 'c_1' }]) {
       const t0 = Date.now();
       const code = await new Promise<number | null>((resolve) => {
         const p = execFile(...hook(), { env: { ...process.env, ...env } }, () => {});
@@ -555,7 +559,7 @@ describe.each(runners)('$name', (run) => {
     fs.writeFileSync(path.join(home, 'hooks.down'), '');
     const t0 = Date.now();
     await new Promise<void>((resolve) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_1' } }, () => resolve());
       p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID }));
     });
     expect(Date.now() - t0).toBeLessThan(1500);
@@ -566,7 +570,7 @@ describe.each(runners)('$name', (run) => {
       const home = makeHome();
       const t0 = Date.now();
       await new Promise<void>((resolve) => {
-        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
+        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_1' } }, () => resolve());
         p.stdin!.end(JSON.stringify({ hook_event_name: name, session_id: SID }));
       });
       expect(Date.now() - t0).toBeLessThan(1500);
@@ -576,7 +580,7 @@ describe.each(runners)('$name', (run) => {
   it('exits 0 within 1.5 s when its input never ends', async () => {
     const t0 = Date.now();
     const code = await new Promise<number | null>((resolve) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: makeHome(), SVALL_CHAR_ID: 'c_1' } }, () => {});
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: makeHome(), SVALL_ROBOT_ID: 'c_1' } }, () => {});
       p.on('exit', resolve);
     });
     expect(code).toBe(0);
@@ -589,7 +593,7 @@ describe.each(runners)('$name', (run) => {
     const events: SocketEvent[] = [];
     const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
     const out = await new Promise<string>((resolve, reject) => {
-      const p = execFile(...status('echo inner'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } },
+      const p = execFile(...status('echo inner'), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } },
         (err, stdout) => (err ? reject(err) : resolve(stdout)));
       p.stdin!.end(JSON.stringify({
         session_id: SID, model: { id: 'claude-opus-5' },
@@ -598,7 +602,7 @@ describe.each(runners)('$name', (run) => {
     });
     expect(out.trim()).toBe('inner');
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ status: { charId: 'c_9', sessionId: SID, contextPct: 9.4, model: 'claude-opus-5' } });
+    expect(events[0]).toEqual({ status: { robotId: 'c_9', sessionId: SID, contextPct: 9.4, model: 'claude-opus-5' } });
     await r.close();
   });
 
@@ -619,7 +623,7 @@ describe.each(runners)('$name', (run) => {
     const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
     let exited = false;
     const done = new Promise<void>((resolve) => {
-      const p = execFile(...status('sleep 2'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, () => {});
+      const p = execFile(...status('sleep 2'), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, () => {});
       p.on('exit', () => { exited = true; resolve(); });
       // more than a pipe holds, so a write to the command blocks until it exits
       p.stdin!.end(JSON.stringify({ context_window: { used_percentage: 9 }, pad: 'x'.repeat(200_000) }));
@@ -635,7 +639,7 @@ describe.each(runners)('$name', (run) => {
     const sock = path.join(home, 'hooks.sock');
     const r = await startHookReceiver(sock, (e) => ('hook' in e && e.hook.name === 'SessionStart' ? 'the brief' : undefined), silentLogger);
     const send = (payload: Record<string, unknown>) => new Promise<string>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
       p.stdin!.end(JSON.stringify({ session_id: SID, transcript_path: '/t1.jsonl', ...payload }));
     });
     expect(JSON.parse(await send({ hook_event_name: 'SessionStart' })))
@@ -653,7 +657,7 @@ describe.each(runners)('$name', (run) => {
     const big = 'x'.repeat(200_000);
     const r = await startHookReceiver(sock, (e) => ('hook' in e && e.hook.name === 'SessionStart' ? big : undefined), silentLogger);
     const out = await new Promise<string>((resolve, reject) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' }, maxBuffer: 1024 * 1024 },
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' }, maxBuffer: 1024 * 1024 },
         (err, stdout) => (err ? reject(err) : resolve(stdout)));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'SessionStart', session_id: SID, transcript_path: '/t1.jsonl' }));
     });
@@ -669,7 +673,7 @@ describe.each(runners)('$name', (run) => {
     const t0 = Date.now();
     const { code, out } = await new Promise<{ code: number | null; out: string }>((resolve) => {
       let out = '';
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => {});
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_1' } }, () => {});
       p.stdout!.on('data', (d) => (out += d));
       p.on('exit', (code) => resolve({ code, out }));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'SessionStart' }));
@@ -699,7 +703,7 @@ describe('the compiled helper', () => {
       got.length = 0;
       opened = 0;
       const { code, stdout } = await new Promise<{ code: number | null; stdout: Buffer }>((resolve) => {
-        const p = execFile(...run(r), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9', ...env }, encoding: 'buffer' }, (_, stdout) => resolve({ code: p.exitCode, stdout }));
+        const p = execFile(...run(r), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9', ...env }, encoding: 'buffer' }, (_, stdout) => resolve({ code: p.exitCode, stdout }));
         p.stdin!.end(input);
       });
       // a connection the process made can reach the server after it exits
@@ -738,7 +742,7 @@ describe('the compiled helper', () => {
       ' \t\n{ "hook_event_name" : "Stop" , "cwd" : [ 1 , 2 ] }\r\n ', '', 'not json', '{"a":01}', '﻿{}', '[]', '"x"', '5',
     ];
     for (const p of payloads) await same(hook('claude', '42'), p, { SVALL_TERM: '2' });
-    await same(hook('codex'), payloads[0], { SVALL_CHAR_ID: 'c_é😀' });
+    await same(hook('codex'), payloads[0], { SVALL_ROBOT_ID: 'c_é😀' });
   });
 
   it("prints the daemon's answer as the hook script prints it", async () => {
@@ -776,7 +780,7 @@ describe.each(runners)('$name of the other variant', (run) => {
     const server = net.createServer((s) => s.on('data', (d) => got.push(String(d)))).listen(path.join(home, 'hooks.sock'));
     await new Promise<void>((r) => server.once('listening', r));
     const code = await new Promise<number | null>((resolve) => {
-      const p = execFile(...(kind === 'hook' ? run.hook(dir) : run.status(dir, 'cat >/dev/null')), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, () => {});
+      const p = execFile(...(kind === 'hook' ? run.hook(dir) : run.status(dir, 'cat >/dev/null')), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, () => {});
       p.on('exit', resolve);
       p.stdin!.end(stdin);
     });
@@ -832,7 +836,7 @@ describe.each(runners)('$name of the other variant', (run) => {
       hooks.push(hookCommand(process.execPath, path.join(dir, 'agent-hook.mjs'), 'claude'));
     }
     const sh = (command: string, home: string, stdin: string) => new Promise<string>((resolve, reject) => {
-      const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
       p.stdin!.end(stdin);
     });
     for (const home of homes) {

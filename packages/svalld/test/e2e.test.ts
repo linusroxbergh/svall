@@ -30,7 +30,7 @@ runIf('fleet loop', () => {
     daemon = await start({ home, port: 0, log: silentLogger });
     const fleet = daemon.fleet;
     const island = fleet.createIsland({ name: 'e2e' });
-    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', command: `node ${fake}` });
+    const c = await fleet.createRobot({ islandId: island.id, cwd: '/tmp', command: `node ${fake}` });
 
     expect(await fleet.waitFor(c.id, ['idle'], 15_000)).toBe('idle');
     await fleet.run(c.id, 'first task', true);
@@ -46,15 +46,15 @@ runIf('fleet loop', () => {
 
     const paths = resolvePaths(home);
     await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();
-    await waitFor(() => daemon!.store.state.characters[c.id].tmux === undefined, 15_000);
-    expect(daemon!.store.state.characters[c.id].revive).toBeDefined();
+    await waitFor(() => daemon!.store.state.robots[c.id].tmux === undefined, 15_000);
+    expect(daemon!.store.state.robots[c.id].revive).toBeDefined();
 
     // a crashed claude leaves its agent behind in its last status; the revived session reports the same id.
     daemon!.store.update((d) => {
-      d.characters[c.id].agent = { kind: 'claude', sessionId: '0c6a3f0e-8b1d-4f2a-9e7c-1a2b3c4d5e6f', transcriptPath: '/nope', status: 'done', lastActivityAt: Date.now() };
-      d.characters[c.id].revive = { command: `node ${fake}` };
+      d.robots[c.id].agent = { kind: 'claude', sessionId: '0c6a3f0e-8b1d-4f2a-9e7c-1a2b3c4d5e6f', transcriptPath: '/nope', status: 'done', lastActivityAt: Date.now() };
+      d.robots[c.id].revive = { command: `node ${fake}` };
     });
-    await fleet.reviveCharacter(c.id);
+    await fleet.reviveRobot(c.id);
     expect(await fleet.waitFor(c.id, ['idle'], 15_000)).toBe('idle');
   }, 60_000);
 
@@ -63,7 +63,7 @@ runIf('fleet loop', () => {
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     daemon = await start({ home, port: 0, log: silentLogger });
     const fleet = daemon.fleet;
-    const c = await fleet.createCharacter({ islandId: 'home', cwd: '/tmp', name: 'organise', command: `node ${fake}`, run: '/svall-organise' });
+    const c = await fleet.createRobot({ islandId: 'home', cwd: '/tmp', name: 'organise', command: `node ${fake}`, run: '/svall-organise' });
     expect(c.runSent).toBe(true);
     expect(c.cell).toEqual({ x: 1, y: 1 });
     expect(await fleet.waitFor(c.id, ['done', 'blocked'], 15_000)).toBe('done');

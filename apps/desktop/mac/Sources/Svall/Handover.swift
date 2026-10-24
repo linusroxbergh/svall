@@ -1,7 +1,7 @@
 import Foundation
 
 /// What the user picked about terminals that are not at rest, destination roots in the way and repositories no
-/// character works in: the only choices the page may pass on, in the shapes `HandoverChoices` has on the wire.
+/// robot works in: the only choices the page may pass on, in the shapes `HandoverChoices` has on the wire.
 struct HandoverChoices: Codable, Equatable {
     var interruptAfterMs: Int?
     var terminateShells: TerminateShells?
@@ -9,21 +9,21 @@ struct HandoverChoices: Codable, Equatable {
     var carryUnused: Bool?
 }
 
-/// `terminateShells` on the wire: every busy terminal or none, or the characters whose terminals it names.
+/// `terminateShells` on the wire: every busy terminal or none, or the robots whose terminals it names.
 enum TerminateShells: Codable, Equatable {
     case all(Bool)
-    case characters([String])
+    case robots([String])
 
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        if let all = try? c.decode(Bool.self) { self = .all(all) } else { self = .characters(try c.decode([String].self)) }
+        if let all = try? c.decode(Bool.self) { self = .all(all) } else { self = .robots(try c.decode([String].self)) }
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
         switch self {
         case .all(let all): try c.encode(all)
-        case .characters(let ids): try c.encode(ids)
+        case .robots(let ids): try c.encode(ids)
         }
     }
 }
@@ -42,7 +42,7 @@ enum HandoverCommand {
             guard ms >= 0 else { return nil }
             flags += ["--interrupt-after", "\(ms)ms"]
         }
-        // the flag terminates every busy terminal, so a list of characters is left for the run to ask about again
+        // the flag terminates every busy terminal, so a list of robots is left for the run to ask about again
         if choices?.terminateShells == .all(true) { flags.append("--terminate-shells") }
         for root in choices?.archiveRoots ?? [] {
             // a root by its manifest id, or by its absolute path on the destination

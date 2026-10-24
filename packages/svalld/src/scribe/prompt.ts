@@ -1,5 +1,5 @@
 import { z, type ZodType } from 'zod';
-import { bareUrl, itemUrl, linkKind, trimEnd, type Character, type ContextItem, type Island } from '@svall/protocol';
+import { bareUrl, itemUrl, linkKind, trimEnd, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { LINK } from '../agent/jsonl.js';
 import { MAX_REF } from '../context/items.js';
 import { isGeneratedName } from '../names.js';
@@ -12,7 +12,7 @@ export const DESCRIPTION_MAX = 280;
 // a link's chip
 const LABEL_MAX = 40;
 
-export const SYSTEM_CHARACTER = `You describe one coding agent's work for a map of a fleet of agents. You get its name, directory, branch, note, links, and the end of its transcript. Reply with one JSON object and nothing else:
+export const SYSTEM_ROBOT = `You describe one coding agent's work for a map of a fleet of agents. You get its name, directory, branch, note, links, and the end of its transcript. Reply with one JSON object and nothing else:
 {"name": {"value": "...", "reason": "generated" | "identifier"}, "note": "...", "links": [{"url": "...", "label": "..."}]}
 
 name: omit it unless the name should change. Any name that is not a placeholder is the user's and keeps its words.
@@ -35,13 +35,13 @@ links: full URLs from the members' links, copied exactly, for the things the isl
 
 const REASONS = ['generated', 'identifier'] as const;
 
-export const CharacterAnswer = z.object({
+export const RobotAnswer = z.object({
   name: z.object({ value: z.string(), reason: z.enum(REASONS) }).nullish(),
   note: z.string().nullish(),
   // absent keeps the scribe's links as they are
   links: z.array(z.object({ url: z.string(), label: z.string().default('') })).nullish(),
 });
-export type CharacterAnswer = z.infer<typeof CharacterAnswer>;
+export type RobotAnswer = z.infer<typeof RobotAnswer>;
 
 export const IslandAnswer = z.object({
   description: z.string().nullish(),
@@ -81,7 +81,7 @@ const lastDistinct = (xs: string[], n: number): string[] => [...new Set([...xs].
 
 // The condensed transcript can lose a PR URL in an older tool result. An explicit "PR #42"
 // also names a PR without spelling out its URL; the known GitHub repository supplies that part.
-export function prEvidence(c: Character, transcript: string, tail: string): string[] {
+export function prEvidence(c: Robot, transcript: string, tail: string): string[] {
   const urls = [...(tail.match(LINK) ?? [])]
     .map((url) => itemUrl(trimEnd(url, '.,;:!?')))
     .filter((url) => /^https?:\/\/(?:www\.)?github\.com\/[^/]+\/[^/]+\/pull\/\d+$/i.test(url));
@@ -98,7 +98,7 @@ export function prEvidence(c: Character, transcript: string, tail: string): stri
   return [...found].slice(-8);
 }
 
-export function characterPrompt(c: Character, transcript: string, others: string[], prLinks: string[] = []): string {
+export function robotPrompt(c: Robot, transcript: string, others: string[], prLinks: string[] = []): string {
   const note = !c.note ? 'Note: (none)' : c.noteSource === 'manual' ? `Note (hand-written): ${c.note}` : `Note: ${c.note}`;
   return [
     `Name: ${c.name}${isGeneratedName(c.name) ? ' (generated placeholder)' : ''}`,
@@ -116,7 +116,7 @@ export function characterPrompt(c: Character, transcript: string, others: string
   ].filter((l): l is string => typeof l === 'string').join('\n');
 }
 
-export function islandPrompt(i: Island, members: Character[]): string {
+export function islandPrompt(i: Island, members: Robot[]): string {
   const links = (items: ContextItem[], indent: string) => items.map((it) => `${indent}${linkLine(it)}`);
   return [
     `Island: ${i.name}`,
@@ -139,7 +139,7 @@ const fit = (text: string, max: number): string => {
 };
 
 // the new name, or undefined when the current one stays; taken is matched in any case, as the CLI resolves names
-export function acceptName(current: string, proposal: CharacterAnswer['name'], taken: ReadonlySet<string>): string | undefined {
+export function acceptName(current: string, proposal: RobotAnswer['name'], taken: ReadonlySet<string>): string | undefined {
   if (!proposal) return undefined;
   // a generated name is replaced outright; only a given one keeps its words behind an identifier
   const generated = isGeneratedName(current);
@@ -154,7 +154,7 @@ export function acceptName(current: string, proposal: CharacterAnswer['name'], t
   return v;
 }
 
-// one line of at most max characters, or undefined when there is nothing to write
+// one line of at most max robots, or undefined when there is nothing to write
 export function acceptLine(text: string | null | undefined, max: number): string | undefined {
   const v = fit(oneLine(text ?? ''), max).slice(0, max);
   return v || undefined;
@@ -163,7 +163,7 @@ export function acceptLine(text: string | null | undefined, max: number): string
 // the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold.
 // The branch's PR is the scribe's to take too, pin and all, so the work keeps it once its checkout moves to another branch.
 // A held link someone pinned, or that the branch's lookup still reads a state for, stays whatever the answer says
-export function acceptLinks(proposed: NonNullable<CharacterAnswer['links']>, text: string, context: ContextItem[]): ContextItem[] {
+export function acceptLinks(proposed: NonNullable<RobotAnswer['links']>, text: string, context: ContextItem[]): ContextItem[] {
   const held = new Map(context.filter((it) => it.source === 'scribe').map((it) => [bareUrl(it.ref), it]));
   const branchPrs = new Map(context.filter((it) => it.source === 'auto' && it.kind === 'pr').map((it) => [bareUrl(it.ref), it]));
   const seen = new Set(context.filter((it) => it.source !== 'scribe').map((it) => bareUrl(it.ref)).filter((key) => !branchPrs.has(key)));

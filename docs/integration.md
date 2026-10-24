@@ -85,8 +85,8 @@ the first failed step. The output folder holds:
    - an ignored `data/` of 16 MiB;
    - a default-excluded `node_modules/`.
 
-   A mocked-Claude character runs in the worktree, a mocked-OpenCode character `oc` in the main checkout, each with
-   one turn, and a shell character runs in the main checkout.
+   A mocked-Claude robot runs in the worktree, a mocked-OpenCode robot `oc` in the main checkout, each with
+   one turn, and a shell robot runs in the main checkout.
 3. **local → remote, then remote → local**, each with a turn on the new owner, all through the controller on local.
    Each handover checks:
    - **The manifest:** four roots at their paths in the source's home (the two checkouts, mission control's folder
@@ -96,7 +96,7 @@ the first failed step. The output folder holds:
      stash, worktree list, refs and `fsck` equal the source's before the handover, with each machine's home read as
      `~`, so a worktree list that still names the old home fails. Every file of both working
      trees, ignored ones included, has the same content and mode. `node_modules/` never reaches remote.
-   - **The state:** the same characters, names, cwds (each in the new owner's home) and islands, and the shell character's terminal runs bash.
+   - **The state:** the same robots, names, cwds (each in the new owner's home) and islands, and the shell robot's terminal runs bash.
    - **The agents:** Claude runs as `claude --resume <its session id>` and OpenCode as
      `opencode --standalone -s <its session id>`, each in its cwd in the new owner's home, under the same session id and pid the state records. Claude's transcript is identical, and the
      next turn appends to the same file. OpenCode runs one private server, and holds its session with the same

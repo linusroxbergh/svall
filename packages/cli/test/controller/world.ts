@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect } from 'vitest';
 import {
   FleetConfig, FleetId, FleetState, MachineId, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState,
-  type Blocker, type Character, type HandoverChoices, type HandoverEvent, type HandoverPhase, type LandedRoot, type Outcome, type OwnerRecord, type SystemInfo, type TransferFile,
+  type Blocker, type Robot, type HandoverChoices, type HandoverEvent, type HandoverPhase, type LandedRoot, type Outcome, type OwnerRecord, type SystemInfo, type TransferFile,
 } from '@svall/protocol';
 import { transition, type OwnerOp } from '@svall/svalld/gateway/authority';
 import { canonicalDigest } from '@svall/svalld/handover/hash';
@@ -23,7 +23,7 @@ export const G = 4;
 
 const sha = (s: string): string => crypto.createHash('sha256').update(s).digest('hex');
 export const file = (p: string): TransferFile => ({ type: 'file', path: p, mode: 0o644, size: p.length, mtimeMs: 0, sha256: sha(p) });
-export const char = (id: string, name: string, cwd: string, over: Partial<Character> = {}): Character => ({
+export const robot = (id: string, name: string, cwd: string, over: Partial<Robot> = {}): Robot => ({
   id, islandId: 'home', cell: { x: 0, y: 1 }, name, portrait: 'fox', note: '', instructions: '', cwd, context: [],
   shell: { lastOutputAt: 0 }, unread: false, revive: { command: '' }, ...over,
 });
@@ -36,10 +36,10 @@ export const at = (p: string): string => path.posix.join(HOME, p);
 /** The manifest a source freezes: a repository with a folded worktree, a Git directory of its own, and one Claude session. */
 export function manifestFor(tx: string | undefined, from = mac, to = trift): FrozenManifest {
   const snapshot = emptyState();
-  snapshot.characters.c_ada = char('c_ada', 'ada', at('app'), {
+  snapshot.robots.c_ada = robot('c_ada', 'ada', at('app'), {
     agent: { kind: 'claude', sessionId: SID, transcriptPath: at(`.claude/projects/-app/${SID}.jsonl`), status: 'idle', lastActivityAt: 0 },
   });
-  snapshot.characters.c_bo = char('c_bo', 'bo', at('app'), {
+  snapshot.robots.c_bo = robot('c_bo', 'bo', at('app'), {
     agent: { kind: 'codex', sessionId: CODEX, transcriptPath: at(`.codex/sessions/rollout-${CODEX}.jsonl`), status: 'idle', lastActivityAt: 0 },
   });
   return {
@@ -53,12 +53,12 @@ export function manifestFor(tx: string | undefined, from = mac, to = trift): Fro
     ],
     sessions: [
       {
-        characterId: 'c_ada', agent: 'claude', sessionId: SID, sourcePath: at(`.claude/projects/-app/${SID}.jsonl`),
+        robotId: 'c_ada', agent: 'claude', sessionId: SID, sourcePath: at(`.claude/projects/-app/${SID}.jsonl`),
         sourceHome: at('.claude'), destinationHome: at('.claude'), destinationPath: at(`.claude/projects/-app/${SID}.jsonl`), adapter: 1,
         files: [file(`projects/-app/${SID}.jsonl`), file(`projects/-app/${SID}/subagents/a.jsonl`)],
       },
       {
-        characterId: 'c_bo', agent: 'codex', sessionId: CODEX, sourcePath: at(`.codex/sessions/rollout-${CODEX}.jsonl`),
+        robotId: 'c_bo', agent: 'codex', sessionId: CODEX, sourcePath: at(`.codex/sessions/rollout-${CODEX}.jsonl`),
         sourceHome: at('.codex'), destinationHome: at('.codex'), destinationPath: at(`.codex/sessions/rollout-${CODEX}.jsonl`), adapter: 1,
         files: [file(`sessions/rollout-${CODEX}.jsonl`)],
       },
@@ -162,7 +162,7 @@ export class FakeSource {
       this.journal = undefined;
       this.frozen = false;
       this.revived++;
-      throw new Refused('blocked', 'bo is waiting on an answer', { blockers: [{ code: 'agent_blocked', message: 'bo is waiting on an answer', entity: { kind: 'character', id: 'c_bo' } }] });
+      throw new Refused('blocked', 'bo is waiting on an answer', { blockers: [{ code: 'agent_blocked', message: 'bo is waiting on an answer', entity: { kind: 'robot', id: 'c_bo' } }] });
     }
     this.kept = manifestFor(tx.id, this.id, this.other);
     this.journal.digest = manifestDigest(this.kept);
@@ -310,7 +310,7 @@ export class FakeDestination {
     j.phase = 'activate';
     this.activated = true;
     this.activations++;
-    return { characters: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: false, error: 'bo resumed codex session, which did not report its SessionStart' }] };
+    return { robots: [{ id: 'c_ada', ok: true }, { id: 'c_bo', ok: false, error: 'bo resumed codex session, which did not report its SessionStart' }] };
   }
 
   abort(p: { transactionId: string; generation: number }) {
@@ -584,7 +584,7 @@ export function keptCommit(o: { reached: boolean; at: 'inspect' | 'claim' }) {
   const w = new World();
   const commit = 'f'.repeat(40);
   const graph = {
-    id: 'g_app', commonDir: '/Users/ada/app/.git', main: { path: '/Users/ada/app', gitDir: '/Users/ada/app/.git', head: 'c'.repeat(40), branch: 'refs/heads/main', status: [], index: 'd'.repeat(64), characters: [] },
+    id: 'g_app', commonDir: '/Users/ada/app/.git', main: { path: '/Users/ada/app', gitDir: '/Users/ada/app/.git', head: 'c'.repeat(40), branch: 'refs/heads/main', status: [], index: 'd'.repeat(64), robots: [] },
     worktrees: [], unused: [], stash: [], tips: ['e'.repeat(40)],
   };
   // the manifest preflight builds and the one freeze answers both carry the graph

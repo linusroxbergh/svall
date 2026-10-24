@@ -10,7 +10,7 @@ import { DocHeader } from './DocHeader.js';
 import { takesKeys } from './keys.js';
 import { entityOf, fieldLabel, fieldValue, isAgentProfiles, isDoc, kindOf, tierOf, type FieldRef } from './model.js';
 
-/** An island's or a character's own field, written straight back to the fleet as the side card does. */
+/** An island's or a robot's own field, written straight back to the fleet as the side card does. */
 function Field({ r }: { r: FieldRef }) {
   const e = useApp((s) => entityOf(s, r))!;
   const value = fieldValue(e, r.field);
@@ -28,7 +28,7 @@ function Field({ r }: { r: FieldRef }) {
 export function EditorPane({ onClose }: { onClose(): void }) {
   const sources = useApp((s) => s.resources);
   const shown = useApp((s) => s.resourcesShown);
-  // a field whose island or character the fleet has lost is no field at all, and the pane falls back to what it shows without one
+  // a field whose island or robot the fleet has lost is no field at all, and the pane falls back to what it shows without one
   const field = useApp((s) => (s.resourcesField && entityOf(s, s.resourcesField) ? s.resourcesField : undefined));
   const name = useApp((s) => (s.resourcesField ? entityOf(s, s.resourcesField)?.name : undefined));
   const full = useApp((s) => s.resourcesFull);

@@ -2,8 +2,8 @@ import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 
 test('the load tab lists the robot, whose row deletes it, and Svall itself, and the robot pane shows what it costs', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('load') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'busy', command: FAKE_CLAUDE });
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].agent?.kind).toBe('claude');
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'busy', command: FAKE_CLAUDE });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].agent?.kind).toBe('claude');
   await svall.open();
 
   const tab = page.getByTestId('load-tab');

@@ -34,7 +34,7 @@ case "$FAKE_CLAUDE" in
   failed) echo '{"type":"control_response","response":{"subtype":"error","request_id":"u1","error":"not logged in"}}' ;;
   null) echo 'null'; echo '${full}'; exec sleep 30 ;;
   shape) echo '${limits('"model_scoped":{"not":"an array"}')}'; exec sleep 30 ;;
-  echo) echo "$init" > "$FAKE_OUT"; echo "$line" >> "$FAKE_OUT"; echo "char=\${SVALL_CHAR_ID:-none} key=\${ANTHROPIC_API_KEY:-none}" >> "$FAKE_OUT"; echo '${full}' ;;
+  echo) echo "$init" > "$FAKE_OUT"; echo "$line" >> "$FAKE_OUT"; echo "robot=\${SVALL_ROBOT_ID:-none} key=\${ANTHROPIC_API_KEY:-none}" >> "$FAKE_OUT"; echo '${full}' ;;
   exit) echo 'no credentials' >&2; exit 3 ;;
   hang) exec sleep 30 ;;
 esac
@@ -49,7 +49,7 @@ describe('usageFetcher', () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'claude'), FAKE, { mode: 0o755 });
     vi.stubEnv('PATH', `${home}:${process.env.PATH}`);
-    vi.stubEnv('SVALL_CHAR_ID', 'c_parent');
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_parent');
     vi.stubEnv('ANTHROPIC_API_KEY', undefined);
     envFile = path.join(home, '.env');
     fetch = usageFetcher({ cwd: path.join(home, 'usage'), envFile });
@@ -85,7 +85,7 @@ describe('usageFetcher', () => {
     await expect(fetch()).resolves.toEqual({ available: false, windows: [] });
   });
 
-  it('asks for the login and the plan limits alone, without the character id, and with the fleet .env', async () => {
+  it('asks for the login and the plan limits alone, without the robot id, and with the fleet .env', async () => {
     const out = path.join(home, 'out');
     vi.stubEnv('FAKE_CLAUDE', 'echo');
     vi.stubEnv('FAKE_OUT', out);
@@ -94,7 +94,7 @@ describe('usageFetcher', () => {
     const [init, request, vars] = fs.readFileSync(out, 'utf8').trim().split('\n');
     expect(JSON.parse(init)).toEqual({ type: 'control_request', request_id: 'i1', request: { subtype: 'initialize' } });
     expect(JSON.parse(request)).toMatchObject({ type: 'control_request', request: { subtype: 'get_usage', skip_behaviors: true } });
-    expect(vars).toBe('char=none key=sk-ant-test');
+    expect(vars).toBe('robot=none key=sk-ant-test');
   });
 
   // claude is resolved from PATH and its replies are not ours to shape: neither a bare null line
@@ -168,11 +168,11 @@ describe('usage.get', () => {
 describe('fleetUsage', () => {
   const rate = (pct: number) => ({ primary: { used_percent: pct, window_minutes: 300, resets_at: 1784729990 }, secondary: { used_percent: 40, window_minutes: 10080, resets_at: 1784729990 }, plan_type: 'plus' });
   const tokenLine = (at: string, pct: number) => JSON.stringify({ timestamp: at, type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { total_tokens: 10 }, model_context_window: 100 }, rate_limits: rate(pct) } }) + '\n';
-  const char = (id: string, kind: AgentKind, o: { live?: boolean; transcriptPath?: string } = {}) => ({
+  const robot = (id: string, kind: AgentKind, o: { live?: boolean; transcriptPath?: string } = {}) => ({
     id, ...(o.live === false ? {} : { tmux: { windowId: '@1', paneId: '%1' } }),
     agent: { kind, sessionId: 's', status: 'idle', lastActivityAt: 0, ...(o.transcriptPath && { transcriptPath: o.transcriptPath }) },
   });
-  const stateOf = (...cs: ReturnType<typeof char>[]) => () => ({ characters: Object.fromEntries(cs.map((c) => [c.id, c])) }) as unknown as FleetState;
+  const stateOf = (...cs: ReturnType<typeof robot>[]) => () => ({ robots: Object.fromEntries(cs.map((c) => [c.id, c])) }) as unknown as FleetState;
   const claudeSnapshot: UsageSnapshot = { available: true, windows: [{ key: 'session', label: 'Session', pct: 5 }] };
   const noon = () => tokenLine('2026-06-22T12:00:00.000Z', 22);
 
@@ -189,44 +189,44 @@ describe('fleetUsage', () => {
     expect(codexWindows({ primary: { used_percent: 1, window_minutes: 43200 }, secondary: null })).toEqual([{ key: 'codex:primary', label: 'Codex 30 days', pct: 1 }]);
   });
 
-  it('reports no plan limits while only opencode characters run', async () => {
+  it('reports no plan limits while only opencode robots run', async () => {
     const claude = vi.fn(async () => claudeSnapshot);
-    expect(await fleetUsage({ state: stateOf(char('a', 'opencode')), claude })()).toEqual({ available: false, windows: [] });
+    expect(await fleetUsage({ state: stateOf(robot('a', 'opencode')), claude })()).toEqual({ available: false, windows: [] });
     expect(claude).not.toHaveBeenCalled();
   });
 
-  it('does not ask claude when no claude character is running', async () => {
+  it('does not ask claude when no claude robot is running', async () => {
     const claude = vi.fn(async () => claudeSnapshot);
-    expect(await fleetUsage({ state: stateOf(char('a', 'claude', { live: false })), claude })()).toEqual({ available: true, idle: true, windows: [] });
+    expect(await fleetUsage({ state: stateOf(robot('a', 'claude', { live: false })), claude })()).toEqual({ available: true, idle: true, windows: [] });
     expect(claude).not.toHaveBeenCalled();
     // a codex session that has not finished a turn has reported nothing yet, which is not an idle fleet
-    expect(await fleetUsage({ state: stateOf(char('b', 'codex', { transcriptPath: '/b.jsonl' })), claude, readTail: () => '' })()).toEqual({ available: true, windows: [] });
+    expect(await fleetUsage({ state: stateOf(robot('b', 'codex', { transcriptPath: '/b.jsonl' })), claude, readTail: () => '' })()).toEqual({ available: true, windows: [] });
     expect(claude).not.toHaveBeenCalled();
   });
 
-  it('shows the newest reading among the live codex characters, and none from one that is gone', async () => {
+  it('shows the newest reading among the live codex robots, and none from one that is gone', async () => {
     const tails: Record<string, string> = { '/a.jsonl': tokenLine('2026-06-22T10:00:00.000Z', 11), '/b.jsonl': noon(), '/c.jsonl': tokenLine('2026-06-22T14:00:00.000Z', 33) };
-    const state = stateOf(char('a', 'codex', { transcriptPath: '/a.jsonl' }), char('b', 'codex', { transcriptPath: '/b.jsonl' }), char('c', 'codex', { live: false, transcriptPath: '/c.jsonl' }));
+    const state = stateOf(robot('a', 'codex', { transcriptPath: '/a.jsonl' }), robot('b', 'codex', { transcriptPath: '/b.jsonl' }), robot('c', 'codex', { live: false, transcriptPath: '/c.jsonl' }));
     const usage = fleetUsage({ state, claude: async () => claudeSnapshot, readTail: (f) => tails[f] ?? '' });
     expect((await usage()).windows.map((w) => [w.key, w.pct])).toEqual([['codex:primary', 22], ['codex:secondary', 40]]);
   });
 
   it('shows both plans when both are running, claude first', async () => {
-    const state = stateOf(char('a', 'claude'), char('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    const state = stateOf(robot('a', 'claude'), robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
     expect((await fleetUsage({ state, claude: async () => claudeSnapshot, readTail: noon })()).windows.map((w) => w.key)).toEqual(['session', 'codex:primary', 'codex:secondary']);
   });
 
   it('keeps the codex windows when the claude read fails, and fails when there is nothing else to show', async () => {
     const broken = async (): Promise<UsageSnapshot> => { throw new Error('claude exited 1'); };
-    const both = stateOf(char('a', 'claude'), char('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    const both = stateOf(robot('a', 'claude'), robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
     expect((await fleetUsage({ state: both, claude: broken, readTail: noon })()).windows).toHaveLength(2);
-    await expect(fleetUsage({ state: stateOf(char('a', 'claude')), claude: broken })()).rejects.toThrow('claude exited 1');
+    await expect(fleetUsage({ state: stateOf(robot('a', 'claude')), claude: broken })()).rejects.toThrow('claude exited 1');
   });
 
   it('says plan limits do not apply only when claude is the one plan in use', async () => {
     const apiKeyLogin = async (): Promise<UsageSnapshot> => ({ available: false, windows: [] });
-    expect(await fleetUsage({ state: stateOf(char('a', 'claude')), claude: apiKeyLogin })()).toEqual({ available: false, windows: [] });
-    const both = stateOf(char('a', 'claude'), char('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    expect(await fleetUsage({ state: stateOf(robot('a', 'claude')), claude: apiKeyLogin })()).toEqual({ available: false, windows: [] });
+    const both = stateOf(robot('a', 'claude'), robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
     expect((await fleetUsage({ state: both, claude: apiKeyLogin, readTail: noon })()).available).toBe(true);
   });
 
@@ -235,17 +235,17 @@ describe('fleetUsage', () => {
     vi.stubEnv('CODEX_HOME', codexHome);
     fs.writeFileSync(path.join(codexHome, 'auth.json'), JSON.stringify({ tokens: { id_token: jwt({ email: 'b@x.io' }) } }));
     const claude = async (): Promise<UsageSnapshot> => ({ ...claudeSnapshot, account: 'a@x.io' });
-    const both = stateOf(char('a', 'claude'), char('b', 'codex', { transcriptPath: '/b.jsonl' }));
-    const codexOnly = stateOf(char('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    const both = stateOf(robot('a', 'claude'), robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
+    const codexOnly = stateOf(robot('b', 'codex', { transcriptPath: '/b.jsonl' }));
     expect((await fleetUsage({ state: both, claude, readTail: noon })()).account).toBe('Claude a@x.io · Codex b@x.io');
-    expect((await fleetUsage({ state: stateOf(char('a', 'claude')), claude })()).account).toBe('a@x.io');
+    expect((await fleetUsage({ state: stateOf(robot('a', 'claude')), claude })()).account).toBe('a@x.io');
     expect((await fleetUsage({ state: codexOnly, claude, readTail: noon })()).account).toBe('b@x.io');
     // a codex that has reported nothing yet, a claude with no windows and an idle fleet show no login for them
     expect(await fleetUsage({ state: codexOnly, claude, readTail: () => '' })()).not.toHaveProperty('account');
     const noWindows = async (): Promise<UsageSnapshot> => ({ available: true, windows: [], account: 'a@x.io' });
-    expect(await fleetUsage({ state: stateOf(char('a', 'claude')), claude: noWindows })()).not.toHaveProperty('account');
+    expect(await fleetUsage({ state: stateOf(robot('a', 'claude')), claude: noWindows })()).not.toHaveProperty('account');
     expect((await fleetUsage({ state: both, claude: noWindows, readTail: noon })()).account).toBe('b@x.io');
-    expect(await fleetUsage({ state: stateOf(char('a', 'claude', { live: false })), claude })()).not.toHaveProperty('account');
+    expect(await fleetUsage({ state: stateOf(robot('a', 'claude', { live: false })), claude })()).not.toHaveProperty('account');
     // a claude that failed while codex still shows names codex alone
     const broken = async (): Promise<UsageSnapshot> => { throw new Error('claude exited 1'); };
     expect((await fleetUsage({ state: both, claude: broken, readTail: noon })()).account).toBe('b@x.io');

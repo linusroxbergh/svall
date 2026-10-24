@@ -5,7 +5,7 @@ import { bridge, call, freshStore, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
-const { NewCharacter } = await import('../../src/NewCharacter.js');
+const { NewRobot } = await import('../../src/NewRobot.js');
 const { MissionPrompt } = await import('../../src/MissionPrompt.js');
 const { ConfirmClose } = await import('../../src/ConfirmClose.js');
 const { ConfirmSleep } = await import('../../src/ConfirmSleep.js');
@@ -20,12 +20,12 @@ beforeEach(() => {
 });
 afterEach(() => off());
 
-test('Esc in the new-character dialog closes the dialog and leaves the map card open', () => {
+test('Esc in the new-robot dialog closes the dialog and leaves the map card open', () => {
   store.getState().focus('c0');
-  store.getState().setNamingCharacter(true);
-  render(<NewCharacter />);
-  fireEvent.keyDown(screen.getByTestId('new-character-name'), { key: 'Escape' });
-  expect(store.getState().namingCharacter).toBe(false);
+  store.getState().setNamingRobot(true);
+  render(<NewRobot />);
+  fireEvent.keyDown(screen.getByTestId('new-robot-name'), { key: 'Escape' });
+  expect(store.getState().namingRobot).toBe(false);
   expect(store.getState().card).toBe('c0');
 });
 
@@ -39,10 +39,10 @@ test('Esc in the mission prompt closes it and leaves the board side card open', 
 });
 
 test.each([
-  ['new-character-close', () => store.getState().setNamingCharacter(true), <NewCharacter />, () => store.getState().namingCharacter],
+  ['new-robot-close', () => store.getState().setNamingRobot(true), <NewRobot />, () => store.getState().namingRobot],
   ['mission-prompt-close', () => store.getState().setMissionPrompt(true), <MissionPrompt />, () => store.getState().missionPrompt],
-  ['confirm-close-close', () => store.getState().setClosingCharacter('c0'), <ConfirmClose />, () => store.getState().closingCharacter],
-  ['confirm-sleep-close', () => store.getState().setSleepingCharacter('c0'), <ConfirmSleep />, () => store.getState().sleepingCharacter],
+  ['confirm-close-close', () => store.getState().setClosingRobot('c0'), <ConfirmClose />, () => store.getState().closingRobot],
+  ['confirm-sleep-close', () => store.getState().setSleepingRobot('c0'), <ConfirmSleep />, () => store.getState().sleepingRobot],
   ['confirm-delete-island-close', () => store.getState().setDeletingIsland('i_a'), <ConfirmDeleteIsland />, () => store.getState().deletingIsland],
 ] as const)('the × at %s closes its dialog and does nothing else', (testid, open, dialog, shown) => {
   open();
@@ -52,13 +52,13 @@ test.each([
   expect(call).not.toHaveBeenCalled();
 });
 
-test('the new-character key sets a typed mission prompt aside for the next open, and Esc gives it up', async () => {
+test('the new-robot key sets a typed mission prompt aside for the next open, and Esc gives it up', async () => {
   const keys = { store, api: { call } as never, bridge };
   const text = () => (screen.getByTestId('mission-prompt-text') as HTMLTextAreaElement).value;
   store.getState().setMissionPrompt(true);
   render(<MissionPrompt />);
   fireEvent.change(screen.getByTestId('mission-prompt-text'), { target: { value: 'tidy the docs' } });
-  await act(() => dispatchKey({ type: 'newCharacter' }, keys));
+  await act(() => dispatchKey({ type: 'newRobot' }, keys));
   expect(screen.queryByTestId('mission-prompt-text')).toBeNull();
   await act(() => dispatchKey({ type: 'missionControl' }, keys));
   expect(text()).toBe('tidy the docs');

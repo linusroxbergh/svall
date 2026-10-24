@@ -55,7 +55,7 @@ test('a decision that opens the sheet, or arrives while it is up, puts the focus
 test('a destination runs the checks alone and shows what moves and who stops before anything freezes; Move starts the handover', () => {
   const send = vi.spyOn(bridge, 'send');
   const agent = (status: 'idle' | 'working') => ({ kind: 'claude' as const, sessionId: 's', status, lastActivityAt: 0 });
-  store.getState().setFleet({ ...fleet(), characters: {
+  store.getState().setFleet({ ...fleet(), robots: {
     c1: chr('c1', 'i_b', { x: 1, y: 1 }, { name: 'ada', agent: agent('idle') }),
     c2: chr('c2', 'i_b', { x: 2, y: 1 }, { name: 'bo', agent: agent('working') }),
     c3: chr('c3', 'i_a', { x: 1, y: 1 }, { name: 'cy' }),
@@ -66,7 +66,7 @@ test('a destination runs the checks alone and shows what moves and who stops bef
   // what moves folds away under the one line on what a handover does
   const moves = screen.getByTestId('handover-what-moves');
   expect(moves.querySelector('summary')?.textContent).toBe('What moves');
-  expect([...moves.querySelectorAll('.ho-more-body > span')].map((s) => s.textContent)).toEqual(['Islands, characters, repositories and agent sessions.',
+  expect([...moves.querySelectorAll('.ho-more-body > span')].map((s) => s.textContent)).toEqual(['Islands, robots, repositories and agent sessions.',
     'Agents resume from their transcripts.', 'Shells reopen in their folders; a command still running does not move.']);
   fireEvent.click(screen.getByTestId('handover-to-gateway'));
   expect(send).toHaveBeenLastCalledWith({ type: 'handover.start', to: 'trift', check: true });
@@ -95,7 +95,7 @@ test('a destination runs the checks alone and shows what moves and who stops bef
   expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
   expect(screen.queryByTestId('handover-footnote')?.textContent ?? '').not.toContain('Move to');
   act(() => store.getState().handoverFollow('trift'));
-  // once the move has begun, the characters' own rows take the place of the plan
+  // once the move has begun, the robots' own rows take the place of the plan
   act(() => store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } }));
   expect(screen.queryByTestId('handover-rest-resume')).toBeNull();
 });
@@ -254,14 +254,14 @@ test('an add from Settings leaves the gateway to the user, and Add machine in th
   expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ op: 'enable' }));
 });
 
-test('a folder that holds repositories no character works in blocks on its character until Carry the folder whole is chosen, and the start again carries it', () => {
+test('a folder that holds repositories no robot works in blocks on its robot until Carry the folder whole is chosen, and the start again carries it', () => {
   const send = vi.spyOn(bridge, 'send');
   render(<HandoverSheet />);
-  const message = "c1's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in (old-stuff, unrelated), so the handover would carry them too; cd that terminal to ~ or into the repository it works on";
+  const message = "c1's terminal is in /Users/ada/Developer, which holds 2 Git repositories no robot works in (old-stuff, unrelated), so the handover would carry them too; cd that terminal to ~ or into the repository it works on";
   act(() => {
     store.getState().toggleHandover(true);
     store.getState().handoverEvent({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
-      { code: 'repository_unused', message, entity: { kind: 'character', id: 'c1' } },
+      { code: 'repository_unused', message, entity: { kind: 'robot', id: 'c1' } },
     ] } });
     store.getState().handoverExit(1);
   });
@@ -293,22 +293,22 @@ test('a folder that holds repositories no character works in blocks on its chara
   expect(send.mock.calls).toContainEqual([{ type: 'handover.start', to: 'trift', choices: { carryUnused: true } }]);
 });
 
-const names = { characters: { c0: 'dev', c1: 'codex-r', c2: 'claude-x' }, roots: { r_1: '/Users/ada/src/alpha', r_2: '/Users/ada/src/beta' }, sessions: { s0: 'dev' } };
+const names = { robots: { c0: 'dev', c1: 'codex-r', c2: 'claude-x' }, roots: { r_1: '/Users/ada/src/alpha', r_2: '/Users/ada/src/beta' }, sessions: { s0: 'dev' } };
 const summary = { digest: 'a'.repeat(64), roots: 2, files: 10, bytes: 2_000_000, sessions: 1 };
 const preflight: HandoverEvent = { event: 'handover.preflight', data: { summary, blockers: [], warnings: [
   { code: 'env_file', message: '/Users/ada/src/alpha holds .env', entity: { kind: 'root', id: 'r_1' } },
-  { code: 'worktree_unused', message: '/Users/ada/src/beta: worktrees no character uses are not registered on the destination: /Users/ada/src/beta-wt (on fix)', entity: { kind: 'git', id: 'g_b2c1' } },
+  { code: 'worktree_unused', message: '/Users/ada/src/beta: worktrees no robot uses are not registered on the destination: /Users/ada/src/beta-wt (on fix)', entity: { kind: 'git', id: 'g_b2c1' } },
 ], names } };
 const changed = (...phases: ('begin' | 'freeze' | 'transfer' | 'verify' | 'prepare' | 'ready' | 'commit' | 'activate' | 'complete')[]): HandoverEvent[] =>
   phases.map((phase) => ({ event: 'handover.changed', data: { transactionId: 'tx', phase } }));
-const rested = (): HandoverEvent[] => ['c0', 'c1', 'c2'].map((id) => ({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'character', id, phase: 'freeze', done: 1, total: 1 } }));
+const rested = (): HandoverEvent[] => ['c0', 'c1', 'c2'].map((id) => ({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'robot', id, phase: 'freeze', done: 1, total: 1 } }));
 const say = (...events: HandoverEvent[]) => act(() => { store.getState().toggleHandover(true); for (const e of events) store.getState().handoverEvent(e); });
 
 test('stopped at the checks, every blocker names what it is about in words and has a way out, and the notes fold away', () => {
   render(<HandoverSheet />);
   say(preflight, { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
-    { code: 'agent_blocked', message: 'codex-r is waiting on an answer: "Allow Codex to run `rm -rf dist`?"', entity: { kind: 'character', id: 'c1' } },
-    { code: 'path_unsupported', message: "claude-x's terminal is in /Users/ada/.local/share/opencode, which stays on its machine", entity: { kind: 'character', id: 'c2' } },
+    { code: 'agent_blocked', message: 'codex-r is waiting on an answer: "Allow Codex to run `rm -rf dist`?"', entity: { kind: 'robot', id: 'c1' } },
+    { code: 'path_unsupported', message: "claude-x's terminal is in /Users/ada/.local/share/opencode, which stays on its machine", entity: { kind: 'robot', id: 'c2' } },
     { code: 'destination_occupied', message: '/Users/ada/src/beta already exists on trift', entity: { kind: 'root', id: 'r_2' } },
   ] } });
   act(() => store.getState().handoverExit(1));
@@ -322,7 +322,7 @@ test('stopped at the checks, every blocker names what it is about in words and h
   // each blocker's code, small, to look up in errors.md
   expect(asked.querySelector('.ho-code')?.textContent).toBe('agent_blocked');
   const stuck = screen.getByTestId('handover-blocker-path_unsupported');
-  expect([...stuck.querySelectorAll('em .ho-line[data-item]')].map((l) => l.textContent)).toEqual(['move what it names', 'cd that terminal to a folder that travels', 'close the character']);
+  expect([...stuck.querySelectorAll('em .ho-line[data-item]')].map((l) => l.textContent)).toEqual(['move what it names', 'cd that terminal to a folder that travels', 'close the robot']);
   expect(stuck.querySelector('[data-testid="handover-open-card"]')?.textContent).toBe('Open c2');
   const taken = screen.getByTestId('handover-blocker-destination_occupied');
   expect(taken.querySelector('.ho-who')?.textContent).toBe('~/src/beta');
@@ -345,8 +345,8 @@ test('the warnings that bite once the fleet has moved stay in sight, and only th
   render(<HandoverSheet />);
   say({ event: 'handover.preflight', data: { summary, blockers: [], warnings: [
     ...(preflight.event === 'handover.preflight' ? preflight.data.warnings : []),
-    { code: 'claude_trust', message: 'Claude asks whether to trust ~/src/alpha the first time dev resumes on trift', entity: { kind: 'character', id: 'c0' } },
-    { code: 'claude_bypass', message: 'claude-x resumes in Bypass Permissions mode, which Claude on trift has not accepted', entity: { kind: 'character', id: 'c2' } },
+    { code: 'claude_trust', message: 'Claude asks whether to trust ~/src/alpha the first time dev resumes on trift', entity: { kind: 'robot', id: 'c0' } },
+    { code: 'claude_bypass', message: 'claude-x resumes in Bypass Permissions mode, which Claude on trift has not accepted', entity: { kind: 'robot', id: 'c2' } },
     { code: 'config_difference', message: 'claude 2.0.1 runs on this machine and 2.0.3 on trift' },
   ], names } });
   for (const code of ['claude_trust', 'claude_bypass', 'config_difference']) {
@@ -402,7 +402,7 @@ test('while transferring, one bar sums every folder and session, a verified fold
   expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.ho-bar > i')?.getAttribute('style')).toContain('width: 100%');
   expect(screen.getByTestId('handover-row-transfer-r_1').querySelector('.host-mark')?.textContent).toBe('·');
   expect(screen.getByTestId('handover-row-transfer-s0').querySelector('.host-mark')?.textContent).toBe('✓');
-  expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 characters at rest');
+  expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 robots at rest');
   expect(screen.getByTestId('handover-headline').textContent).toBe('Transferring files and sessions…');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();
 });
@@ -419,10 +419,10 @@ test('a folder whose copy kept files aside shows that above the folded rows', ()
   expect(screen.getByTestId('handover-transfer-rows').contains(screen.getByTestId('handover-row-transfer-r_2'))).toBe(true);
 });
 
-test('a decision mid-run says how many things wait on it, with the agent at work named above the characters at rest', () => {
+test('a decision mid-run says how many things wait on it, with the agent at work named above the robots at rest', () => {
   render(<HandoverSheet />);
   say(preflight, ...changed('begin', 'freeze'), ...rested(),
-    { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "dev's terminal is still working", entity: { kind: 'character', id: 'c0' } }] } });
+    { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "dev's terminal is still working", entity: { kind: 'robot', id: 'c0' } }] } });
   expect(screen.getByTestId('handover-headline').textContent).toBe('One thing to decide before the fleet goes on.');
   expect(screen.getByTestId('handover-go').textContent).toBe('Continue waiting');
   expect(screen.getByTestId('handover-section-rest').dataset.state).toBe('waiting');
@@ -794,16 +794,16 @@ test("the commands the sheet names act on this window's fleet, by the profile th
     .toEqual(['svall -p work handover status', 'svall -p work fleet recover --force-owner local']);
 });
 
-const finished = (...characters: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
+const finished = (...robots: { id: string; ok: boolean; error?: string }[]): HandoverEvent[] => [
   preflight, ...changed('begin', 'freeze'), ...rested(), ...changed('transfer'),
   { event: 'handover.entity', data: { transactionId: 'tx', kind: 'root', id: 'r_1', phase: 'verify', bytes: 1_000_000, totalBytes: 1_000_000, verified: true } },
   ...changed('verify', 'prepare', 'ready', 'commit', 'activate'),
-  ...characters.map((c): HandoverEvent => ({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'character', id: c.id, phase: 'activate', ...(c.error && { error: c.error }) } })),
+  ...robots.map((c): HandoverEvent => ({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'robot', id: c.id, phase: 'activate', ...(c.error && { error: c.error }) } })),
   ...changed('complete'),
-  { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 2, characters } },
+  { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 2, robots } },
 ];
 
-test('done, the footer says where the fleet runs, the route points at the destination, and every character is accounted for', () => {
+test('done, the footer says where the fleet runs, the route points at the destination, and every robot is accounted for', () => {
   render(<HandoverSheet />);
   say(...finished({ id: 'c0', ok: true }, { id: 'c1', ok: true }));
   act(() => store.getState().handoverExit(0));
@@ -811,7 +811,7 @@ test('done, the footer says where the fleet runs, the route points at the destin
   expect(screen.getByTestId('handover-footer').dataset.tone).toBe('done');
   expect(screen.getByTestId('handover-route').querySelector('[data-here]')?.textContent).toBe('trift');
   expect(screen.getByTestId('handover-resume-tally').querySelector('.host-said')?.textContent).toBe('2 agents resumed; 1 terminal reopens in its folder when you open it');
-  expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 characters at rest');
+  expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 robots at rest');
   expect(screen.getByTestId('handover-transfer-total').textContent).toContain('1 folder verified on trift, 1.0 MB');
   expect(screen.getByTestId('handover-section-resume').dataset.state).toBe('done');
   // the × is the way out, so the footer holds no buttons of its own
@@ -833,11 +833,11 @@ test('done, the footer says where the fleet runs, the route points at the destin
   expect(screen.getByTestId('handover-try-again').textContent).toBe('Move to trift');
 });
 
-test('done with a character that did not resume, the tally and its row say so, and the row offers Retry and its card', () => {
+test('done with a robot that did not resume, the tally and its row say so, and the row offers Retry and its card', () => {
   render(<HandoverSheet />);
   say(...finished({ id: 'c0', ok: true }, { id: 'c1', ok: false, error: 'codex-r did not start: codex exited 1' }));
   act(() => store.getState().handoverExit(0));
-  expect(screen.getByTestId('handover-headline').textContent).toBe('The fleet runs on trift now. 1 character did not resume.');
+  expect(screen.getByTestId('handover-headline').textContent).toBe('The fleet runs on trift now. 1 robot did not resume.');
   expect(screen.getByTestId('handover-resume-tally').querySelector('.host-said')?.textContent).toBe('1 agent resumed, 1 did not; 1 terminal reopens in its folder when you open it');
   expect(screen.getByTestId('handover-resume-tally').dataset.status).toBe('fail');
   const row = screen.getByTestId('handover-row-resume-c1');

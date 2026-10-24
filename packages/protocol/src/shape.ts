@@ -4,7 +4,7 @@ type Grid = boolean[][];
 export const MIN_SIZE: Size = { w: 4, h: 3 };
 // the ground a crew of one needs: a card two cells in from the coast on every side
 export const DEFAULT_SIZE: Size = { w: 7, h: 5 };
-// characters keep this many empty cells between them, in Chebyshev distance
+// robots keep this many empty cells between them, in Chebyshev distance
 export const SPACING = 2;
 export const cellKey = (c: Cell): string => `${c.x},${c.y}`;
 
@@ -42,7 +42,7 @@ export function spacedCells(size: Size, n: number): Cell[] {
   return taken;
 }
 
-// the smallest near-square footprint whose land holds n characters SPACING apart, grown a cell at a time
+// the smallest near-square footprint whose land holds n robots SPACING apart, grown a cell at a time
 export function sizeForCrew(n: number): Size {
   let size: Size = { ...MIN_SIZE };
   while (spacedCells(size, n).length < n) size = size.w <= size.h + 1 ? { w: size.w + 1, h: size.h } : { w: size.w, h: size.h + 1 };

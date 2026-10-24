@@ -4,7 +4,7 @@ import { FleetConfig, FleetId, Generation, HandoverPhase, MachineId, Sha256, Ter
 import type { Paths } from '../paths.js';
 import { DurableJson, cleanupDurableTemps, realStages, syncDir, type DurableOptions } from './durable.js';
 
-const Terminal = z.object({ characterId: z.string().min(1), term: Term });
+const Terminal = z.object({ robotId: z.string().min(1), term: Term });
 const Process = z.object({ pid: z.number().int(), pgid: z.number().int(), args: z.string() });
 
 const Common = {
@@ -48,7 +48,7 @@ export const DestinationJournal = z.object({
   preparedDigest: Sha256.optional(),
   fleet: FleetConfig.optional(),
   activation: z.array(z.object({
-    characterId: z.string().min(1), term: Term, ok: z.boolean(), error: z.string().optional(), sessionId: z.string().optional(), notice: z.string().optional(),
+    robotId: z.string().min(1), term: Term, ok: z.boolean(), error: z.string().optional(), sessionId: z.string().optional(), notice: z.string().optional(),
   })).optional(),
 });
 export type DestinationJournal = z.infer<typeof DestinationJournal>;
@@ -64,12 +64,17 @@ export type JournalState =
   | { kind: 'open'; journal: HandoverJournal }
   | { kind: 'quarantined'; file: string };
 
+// a journal an older svalld wrote names each terminal's robot characterId
+const liftRobotIds = (v: unknown): unknown => (Array.isArray(v) ? v.map(liftRobotIds)
+  : typeof v === 'object' && v !== null ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k === 'characterId' ? 'robotId' : k, liftRobotIds(x)]))
+  : v);
+
 /** This daemon's handover journal: the record a restarted process resumes or refuses from. */
 export class JournalFile {
   private json: DurableJson<HandoverJournal>;
 
   constructor(private paths: Paths, private opts: DurableOptions = {}) {
-    this.json = new DurableJson(HandoverJournal, paths.journal, opts);
+    this.json = new DurableJson(z.preprocess(liftRobotIds, HandoverJournal), paths.journal, opts);
   }
 
   load(): JournalState {

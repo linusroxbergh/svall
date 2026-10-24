@@ -140,7 +140,7 @@ test('a new fleet asks once before the scribe runs, and the settings show its la
 
 test('the shell is told the opacity, the zoom and which config to open', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('set') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const { sent, receive } = await svall.nativeShell();
   await svall.open();
   const chord = (key: string) => receive({ type: 'key', chord: key });
@@ -181,7 +181,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await page.getByTestId('browser-address').fill('example.com');
   await page.getByTestId('browser-address').press('Enter');
   await expect(page.getByTestId('browser-surface')).toBeVisible();
-  const tab = (await svall.api.call('state.get', {})).characters[c.id].browser!.active;
+  const tab = (await svall.api.call('state.get', {})).robots[c.id].browser!.active;
   await page.getByTestId('browser-fill').click();
   expect((await sent()).at(-1)).toEqual({ type: 'browser.fill', tab });
 });

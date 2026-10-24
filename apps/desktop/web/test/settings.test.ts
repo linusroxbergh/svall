@@ -76,19 +76,22 @@ describe('settings', () => {
   it('keeps only bindings it can act on', () => {
     const b = readSettings({
       bindings: {
-        newCharacter: 'cmd+n',
+        newRobot: 'cmd+n',
         quit: null,
-        prevCharacter: 'ctrl+p',
-        nextCharacter: 'cmd+shift+',
+        prevRobot: 'ctrl+p',
+        nextRobot: 'cmd+shift+',
         nextIsland: 42,
         notAnAction: 'cmd+z',
       },
     }).bindings;
-    expect(b).toEqual({ newCharacter: 'cmd+n', quit: null });
+    expect(b).toEqual({ newRobot: 'cmd+n', quit: null });
+  });
+  it('reads a binding an older app saved under a character action as the robot one', () => {
+    expect(readSettings({ bindings: { newCharacter: 'cmd+n', nextCharacter: null } }).bindings).toEqual({ newRobot: 'cmd+n', nextRobot: null });
   });
   it('accepts any key the two sides agree on, not only the ones we ship', () => {
-    const b = readSettings({ bindings: { newCharacter: 'cmd+shift+}', nextIsland: 'cmd+ö', quit: 'cmd+enter' } }).bindings;
-    expect(b).toEqual({ newCharacter: 'cmd+shift+}', nextIsland: 'cmd+ö', quit: 'cmd+enter' });
+    const b = readSettings({ bindings: { newRobot: 'cmd+shift+}', nextIsland: 'cmd+ö', quit: 'cmd+enter' } }).bindings;
+    expect(b).toEqual({ newRobot: 'cmd+shift+}', nextIsland: 'cmd+ö', quit: 'cmd+enter' });
   });
   it('hangs an info tip under its row while the panel has room for it', () => {
     const panel = { top: 0, bottom: 800 };

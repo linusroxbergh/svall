@@ -30,12 +30,12 @@ describe('names every object has', () => {
     }
   });
 
-  it('finds no character or island by such an id, and leaves every other object alone', async () => {
+  it('finds no robot or island by such an id, and leaves every other object alone', async () => {
     const paths = resolvePaths(makeHome());
     const store = Store.load(paths.state, () => {});
     const ctx = { store, ...owned(store, paths) } as unknown as Ctx;
     for (const id of ['__proto__', 'constructor', 'toString']) {
-      expect(await dispatch({ id: 1, method: 'char.update', params: { id, name: 'pwned', instructions: 'pwned' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
+      expect(await dispatch({ id: 1, method: 'robot.update', params: { id, name: 'pwned', instructions: 'pwned' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
       expect(await dispatch({ id: 2, method: 'island.update', params: { id, name: 'pwned', description: 'pwned' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
       expect(await dispatch({ id: 3, method: 'island.delete', params: { id } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
     }
@@ -43,41 +43,41 @@ describe('names every object has', () => {
     expect(({} as { description?: string }).description).toBeUndefined();
   });
 
-  it('finds no character by such an id for a hook or a statusline to report on', async () => {
+  it('finds no robot by such an id for a hook or a statusline to report on', async () => {
     const paths = resolvePaths(makeHome());
     const store = Store.load(paths.state, () => {});
     const { fleet } = owned(store, paths);
     const before = structuredClone(store.state);
-    for (const charId of ['__proto__', 'constructor', 'toString']) {
-      expect(await fleet.onSocketEvent({ hook: { charId, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-4111-8111-111111111111', pid: process.pid } })).toBeUndefined();
-      expect(await fleet.onSocketEvent({ hook: { charId, backend: 'claude', name: 'Stop', cwd: '/' } })).toBeUndefined();
-      expect(await fleet.onSocketEvent({ status: { charId, contextPct: 40 } })).toBeUndefined();
+    for (const robotId of ['__proto__', 'constructor', 'toString']) {
+      expect(await fleet.onSocketEvent({ hook: { robotId, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-4111-8111-111111111111', pid: process.pid } })).toBeUndefined();
+      expect(await fleet.onSocketEvent({ hook: { robotId, backend: 'claude', name: 'Stop', cwd: '/' } })).toBeUndefined();
+      expect(await fleet.onSocketEvent({ status: { robotId, contextPct: 40 } })).toBeUndefined();
     }
     expect(store.state).toEqual(before);
     expect(({} as { agent?: unknown }).agent).toBeUndefined();
   });
 
-  it('finds no character by such an id for its folder to be read', () => {
+  it('finds no robot by such an id for its folder to be read', () => {
     const store = Store.load(resolvePaths(makeHome()).state, () => {});
     const claude = { dir: '/nowhere/.claude', json: '/nowhere/.claude.json' };
     for (const id of ['__proto__', 'constructor', 'toString']) expect(() => workspaceRoot(id, store.state, claude)).toThrow(NotFound);
   });
 
-  it('finds no island by such an id to put a character on', async () => {
+  it('finds no island by such an id to put a robot on', async () => {
     const paths = resolvePaths(makeHome());
     const store = Store.load(paths.state, () => {});
     store.update((d) => {
       d.islands.i_a = { id: 'i_a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 7, h: 5 }, seed: 1 };
-      d.characters.c_a = { id: 'c_a', islandId: 'i_a', cell: { x: 3, y: 2 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
+      d.robots.c_a = { id: 'c_a', islandId: 'i_a', cell: { x: 3, y: 2 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
     });
     const ctx = { store, ...owned(store, paths) } as unknown as Ctx;
     for (const islandId of ['__proto__', 'constructor']) {
-      expect(await dispatch({ id: 1, method: 'char.create', params: { islandId, cwd: '/' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
-      expect(await dispatch({ id: 2, method: 'char.update', params: { id: 'c_a', islandId } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
-      expect(await dispatch({ id: 3, method: 'char.move', params: { id: 'c_a', islandId } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
+      expect(await dispatch({ id: 1, method: 'robot.create', params: { islandId, cwd: '/' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
+      expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_a', islandId } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
+      expect(await dispatch({ id: 3, method: 'robot.move', params: { id: 'c_a', islandId } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
     }
     expect(({} as { size?: unknown }).size).toBeUndefined();
-    expect(store.state.characters.c_a.islandId).toBe('i_a');
+    expect(store.state.robots.c_a.islandId).toBe('i_a');
   });
 });
 
@@ -142,7 +142,7 @@ describe('resources.delete', () => {
 describe('a failed call', () => {
   // agents read the CLI's output, which prints the message as it comes
   it('names the params it refused in a line or two, not a JSON dump', async () => {
-    const res = await dispatch({ id: 1, method: 'char.wait', params: { id: 'c', until: ['foo'] } }, {} as Ctx);
+    const res = await dispatch({ id: 1, method: 'robot.wait', params: { id: 'c', until: ['foo'] } }, {} as Ctx);
     expect(res).toMatchObject({ error: { code: 'invalid_params' } });
     const { message } = (res as { error: { message: string } }).error;
     expect(message).toMatch(/until/);

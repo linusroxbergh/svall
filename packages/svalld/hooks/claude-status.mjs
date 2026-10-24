@@ -7,7 +7,8 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-const charId = process.env.SVALL_CHAR_ID;
+// a session an older svalld started carries SVALL_CHAR_ID
+const robotId = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
 const inner = process.argv[2];
@@ -28,7 +29,7 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (d) => (input += d));
 process.stdin.on('end', () => {
   clearTimeout(watchdog);
-  if (charId && mine) report(input);
+  if (robotId && mine) report(input);
   if (!inner) return;
   const child = spawn(inner, { shell: true, stdio: ['pipe', 'inherit', 'inherit'] });
   child.on('error', () => { process.exitCode = 1; });
@@ -52,5 +53,5 @@ function report(text) {
   const done = () => sock.destroy();
   sock.setTimeout(1500, done);
   sock.on('error', done);
-  sock.on('connect', () => sock.end(JSON.stringify({ charId, term, status }) + '\n', done));
+  sock.on('connect', () => sock.end(JSON.stringify({ robotId, term, status }) + '\n', done));
 }

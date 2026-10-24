@@ -259,7 +259,7 @@ describe('a freeze asked again that refuses', () => {
     w.targets = [{ name: 'source.freeze.manifest', edge: 'after', nth: 1 }];
     await play(w, 'move');
     // meanwhile the user keeps cy on the source, so the freeze asked again refuses
-    Store.load(w.mac.paths.state, () => {}).update((d) => { d.characters.c_cy.keepHere = true; });
+    Store.load(w.mac.paths.state, () => {}).update((d) => { d.robots.c_cy.keepHere = true; });
     const said = await w.recover('resume');
     expect(said, w.violations.join('\n')).toContain('resume->blocked');
     expect(w.violations).toEqual([]);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { startHomeCharacter } from './actions.js';
+import { startHomeRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
@@ -24,12 +24,12 @@ export function MissionPrompt() {
     const prompt = text.trim();
     if (!prompt) return;
     close();
-    void startHomeCharacter(deps(), { prompt }).then((ok) => {
+    void startHomeRobot(deps(), { prompt }).then((ok) => {
       if (ok) return;
       setText((t) => t || prompt);
       if (covered(app.store.getState())) return;
-      app.store.getState().setNamingCharacter(false);
-      app.store.getState().setClosingCharacter(undefined);
+      app.store.getState().setNamingRobot(false);
+      app.store.getState().setClosingRobot(undefined);
       app.store.getState().setMissionPrompt(true);
     });
   };

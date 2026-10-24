@@ -34,7 +34,7 @@ const HEARTBEAT_MS = 30_000;
 // how often a refused phone may send the daemon to ask tailscale who owns this Mac
 const LOOK_MS = 10_000;
 // what a worker may do with one POST: answer the prompt a notification carried
-const RPC_METHODS = new Set(['char.answer']);
+const RPC_METHODS = new Set(['robot.answer']);
 const MAX_RPC_BODY = 64 * 1024;
 // the packaged app, and in a checkout the Vite dev server
 const APP_ORIGINS = new Set(['svall://app', ...(variant === 'dev' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [])]);
@@ -202,9 +202,11 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     let parsed: unknown;
     try { parsed = JSON.parse(text); } catch { res.writeHead(400).end(); return; }
     const r = Request.safeParse(parsed);
-    if (!r.success || !RPC_METHODS.has(r.data.method)) { res.writeHead(400).end(); return; }
+    // a worker an older svalld served answers with char.answer
+    const call = r.success && r.data.method === 'char.answer' ? { ...r.data, method: 'robot.answer' } : r.data;
+    if (!call || !RPC_METHODS.has(call.method)) { res.writeHead(400).end(); return; }
     const viewer: Viewer = { kind: 'phone', login, send: () => {}, backlog: () => 0 };
-    const out = await dispatch(r.data, { ...base, viewer });
+    const out = await dispatch(call, { ...base, viewer });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(out));
   }
   server.on('upgrade', (req, socket, head) => {

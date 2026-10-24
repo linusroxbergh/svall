@@ -15,8 +15,8 @@ const KIND: Record<ChangedFile['status'], string> = { A: 'added', M: 'modified',
 
 export function Changes({ id }: { id: string }) {
   // a worktree is branched off for one piece of work, and HEAD there holds all of it already committed:
-  // what the character has done is the diff against main, so that is where the pane rests until a base is picked
-  const worktree = useApp((s) => !!s.fleet.characters[id]?.repo?.isWorktree);
+  // what the robot has done is the diff against main, so that is where the pane rests until a base is picked
+  const worktree = useApp((s) => !!s.fleet.robots[id]?.repo?.isWorktree);
   const [chosen, setChosen] = useState<DiffBase>();
   const base = chosen ?? (worktree ? 'main' : 'head');
   const [status, setStatus] = useState<Status>();

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { HOME_ISLAND, crewGrid, emptyState, type Character } from '@svall/protocol';
+import { HOME_ISLAND, crewGrid, emptyState, type Robot } from '@svall/protocol';
 import { startApi } from '../src/api/server.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
@@ -28,7 +28,7 @@ vi.mock('../src/links/git.js', async (importOriginal) => {
 
 afterEach(cleanHomes);
 
-const char = (id: string, islandId: string, over: Partial<Character> = {}): Character => ({
+const robot = (id: string, islandId: string, over: Partial<Robot> = {}): Robot => ({
   id, islandId, cell: { x: 1, y: 1 }, name: id, portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [],
   shell: { lastOutputAt: 0 }, unread: false, ...over,
 });
@@ -61,47 +61,47 @@ describe('following a hook into another checkout', () => {
   const setup = (log?: Logger) => {
     const f = fleetOn((d) => { d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }; }, log);
     const [one, two] = [repo(f.home, 'one'), repo(f.home, 'two')];
-    f.store.update((d) => { d.characters.c_a = char('c_a', 'i_1', { cwd: one }); });
+    f.store.update((d) => { d.robots.c_a = robot('c_a', 'i_1', { cwd: one }); });
     const follow = (id: string, cwd: string): Promise<void> => f.fleet['agentEvents']['followCwd'](id, cwd);
     return { ...f, one, two, follow };
   };
 
-  it('moves the character to the root of the checkout its hook reports', async () => {
+  it('moves the robot to the root of the checkout its hook reports', async () => {
     const { store, two, follow } = setup();
     await follow('c_a', path.join(two, 'src'));
-    expect(store.state.characters.c_a.cwd).toBe(two);
+    expect(store.state.robots.c_a.cwd).toBe(two);
   });
 
   it('ignores a hook from the second terminal', async () => {
     const { fleet, store, one, two } = setup();
     const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd');
-    await fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
+    await fleet.onSocketEvent({ hook: { robotId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
     expect(follow).not.toHaveBeenCalled();
-    expect(store.state.characters.c_a.cwd).toBe(one);
+    expect(store.state.robots.c_a.cwd).toBe(one);
   });
 
-  it('keeps the path a character has within the checkout the hook reports', async () => {
+  it('keeps the path a robot has within the checkout the hook reports', async () => {
     const { store, one, follow } = setup();
-    store.update((d) => { d.characters.c_a.cwd = path.join(one, 'src'); });
+    store.update((d) => { d.robots.c_a.cwd = path.join(one, 'src'); });
     await follow('c_a', path.join(one, 'lib'));
-    expect(store.state.characters.c_a.cwd).toBe(path.join(one, 'src'));
+    expect(store.state.robots.c_a.cwd).toBe(path.join(one, 'src'));
   });
 
   it('stays put for a hook outside any checkout', async () => {
     const { store, home, one, follow } = setup();
     await follow('c_a', fs.realpathSync(home));
-    expect(store.state.characters.c_a.cwd).toBe(one);
+    expect(store.state.robots.c_a.cwd).toBe(one);
   });
 
   it('acts on a reported directory once, so a hook repeating it does not undo a move the pane made since', async () => {
     const { store, one, two, follow } = setup();
     await follow('c_a', two);
-    store.update((d) => { d.characters.c_a.cwd = one; });
+    store.update((d) => { d.robots.c_a.cwd = one; });
     await follow('c_a', two);
-    expect(store.state.characters.c_a.cwd).toBe(one);
+    expect(store.state.robots.c_a.cwd).toBe(one);
   });
 
-  it('asks git nothing for a character that is gone', async () => {
+  it('asks git nothing for a robot that is gone', async () => {
     const { two, follow } = setup();
     vi.mocked(resolveRepo).mockClear();
     await follow('c_gone', two);
@@ -112,7 +112,7 @@ describe('following a hook into another checkout', () => {
     const errors: string[] = [];
     const { fleet, two } = setup({ info() {}, error: (m) => errors.push(m) });
     vi.mocked(resolveRepo).mockRejectedValueOnce(new Error('git went away'));
-    await fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
+    await fleet.onSocketEvent({ hook: { robotId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
     await waitFor(() => errors.length > 0);
     expect(errors).toEqual([`follow c_a to ${two}: Error: git went away`]);
   });
@@ -128,7 +128,7 @@ describe('following a hook into another checkout', () => {
     await follow('c_a', three);
     release();
     await older;
-    expect(store.state.characters.c_a.cwd).toBe(three);
+    expect(store.state.robots.c_a.cwd).toBe(three);
   });
 
   it('follows the same report again once a state write that failed has passed', async () => {
@@ -140,23 +140,23 @@ describe('following a hook into another checkout', () => {
       fs.chmodSync(paths.home, 0o700);
     }
     await follow('c_a', two);
-    expect(store.state.characters.c_a.cwd).toBe(two);
+    expect(store.state.robots.c_a.cwd).toBe(two);
   });
 
-  it('leaves a character closed while git answered closed', async () => {
+  it('leaves a robot closed while git answered closed', async () => {
     const { store, two, follow } = setup();
     const moving = follow('c_a', two);
-    store.update((d) => { delete d.characters.c_a; });
+    store.update((d) => { delete d.robots.c_a; });
     await expect(moving).resolves.toBeUndefined();
-    expect(store.state.characters.c_a).toBeUndefined();
+    expect(store.state.robots.c_a).toBeUndefined();
   });
 });
 
 describe('following the pane', () => {
-  it('moves a character on the next poll when the state write of this one fails', async () => {
+  it('moves a robot on the next poll when the state write of this one fails', async () => {
     const { fleet, store, home, live } = fleetOn((d) => {
       d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-      d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' }, panePath: '/tmp' });
+      d.robots.c_a = robot('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' }, panePath: '/tmp' });
     });
     const moved = fs.realpathSync(home);
     live.push({ windowId: '@1', paneId: '%1', panePid: 1, name: 'c_a', command: 'sh', path: moved, activity: 1000, dead: false });
@@ -167,7 +167,7 @@ describe('following the pane', () => {
       fs.chmodSync(home, 0o700);
     }
     await fleet['poll']['tick']();
-    expect(store.state.characters.c_a.cwd).toBe(moved);
+    expect(store.state.robots.c_a.cwd).toBe(moved);
   });
 });
 
@@ -181,30 +181,30 @@ describe('Store.update', () => {
   });
 });
 
-describe('moving a character to another island by update', () => {
+describe('moving a robot to another island by update', () => {
   it('places it beside the crew there, on ground grown for one more', async () => {
     const { fleet, store } = fleetOn(() => {});
     const a = fleet.createIsland({ name: 'a' });
     const b = fleet.createIsland({ name: 'b' });
-    const mover = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    const stayer = await fleet.createCharacter({ islandId: b.id, cwd: '/tmp' });
-    fleet.updateCharacter(mover.id, { islandId: b.id });
+    const mover = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    const stayer = await fleet.createRobot({ islandId: b.id, cwd: '/tmp' });
+    fleet.updateRobot(mover.id, { islandId: b.id });
     const s = store.state;
     const { size, cells } = crewGrid(2);
     expect(s.islands[b.id].size).toEqual(size);
-    expect([s.characters[stayer.id].cell, s.characters[mover.id].cell]).toEqual(cells);
+    expect([s.robots[stayer.id].cell, s.robots[mover.id].cell]).toEqual(cells);
     expect(placementOk(s, s.islands[b.id])).toBe(true);
   });
 });
 
-describe('char.wait over a socket', () => {
+describe('robot.wait over a socket', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); });
 
   it('is called off when the socket that asked closes', async () => {
     const { fleet, store, home, paths, ownership } = fleetOn((d) => {
       d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-      d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
+      d.robots.c_a = robot('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
     });
     const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
@@ -222,7 +222,7 @@ describe('char.wait over a socket', () => {
     const ws = new WebSocket(`ws://127.0.0.1:${api.port}`);
     await new Promise((r) => ws.once('open', r));
     ws.send(JSON.stringify({ token: 'secret' }));
-    ws.send(JSON.stringify({ id: 1, method: 'char.wait', params: { id: 'c_a', until: ['done'], timeoutMs: 60_000 } }));
+    ws.send(JSON.stringify({ id: 1, method: 'robot.wait', params: { id: 'c_a', until: ['done'], timeoutMs: 60_000 } }));
     await waitFor(() => signal !== undefined);
     expect(signal!.aborted).toBe(false);
     ws.close();

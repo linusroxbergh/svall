@@ -1,13 +1,13 @@
 import { useState, type JSX } from 'react';
 import { useApp } from '../hooks.js';
-import { charactersOf } from '../selectors.js';
+import { robotsOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { DocsList } from './DocsList.js';
 import { Sheet } from './Sheet.js';
 
-export function IslandSheet({ islandId, onClose, onNewCharacter }: { islandId: string; onClose(): void; onNewCharacter(): void }): JSX.Element | null {
+export function IslandSheet({ islandId, onClose, onNewRobot }: { islandId: string; onClose(): void; onNewRobot(): void }): JSX.Element | null {
   const island = useApp((s) => s.fleet.islands[islandId]);
-  const crew = useApp((s) => charactersOf(s.fleet, islandId).length);
+  const crew = useApp((s) => robotsOf(s.fleet, islandId).length);
   const [name, setName] = useState(island?.name ?? '');
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export function IslandSheet({ islandId, onClose, onNewCharacter }: { islandId: s
       </form>
       <DocsList tier="island" id={islandId} />
       <div className="sheet-form">
-        <button type="button" onClick={onNewCharacter}>New robot in another directory</button>
+        <button type="button" onClick={onNewRobot}>New robot in another directory</button>
       </div>
       {island.kind !== 'home' && (
         <div className="sheet-form">

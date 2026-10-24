@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { LoadChar, LoadSnapshot } from '@svall/protocol';
+import type { LoadRobot, LoadSnapshot } from '@svall/protocol';
 import { useApp } from '../../src/hooks.js';
 import { call, freshStore, store } from './harness.js';
 
 const MB = 2 ** 20;
 const use = (cpu: number, mem = 100 * MB, procs = 3) => ({ cpu, mem, procs });
-const robot = (cpu: number, extra: Partial<LoadChar> = {}): LoadChar => ({ ...use(cpu), shellOnly: false, sleepable: true, ...extra });
+const robot = (cpu: number, extra: Partial<LoadRobot> = {}): LoadRobot => ({ ...use(cpu), shellOnly: false, sleepable: true, ...extra });
 let snap: LoadSnapshot;
 const answer = (method: string) => Promise.resolve(method === 'load.get' ? snap : {});
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
@@ -21,7 +21,7 @@ const { useLoad } = await import('../../src/load.js');
 beforeEach(() => {
   call.mockImplementation(answer);
   freshStore();
-  snap = { at: 0, cores: 8, total: use(61, 900 * MB, 14), app: use(30, 500 * MB, 5), chars: { c0: robot(5), c1: robot(20), c2: robot(1, { shellOnly: true }) } };
+  snap = { at: 0, cores: 8, total: use(61, 900 * MB, 14), app: use(30, 500 * MB, 5), robots: { c0: robot(5), c1: robot(20), c2: robot(1, { shellOnly: true }) } };
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -43,8 +43,8 @@ test('the robots come by cpu and Svall itself last, a robot running only its she
 });
 
 test('an asleep robot still running a process can only be deleted, and so can one svalld cannot resume', async () => {
-  snap.chars.c2 = robot(1, { sleepable: false });
-  store.getState().applyPatch([{ op: 'remove', path: '/characters/c0/tmux' }]);
+  snap.robots.c2 = robot(1, { sleepable: false });
+  store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/tmux' }]);
   await shown();
   expect(row('c0').textContent).toContain('asleep');
   expect(screen.queryByTestId('load-sleep-c0')).toBeNull();
@@ -56,45 +56,45 @@ test('an asleep robot still running a process can only be deleted, and so can on
 });
 
 test('Sleep puts an idle robot to sleep at once, and asks first of a working one', async () => {
-  store.getState().applyPatch([{ op: 'add', path: '/characters/c1/agent', value: { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1, transcriptPath: '/t' } }]);
+  store.getState().applyPatch([{ op: 'add', path: '/robots/c1/agent', value: { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1, transcriptPath: '/t' } }]);
   await shown();
   fireEvent.click(screen.getByTestId('load-sleep-c0'));
-  expect(calls()).toContainEqual(['char.sleep', { id: 'c0' }]);
+  expect(calls()).toContainEqual(['robot.sleep', { id: 'c0' }]);
 
   fireEvent.click(screen.getByTestId('load-sleep-c1'));
-  expect(calls()).not.toContainEqual(['char.sleep', { id: 'c1' }]);
-  expect(store.getState().sleepingCharacter).toBe('c1');
+  expect(calls()).not.toContainEqual(['robot.sleep', { id: 'c1' }]);
+  expect(store.getState().sleepingRobot).toBe('c1');
   expect(screen.getByText('c1 is working. Sleep anyway?')).toBeTruthy();
   // a reflex Enter keeps it
   expect(document.activeElement).toBe(screen.getByTestId('confirm-sleep-cancel'));
   fireEvent.click(screen.getByTestId('confirm-sleep'), { detail: 1 });
-  expect(calls()).toContainEqual(['char.sleep', { id: 'c1' }]);
-  expect(store.getState().sleepingCharacter).toBeUndefined();
+  expect(calls()).toContainEqual(['robot.sleep', { id: 'c1' }]);
+  expect(store.getState().sleepingRobot).toBeUndefined();
 });
 
 test('Sleep asks first of a robot mid-turn in either terminal, a blocked one included', async () => {
   const agent = (status: string) => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 1, transcriptPath: '/t' });
   store.getState().applyPatch([
-    { op: 'add', path: '/characters/c1/agent', value: agent('blocked') },
-    { op: 'add', path: '/characters/c0/agent', value: agent('blocked') },
-    { op: 'add', path: '/characters/c0/second', value: { tmux: { windowId: '@9', paneId: '%9' }, unread: false, agent: agent('working') } },
+    { op: 'add', path: '/robots/c1/agent', value: agent('blocked') },
+    { op: 'add', path: '/robots/c0/agent', value: agent('blocked') },
+    { op: 'add', path: '/robots/c0/second', value: { tmux: { windowId: '@9', paneId: '%9' }, unread: false, agent: agent('working') } },
   ]);
   await shown();
   fireEvent.click(screen.getByTestId('load-sleep-c1'));
-  expect(store.getState().sleepingCharacter).toBe('c1');
-  act(() => store.getState().setSleepingCharacter(undefined));
+  expect(store.getState().sleepingRobot).toBe('c1');
+  act(() => store.getState().setSleepingRobot(undefined));
   fireEvent.click(screen.getByTestId('load-sleep-c0'));
-  expect(store.getState().sleepingCharacter).toBe('c0');
+  expect(store.getState().sleepingRobot).toBe('c0');
   expect(screen.getByText('c0 is working. Sleep anyway?')).toBeTruthy();
-  expect(calls().filter(([m]) => m === 'char.sleep')).toEqual([]);
+  expect(calls().filter(([m]) => m === 'robot.sleep')).toEqual([]);
 });
 
 test('Delete asks as the side card\'s does, and the name opens the robot and puts the panel away', async () => {
   store.getState().toggleLoad(true);
   await shown();
   fireEvent.click(screen.getByTestId('load-delete-c1'));
-  expect(store.getState().closingCharacter).toBe('c1');
-  act(() => store.getState().setClosingCharacter(undefined));
+  expect(store.getState().closingRobot).toBe('c1');
+  act(() => store.getState().setClosingRobot(undefined));
   fireEvent.click(within(row('c0')).getByText('c0'));
   expect(store.getState()).toMatchObject({ card: 'c0', focusedId: 'c0', loadOpen: false });
 });

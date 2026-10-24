@@ -21,7 +21,7 @@ const worldCellOf = async (svall: Svall, island: { position: { x: number; y: num
 
 test('the first half card fills most of the map, a margin all round', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('first'), seed: 2, position: { x: 0, y: 80 } });
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   await svall.open('map', { firstRun: true });
   // the first-run settings stand over the map, and figurePoint reads the map at 100%
   await page.getByTestId('settings-close').click();
@@ -38,17 +38,17 @@ test('the first half card fills most of the map, a margin all round', async ({ p
 
 test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips to the board', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('card'), seed: 2, position: { x: 0, y: 80 } });
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${a.id}`)).toBeVisible();
   const cellA = await worldCellOf(svall, island, a.id);
   const pa = await figurePoint(page, cellA);
   await page.mouse.dblclick(pa.x, pa.y);
   const card = page.getByTestId('terminal-card');
-  await expect(card).toHaveAttribute('data-char', a.id);
+  await expect(card).toHaveAttribute('data-robot', a.id);
   await expect(card).toHaveAttribute('data-size', 'half');
-  // the header names the character and nothing else about where it stands
+  // the header names the robot and nothing else about where it stands
   const header = card.locator('.phead');
   await expect(header.locator('.tname')).toHaveText('a');
   await expect(header).not.toContainText(island.name);
@@ -59,11 +59,11 @@ test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips t
     return Math.max(Math.abs(half.x + half.width / 2 - (map.x + map.width / 2)), Math.abs(half.y + half.height / 2 - (map.y + map.height / 2)));
   };
   await expect.poll(offCentre).toBeLessThanOrEqual(2);
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', a.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', a.id);
   await expect(page.getByTestId('surface')).toContainText('terminal · a');
 
   await page.keyboard.press('Meta+j');
-  await expect(card).toHaveAttribute('data-char', b.id);
+  await expect(card).toHaveAttribute('data-robot', b.id);
   await expect(card).toHaveAttribute('data-settled', 'true');
   await page.keyboard.press('Meta+Enter');
   await expect(card).toHaveAttribute('data-size', 'full');
@@ -76,10 +76,10 @@ test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips t
   await expect(card).toHaveAttribute('data-size', 'half');
   await page.keyboard.press('Meta+w');
   await expect(card).toHaveCount(0);
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[b.id]).toBeTruthy();
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[b.id]).toBeTruthy();
 
   await page.keyboard.press('Enter');
-  await expect(card).toHaveAttribute('data-char', b.id);
+  await expect(card).toHaveAttribute('data-robot', b.id);
   await page.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
   await page.getByTestId(`island-label-${island.id}`).click();
@@ -93,55 +93,55 @@ test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips t
   await expect(page.getByTestId('board')).toBeVisible();
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('map')).toBeVisible();
-  // the board's character comes back in its card
-  await expect(card).toHaveAttribute('data-char', a.id);
+  // the board's robot comes back in its card
+  await expect(card).toHaveAttribute('data-robot', a.id);
 
   await page.keyboard.press('Meta+t');
-  await page.getByTestId('new-character-name').fill('c');
-  await page.getByTestId('new-character-name').press('Enter');
-  await expect(card).not.toHaveAttribute('data-char', a.id);
-  const created = await page.getByTestId('terminal-card').getAttribute('data-char');
+  await page.getByTestId('new-robot-name').fill('c');
+  await page.getByTestId('new-robot-name').press('Enter');
+  await expect(card).not.toHaveAttribute('data-robot', a.id);
+  const created = await page.getByTestId('terminal-card').getAttribute('data-robot');
   expect(created).not.toBe(a.id);
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[created!]?.islandId).toBe(island.id);
+  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[created!]?.islandId).toBe(island.id);
 });
 
 test('an open card follows the selection, from the sidebar and from the map', async ({ page, svall }) => {
-  // a wide island keeps the left character clear of the half card, which sits over the middle of the map
+  // a wide island keeps the left robot clear of the half card, which sits over the middle of the map
   const island = await svall.api.call('island.create', { name: svall.uniq('follow'), seed: 2, size: { w: 20, h: 3 }, position: { x: 0, y: 160 } });
   const cells = spacedCells(island.size, 3).sort((p, q) => p.x - q.x);
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a', cell: cells[0] });
-  const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b', cell: cells[cells.length - 1] });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a', cell: cells[0] });
+  const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'b', cell: cells[cells.length - 1] });
   await svall.open('map');
   const card = page.getByTestId('terminal-card');
-  await page.getByTestId(`sb-char-${a.id}`).dblclick();
-  await expect(card).toHaveAttribute('data-char', a.id);
+  await page.getByTestId(`sb-robot-${a.id}`).dblclick();
+  await expect(card).toHaveAttribute('data-robot', a.id);
 
-  await page.getByTestId(`sb-char-${b.id}`).click();
-  await expect(card).toHaveAttribute('data-char', b.id);
+  await page.getByTestId(`sb-robot-${b.id}`).click();
+  await expect(card).toHaveAttribute('data-robot', b.id);
 
   const pa = await figurePoint(page, await worldCellOf(svall, island, a.id));
   expect(pa.x).toBeLessThan((await card.boundingBox())!.x);
   await page.mouse.click(pa.x, pa.y);
-  await expect(card).toHaveAttribute('data-char', a.id);
+  await expect(card).toHaveAttribute('data-robot', a.id);
 
   // with no card open a single click still only selects
   await page.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
-  await page.getByTestId(`sb-char-${b.id}`).click();
+  await page.getByTestId(`sb-robot-${b.id}`).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByTestId(`token-${b.id}`)).toHaveAttribute('data-selected', 'true');
 });
 
-test('the half card keeps the size it was dragged to, for the next character too', async ({ page, svall }) => {
+test('the half card keeps the size it was dragged to, for the next robot too', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('grip'), seed: 2, position: { x: 0, y: 80 } });
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
   await svall.open('map');
   const pa = await figurePoint(page, await worldCellOf(svall, island, a.id));
   await page.mouse.dblclick(pa.x, pa.y);
   const card = page.getByTestId('terminal-card');
   await expect(card).toHaveAttribute('data-settled', 'true');
-  // opening the card selected the character, which opened the side card; close it so the map stops resizing
+  // opening the card selected the robot, which opened the side card; close it so the map stops resizing
   await page.keyboard.press('Meta+i');
   await expect(page.getByTestId('side-card')).toBeHidden();
   await settleMap(page);
@@ -155,26 +155,26 @@ test('the half card keeps the size it was dragged to, for the next character too
   await expect.poll(async () => (await card.boundingBox())!.width).toBeGreaterThan(before.width + 100);
   const grown = (await card.boundingBox())!;
   await page.keyboard.press('Meta+j');
-  await expect(card).toHaveAttribute('data-char', b.id);
+  await expect(card).toHaveAttribute('data-robot', b.id);
   await expect.poll(async () => Math.round((await card.boundingBox())!.width)).toBe(Math.round(grown.width));
   await expect.poll(async () => Math.round((await card.boundingBox())!.height)).toBe(Math.round(grown.height));
 });
 
 test('a second click on the selected card opens its terminal', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('reclick') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'again' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'again' });
   await svall.open('map');
 
   // the sidebar: the first click reads the card, the second opens the terminal
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   await expect(page.getByTestId('terminal-card')).toHaveCount(0);
-  await page.getByTestId(`sb-char-${c.id}`).click();
-  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-char', c.id);
+  await page.getByTestId(`sb-robot-${c.id}`).click();
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
 
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('terminal-card')).toHaveCount(0);
 
   // the map: the token is still selected, so one press opens it
   await page.getByTestId(`token-${c.id}`).click();
-  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
 });

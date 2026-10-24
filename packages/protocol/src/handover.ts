@@ -82,7 +82,7 @@ export const FleetConfig = z.object({
   // with no command, the crew starts the main agent's crewCommand on that CLI's model in home.model
   home: Home.extend({ command: z.string().optional(), model: ModelPicks.optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
-  // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
+  // the agent the scribe, mission control's crew and `svall robot new --run` use by default; absent, the private fleet's, else
   // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),
   // which plan a scribe pass spends; absent, the main agent's. model is one per CLI, or one of scribe.agent's CLI, else of claude's
@@ -126,7 +126,7 @@ export const Generation = z.number().int().nonnegative();
 export const TransactionId = z.string().min(1);
 
 /** What a blocker, a warning or a progress report is about. */
-export const HandoverEntityKind = z.enum(['character', 'root', 'session', 'git']);
+export const HandoverEntityKind = z.enum(['robot', 'root', 'session', 'git']);
 export type HandoverEntityKind = z.infer<typeof HandoverEntityKind>;
 export const HandoverEntity = z.object({ kind: HandoverEntityKind, id: z.string().min(1) });
 export type HandoverEntity = z.infer<typeof HandoverEntity>;
@@ -141,7 +141,7 @@ export const HandoverIssueCode = z.enum([
   'identity_mismatch', 'generation_mismatch', 'transaction_open',
   'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter',
   'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing',
-  'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
+  'home_mismatch', 'parent_missing', 'robot_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'codex_hooks', 'codex_sandbox', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
@@ -166,18 +166,18 @@ export const ManifestSummary = z.object({
 });
 export type ManifestSummary = z.infer<typeof ManifestSummary>;
 
-/** What the user or `svall` chose about terminals that are not at rest. `terminateShells` may name characters. */
+/** What the user or `svall` chose about terminals that are not at rest. `terminateShells` may name robots. */
 export const HandoverChoices = z.object({
   interruptAfterMs: z.number().int().nonnegative().optional(),
   terminateShells: z.union([z.boolean(), z.array(z.string().min(1))]).optional(),
   archiveRoots: z.array(z.string().min(1)).optional(),
-  // carries a folder a terminal is in whole, with the Git repositories in it no character works in
+  // carries a folder a terminal is in whole, with the Git repositories in it no robot works in
   carryUnused: z.boolean().optional(),
 });
 export type HandoverChoices = z.infer<typeof HandoverChoices>;
 
 /** The version of the transfer manifest a machine writes and reads. */
-export const TRANSFER_SCHEMA_VERSION = 2;
+export const TRANSFER_SCHEMA_VERSION = 3;
 
 /** One file of a transfer as the source scanned it, by its path under its root. A link is carried as its text, never followed. */
 export const TransferFile = z.discriminatedUnion('type', [
@@ -212,7 +212,7 @@ export type TransferRoot = z.infer<typeof TransferRoot>;
 
 /** One agent session, copied exactly: the transcript its terminal recorded and the files its adapter found with it. */
 export const TransferSession = z.object({
-  characterId: z.string().min(1),
+  robotId: z.string().min(1),
   term: z.literal(2).optional(),
   agent: AgentKind,
   sessionId: z.string().min(1),
@@ -240,11 +240,11 @@ export const GitCheckout = z.object({
   // porcelain v2 entries for tracked paths, and the digest of every staged entry
   status: z.array(z.string()),
   index: Sha256,
-  characters: z.array(z.string()),
+  robots: z.array(z.string()),
 });
 export type GitCheckout = z.infer<typeof GitCheckout>;
 
-/** A registered worktree no character uses. Its branch travels in the common directory; its registration does not. */
+/** A registered worktree no robot uses. Its branch travels in the common directory; its registration does not. */
 export const GitRegistration = z.object({
   path: z.string(),
   head: z.string().nullable(),

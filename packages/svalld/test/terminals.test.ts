@@ -37,7 +37,7 @@ runIf('TerminalHub', () => {
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     const hub = new TerminalHub(fleet, tmux, store, silentLogger);
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     return { fleet, tmux, store, hub, c };
   }
 
@@ -154,20 +154,20 @@ runIf('TerminalHub', () => {
   it('takes Enter or Esc typed into a blocked agent as its answer, and arrows as no answer', async () => {
     const { hub, store, c } = await boot();
     const block = (id: string) => store.update((d) => {
-      d.characters[c.id].agent = { kind: 'claude', sessionId: 's', status: 'blocked', promptId: id, prompt: 'may I', lastActivityAt: 1 };
+      d.robots[c.id].agent = { kind: 'claude', sessionId: 's', status: 'blocked', promptId: id, prompt: 'may I', lastActivityAt: 1 };
     });
     block('q1');
     await hub.input(c.id, Buffer.from('\x1b[B'));
-    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', promptId: 'q1' });
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', promptId: 'q1' });
     await hub.input(c.id, Buffer.from('\r'));
-    expect(store.state.characters[c.id].agent?.status).toBe('working');
-    expect(store.state.characters[c.id].agent?.promptId).toBeUndefined();
+    expect(store.state.robots[c.id].agent?.status).toBe('working');
+    expect(store.state.robots[c.id].agent?.promptId).toBeUndefined();
     block('q2');
     await hub.input(c.id, Buffer.from('\x1b'));
-    expect(store.state.characters[c.id].agent?.status).toBe('idle');
+    expect(store.state.robots[c.id].agent?.status).toBe('idle');
     block('q3');
     await hub.input(c.id, Buffer.from('\x03'));
-    expect(store.state.characters[c.id].agent?.status).toBe('idle');
+    expect(store.state.robots[c.id].agent?.status).toBe('idle');
   });
 
   it('seeds the scrollback the caller asked for', async () => {
@@ -239,10 +239,10 @@ runIf('TerminalHub', () => {
     await waitFor(async () => (await tmux.run('show-options', '-w', '-t', c.tmux!.windowId, 'window-size')).trim() === '');
   });
 
-  it('rejects opening a dormant character', async () => {
+  it('rejects opening a dormant robot', async () => {
     const { hub, tmux, store, c } = await boot();
     await tmux.killWindow(c.tmux!.windowId);
-    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    await waitFor(() => store.state.robots[c.id].tmux === undefined);
     await expect(hub.open(c.id, 80, 24, 2000, viewer())).rejects.toThrow(/dormant/);
   });
 });

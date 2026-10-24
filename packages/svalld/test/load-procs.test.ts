@@ -12,8 +12,8 @@ describe('parseHelper', () => {
   });
 
   it('maps cpu to cpuNs and keeps the marks', () => {
-    const out = JSON.stringify({ procs: [{ pid: 5, ppid: 1, start: 7, cpu: 900, mem: 4096, resp: 2, path: '/bin/zsh', args: '-zsh', char: 'c_a', home: '/h' }] });
-    expect(parseHelper(out)).toEqual([{ pid: 5, ppid: 1, start: 7, cpuNs: 900, mem: 4096, resp: 2, path: '/bin/zsh', args: '-zsh', char: 'c_a', home: '/h' }]);
+    const out = JSON.stringify({ procs: [{ pid: 5, ppid: 1, start: 7, cpu: 900, mem: 4096, resp: 2, path: '/bin/zsh', args: '-zsh', robot: 'c_a', home: '/h' }] });
+    expect(parseHelper(out)).toEqual([{ pid: 5, ppid: 1, start: 7, cpuNs: 900, mem: 4096, resp: 2, path: '/bin/zsh', args: '-zsh', robot: 'c_a', home: '/h' }]);
   });
 });
 

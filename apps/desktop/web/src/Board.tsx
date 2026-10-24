@@ -1,9 +1,9 @@
-import { newCharacterOn } from './actions.js';
+import { newRobotOn } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
-import { CharPanes } from './CharPanes.js';
+import { RobotPanes } from './RobotPanes.js';
 import { keyLabel, keyTip } from './keys.js';
-import { boardIsland, boardViewed, charactersOf, statusOf } from './selectors.js';
+import { boardIsland, boardViewed, robotsOf, statusOf } from './selectors.js';
 import { DeleteIsland } from './IslandCard.js';
 import { Toast } from './Toast.js';
 
@@ -17,9 +17,9 @@ export function Board() {
   const opacity = useApp((s) => s.settings.fullOpacity);
   const bindings = useApp((s) => s.settings.bindings);
   const mapKey = keyLabel('toggleView', bindings);
-  const newKey = keyLabel('newCharacter', bindings);
-  const c = viewed ? fleet.characters[viewed] : undefined;
-  const tabs = island ? charactersOf(fleet, island.id) : [];
+  const newKey = keyLabel('newRobot', bindings);
+  const c = viewed ? fleet.robots[viewed] : undefined;
+  const tabs = island ? robotsOf(fleet, island.id) : [];
 
   return (
     <div className="board" data-testid="board">
@@ -34,7 +34,7 @@ export function Board() {
             <i className="sdot" data-status={statusOf(t)} />{t.name}
           </button>
         ))}
-        {island && <button className="tab tab-new" data-testid="island-new" title="New robot here" onClick={() => newCharacterOn(deps(), island.id)}>+</button>}
+        {island && <button className="tab tab-new" data-testid="island-new" title="New robot here" onClick={() => newRobotOn(deps(), island.id)}>+</button>}
         <span className="spacer" />
         <button className="tab tab-map" data-testid="board-map" onClick={() => app.store.getState().setView('map')}>Map {mapKey && <span className="meta">{mapKey}</span>}</button>
         {/* the board draws a native terminal over the card's edge, so its control lives here */}
@@ -43,13 +43,13 @@ export function Board() {
       </div>
       <div className="term-host">
         {c ? (
-          <CharPanes key={c.id} id={c.id} opacity={opacity} />
+          <RobotPanes key={c.id} id={c.id} opacity={opacity} />
         ) : (
           <div className="board-empty" data-testid="board-empty">
             <div className="kicker">{island ? island.name : 'The fleet'}</div>
-            <div className="desc">{island ? 'No characters on this island yet.' : `No islands yet.${newKey ? ` Press ${newKey} to start.` : ''}`}</div>
+            <div className="desc">{island ? 'No robots on this island yet.' : `No islands yet.${newKey ? ` Press ${newKey} to start.` : ''}`}</div>
             <div className="acts">
-              {island && <button className="btn pri" data-testid="empty-new" onClick={() => newCharacterOn(deps(), island.id)}>New robot</button>}
+              {island && <button className="btn pri" data-testid="empty-new" onClick={() => newRobotOn(deps(), island.id)}>New robot</button>}
               {island && island.kind !== 'home' && tabs.length === 0 && <DeleteIsland id={island.id} testid="island-delete" label="Delete island" />}
             </div>
           </div>

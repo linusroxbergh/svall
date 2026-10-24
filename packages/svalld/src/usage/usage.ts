@@ -142,7 +142,7 @@ export const codexWindows = (limits: RawRateLimits): UsageWindow[] =>
 
 const CODEX_TAIL = 64 * 1024;
 
-// a plan shows only while a character runs on it. Codex answers no usage question out of band and
+// a plan shows only while a robot runs on it. Codex answers no usage question out of band and
 // reports its limits on every turn instead, so they are read off the live sessions' rollouts when the
 // panel asks: nothing is remembered, and a reading is no older than the last turn of an open session
 export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string }): FetchUsage {
@@ -156,7 +156,7 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
     return account ? { ...snapshot, account } : snapshot;
   };
   return async () => {
-    const agents = Object.values(o.state().characters).flatMap((c) => (c.tmux && c.agent ? [c.agent] : []));
+    const agents = Object.values(o.state().robots).flatMap((c) => (c.tmux && c.agent ? [c.agent] : []));
     const newest = agents
       .flatMap((a) => (a.kind === 'codex' && a.transcriptPath ? [lastTokenCount(tail(a.transcriptPath))] : []))
       .flatMap((t) => (t?.limits ? [{ at: t.at, limits: t.limits }] : []))

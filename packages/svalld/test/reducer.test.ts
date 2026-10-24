@@ -1,50 +1,50 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import type { Character } from '@svall/protocol';
+import type { Robot } from '@svall/protocol';
 import { applyHook, applyStatus, markSeen } from '../src/agent/reducer.js';
 import type { HookEvent } from '../src/hooks/receiver.js';
 
-const base = (): Character => ({
+const base = (): Robot => ({
   id: 'c_a', islandId: 'i_1', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/r', context: [],
   shell: { lastOutputAt: 0 }, unread: false,
 });
-const withAgent = (status: Character['agent'] extends infer A ? (A extends { status: infer S } ? S : never) : never): Character => ({
+const withAgent = (status: Robot['agent'] extends infer A ? (A extends { status: infer S } ? S : never) : never): Robot => ({
   ...base(), agent: { kind: 'claude', sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 1 },
 });
 
 describe('applyHook', () => {
   it('attaches an agent on SessionStart and ignores SessionStart without ids', () => {
-    const c = applyHook(base(), { charId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t' }, 5);
+    const c = applyHook(base(), { robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t' }, 5);
     expect(c.agent).toEqual({ kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 5 });
-    expect(applyHook(base(), { charId: 'c_a', backend: 'claude', name: 'SessionStart' }, 5).agent).toBeUndefined();
+    expect(applyHook(base(), { robotId: 'c_a', backend: 'claude', name: 'SessionStart' }, 5).agent).toBeUndefined();
   });
   it('keeps status on SessionStart for the same session (compaction)', () => {
-    const c = applyHook({ ...withAgent('working'), unread: false }, { charId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t2' }, 9);
+    const c = applyHook({ ...withAgent('working'), unread: false }, { robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t2' }, 9);
     expect(c.agent).toMatchObject({ status: 'working', transcriptPath: '/t2', lastActivityAt: 9 });
-    const fresh = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's2', transcriptPath: '/t' }, 9);
+    const fresh = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's2', transcriptPath: '/t' }, 9);
     expect(fresh.agent?.status).toBe('idle');
   });
   it('does not mutate its input', () => {
     const c = base();
-    applyHook(c, { charId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t' }, 5);
+    applyHook(c, { robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t' }, 5);
     expect(c.agent).toBeUndefined();
   });
   it('ignores status events for a plain shell', () => {
-    expect(applyHook(base(), { charId: 'c_a', backend: 'claude', name: 'Stop' }, 5)).toEqual(base());
+    expect(applyHook(base(), { robotId: 'c_a', backend: 'claude', name: 'Stop' }, 5)).toEqual(base());
   });
   it('moves through working, done and unread', () => {
-    const w = applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 7);
+    const w = applyHook(withAgent('idle'), { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 7);
     expect(w.agent?.status).toBe('working');
     expect(w.agent?.lastActivityAt).toBe(7);
-    const d = applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Stop' }, 8);
+    const d = applyHook(w, { robotId: 'c_a', backend: 'claude', name: 'Stop' }, 8);
     expect(d.agent?.status).toBe('done');
     expect(d.unread).toBe(true);
-    const again = applyHook(d, { charId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 9);
+    const again = applyHook(d, { robotId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 9);
     expect(again.unread).toBe(false);
   });
   it('marks activity from tool calls at most every ten seconds, and from anything else at once', () => {
-    const w = applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 100);
-    const tool = (c: Character, name: HookEvent['name'], at: number) => applyHook(c, { charId: 'c_a', backend: 'claude', name }, at);
+    const w = applyHook(withAgent('idle'), { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 100);
+    const tool = (c: Robot, name: HookEvent['name'], at: number) => applyHook(c, { robotId: 'c_a', backend: 'claude', name }, at);
     const pre = tool(w, 'PreToolUse', 5_000);
     expect(pre).toEqual(w);
     expect(tool(pre, 'PostToolUse', 10_099).agent?.lastActivityAt).toBe(100);
@@ -53,37 +53,37 @@ describe('applyHook', () => {
   });
   it("asks with Codex's own question tool until it runs or an Esc ends the turn; Claude's tools of that name do not ask", () => {
     const codex = { ...withAgent('working'), agent: { ...withAgent('working').agent!, kind: 'codex' as const } };
-    const q = applyHook(codex, { charId: 'c_a', backend: 'codex', name: 'PreToolUse', toolName: 'request_user_input', message: 'Ship it?' }, 5);
+    const q = applyHook(codex, { robotId: 'c_a', backend: 'codex', name: 'PreToolUse', toolName: 'request_user_input', message: 'Ship it?' }, 5);
     expect(q.agent).toMatchObject({ status: 'blocked', prompt: 'Ship it?', askedTool: 'request_user_input' });
-    expect(applyHook(q, { charId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'exec_command' }, 6).agent?.status).toBe('blocked');
-    const answered = applyHook(q, { charId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'request_user_input' }, 6).agent!;
+    expect(applyHook(q, { robotId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'exec_command' }, 6).agent?.status).toBe('blocked');
+    const answered = applyHook(q, { robotId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'request_user_input' }, 6).agent!;
     expect(answered.status).toBe('working');
     expect(answered).not.toHaveProperty('askedTool');
-    expect(applyHook(q, { charId: 'c_a', backend: 'codex', name: 'Interrupt' }, 6).agent?.status).toBe('idle');
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'PreToolUse', toolName: 'request_user_input' }, 5).agent?.status).toBe('working');
+    expect(applyHook(q, { robotId: 'c_a', backend: 'codex', name: 'Interrupt' }, 6).agent?.status).toBe('idle');
+    expect(applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'PreToolUse', toolName: 'request_user_input' }, 5).agent?.status).toBe('working');
   });
   it("ends a Claude subagent's open question with the interrupt that ended the turn", () => {
     const asking = { ...withAgent('blocked'), agent: { ...withAgent('blocked').agent!, asking: ['a1'], promptId: 'q' } };
-    const c = applyHook(asking, { charId: 'c_a', backend: 'claude', name: 'Interrupt' }, 9).agent!;
+    const c = applyHook(asking, { robotId: 'c_a', backend: 'claude', name: 'Interrupt' }, 9).agent!;
     expect(c.status).toBe('idle');
     expect(c).not.toHaveProperty('asking');
     expect(c).not.toHaveProperty('promptId');
   });
   it('stays working when a turn ends with background agents still running', () => {
-    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 2 }, 8);
+    const w = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 2 }, 8);
     expect(w.agent?.status).toBe('working');
     expect(w.unread).toBe(false);
   });
   it('settles once a hook lists no background agent left, as when they were killed rather than finished', () => {
-    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 1 }, 8);
+    const w = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 1 }, 8);
     expect(w.agent).toMatchObject({ status: 'working', background: true });
-    expect(applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 9).agent?.background).toBe(true);
-    const idle = applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }, 9);
+    expect(applyHook(w, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 9).agent?.background).toBe(true);
+    const idle = applyHook(w, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }, 9);
     expect(idle.agent?.status).toBe('idle');
     expect(idle.agent?.background).toBeUndefined();
   });
   it('marks the work left running as shells alone when no background agent is among it, until a turn or a list with none', () => {
-    const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
+    const ev = (e: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'Stop', ...e });
     expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2, backgroundAgents: 1 }), 8).agent).not.toHaveProperty('shellsOnly');
     expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2 }), 8).agent).not.toHaveProperty('shellsOnly');
     const shells = applyHook(withAgent('working'), ev({ backgroundTasks: 1, backgroundAgents: 0 }), 8);
@@ -93,7 +93,7 @@ describe('applyHook', () => {
     expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }), 9).agent).not.toHaveProperty('shellsOnly');
   });
   it("finishes a turn that leaves only the session's monitors running, and forgets a monitor once no Stop lists it", () => {
-    const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
+    const ev = (e: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'Stop', ...e });
     const m = applyHook(withAgent('working'), ev({ name: 'PostToolUse', toolName: 'Monitor', monitor: 'b1' }), 7);
     expect(m.agent?.monitors).toEqual(['b1']);
     const done = applyHook(m, ev({ backgroundTasks: 1, backgroundAgents: 0, backgroundShells: ['b1'] }), 8);
@@ -104,22 +104,22 @@ describe('applyHook', () => {
     expect(applyHook(shell, ev({ backgroundTasks: 0, backgroundAgents: 0, backgroundShells: [] }), 9).agent?.monitors).toBeUndefined();
   });
   it('blocks on permission prompts only', () => {
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1).agent?.status).toBe('blocked');
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt' }, 1).agent?.status).toBe('blocked');
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_dialog' }, 1).agent?.status).toBe('blocked');
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_url_dialog' }, 1).agent?.status).toBe('blocked');
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'auth_success' }, 1).agent?.status).toBe('working');
+    expect(applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1).agent?.status).toBe('blocked');
+    expect(applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt' }, 1).agent?.status).toBe('blocked');
+    expect(applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_dialog' }, 1).agent?.status).toBe('blocked');
+    expect(applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_url_dialog' }, 1).agent?.status).toBe('blocked');
+    expect(applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'auth_success' }, 1).agent?.status).toBe('working');
   });
   it('is working again once the tool asked about has run, as when a choice is picked, whether it succeeded or not', () => {
-    const asked = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use AskUserQuestion' }, 1);
+    const asked = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use AskUserQuestion' }, 1);
     for (const name of ['PostToolUse', 'PostToolUseFailure'] as const) {
-      const ran = applyHook(asked, { charId: 'c_a', backend: 'claude', name }, 2);
+      const ran = applyHook(asked, { robotId: 'c_a', backend: 'claude', name }, 2);
       expect(ran.agent).toMatchObject({ status: 'working' });
       expect(ran.agent?.promptId).toBeUndefined();
     }
   });
   it('stays blocked while another tool of the batch finishes, before or after the question shows, until the one asked about runs', () => {
-    const ev = (name: HookEvent['name'], o: Partial<HookEvent> = {}): HookEvent => ({ charId: 'c_a', backend: 'claude', name, ...o });
+    const ev = (name: HookEvent['name'], o: Partial<HookEvent> = {}): HookEvent => ({ robotId: 'c_a', backend: 'claude', name, ...o });
     let c = applyHook(withAgent('working'), ev('PermissionRequest', { toolName: 'AskUserQuestion' }), 1);
     c = applyHook(c, ev('PostToolUse', { toolName: 'WebFetch' }), 2);
     c = applyHook(c, ev('Notification', { notificationType: 'permission_prompt' }), 3);
@@ -132,70 +132,70 @@ describe('applyHook', () => {
     expect(next.agent?.status).toBe('working');
   });
   it('gives each blocking question an id of its own, and drops it once the agent moves on', () => {
-    const ask = (c: Character) => applyHook(c, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
+    const ask = (c: Robot) => applyHook(c, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
     const one = ask(withAgent('working'));
     const two = ask(one);
     expect(one.agent?.promptId).toEqual(expect.any(String));
     expect(two.agent?.promptId).toEqual(expect.any(String));
     expect(two.agent?.promptId).not.toBe(one.agent?.promptId);
-    expect(applyHook(two, { charId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 2).agent?.promptId).toBeUndefined();
+    expect(applyHook(two, { robotId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 2).agent?.promptId).toBeUndefined();
   });
   it('is done, saying why, when an API error ends the turn', () => {
-    const d = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'StopFailure', message: "You've hit your limit" }, 8);
+    const d = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'StopFailure', message: "You've hit your limit" }, 8);
     expect(d.agent).toMatchObject({ status: 'done', prompt: "You've hit your limit" });
     expect(d.unread).toBe(true);
-    expect(applyHook(d, { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 9).agent?.prompt).toBeUndefined();
+    expect(applyHook(d, { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 9).agent?.prompt).toBeUndefined();
   });
   it('goes idle when Claude Code says it sits at its prompt, as after an Esc, but keeps a done unseen', () => {
-    const idle = (c: Character) => applyHook(c, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 1).agent?.status;
+    const idle = (c: Robot) => applyHook(c, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 1).agent?.status;
     expect(idle(withAgent('working'))).toBe('idle');
     expect(idle(withAgent('blocked'))).toBe('idle');
     expect(idle(withAgent('done'))).toBe('done');
     // the turn ended with background agents out; Claude Code's notice does not count them
-    const waiting = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 1 }, 2);
+    const waiting = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 1 }, 2);
     expect(idle(waiting)).toBe('working');
     // a question put while they run and dismissed in the terminal is gone, and the work goes on
-    const asked = applyHook(waiting, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt', message: 'may I' }, 3);
-    const dismissed = applyHook(asked, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 4);
+    const asked = applyHook(waiting, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt', message: 'may I' }, 3);
+    const dismissed = applyHook(asked, { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 4);
     expect(dismissed.agent).toMatchObject({ status: 'working', background: true });
     expect(dismissed.agent?.prompt).toBeUndefined();
     expect(dismissed.agent?.promptId).toBeUndefined();
-    const reported = applyHook(waiting, { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 3);
+    const reported = applyHook(waiting, { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 3);
     expect(idle(reported)).toBe('idle');
   });
   it('follows the transcript when the session moves it (entering a worktree)', () => {
-    const moved = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'PreToolUse', sessionId: 's', transcriptPath: '/wt/t' }, 2);
+    const moved = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'PreToolUse', sessionId: 's', transcriptPath: '/wt/t' }, 2);
     expect(moved.agent?.transcriptPath).toBe('/wt/t');
-    const other = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'PreToolUse', sessionId: 's2', transcriptPath: '/x' }, 2);
+    const other = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'PreToolUse', sessionId: 's2', transcriptPath: '/x' }, 2);
     expect(other.agent?.transcriptPath).toBe('/t');
   });
   it('records the prompt a UserPromptSubmit hook carries, newest only', () => {
-    const one = applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', prompt: { id: 'p1', text: 'hoist' } }, 7);
+    const one = applyHook(withAgent('idle'), { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', prompt: { id: 'p1', text: 'hoist' } }, 7);
     expect(one.agent?.lastPrompt).toEqual({ id: 'p1', text: 'hoist', at: 7 });
-    const two = applyHook(one, { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', sessionId: 's', prompt: { id: 'p2', text: 'furl' } }, 8);
+    const two = applyHook(one, { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', sessionId: 's', prompt: { id: 'p2', text: 'furl' } }, 8);
     expect(two.agent?.lastPrompt).toEqual({ id: 'p2', text: 'furl', at: 8 });
-    expect(applyHook(two, { charId: 'c_a', backend: 'claude', name: 'Stop' }, 9).agent?.lastPrompt).toEqual({ id: 'p2', text: 'furl', at: 8 });
+    expect(applyHook(two, { robotId: 'c_a', backend: 'claude', name: 'Stop' }, 9).agent?.lastPrompt).toEqual({ id: 'p2', text: 'furl', at: 8 });
   });
-  it('ignores a prompt submitted in another session (a nested claude under the same character)', () => {
-    const c = applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', sessionId: 's2', prompt: { id: 'p1', text: 'hoist' } }, 7);
+  it('ignores a prompt submitted in another session (a nested claude under the same robot)', () => {
+    const c = applyHook(withAgent('idle'), { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', sessionId: 's2', prompt: { id: 'p1', text: 'hoist' } }, 7);
     expect(c.agent?.lastPrompt).toBeUndefined();
   });
   it('detaches on SessionEnd', () => {
-    expect(applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'SessionEnd' }, 1).agent).toBeUndefined();
+    expect(applyHook(withAgent('idle'), { robotId: 'c_a', backend: 'claude', name: 'SessionEnd' }, 1).agent).toBeUndefined();
   });
   it('carries the prompt a blocking notification brought, and drops it once the agent moves on', () => {
-    const b = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' }, 3);
+    const b = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' }, 3);
     expect(b.agent).toMatchObject({ status: 'blocked', prompt: 'Claude needs your permission to use Bash' });
-    expect(applyHook(b, { charId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 4).agent?.prompt).toBeUndefined();
-    expect(applyHook(b, { charId: 'c_a', backend: 'claude', name: 'Stop' }, 4).agent?.prompt).toBeUndefined();
-    const silent = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 3);
+    expect(applyHook(b, { robotId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 4).agent?.prompt).toBeUndefined();
+    expect(applyHook(b, { robotId: 'c_a', backend: 'claude', name: 'Stop' }, 4).agent?.prompt).toBeUndefined();
+    const silent = applyHook(withAgent('working'), { robotId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 3);
     expect(silent.agent?.status).toBe('blocked');
     expect(silent.agent?.prompt).toBeUndefined();
   });
 });
 
 describe("applyHook for a Claude subagent's question", () => {
-  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'PreToolUse', ...o });
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'PreToolUse', ...o });
   const notify = ev({ name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
   // the turn ended with a background subagent out, and that subagent then asked
   const asked = (by = 'a1', from = applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 }), 1)) =>
@@ -225,7 +225,7 @@ describe("applyHook for a Claude subagent's question", () => {
     expect(applyHook(blocked, ev({}), 5).agent?.status).toBe('blocked');
     expect(applyHook(blocked, ev({ agentId: 'a1' }), 5).agent?.status).toBe('working');
   });
-  it('leaves the character as it was on a subagent event that changes no question', () => {
+  it('leaves the robot as it was on a subagent event that changes no question', () => {
     const c = withAgent('working');
     expect(applyHook(c, ev({ agentId: 'a1' }), 9)).toBe(c);
     expect(applyHook(c, ev({ name: 'SubagentStop', agentId: 'a1' }), 9)).toBe(c);
@@ -267,7 +267,7 @@ describe("applyHook for a Claude subagent's question", () => {
 });
 
 describe('applyHook for the subagents running', () => {
-  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'SubagentStart', sessionId: 's', ...o });
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'SubagentStart', sessionId: 's', ...o });
   const running = (...ids: string[]) => ids.reduce((c, id, i) => applyHook(c, ev({ agentId: id }), 2 + i), withAgent('working'));
 
   it('counts a subagent from its start to its stop, and one that starts again under its id', () => {
@@ -279,7 +279,7 @@ describe('applyHook for the subagents running', () => {
     expect(applyHook(one, ev({ agentId: 'a1' }), 6).agent?.subagents).toEqual(['a2', 'a1']);
     expect(two.agent?.status).toBe('working');
   });
-  it('leaves the character as it was on a start it already counts or a stop it never counted', () => {
+  it('leaves the robot as it was on a start it already counts or a stop it never counted', () => {
     const c = running('a1');
     expect(applyHook(c, ev({ agentId: 'a1' }), 5)).toBe(c);
     expect(applyHook(c, ev({ name: 'SubagentStop', agentId: 'a9' }), 5)).toBe(c);
@@ -295,7 +295,7 @@ describe('applyHook for the subagents running', () => {
     expect(stop({ backgroundTasks: 0, backgroundAgents: 0, backgroundAgentIds: [] })).toBeUndefined();
     expect(stop({})).toEqual(['a1', 'a2']);
   });
-  it('reconciles a character blocked on a subagent at the Stop too', () => {
+  it('reconciles a robot blocked on a subagent at the Stop too', () => {
     const asked = applyHook(applyHook(running('a1', 'a2'), ev({ name: 'PermissionRequest', agentId: 'a1' }), 5),
       ev({ name: 'Notification', notificationType: 'permission_prompt' }), 6);
     const c = applyHook(asked, ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1, backgroundAgentIds: ['a1'] }), 7);
@@ -325,7 +325,7 @@ describe('applyHook for the subagents running', () => {
 });
 
 describe('applyHook for codex', () => {
-  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'codex', name: 'Stop', sessionId: 's1', ...o });
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'codex', name: 'Stop', sessionId: 's1', ...o });
   const started = () => applyHook(base(), ev({ name: 'SessionStart' }), 100);
 
   it('starts a codex agent before its rollout has a path, with the model the hook names', () => {
@@ -368,7 +368,7 @@ describe('applyHook for codex', () => {
 });
 
 describe('applyHook for opencode', () => {
-  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'opencode', name: 'Stop', sessionId: 's', ...o });
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'opencode', name: 'Stop', sessionId: 's', ...o });
   const at = (status: Parameters<typeof withAgent>[0]) => ({ ...withAgent(status), agent: { ...withAgent(status).agent!, kind: 'opencode' as const } });
 
   it('blocks on a permission ask at once, with what it asked', () => {
@@ -399,11 +399,11 @@ describe('applyHook for opencode', () => {
   });
 });
 
-// a `claude -p` or `codex exec` run from inside a character inherits SVALL_CHAR_ID, so its hooks reach the same slot
+// a `claude -p` or `codex exec` run from inside a robot inherits SVALL_ROBOT_ID, so its hooks reach the same slot
 describe('applyHook with a nested session', () => {
   const S1 = '11111111-1111-4111-8111-111111111111';
   const S2 = '22222222-2222-4222-8222-222222222222';
-  const ev = (name: HookEvent['name'], sessionId: string, o: Partial<HookEvent> = {}): HookEvent => ({ charId: 'c_a', backend: 'claude', name, sessionId, ...o });
+  const ev = (name: HookEvent['name'], sessionId: string, o: Partial<HookEvent> = {}): HookEvent => ({ robotId: 'c_a', backend: 'claude', name, sessionId, ...o });
   const run = (steps: HookEvent[], alive: number[] = [100, 200]) =>
     steps.reduce((c, e) => applyHook(c, e, 1, (pid) => alive.includes(pid)), base());
   const outer = [ev('SessionStart', S1, { pid: 100 }), ev('UserPromptSubmit', S1, { pid: 100 }), ev('PreToolUse', S1, { pid: 100 })];
@@ -478,19 +478,19 @@ describe('applyHook with no agent on record', () => {
   const S1 = '11111111-1111-4111-8111-111111111111';
   // a window the fleet took back without its SessionStart
   it('takes the agent from the next prompt submitted there', () => {
-    const c = applyHook(base(), { charId: 'c_a', backend: 'codex', name: 'UserPromptSubmit', sessionId: S1, pid: 100, transcriptPath: '/r.jsonl', prompt: { id: 't1', text: 'go' } }, 7);
+    const c = applyHook(base(), { robotId: 'c_a', backend: 'codex', name: 'UserPromptSubmit', sessionId: S1, pid: 100, transcriptPath: '/r.jsonl', prompt: { id: 't1', text: 'go' } }, 7);
     expect(c.agent).toEqual({ kind: 'codex', sessionId: S1, pid: 100, status: 'working', lastActivityAt: 7, transcriptPath: '/r.jsonl', lastPrompt: { id: 't1', text: 'go', at: 7 } });
   });
   it('takes it from nothing else, nor from a prompt without a session id to resume by', () => {
-    expect(applyHook(base(), { charId: 'c_a', backend: 'claude', name: 'Stop', sessionId: S1, pid: 100 }, 7).agent).toBeUndefined();
-    expect(applyHook(base(), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', pid: 100 }, 7).agent).toBeUndefined();
+    expect(applyHook(base(), { robotId: 'c_a', backend: 'claude', name: 'Stop', sessionId: S1, pid: 100 }, 7).agent).toBeUndefined();
+    expect(applyHook(base(), { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', pid: 100 }, 7).agent).toBeUndefined();
   });
 });
 
 describe('the process holding a slot', () => {
   const S1 = '11111111-1111-4111-8111-111111111111';
   const S2 = '22222222-2222-4222-8222-222222222222';
-  const start = (sessionId: string, pid: number): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId, pid });
+  const start = (sessionId: string, pid: number): HookEvent => ({ robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId, pid });
   it('counts as running while it is, whoever it belongs to, and as gone once it has exited', () => {
     // pid 1 is launchd, which this user may not signal
     expect(applyHook(applyHook(base(), start(S1, 1), 1), start(S2, 200), 2).agent?.sessionId).toBe(S1);
@@ -500,9 +500,9 @@ describe('the process holding a slot', () => {
 });
 
 describe('applyStatus', () => {
-  it('reads the context of the session on record, and not of one the character has left', () => {
-    expect(applyStatus(withAgent('idle'), { charId: 'c_a', sessionId: 's', contextPct: 40 }).agent?.contextPct).toBe(40);
-    expect(applyStatus(withAgent('idle'), { charId: 'c_a', sessionId: 's2', contextPct: 40 }).agent?.contextPct).toBeUndefined();
+  it('reads the context of the session on record, and not of one the robot has left', () => {
+    expect(applyStatus(withAgent('idle'), { robotId: 'c_a', sessionId: 's', contextPct: 40 }).agent?.contextPct).toBe(40);
+    expect(applyStatus(withAgent('idle'), { robotId: 'c_a', sessionId: 's2', contextPct: 40 }).agent?.contextPct).toBeUndefined();
   });
 });
 
@@ -520,9 +520,9 @@ describe('markSeen', () => {
 describe('a second terminal', () => {
   it('runs the same reducer on its own record', () => {
     const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false };
-    const started = applyHook(second, { charId: 'c_a', backend: 'claude', term: 2, name: 'SessionStart', sessionId: 's2', transcriptPath: '/t2' }, 5);
+    const started = applyHook(second, { robotId: 'c_a', backend: 'claude', term: 2, name: 'SessionStart', sessionId: 's2', transcriptPath: '/t2' }, 5);
     expect(started).toEqual({ ...second, agent: { kind: 'claude', sessionId: 's2', transcriptPath: '/t2', status: 'idle', lastActivityAt: 5 } });
-    const done = applyHook(started, { charId: 'c_a', backend: 'claude', term: 2, name: 'Stop' }, 6);
+    const done = applyHook(started, { robotId: 'c_a', backend: 'claude', term: 2, name: 'Stop' }, 6);
     expect(done).toMatchObject({ unread: true, agent: { status: 'done' } });
     expect(markSeen(done)).toMatchObject({ unread: false, agent: { status: 'idle' } });
   });

@@ -53,7 +53,7 @@ describe('buffers', () => {
     expect(seen).toEqual(['# Old\n', '# Draft\n', '# New\n']);
   });
 
-  it('drops one buffer, and every buffer of a character', () => {
+  it('drops one buffer, and every buffer of a robot', () => {
     loadBuffer('c', 'a.ts', '', 1, []);
     loadBuffer('c', 'b.ts', '', 1, []);
     loadBuffer('d', 'a.ts', '', 1, []);

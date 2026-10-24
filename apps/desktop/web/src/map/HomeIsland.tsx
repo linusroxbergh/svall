@@ -1,4 +1,4 @@
-import type { Character, ContextItem, Home as HomeConfig, HomeAction, Island } from '@svall/protocol';
+import type { Robot, ContextItem, Home as HomeConfig, HomeAction, Island } from '@svall/protocol';
 import { useMemo, useState } from 'react';
 import type { DropTarget } from '../drop.js';
 import type { DisplayStatus } from '../selectors.js';
@@ -20,14 +20,14 @@ export function Home({
   onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu, dropHover,
 }: {
   island: Island;
-  crew: Character[];
+  crew: Robot[];
   config: HomeConfig;
   collapsed: boolean;
   selected: boolean;
   selectedId?: string;
   drag?: Drag;
-  status(c: Character): DisplayStatus;
-  failed?(c: Character): string | undefined;
+  status(c: Robot): DisplayStatus;
+  failed?(c: Robot): string | undefined;
   links?: boolean;
   shift: number;
   // the shift the window's width alone gives home: the row wraps by it, so its height never follows the map's zoom
@@ -45,7 +45,7 @@ export function Home({
   onHoverStart(id: string): void;
   onHoverEnd(): void;
   onOpen(id: string): void;
-  onLink(item: ContextItem, charId: string, at: { x: number; y: number }): void;
+  onLink(item: ContextItem, robotId: string, at: { x: number; y: number }): void;
   onMenu(id: string, e: React.MouseEvent): void;
   dropHover?: DropTarget;
 }) {
@@ -91,7 +91,7 @@ export function Home({
             const at = dragging && over ? over.local : c.cell;
             return (
               <Token key={c.id} c={c} status={status(c)} world={{ x: at.x + PAD_CELLS, y: at.y + PAD_CELLS }} links={links}
-                selected={c.id === selectedId} dragging={dragging} hover={dropHover?.kind === 'char' && dropHover.id === c.id} failed={failed?.(c)}
+                selected={c.id === selectedId} dragging={dragging} hover={dropHover?.kind === 'robot' && dropHover.id === c.id} failed={failed?.(c)}
                 pointer={tokenPointer(c.id)} onHoverStart={() => onHoverStart(c.id)} onHoverEnd={onHoverEnd}
                 onOpen={() => onOpen(c.id)} onLink={onLink} onMenu={(e) => onMenu(c.id, e)} />
             );

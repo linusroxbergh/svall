@@ -120,6 +120,11 @@ describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, ho
     expect(args(new ProcessTable(ps, installedScripts('/opt/other')).pane(pane.agent)?.agent?.commands)?.slice(3)).toEqual(ran.map((r) => r.args));
   });
 
+  it('leaves out the hook shell an older svalld installed, which an agent it started may still run', () => {
+    const old = { pid: 4_200_000, ppid: pane.agentGroup, pgid: 4_200_000, tpgid: 0, stat: 'Ss', args: `/bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { '${home}/hooks/svall-hook' claude "$PPID"; }` };
+    expect(new ProcessTable([...parsePs(fixture(file)), old], installedScripts(home)).pane(pane.agent)?.agent?.commands).toHaveLength(3);
+  });
+
   it("finds a standalone Codex, leaving out the MCP servers it keeps on the terminal in groups of their own", () => {
     const p = table.pane(codex.pane);
     expect(args(p?.foreground)).toEqual(['codex']);

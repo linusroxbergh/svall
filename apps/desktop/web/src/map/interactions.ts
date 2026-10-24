@@ -1,5 +1,5 @@
 import { HOME_ISLAND, MIN_SIZE, isHomeSlot, type Cell, type FleetState, type Size } from '@svall/protocol';
-import { cellOwner, characterAt, crowded } from './layout.js';
+import { cellOwner, robotAt, crowded } from './layout.js';
 import { theme } from '../theme.js';
 import type { Drag, Target } from './types.js';
 
@@ -60,7 +60,7 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
   const drop = (d: Drag, fleet: FleetState): Intent | undefined => {
     if (d.kind === 'figure') {
       if (!d.over) return { type: 'newIsland', id: d.id, cell: d.cell };
-      const other = characterAt(fleet, d.over.islandId, d.over.local);
+      const other = robotAt(fleet, d.over.islandId, d.over.local);
       if (other?.id === d.id) return undefined;
       if (other) return { type: 'swap', id: d.id, otherId: other.id };
       // a cell too close to another card, or past the last slot of a full home, asks for the island alone: the fleet finds

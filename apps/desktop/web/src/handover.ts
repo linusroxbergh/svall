@@ -1,22 +1,22 @@
 import {
   HANDOVER_PHASES,
-  type Blocker, type Character, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type StopReason, type Verdict,
+  type Blocker, type Robot, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type StopReason, type Verdict,
   type Warning,
 } from '@svall/protocol';
 import { machineName, withoutTokens } from './host.js';
 
 // what `svall handover --json` prints
-export type { CharacterResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@svall/protocol';
+export type { RobotResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@svall/protocol';
 
 export type SectionId = 'checks' | 'rest' | 'transfer' | 'verify' | 'commit' | 'resume';
 // Abort is possible up to the commit, which has a section of its own
 export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }[] = [
   { id: 'checks', label: 'Checks', phases: ['begin'] },
-  { id: 'rest', label: 'Resting characters', phases: ['freeze'] },
+  { id: 'rest', label: 'Resting robots', phases: ['freeze'] },
   { id: 'transfer', label: 'Transferring files and sessions', phases: ['transfer'] },
   { id: 'verify', label: 'Verifying', phases: ['verify', 'prepare', 'ready'] },
   { id: 'commit', label: 'Committing', phases: ['commit'] },
-  { id: 'resume', label: 'Resuming characters', phases: ['activate', 'complete'] },
+  { id: 'resume', label: 'Resuming robots', phases: ['activate', 'complete'] },
 ];
 export type SectionState = 'pending' | 'active' | 'waiting' | 'done' | 'stopped';
 
@@ -64,7 +64,7 @@ const sectionAt = (p: HandoverPhase): number => Math.max(0, SECTIONS.findIndex((
 export const followRun = (to?: string, choices: HandoverChoices = {}): HandoverRun => ({ to, following: true, rows: [], choices, awaitingOwner: false });
 
 const sectionOf = (kind: HandoverEntityKind, phase: HandoverPhase): SectionId =>
-  kind !== 'character' ? 'transfer' : phase === 'activate' || phase === 'complete' ? 'resume' : 'rest';
+  kind !== 'robot' ? 'transfer' : phase === 'activate' || phase === 'complete' ? 'resume' : 'rest';
 
 function withEntity(rows: Row[], e: EntityData): Row[] {
   const section = sectionOf(e.kind, e.phase);
@@ -112,7 +112,7 @@ const isSafe = (v: unknown): boolean => isEach(v, isString);
 
 function isOutcome(d: Fields): boolean {
   switch (d.status) {
-    case 'complete': return isEach(d.characters, (c) => isObject(c) && isString(c.id) && typeof c.ok === 'boolean' && optional(c.error, isString) && optional(c.notice, isString))
+    case 'complete': return isEach(d.robots, (c) => isObject(c) && isString(c.id) && typeof c.ok === 'boolean' && optional(c.error, isString) && optional(c.notice, isString))
       && optional(d.pending, isSafe) && optional(d.error, isString);
     case 'none': return isString(d.reason);
     case 'blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue);
@@ -132,7 +132,7 @@ export function readable(e: unknown): e is HandoverEvent {
     case 'handover.preflight':
       return isObject(d.summary) && ['roots', 'files', 'bytes', 'sessions'].every((k) => isNumber((d.summary as Fields)[k]))
         && isEach(d.blockers, isIssue) && isEach(d.warnings, isIssue)
-        && optional(d.names, (n) => isObject(n) && isObject(n.characters) && isObject(n.roots) && optional(n.landing, isObject) && optional(n.sessions, isObject));
+        && optional(d.names, (n) => isObject(n) && isObject(n.robots) && isObject(n.roots) && optional(n.landing, isObject) && optional(n.sessions, isObject));
     case 'handover.changed': return isPhase(d.phase) && optional(d.transactionId, isString);
     case 'handover.entity':
       return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
@@ -397,13 +397,13 @@ export function holdsTerminals(run: HandoverRun | undefined): boolean {
   return !!run.phase && step(run.phase) >= step('freeze');
 }
 
-/** What the rest does with a character's main terminal, as handover.md's What restarts gives it. */
+/** What the rest does with a robot's main terminal, as handover.md's What restarts gives it. */
 export type RestHow = 'resume' | 'wait' | 'answer' | 'background' | 'shell' | 'dormant';
 export type RestGroup = { how: RestHow; names: string[] };
 
 const REST_ORDER: RestHow[] = ['resume', 'wait', 'answer', 'background', 'shell', 'dormant'];
 
-function restOf(c: Character): RestHow {
+function restOf(c: Robot): RestHow {
   if (!c.tmux) return 'dormant';
   const a = c.agent;
   if (!a) return 'shell';
@@ -414,9 +414,9 @@ function restOf(c: Character): RestHow {
 }
 
 /** Who stops for a handover and how, by name: the groups that have anyone in them, in the order the sheet lists them. */
-export function restPlan(characters: Record<string, Character>): RestGroup[] {
+export function restPlan(robots: Record<string, Robot>): RestGroup[] {
   const by = new Map<RestHow, string[]>();
-  for (const c of Object.values(characters)) by.set(restOf(c), [...(by.get(restOf(c)) ?? []), c.name]);
+  for (const c of Object.values(robots)) by.set(restOf(c), [...(by.get(restOf(c)) ?? []), c.name]);
   return REST_ORDER.flatMap((how) => (by.has(how) ? [{ how, names: by.get(how)! }] : []));
 }
 
@@ -436,7 +436,7 @@ export function chosen(choices: HandoverChoices, b: Blocker): boolean {
     case 'interrupt': return choices.interruptAfterMs !== undefined;
     case 'terminate': {
       const { terminateShells } = choices;
-      return terminateShells === true || (b.entity?.kind === 'character' && Array.isArray(terminateShells) && terminateShells.includes(b.entity.id));
+      return terminateShells === true || (b.entity?.kind === 'robot' && Array.isArray(terminateShells) && terminateShells.includes(b.entity.id));
     }
     case 'archive': return !!b.entity && !!choices.archiveRoots?.includes(b.entity.id);
     case 'carry': return choices.carryUnused === true;
@@ -451,7 +451,7 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
   switch (choiceFor(b)) {
     case 'interrupt': return { ...rest, ...(on && { interruptAfterMs: 0 }), ...(terminateShells !== undefined && { terminateShells }), ...(archiveRoots && { archiveRoots }) };
     case 'terminate': {
-      const named = blockers.flatMap((x) => (choiceFor(x) === 'terminate' && x.entity?.kind === 'character' ? [x.entity.id] : []));
+      const named = blockers.flatMap((x) => (choiceFor(x) === 'terminate' && x.entity?.kind === 'robot' ? [x.entity.id] : []));
       const held = Array.isArray(terminateShells) ? terminateShells : [];
       const shells = on ? [...new Set([...held, ...named])] : held.filter((id) => !named.includes(id));
       return { ...rest, ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(shells.length && { terminateShells: shells }), ...(archiveRoots && { archiveRoots }) };
@@ -479,7 +479,7 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext, warning = false): string | undefined {
-  const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
+  const who = b.entity?.kind === 'robot' ? ctx.name(b.entity.id) : 'it';
   // the Linux machine, by the name svall host knows it by
   const linux = ctx.pull ? ctx.source : ctx.destination;
   const svall = ctx.svall ?? 'svall';
@@ -497,7 +497,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'parent_missing':
       return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
     case 'worktree_unresolved':
-      return 'Put the folder back or close the character.\nWhat Git sees, run in the folder:\n`git status`';
+      return 'Put the folder back or close the robot.\nWhat Git sees, run in the folder:\n`git status`';
     case 'worktree_unused':
       return 'Commit or stash its work on a branch, unlock it, or remove it:\n`git worktree remove <path>`';
     case 'destination_no_space':
@@ -507,7 +507,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'path_symlinked':
       return blockerSide(b) === 'destination'
         ? `Remove the link on ${ctx.destination}, or rename the folder there as the message says; then try again.`
-        : "Use the real path the message names.\ncd there in the character's terminal, or change the context item or home.cwd that names the link.";
+        : "Use the real path the message names.\ncd there in the robot's terminal, or change the context item or home.cwd that names the link.";
     case 'mission_control_shared':
       return 'Give one fleet a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
     case 'transcript_missing':
@@ -515,7 +515,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'ssh_interactive':
       return `In Terminal, ssh once to the destination ${linux} was added with and answer what it asks.\nKeep a key's passphrase in the agent:\n\`ssh-add --apple-use-keychain\`\nThen try again.`;
     case 'platform_unsupported':
-      return 'If the repository runs there, add the platform to its .svall/handover.json.\nOtherwise close the characters working in it.';
+      return 'If the repository runs there, add the platform to its .svall/handover.json.\nOtherwise close the robots working in it.';
     case 'rsync_unsupported':
       return `On ${linux}, install rsync 3.2.3 or newer:\n\`sudo apt install rsync\`\nOn this Mac, this checks the rsync Svall brings:\n\`${svall} doctor\``;
     case 'linger_off':
@@ -543,7 +543,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'shell_busy':
       return `Terminate and carry ends the command in every terminal named here.\nThe shell opens again in its folder on ${ctx.destination}.`;
     case 'destination_diverged': case 'destination_occupied': {
-      if (b.code === 'destination_occupied' || b.entity?.kind !== 'character') return `Archive and carry moves what is there on ${ctx.destination} aside to a timestamped folder beside it; nothing is deleted.`;
+      if (b.code === 'destination_occupied' || b.entity?.kind !== 'robot') return `Archive and carry moves what is there on ${ctx.destination} aside to a timestamped folder beside it; nothing is deleted.`;
       const id = OPENCODE_SESSION.exec(b.message)?.[1];
       return `The copy of this session on ${ctx.destination} went on there. ` + (id
         ? `To keep it, run these on ${ctx.destination}, then Try again:\n\`opencode session export --standalone ${id} > keep.json\`\n\`opencode session delete --standalone ${id}\``
@@ -551,7 +551,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     }
     case 'repository_unused':
       return `Carry the folder whole copies those repositories to ${ctx.destination} with it.`;
-    case 'character_pinned':
+    case 'robot_pinned':
       return `${who} is set to Keep on this machine: turn that off on ${who}'s card.`;
     case 'external_writer':
       return ctx.pull
@@ -568,7 +568,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'claude_trust':
       return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}.\n"No, exit" is preselected: choose "Yes, I trust this folder".`;
     case 'claude_bypass':
-      return `Claude warns about Bypass Permissions mode when a moved character resumes in it on ${ctx.destination}.\n"No, exit" is preselected: choose "Yes, I accept", once for that machine.`;
+      return `Claude warns about Bypass Permissions mode when a moved robot resumes in it on ${ctx.destination}.\n"No, exit" is preselected: choose "Yes, I accept", once for that machine.`;
     case 'incompatible_release': case 'incompatible_protocol': case 'incompatible_schema': {
       const linux = ctx.pull ? ctx.source : ctx.destination;
       return `Both machines need the same Svall release: Upgrade ${linux} under Settings → Machines.\nIf it runs a newer release than this Mac, update this Mac first.`;
@@ -585,8 +585,8 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'agent_hooks_missing':
       return `On ${ctx.destination}, run this, then try again:\n\`svall setup\``;
     case 'path_unsupported':
-      return b.entity?.kind === 'character'
-        ? 'Do one of these, then try again:\n- move what it names\n- cd that terminal to a folder that travels\n- close the character'
+      return b.entity?.kind === 'robot'
+        ? 'Do one of these, then try again:\n- move what it names\n- cd that terminal to a folder that travels\n- close the robot'
         : `Follow the message, then try again:\n- move what it names out of the folder that carries it\n- fix handover.exclude in fleet.json\n- make the folder writable on ${ctx.destination}`;
     default:
       return undefined;
@@ -635,10 +635,10 @@ export function entityPath(e: Blocker['entity'], names?: Names, message?: string
   return undefined;
 }
 
-/** Who or what an entity is for the user: a character's name, a folder by its short path, whose a session is; an id only when nothing names it. */
+/** Who or what an entity is for the user: a robot's name, a folder by its short path, whose a session is; an id only when nothing names it. */
 export function entityLabel(e: Blocker['entity'], name: (id: string) => string, names?: Names, message?: string, home?: string): string | undefined {
   if (!e) return undefined;
-  if (e.kind === 'character') return name(e.id);
+  if (e.kind === 'robot') return name(e.id);
   if (e.kind === 'session') return names?.sessions?.[e.id] ? `${names.sessions[e.id]}'s session` : `session ${e.id}`;
   const path = entityPath(e, names, message);
   if (path) return shortPath(path, home);
@@ -655,7 +655,7 @@ export function problemOf(message: string, explained: boolean): { problem: strin
 
 /** What picking a blocker's choice will do, for the row that holds it. */
 export function planOf(choice: Choice, b: Blocker, ctx: HintContext, names?: Names): string {
-  const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
+  const who = b.entity?.kind === 'robot' ? ctx.name(b.entity.id) : 'it';
   switch (choice) {
     case 'interrupt': return `${who} will be stopped with Escape and resume from its transcript on ${ctx.destination}.`;
     case 'terminate': return `What runs in ${who}'s terminal ends; the shell reopens in its folder on ${ctx.destination}.`;
@@ -729,12 +729,12 @@ export function restingLine(run: HandoverRun | undefined): string {
   return `${head}: ${at.label}${at.id === 'transfer' && whole ? `, ${Math.floor((transferTotals(run.rows).bytes / whole) * 100)}%` : ''}…`;
 }
 
-/** How the resume went for every character the freeze rested: agents resume from transcripts, shells reopen as they are opened. */
+/** How the resume went for every robot the freeze rested: agents resume from transcripts, shells reopen as they are opened. */
 export function resumeTally(run: HandoverRun): { resumed: number; failed: number; shells: number } {
   const rested = run.rows.filter((r) => r.section === 'rest').map((r) => r.id);
   const agents = run.rows.filter((r) => r.section === 'resume');
-  const failed = run.result?.status === 'complete' ? run.result.characters.filter((c) => !c.ok).length : agents.filter((r) => r.error).length;
-  const resumed = run.result?.status === 'complete' ? run.result.characters.filter((c) => c.ok).length : agents.filter((r) => !r.error).length;
+  const failed = run.result?.status === 'complete' ? run.result.robots.filter((c) => !c.ok).length : agents.filter((r) => r.error).length;
+  const resumed = run.result?.status === 'complete' ? run.result.robots.filter((c) => c.ok).length : agents.filter((r) => !r.error).length;
   return { resumed, failed, shells: rested.filter((id) => !agents.some((a) => a.id === id)).length };
 }
 
@@ -778,7 +778,7 @@ function standingLine(s: Verdict, destination: string): string {
     case 'committed': case 'moved':
       if (!s.safe.length) return lostLine(destination);
       return s.standing === 'committed'
-        ? `The fleet is ${destination}'s now, and stopped before its characters resumed there.`
+        ? `The fleet is ${destination}'s now, and stopped before its robots resumed there.`
         : `The fleet runs on ${destination} now; what the handover left open there is still to finish.`;
     case 'returned': return 'The gateway let go of this handover; the fleet stays where it was. Abort finishes letting go.';
     case 'superseded': return SUPERSEDED;
@@ -794,10 +794,10 @@ export function headline(run: HandoverRun, destination: string): string {
   const r = run.result;
   switch (r?.status) {
     case 'complete': {
-      const failed = r.characters.filter((c) => !c.ok).length;
+      const failed = r.robots.filter((c) => !c.ok).length;
       return [
         `The fleet runs on ${destination} now.`,
-        failed ? `${failed} ${failed === 1 ? 'character' : 'characters'} did not resume.` : '',
+        failed ? `${failed} ${failed === 1 ? 'robot' : 'robots'} did not resume.` : '',
         r.pending?.length ? `${r.pending.join(' and ')} has not heard that it finished${r.error ? ` (${r.error})` : ''}; Retry tells it.` : '',
       ].filter(Boolean).join(' ');
     }

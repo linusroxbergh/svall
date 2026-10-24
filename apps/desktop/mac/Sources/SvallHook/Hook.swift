@@ -13,7 +13,7 @@ func given(_ a: JSON?, _ b: @autoclosure () -> JSON?) -> JSON? {
     return a ?? b()
 }
 
-func hookLine(_ h: JSON, charId: Text, term: Bool, backend: String, pid: Double?) -> Bytes {
+func hookLine(_ h: JSON, robotId: Text, term: Bool, backend: String, pid: Double?) -> Bytes {
     let event = h["hook_event_name"]?.string
     var message = h["message"]
     // codex says what it asks permission for inside tool_input, and its own questions are a tool's input
@@ -48,7 +48,7 @@ func hookLine(_ h: JSON, charId: Text, term: Bool, backend: String, pid: Double?
         if k == "prompt", case .string(let s) = v { v = .string(Array(s.prefix(4000))) }
         hook.append((text(k), v))
     }
-    var out: [(key: Text, value: JSON)] = [(text("charId"), .string(charId))]
+    var out: [(key: Text, value: JSON)] = [(text("robotId"), .string(robotId))]
     if term { out.append((text("term"), .number(2))) }
     out.append((text("backend"), .string(text(backend))))
     if let pid { out.append((text("pid"), .number(pid))) }
@@ -87,13 +87,13 @@ func talk(_ fd: Int32, _ out: Bytes, _ event: Text?) -> Never {
     }
 }
 
-func hook(home: Bytes, charId: Text, term: Bool, backend: String, pid: Double?) -> Never {
+func hook(home: Bytes, robotId: Text, term: Bool, backend: String, pid: Double?) -> Never {
     exitAfter(1.5)
     let h = Parser.parse(readAll(0)) ?? .object([])
     // the script throws on a payload of null before it writes anything
     if case .null = h { exit(0) }
     let event = h["hook_event_name"]?.string
-    let out = hookLine(h, charId: charId, term: term, backend: backend, pid: pid)
+    let out = hookLine(h, robotId: robotId, term: term, backend: backend, pid: pid)
     let sock = join(home, "hooks.sock"), down = join(home, "hooks.down")
     // a daemon restarting has no socket for a second or two, so a refused connect is tried again, for up to 2 s;
     // a tool call is not, nor any event within a minute of one giving up

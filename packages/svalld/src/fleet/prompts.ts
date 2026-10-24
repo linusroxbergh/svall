@@ -21,9 +21,9 @@ type Held = { text: string; enter: boolean; paneId: string; sessionId?: string }
 
 const laneOf = (id: string, term?: 2) => (term === 2 ? `${id}/2` : id);
 
-/** What is typed into a character's terminals, the answers to its agent's questions, and waits on that agent. */
+/** What is typed into a robot's terminals, the answers to its agent's questions, and waits on that agent. */
 export class Prompts {
-  // the question each character's answer is being typed for, so a second answer to it is refused rather than typed too
+  // the question each robot's answer is being typed for, so a second answer to it is refused rather than typed too
   private answering = new Map<string, string | undefined>();
   // the prompts each terminal holds until its agent's prompt line is free, oldest first
   private held = new Map<string, Held[]>();
@@ -38,11 +38,11 @@ export class Prompts {
   // a question it reported refuses it. Each agent queues a prompt sent mid-turn itself. Keys typed into the terminal pass no gate
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
     const { fleet } = this.deps;
-    const c = fleet.char(id);
+    const c = fleet.robot(id);
     // a dormant agent wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter.
     // A window still alive takes it as a send of its own
     if (!term && enter && !c.tmux && !this.deps.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
-      return (await fleet.reviveCharacter(id, text)).delivery ?? 'delivered';
+      return (await fleet.reviveRobot(id, text)).delivery ?? 'delivered';
     }
     const lane = laneOf(id, term);
     return this.inLane(lane, async () => {
@@ -63,7 +63,7 @@ export class Prompts {
   // throws while the agent waits on an answer, which a paste could give.
   // The agent is looked at again once the screen is in, as a hook may have come while it was read
   private async free(name: string, id: string, term: 2 | undefined, paneId: string): Promise<boolean | undefined> {
-    const live = () => (term === 2 ? this.deps.store.state.characters[id]?.second : this.deps.store.state.characters[id]);
+    const live = () => (term === 2 ? this.deps.store.state.robots[id]?.second : this.deps.store.state.robots[id]);
     const asked = (a?: Agent) => {
       if (a?.status === 'blocked') throw new Blocked(`${name} is waiting on an answer${a.prompt ? ` (${a.prompt})` : ''}; answer it, then send again`);
     };
@@ -104,7 +104,7 @@ export class Prompts {
   private async deliverHeld(lane: string, id: string, term?: 2): Promise<void> {
     const queue = this.held.get(lane);
     if (!queue || !this.deps.writable()) return;
-    const c = this.deps.store.state.characters[id];
+    const c = this.deps.store.state.robots[id];
     const t = term === 2 ? c?.second : c;
     // prompts held before the agent reported in are for the first session it reports
     if (t?.agent) for (const p of queue) p.sessionId ??= t.agent.sessionId;
@@ -145,7 +145,7 @@ export class Prompts {
     // A hook heard while the send was in flight wins, unread included: the turn may have begun, or begun and ended.
     if (enter && t.agent) {
       this.deps.store.update((d) => {
-        const slot = term === 2 ? d.characters[id]?.second : d.characters[id];
+        const slot = term === 2 ? d.robots[id]?.second : d.robots[id];
         const a = slot?.agent;
         if (!slot || !a || a.status !== before || a.promptId !== asked || a.lastActivityAt !== heard) return;
         settle(a, 'working');
@@ -186,7 +186,7 @@ export class Prompts {
 
   waitFor(id: string, until: AgentStatus[], timeoutMs: number, signal?: AbortSignal, term?: 2): Promise<WaitResult> {
     return this.until<WaitResult>(() => {
-      const c = this.deps.store.state.characters[id];
+      const c = this.deps.store.state.robots[id];
       const t = term === 2 ? c?.second : c;
       // a terminal whose tmux window died will never reach the awaited status.
       if (!t?.tmux) return 'gone';
@@ -200,7 +200,7 @@ export class Prompts {
   // true once the SessionStart hook has attached an agent; false when the window dies or the wait runs out
   waitForAgent(id: string, timeoutMs: number): Promise<boolean> {
     return this.until(() => {
-      const c = this.deps.store.state.characters[id];
+      const c = this.deps.store.state.robots[id];
       if (!c || !c.tmux) return false;
       return c.agent ? true : undefined;
     }, timeoutMs, false);
@@ -224,7 +224,7 @@ export class Prompts {
   // run ends no turn; a hook that moved the agent on while the key was sent wins
   private settleAnswer(id: string, asked: string | undefined, answer: 'approve' | 'deny'): void {
     this.deps.store.update((d) => {
-      const a = d.characters[id]?.agent;
+      const a = d.robots[id]?.agent;
       if (a?.status !== 'blocked' || a.promptId !== asked || a.kind === 'opencode') return;
       a.status = answer === 'approve' || a.background ? 'working' : 'idle';
       delete a.prompt;

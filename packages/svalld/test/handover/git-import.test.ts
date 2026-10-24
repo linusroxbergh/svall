@@ -9,7 +9,7 @@ import { buildInventory, DEFAULT_EXCLUDES } from '../../src/handover/inventory.j
 import { buildManifest } from '../../src/handover/manifest.js';
 import { destinationView } from '../../src/handover/relocate.js';
 import { runGit, type GitRunner } from '../../src/links/git.js';
-import { char, crew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
+import { robot, crew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -20,7 +20,7 @@ const FLEET = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' });
 const read = (file: string): string => fs.readFileSync(file, 'utf8');
 
 const checkout = (p: string, gitDir: string): GitCheckout =>
-  ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), characters: [] });
+  ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), robots: [] });
 
 describe('importGraphs', () => {
   it('blocks every Git root of the manifest that no graph describes', async () => {
@@ -269,7 +269,7 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     git(l.base, solo, 'add', 'a.txt');
     git(l.base, solo, 'commit', '-qm', 'a');
     const state = emptyState();
-    state.characters.solo = char('solo', { cwd: solo });
+    state.robots.solo = robot('solo', { cwd: solo });
     const { manifest } = await handed(l, state);
     const worktrees = path.join(solo, '.git/worktrees');
     const outside = path.join(l.base, 'outside-worktrees');
@@ -308,7 +308,7 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     } finally { fs.chmodSync(registrations, 0o755); }
   });
 
-  it('keeps a worktree no character uses registered on the machine it stays on, through a handover away and back', async () => {
+  it('keeps a worktree no robot uses registered on the machine it stays on, through a handover away and back', async () => {
     const l = seedHere(made);
     const s = l.source;
     const before = { status: git(l.base, s.unused, 'status', '--porcelain=v2', '--branch'), head: git(l.base, s.unused, 'rev-parse', 'HEAD') };
@@ -458,7 +458,7 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     git(l.base, s.work, 'clone', '-q', '--bare', s.lib, bare);
     git(l.base, bare, 'worktree', 'add', '-q', path.join(s.work, 'tool'), '-b', 'feature');
     const state = crew(l);
-    state.characters.tool = char('tool', { cwd: path.join(s.work, 'tool') });
+    state.robots.tool = robot('tool', { cwd: path.join(s.work, 'tool') });
     const { manifest } = await handed(l, state);
     expect(manifest.roots.find((r) => r.path === bare)).toMatchObject({ kind: 'gitdir' });
     expect(await importGraphs(manifest)).toEqual([]);

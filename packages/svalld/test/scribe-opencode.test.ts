@@ -23,7 +23,7 @@ describe('opencodeRunner', () => {
     expect(fs.readFileSync(path.join(dir, 'stdin'), 'utf8')).toBe('be brief\n\n---\n\nname this');
     expect(fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n')[0]).toBe('run --standalone --format json --agent svall-scribe');
     // the transcript a pass reads is untrusted text, so its agent asks before every tool, which `opencode run` turns down,
-    // and other characters' work never leaves the machine through a share
+    // and other robots' work never leaves the machine through a share
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8')))
       .toEqual({ share: 'disabled', agents: { 'svall-scribe': { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }] } } });
   });

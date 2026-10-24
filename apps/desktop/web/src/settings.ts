@@ -2,7 +2,7 @@ import { PUSH_STATUSES, type PushStatus } from '@svall/protocol';
 import type { Bridge } from './bridge.js';
 import { ACTIONS, type ActionId, type Bindings } from './keys.js';
 
-// macOS banners for a character that turns blocked or done
+// macOS banners for a robot that turns blocked or done
 export type NotifySettings = { on: boolean; sound: boolean; statuses: PushStatus[] };
 
 // when the Mac is kept from idle-sleeping: never, while an agent works, or also for a while when one waits on the user
@@ -79,9 +79,11 @@ const CHORD = /^cmd\+(shift\+)?(enter|.)$/u;
 function readBindings(v: unknown): Bindings {
   const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out: Bindings = {};
-  for (const id of Object.keys(o)) {
+  for (const saved of Object.keys(o)) {
+    // an older app saved the robot keys as newCharacter, nextCharacter and the like
+    const id = saved.replace('Character', 'Robot');
     if (!(id in ACTIONS)) continue;
-    const chord = o[id];
+    const chord = o[saved];
     if (chord === null) out[id as ActionId] = null;
     else if (typeof chord === 'string' && CHORD.test(chord)) out[id as ActionId] = chord;
   }

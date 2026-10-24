@@ -88,7 +88,7 @@ export async function checkDisk(d: FilesDeps, id: string): Promise<void> {
     if (!b) return;
     let disk: { text: string; mtimeMs: number; root: string };
     try { disk = await d.api.call('fs.read', { id, path }); } catch { return; }
-    // the character may have moved to another checkout, where the same mtime is still another file;
+    // the robot may have moved to another checkout, where the same mtime is still another file;
     // back where the buffer was read, a conflict flagged while it was away no longer stands
     if (disk.mtimeMs === b.mtimeMs && disk.root === b.root) {
       if (b.diskMtimeMs !== undefined) { b.diskMtimeMs = undefined; d.store.getState().markFile(id, path, { conflict: false }); }

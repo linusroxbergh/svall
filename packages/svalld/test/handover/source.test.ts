@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FleetConfig, FleetId, MachineId, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState,
-  type Agent, type Character, type Event, type HandoverChoices, type OwnerRecord, type ParsedParams, type SystemInfo, type TransactionRecord,
+  type Agent, type Robot, type Event, type HandoverChoices, type OwnerRecord, type ParsedParams, type SystemInfo, type TransactionRecord,
 } from '@svall/protocol';
 import { handlers, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
@@ -48,7 +48,7 @@ const refusal = (p: Promise<unknown>): Promise<{ code: string; data: Record<stri
 
 const hasGit = (() => { try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 const withGit = hasGit ? it : it.skip;
-// a repository with one commit, standing where a character works
+// a repository with one commit, standing where a robot works
 function repo(dir: string, files: Record<string, string> = {}): void {
   const git = (...args: string[]) => execFileSync('git', [
     '-c', 'user.name=Probe', '-c', 'user.email=probe@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args,
@@ -63,7 +63,7 @@ function repo(dir: string, files: Record<string, string> = {}): void {
 }
 
 const win = (n: number) => ({ windowId: `@${n}`, paneId: `%${n}` });
-const char = (id: string, cwd: string, over: Partial<Character> = {}): Character => ({
+const robot = (id: string, cwd: string, over: Partial<Robot> = {}): Robot => ({
   id, islandId: 'home', cell: { x: 0, y: 1 }, name: id.slice(2), portrait: 'fox', note: '', instructions: '', cwd, context: [],
   shell: { lastOutputAt: 0 }, unread: false, ...over,
 });
@@ -178,10 +178,10 @@ function tree(dir: string): Record<string, string> {
   return out;
 }
 
-// no character stands in Git unless a test says so, and then real git reads it
+// no robot stands in Git unless a test says so, and then real git reads it
 const noGit: GitRunner = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git' });
 
-type Boot = { standalone?: boolean; probes?: AgentProbe[]; record?: object; characters?: (work: string) => Character[]; realGit?: boolean };
+type Boot = { standalone?: boolean; probes?: AgentProbe[]; record?: object; robots?: (work: string) => Robot[]; realGit?: boolean };
 
 function boot(o: Boot = {}) {
   const home = makeHome();
@@ -198,14 +198,14 @@ function boot(o: Boot = {}) {
   const agent = (status: Agent['status'], over: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: SID, transcriptPath: transcript, status, lastActivityAt: 0, ...over });
 
   const store = Store.load(paths.state, () => {});
-  const characters = o.characters?.(work) ?? [
-    char('c_ada', path.join(work, 'ada'), { tmux: win(1), second: { cwd: path.join(work, 'ada'), unread: false, tmux: win(2) } }),
-    char('c_bo', path.join(work, 'bo'), { tmux: win(3), agent: agent('idle') }),
-    char('c_cy', path.join(work, 'cy'), { revive: { command: '' } }),
+  const robots = o.robots?.(work) ?? [
+    robot('c_ada', path.join(work, 'ada'), { tmux: win(1), second: { cwd: path.join(work, 'ada'), unread: false, tmux: win(2) } }),
+    robot('c_bo', path.join(work, 'bo'), { tmux: win(3), agent: agent('idle') }),
+    robot('c_cy', path.join(work, 'cy'), { revive: { command: '' } }),
   ];
-  store.update((d) => { for (const c of characters) d.characters[c.id] = c; });
+  store.update((d) => { for (const c of robots) d.robots[c.id] = c; });
   const world = new World();
-  for (const c of characters) {
+  for (const c of robots) {
     if (c.tmux) world.pane(Number(c.tmux.windowId.slice(1)), c.cwd, c.agent ? ['claude'] : undefined);
     if (c.second?.tmux) world.pane(Number(c.second.tmux.windowId.slice(1)), c.second.cwd);
   }
@@ -217,19 +217,19 @@ function boot(o: Boot = {}) {
     reconcileNow: async () => { world.log.push('reconcile'); },
     // as the fleet does: each terminal a crash cut off mid-turn is revived
     resumeInterrupted: async () => {
-      for (const c of Object.values(store.state.characters)) if (c.revive?.interrupted) await fleet.reviveCharacter(c.id);
+      for (const c of Object.values(store.state.robots)) if (c.revive?.interrupted) await fleet.reviveRobot(c.id);
     },
-    reviveCharacter: async (id) => {
+    reviveRobot: async (id) => {
       world.log.push(`revive ${id}`);
-      store.update((d) => { d.characters[id].tmux = win(9); delete d.characters[id].revive; });
-      return store.state.characters[id];
+      store.update((d) => { d.robots[id].tmux = win(9); delete d.robots[id].revive; });
+      return store.state.robots[id];
     },
     openSecond: async (id) => {
       // as the fleet does, a second terminal that still names its window keeps it
-      if (store.state.characters[id].second?.tmux) return store.state.characters[id];
+      if (store.state.robots[id].second?.tmux) return store.state.robots[id];
       world.log.push(`second ${id}`);
-      store.update((d) => { const s = d.characters[id].second!; s.tmux = win(10); delete s.revive; });
-      return store.state.characters[id];
+      store.update((d) => { const s = d.robots[id].second!; s.tmux = win(10); delete s.revive; });
+      return store.state.robots[id];
     },
   };
   const probes = o.probes ?? [{ kind: 'claude', version: '2.1.280', home: path.join(work, '.claude'), loggedIn: true, hooks: true }];
@@ -281,15 +281,15 @@ function opencodeBoot(loggedIn = true) {
       { kind: 'claude', version: '2.1.280', home: '/home/linus/.claude', loggedIn: true, hooks: true },
       { kind: 'opencode', version: '2.0.22', home: '/home/linus/.svall/transcripts/opencode', loggedIn, hooks: true },
     ],
-    characters: (work) => {
+    robots: (work) => {
       logs = path.join(work, '.svall/transcripts/opencode');
       fs.mkdirSync(logs, { recursive: true });
       fs.writeFileSync(path.join(logs, `${OC}.jsonl`), `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
       return [
-        char('c_ada', path.join(work, 'ada'), {
+        robot('c_ada', path.join(work, 'ada'), {
           agent: { kind: 'opencode', sessionId: OC, transcriptPath: path.join(logs, `${OC}.jsonl`), status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
         }),
-        char('c_bo', path.join(work, 'bo'), {
+        robot('c_bo', path.join(work, 'bo'), {
           tmux: win(3), agent: { kind: 'claude', sessionId: SID, transcriptPath: path.join(work, `.claude/projects/-bo/${SID}.jsonl`), status: 'idle', lastActivityAt: 0 },
         }),
       ];
@@ -314,15 +314,15 @@ function opencodeBoot(loggedIn = true) {
 }
 
 /**
- * A shell open in a projects folder, and a character working in one of its repositories with its second terminal in
- * the folder; three others there no character works in, and a repository inside one of them and inside the character's.
+ * A shell open in a projects folder, and a robot working in one of its repositories with its second terminal in
+ * the folder; three others there no robot works in, and a repository inside one of them and inside the robot's.
  */
 function developer() {
   const b = boot({
     realGit: true,
-    characters: (work) => [
-      char('c_shell', path.join(work, 'Developer'), { tmux: win(1) }),
-      char('c_app', path.join(work, 'Developer/app'), { tmux: win(3), second: { cwd: path.join(work, 'Developer'), unread: false, tmux: win(4) } }),
+    robots: (work) => [
+      robot('c_shell', path.join(work, 'Developer'), { tmux: win(1) }),
+      robot('c_app', path.join(work, 'Developer/app'), { tmux: win(3), second: { cwd: path.join(work, 'Developer'), unread: false, tmux: win(4) } }),
     ],
   });
   const dev = path.join(b.work, 'Developer');
@@ -331,11 +331,11 @@ function developer() {
     repo(path.join(dev, name), { 'a.txt': name });
   }
   fs.writeFileSync(path.join(dev, 'notes.md'), 'notes\n');
-  const holds = `is in ${dev}, which holds 3 Git repositories no character works in (old-stuff, unrelated, unrelated-2), so the handover would carry them too; cd it to ~ or into the repository it works on`;
+  const holds = `is in ${dev}, which holds 3 Git repositories no robot works in (old-stuff, unrelated, unrelated-2), so the handover would carry them too; cd it to ~ or into the repository it works on`;
   const out = 'or leave them out with handover.exclude in fleet.json, such as /old-stuff/';
   const unused = [
-    { code: 'repository_unused', entity: { kind: 'character', id: 'c_app' }, message: `app's second terminal ${holds}, close app, ${out}` },
-    { code: 'repository_unused', entity: { kind: 'character', id: 'c_shell' }, message: `shell's terminal ${holds}, close shell, ${out}` },
+    { code: 'repository_unused', entity: { kind: 'robot', id: 'c_app' }, message: `app's second terminal ${holds}, close app, ${out}` },
+    { code: 'repository_unused', entity: { kind: 'robot', id: 'c_shell' }, message: `shell's terminal ${holds}, close shell, ${out}` },
   ];
   return { b, dev, unused };
 }
@@ -343,12 +343,12 @@ function developer() {
 describe('source preflight', () => {
   it('reports what would stop the move without writing, fencing or signalling, and only reads who the gateway says owns it', async () => {
     const b = boot({
-      characters: (work) => {
+      robots: (work) => {
         fs.symlinkSync(path.join(work, 'cy'), path.join(work, 'linked'));
         return [
-          char('c_ada', path.join(work, 'ada'), { tmux: win(1) }),
-          char('c_bo', path.join(work, 'bo'), { tmux: win(3) }),
-          char('c_cy', path.join(work, 'linked')),
+          robot('c_ada', path.join(work, 'ada'), { tmux: win(1) }),
+          robot('c_bo', path.join(work, 'bo'), { tmux: win(3) }),
+          robot('c_cy', path.join(work, 'linked')),
         ];
       },
     });
@@ -385,7 +385,7 @@ describe('source preflight', () => {
   it('lets the choices a freeze will carry approve a busy shell and a blocked agent', async () => {
     const b = boot();
     b.world.panes.get('@1')!.job = ['npm run dev'];
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'blocked'; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'blocked'; });
     const ask = (choices: ParsedParams<'handover.preflight'>['choices']) => b.handover.preflight({ toMachineId: trift, choices, ...b.machines() });
     expect((await ask({})).blockers.map((x) => x.code)).toEqual(['agent_blocked', 'shell_busy']);
     expect((await ask({ interruptAfterMs: 0, terminateShells: ['c_ada'] })).blockers).toEqual([]);
@@ -538,7 +538,7 @@ describe('source preflight', () => {
   it('blocks an OpenCode session its CLI does not hold, at preflight and at freeze before any terminal rests', async () => {
     const b = opencodeBoot();
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: b.info }) });
-    expect(r.blockers).toEqual([{ code: 'transcript_missing', message: expect.stringContaining(`Session not found: ${OC}`), entity: { kind: 'character', id: 'c_ada' } }]);
+    expect(r.blockers).toEqual([{ code: 'transcript_missing', message: expect.stringContaining(`Session not found: ${OC}`), entity: { kind: 'robot', id: 'c_ada' } }]);
     expect(fs.existsSync(path.join(b.logs, 'exports'))).toBe(false);
     b.gateway.begin();
     expect(blockersOf(await refusal(b.handover.freeze(b.freezeParams({ destination: b.machines({ info: b.info }).destination })))).map((x) => x.code)).toEqual(['transcript_missing']);
@@ -548,7 +548,7 @@ describe('source preflight', () => {
   it('blocks an OpenCode session with an undo pending, at preflight and at freeze before any terminal rests, and keeps no copy of it', async () => {
     const b = opencodeBoot();
     hold(b.env, { info: { id: OC, location: { directory: path.join(b.work, 'ada') }, revert: { messageID: 'msg_1' } }, messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_1', text: 'two' }] });
-    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then hand over$/), entity: { kind: 'character', id: 'c_ada' } };
+    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then hand over$/), entity: { kind: 'robot', id: 'c_ada' } };
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: b.info }) });
     expect(r.blockers).toEqual([pending]);
     expect(b.checked.length).toBe(1);
@@ -558,11 +558,11 @@ describe('source preflight', () => {
     expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual([]);
   });
 
-  it('blocks a character kept on this machine', async () => {
+  it('blocks a robot kept on this machine', async () => {
     const b = boot();
-    b.store.update((d) => { d.characters.c_ada.keepHere = true; });
+    b.store.update((d) => { d.robots.c_ada.keepHere = true; });
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
-    expect(r.blockers).toEqual([{ code: 'character_pinned', message: 'ada is kept on this machine', entity: { kind: 'character', id: 'c_ada' } }]);
+    expect(r.blockers).toEqual([{ code: 'robot_pinned', message: 'ada is kept on this machine', entity: { kind: 'robot', id: 'c_ada' } }]);
   });
 
   withGit('blocks a repository that names the platforms it runs on without the destination, and warns of an Xcode project', async () => {
@@ -597,7 +597,7 @@ describe('source preflight', () => {
     expect(await ask()).toEqual([]);
   });
 
-  withGit('blocks a folder a terminal is in that holds repositories no character works in, naming each terminal, unless they are chosen to be carried', async () => {
+  withGit('blocks a folder a terminal is in that holds repositories no robot works in, naming each terminal, unless they are chosen to be carried', async () => {
     const { b, dev, unused } = developer();
     const ask = async (choices: HandoverChoices = {}) => (await b.handover.preflight({ toMachineId: trift, choices, ...b.machines() })).blockers;
     expect(await ask()).toEqual(unused);
@@ -722,7 +722,7 @@ describe('source preflight', () => {
   it('carries each running agent with the revive its rest will record, launch flags read from its process, so a bypass resume shows in either terminal', async () => {
     const [ADA, ADA2, BO, CY] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
     const b = boot({
-      characters: (work) => {
+      robots: (work) => {
         const claude = (sessionId: string): Agent => {
           const transcriptPath = path.join(work, `.claude/projects/-work/${sessionId}.jsonl`);
           fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
@@ -731,9 +731,9 @@ describe('source preflight', () => {
         };
         const ada = path.join(work, 'ada');
         return [
-          char('c_ada', ada, { tmux: win(1), agent: claude(ADA), second: { cwd: ada, unread: false, tmux: win(2), agent: claude(ADA2) } }),
-          char('c_bo', path.join(work, 'bo'), { tmux: win(3), agent: claude(BO) }),
-          char('c_cy', path.join(work, 'cy'), { agent: claude(CY), revive: { command: `claude --dangerously-skip-permissions --resume ${CY}` } }),
+          robot('c_ada', ada, { tmux: win(1), agent: claude(ADA), second: { cwd: ada, unread: false, tmux: win(2), agent: claude(ADA2) } }),
+          robot('c_bo', path.join(work, 'bo'), { tmux: win(3), agent: claude(BO) }),
+          robot('c_cy', path.join(work, 'cy'), { agent: claude(CY), revive: { command: `claude --dangerously-skip-permissions --resume ${CY}` } }),
         ];
       },
     });
@@ -745,14 +745,14 @@ describe('source preflight', () => {
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
 
     expect(r.blockers).toEqual([]);
-    const { c_ada: ada, c_bo: bo, c_cy: cy } = r.manifest.snapshot.characters;
+    const { c_ada: ada, c_bo: bo, c_cy: cy } = r.manifest.snapshot.robots;
     expect([ada.revive, ada.second?.revive, bo.revive, cy.revive]).toEqual([
       { command: `claude --dangerously-skip-permissions --resume ${ADA}` },
       { command: `claude --permission-mode 'bypassPermissions' --resume ${ADA2}` },
       { command: `claude --effort 'high' --resume ${BO}` },
       { command: `claude --dangerously-skip-permissions --resume ${CY}` },
     ]);
-    expect(resumeFolders(r.manifest).map((f) => [f.characterId, f.bypass ?? false])).toEqual([['c_ada', true], ['c_ada', true], ['c_bo', false], ['c_cy', true]]);
+    expect(resumeFolders(r.manifest).map((f) => [f.robotId, f.bypass ?? false])).toEqual([['c_ada', true], ['c_ada', true], ['c_bo', false], ['c_cy', true]]);
     expect(b.store.state).toEqual(before);
     expect(b.world.log).toEqual([]);
   });
@@ -819,24 +819,24 @@ describe('source freeze', () => {
     expect(ownerFile(b.paths)).toMatchObject({ frozen: true, surrendered: true, transaction: { id: TX, toMachineId: trift } });
     const j = journalOf(b.paths)!;
     expect(j).toMatchObject({ transactionId: TX, generation: 4, phase: 'freeze', fromMachineId: me, toMachineId: trift, manifestDigest: manifestDigest(manifest) });
-    expect(j.stoppedTerminals).toEqual([{ characterId: 'c_ada' }, { characterId: 'c_ada', term: 2 }, { characterId: 'c_bo' }]);
+    expect(j.stoppedTerminals).toEqual([{ robotId: 'c_ada' }, { robotId: 'c_ada', term: 2 }, { robotId: 'c_bo' }]);
     const kept = readManifest(b.paths.manifest(TX));
     expect(kept.digest).toBe(j.manifestDigest);
     expect(fs.statSync(b.paths.manifest(TX)).mode & 0o777).toBe(0o600);
     // background writers settled before any window closed, then every window closed
     expect(b.world.log).toEqual(['settle', 'detach c_ada', 'detach c_bo', 'kill @1', 'kill @2', 'kill @3']);
-    expect(b.store.state.characters.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
-    expect(Object.values(manifest.snapshot.characters).every((c) => !c.tmux && !c.second?.tmux)).toBe(true);
+    expect(b.store.state.robots.c_bo.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(Object.values(manifest.snapshot.robots).every((c) => !c.tmux && !c.second?.tmux)).toBe(true);
     expect(manifest.sessions.map((s) => s.sessionId)).toEqual([SID]);
     expect(() => b.ownership.assertOwner('mutation')).toThrow(/frozen/);
     const progress = b.events.filter((e) => e.event === 'handover.entity').map((e) => e.data);
     expect(progress).toEqual([
-      { transactionId: TX, kind: 'character', id: 'c_ada', phase: 'freeze' },
-      { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'freeze' },
-      { transactionId: TX, kind: 'character', id: 'c_cy', phase: 'freeze' },
-      { transactionId: TX, kind: 'character', id: 'c_ada', phase: 'freeze', done: 2, total: 2 },
-      { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'freeze', done: 1, total: 1 },
-      { transactionId: TX, kind: 'character', id: 'c_cy', phase: 'freeze', done: 0, total: 0 },
+      { transactionId: TX, kind: 'robot', id: 'c_ada', phase: 'freeze' },
+      { transactionId: TX, kind: 'robot', id: 'c_bo', phase: 'freeze' },
+      { transactionId: TX, kind: 'robot', id: 'c_cy', phase: 'freeze' },
+      { transactionId: TX, kind: 'robot', id: 'c_ada', phase: 'freeze', done: 2, total: 2 },
+      { transactionId: TX, kind: 'robot', id: 'c_bo', phase: 'freeze', done: 1, total: 1 },
+      { transactionId: TX, kind: 'robot', id: 'c_cy', phase: 'freeze', done: 0, total: 0 },
     ]);
   });
 
@@ -853,7 +853,7 @@ describe('source freeze', () => {
     expect(s.files.map((f) => f.path)).toEqual([`${OC}.jsonl`, `exports/${OC}.json`]);
     expect(s.files[1]).toMatchObject({ size: fs.statSync(exported).size });
     expect(JSON.parse(fs.readFileSync(exported, 'utf8'))).toEqual(session);
-    expect(manifest.snapshot.characters.c_ada.revive).toEqual({ command: `opencode -s ${OC}` });
+    expect(manifest.snapshot.robots.c_ada.revive).toEqual({ command: `opencode -s ${OC}` });
   });
 
   it('answers a freeze asked again, at once or after a restart, from what it kept, without resting or asking again', async () => {
@@ -899,12 +899,12 @@ describe('source freeze', () => {
   it('gives a blocked agent back to its user without closing a window, and freezes again under the same handover once it is answered', async () => {
     const b = boot();
     b.gateway.begin();
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'blocked'; d.characters.c_bo.agent!.prompt = 'Run rm -rf build?'; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'blocked'; d.robots.c_bo.agent!.prompt = 'Run rm -rf build?'; });
 
     const first = await refusal(b.handover.freeze(b.freezeParams()));
 
     expect(first.code).toBe('blocked');
-    expect(first.data.blockers).toEqual([{ code: 'agent_blocked', message: "bo's terminal is waiting on an answer: Run rm -rf build?", entity: { kind: 'character', id: 'c_bo' } }]);
+    expect(first.data.blockers).toEqual([{ code: 'agent_blocked', message: "bo's terminal is waiting on an answer: Run rm -rf build?", entity: { kind: 'robot', id: 'c_bo' } }]);
     expect(b.world.log.filter((l) => /^(kill|keys|SIG)/.test(l))).toEqual([]);
     // back to normal ownership, so the user can answer it, with the gateway's handover still open
     expect(b.ownership.writable()).toBe(true);
@@ -912,10 +912,10 @@ describe('source freeze', () => {
     expect(fs.existsSync(b.paths.journal)).toBe(false);
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
     expect(b.events.filter((e) => e.event === 'handover.entity').at(-1)).toEqual({
-      event: 'handover.entity', data: { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'freeze', error: "bo's terminal is waiting on an answer: Run rm -rf build?" },
+      event: 'handover.entity', data: { transactionId: TX, kind: 'robot', id: 'c_bo', phase: 'freeze', error: "bo's terminal is waiting on an answer: Run rm -rf build?" },
     });
 
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'idle'; delete d.characters.c_bo.agent!.prompt; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'idle'; delete d.robots.c_bo.agent!.prompt; });
     const { manifest } = await b.handover.freeze(b.freezeParams());
     expect(manifest.transactionId).toBe(TX);
     expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual(['kill @1', 'kill @2', 'kill @3']);
@@ -924,7 +924,7 @@ describe('source freeze', () => {
   it('interrupts a blocked agent when asked again with Interrupt and carry', async () => {
     const b = boot();
     b.gateway.begin();
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'blocked'; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'blocked'; });
     expect((await refusal(b.handover.freeze(b.freezeParams()))).code).toBe('blocked');
     const run = b.handover.freeze(b.freezeParams({ choices: { interruptAfterMs: 0 } }));
     await waitFor(() => b.world.log.includes('keys %3 1b'));
@@ -936,7 +936,7 @@ describe('source freeze', () => {
   it('takes Interrupt and carry asked while it waits on a working agent, in place of the wait it was resting with', async () => {
     const b = boot();
     b.gateway.begin();
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'working'; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'working'; });
     const waiting = refusal(b.handover.freeze(b.freezeParams()));
     await waitFor(() => b.world.timers() > 0);
     await b.world.advance(500);
@@ -953,17 +953,17 @@ describe('source freeze', () => {
     expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual(['kill @1', 'kill @2', 'kill @3']);
   });
 
-  withGit('carries the graph of a repository a character stands in', async () => {
+  withGit('carries the graph of a repository a robot stands in', async () => {
     const b = boot({ realGit: true });
     b.gateway.begin();
     const bo = path.join(b.work, 'bo');
     repo(bo, { 'index.ts': 'export {};\n' });
     const { manifest } = await b.handover.freeze(b.freezeParams());
-    expect(manifest.git?.map((g) => ({ main: g.main?.path, characters: g.main?.characters }))).toEqual([{ main: bo, characters: ['c_bo'] }]);
+    expect(manifest.git?.map((g) => ({ main: g.main?.path, robots: g.main?.robots }))).toEqual([{ main: bo, robots: ['c_bo'] }]);
     expect(manifest.roots.find((r) => r.path === bo)?.kind).toBe('repo');
   });
 
-  withGit('refuses a folder that holds repositories no character works in before any terminal rests, and carries it whole when chosen', async () => {
+  withGit('refuses a folder that holds repositories no robot works in before any terminal rests, and carries it whole when chosen', async () => {
     const { b, dev, unused } = developer();
     b.gateway.begin();
     const refused = await refusal(b.handover.freeze(b.freezeParams()));
@@ -973,11 +973,11 @@ describe('source freeze', () => {
     expect(manifest.roots.find((r) => r.path === dev)!.files.map((f) => f.path)).toEqual(expect.arrayContaining(['notes.md', 'old-stuff/a.txt', 'unrelated/vendor/lib/a.txt']));
   });
 
-  withGit('refuses a folder holding repositories no character works in that a second terminal moved into unseen, once the rest records it there', async () => {
+  withGit('refuses a folder holding repositories no robot works in that a second terminal moved into unseen, once the rest records it there', async () => {
     const moved = () => {
       const b = boot({
         realGit: true,
-        characters: (work) => [char('c_app', path.join(work, 'Developer/app'), { tmux: win(3), second: { cwd: path.join(work, 'Developer/app'), unread: false, tmux: win(4) } })],
+        robots: (work) => [robot('c_app', path.join(work, 'Developer/app'), { tmux: win(3), second: { cwd: path.join(work, 'Developer/app'), unread: false, tmux: win(4) } })],
       });
       const dev = path.join(b.work, 'Developer');
       for (const name of ['app', 'old-stuff']) {
@@ -992,8 +992,8 @@ describe('source freeze', () => {
     const refused = moved();
     const r = await refusal(refused.b.handover.freeze(refused.b.freezeParams()));
     expect(r.data.blockers).toEqual([{
-      code: 'repository_unused', entity: { kind: 'character', id: 'c_app' },
-      message: expect.stringContaining(`app's second terminal is in ${refused.dev}, which holds 1 Git repository no character works in (old-stuff)`),
+      code: 'repository_unused', entity: { kind: 'robot', id: 'c_app' },
+      message: expect.stringContaining(`app's second terminal is in ${refused.dev}, which holds 1 Git repository no robot works in (old-stuff)`),
     }]);
     expect(refused.b.world.log).toContain('kill @4');
 
@@ -1005,7 +1005,7 @@ describe('source freeze', () => {
   withGit('refuses a repository a second terminal moved into unseen whose config names a path the move to another home leaves behind', async () => {
     const b = boot({
       realGit: true,
-      characters: (work) => [char('c_app', path.join(work, 'app'), { tmux: win(3), second: { cwd: path.join(work, 'app'), unread: false, tmux: win(4) } })],
+      robots: (work) => [robot('c_app', path.join(work, 'app'), { tmux: win(3), second: { cwd: path.join(work, 'app'), unread: false, tmux: win(4) } })],
     });
     for (const name of ['app', 'hooked']) {
       fs.mkdirSync(path.join(b.work, name), { recursive: true });
@@ -1020,37 +1020,37 @@ describe('source freeze', () => {
     expect(r.data.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`core.hookspath names ${hooks}`) })]);
   });
 
-  it('finds a name it cannot carry, a transcript that is gone or a character kept here before it touches a terminal', async () => {
+  it('finds a name it cannot carry, a transcript that is gone or a robot kept here before it touches a terminal', async () => {
     const b = boot();
     b.gateway.begin();
     fs.writeFileSync(path.join(b.work, 'ada', 'bad\x01name'), '');
     fs.rmSync(b.transcript);
-    b.store.update((d) => { d.characters.c_cy.keepHere = true; });
+    b.store.update((d) => { d.robots.c_cy.keepHere = true; });
     const r = await refusal(b.handover.freeze(b.freezeParams()));
     expect(r.code).toBe('blocked');
-    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['character_pinned', 'path_unsupported', 'transcript_missing']);
+    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_unsupported', 'robot_pinned', 'transcript_missing']);
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
     expect(b.ownership.writable()).toBe(true);
     expect(fs.existsSync(b.paths.journal)).toBe(false);
   });
 
-  it('blocks a character working in the folder this daemon\'s Claude keeps its login in, wherever CLAUDE_CONFIG_DIR puts it', async () => {
+  it('blocks a robot working in the folder this daemon\'s Claude keeps its login in, wherever CLAUDE_CONFIG_DIR puts it', async () => {
     const b = boot();
     const config = path.join(b.work, 'claude-config');
     fs.mkdirSync(config);
     fs.writeFileSync(path.join(config, '.credentials.json'), '{}');
     vi.stubEnv('CLAUDE_CONFIG_DIR', config);
-    b.store.update((d) => { d.characters.c_cy.cwd = config; });
+    b.store.update((d) => { d.robots.c_cy.cwd = config; });
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() }).finally(() => vi.unstubAllEnvs());
     expect(r.blockers).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: `${config} holds ${path.join(config, '.credentials.json')}, which stays on its machine` }));
   });
 
-  it("blocks a character working in this daemon's OpenCode data folder, wherever XDG_DATA_HOME puts it", async () => {
+  it("blocks a robot working in this daemon's OpenCode data folder, wherever XDG_DATA_HOME puts it", async () => {
     const b = boot();
     const data = path.join(b.work, 'xdg-data/opencode');
     fs.mkdirSync(data, { recursive: true });
     vi.stubEnv('XDG_DATA_HOME', path.dirname(data));
-    b.store.update((d) => { d.characters.c_cy.cwd = data; });
+    b.store.update((d) => { d.robots.c_cy.cwd = data; });
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() }).finally(() => vi.unstubAllEnvs());
     expect(r.blockers).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: `${data} stays on its machine` }));
   });
@@ -1059,7 +1059,7 @@ describe('source freeze', () => {
     const b = boot();
     b.gateway.begin();
     fs.symlinkSync(path.join(b.work, 'cy'), path.join(b.work, 'linked'));
-    b.store.update((d) => { d.characters.c_cy.cwd = path.join(b.work, 'linked'); });
+    b.store.update((d) => { d.robots.c_cy.cwd = path.join(b.work, 'linked'); });
     const r = await refusal(b.handover.freeze(b.freezeParams()));
     expect(r.code).toBe('blocked');
     expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_symlinked']);
@@ -1079,7 +1079,7 @@ describe('source freeze', () => {
       'settle', 'detach c_ada', 'detach c_bo', 'kill @1', 'kill @2', 'kill @3',
       'ensure-server', 'revive c_ada', 'second c_ada', 'revive c_bo', 'activate', 'reconcile',
     ]);
-    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(b.store.state.robots.c_cy.tmux).toBeUndefined();
     expect(b.ownership.writable()).toBe(true);
     expect(ownerFile(b.paths)).toEqual({ fleetId, generation: 4, ownerMachineId: me });
     expect(fs.existsSync(b.paths.journal)).toBe(false);
@@ -1089,7 +1089,7 @@ describe('source freeze', () => {
   it('gives way to an abort while it waits on a working agent, closing nothing', async () => {
     const b = boot();
     b.gateway.begin();
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'working'; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'working'; });
     const freezing = refusal(b.handover.freeze(b.freezeParams()));
     await b.world.settle();
     expect(b.ownership.writable()).toBe(false);
@@ -1124,9 +1124,9 @@ describe('source freeze', () => {
     const { manifest } = await again.handover.freeze(b.freezeParams());
 
     expect(journalOf(b.paths)).toMatchObject({ manifestDigest: manifestDigest(manifest), stoppedTerminals: [] });
-    const carried = Object.values(manifest.snapshot.characters);
+    const carried = Object.values(manifest.snapshot.robots);
     expect(carried.every((c) => !c.tmux && !c.second?.tmux && !c.restedBy && !c.second?.restedBy)).toBe(true);
-    expect(manifest.snapshot.characters.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` } });
+    expect(manifest.snapshot.robots.c_bo).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` } });
     expect(b.world.log.filter((l) => /^(kill|detach)/.test(l))).toEqual([]);
   });
 
@@ -1159,7 +1159,7 @@ describe('source abort', () => {
 
     expect(b.world.log).toEqual(['ensure-server', 'revive c_ada', 'second c_ada', 'revive c_bo', 'activate', 'reconcile']);
     // c_cy was dormant before the handover and stays so
-    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(b.store.state.robots.c_cy.tmux).toBeUndefined();
     // the journal is closed while the surrender still stands, so no start in between reads an aborted journal as a live one
     expect(surrenderAtClose).toEqual([true, true]);
     expect(fs.existsSync(b.paths.journal)).toBe(false);
@@ -1203,7 +1203,7 @@ describe('source abort', () => {
     const b = boot({ standalone: true });
     b.handover.write(SourceJournal.parse({
       role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
-      stoppedTerminals: [{ characterId: 'c_cy' }], updatedAt: 1,
+      stoppedTerminals: [{ robotId: 'c_cy' }], updatedAt: 1,
     }));
     const again = await b.restart();
     expect(again.ownership.writable()).toBe(false);
@@ -1222,7 +1222,7 @@ describe('source abort', () => {
     // the rest journaled the terminals it stops, and died before it closed ada's second window
     b.handover.write(SourceJournal.parse({
       role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
-      stoppedTerminals: [{ characterId: 'c_ada', term: 2 }], updatedAt: 1,
+      stoppedTerminals: [{ robotId: 'c_ada', term: 2 }], updatedAt: 1,
     }));
     await b.ownership.freeze(b.gateway.record.transaction!);
     const again = await b.restart();
@@ -1230,7 +1230,7 @@ describe('source abort', () => {
 
     expect(await again.handover.abort({ transactionId: TX, generation: 4 })).toEqual({});
 
-    expect(b.store.state.characters.c_ada.second?.tmux).toEqual(win(2));
+    expect(b.store.state.robots.c_ada.second?.tmux).toEqual(win(2));
     expect(b.world.log.filter((l) => l.startsWith('second'))).toEqual([]);
     expect(again.ownership.writable()).toBe(true);
   });
@@ -1242,7 +1242,7 @@ describe('source abort', () => {
     // the rest closed bo's window and died while its server lingered; ada's second window it never closed
     b.handover.write(SourceJournal.parse({
       role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze', updatedAt: 1,
-      stoppedTerminals: [{ characterId: 'c_bo', server: { pid: 3060, pgid: 3060, args } }, { characterId: 'c_ada', term: 2, server: { pid: 2060, pgid: 2060, args } }],
+      stoppedTerminals: [{ robotId: 'c_bo', server: { pid: 3060, pgid: 3060, args } }, { robotId: 'c_ada', term: 2, server: { pid: 2060, pgid: 2060, args } }],
     }));
     b.world.panes.delete('@3');
     b.world.extra.push({ pid: 3060, ppid: 1, pgid: 3060, tpgid: 0, stat: 'Ss', args }, { pid: 2060, ppid: 2001, pgid: 2060, tpgid: 0, stat: 'Ss', args });
@@ -1263,20 +1263,20 @@ describe('source abort', () => {
 
   it('revives a working agent whose window a rest that died closed without telling it a restart cut it off', async () => {
     const b = boot();
-    b.store.update((d) => { d.characters.c_bo.agent!.status = 'working'; });
+    b.store.update((d) => { d.robots.c_bo.agent!.status = 'working'; });
     b.gateway.begin();
     // the rest killed bo's window and died before it laid bo dormant
     b.handover.write(SourceJournal.parse({
       role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
-      stoppedTerminals: [{ characterId: 'c_bo' }], updatedAt: 1,
+      stoppedTerminals: [{ robotId: 'c_bo' }], updatedAt: 1,
     }));
     b.world.panes.delete('@3');
     await b.ownership.freeze(b.gateway.record.transaction!);
     const again = await b.restart();
     b.gateway.abort();
     const revives: unknown[] = [];
-    const revive = b.deps.fleet.reviveCharacter;
-    b.deps.fleet.reviveCharacter = async (id) => { revives.push(structuredClone(b.store.state.characters[id].revive)); return revive(id); };
+    const revive = b.deps.fleet.reviveRobot;
+    b.deps.fleet.reviveRobot = async (id) => { revives.push(structuredClone(b.store.state.robots[id].revive)); return revive(id); };
 
     await again.handover.abort({ transactionId: TX, generation: 4 });
 
@@ -1285,20 +1285,20 @@ describe('source abort', () => {
 
   it('tells an agent a rest that died terminated that a restart cut it off, once an abort revives it, and no other', async () => {
     // the rest terminated bo's agent, or what ran in bo's second terminal, killed bo's window and died before it laid bo dormant
-    for (const [terminated, interrupted] of [[{ characterId: 'c_bo' }, true], [{ characterId: 'c_bo', term: 2 as const }, false]] as const) {
+    for (const [terminated, interrupted] of [[{ robotId: 'c_bo' }, true], [{ robotId: 'c_bo', term: 2 as const }, false]] as const) {
       const b = boot();
       b.gateway.begin();
       b.handover.write(SourceJournal.parse({
         role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
-        stoppedTerminals: [{ characterId: 'c_bo' }], terminated: [{ ...terminated, processes: [] }], updatedAt: 1,
+        stoppedTerminals: [{ robotId: 'c_bo' }], terminated: [{ ...terminated, processes: [] }], updatedAt: 1,
       }));
       b.world.panes.delete('@3');
       await b.ownership.freeze(b.gateway.record.transaction!);
       const again = await b.restart();
       b.gateway.abort();
       const revives: unknown[] = [];
-      const revive = b.deps.fleet.reviveCharacter;
-      b.deps.fleet.reviveCharacter = async (id) => { revives.push(structuredClone(b.store.state.characters[id].revive)); return revive(id); };
+      const revive = b.deps.fleet.reviveRobot;
+      b.deps.fleet.reviveRobot = async (id) => { revives.push(structuredClone(b.store.state.robots[id].revive)); return revive(id); };
 
       await again.handover.abort({ transactionId: TX, generation: 4 });
 
@@ -1307,8 +1307,8 @@ describe('source abort', () => {
   });
 
   it('resumes an agent a lost tmux cut off mid-turn during the freeze once the abort lets the fleet run again', async () => {
-    const b = boot({ characters: (work) => [char('c_bo', path.join(work, 'bo'), { tmux: win(3) })] });
-    b.store.update((d) => { d.characters.c_bo.agent = b.agent('working'); });
+    const b = boot({ robots: (work) => [robot('c_bo', path.join(work, 'bo'), { tmux: win(3) })] });
+    b.store.update((d) => { d.robots.c_bo.agent = b.agent('working'); });
     b.gateway.begin();
     b.handover.write(SourceJournal.parse({
       role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze', updatedAt: 1,
@@ -1324,8 +1324,8 @@ describe('source abort', () => {
       b.store.update(reconcile(b.store.state, await b.world.tmux.listWindows(), 0).mutate);
     };
     const revives: unknown[] = [];
-    const revive = b.deps.fleet.reviveCharacter;
-    b.deps.fleet.reviveCharacter = async (id) => { revives.push(structuredClone(b.store.state.characters[id].revive)); return revive(id); };
+    const revive = b.deps.fleet.reviveRobot;
+    b.deps.fleet.reviveRobot = async (id) => { revives.push(structuredClone(b.store.state.robots[id].revive)); return revive(id); };
 
     await again.handover.abort({ transactionId: TX, generation: 4 });
 
@@ -1359,7 +1359,7 @@ describe('source abort', () => {
 
     expect(b.world.log).toEqual(['ensure-server', 'revive c_ada', 'second c_ada', 'revive c_bo', 'activate', 'reconcile']);
     // c_cy was dormant before the handover and stays so
-    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(b.store.state.robots.c_cy.tmux).toBeUndefined();
     expect(again.ownership.writable()).toBe(true);
   });
 
@@ -1376,12 +1376,12 @@ describe('source abort', () => {
   it('keeps going when one terminal will not reopen, and says which', async () => {
     const b = await frozen();
     b.gateway.abort();
-    b.deps.fleet.reviveCharacter = async (id) => { throw new Error(`no such directory for ${id}`); };
+    b.deps.fleet.reviveRobot = async (id) => { throw new Error(`no such directory for ${id}`); };
     await b.handover.abort({ transactionId: TX, generation: 4 });
     expect(b.ownership.writable()).toBe(true);
     expect(b.events.filter((e) => e.event === 'handover.entity' && e.data.error).map((e) => e.event === 'handover.entity' && e.data)).toEqual([
-      { transactionId: TX, kind: 'character', id: 'c_ada', phase: 'aborted', error: 'no such directory for c_ada' },
-      { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'aborted', error: 'no such directory for c_bo' },
+      { transactionId: TX, kind: 'robot', id: 'c_ada', phase: 'aborted', error: 'no such directory for c_ada' },
+      { transactionId: TX, kind: 'robot', id: 'c_bo', phase: 'aborted', error: 'no such directory for c_bo' },
     ]);
   });
 });
@@ -1402,7 +1402,7 @@ describe('source under a forced record', () => {
     expect(await b.handover.adopt(forced(me))).toMatchObject({ adopted: true, superseded: TX, ownership: { generation: 6, ownerMachineId: me, frozen: false } });
     expect(b.world.log).toEqual([...revived, 'activate', 'reconcile']);
     // c_cy was dormant before the handover and stays so
-    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(b.store.state.robots.c_cy.tmux).toBeUndefined();
     expect(fs.existsSync(b.paths.journal)).toBe(false);
     expect(fs.existsSync(b.paths.manifest(TX))).toBe(false);
     expect(ownerFile(b.paths)).toEqual(forced(me));
@@ -1416,7 +1416,7 @@ describe('source under a forced record', () => {
     expect(again.handover.status()).toEqual({ quarantined: expect.stringContaining(`${b.paths.journal}.broken-`) });
     expect(await again.handover.adopt(forced(me))).toMatchObject({ adopted: true, superseded: TX, ownership: { generation: 6, ownerMachineId: me, frozen: false } });
     expect(b.world.log).toEqual([...revived, 'activate', 'reconcile']);
-    expect(b.store.state.characters.c_cy.tmux).toBeUndefined();
+    expect(b.store.state.robots.c_cy.tmux).toBeUndefined();
     expect(again.handover.journalState()).toEqual({ kind: 'none' });
     expect(fs.existsSync(b.paths.manifest(TX))).toBe(false);
     expect(again.ownership.writable()).toBe(true);
@@ -1429,7 +1429,7 @@ describe('source under a forced record', () => {
     expect(journalOf(b.paths)).toBeUndefined();
     expect(ownerFile(b.paths)).toEqual(forced(elsewhere));
     expect(b.ownership.writable()).toBe(false);
-    expect(b.store.state.characters.c_ada.tmux).toBeUndefined();
+    expect(b.store.state.robots.c_ada.tmux).toBeUndefined();
   });
 
   it('leaves its handover alone for the record that handover itself commits', async () => {

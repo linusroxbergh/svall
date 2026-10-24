@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteIsland, moveCharacterTo, setStar, starCharacterAt, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteIsland, moveRobotTo, setStar, starRobotAt, newRobotOn, newRobotTarget, newIsland, newIslandAround, newNamedRobot, openSecondTerminal, reviveRobot, saveRobot, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeRobot } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -18,57 +18,57 @@ function ctx() {
   return { calls, api, store };
 }
 
-describe('newCharacterTarget', () => {
-  it('lands beside the selected character, in its cwd', async () => {
+describe('newRobotTarget', () => {
+  it('lands beside the selected robot, in its cwd', async () => {
     const c = ctx();
     c.store.getState().setView('board');
     c.store.getState().select('c1');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_b', cwd: '/tmp' });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_b', cwd: '/tmp' });
   });
 
-  it('takes the cwd of the character it is beside, not the island first character', async () => {
+  it('takes the cwd of the robot it is beside, not the island first robot', async () => {
     const c = ctx();
     c.store.getState().setView('board');
-    c.store.getState().applyPatch([{ op: 'replace', path: '/characters/c1/cwd', value: '/other' }]);
+    c.store.getState().applyPatch([{ op: 'replace', path: '/robots/c1/cwd', value: '/other' }]);
     c.store.getState().select('c1');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_b', cwd: '/other' });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_b', cwd: '/other' });
   });
 
-  it('starts in the repo when the character it is beside sits in a worktree', async () => {
+  it('starts in the repo when the robot it is beside sits in a worktree', async () => {
     const c = ctx();
     c.store.getState().setView('board');
     c.store.getState().applyPatch([
-      { op: 'replace', path: '/characters/c1/cwd', value: '/repo/.worktrees/wip' },
-      { op: 'add', path: '/characters/c1/repo', value: { root: '/repo/.worktrees/wip', mainRoot: '/repo', branch: 'wip', isWorktree: true } },
+      { op: 'replace', path: '/robots/c1/cwd', value: '/repo/.worktrees/wip' },
+      { op: 'add', path: '/robots/c1/repo', value: { root: '/repo/.worktrees/wip', mainRoot: '/repo', branch: 'wip', isWorktree: true } },
     ]);
     c.store.getState().select('c1');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_b', cwd: '/repo' });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_b', cwd: '/repo' });
   });
 
-  it('falls back to the first character with nothing selected', async () => {
+  it('falls back to the first robot with nothing selected', async () => {
     const c = ctx();
     c.store.getState().setView('board');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_a', cwd: '/tmp' });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_a', cwd: '/tmp' });
   });
 
   it('prefers the island selected on the map, in the fleet default cwd when it has no crew', async () => {
     const c = ctx();
     c.store.getState().selectIsland('i_e');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_e', cwd: DEFAULT_CWD });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_e', cwd: DEFAULT_CWD });
   });
 
   it('prefers the island selected on the board', async () => {
     const c = ctx();
     c.store.getState().setView('board');
     c.store.getState().selectIsland('i_e');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_e', cwd: DEFAULT_CWD });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_e', cwd: DEFAULT_CWD });
   });
 
   it('creates an island named after the default cwd when mission control is the only one', async () => {
     const c = ctx();
     c.store.getState().setView('board');
     c.store.getState().setFleet({ ...emptyState(), islands: { home: isl('home', 'mission control', 0, { kind: 'home' }) } });
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_new', cwd: DEFAULT_CWD });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_new', cwd: DEFAULT_CWD });
     expect(c.calls).toEqual([{ method: 'island.create', params: { name: 'island' } }]);
   });
 
@@ -78,100 +78,100 @@ describe('newCharacterTarget', () => {
     c.store.getState().setFleet({ ...emptyState(), islands: {
       home: isl('home', 'mission control', 0, { kind: 'home' }), i_x: isl('i_x', 'x', 0, { collapsed: true }),
     } });
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_x', cwd: DEFAULT_CWD });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_x', cwd: DEFAULT_CWD });
     expect(c.calls).toEqual([]);
   });
 });
 
-describe('moveCharacterTo', () => {
-  it('joins an island through its header or inserts beside a character', () => {
+describe('moveRobotTo', () => {
+  it('joins an island through its header or inserts beside a robot', () => {
     const c = ctx();
-    moveCharacterTo(c, 'c1', { kind: 'island', id: 'i_a' });
-    moveCharacterTo(c, 'c1', { kind: 'char', id: 'c2' });
+    moveRobotTo(c, 'c1', { kind: 'island', id: 'i_a' });
+    moveRobotTo(c, 'c1', { kind: 'robot', id: 'c2' });
     expect(c.calls).toEqual([
-      { method: 'char.move', params: { id: 'c1', islandId: 'i_a' } },
-      { method: 'char.reorder', params: { id: 'c1', targetId: 'c2', after: false } },
+      { method: 'robot.move', params: { id: 'c1', islandId: 'i_a' } },
+      { method: 'robot.reorder', params: { id: 'c1', targetId: 'c2', after: false } },
     ]);
   });
 
-  it('ignores a character dropped on itself', () => {
+  it('ignores a robot dropped on itself', () => {
     const c = ctx();
-    moveCharacterTo(c, 'c1', { kind: 'char', id: 'c1' });
+    moveRobotTo(c, 'c1', { kind: 'robot', id: 'c1' });
     expect(c.calls).toEqual([]);
   });
 
-  it('inserts a character within its island instead of swapping cells', () => {
+  it('inserts a robot within its island instead of swapping cells', () => {
     const c = ctx();
-    moveCharacterTo(c, 'c1', { kind: 'char', id: 'c0' }, false);
-    expect(c.calls).toEqual([{ method: 'char.reorder', params: { id: 'c1', targetId: 'c0', after: false } }]);
+    moveRobotTo(c, 'c1', { kind: 'robot', id: 'c0' }, false);
+    expect(c.calls).toEqual([{ method: 'robot.reorder', params: { id: 'c1', targetId: 'c0', after: false } }]);
   });
 });
 
 describe('stars', () => {
-  it('stars or unstars as asked, and sends nothing for the state a character already has', () => {
+  it('stars or unstars as asked, and sends nothing for the state a robot already has', () => {
     const c = ctx();
     setStar(c, 'c1', false);
     setStar(c, 'c1', true);
-    c.store.getState().applyPatch([{ op: 'add', path: '/characters/c1/star', value: 0 }]);
+    c.store.getState().applyPatch([{ op: 'add', path: '/robots/c1/star', value: 0 }]);
     setStar(c, 'c1', true);
     setStar(c, 'c1', false);
     expect(c.calls).toEqual([
-      { method: 'char.star', params: { id: 'c1' } },
-      { method: 'char.unstar', params: { id: 'c1' } },
+      { method: 'robot.star', params: { id: 'c1' } },
+      { method: 'robot.unstar', params: { id: 'c1' } },
     ]);
   });
 
   it('places a star beside the starred one it is dropped on, first without one, and not on itself', () => {
     const c = ctx();
-    starCharacterAt(c, 'c1', 'c2', true);
-    starCharacterAt(c, 'c1');
-    starCharacterAt(c, 'c1', 'c1', false);
+    starRobotAt(c, 'c1', 'c2', true);
+    starRobotAt(c, 'c1');
+    starRobotAt(c, 'c1', 'c1', false);
     expect(c.calls).toEqual([
-      { method: 'char.star', params: { id: 'c1', targetId: 'c2', after: true } },
-      { method: 'char.star', params: { id: 'c1' } },
+      { method: 'robot.star', params: { id: 'c1', targetId: 'c2', after: true } },
+      { method: 'robot.star', params: { id: 'c1' } },
     ]);
   });
 });
 
-describe('newNamedCharacter', () => {
+describe('newNamedRobot', () => {
   const created = (calls: { method: string; params: unknown }[]) => ({
     call: (method: string, params: unknown) => {
       calls.push({ method, params });
-      return Promise.resolve(method === 'char.create' ? { id: 'c_new' } : {});
+      return Promise.resolve(method === 'robot.create' ? { id: 'c_new' } : {});
     },
   } as unknown as Api);
 
-  it('creates the character alone when it has neither note nor links', async () => {
+  it('creates the robot alone when it has neither note nor links', async () => {
     const calls: { method: string; params: unknown }[] = [];
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     store.getState().selectIsland('i_a');
-    expect(await newNamedCharacter({ api: created(calls), store }, { name: 'scribe', note: '', refs: [] })).toBe('c_new');
-    expect(calls).toEqual([{ method: 'char.create', params: { islandId: 'i_a', cwd: '/tmp', name: 'scribe' } }]);
+    expect(await newNamedRobot({ api: created(calls), store }, { name: 'scribe', note: '', refs: [] })).toBe('c_new');
+    expect(calls).toEqual([{ method: 'robot.create', params: { islandId: 'i_a', cwd: '/tmp', name: 'scribe' } }]);
   });
 
-  it('writes the note and the links on once the character exists, each link under its own kind', async () => {
+  it('writes the note and the links on once the robot exists, each link under its own kind', async () => {
     const calls: { method: string; params: unknown }[] = [];
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     store.getState().selectIsland('i_a');
-    await newNamedCharacter({ api: created(calls), store }, { name: '', note: 'read the spec', refs: ['~/spec.md', 'https://example.com/x'] });
+    await newNamedRobot({ api: created(calls), store }, { name: '', note: 'read the spec', refs: ['~/spec.md', 'https://example.com/x'] });
     expect(calls).toEqual([
-      { method: 'char.create', params: { islandId: 'i_a', cwd: '/tmp' } },
-      { method: 'char.update', params: { id: 'c_new', note: 'read the spec', context: [
+      { method: 'robot.create', params: { islandId: 'i_a', cwd: '/tmp' } },
+      { method: 'robot.update', params: { id: 'c_new', note: 'read the spec', context: [
         { kind: 'file', ref: '~/spec.md', label: '', source: 'manual' },
         { kind: 'other', ref: 'https://example.com/x', label: '', source: 'manual' },
       ] } },
     ]);
   });
 
-  it('keeps the character and toasts when the fleet refuses the note', async () => {
+  it('keeps the robot and toasts when the fleet refuses the note', async () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     const api = {
-      call: (method: string) => (method === 'char.create' ? Promise.resolve({ id: 'c_new' }) : Promise.reject(new Error('no such path'))),
+      call: (method: string) => (method === 'robot.create' ? Promise.resolve({ id: 'c_new' }) : Promise.reject(new Error('no such path'))),
     } as unknown as Api;
-    expect(await newNamedCharacter({ api, store }, { name: 'scribe', note: 'read the spec', refs: [] })).toBe('c_new');
+    expect(await newNamedRobot({ api, store }, { name: 'scribe', note: 'read the spec', refs: [] })).toBe('c_new');
     expect(store.getState().toast).toEqual({ text: 'no such path', tone: 'error' });
   });
 });
@@ -187,8 +187,8 @@ describe('a write the fleet refuses', () => {
 
   it('is reported on a toast when it saves, revives or deletes', async () => {
     type D = ReturnType<typeof refusing>;
-    for (const act of [(d: D) => saveCharacter(d, 'c0', { name: 'x' }), (d: D) => saveIsland(d, 'i_a', { name: 'x' }),
-      (d: D) => reviveCharacter(d, 'c0'), (d: D) => deleteIsland(d, 'i_e')]) {
+    for (const act of [(d: D) => saveRobot(d, 'c0', { name: 'x' }), (d: D) => saveIsland(d, 'i_a', { name: 'x' }),
+      (d: D) => reviveRobot(d, 'c0'), (d: D) => deleteIsland(d, 'i_e')]) {
       const d = refusing();
       act(d);
       await new Promise((r) => setTimeout(r, 0));
@@ -215,8 +215,8 @@ describe('an edit that never reached the fleet', () => {
     const sent: unknown[] = [];
     let online = false;
     const api = { call: (_m: string, params: unknown) => { sent.push(params); return online ? Promise.resolve({}) : Promise.reject(new Error('svalld offline')); } } as unknown as Api;
-    type D = Parameters<typeof saveCharacter>[0];
-    for (const save of [(d: D) => saveCharacter(d, 'c0', { note: 'half a thought' }), (d: D) => saveIsland(d, 'i_a', { description: 'half a thought' })]) {
+    type D = Parameters<typeof saveRobot>[0];
+    for (const save of [(d: D) => saveRobot(d, 'c0', { note: 'half a thought' }), (d: D) => saveIsland(d, 'i_a', { description: 'half a thought' })]) {
       online = false;
       sent.length = 0;
       const store = createAppStore(undefined);
@@ -231,11 +231,11 @@ describe('an edit that never reached the fleet', () => {
   });
 
   it('is not offered again when the fleet refused it', async () => {
-    const api = { call: () => Promise.reject(new ApiError('invalid', 'another character is already called x')) } as unknown as Api;
+    const api = { call: () => Promise.reject(new ApiError('invalid', 'another robot is already called x')) } as unknown as Api;
     const store = createAppStore(undefined);
-    saveCharacter({ api, store }, 'c0', { name: 'x' });
+    saveRobot({ api, store }, 'c0', { name: 'x' });
     await new Promise((r) => setTimeout(r, 0));
-    expect(store.getState().toast).toEqual({ text: 'another character is already called x', tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: 'another robot is already called x', tone: 'error' });
   });
 });
 
@@ -245,32 +245,32 @@ describe('a crew member whose directory is gone', () => {
   const goneDir = (calls: Call[], message = 'cwd /tmp is not a directory') => ({
     call: (method: string, params: { cwd?: string }) => {
       calls.push({ method, params });
-      if (method === 'char.create' && params.cwd !== DEFAULT_CWD) return Promise.reject(new ApiError('invalid', message));
+      if (method === 'robot.create' && params.cwd !== DEFAULT_CWD) return Promise.reject(new ApiError('invalid', message));
       return Promise.resolve({ id: 'c_new', name: 'c_new' });
     },
   } as unknown as Api);
   const store = () => { const s = createAppStore(undefined); s.getState().setFleet(fleet()); return s; };
 
-  it('leaves a new character on its island to start in the fleet default', async () => {
+  it('leaves a new robot on its island to start in the fleet default', async () => {
     const calls: Call[] = [];
     const s = store();
-    await newCharacterOn({ api: goneDir(calls), store: s }, 'i_b');
+    await newRobotOn({ api: goneDir(calls), store: s }, 'i_b');
     expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_b', cwd: '/tmp' }, { islandId: 'i_b', cwd: DEFAULT_CWD }]);
     expect(s.getState().toast).toBeUndefined();
   });
 
-  it('leaves a named character beside it to start in the fleet default', async () => {
+  it('leaves a named robot beside it to start in the fleet default', async () => {
     const calls: Call[] = [];
     const s = store();
     s.getState().selectIsland('i_a');
-    expect(await newNamedCharacter({ api: goneDir(calls), store: s }, { name: 'scribe', note: '', refs: [] })).toBe('c_new');
+    expect(await newNamedRobot({ api: goneDir(calls), store: s }, { name: 'scribe', note: '', refs: [] })).toBe('c_new');
     expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_a', cwd: '/tmp', name: 'scribe' }, { islandId: 'i_a', cwd: DEFAULT_CWD, name: 'scribe' }]);
   });
 
   it('reports a mission control folder that is gone rather than start the agent somewhere else', async () => {
     const calls: Call[] = [];
     const s = store();
-    await newCharacterOn({ api: goneDir(calls, 'cwd /mc is not a directory'), store: s }, 'home');
+    await newRobotOn({ api: goneDir(calls, 'cwd /mc is not a directory'), store: s }, 'home');
     expect(calls).toHaveLength(1);
     expect(s.getState().toast?.text).toBe('cwd /mc is not a directory');
   });
@@ -278,7 +278,7 @@ describe('a crew member whose directory is gone', () => {
   it('reports any other refusal without a second try', async () => {
     const calls: Call[] = [];
     const s = store();
-    await newCharacterOn({ api: goneDir(calls, 'island i_b is full'), store: s }, 'i_b');
+    await newRobotOn({ api: goneDir(calls, 'island i_b is full'), store: s }, 'i_b');
     expect(calls).toHaveLength(1);
     expect(s.getState().toast?.text).toBe('island i_b is full');
   });
@@ -347,10 +347,10 @@ describe('skillPrompt', () => {
 });
 
 describe('home', () => {
-  it('a new character on home takes the home cwd', async () => {
+  it('a new robot on home takes the home cwd', async () => {
     const c = ctx();
     c.store.getState().selectIsland('home');
-    expect(await newCharacterTarget(c)).toEqual({ islandId: 'home', cwd: '/mc' });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'home', cwd: '/mc' });
   });
 
   it('startHomeAction spawns a crew member with the command and prompt, and toasts', async () => {
@@ -359,7 +359,7 @@ describe('home', () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     await startHomeAction({ api, store }, { label: 'organise', prompt: '/svall-organise' });
-    expect(calls).toEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', name: 'organise', command: 'claude --model opus', run: '/svall-organise' } }]);
+    expect(calls).toEqual([{ method: 'robot.create', params: { islandId: 'home', cwd: '/mc', name: 'organise', command: 'claude --model opus', run: '/svall-organise' } }]);
     expect(store.getState().selectedId).toBe('c_new');
     expect(store.getState().toast).toEqual({ text: 'organise started', tone: 'ok' });
   });
@@ -385,7 +385,7 @@ describe('home', () => {
     const sent: unknown[] = [];
     const api = {
       call: (method: string, params: unknown) => {
-        if (method !== 'char.run') return Promise.resolve({ id: 'c_new', name: 'rename', runSent: false });
+        if (method !== 'robot.run') return Promise.resolve({ id: 'c_new', name: 'rename', runSent: false });
         sent.push({ method, params });
         return Promise.reject(new Error('c_new is dormant; revive it first'));
       },
@@ -398,7 +398,7 @@ describe('home', () => {
     expect(toast?.text).toBe('rename started, prompt not sent');
     expect(toast?.action?.label).toBe('Send it');
     store.getState().runToastAction();
-    expect(sent).toStrictEqual([{ method: 'char.run', params: { id: 'c_new', text: '/svall-rename', enter: true } }]);
+    expect(sent).toStrictEqual([{ method: 'robot.run', params: { id: 'c_new', text: '/svall-rename', enter: true } }]);
     // a send refused this time is said so too
     await new Promise((r) => setTimeout(r, 0));
     expect(store.getState().toast?.text).toBe('c_new is dormant; revive it first');
@@ -409,8 +409,8 @@ describe('home', () => {
     const api = { call: (method: string, params: unknown) => { calls.push({ method, params }); return Promise.resolve({ id: 'c_new', name: 'bright otter', runSent: true }); } } as unknown as Api;
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
-    await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
-    expect(calls).toStrictEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', command: 'claude --model opus', run: 'regroup the fleet' } }]);
+    await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
+    expect(calls).toStrictEqual([{ method: 'robot.create', params: { islandId: 'home', cwd: '/mc', command: 'claude --model opus', run: 'regroup the fleet' } }]);
     expect(store.getState().toast).toEqual({ text: 'bright otter started', tone: 'ok' });
   });
 
@@ -419,8 +419,8 @@ describe('home', () => {
     const api = { call: (method: string, params: unknown) => { calls.push({ method, params }); return Promise.resolve({ id: 'c_new', name: 'bright otter', runSent: true }); } } as unknown as Api;
     const store = createAppStore(undefined);
     store.getState().setFleet({ ...fleet(), agentsFound: ['codex'] });
-    expect(await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' })).toBe(true);
-    expect(calls.map((c) => c.method)).toEqual(['char.create']);
+    expect(await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' })).toBe(true);
+    expect(calls.map((c) => c.method)).toEqual(['robot.create']);
     expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which svalld doesn't find. Install it, then run svall-dev setup.", tone: 'error' });
   });
 
@@ -428,7 +428,7 @@ describe('home', () => {
     const api = { call: () => Promise.reject(new Error('no such island')) } as unknown as Api;
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
-    expect(await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' })).toBe(false);
+    expect(await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' })).toBe(false);
     expect(store.getState().toast).toEqual({ text: 'no such island', tone: 'error' });
   });
 
@@ -438,7 +438,7 @@ describe('home', () => {
     const api = {
       call: () => new Promise((r) => setTimeout(() => r({ id: 'c_new', name: 'bright otter', runSent: true }), 0)),
     } as unknown as Api;
-    const started = startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
+    const started = startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
     store.getState().select('c1');
     await started;
     expect(store.getState().selectedId).toBe('c1');
@@ -449,10 +449,10 @@ describe('home', () => {
     store.getState().setFleet(fleet());
     let settle = (v: unknown) => { void v; };
     const api = { call: () => new Promise((r) => { settle = r; }) } as unknown as Api;
-    const started = startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
+    const started = startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
     // the daemon's patch lands long before it answers
     const f = fleet();
-    f.characters.c_new = chr('c_new', 'home', { x: 1, y: 1 });
+    f.robots.c_new = chr('c_new', 'home', { x: 1, y: 1 });
     store.getState().setFleet(f);
     expect(store.getState().selectedId).toBe('c_new');
     settle({ id: 'c_new', name: 'bright otter', runSent: true });
@@ -461,15 +461,15 @@ describe('home', () => {
   });
 
   // the card of the one gone back to may hold a field being typed in, which a selection move would drop
-  it('leaves the user on a character they went back to while the agent was starting', async () => {
+  it('leaves the user on a robot they went back to while the agent was starting', async () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     store.getState().select('c0');
     let settle = (v: unknown) => { void v; };
     const api = { call: () => new Promise((r) => { settle = r; }) } as unknown as Api;
-    const started = startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
+    const started = startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
     const f = fleet();
-    f.characters.c_new = chr('c_new', 'home', { x: 1, y: 1 });
+    f.robots.c_new = chr('c_new', 'home', { x: 1, y: 1 });
     store.getState().setFleet(f);
     expect(store.getState().selectedId).toBe('c_new');
     store.getState().select('c0');
@@ -482,10 +482,10 @@ describe('home', () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     const api = { call: () => new Promise(() => {}) } as unknown as Api;
-    void startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
+    void startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
     store.getState().select('c1');
     const f = fleet();
-    f.characters.c_new = chr('c_new', 'home', { x: 1, y: 1 });
+    f.robots.c_new = chr('c_new', 'home', { x: 1, y: 1 });
     store.getState().setFleet(f);
     expect(store.getState().selectedId).toBe('c1');
   });
@@ -494,74 +494,74 @@ describe('home', () => {
     const store = createAppStore(undefined);
     store.getState().setFleet(fleet());
     const api = { call: () => Promise.resolve({ id: 'c_new', name: 'bright otter', runSent: true }) } as unknown as Api;
-    await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
+    await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
     expect(store.getState().selectedId).toBe('c_new');
   });
 });
 
-describe('a new island or character', () => {
+describe('a new island or robot', () => {
   const made: [string, (c: ReturnType<typeof ctx>) => unknown][] = [
-    ['a character on an island', (c) => newCharacterOn(c, 'i_a')],
-    ['a named character', (c) => newNamedCharacter(c, { name: 'n', note: '', refs: [] })],
-    ['a crew member on mission control', (c) => startHomeCharacter(c, { prompt: 'hi' })],
+    ['a robot on an island', (c) => newRobotOn(c, 'i_a')],
+    ['a named robot', (c) => newNamedRobot(c, { name: 'n', note: '', refs: [] })],
+    ['a crew member on mission control', (c) => startHomeRobot(c, { prompt: 'hi' })],
     ['an island', (c) => newIsland(c)],
-    ['an island around a dragged character', (c) => newIslandAround(c, 'c0', { x: 40, y: 0 })],
+    ['an island around a dragged robot', (c) => newIslandAround(c, 'c0', { x: 40, y: 0 })],
   ];
   it.each(made)('puts Settings away so it can be seen: %s', async (_what, make) => {
     const c = ctx();
     c.store.getState().toggleSettings(true);
     await make(c);
     expect(c.store.getState().settingsOpen).toBe(false);
-    expect(c.calls.some((x) => x.method === 'char.create' || x.method === 'island.create')).toBe(true);
+    expect(c.calls.some((x) => x.method === 'robot.create' || x.method === 'island.create')).toBe(true);
   });
 });
 
-describe('a new character', () => {
+describe('a new robot', () => {
   function made() {
     const c = ctx();
     c.api.call = ((method: string, params: unknown) => {
       c.calls.push({ method, params });
-      return Promise.resolve(method === 'char.create' ? { id: 'c_new', name: 'n', runSent: true } : {});
+      return Promise.resolve(method === 'robot.create' ? { id: 'c_new', name: 'n', runSent: true } : {});
     }) as Api['call'];
     // the user put the side card away before making one
     c.store.getState().toggleSideCard(false);
     return c;
   }
-  const created = (c: ReturnType<typeof ctx>) => c.calls.find((x) => x.method === 'char.create')?.params as { command?: string };
+  const created = (c: ReturnType<typeof ctx>) => c.calls.find((x) => x.method === 'robot.create')?.params as { command?: string };
 
   it('opens its terminal and its side card, even when the side card was put away', async () => {
     const c = made();
-    await newCharacterOn(c, 'i_a');
+    await newRobotOn(c, 'i_a');
     expect(c.store.getState()).toMatchObject({ card: 'c_new', selectedId: 'c_new', sideCardOpen: true, sideCardCollapsed: false });
   });
 
   it('opens the side card of a crew member started on mission control, without a terminal', async () => {
     const c = made();
-    await startHomeCharacter(c, { prompt: 'hi' });
+    await startHomeRobot(c, { prompt: 'hi' });
     expect(c.store.getState()).toMatchObject({ card: undefined, selectedId: 'c_new', sideCardOpen: true });
   });
 
   it('starts the home command on mission control, and a shell anywhere else', async () => {
     const c = made();
-    await newCharacterOn(c, 'home');
+    await newRobotOn(c, 'home');
     expect(created(c).command).toBe('claude --model opus');
     c.calls.length = 0;
-    await newCharacterOn(c, 'i_a');
+    await newRobotOn(c, 'i_a');
     expect(created(c)).not.toHaveProperty('command');
   });
 
-  it('follows the main agent for a named character on mission control', async () => {
+  it('follows the main agent for a named robot on mission control', async () => {
     const c = made();
     c.store.getState().applyPatch([{ op: 'replace', path: '/home/command', value: 'codex' }]);
     c.store.getState().selectIsland('home');
-    await newNamedCharacter(c, { name: 'n', note: '', refs: [] });
+    await newNamedRobot(c, { name: 'n', note: '', refs: [] });
     expect(created(c).command).toBe('codex');
   });
 
   it('says so on mission control when svalld does not find the agent, and still starts it', async () => {
     const c = made();
     c.store.getState().applyPatch([{ op: 'add', path: '/agentsFound', value: ['codex'] }]);
-    await newCharacterOn(c, 'home');
+    await newRobotOn(c, 'home');
     expect(created(c).command).toBe('claude --model opus');
     expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
   });

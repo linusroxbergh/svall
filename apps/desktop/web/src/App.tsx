@@ -17,7 +17,7 @@ import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
-import { NewCharacter } from './NewCharacter.js';
+import { NewRobot } from './NewRobot.js';
 import { ScribeAsk } from './ScribeAsk.js';
 import { SettingsCard } from './SettingsCard.js';
 import { boardViewed } from './selectors.js';
@@ -74,8 +74,8 @@ function Screen() {
   const sideCardOpen = useApp((s) => s.sideCardOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
-  // the side card edits the board's viewed character, and on the map the explicit selection
-  const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
+  // the side card edits the board's viewed robot, and on the map the explicit selection
+  const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
   const connection = useApp((s) => s.connection);
@@ -161,7 +161,7 @@ function Screen() {
             aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}>‹</button>
         )}
       </div>
-      <NewCharacter />
+      <NewRobot />
       <MissionPrompt />
       <ConfirmClose />
       <ConfirmSleep />

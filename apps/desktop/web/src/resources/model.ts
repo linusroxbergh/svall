@@ -2,7 +2,7 @@ import type { ContextItem, FleetState, ResourceItem, ResourceKind, ResourceSourc
 import { linkText } from '../map/tokenText.js';
 import { islandsSorted } from '../selectors.js';
 
-// what an island or a character carries on its card rather than on disk
+// what an island or a robot carries on its card rather than on disk
 export type CardKind = 'note' | 'agentInstructions' | 'links';
 export type Kind = ResourceKind | CardKind;
 export type What = Kind | 'all';
@@ -27,13 +27,13 @@ const KINDS: { kind: Kind; label: string; colour: string; card?: true }[] = [
 
 export const kindOf = (kind: Kind) => KINDS.find((k) => k.kind === kind)!;
 
-/** Which field of an island or a character a row stands for, or which of its links. */
-export type FieldRef = { tier: 'island' | 'character'; id: string; field: 'note' | 'instructions' };
-export type CardRef = FieldRef | { link: ContextItem; charId?: string };
+/** Which field of an island or a robot a row stands for, or which of its links. */
+export type FieldRef = { tier: 'island' | 'robot'; id: string; field: 'note' | 'instructions' };
+export type CardRef = FieldRef | { link: ContextItem; robotId?: string };
 export const isField = (r: CardRef): r is FieldRef => 'field' in r;
-type Entity = FleetState['islands'][string] | FleetState['characters'][string];
+type Entity = FleetState['islands'][string] | FleetState['robots'][string];
 export const entityOf = (s: { fleet: FleetState }, r: FieldRef): Entity | undefined =>
-  (r.tier === 'character' ? s.fleet.characters : s.fleet.islands)[r.id];
+  (r.tier === 'robot' ? s.fleet.robots : s.fleet.islands)[r.id];
 export const fieldValue = (e: Entity, field: FieldRef['field']): string =>
   (field === 'instructions' ? e.instructions : 'note' in e ? e.note : e.description);
 // the field's own name on the card; an island's note is its description, as the side card calls it
@@ -45,7 +45,7 @@ export type Tier = ResourceSource['tier'];
 export type CardItem = Omit<ResourceItem, 'reveal' | 'target' | 'open'> & { card: CardRef };
 export type Item = ResourceItem | CardItem;
 export type Group = { kind: Kind; items: Item[] };
-/** A source as the shelf reads it: the scan's groups, and for an island or a character its card's as well. */
+/** A source as the shelf reads it: the scan's groups, and for an island or a robot its card's as well. */
 export type Source = Omit<ResourceSource, 'groups'> & { groups: Group[] };
 
 export const isCard = (i: Item): i is CardItem => 'card' in i;
@@ -70,14 +70,14 @@ const preview = (text: string): string => text.trim().split('\n').find((l) => l.
 export const countsBySource = (sources: ResourceSource[], f: FleetState): Map<string, number> =>
   new Map(sources.map((s) => [s.rootId, countOf(withCard(s, f), 'all')]));
 
-/** A source with the island's or character's own card among its groups; anything else is left as it is. */
+/** A source with the island's or robot's own card among its groups; anything else is left as it is. */
 export function withCard(s: ResourceSource, f: FleetState): Source {
   const tier = s.tier;
-  if (tier !== 'island' && tier !== 'character') return s;
-  const e = tier === 'character' ? f.characters[s.characterIds[0]] : f.islands[s.islandIds[0]];
+  if (tier !== 'island' && tier !== 'robot') return s;
+  const e = tier === 'robot' ? f.robots[s.robotIds[0]] : f.islands[s.islandIds[0]];
   if (!e) return s;
   const id = e.id;
-  const charId = s.characterIds[0];
+  const robotId = s.robotIds[0];
   // a row id names the entity it came off, so the row chosen on one island does not stand chosen on the next
   const field = (which: 'note' | 'instructions'): Group => {
     const ref: FieldRef = { tier, id, field: which };
@@ -86,7 +86,7 @@ export function withCard(s: ResourceSource, f: FleetState): Source {
   const card: Group[] = [
     field('note'),
     field('instructions'),
-    { kind: 'links', items: e.context.map((l, n) => ({ id: `card:${id}:link:${n}`, name: linkText(l), detail: l.ref, card: { link: l, charId } })) },
+    { kind: 'links', items: e.context.map((l, n) => ({ id: `card:${id}:link:${n}`, name: linkText(l), detail: l.ref, card: { link: l, robotId } })) },
   ];
   // the list reads in the What column's order because visible() walks KINDS, so these only have to be here
   return { ...s, groups: [...s.groups, ...card.filter((g) => g.items.length > 0)] };
@@ -116,7 +116,7 @@ const TIERS: { tier: Tier; label: string; one: string; glyph: string; colour: st
   { tier: 'fleet', label: 'Fleet', one: 'Fleet', glyph: '◆', colour: '--pt-coral' },
   { tier: 'repo', label: 'Repos', one: 'Repo', glyph: '▣', colour: '--pt-sky' },
   { tier: 'island', label: 'Islands', one: 'Island', glyph: '▲', colour: '--pt-moss' },
-  { tier: 'character', label: 'Characters', one: 'Character', glyph: '●', colour: '--pt-sun' },
+  { tier: 'robot', label: 'Robots', one: 'Robot', glyph: '●', colour: '--pt-sun' },
 ];
 
 export const tierOf = (tier: Tier) => TIERS.find((t) => t.tier === tier)!;
@@ -127,9 +127,9 @@ const plural = (n: number, one: string): string => (n === 0 ? `no ${one}s` : n =
 /** The second line of a source's row: what tells it from another of the same name. */
 export function qualifierOf(s: ResourceSource, f: FleetState): string {
   if (s.tier === 'fleet') return 'this window only';
-  if (s.tier === 'island') return plural(s.characterIds.length, 'character');
-  if (s.tier === 'character') { const c = f.characters[s.characterIds[0]]; return c?.repo?.branch ?? shortPath(c?.cwd ?? s.root); }
-  return s.tier === 'repo' && s.docs === s.rootId ? 'no characters here' : shortPath(s.root);
+  if (s.tier === 'island') return plural(s.robotIds.length, 'robot');
+  if (s.tier === 'robot') { const c = f.robots[s.robotIds[0]]; return c?.repo?.branch ?? shortPath(c?.cwd ?? s.root); }
+  return s.tier === 'repo' && s.docs === s.rootId ? 'no robots here' : shortPath(s.root);
 }
 
 type WhereGroup = { tier: Tier; count: number; sections: { id?: string; heading?: string; sources: ResourceSource[] }[] };
@@ -141,13 +141,13 @@ const inIslandOrder = (sources: ResourceSource[], f: FleetState): ResourceSource
   return [...sources].sort((a, b) => rank(a) - rank(b));
 };
 
-/** The Where column: one group a tier, characters sub-grouped by island; a query narrows every group by name and qualifier. */
+/** The Where column: one group a tier, robots sub-grouped by island; a query narrows every group by name and qualifier. */
 export function whereGroups(sources: ResourceSource[], f: FleetState, query: string): WhereGroup[] {
   const q = query.trim().toLowerCase();
   const hit = (s: ResourceSource) => !q || s.name.toLowerCase().includes(q) || qualifierOf(s, f).toLowerCase().includes(q);
   return TIERS.map(({ tier }) => {
     const mine = sources.filter((s) => s.tier === tier && hit(s));
-    const sections = tier === 'character'
+    const sections = tier === 'robot'
       ? islandsSorted(f).map((i) => ({ id: i.id, heading: i.name, sources: mine.filter((s) => s.islandIds[0] === i.id) })).filter((sec) => sec.sources.length)
       : mine.length ? [{ sources: tier === 'island' ? inIslandOrder(mine, f) : mine }] : [];
     return { tier, count: mine.length, sections };
@@ -155,15 +155,15 @@ export function whereGroups(sources: ResourceSource[], f: FleetState, query: str
 }
 
 /** The What column: All, then every kind whether the source holds any or not, so the column keeps its length.
- *  The card's kinds are only for an island or a character; nothing else has one. */
+ *  The card's kinds are only for an island or a robot; nothing else has one. */
 export function kindRows(s: Source | undefined): { what: What; label: string; colour?: string; n: number; zero: boolean }[] {
   const row = (what: What, label: string, colour?: string) => { const n = countOf(s, what); return { what, label, colour, n, zero: n === 0 }; };
   return [row('all', 'All'), ...KINDS.filter((k) => offers(s?.tier, k.kind)).map((k) => row(k.kind, kindLabel(k.kind, s?.tier), k.colour))];
 }
 
-/** Whether a tier is offered a kind at all: only an island and a character have a card, and only the fleet has agent profiles. */
+/** Whether a tier is offered a kind at all: only an island and a robot have a card, and only the fleet has agent profiles. */
 export const offers = (tier: Tier | undefined, kind: Kind): boolean =>
-  kind === 'agentProfiles' ? tier === 'fleet' : !kindOf(kind).card || tier === 'island' || tier === 'character';
+  kind === 'agentProfiles' ? tier === 'fleet' : !kindOf(kind).card || tier === 'island' || tier === 'robot';
 
 /** Whether a row's content rides in the prompt or is read when wanted; configuration is neither. */
 export const badgeOf = (kind: Kind, item: Pick<Item, 'name'>): 'attached' | 'lookup' | undefined =>
@@ -178,22 +178,22 @@ const chip = (s: Omit<ResourceSource, 'groups'>): Chip => ({ tier: s.tier, label
 
 /** What an agent standing at `s` reads, broad to narrow. An island's repository slot carries its crew's spread; a source above the islands has no chain. */
 export function chainOf(sources: ResourceSource[], f: FleetState, s: Omit<ResourceSource, 'groups'>): Chain | undefined {
-  if (s.tier !== 'island' && s.tier !== 'character') return undefined;
+  if (s.tier !== 'island' && s.tier !== 'robot') return undefined;
   const globals = sources.filter((x) => x.tier === 'global');
-  // a character reads the global source of the agent it runs; an island stands for crew that may differ
-  const kind = s.tier === 'character' ? f.characters[s.characterIds[0]]?.agent?.kind : undefined;
+  // a robot reads the global source of the agent it runs; an island stands for crew that may differ
+  const kind = s.tier === 'robot' ? f.robots[s.robotIds[0]]?.agent?.kind : undefined;
   const global = globals.find((x) => x.name.toLowerCase() === kind) ?? globals[0];
   const ours = sources.find((x) => x.tier === 'fleet');
   const island = f.islands[s.islandIds[0]];
-  const crew = Object.values(f.characters).filter((c) => (s.tier === 'character' ? c.id === s.characterIds[0] : c.islandId === island?.id));
+  const crew = Object.values(f.robots).filter((c) => (s.tier === 'robot' ? c.id === s.robotIds[0] : c.islandId === island?.id));
   const roots = island?.kind === 'home' ? [] : [...new Set(crew.map((c) => c.repo?.mainRoot ?? c.cwd))];
   const repos = roots.map((r) => sources.find((x) => x.tier === 'repo' && x.root === r)).filter((x): x is ResourceSource => !!x)
     .sort((a, b) => a.name.localeCompare(b.name));
   const repo: Chip[] = repos.length === 0 ? [] : repos.length === 1 ? [chip(repos[0])] : [{ tier: 'repo', label: `${repos.length} repos`, rootIds: repos.map((r) => r.rootId) }];
   const islandSource = s.tier === 'island' ? s : sources.find((x) => x.tier === 'island' && x.islandIds[0] === island?.id);
   return {
-    heading: s.tier === 'character' ? `${s.name} reads, in order` : 'a character here reads',
-    chips: [...(global ? [chip(global)] : []), ...(ours ? [chip(ours)] : []), ...repo, ...(islandSource ? [chip(islandSource)] : []), ...(s.tier === 'character' ? [chip(s)] : [])],
+    heading: s.tier === 'robot' ? `${s.name} reads, in order` : 'a robot here reads',
+    chips: [...(global ? [chip(global)] : []), ...(ours ? [chip(ours)] : []), ...repo, ...(islandSource ? [chip(islandSource)] : []), ...(s.tier === 'robot' ? [chip(s)] : [])],
   };
 }
 
@@ -212,8 +212,8 @@ export const isDoc = (sources: ResourceSource[], rootId: string, path: string): 
 /** Whether a folder is the agent profiles', whose files are written and named like docs. */
 export const isAgentProfiles = (sources: ResourceSource[], rootId: string): boolean => sources.some((s) => s.agentProfiles === rootId);
 
-/** An island's or a character's source and the docs in it. */
-export function docsOf(sources: ResourceSource[], tier: 'island' | 'character', id: string): { source?: ResourceSource; items: ResourceItem[] } {
-  const source = sources.find((s) => s.tier === tier && (tier === 'island' ? s.islandIds[0] : s.characterIds[0]) === id);
+/** An island's or a robot's source and the docs in it. */
+export function docsOf(sources: ResourceSource[], tier: 'island' | 'robot', id: string): { source?: ResourceSource; items: ResourceItem[] } {
+  const source = sources.find((s) => s.tier === tier && (tier === 'island' ? s.islandIds[0] : s.robotIds[0]) === id);
   return { source, items: source?.groups.find((g) => g.kind === 'docs')?.items ?? [] };
 }

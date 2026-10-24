@@ -21,7 +21,7 @@ function fakes(opts: { offline?: boolean; refuse?: boolean; refuseCode?: string 
     call: (method: string, params: unknown) => {
       calls.push({ method, params });
       if (opts.offline) return Promise.reject(new Error('svalld offline'));
-      if (opts.refuse && method === 'term.attach') return Promise.reject(new ApiError(opts.refuseCode ?? 'not_found', 'no such character'));
+      if (opts.refuse && method === 'term.attach') return Promise.reject(new ApiError(opts.refuseCode ?? 'not_found', 'no such robot'));
       if (method === 'term.attach') { const p = params as { id: string; term?: 2 }; return Promise.resolve({ socket: '/tmp/s', session: `v-${p.id}${p.term === 2 ? '-2' : ''}` }); }
       return Promise.resolve({});
     },
@@ -73,7 +73,7 @@ describe('terminal manager', () => {
     expect(sent).toEqual([{ type: 'term.show', id: 'c0', rect, opacity: 0.5 }]);
   });
 
-  it('hides a surface whose character lost focus while attaching', async () => {
+  it('hides a surface whose robot lost focus while attaching', async () => {
     const { sent, store, manager } = fakes();
     store.getState().focus('c0');
     const p = manager.show('c0', rect);
@@ -126,15 +126,15 @@ describe('terminal manager', () => {
     const { calls, store } = fakes();
     store.getState().focus('c0');
     await flush();
-    expect(calls).toContainEqual({ method: 'char.seen', params: { id: 'c0' } });
+    expect(calls).toContainEqual({ method: 'robot.seen', params: { id: 'c0' } });
     const n = calls.length;
-    store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/unread', value: true }]);
+    store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/unread', value: true }]);
     await flush();
-    expect(calls.slice(n)).toContainEqual({ method: 'char.seen', params: { id: 'c0' } });
+    expect(calls.slice(n)).toContainEqual({ method: 'robot.seen', params: { id: 'c0' } });
     const n2 = calls.length;
-    store.getState().applyPatch([{ op: 'replace', path: '/characters/c1/name', value: 'x' }]);
+    store.getState().applyPatch([{ op: 'replace', path: '/robots/c1/name', value: 'x' }]);
     await flush();
-    expect(calls.slice(n2)).not.toContainEqual({ method: 'char.seen', params: { id: 'c0' } });
+    expect(calls.slice(n2)).not.toContainEqual({ method: 'robot.seen', params: { id: 'c0' } });
   });
 
   it('does not mark seen while the app is inactive, and catches up when it becomes active', async () => {
@@ -142,13 +142,13 @@ describe('terminal manager', () => {
     store.getState().setActive(false);
     store.getState().focus('c0');
     await flush();
-    expect(calls).not.toContainEqual({ method: 'char.seen', params: { id: 'c0' } });
+    expect(calls).not.toContainEqual({ method: 'robot.seen', params: { id: 'c0' } });
     store.getState().setActive(true);
     await flush();
-    expect(calls).toContainEqual({ method: 'char.seen', params: { id: 'c0' } });
+    expect(calls).toContainEqual({ method: 'robot.seen', params: { id: 'c0' } });
   });
 
-  it('re-attaches a live character whose tmux client died while in view', async () => {
+  it('re-attaches a live robot whose tmux client died while in view', async () => {
     const { sent, calls, store, bridge, manager } = fakes();
     store.getState().focus('c0');
     await manager.show('c0', rect);
@@ -174,7 +174,7 @@ describe('terminal manager', () => {
     expect(sent).toContainEqual({ type: 'term.show', id: 'c0', rect, attach: { socket: '/tmp/s', session: 'v-c0' } });
   });
 
-  it('does not retry an attach for a character no longer in view', async () => {
+  it('does not retry an attach for a robot no longer in view', async () => {
     const f = fakes({ offline: true });
     const { calls, store, manager } = f;
     store.getState().focus('c0');
@@ -190,8 +190,8 @@ describe('terminal manager', () => {
     const f = fakes({ refuse: true });
     const { calls, store, manager } = f;
     store.getState().focus('c0');
-    await expect(manager.show('c0', rect)).rejects.toThrow(/no such character/);
-    expect(store.getState().terminalErrors.c0).toBe('no such character');
+    await expect(manager.show('c0', rect)).rejects.toThrow(/no such robot/);
+    expect(store.getState().terminalErrors.c0).toBe('no such robot');
     store.getState().setStatus('offline');
     store.getState().setStatus('online');
     await flush();
@@ -203,14 +203,14 @@ describe('terminal manager', () => {
     expect(store.getState().terminals.c0).toBeDefined();
   });
 
-  it('keeps no error for a character whose window died under the attach', async () => {
+  it('keeps no error for a robot whose window died under the attach', async () => {
     const f = fakes({ refuse: true });
     const { store, manager } = f;
     store.getState().focus('c0');
-    // the window dies while term.attach is in flight, so the character is dormant by the time it fails
+    // the window dies while term.attach is in flight, so the robot is dormant by the time it fails
     const shown = manager.show('c0', rect);
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0/tmux' }]);
-    await expect(shown).rejects.toThrow(/no such character/);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/tmux' }]);
+    await expect(shown).rejects.toThrow(/no such robot/);
     expect(store.getState().terminalErrors.c0).toBeUndefined();
   });
 
@@ -231,14 +231,14 @@ describe('terminal manager', () => {
     await manager.show('c1', rect);
     bridge.emit({ type: 'term.exited', id: 'c0' });
     expect(store.getState().terminals.c0).toBeUndefined();
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c1/tmux' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c1/tmux' }]);
     expect(sent).toContainEqual({ type: 'term.close', id: 'c1' });
     expect(store.getState().terminals.c1).toBeUndefined();
     await manager.show('c2', rect);
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c2' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c2' }]);
     expect(store.getState().terminals.c2).toBeUndefined();
     store.getState().termFailed('c0', 'x');
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0/tmux' }]);
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/tmux' }]);
     expect(store.getState().terminalErrors.c0).toBeUndefined();
   });
 
@@ -248,7 +248,7 @@ describe('terminal manager', () => {
     await manager.show('c0', rect, 0.92);
     expect(sent).toContainEqual({ type: 'term.show', id: 'c0', rect, opacity: 0.92, attach: { socket: '/tmp/s', session: 'v-c0' } });
     expect(sent.at(-1)).toEqual({ type: 'term.focus', id: 'c0' });
-    expect(calls.some((x) => x.method === 'char.seen' && (x.params as { id: string }).id === 'c0')).toBe(true);
+    expect(calls.some((x) => x.method === 'robot.seen' && (x.params as { id: string }).id === 'c0')).toBe(true);
     bridge.emit({ type: 'term.exited', id: 'c0' });
     await flush();
     expect(sent.filter((m) => m.type === 'term.show' && m.id === 'c0')).toHaveLength(2);
@@ -265,7 +265,7 @@ describe('terminal manager', () => {
     await manager.show('c1', rect);
     expect(sent.at(-1)).toEqual({ type: 'term.focus', id: 'c1' });
     await flush();
-    expect(calls).toContainEqual({ method: 'char.seen', params: { id: 'c1' } });
+    expect(calls).toContainEqual({ method: 'robot.seen', params: { id: 'c1' } });
     store.getState().selectIsland('i_e');
     const p = manager.show('c0', rect);
     await p;
@@ -282,7 +282,7 @@ describe('terminal manager', () => {
     const { sent, calls, store, manager } = fakes();
     const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
     const f = fleet();
-    f.characters.c0 = { ...f.characters.c0, second };
+    f.robots.c0 = { ...f.robots.c0, second };
     store.getState().setFleet(f);
     store.getState().focus('c0');
     await manager.show(secondKey('c0'), rect, undefined, false);
@@ -290,13 +290,13 @@ describe('terminal manager', () => {
     expect(sent).toContainEqual({ type: 'term.show', id: 'c0-2', rect, attach: { socket: '/tmp/s', session: 'v-c0-2' } });
     expect(sent.some((m) => m.type === 'term.hide')).toBe(false);
     const dormant = fleet();
-    dormant.characters.c0 = { ...dormant.characters.c0, second: { cwd: '/tmp', unread: false, revive: { command: '' } } };
+    dormant.robots.c0 = { ...dormant.robots.c0, second: { cwd: '/tmp', unread: false, revive: { command: '' } } };
     store.getState().setFleet(dormant);
     expect(sent).toContainEqual({ type: 'term.close', id: 'c0-2' });
     expect(store.getState().terminals['c0-2']).toBeUndefined();
   });
 
-  it('a focused second terminal focuses its character', async () => {
+  it('a focused second terminal focuses its robot', async () => {
     const { bridge, store } = fakes();
     bridge.emit({ type: 'term.focused', id: 'c1-2' });
     expect(store.getState().focusedId).toBe('c1');
@@ -362,7 +362,7 @@ describe('terminal manager', () => {
     store.getState().handoverReplay([phase('begin'), phase('freeze'),
       { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: 'still working' }] } },
       phase('freeze'), phase('transfer'), phase('activate'), phase('complete'),
-      { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, characters: [] } },
+      { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [] } },
       { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
     expect(sent.some((m) => m.type === 'term.close')).toBe(false);
     expect(store.getState().terminals.c0).toBeDefined();
@@ -384,7 +384,7 @@ describe('terminal manager', () => {
     const attaches = () => calls.filter((c) => c.method === 'term.attach').length;
     await manager.show('c0', rect);
     expect(attaches()).toBe(1);
-    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, characters: [] } });
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [] } });
     await manager.show('c0', rect);
     expect(attaches()).toBe(1);
     // the fleet has loaded from its new owner

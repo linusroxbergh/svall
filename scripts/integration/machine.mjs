@@ -164,7 +164,7 @@ async function snap(o) {
     ownership: await settled(() => rpc('ownership.get')),
     handover: await settled(() => rpc('handover.status')),
     fleet: { id: fleet.id, gatewayMachineId: fleet.gatewayMachineId, handoverEnabled: fleet.handover?.enabled },
-    characters: state.characters ? Object.values(state.characters).map((c) => ({
+    robots: state.robots ? Object.values(state.robots).map((c) => ({
       id: c.id, name: c.name, cwd: c.cwd, islandId: c.islandId, tmux: c.tmux ?? null, revive: c.revive ?? null,
       agent: c.agent ? { kind: c.agent.kind, sessionId: c.agent.sessionId, status: c.agent.status, pid: c.agent.pid ?? null } : null,
     })).sort((a, b) => a.id.localeCompare(b.id)) : state,

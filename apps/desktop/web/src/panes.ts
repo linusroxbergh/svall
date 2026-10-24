@@ -1,4 +1,4 @@
-// what a pane can hold; terminal2 is the character's second terminal
+// what a pane can hold; terminal2 is the robot's second terminal
 export type Surface = 'terminal' | 'terminal2' | 'browser' | 'files' | 'changes';
 // what a pane's control offers: Terminal stands for whichever terminal the other side does not hold
 export type Kind = 'terminal' | 'browser' | 'files' | 'changes';

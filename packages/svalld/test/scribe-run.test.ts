@@ -8,7 +8,7 @@ import { cleanHomes, makeHome } from './helpers.js';
 const FAKE = `#!/bin/sh
 cat > /dev/null
 case "$FAKE_CLAUDE" in
-  ok) echo "{\\"result\\":\\"char=\${SVALL_CHAR_ID:-none}\\"}" ;;
+  ok) echo "{\\"result\\":\\"robot=\${SVALL_ROBOT_ID:-none}\\"}" ;;
   env) echo "{\\"result\\":\\"key=\${ANTHROPIC_API_KEY:-none} other=\${OTHER:-none}\\"}" ;;
   error) echo '{"is_error":true,"result":"overloaded"}' ;;
   exit) echo 'no credentials' >&2; exit 3 ;;
@@ -20,7 +20,7 @@ esac
 `;
 
 describe('claudeRunner', () => {
-  const env = { PATH: process.env.PATH, SVALL_CHAR_ID: process.env.SVALL_CHAR_ID, FAKE_CLAUDE: process.env.FAKE_CLAUDE, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
+  const env = { PATH: process.env.PATH, SVALL_ROBOT_ID: process.env.SVALL_ROBOT_ID, FAKE_CLAUDE: process.env.FAKE_CLAUDE, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
   let run: ReturnType<typeof claudeRunner>;
   let envFile: string;
 
@@ -28,7 +28,7 @@ describe('claudeRunner', () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'claude'), FAKE, { mode: 0o755 });
     process.env.PATH = `${home}:${env.PATH}`;
-    process.env.SVALL_CHAR_ID = 'c_parent';
+    process.env.SVALL_ROBOT_ID = 'c_parent';
     delete process.env.ANTHROPIC_API_KEY;
     envFile = path.join(home, '.env');
     run = claudeRunner({ model: 'sonnet', cwd: path.join(home, 'scribe'), envFile, timeoutMs: 2000 });
@@ -39,9 +39,9 @@ describe('claudeRunner', () => {
     cleanHomes();
   });
 
-  it('answers with the result, run without the character id', async () => {
+  it('answers with the result, run without the robot id', async () => {
     process.env.FAKE_CLAUDE = 'ok';
-    await expect(run('system', 'prompt')).resolves.toBe('char=none');
+    await expect(run('system', 'prompt')).resolves.toBe('robot=none');
   });
 
   it('passes the fleet .env to claude, read afresh on every pass', async () => {

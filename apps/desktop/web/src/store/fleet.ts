@@ -16,23 +16,23 @@ export type FleetActions = {
   setResources(sources: ResourceSource[]): void;
 };
 
-// a character that vanishes takes its card and focus with it, before any effect can run
-const alive = (f: FleetState, id: string | undefined): string | undefined => (id && f.characters[id] ? id : undefined);
+// a robot that vanishes takes its card and focus with it, before any effect can run
+const alive = (f: FleetState, id: string | undefined): string | undefined => (id && f.robots[id] ? id : undefined);
 // an island's delete is asked only while the island is there and empty
 const deletable = (f: FleetState, id: string | undefined): string | undefined =>
-  (id && f.islands[id] && !Object.values(f.characters).some((c) => c.islandId === id) ? id : undefined);
+  (id && f.islands[id] && !Object.values(f.robots).some((c) => c.islandId === id) ? id : undefined);
 const pruned = (s: App, fleet: FleetState) => {
   // a selected island that goes, from here or elsewhere, takes its card with it
   const islandGone = s.selectedIslandId !== undefined && !fleet.islands[s.selectedIslandId];
   return {
-    focusedId: alive(fleet, s.focusedId), selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingCharacter: alive(fleet, s.closingCharacter),
-    sleepingCharacter: alive(fleet, s.sleepingCharacter),
+    focusedId: alive(fleet, s.focusedId), selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingRobot: alive(fleet, s.closingRobot),
+    sleepingRobot: alive(fleet, s.sleepingRobot),
     selectedIslandId: islandGone ? undefined : s.selectedIslandId, sideCardOpen: s.sideCardOpen && !islandGone,
     deletingIsland: deletable(fleet, s.deletingIsland), ide: pruneIde(s.ide, fleet, s.fleet),
   };
 };
 
-// a patch copies only the objects on its paths, so an island or a character it leaves alone keeps its identity
+// a patch copies only the objects on its paths, so an island or a robot it leaves alone keeps its identity
 function patched(fleet: FleetState, ops: Operation[]): FleetState {
   let doc: Record<string, unknown> = { ...fleet };
   const copied = new Set<unknown>([doc]);

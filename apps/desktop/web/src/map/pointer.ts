@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Cell, FleetState } from '@svall/protocol';
-import { moveCharacterToCell, moveIsland, newIsland, newIslandAround, resizeIsland } from '../actions.js';
+import { moveRobotToCell, moveIsland, newIsland, newIslandAround, resizeIsland } from '../actions.js';
 import { app, deps } from '../boot.js';
 import { commitFocused } from '../Field.js';
 import { homeIsland } from '../selectors.js';
@@ -61,17 +61,17 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     const s = app.store.getState();
     const d = deps();
     switch (intent.type) {
-      // an open card is the terminal in view, so the selection moves it rather than leaving it on the character behind
+      // an open card is the terminal in view, so the selection moves it rather than leaving it on the robot behind
       case 'select': if (s.card) s.focus(intent.id); else s.select(intent.id); return;
       case 'selectIsland': s.selectIsland(intent.id); return;
       case 'deselect': s.select(undefined); s.closeCard(); return;
       case 'open': s.focus(intent.id); return;
       // a double click asks for the island's card whatever the side card was left at
       case 'openIsland': s.selectIsland(intent.id); s.toggleSideCard(true); return;
-      case 'move': moveCharacterToCell(d, intent.id, intent.islandId, intent.cell); return;
+      case 'move': moveRobotToCell(d, intent.id, intent.islandId, intent.cell); return;
       case 'swap': {
-        const other = s.fleet.characters[intent.otherId];
-        if (other) moveCharacterToCell(d, intent.id, other.islandId, other.cell);
+        const other = s.fleet.robots[intent.otherId];
+        if (other) moveRobotToCell(d, intent.id, other.islandId, other.cell);
         return;
       }
       case 'newIsland': newIslandAround(d, intent.id, intent.cell); return;

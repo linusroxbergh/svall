@@ -10,7 +10,7 @@ export type ShelfState = {
   resourcesWhat: What;
   // the file the shelf's editor shows; its root may not be the one the rail has chosen
   resourcesShown?: { rootId: string; path: string };
-  // an island's or a character's own field, shown in the editor's place; a file and a field are never both up
+  // an island's or a robot's own field, shown in the editor's place; a file and a field are never both up
   resourcesField?: FieldRef;
   // the id of the row that opened it: rows of a kind share a file, so the file cannot say which
   resourcesChosen?: string;
@@ -42,7 +42,7 @@ const withGroupOf = (s: { resources: ResourceSource[]; resourceGroups: Tier[] },
   return tier && !s.resourceGroups.includes(tier) ? [...s.resourceGroups, tier] : s.resourceGroups;
 };
 
-// only an island and a character are offered the card's kinds, so a move to any other source falls back to All
+// only an island and a robot are offered the card's kinds, so a move to any other source falls back to All
 const whatFor = (s: { resources: ResourceSource[] }, where: string | undefined, what: What): What =>
   what === 'all' || offers(s.resources.find((r) => r.rootId === (where ?? s.resources[0]?.rootId))?.tier, what) ? what : 'all';
 

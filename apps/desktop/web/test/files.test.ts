@@ -7,7 +7,7 @@ import { fleet } from './fixtures.js';
 
 type Disk = Record<string, { text: string; mtimeMs: number }>;
 
-// svalld as the page sees it: a disk of files under the character's root, a conflict when the mtime moved on or the
+// svalld as the page sees it: a disk of files under the robot's root, a conflict when the mtime moved on or the
 // file went (mtime 0 writes one that is not there), and a write refused once the root is no longer the one it was read from
 function fakeApi(disk: Disk, at = { root: '/r' }) {
   const calls: string[] = [];
@@ -182,7 +182,7 @@ describe('files', () => {
     expect(getBuffer('c1', 'settings.json')!.state.selection.main.head).toBe(disk['settings.json'].text.indexOf('"Stop"'));
   });
 
-  it('saves only into the root the file was read from, so a character that moved checkout gets no stray file', async () => {
+  it('saves only into the root the file was read from, so a robot that moved checkout gets no stray file', async () => {
     const disk: Disk = { 'docs/plan.md': { text: 'plan for a\n', mtimeMs: 1 } };
     const at = { root: '/proj-a' };
     const { api, writes } = fakeApi(disk, at);
@@ -191,7 +191,7 @@ describe('files', () => {
     const d = { api, store };
     await openFile(d, 'c1', 'docs/plan.md');
     edit('c1', 'docs/plan.md', 'edit meant for a\n');
-    // the character cds into another checkout, which has no such file
+    // the robot cds into another checkout, which has no such file
     at.root = '/proj-b';
     delete disk['docs/plan.md'];
     await checkDisk(d, 'c1');
@@ -232,7 +232,7 @@ describe('files', () => {
     expect(disk['b.ts'].text).toBe('b in b\nmore\n');
   });
 
-  it('drops the conflict a move flagged once the character is back where the buffer was read', async () => {
+  it('drops the conflict a move flagged once the robot is back where the buffer was read', async () => {
     const disk: Disk = { 'a.ts': { text: 'a\n', mtimeMs: 1 } };
     const at = { root: '/proj-a' };
     const { api, writes } = fakeApi(disk, at);

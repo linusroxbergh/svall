@@ -42,13 +42,13 @@ describe('service worker notifications', () => {
     expect(shown[1].options.actions).toEqual([]);
   });
 
-  it('posts Approve and Deny as the answer for the character the notification named', async () => {
+  it('posts Approve and Deny as the answer for the robot the notification named', async () => {
     const { click, posts, shown, opened } = load();
     await click(blocked(), 'approve');
     await click(blocked(), 'deny');
     expect(posts).toEqual([
-      { url: '/rpc', body: { id: 1, method: 'char.answer', params: { id: 'c_a', answer: 'approve' } } },
-      { url: '/rpc', body: { id: 1, method: 'char.answer', params: { id: 'c_a', answer: 'deny' } } },
+      { url: '/rpc', body: { id: 1, method: 'robot.answer', params: { id: 'c_a', answer: 'approve' } } },
+      { url: '/rpc', body: { id: 1, method: 'robot.answer', params: { id: 'c_a', answer: 'deny' } } },
     ]);
     expect(shown).toEqual([]);
     expect(opened).toEqual([]);
@@ -57,7 +57,7 @@ describe('service worker notifications', () => {
   it('names the question the notification showed, so the daemon can refuse a stale answer', async () => {
     const { click, posts } = load();
     await click({ ...blocked(), promptId: 'q1' }, 'approve');
-    expect(posts).toEqual([{ url: '/rpc', body: { id: 1, method: 'char.answer', params: { id: 'c_a', answer: 'approve', promptId: 'q1' } } }]);
+    expect(posts).toEqual([{ url: '/rpc', body: { id: 1, method: 'robot.answer', params: { id: 'c_a', answer: 'approve', promptId: 'q1' } } }]);
   });
 
   it('says so when the answer was refused, in the reply or by its status, beside any newer question', async () => {
@@ -68,10 +68,10 @@ describe('service worker notifications', () => {
     }
   });
 
-  it('opens the character when the notification itself is tapped', async () => {
+  it('opens the robot when the notification itself is tapped', async () => {
     const { click, posts, opened } = load();
     await click(blocked());
-    expect(opened).toEqual(['/char/c_a']);
+    expect(opened).toEqual(['/robot/c_a']);
     expect(posts).toEqual([]);
   });
 

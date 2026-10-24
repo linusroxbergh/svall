@@ -4,7 +4,7 @@ import { z } from 'zod';
 import {
   Blocker, TRANSFER_SCHEMA_VERSION, type AgentKind, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
-  type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
+  type RobotResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
 import { compareVersions } from '@svall/svalld/agents';
 import { boundary } from '@svall/svalld/handover/failpoints';
@@ -154,7 +154,7 @@ const transient = (e: unknown): boolean => {
  * older one is the source's blocker), or one there that cannot sandbox the commands its agent runs.
  */
 function differences(source: Side, a: SystemInfo, destination: Side, b: SystemInfo, m: TransferManifestV1): Warning[] {
-  const kinds = new Set(Object.values(m.snapshot.characters).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]));
+  const kinds = new Set(Object.values(m.snapshot.robots).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]));
   const confined = b.agentAdapters.flatMap((y): Warning[] => (kinds.has(y.kind) && y.sandbox ? [{ code: 'codex_sandbox', message: `On ${destination.route.name}, ${y.sandbox}` }] : []));
   return [...confined, ...a.agentAdapters.flatMap((x): Warning[] => {
     const y = b.agentAdapters.find((z) => z.kind === x.kind);
@@ -226,21 +226,21 @@ const TRUST = {
 } as const;
 
 /** Svall never writes the destination's agent settings, so each agent asks to trust these folders the first time it resumes there. */
-function trustWarnings(m: TransferManifestV1, untrusted: { characterId: string; kind: AgentKind }[], where: string): Warning[] {
+function trustWarnings(m: TransferManifestV1, untrusted: { robotId: string; kind: AgentKind }[], where: string): Warning[] {
   // OpenCode resumes in any folder without asking
   return untrusted.flatMap((f) => (f.kind === 'opencode' ? [] : [{
     code: TRUST[f.kind].code,
-    message: `${TRUST[f.kind].agent} asks whether to trust its folder the first time ${m.snapshot.characters[f.characterId]?.name ?? f.characterId} resumes on ${where}${TRUST[f.kind].answer}`,
-    entity: { kind: 'character', id: f.characterId },
+    message: `${TRUST[f.kind].agent} asks whether to trust its folder the first time ${m.snapshot.robots[f.robotId]?.name ?? f.robotId} resumes on ${where}${TRUST[f.kind].answer}`,
+    entity: { kind: 'robot', id: f.robotId },
   }]));
 }
 
 /** Only Claude has a bypass mode to warn about, which it does until the destination's Claude has accepted it once. */
-function bypassWarnings(m: TransferManifestV1, warned: { characterId: string }[], where: string): Warning[] {
+function bypassWarnings(m: TransferManifestV1, warned: { robotId: string }[], where: string): Warning[] {
   return warned.map((f) => ({
     code: 'claude_bypass',
-    message: `Claude warns that ${m.snapshot.characters[f.characterId]?.name ?? f.characterId} resumes in Bypass Permissions mode on ${where}, with "No, exit" preselected; choose "Yes, I accept" in that terminal`,
-    entity: { kind: 'character', id: f.characterId },
+    message: `Claude warns that ${m.snapshot.robots[f.robotId]?.name ?? f.robotId} resumes in Bypass Permissions mode on ${where}, with "No, exit" preselected; choose "Yes, I accept" in that terminal`,
+    entity: { kind: 'robot', id: f.robotId },
   }));
 }
 
@@ -405,7 +405,7 @@ export class Handover {
     this.wakeChosen?.();
   }
 
-  /** A daemon's own row of a character's rest or activation, passed on in the shape it arrived in. */
+  /** A daemon's own row of a robot's rest or activation, passed on in the shape it arrived in. */
   relay(e: HandoverEvent): void {
     this.observer.send(e);
   }
@@ -436,15 +436,15 @@ export class Handover {
   /** Runs the transaction on from wherever its journal stands, each step skipped once its digest is recorded. */
   private async forward(committed: boolean, activated = false): Promise<Outcome> {
     this.committed = committed;
-    let characters: CharacterResult[] = [];
+    let robots: RobotResult[] = [];
     try {
       if (!committed) await this.precommit();
-      if (!activated) characters = await this.activate();
+      if (!activated) robots = await this.activate();
     } catch (e) {
       if (e instanceof Moved) return this.forward(true);
       return this.stopped(e);
     }
-    return this.complete(characters);
+    return this.complete(robots);
   }
 
   private async precommit(): Promise<void> {
@@ -759,16 +759,16 @@ export class Handover {
   }
 
   /** Activate: the destination confirms the commit, runs the prepared state and starts the terminals the handover rested. */
-  private async activate(): Promise<CharacterResult[]> {
+  private async activate(): Promise<RobotResult[]> {
     const { transactionId, generation } = this.tx;
     const { committed } = this.journal;
     const destination = await this.side(this.journal.destination.machineId);
     this.phase('activate');
     const r = await this.retrying('activate', () => destination.daemon.call('handover.activate', { transactionId, generation: generation + 1, ...(committed && { committed }) }));
-    for (const c of r.characters) {
-      this.observer.send({ event: 'handover.entity', data: { transactionId, kind: 'character', id: c.id, phase: 'activate', ...(c.error && { error: c.error }), ...(c.notice && { notice: c.notice }) } });
+    for (const c of r.robots) {
+      this.observer.send({ event: 'handover.entity', data: { transactionId, kind: 'robot', id: c.id, phase: 'activate', ...(c.error && { error: c.error }), ...(c.notice && { notice: c.notice }) } });
     }
-    return r.characters;
+    return r.robots;
   }
 
   /**
@@ -776,7 +776,7 @@ export class Handover {
    * gateway clears the transaction. A source that cannot be reached is finished by a later resume; its own journal
    * fences it meanwhile.
    */
-  private async complete(characters: CharacterResult[]): Promise<Outcome> {
+  private async complete(robots: RobotResult[]): Promise<Outcome> {
     const { transactionId, generation } = this.tx;
     try {
       const destination = await this.side(this.journal.destination.machineId);
@@ -814,7 +814,7 @@ export class Handover {
         }
       }
       if (misses >= SOURCE_MISSES && pending.length === 1) said.push(`${name} has not answered ${misses} resumes; if it is gone for good, svall handover --forget --source gives up its side`);
-      const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, characters };
+      const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, robots };
       // the journal stays open, so a resume finishes what is pending, unless that is only a source no resume here reaches
       if (pending.length && !(unrouted && pending.length === 1)) return { ...done, pending, error: this.scrub(said.join('; ')) };
       this.d.store.clear(transactionId);
@@ -979,7 +979,7 @@ export class Handover {
     const lost = (u: KeptCommit) => !commonDir.has(u.graph) || unreached.some((x) => x.commonDir === commonDir.get(u.graph) && x.commit === u.commit);
     return unproven.filter(lost).map((u) => ({
       code: 'worktree_unused', entity: { kind: 'git', id: u.graph },
-      message: `${u.path} is a worktree no character uses that stays on ${destination.route.name}, at ${u.commit.slice(0, 12)}, which nothing ${source.route.name} sends back reaches${why}, so the copy that comes back would not hold that commit; put it on a branch on ${source.route.name}, or remove this worktree on ${destination.route.name}`,
+      message: `${u.path} is a worktree no robot uses that stays on ${destination.route.name}, at ${u.commit.slice(0, 12)}, which nothing ${source.route.name} sends back reaches${why}, so the copy that comes back would not hold that commit; put it on a branch on ${source.route.name}, or remove this worktree on ${destination.route.name}`,
     }));
   }
 
@@ -1094,7 +1094,7 @@ export class Handover {
         ...notices, ...danglingLinks(links, new Set(r.missing ?? []), where), ...trustWarnings(m, resuming.filter(asks), where), ...bypassWarnings(m, resuming.filter(warns), where),
         ...(r.hooksUntrusted?.includes('codex') ? [{
           code: 'codex_hooks' as const,
-          message: `Codex on ${where} has not trusted Svall's hooks yet, so a Codex character resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks`,
+          message: `Codex on ${where} has not trusted Svall's hooks yet, so a Codex robot resumed there stops at its "Hooks need review" screen until you trust them; start codex there and choose "Trust all and continue", or trust them in /hooks`,
         }] : []),
       ],
     };

@@ -88,7 +88,7 @@ test('a crew member moved where its card changes what the map must show refits t
     await act(async () => {});
     const refits = window.__map!.refits();
     // a card on the island's bottom row hangs below its ground
-    await act(async () => { store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/cell', value: { x: 1, y: 3 } }]); });
+    await act(async () => { store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/cell', value: { x: 1, y: 3 } }]); });
     expect(window.__map!.refits()).toBeGreaterThan(refits);
   } finally {
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
@@ -98,8 +98,8 @@ test('a crew member moved where its card changes what the map must show refits t
 
 test('a card fills its top edge with the context used, and leaves it empty without an agent', () => {
   const f = store.getState().fleet;
-  store.getState().setFleet({ ...f, characters: { ...f.characters,
-    c0: { ...f.characters.c0, agent: { kind: 'claude', sessionId: 's', status: 'working', contextPct: 70, lastActivityAt: 0 } } } });
+  store.getState().setFleet({ ...f, robots: { ...f.robots,
+    c0: { ...f.robots.c0, agent: { kind: 'claude', sessionId: 's', status: 'working', contextPct: 70, lastActivityAt: 0 } } } });
   render(<Map />);
   const fill = (id: string) => screen.getByTestId(`token-${id}`).querySelector<HTMLElement>('.edge i');
   expect(fill('c0')?.style.width).toBe('70%');
@@ -270,7 +270,7 @@ test('mission control unfolds at the size its fit kept room for, though the map 
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1280 });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
   // two islands far apart and clear of mission control, folded or not: the map fits their width and rests the same either way
-  const f = { ...fleet(), characters: {} };
+  const f = { ...fleet(), robots: {} };
   f.islands = { i_w: isl('i_w', 'w', 0, { size: { w: 7, h: 5 } }), i_e: isl('i_e', 'e', 46, { position: { x: 46, y: 10 }, size: { w: 7, h: 5 } }),
     home: { ...f.islands.home, position: { x: 0, y: 20 }, collapsed: true } };
   store.getState().setFleet(f);

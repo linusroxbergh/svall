@@ -86,7 +86,13 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   done.push(`home codex rules -> ${dir}/.codex/rules`);
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
-  const current = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
+  const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
+  // an older svalld allowed only `svall char`, which the rules now call `svall robot`
+  const current = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
+  if (current !== read) {
+    writeAtomic(settings, current!, { perProcess: true });
+    done.push(`home settings -> ${settings}`);
+  }
   if (current === shipped) return done;
   if (current !== undefined) {
     if (!o.replaceSettings) return done;

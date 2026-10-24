@@ -16,7 +16,7 @@ test('creation actions stay findable and create on the intended island', async (
   await expect(sidebarAction).toBeHidden();
   await page.getByTestId(`sb-island-toggle-${a.id}`).click();
   await sidebarAction.click();
-  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).characters).filter((c) => c.islandId === a.id).length).toBe(1);
+  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).robots).filter((c) => c.islandId === a.id).length).toBe(1);
   await expect(page.getByTestId('terminal-card')).toBeVisible();
   await page.getByTestId('card-close').click();
 
@@ -31,7 +31,7 @@ test('creation actions stay findable and create on the intended island', async (
   await expect(rowAction).toBeFocused();
   await expect(rowAction).toHaveCSS('opacity', '1');
   await rowAction.click();
-  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).characters).filter((c) => c.islandId === a.id).length).toBe(2);
+  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).robots).filter((c) => c.islandId === a.id).length).toBe(2);
   await page.getByTestId('card-close').click();
 
   const coastAction = (await page.getByTestId(`island-new-${a.id}`).boundingBox())!;
@@ -40,7 +40,7 @@ test('creation actions stay findable and create on the intended island', async (
   const mapAction = page.getByTestId(`island-new-${b.id}`);
   await expect(mapAction).toHaveAttribute('data-empty', 'true');
   await mapAction.click();
-  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).characters).filter((c) => c.islandId === b.id).length).toBe(1);
+  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).robots).filter((c) => c.islandId === b.id).length).toBe(1);
   await page.getByTestId('card-close').click();
 
   await page.getByTestId(`island-label-${b.id}`).click();
@@ -54,7 +54,7 @@ test('creation actions stay findable and create on the intended island', async (
 
 test('creation controls fit at the minimum sidebar and card widths', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: 'A long island name', position: { x: 0, y: 200 } });
-  await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'first' });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'first' });
   await svall.open('map');
   const grip = (await page.getByTestId('side-drag-sidebar').boundingBox())!;
   const y = grip.y + grip.height / 4;

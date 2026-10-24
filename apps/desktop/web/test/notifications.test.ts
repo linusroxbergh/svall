@@ -1,4 +1,4 @@
-import type { Agent, AgentStatus, Character, FleetState } from '@svall/protocol';
+import type { Agent, AgentStatus, Robot, FleetState } from '@svall/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
@@ -9,10 +9,10 @@ import { fleet } from './fixtures.js';
 
 const agent = (status: AgentStatus, prompt?: string): Agent =>
   ({ kind: 'claude', sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0, ...(prompt === undefined ? {} : { prompt }) });
-const patch = (f: FleetState, id: string, p: Partial<Character>): FleetState =>
-  ({ ...f, characters: { ...f.characters, [id]: { ...f.characters[id]!, ...p } } });
+const patch = (f: FleetState, id: string, p: Partial<Robot>): FleetState =>
+  ({ ...f, robots: { ...f.robots, [id]: { ...f.robots[id]!, ...p } } });
 const without = (f: FleetState, id: string): FleetState =>
-  ({ ...f, characters: Object.fromEntries(Object.entries(f.characters).filter(([k]) => k !== id)) });
+  ({ ...f, robots: Object.fromEntries(Object.entries(f.robots).filter(([k]) => k !== id)) });
 const ON: NotifySettings = { on: true, sound: true, statuses: ['blocked', 'done'] };
 const look = (f: FleetState, o: Partial<NoticeView> = {}): NoticeView =>
   ({ fleet: f, loaded: true, active: false, settings: ON, permission: 'granted', ...o });
@@ -68,7 +68,7 @@ describe('decide', () => {
     expect(decide(look(working), look(blocked, { settings: { ...ON, statuses: ['done'] } }), new Map()).post).toEqual([]);
   });
 
-  it('leaves out the character in view in the active window, but not when the app is behind', () => {
+  it('leaves out the robot in view in the active window, but not when the app is behind', () => {
     expect(decide(look(working), look(blocked, { active: true, viewed: 'c1' }), new Map()).post).toEqual([]);
     expect(decide(look(working), look(blocked, { active: false, viewed: 'c1' }), new Map()).post).toHaveLength(1);
     expect(decide(look(working), look(blocked, { active: true, viewed: 'c2' }), new Map()).post).toHaveLength(1);
@@ -84,10 +84,10 @@ describe('decide', () => {
       expect(d.remove).toEqual(['c1']);
       expect([...d.posted]).toEqual([]);
     });
-    it('when the character is gone', () => {
+    it('when the robot is gone', () => {
       expect(decide(look(blocked), look(without(blocked, 'c1')), up).remove).toEqual(['c1']);
     });
-    it('when the character comes into view in the active window', () => {
+    it('when the robot comes into view in the active window', () => {
       expect(decide(look(blocked), look(blocked, { active: true, viewed: 'c1' }), up).remove).toEqual(['c1']);
     });
     it('all at once when switched off or refused', () => {
@@ -150,7 +150,7 @@ describe('followNotifications', () => {
     return { store, bridge };
   };
 
-  it('posts when a character turns blocked, and takes the banner down once it moves on', () => {
+  it('posts when a robot turns blocked, and takes the banner down once it moves on', () => {
     const { store, bridge } = setup();
     store.getState().setFleet(blocked);
     expect(bridge.sent).toContainEqual({ type: 'notify.post', key: 'c1', title: 'c1 on beta needs you', subtitle: '', body: 'Bash: rm -rf dist', sound: true, actions: true });
@@ -179,7 +179,7 @@ describe('followNotifications', () => {
     expect(store.getState().notifyPermission).toBe('unknown');
   });
 
-  it('focuses the character a banner was clicked for, second terminal or not', () => {
+  it('focuses the robot a banner was clicked for, second terminal or not', () => {
     const { store, bridge } = setup();
     bridge.emit({ type: 'notify.open', key: 'c1-2' });
     expect(store.getState().focusedId).toBe('c1');
@@ -192,7 +192,7 @@ describe('followNotifications', () => {
     const { bridge } = setup({ api });
     bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: '' });
     bridge.emit({ type: 'notify.action', key: 'c1', action: 'deny', promptId: 'q1' });
-    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'deny', promptId: 'q1' }));
+    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('robot.answer', { id: 'c1', answer: 'deny', promptId: 'q1' }));
     expect(api.call).toHaveBeenCalledTimes(1);
   });
 
@@ -207,8 +207,8 @@ describe('followNotifications', () => {
     // the first banner's answer comes back refused, and the second question's banner stays up
     bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q1' });
     bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q2' });
-    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve', promptId: 'q2' }));
-    expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve', promptId: 'q1' });
+    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('robot.answer', { id: 'c1', answer: 'approve', promptId: 'q2' }));
+    expect(api.call).toHaveBeenCalledWith('robot.answer', { id: 'c1', answer: 'approve', promptId: 'q1' });
     await new Promise((r) => setTimeout(r, 10));
     expect(posts()).toHaveLength(2);
   });
@@ -235,7 +235,7 @@ describe('followNotifications', () => {
       expect(api.call).not.toHaveBeenCalled();
       store.getState().setStatus('online');
       await vi.advanceTimersByTimeAsync(0);
-      expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve', promptId: 'q1' });
+      expect(api.call).toHaveBeenCalledWith('robot.answer', { id: 'c1', answer: 'approve', promptId: 'q1' });
     } finally {
       vi.useRealTimers();
     }

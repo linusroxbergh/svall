@@ -37,7 +37,7 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
     void Promise.race([flushDocs().catch(() => {}), waited]).then(() => {
       clearTimeout(timer);
       const s = store.getState();
-      const working = Object.values(s.fleet.characters).filter((c) => statusOf(c) === 'working').length;
+      const working = Object.values(s.fleet.robots).filter((c) => statusOf(c) === 'working').length;
       bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working });
     });
   });

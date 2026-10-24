@@ -11,10 +11,10 @@ const put = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), {
 const skill = (name: string, d: string) => `---\nname: ${name}\ndescription: ${d}\n---\n# ${name}\n`;
 
 // only the fields the scan reads
-const char = (id: string, islandId: string, cwd: string, mainRoot?: string) =>
+const robot = (id: string, islandId: string, cwd: string, mainRoot?: string) =>
   ({ id, name: id, islandId, cwd, ...(mainRoot && { repo: { root: cwd, mainRoot, branch: 'main', isWorktree: cwd !== mainRoot } }) });
-const stateOf = (...chars: ReturnType<typeof char>[]): FleetState =>
-  ({ ...emptyState(), characters: Object.fromEntries(chars.map((c) => [c.id, c])) }) as unknown as FleetState;
+const stateOf = (...robots: ReturnType<typeof robot>[]): FleetState =>
+  ({ ...emptyState(), robots: Object.fromEntries(robots.map((c) => [c.id, c])) }) as unknown as FleetState;
 const withIslands = (s: FleetState, ...islands: { id: string; name: string }[]): FleetState =>
   ({ ...s, islands: Object.fromEntries(islands.map((i) => [i.id, i])) }) as unknown as FleetState;
 const docText = (d: string, name = 'other') => `---\nname: ${name}\ndescription: ${d}\n---\n`;
@@ -32,17 +32,17 @@ describe('claudePaths', () => {
 
 describe('fleetRoots', () => {
   it('folds worktrees into their repository and leaves mission control out', () => {
-    const s = stateOf(char('a', 'i1', '/r/app', '/r/app'), char('b', 'i2', '/r/app/.claude/worktrees/x', '/r/app'), char('c', 'i2', '/plain'), char('h', HOME_ISLAND, '/home'));
+    const s = stateOf(robot('a', 'i1', '/r/app', '/r/app'), robot('b', 'i2', '/r/app/.claude/worktrees/x', '/r/app'), robot('c', 'i2', '/plain'), robot('h', HOME_ISLAND, '/home'));
     expect(fleetRoots(s)).toEqual([
-      { root: '/plain', islandIds: ['i2'], characterIds: ['c'] },
-      { root: '/r/app', islandIds: ['i1', 'i2'], characterIds: ['a', 'b'] },
+      { root: '/plain', islandIds: ['i2'], robotIds: ['c'] },
+      { root: '/r/app', islandIds: ['i1', 'i2'], robotIds: ['a', 'b'] },
     ]);
   });
 });
 
 describe('resourceRoot', () => {
   const claude = { dir: '/h/.claude', json: '/h/.claude.json' };
-  const state = stateOf(char('a', 'i1', '/r/app/.claude/worktrees/x', '/r/app'));
+  const state = stateOf(robot('a', 'i1', '/r/app/.claude/worktrees/x', '/r/app'));
   it('answers the Claude dir and a folder the fleet works in', () => {
     expect(resourceRoot('r:/h/.claude', state, claude)).toBe('/h/.claude');
     expect(resourceRoot('r:/r/app', state, claude)).toBe('/r/app');
@@ -83,14 +83,14 @@ describe('scanResources', () => {
     put(path.join(repo, '.claude/settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'y' }] }] } }));
     put(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { local: { command: 'node server.js' } } }));
     put(path.join(claude.dir, 'projects', repo.replace(/[^A-Za-z0-9]/g, '-'), 'memory/MEMORY.md'), '- x');
-    const state = stateOf(char('a', 'i1', repo, repo), char('b', 'i1', bare));
+    const state = stateOf(robot('a', 'i1', repo, repo), robot('b', 'i1', bare));
     return { claude, repo, bare, state };
   }
 
   it('lists the user scope first, with every kind it has', () => {
     const { claude, state } = disk();
     const [user] = scanResources(state, claude);
-    expect(user).toMatchObject({ rootId: rootIdOf(claude.dir), root: claude.dir, name: 'Claude', tier: 'global', islandIds: [], characterIds: [] });
+    expect(user).toMatchObject({ rootId: rootIdOf(claude.dir), root: claude.dir, name: 'Claude', tier: 'global', islandIds: [], robotIds: [] });
     expect(kinds(user)).toEqual({
       instructions: ['CLAUDE.md'], skills: ['ship-it'], agents: ['reviewer'], commands: ['git:sync', 'rename-tab'],
       plugins: ['slack'], mcp: ['linear'], hooks: ['Stop'], settings: ['settings.json', 'keybindings.json'],
@@ -143,7 +143,7 @@ describe('scanResources', () => {
     const sources = scanResources(state, claude);
     expect(sources.map((s) => s.name)).toEqual(['Claude', 'app', 'bare']);
     const app = sources[1];
-    expect(app).toMatchObject({ rootId: rootIdOf(repo), root: repo, tier: 'repo', islandIds: ['i1'], characterIds: ['a'] });
+    expect(app).toMatchObject({ rootId: rootIdOf(repo), root: repo, tier: 'repo', islandIds: ['i1'], robotIds: ['a'] });
     expect(kinds(app)).toEqual({
       instructions: ['CLAUDE.md', 'AGENTS.md'], skills: ['prepush'], mcp: ['local', 'scoped'], hooks: ['PreToolUse'],
       settings: ['settings.json'], autoMemory: ['MEMORY.md'],
@@ -240,7 +240,7 @@ describe('scanResources', () => {
   it('answers an empty user scope when there is no ~/.claude at all', () => {
     const home = makeHome();
     expect(scanResources(stateOf(), { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') })).toEqual([
-      { rootId: rootIdOf(path.join(home, '.claude')), root: path.join(home, '.claude'), name: 'Claude', tier: 'global', islandIds: [], characterIds: [], groups: [] },
+      { rootId: rootIdOf(path.join(home, '.claude')), root: path.join(home, '.claude'), name: 'Claude', tier: 'global', islandIds: [], robotIds: [], groups: [] },
     ]);
   });
 });
@@ -248,16 +248,16 @@ describe('scanResources', () => {
 describe('doc sources', () => {
   afterEach(cleanHomes);
 
-  it('lists islands and characters even with no docs, and a repository carries its docs beside its other kinds', () => {
+  it('lists islands and robots even with no docs, and a repository carries its docs beside its other kinds', () => {
     const home = makeHome(), docs = path.join(home, 'docs');
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     put(path.join(home, 'app/CLAUDE.md'), '# app');
     put(path.join(docsDir(docs, 'repo', repoSlug(path.join(home, 'app'))), 'conventions.md'), docText('House style.'));
     put(path.join(docsDir(docs, 'island', 'i1'), 'architecture.md'), docText('How it fits.', 'Renamed In Frontmatter'));
-    const state = withIslands(stateOf(char('c1', 'i1', path.join(home, 'app'), path.join(home, 'app'))), { id: 'i1', name: 'SVALL' });
+    const state = withIslands(stateOf(robot('c1', 'i1', path.join(home, 'app'), path.join(home, 'app'))), { id: 'i1', name: 'SVALL' });
 
     const sources = scanResources(state, claude, undefined, docs);
-    expect(sources.map((s) => [s.tier, s.name])).toEqual([['global', 'Claude'], ['fleet', path.basename(home)], ['repo', 'app'], ['island', 'SVALL'], ['character', 'c1']]);
+    expect(sources.map((s) => [s.tier, s.name])).toEqual([['global', 'Claude'], ['fleet', path.basename(home)], ['repo', 'app'], ['island', 'SVALL'], ['robot', 'c1']]);
 
     const repo = sources[2];
     expect(repo.root).toBe(path.join(home, 'app'));
@@ -266,10 +266,10 @@ describe('doc sources', () => {
     expect(repo.groups[0].items[0].open).toEqual({ rootId: repo.docs, path: 'conventions.md' });
 
     const island = sources[3];
-    expect(island).toMatchObject({ rootId: rootIdOf(docsDir(docs, 'island', 'i1')), docs: rootIdOf(docsDir(docs, 'island', 'i1')), islandIds: ['i1'], characterIds: ['c1'] });
+    expect(island).toMatchObject({ rootId: rootIdOf(docsDir(docs, 'island', 'i1')), docs: rootIdOf(docsDir(docs, 'island', 'i1')), islandIds: ['i1'], robotIds: ['c1'] });
     expect(island.groups[0].items[0]).toMatchObject({ name: 'architecture', detail: 'How it fits.' });
 
-    expect(sources[4]).toMatchObject({ tier: 'character', islandIds: ['i1'], characterIds: ['c1'], groups: [] });
+    expect(sources[4]).toMatchObject({ tier: 'robot', islandIds: ['i1'], robotIds: ['c1'], groups: [] });
   });
 
   it('carries the fleet’s own docs as a tier of their own, named for the fleet', () => {
@@ -278,7 +278,7 @@ describe('doc sources', () => {
     put(path.join(docs, 'fleet', 'tone.md'), docText('How we talk to each other.'));
     const sources = scanResources(stateOf(), claude, undefined, docs);
     const fleet = sources.find((s) => s.tier === 'fleet')!;
-    expect(fleet).toMatchObject({ name: 'work', root: path.join(docs, 'fleet'), islandIds: [], characterIds: [] });
+    expect(fleet).toMatchObject({ name: 'work', root: path.join(docs, 'fleet'), islandIds: [], robotIds: [] });
     expect(fleet.docs).toBe(rootIdOf(path.join(docs, 'fleet')));
     expect(kinds(fleet)).toEqual({ docs: ['tone'] });
     expect(sources.filter((s) => s.tier === 'global').map((s) => s.name)).toEqual(['Claude']);
@@ -307,18 +307,18 @@ describe('doc sources', () => {
   it('lists a repository the fleet works in even when it holds nothing yet', () => {
     const home = makeHome();
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
-    const sources = scanResources(stateOf(char('c1', 'i1', '/empty/repo', '/empty/repo')), claude, undefined, path.join(home, 'docs'));
+    const sources = scanResources(stateOf(robot('c1', 'i1', '/empty/repo', '/empty/repo')), claude, undefined, path.join(home, 'docs'));
     expect(sources.filter((s) => s.tier === 'repo').map((s) => s.name)).toEqual(['repo']);
   });
 
-  it('lists a slug with docs and no character under its slug, and leaves an empty slug folder out', () => {
+  it('lists a slug with docs and no robot under its slug, and leaves an empty slug folder out', () => {
     const home = makeHome(), docs = path.join(home, 'docs');
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     put(path.join(docs, 'repos/gone-0a1b2c3d/notes.md'), docText('Left behind.'));
     fs.mkdirSync(path.join(docs, 'repos/empty-00000000'), { recursive: true });
     const orphans = scanResources(stateOf(), claude, undefined, docs).filter((s) => s.tier === 'repo');
     expect(orphans).toHaveLength(1);
-    expect(orphans[0]).toMatchObject({ name: 'gone-0a1b2c3d', root: path.join(docs, 'repos/gone-0a1b2c3d'), characterIds: [] });
+    expect(orphans[0]).toMatchObject({ name: 'gone-0a1b2c3d', root: path.join(docs, 'repos/gone-0a1b2c3d'), robotIds: [] });
     expect(kinds(orphans[0])).toEqual({ docs: ['notes'] });
   });
 
@@ -335,10 +335,10 @@ describe('resourceRoot for docs', () => {
   afterEach(cleanHomes);
   const claude = { dir: '/h/.claude', json: '/h/.claude.json' };
 
-  it('admits an island’s, a character’s and a repository’s folder, made or not', () => {
+  it('admits an island’s, a robot’s and a repository’s folder, made or not', () => {
     const docs = path.join(makeHome(), 'docs');
-    const state = withIslands(stateOf(char('c1', 'i1', '/r/app', '/r/app')), { id: 'i1', name: 'one' });
-    for (const dir of [docsDir(docs, 'island', 'i1'), docsDir(docs, 'character', 'c1'), docsDir(docs, 'repo', repoSlug('/r/app'))])
+    const state = withIslands(stateOf(robot('c1', 'i1', '/r/app', '/r/app')), { id: 'i1', name: 'one' });
+    for (const dir of [docsDir(docs, 'island', 'i1'), docsDir(docs, 'robot', 'c1'), docsDir(docs, 'repo', repoSlug('/r/app'))])
       expect(resourceRoot(rootIdOf(dir), state, claude, undefined, docs)).toBe(dir);
   });
 
@@ -368,8 +368,8 @@ describe('resourceRoot for docs', () => {
 
   it('refuses an id that climbs out and back in as a literal string, before path.join would normalise it', () => {
     const docs = path.join(makeHome(), 'docs');
-    const state = { ...withIslands(stateOf(char('c1', 'i1', '/cwd')), { id: 'i1', name: 'one' }) };
-    expect(resourceRoot(`r:${docs}/islands/i1/../../characters/c1`, state, claude, undefined, docs)).toBeUndefined();
+    const state = { ...withIslands(stateOf(robot('c1', 'i1', '/cwd')), { id: 'i1', name: 'one' }) };
+    expect(resourceRoot(`r:${docs}/islands/i1/../../robots/c1`, state, claude, undefined, docs)).toBeUndefined();
   });
 
   it('refuses a plain file standing where a slug folder would be', () => {

@@ -19,7 +19,7 @@ beforeEach(async () => {
   freshStore();
   const f = fleet();
   f.islands.home.position = { x: 0, y: 20 };
-  f.characters.h0 = chr('h0', 'home', { x: 0, y: 0 });
+  f.robots.h0 = chr('h0', 'home', { x: 0, y: 0 });
   store.getState().setFleet(f);
   render(<><Map /><ContextMenu /></>);
   await act(async () => {});
@@ -31,18 +31,18 @@ const pick = () => fireEvent.click(screen.getByTestId('menu-delete'));
 const entries = () => screen.getAllByRole('menuitem').map((el) => [el.textContent, el.getAttribute('aria-disabled') !== 'true']);
 const menu = (deletable: boolean) => [['Delete', deletable], ['Reload', true]];
 
-test('a character on the map offers Star and Delete, which opens the delete confirmation', () => {
+test('a robot on the map offers Star and Delete, which opens the delete confirmation', () => {
   expect(rightClick('token-c0')).toBe(true);
   expect(entries()).toEqual([['Star', true], ...menu(true)]);
   pick();
-  expect(store.getState().closingCharacter).toBe('c0');
+  expect(store.getState().closingRobot).toBe('c0');
   expect(call).not.toHaveBeenCalled();
 });
 
 test('a crew member on mission control offers Delete too', () => {
   rightClick('token-h0');
   pick();
-  expect(store.getState().closingCharacter).toBe('h0');
+  expect(store.getState().closingRobot).toBe('h0');
 });
 
 test('an empty island offers Delete from its land and its label, which opens the island confirmation', () => {
@@ -54,7 +54,7 @@ test('an empty island offers Delete from its land and its label, which opens the
   expect(entries()).toEqual(menu(true));
 });
 
-test('an island with characters shows Delete greyed out, as the daemon refuses it', () => {
+test('an island with robots shows Delete greyed out, as the daemon refuses it', () => {
   rightClick('island-label-i_b');
   expect(entries()).toEqual(menu(false));
 });

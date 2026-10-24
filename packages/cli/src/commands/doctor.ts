@@ -302,7 +302,7 @@ function hooks(d: DoctorDeps): Check {
     disabled = settings?.disableAllHooks === true;
   } catch { /* unparseable counts as missing */ }
   if (!ok) return { name: 'hooks', status: 'fail', detail: `not installed in ${d.settingsPath}: ${SHIM} setup`, run: `${SHIM} setup` };
-  if (disabled) return { name: 'hooks', status: 'fail', detail: `${d.settingsPath} sets disableAllHooks, so no character gets a status; remove it` };
+  if (disabled) return { name: 'hooks', status: 'fail', detail: `${d.settingsPath} sets disableAllHooks, so no robot gets a status; remove it` };
   return current
     ? { name: 'hooks', status: 'ok', detail: `installed in ${d.settingsPath}` }
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup`, run: `${SHIM} setup` };
@@ -359,7 +359,7 @@ async function codexSandbox(d: DoctorDeps): Promise<Check> {
     // execFile's message is its own first line, then what the command wrote to stderr
     const said = err.message.trim().split('\n').slice(1).join('\n').trim();
     if (/bwrap:|namespace|operation not permitted/i.test(said)) {
-      return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex character asks before each one: ${BWRAP_PROFILE}`, run: BWRAP_COMMAND };
+      return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex robot asks before each one: ${BWRAP_PROFILE}`, run: BWRAP_COMMAND };
     }
     const why = err.killed ? 'it did not finish in time' : said.split('\n').at(-1) || `exit ${String(err.code)}, nothing said`;
     return { name, status: 'warn', detail: `codex sandbox -- true failed (${why}): run codex sandbox -- true there to see why` };

@@ -1,19 +1,19 @@
-import { DEFAULT_SIZE, randomPortrait, type Cell, type Character, type FleetState, type TerminalSlot } from '@svall/protocol';
+import { DEFAULT_SIZE, randomPortrait, type Cell, type Robot, type FleetState, type TerminalSlot } from '@svall/protocol';
 import { dropBrief, loseSecond, markDormant, markSlotDormant } from './dormancy.js';
-import { isCharId, newId } from './ids.js';
+import { isRobotId, newId } from './ids.js';
 import { defaultPosition, placeOnIsland } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
 
 export const RECOVERED_ISLAND = 'i_recovered';
 
-// the tmux window of a character's second terminal
+// the tmux window of a robot's second terminal
 export const secondName = (id: string): string => `${id}-2`;
 
-// each character's windows as the fleet knew them before a listing was taken
+// each robot's windows as the fleet knew them before a listing was taken
 export type Before = Map<string, { main?: string; second?: string }>;
 
 export const snapshot = (state: FleetState): Before =>
-  new Map(Object.values(state.characters).map((c) => [c.id, { main: c.tmux?.windowId, second: c.second?.tmux?.windowId }]));
+  new Map(Object.values(state.robots).map((c) => [c.id, { main: c.tmux?.windowId, second: c.second?.tmux?.windowId }]));
 
 // the slot a live window leaves behind: at the window's own path, with nothing left to revive unless it is `carried`.
 // tmux reports no path while a setuid program such as sudo runs in the pane
@@ -33,9 +33,9 @@ type Settle = (key: string, slot: TerminalSlot, command: string, carried: boolea
 // whatever window is listed for it. `atShell` says, by window name, whether the last poll saw the agent quit to its shell
 type Sync = { carried?: Carried; adoptCarried?: boolean; settle?: Settle; atShell?: (key: string) => boolean };
 
-/** Matches a character's second terminal, main window and pane directory to a listing taken after `before`; a slot the
- *  fleet changed while tmux answered is left as it stands. Returns the main window the character stands on, when listed. */
-export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>, before: Before, o: Sync = {}): LiveWindow | undefined {
+/** Matches a robot's second terminal, main window and pane directory to a listing taken after `before`; a slot the
+ *  fleet changed while tmux answered is left as it stands. Returns the main window the robot stands on, when listed. */
+export function syncWindow(c: Robot, byName: ReadonlyMap<string, LiveWindow>, before: Before, o: Sync = {}): LiveWindow | undefined {
   const { carried = () => false, adoptCarried = false, settle, atShell } = o;
   const was = before.get(c.id);
   if (was?.second === c.second?.tmux?.windowId) {
@@ -64,8 +64,8 @@ export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>
   delete c.resumeError;
   // a live terminal keeps the resume a handover carried only until the handover has answered for it
   if (!held) delete c.revive;
-  // only a pane that moved moves the character, and an empty path is tmux not knowing, as under sudo.
-  // A pane the character had all along with no path on record has not moved, so its cwd stays
+  // only a pane that moved moves the robot, and an empty path is tmux not knowing, as under sudo.
+  // A pane the robot had all along with no path on record has not moved, so its cwd stays
   if (w.path && c.panePath !== w.path) {
     if (c.panePath !== undefined || !samePane) c.cwd = w.path;
     c.panePath = w.path;
@@ -78,32 +78,32 @@ export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>
 
 export function reconcile(state: FleetState, live: LiveWindow[], now: number, before = snapshot(state), carried: Carried = () => false) {
   const byName = new Map(live.map((w) => [w.name, w]));
-  const knownIds = new Set(Object.keys(state.characters));
-  const secondNames = new Set(Object.keys(state.characters).map(secondName));
-  // a window held, when the listing was taken, by a character closed since goes with it, and is nobody's to adopt
+  const knownIds = new Set(Object.keys(state.robots));
+  const secondNames = new Set(Object.keys(state.robots).map(secondName));
+  // a window held, when the listing was taken, by a robot closed since goes with it, and is nobody's to adopt
   const held = new Set([...before].filter(([id]) => !knownIds.has(id)).flatMap(([, b]) => [b.main, b.second]));
   // a row with no name, or one the listing could not split into its fields, is no window to adopt
   const strays = live.filter((w) => w.name && w.paneId && typeof w.path === 'string' && !knownIds.has(w.name) && !secondNames.has(w.name) && !held.has(w.windowId));
-  // a stray named like a character id keeps that id, so the SVALL_CHAR_ID its agent carries still reaches it
+  // a stray named like a robot id keeps that id, so the SVALL_ROBOT_ID its agent carries still reaches it
   const taken = new Set(knownIds);
   const strayIds = strays.map((w) => {
-    const id = isCharId(w.name) && !taken.has(w.name) ? w.name : newId('c');
+    const id = isRobotId(w.name) && !taken.has(w.name) ? w.name : newId('c');
     taken.add(id);
     return { w, id };
   });
   // a stray kept under its own id takes its second window back, as its second terminal
   const seconds = new Map(strayIds.filter(({ w, id }) => id === w.name).map(({ id }) => [secondName(id), id]));
   const adopted = strayIds.filter(({ w }) => !seconds.has(w.name));
-  // filled as the strays are adopted: a window renamed to an id no character holds would be recovered
+  // filled as the strays are adopted: a window renamed to an id no robot holds would be recovered
   // all over again on the next pass, under the id as its name
   const renames: { windowId: string; name: string }[] = [];
   // the strays the recovered island had no room for, for the caller to log; the rest are adopted
   const unplaced: string[] = [];
 
   const mutate = (draft: FleetState) => {
-    for (const c of Object.values(draft.characters)) syncWindow(c, byName, before, { carried, adoptCarried: true });
-    // a character whose island is gone joins the recovered island, keeping all it carries
-    const orphans = Object.values(draft.characters).filter((c) => !draft.islands[c.islandId]).map((c) => c.id);
+    for (const c of Object.values(draft.robots)) syncWindow(c, byName, before, { carried, adoptCarried: true });
+    // a robot whose island is gone joins the recovered island, keeping all it carries
+    const orphans = Object.values(draft.robots).filter((c) => !draft.islands[c.islandId]).map((c) => c.id);
     if ((adopted.length || orphans.length) && !draft.islands[RECOVERED_ISLAND]) {
       draft.islands[RECOVERED_ISLAND] = {
         id: RECOVERED_ISLAND, name: 'recovered', description: '', instructions: '', context: [],
@@ -115,16 +115,16 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
       const trial = structuredClone(draft);
       const cell = placeOnIsland(trial, RECOVERED_ISLAND, exceptId);
       draft.islands = trial.islands;
-      draft.characters = trial.characters;
+      draft.robots = trial.robots;
       return cell;
     };
     for (const { w, id } of adopted) {
       let cell: Cell;
       try { cell = place(); }
       catch (e) { unplaced.push(`stray window ${w.name}: ${String(e)}`); continue; }
-      draft.characters[id] = {
+      draft.robots[id] = {
         id, islandId: RECOVERED_ISLAND, cell, name: w.name,
-        portrait: randomPortrait(new Set(Object.values(draft.characters).map((c) => c.portrait))),
+        portrait: randomPortrait(new Set(Object.values(draft.robots).map((c) => c.portrait))),
         note: '', instructions: '', cwd: w.path, context: [],
         tmux: { windowId: w.windowId, paneId: w.paneId },
         shell: { lastOutputAt: w.activity || now }, unread: false,
@@ -133,14 +133,14 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
     }
     for (const [name, id] of seconds) {
       const w2 = byName.get(name);
-      if (draft.characters[id] && w2 && !w2.dead) draft.characters[id].second = attachSlot(undefined, w2);
+      if (draft.robots[id] && w2 && !w2.dead) draft.robots[id].second = attachSlot(undefined, w2);
     }
     for (const id of orphans) {
       try {
         const cell = place(id);
-        draft.characters[id].cell = cell;
-        draft.characters[id].islandId = RECOVERED_ISLAND;
-      } catch (e) { unplaced.push(`character ${id}: ${String(e)}`); }
+        draft.robots[id].cell = cell;
+        draft.robots[id].islandId = RECOVERED_ISLAND;
+      } catch (e) { unplaced.push(`robot ${id}: ${String(e)}`); }
     }
   };
   return { mutate, renames, unplaced };

@@ -4,14 +4,14 @@ import { badgeOf, chainOf, countOf, docSlug, docsOf, isDoc, kindRows, qualifierO
 
 const item = (name: string, detail?: string) => ({ id: `x:${name}`, name, ...(detail && { detail }), reveal: `/x/${name}`, target: 'file' as const });
 const user: ResourceSource = {
-  rootId: 'r:/h/.claude', root: '/h/.claude', name: 'Claude', tier: 'global', islandIds: [], characterIds: [],
+  rootId: 'r:/h/.claude', root: '/h/.claude', name: 'Claude', tier: 'global', islandIds: [], robotIds: [],
   groups: [
     { kind: 'instructions', items: [item('CLAUDE.md')] },
     { kind: 'skills', items: [item('ship-it', 'Commit, PR and merge'), item('grill-me', 'Interview me about a plan')] },
     { kind: 'mcp', items: [item('linear', 'http · mcp.linear.app')] },
   ],
 };
-const app: ResourceSource = { rootId: 'r:/r/app', root: '/r/app', name: 'app', tier: 'repo', islandIds: ['i1'], characterIds: ['a'], groups: [{ kind: 'skills', items: [item('prepush')] }, { kind: 'mcp', items: [item('local')] }] };
+const app: ResourceSource = { rootId: 'r:/r/app', root: '/r/app', name: 'app', tier: 'repo', islandIds: ['i1'], robotIds: ['a'], groups: [{ kind: 'skills', items: [item('prepush')] }, { kind: 'mcp', items: [item('local')] }] };
 
 describe('resources model', () => {
   it('counts a kind, and everything under all', () => {
@@ -37,13 +37,13 @@ describe('resources model', () => {
 });
 
 const src = (tier: ResourceSource['tier'], name: string, root: string, extra: Partial<ResourceSource> = {}): ResourceSource =>
-  ({ rootId: `r:${root}`, root, name, tier, islandIds: [], characterIds: [], groups: [], ...extra });
+  ({ rootId: `r:${root}`, root, name, tier, islandIds: [], robotIds: [], groups: [], ...extra });
 // only what the model reads
 type Card = { description?: string; note?: string; instructions?: string; context?: ContextItem[] };
 const link = (ref: string, pinned?: true): ContextItem => ({ kind: contextKind(ref), ref, label: '', source: 'manual', ...(pinned && { pinned }) });
-const state = (islands: Record<string, { name: string; kind?: 'home' } & Card>, chars: Record<string, { name: string; islandId: string; cwd: string; mainRoot?: string; branch?: string } & Card>): FleetState => ({
+const state = (islands: Record<string, { name: string; kind?: 'home' } & Card>, robots: Record<string, { name: string; islandId: string; cwd: string; mainRoot?: string; branch?: string } & Card>): FleetState => ({
   islands: Object.fromEntries(Object.entries(islands).map(([id, i]) => [id, { id, ...i }])),
-  characters: Object.fromEntries(Object.entries(chars).map(([id, c]) => [id, { id, name: c.name, islandId: c.islandId, cwd: c.cwd, note: c.note ?? '', instructions: c.instructions ?? '', context: c.context ?? [], ...(c.mainRoot && { repo: { root: c.cwd, mainRoot: c.mainRoot, branch: c.branch ?? 'main', isWorktree: c.cwd !== c.mainRoot } }) }])),
+  robots: Object.fromEntries(Object.entries(robots).map(([id, c]) => [id, { id, name: c.name, islandId: c.islandId, cwd: c.cwd, note: c.note ?? '', instructions: c.instructions ?? '', context: c.context ?? [], ...(c.mainRoot && { repo: { root: c.cwd, mainRoot: c.mainRoot, branch: c.branch ?? 'main', isWorktree: c.cwd !== c.mainRoot } }) }])),
 }) as unknown as FleetState;
 
 const f = state(
@@ -58,24 +58,24 @@ const f = state(
 );
 const claude = src('global', 'Claude', '/Users/l/.claude');
 const codex = src('global', 'Codex', '/Users/l/.codex');
-const repoA = src('repo', 'atlas', '/Users/l/code/atlas', { islandIds: ['i1', 'i2'], characterIds: ['c1', 'c2', 'c3'] });
-const repoP = src('repo', 'phone', '/Users/l/code/phone', { islandIds: ['i2'], characterIds: ['c4'] });
+const repoA = src('repo', 'atlas', '/Users/l/code/atlas', { islandIds: ['i1', 'i2'], robotIds: ['c1', 'c2', 'c3'] });
+const repoP = src('repo', 'phone', '/Users/l/code/phone', { islandIds: ['i2'], robotIds: ['c4'] });
 // a slug nobody stands in: its source is rooted at its own docs folder
 const orphan = src('repo', 'gone-0a1b2c3d', '/d/repos/gone-0a1b2c3d', { docs: 'r:/d/repos/gone-0a1b2c3d' });
-const isle = (id: string, name: string, chars: string[]) => src('island', name, `/d/islands/${id}`, { islandIds: [id], characterIds: chars });
-const chr = (id: string, name: string, islandId: string) => src('character', name, `/d/characters/${id}`, { islandIds: [islandId], characterIds: [id] });
+const isle = (id: string, name: string, robots: string[]) => src('island', name, `/d/islands/${id}`, { islandIds: [id], robotIds: robots });
+const chr = (id: string, name: string, islandId: string) => src('robot', name, `/d/robots/${id}`, { islandIds: [islandId], robotIds: [id] });
 const all = [claude, codex, repoA, repoP, orphan, isle('i1', 'ATLAS', ['c1', 'c2']), isle('i2', 'mobile', ['c3', 'c4']), isle('i3', 'empty', []), isle('home', 'Mission control', ['h1']),
   chr('c1', 'deep robin', 'i1'), chr('c2', 'violet tern', 'i1'), chr('c3', 'calm otter', 'i2'), chr('c4', 'brisk vole', 'i2'), chr('h1', 'pilot', 'home')];
 const ours = src('fleet', 'private', '/Users/l/.svall/docs/fleet', { docs: 'r:/Users/l/.svall/docs/fleet' });
 
 describe('whereGroups', () => {
   it('groups sources by tier in ladder order, each with its count', () => {
-    expect(whereGroups(all, f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 0], ['repo', 3], ['island', 4], ['character', 5]]);
+    expect(whereGroups(all, f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 0], ['repo', 3], ['island', 4], ['robot', 5]]);
   });
   it('stands the fleet between global and the repositories', () => {
-    expect(whereGroups([...all, ours], f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 1], ['repo', 3], ['island', 4], ['character', 5]]);
+    expect(whereGroups([...all, ours], f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 1], ['repo', 3], ['island', 4], ['robot', 5]]);
   });
-  it('sub-groups characters by island and nothing else', () => {
+  it('sub-groups robots by island and nothing else', () => {
     const groups = whereGroups(all, f, '');
     expect(groups[4].sections.map((s) => [s.heading, s.sources.map((x) => x.name)])).toEqual([
       ['ATLAS', ['deep robin', 'violet tern']], ['mobile', ['calm otter', 'brisk vole']], ['Mission control', ['pilot']],
@@ -92,7 +92,7 @@ describe('whereGroups', () => {
   });
   it('filters across every group by name and qualifier, keeping a group with no match at zero', () => {
     const groups = whereGroups(all, f, 'ATLAS');
-    expect(groups.map((g) => [g.tier, g.count])).toEqual([['global', 0], ['fleet', 0], ['repo', 1], ['island', 1], ['character', 0]]);
+    expect(groups.map((g) => [g.tier, g.count])).toEqual([['global', 0], ['fleet', 0], ['repo', 1], ['island', 1], ['robot', 0]]);
   });
 });
 
@@ -109,13 +109,13 @@ describe('a tier as a Where', () => {
 });
 
 describe('qualifierOf', () => {
-  it('is a short path for global and repo, a crew count for an island, a branch or folder for a character', () => {
+  it('is a short path for global and repo, a crew count for an island, a branch or folder for a robot', () => {
     expect(qualifierOf(claude, f)).toBe('~/.claude');
     expect(qualifierOf(repoA, f)).toBe('~/code/atlas');
-    expect(qualifierOf(orphan, f)).toBe('no characters here');
-    expect(qualifierOf(all[5], f)).toBe('2 characters');
-    expect(qualifierOf(isle('i3', 'empty', []), f)).toBe('no characters');
-    expect(qualifierOf(isle('x', 'solo', ['c1']), f)).toBe('1 character');
+    expect(qualifierOf(orphan, f)).toBe('no robots here');
+    expect(qualifierOf(all[5], f)).toBe('2 robots');
+    expect(qualifierOf(isle('i3', 'empty', []), f)).toBe('no robots');
+    expect(qualifierOf(isle('x', 'solo', ['c1']), f)).toBe('1 robot');
     expect(qualifierOf(all[9], f)).toBe('worktree-docs');
     expect(qualifierOf(all[12], f)).toBe('~/code/phone');
   });
@@ -133,7 +133,7 @@ describe('kindRows', () => {
     expect(rows.map((r) => r.what).slice(0, 3)).toEqual(['all', 'docs', 'instructions']);
     expect(rows).toHaveLength(11);
   });
-  it('offers the card’s own kinds to an island and a character, and to nothing else', () => {
+  it('offers the card’s own kinds to an island and a robot, and to nothing else', () => {
     const card = ['note', 'agentInstructions', 'links'];
     for (const s of [isle('i1', 'ATLAS', []), chr('c1', 'deep robin', 'i1')]) {
       expect(kindRows(s).map((r) => r.what).slice(0, 5)).toEqual(['all', 'docs', ...card]);
@@ -158,7 +158,7 @@ describe('withCard', () => {
     { i1: { name: 'ATLAS', description: 'The repo and both worktrees.', instructions: 'Run the by-eye pass.', context: [link('https://github.com/l/svall')] } },
     { c1: { name: 'deep robin', islandId: 'i1', cwd: '/c', note: 'Mobile pass owed.\nThen the docs.', instructions: '', context: [link('https://x.test/a', true), link('/c/plan.md')] } },
   );
-  it('gives a character its note, its instructions and a row a link, in the What column’s order', () => {
+  it('gives a robot its note, its instructions and a row a link, in the What column’s order', () => {
     const s = withCard(chr('c1', 'deep robin', 'i1'), carded);
     expect(s.groups.map((g) => [g.kind, g.items.map((i) => i.name)])).toEqual([
       ['note', ['Note']], ['agentInstructions', ['Instructions']], ['links', ['x.test/a', 'plan.md']],
@@ -201,18 +201,18 @@ describe('badgeOf', () => {
 
 describe('chainOf', () => {
   const labels = (c: ReturnType<typeof chainOf>) => c?.chips.map((x) => [x.tier, x.label]);
-  it('is four chips for a character, its worktree counted as the repository', () => {
+  it('is four chips for a robot, its worktree counted as the repository', () => {
     const chain = chainOf(all, f, all[9]);
     expect(chain?.heading).toBe('deep robin reads, in order');
-    expect(labels(chain)).toEqual([['global', 'Claude'], ['repo', 'atlas'], ['island', 'ATLAS'], ['character', 'deep robin']]);
+    expect(labels(chain)).toEqual([['global', 'Claude'], ['repo', 'atlas'], ['island', 'ATLAS'], ['robot', 'deep robin']]);
     expect(chain?.chips[1].rootIds).toEqual([repoA.rootId]);
   });
   it('has no repository chip for mission control’s crew', () => {
-    expect(labels(chainOf(all, f, all[13]))).toEqual([['global', 'Claude'], ['island', 'Mission control'], ['character', 'pilot']]);
+    expect(labels(chainOf(all, f, all[13]))).toEqual([['global', 'Claude'], ['island', 'Mission control'], ['robot', 'pilot']]);
   });
   it('names an island’s one repository, counts them when its crew differ, and drops the slot when it has no crew', () => {
     const one = chainOf(all, f, all[5]);
-    expect(one?.heading).toBe('a character here reads');
+    expect(one?.heading).toBe('a robot here reads');
     expect(labels(one)).toEqual([['global', 'Claude'], ['repo', 'atlas'], ['island', 'ATLAS']]);
     const two = chainOf(all, f, all[6]);
     expect(labels(two)).toEqual([['global', 'Claude'], ['repo', '2 repos'], ['island', 'mobile']]);
@@ -220,18 +220,18 @@ describe('chainOf', () => {
     expect(labels(chainOf(all, f, all[7]))).toEqual([['global', 'Claude'], ['island', 'empty']]);
   });
   it('puts the fleet between the agent’s global source and the repository', () => {
-    expect(labels(chainOf([...all, ours], f, all[9]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['repo', 'atlas'], ['island', 'ATLAS'], ['character', 'deep robin']]);
-    expect(labels(chainOf([...all, ours], f, all[13]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['island', 'Mission control'], ['character', 'pilot']]);
+    expect(labels(chainOf([...all, ours], f, all[9]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['repo', 'atlas'], ['island', 'ATLAS'], ['robot', 'deep robin']]);
+    expect(labels(chainOf([...all, ours], f, all[13]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['island', 'Mission control'], ['robot', 'pilot']]);
     expect(chainOf([...all, ours], f, ours)).toBeUndefined();
   });
   it('is nothing for a global or a repository source', () => {
     expect(chainOf(all, f, claude)).toBeUndefined();
     expect(chainOf(all, f, repoA)).toBeUndefined();
   });
-  it('names the global source the character’s own agent reads', () => {
-    const onCodex = { ...f, characters: { ...f.characters, c1: { ...f.characters.c1, agent: { kind: 'codex' } } } } as unknown as FleetState;
+  it('names the global source the robot’s own agent reads', () => {
+    const onCodex = { ...f, robots: { ...f.robots, c1: { ...f.robots.c1, agent: { kind: 'codex' } } } } as unknown as FleetState;
     expect(labels(chainOf(all, onCodex, all[9]))?.[0]).toEqual(['global', 'Codex']);
-    // an island stands for mixed crew, and a character with no agent running falls back
+    // an island stands for mixed crew, and a robot with no agent running falls back
     expect(labels(chainOf(all, onCodex, all[5]))?.[0]).toEqual(['global', 'Claude']);
     expect(labels(chainOf(all, onCodex, all[10]))?.[0]).toEqual(['global', 'Claude']);
   });
@@ -253,7 +253,7 @@ describe('docSlug', () => {
 });
 
 describe('isDoc', () => {
-  const source = (docs?: string) => ({ rootId: 'r:/x', root: '/x', name: 'x', tier: 'island', islandIds: [], characterIds: [], groups: [], ...(docs && { docs }) }) as ResourceSource;
+  const source = (docs?: string) => ({ rootId: 'r:/x', root: '/x', name: 'x', tier: 'island', islandIds: [], robotIds: [], groups: [], ...(docs && { docs }) }) as ResourceSource;
   it('is a .md directly in a folder that takes docs', () => {
     expect(isDoc([source('r:/d/islands/i1')], 'r:/d/islands/i1', 'plan.md')).toBe(true);
   });
@@ -268,7 +268,7 @@ describe('docsOf', () => {
   it('finds an entity’s source and its docs', () => {
     const items = [{ id: 'a', name: 'plan', detail: 'What is left.', reveal: '/x', target: 'file' as const }];
     const withDocs = [...all.slice(0, 9), { ...all[9], groups: [{ kind: 'docs' as const, items }] }];
-    expect(docsOf(withDocs, 'character', 'c1')).toEqual({ source: withDocs[9], items });
+    expect(docsOf(withDocs, 'robot', 'c1')).toEqual({ source: withDocs[9], items });
     expect(docsOf(all, 'island', 'i1').items).toEqual([]);
     expect(docsOf(all, 'island', 'nope')).toEqual({ source: undefined, items: [] });
   });

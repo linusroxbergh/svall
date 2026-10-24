@@ -30,7 +30,7 @@ export const encode = (bytes: Uint8Array): string => {
 };
 
 /**
- * One character's terminal over the daemon's streaming path. open() paints the pane as it stands and
+ * One robot's terminal over the daemon's streaming path. open() paints the pane as it stands and
  * starts the stream; calling it again after a reconnect repaints, which is what Safari needs every time
  * it drops the socket on lock.
  */

@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 /// Creates, positions, hides and frees one BrowserView per tab id, above the webview. Every tab of a fleet shares
-/// one persistent data store, so one Google sign-in serves every character.
+/// one persistent data store, so one Google sign-in serves every robot.
 final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
     let overlay: OverlayViews<BrowserView>
     let store: WKWebsiteDataStore
@@ -193,7 +193,7 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
     // MARK: popups
 
     // window.open and target=_blank get a real view on WebKit's configuration, which keeps window.opener alive for
-    // sign-in flows, and the page adopts it as the character's tab; a mailto is asked about over its tab instead
+    // sign-in flows, and the page adopts it as the robot's tab; a mailto is asked about over its tab instead
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url, url.scheme?.lowercased() == "mailto" {

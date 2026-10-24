@@ -82,7 +82,7 @@ function createApp(): AppContext {
   installDropHandlers({ bridge, store, api: () => api });
   applyZoom(bridge, store.getState().settings.zoom);
   store.subscribe((s, prev) => { if (s.settings.zoom !== prev.settings.zoom) applyZoom(bridge, s.settings.zoom); });
-  // a character that left the fleet takes its editor buffers with it
+  // a robot that left the fleet takes its editor buffers with it
   store.subscribe((s, prev) => { for (const id of Object.keys(prev.ide)) if (!s.ide[id]) dropBuffers(id); });
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });

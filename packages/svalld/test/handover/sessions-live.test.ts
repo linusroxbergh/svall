@@ -161,7 +161,7 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
   if (source === here) {
     // the whole manifest path, as the source daemon runs it
     const state = emptyState();
-    state.characters.c1 = {
+    state.robots.c1 = {
       id: 'c1', islandId: 'i1', cell: { x: 0, y: 0 }, name: 'c1', note: '', portrait: 'fox', instructions: '', cwd: work,
       context: [], shell: { lastOutputAt: 0 }, unread: false, agent: { kind, sessionId: id, transcriptPath: sourceTranscript, status: 'idle', lastActivityAt: 0 },
     };
@@ -185,7 +185,7 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
     await exec('tar', ['-C', staged, '-xf', '-'], { input: tar.bytes });
     const found = await adapter.discover(path.join(staged, rel), id, localFs);
     session = {
-      characterId: 'c1', agent: kind, sessionId: id, sourcePath: sourceTranscript, sourceHome: before.home, destinationHome: after.home, adapter: adapter.adapter,
+      robotId: 'c1', agent: kind, sessionId: id, sourcePath: sourceTranscript, sourceHome: before.home, destinationHome: after.home, adapter: adapter.adapter,
       destinationPath: path.posix.join(after.home, found.transcript),
       files: found.files.map((f) => {
         const data = fs.readFileSync(path.join(staged, f));

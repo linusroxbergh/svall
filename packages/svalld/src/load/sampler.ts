@@ -1,5 +1,5 @@
 import { availableParallelism } from 'node:os';
-import type { LoadChar, LoadSnapshot, LoadUsage } from '@svall/protocol';
+import type { LoadRobot, LoadSnapshot, LoadUsage } from '@svall/protocol';
 import { attribute, type Scope } from './attribute.js';
 import type { LiveProc } from './procs.js';
 
@@ -92,17 +92,17 @@ export class LoadSampler {
 
     const scope = await this.d.scope(procs);
     const owners = attribute(procs, scope);
-    const chars: Record<string, LoadChar> = {};
-    for (const [id, ps] of owners.chars) {
+    const robots: Record<string, LoadRobot> = {};
+    for (const [id, ps] of owners.robots) {
       if (!ps.length) continue;
       const panes = new Set(scope.panes.get(id));
-      chars[id] = { ...usage(ps), shellOnly: ps.every((p) => panes.has(p.pid)), sleepable: this.d.sleepable(id, procs) };
+      robots[id] = { ...usage(ps), shellOnly: ps.every((p) => panes.has(p.pid)), sleepable: this.d.sleepable(id, procs) };
     }
     const app = usage(owners.app);
     const codex = owners.codex.length ? usage(owners.codex) : undefined;
-    const parts = [app, ...(codex ? [codex] : []), ...Object.values(chars)];
+    const parts = [app, ...(codex ? [codex] : []), ...Object.values(robots)];
     const total = { cpu: parts.reduce((s, u) => s + u.cpu, 0), mem: parts.reduce((s, u) => s + u.mem, 0), procs: parts.reduce((s, u) => s + u.procs, 0) };
-    const snap = { at, cores: availableParallelism(), total, app, ...(codex ? { codex } : {}), chars };
+    const snap = { at, cores: availableParallelism(), total, app, ...(codex ? { codex } : {}), robots };
     if (gen === this.gen) { this.snap = snap; this.failed = undefined; }
     return snap;
   }

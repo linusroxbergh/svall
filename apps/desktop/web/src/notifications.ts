@@ -1,4 +1,4 @@
-import { charOfKey, isNews, isPushStatus, sessionsOf, type FleetState, type PushStatus, type Session } from '@svall/protocol';
+import { robotOfKey, isNews, isPushStatus, sessionsOf, type FleetState, type PushStatus, type Session } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Bridge, NotifyPermission, ToShell } from './bridge.js';
 import type { NotifySettings } from './settings.js';
@@ -15,7 +15,7 @@ type Posted = Map<string, PushStatus>;
 const ANSWER_WAIT_MS = 5000;
 
 function noticeFor(v: NoticeView, s: Session, status: PushStatus): Notice {
-  const c = v.fleet.characters[s.charId]!;
+  const c = v.fleet.robots[s.robotId]!;
   const blocked = status === 'blocked';
   // an answer reaches the main terminal only, as on the phone, and names the question the banner showed
   const actions = blocked && !s.term;
@@ -37,12 +37,12 @@ function noticeFor(v: NoticeView, s: Session, status: PushStatus): Notice {
 export function decide(prev: NoticeView, next: NoticeView, posted: Posted): { post: Notice[]; remove: string[]; posted: Posted } {
   const live = next.settings.on && next.permission === 'granted';
   const now = sessionsOf(next.fleet);
-  const inView = (charId: string) => next.active && next.viewed === charId;
+  const inView = (robotId: string) => next.active && next.viewed === robotId;
   const out: Posted = new Map(posted);
   const remove: string[] = [];
   for (const [key, status] of posted) {
     const s = now.get(key);
-    if (live && s && s.agent?.status === status && next.settings.statuses.includes(status) && (status === 'blocked' || s.unread) && !inView(s.charId)) continue;
+    if (live && s && s.agent?.status === status && next.settings.statuses.includes(status) && (status === 'blocked' || s.unread) && !inView(s.robotId)) continue;
     remove.push(key);
     out.delete(key);
   }
@@ -53,7 +53,7 @@ export function decide(prev: NoticeView, next: NoticeView, posted: Posted): { po
     const status = s.agent?.status;
     // a new question while the agent stays blocked replaces the banner
     if (!isPushStatus(status) || !isNews(before.get(s.key)?.agent, s.agent) || !next.settings.statuses.includes(status)) continue;
-    if (inView(s.charId) || (status === 'done' && !s.unread)) continue;
+    if (inView(s.robotId) || (status === 'done' && !s.unread)) continue;
     post.push(noticeFor(next, s, status));
     out.set(s.key, status);
   }
@@ -96,17 +96,17 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
       const timer = setTimeout(() => { off(); resolve(undefined); }, ANSWER_WAIT_MS);
     });
   };
-  // only a main terminal's banner has buttons, so the key is the character's id
+  // only a main terminal's banner has buttons, so the key is the robot's id
   const answer = async (key: string, action: 'approve' | 'deny', promptId: string) => {
-    const c = o.store.getState().fleet.characters[key];
+    const c = o.store.getState().fleet.robots[key];
     if (!c) return;
     try {
       const api = await waitOnline();
       if (!api) throw new Error('svalld not connected');
-      await api.call('char.answer', { id: key, answer: action, promptId });
+      await api.call('robot.answer', { id: key, answer: action, promptId });
     } catch {
       // a newer question's banner is up under the same key, and stays
-      const now = o.store.getState().fleet.characters[key]?.agent;
+      const now = o.store.getState().fleet.robots[key]?.agent;
       if (now?.status === 'blocked' && now.promptId !== promptId) return;
       o.bridge.send({ type: 'notify.post', ...answerFailed(c.name, key, o.store.getState().settings.notifications.sound) });
     }
@@ -121,8 +121,8 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
         o.bridge.send({ type: 'notify.enable' });
       }
     } else if (m.type === 'notify.open') {
-      const id = charOfKey(m.key);
-      if (o.store.getState().fleet.characters[id]) o.store.getState().focus(id);
+      const id = robotOfKey(m.key);
+      if (o.store.getState().fleet.robots[id]) o.store.getState().focus(id);
     } else if (m.type === 'notify.action') {
       // one that names no question would have svalld approve whatever is pending
       if (m.promptId) void answer(m.key, m.action, m.promptId);

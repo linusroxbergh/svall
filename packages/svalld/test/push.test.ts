@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentStatus, Character, MobileStatus } from '@svall/protocol';
+import type { AgentStatus, Robot, MobileStatus } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { silentLogger } from '../src/log.js';
 import webpush from 'web-push';
@@ -76,7 +76,7 @@ describe('vapid', () => {
 });
 
 describe('pusher', () => {
-  const agent = (status: AgentStatus, prompt?: string): Character['agent'] =>
+  const agent = (status: AgentStatus, prompt?: string): Robot['agent'] =>
     ({ kind: 'claude', sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0, ...(prompt ? { prompt } : {}) });
   const tick = () => new Promise((r) => setImmediate(r));
 
@@ -98,7 +98,7 @@ describe('pusher', () => {
     };
     store.update((d) => {
       d.islands.i = { id: 'i', name: 'i', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-      d.characters.c = { id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'otter', portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('working') };
+      d.robots.c = { id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'otter', portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('working') };
     });
     push.upsert({ endpoint: 'https://push.example/a', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked'], login: 'me', addedAt: 1 });
     push.upsert({ endpoint: 'https://push.example/b', keys: { p256dh: 'p', auth: 'a' }, statuses: ['done'], login: 'me', addedAt: 1 });
@@ -109,10 +109,10 @@ describe('pusher', () => {
 
   it('tells a device when an agent turns blocked or done, with what it asked, and only about the turns it chose', async () => {
     const { store, sent } = setup();
-    store.update((d) => { d.characters.c.agent = agent('blocked', 'Bash?'); });
-    store.update((d) => { d.characters.c.note = 'still blocked, nothing new'; });
-    store.update((d) => { d.characters.c.agent = agent('done'); d.characters.c.unread = true; });
-    store.update((d) => { d.characters.c.agent = agent('idle'); });
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
+    store.update((d) => { d.robots.c.note = 'still blocked, nothing new'; });
+    store.update((d) => { d.robots.c.agent = agent('done'); d.robots.c.unread = true; });
+    store.update((d) => { d.robots.c.agent = agent('idle'); });
     await tick();
     expect(sent).toEqual([
       { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?' } },
@@ -122,9 +122,9 @@ describe('pusher', () => {
 
   it('names the question it tells of, tells of the next one too, and says why an API error ended a turn', async () => {
     const { store, sent } = setup();
-    store.update((d) => { d.characters.c.agent = { ...agent('blocked', 'Bash?')!, promptId: 'q1' }; });
-    store.update((d) => { d.characters.c.agent = { ...agent('blocked', 'Write?')!, promptId: 'q2' }; });
-    store.update((d) => { d.characters.c.agent = agent('done', 'API Error: 529 Overloaded'); d.characters.c.unread = true; });
+    store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'Bash?')!, promptId: 'q1' }; });
+    store.update((d) => { d.robots.c.agent = { ...agent('blocked', 'Write?')!, promptId: 'q2' }; });
+    store.update((d) => { d.robots.c.agent = agent('done', 'API Error: 529 Overloaded'); d.robots.c.unread = true; });
     await tick();
     expect(sent).toEqual([
       { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?', promptId: 'q1' } },
@@ -133,9 +133,9 @@ describe('pusher', () => {
     ]);
   });
 
-  it('tells a device about the second terminal turning blocked, under the character and marked as its own session', async () => {
+  it('tells a device about the second terminal turning blocked, under the robot and marked as its own session', async () => {
     const { store, sent } = setup();
-    store.update((d) => { d.characters.c.second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });
+    store.update((d) => { d.robots.c.second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });
     await tick();
     expect(sent).toEqual([{ endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', term: 2, prompt: 'Write?' } }]);
   });
@@ -143,7 +143,7 @@ describe('pusher', () => {
   it('forgets a device the push service says is gone', async () => {
     const { store, push, dead } = setup();
     dead.set('https://push.example/a', 410);
-    store.update((d) => { d.characters.c.agent = agent('blocked'); });
+    store.update((d) => { d.robots.c.agent = agent('blocked'); });
     await tick();
     expect(push.get('https://push.example/a')).toBeUndefined();
     expect(push.get('https://push.example/b')).toBeDefined();
@@ -152,7 +152,7 @@ describe('pusher', () => {
   it('tells only a device whose login the fleet still accepts', async () => {
     const { store, push, sent } = setup({ logins: ['me'] });
     push.upsert({ endpoint: 'https://push.example/revoked', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked'], login: 'former', addedAt: 1 });
-    store.update((d) => { d.characters.c.agent = agent('blocked', 'Bash?'); });
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
     await tick();
     expect(sent.map((s) => s.endpoint)).toEqual(['https://push.example/a']);
   });
@@ -160,18 +160,18 @@ describe('pusher', () => {
   // the Mac's own login is learned from tailscale after the pusher starts
   it('tells no device while the fleet accepts no login, and a device of a login it accepts later', async () => {
     const { store, sent, accepted } = setup({ logins: [] });
-    store.update((d) => { d.characters.c.agent = agent('blocked'); });
+    store.update((d) => { d.robots.c.agent = agent('blocked'); });
     await tick();
     expect(sent).toEqual([]);
     accepted.logins = ['me'];
-    store.update((d) => { d.characters.c.agent = agent('done'); });
+    store.update((d) => { d.robots.c.agent = agent('done'); });
     await tick();
     expect(sent.map((s) => s.endpoint)).toEqual(['https://push.example/b']);
   });
 
   it('says nothing while the phone link is off', async () => {
     const { store, sent } = setup({ off: true });
-    store.update((d) => { d.characters.c.agent = agent('blocked', 'Bash?'); });
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
     await tick();
     expect(sent).toEqual([]);
   });
@@ -179,9 +179,9 @@ describe('pusher', () => {
   // Apple refuses a push whose sender names no contact it can reach, and the served page is the fleet's own
   it('names the link it serves as the sender, unless a contact is set', async () => {
     const plain = setup();
-    plain.store.update((d) => { d.characters.c.agent = agent('blocked'); });
+    plain.store.update((d) => { d.robots.c.agent = agent('blocked'); });
     const named = setup({ contact: 'mailto:me@mac.dev' });
-    named.store.update((d) => { d.characters.c.agent = agent('blocked'); });
+    named.store.update((d) => { d.robots.c.agent = agent('blocked'); });
     await tick();
     expect(plain.subjects).toEqual([SERVED]);
     expect(named.subjects).toEqual(['mailto:me@mac.dev']);
@@ -193,7 +193,7 @@ describe('pusher', () => {
   it('says nothing once stopped', async () => {
     const { store, sent, stop } = setup();
     stop();
-    store.update((d) => { d.characters.c.agent = agent('blocked'); });
+    store.update((d) => { d.robots.c.agent = agent('blocked'); });
     await tick();
     expect(sent).toEqual([]);
   });

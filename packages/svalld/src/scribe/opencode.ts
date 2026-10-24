@@ -8,7 +8,7 @@ type Line = { type?: string; sessionID?: string; part?: { text?: string }; error
 
 // no tool may run on what a transcript says: this agent's ask comes after any rule the user's config sets, and `opencode
 // run` turns every ask down. Tools denied outright would leave the request, which Zen's free models refuse. A pass holds
-// other characters' transcripts, so it is never shared, whatever the user's config says
+// other robots' transcripts, so it is never shared, whatever the user's config says
 const CONFIG = JSON.stringify({
   share: 'disabled',
   agents: { 'svall-scribe': { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }] } },
@@ -20,7 +20,7 @@ export function opencodeRunner(o: { model?: string; cwd: string; bin?: string; t
   return async (system, prompt, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });
     const bin = o.bin ?? 'opencode';
-    const { SVALL_CHAR_ID: _id, ...rest } = process.env;
+    const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...rest } = process.env;
     const env = { ...rest, OPENCODE_CONFIG_CONTENT: CONFIG };
     const { code, out, err } = await runChild(
       () => spawn(bin, ['run', '--standalone', '--format', 'json', '--agent', 'svall-scribe', ...(o.model ? ['-m', o.model] : [])], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),

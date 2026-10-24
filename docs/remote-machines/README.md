@@ -1,6 +1,6 @@
 # Remote machines
 
-Svall can move a fleet from your Mac to an always-on Linux machine and back: its islands, characters, the
+Svall can move a fleet from your Mac to an always-on Linux machine and back: its islands, robots, the
 repositories and worktrees they work in, and each Claude Code, Codex or OpenCode conversation. On the Linux machine
 the fleet keeps working while the Mac sleeps, and the app on the Mac reaches it over ssh. Only one of the two runs
 the fleet at a time; the Linux machine, as the fleet's gateway, keeps the record of which.

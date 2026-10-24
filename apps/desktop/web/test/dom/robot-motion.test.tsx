@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { act, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addRobot, REST, setMotion, useRobotMotion } from '../../src/map/motion.js';
-import { inlineRobot, Robot } from '../../src/map/Robot.js';
-import { robotUrl } from '../../src/portraits.js';
+import { addFigure, REST, setMotion, useRobotMotion } from '../../src/map/motion.js';
+import { inlineFigure, Figure } from '../../src/map/Figure.js';
+import { figureUrl } from '../../src/portraits.js';
 import { freshStore, store } from './harness.js';
 
 const reduce: { matches: boolean; change?: () => void } = { matches: false };
@@ -33,7 +33,7 @@ function robot(status: string) {
       return r.parts;
     },
   });
-  removes.push(addRobot(bot));
+  removes.push(addFigure(bot));
   return r;
 }
 
@@ -144,7 +144,7 @@ describe('the robot scheduler', () => {
     expect(r.parts[1].playbackRate).toBe(r.parts[0].playbackRate);
   });
 
-  it('stills every robot while the map is paused, a character window is open or the switch is off', async () => {
+  it('stills every robot while the map is paused, a robot window is open or the switch is off', async () => {
     const r = robot('idle');
     renderHook(() => useRobotMotion());
     await tick();
@@ -199,26 +199,26 @@ describe('a robot inlined on a card', () => {
     const src = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10" class="r07" role="img" aria-labelledby="t">'
       + '<title id="t">T</title>'
       + '<linearGradient id="g"/><path id="blade"/><rect fill="url(#g)"/><rect fill="url(\'#g\')"/><use href="#blade"/><use xlink:href="#blade"/><rect fill="url(#gone)"/></svg>';
-    const out = inlineRobot(src, 'bot3');
+    const out = inlineFigure(src, 'bot3');
     expect(Array.from(out.matchAll(/\sid="([^"]+)"/g), (m) => m[1])).toEqual(['bot3-t', 'bot3-g', 'bot3-blade']);
     expect(refs(out)).toEqual(['bot3-g', 'bot3-g', 'gone', 'bot3-blade', 'bot3-blade', 'bot3-t']);
     const root = parse(out);
-    expect(root.getAttribute('class')).toBe('r07 portrait robot');
+    expect(root.getAttribute('class')).toBe('r07 portrait figure');
     expect(root.getAttribute('aria-hidden')).toBe('true');
     expect(root.getAttribute('viewBox')).toBe('0 0 10 10');
-    expect(parse(inlineRobot('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', 'p')).getAttribute('class')).toBe('portrait robot');
+    expect(parse(inlineFigure('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', 'p')).getAttribute('class')).toBe('portrait figure');
   });
 
   it('gives each pivot as a share of the view box, where the Mac app\'s page zoom leaves it', () => {
     const src = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="148 44 216 434">'
       + '<g class="blades" style="transform-origin:256px 130px"/><g class="eyes" style="transform-box:fill-box;transform-origin:center"/></svg>';
-    const styles = [...parse(inlineRobot(src, 'p')).querySelectorAll('g')].map((g) => g.getAttribute('style'));
+    const styles = [...parse(inlineFigure(src, 'p')).querySelectorAll('g')].map((g) => g.getAttribute('style'));
     expect(styles).toEqual([`transform-origin:${(256 / 216) * 100}% ${(130 / 434) * 100}%`, 'transform-box:fill-box;transform-origin:center']);
   });
 
   it.each(files)('%s keeps its references inside its own copy and changes nothing else', (f) => {
     const src = fs.readFileSync(path.join(robotsDir, f), 'utf8');
-    const out = inlineRobot(src, 'QQ');
+    const out = inlineFigure(src, 'QQ');
     const ids = Array.from(out.matchAll(/\sid="([^"]+)"/g), (m) => m[1]);
     for (const id of ids) expect(id.startsWith('QQ-')).toBe(true);
     for (const ref of refs(out)) expect(ids).toContain(ref);
@@ -229,7 +229,7 @@ describe('a robot inlined on a card', () => {
     expect(body(plain)).toBe(body(src));
     const attrs = (s: string) => Object.fromEntries([...parse(s).attributes].map((a) => [a.name, a.value]));
     const { class: cls, 'aria-hidden': hidden, preserveAspectRatio: _, ...rest } = attrs(plain);
-    expect({ ...rest, class: cls.replace(/ ?portrait robot$/, '') }).toEqual({ ...attrs(src), class: attrs(src).class ?? '' });
+    expect({ ...rest, class: cls.replace(/ ?portrait figure$/, '') }).toEqual({ ...attrs(src), class: attrs(src).class ?? '' });
     expect(hidden).toBe('true');
   });
 
@@ -238,13 +238,13 @@ describe('a robot inlined on a card', () => {
     const fetch = vi.fn(async () => new Response(src));
     vi.stubGlobal('fetch', fetch);
     try {
-      const { container } = render(<><div className="a"><Robot n={7} /></div><div className="b"><Robot n={7} /></div></>);
-      expect(container.querySelectorAll('img.portrait.robot')).toHaveLength(2);
-      expect(container.querySelector('img')!.getAttribute('src')).toBe(robotUrl(7));
+      const { container } = render(<><div className="a"><Figure n={7} /></div><div className="b"><Figure n={7} /></div></>);
+      expect(container.querySelectorAll('img.portrait.figure')).toHaveLength(2);
+      expect(container.querySelector('img')!.getAttribute('src')).toBe(figureUrl(7));
       await act(async () => {});
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(container.querySelector('img')).toBeNull();
-      const [a, b] = [...container.querySelectorAll('.stage > svg.portrait.robot')];
+      const [a, b] = [...container.querySelectorAll('.stage > svg.portrait.figure')];
       expect(a.getAttribute('aria-hidden')).toBe('true');
       const idsOf = (el: Element) => [...el.querySelectorAll('[id]')].map((e) => e.id);
       expect(idsOf(a).length).toBeGreaterThan(0);
@@ -258,7 +258,7 @@ describe('a robot inlined on a card', () => {
     const src = fs.readFileSync(path.join(robotsDir, 'robot-01.svg'), 'utf8');
     vi.stubGlobal('fetch', vi.fn(async () => new Response(src)));
     try {
-      const { container, unmount } = render(<><Robot n={1} /><Robot n={1} /></>);
+      const { container, unmount } = render(<><Figure n={1} /><Figure n={1} /></>);
       await act(async () => {});
       expect(container.querySelectorAll('.stage > svg')).toHaveLength(2);
       expect(container.querySelectorAll('style')).toHaveLength(0);

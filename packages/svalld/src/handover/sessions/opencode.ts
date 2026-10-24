@@ -73,7 +73,7 @@ async function heldCopy(sessionId: string, file: string, to: string, cwd: string
 }
 
 /** Whether an OpenCode agent of the fleet has answered a turn on this machine, in the log Svall's plugin keeps of it. */
-export const opencodeAnswered = (state: FleetState): boolean => Object.values(state.characters).some((c) => [c.agent, c.second?.agent].some((a) =>
+export const opencodeAnswered = (state: FleetState): boolean => Object.values(state.robots).some((c) => [c.agent, c.second?.agent].some((a) =>
   a?.kind === 'opencode' && !!a.transcriptPath && /^\{"kind":"agent"/m.test(readTail(a.transcriptPath, 1024 * 1024))));
 
 export const opencodeAdapter: SessionAdapter = {

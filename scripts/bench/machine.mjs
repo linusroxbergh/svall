@@ -7,8 +7,8 @@
 //   daemon reset|read                 resets or reads the peak RSS of this machine's fleet daemon, and sizes its replica records
 //   info                              prints what this machine's fleet daemon answers to system.info
 //   watch <stop file>                 until the stop file appears, keeps the peak RSS of each rsync, ssh and sshd process here
-//   flood <character id> [--seconds <n>]
-//                                     opens a viewer on a character's terminal that reads nothing while the terminal
+//   flood <robot id> [--seconds <n>]
+//                                     opens a viewer on a robot's terminal that reads nothing while the terminal
 //                                     prints as fast as it can, and samples the daemon's RSS and the output it was sent
 import { execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -236,7 +236,7 @@ async function info() {
 }
 
 /**
- * A viewer that opens a character's terminal and then reads nothing, as a phone on a link slower than the terminal
+ * A viewer that opens a robot's terminal and then reads nothing, as a phone on a link slower than the terminal
  * prints. The terminal prints without end; the daemon's RSS and what it queued for the viewer are sampled.
  */
 async function flood(o) {
@@ -258,7 +258,7 @@ async function flood(o) {
   await new Promise((resolve) => { ws.onmessage = (m) => { if (JSON.parse(m.data).id === 1) resolve(); }; });
   let received = 0;
   ws.onmessage = (m) => { received += m.data.length; };
-  execFileSync(SVALL, ['char', 'run', id, 'yes "$(head -c 200 /dev/zero | tr "\\0" x)"']);
+  execFileSync(SVALL, ['robot', 'run', id, 'yes "$(head -c 200 /dev/zero | tr "\\0" x)"']);
   await sleep(1000);
   const before = received;
   fromDaemon.pause();

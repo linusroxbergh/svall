@@ -3,12 +3,12 @@ import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
-import { boardViewed, charactersOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
+import { boardViewed, robotsOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
 import { canFill, zoomBy } from './settings.js';
 import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
 
-// the keys also open a character's link, in the browser that comes up with the socket
+// the keys also open a robot's link, in the browser that comes up with the socket
 type KeyDeps = Deps & { browser?: BrowserManager };
 
 // keyboard focus goes back to a surface whenever something closes over it: the browser when it is the
@@ -18,7 +18,7 @@ export function refocusSurface({ store, bridge }: Pick<Deps, 'store' | 'bridge'>
   const id = viewedId(s);
   if (!bridge.present || !id) return;
   const p = panesOf(s, id);
-  const tab = s.fleet.characters[id]?.browser?.active;
+  const tab = s.fleet.robots[id]?.browser?.active;
   if (p.left === 'browser' && tab) bridge.send({ type: 'browser.focus', tab });
   else {
     const up = [p.left, p.right].find(isTerminal);
@@ -35,32 +35,32 @@ function goTo({ store }: Deps, id?: string, starred = false): void {
   st.setStarredRow(starred ? id : undefined);
 }
 
-// the character the keys act on: the selection on the map, the viewed one on the board
+// the robot the keys act on: the selection on the map, the viewed one on the board
 const currentOf = (s: AppState): string | undefined => (s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s));
 
 const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) =>
   neighbor(s.fleet, id, step, !s.sections[STARRED]?.shut, s.starredRow === id);
 
-// an island picked on the map selects no character, so the walk starts at its first
+// an island picked on the map selects no robot, so the walk starts at its first
 const islandFirst = (s: AppState): string | undefined => {
   const i = s.view === 'map' && !s.selectedId && s.selectedIslandId ? s.fleet.islands[s.selectedIslandId] : undefined;
-  return i && !i.collapsed ? charactersOf(s.fleet, i.id)[0]?.id : undefined;
+  return i && !i.collapsed ? robotsOf(s.fleet, i.id)[0]?.id : undefined;
 };
 
-export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
+export async function closeRobot(ctx: Deps, id: string): Promise<void> {
   const s = ctx.store.getState();
-  // closing the current character moves on first, so the removal patch never catches the terminal view without one
+  // closing the current robot moves on first, so the removal patch never catches the terminal view without one
   if (id === currentOf(s)) {
     const next = nextOf(s, id, 1);
     if (next) goTo(ctx, next.c.id, next.starred);
     else s.select(undefined);
   }
-  await ctx.api.call('char.close', { id });
+  await ctx.api.call('robot.close', { id });
 }
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setSleepingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
+  s.setNamingRobot(false); s.setMissionPrompt(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
   // a dialog over the settings takes the keys from a shortcut row still waiting for one
   s.setCapturingKey(undefined);
 }
@@ -87,30 +87,30 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
     goTo(ctx, r?.c.id, r?.starred);
   };
   const closeModals = () => closeAllModals(store);
-  if (covered(s) && (action.type === 'newCharacter' || action.type === 'missionControl' || action.type === 'closeCharacter')) return;
+  if (covered(s) && (action.type === 'newRobot' || action.type === 'missionControl' || action.type === 'closeRobot')) return;
 
   switch (action.type) {
     // one modal at a time: the backdrops share a layer, so a second would mount unseen and take the keys
-    case 'newCharacter': closeModals(); store.getState().setNamingCharacter(true); return;
+    case 'newRobot': closeModals(); store.getState().setNamingRobot(true); return;
     case 'missionControl': closeModals(); store.getState().setMissionPrompt(true); return;
     case 'openFleets': openFleetPicker(store); return;
     case 'arrange': if (s.view === 'map') store.getState().askArrange(); return;
-    case 'closeCharacter': {
+    case 'closeRobot': {
       // a second Cmd+W answers the dialog the first one opened
-      if (s.closingCharacter) {
-        store.getState().setClosingCharacter(undefined);
-        await closeCharacter(ctx, s.closingCharacter).catch((e: Error) => store.getState().showToast(e.message));
+      if (s.closingRobot) {
+        store.getState().setClosingRobot(undefined);
+        await closeRobot(ctx, s.closingRobot).catch((e: Error) => store.getState().showToast(e.message));
         return;
       }
       if (s.view === 'map' && s.card) { store.getState().closeCard(); return; }
       if (!current) return;
-      // the close key sits among the ones that walk the fleet, so a character closed by key is confirmed first
+      // the close key sits among the ones that walk the fleet, so a robot closed by key is confirmed first
       closeModals();
-      store.getState().setClosingCharacter(current);
+      store.getState().setClosingRobot(current);
       return;
     }
-    case 'prevCharacter': walk(-1); return;
-    case 'nextCharacter': walk(1); return;
+    case 'prevRobot': walk(-1); return;
+    case 'nextRobot': walk(1); return;
     case 'toggleView': commitFocused(); store.getState().setView(s.view === 'map' ? 'board' : 'map'); return;
     case 'toggleCardSize': if (s.view === 'map') store.getState().toggleCardSize(); return;
     case 'toggleSettings':
@@ -161,13 +161,13 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       return;
     }
     case 'openLink': {
-      const item = current ? f.characters[current]?.context.find(opensInside) : undefined;
+      const item = current ? f.robots[current]?.context.find(opensInside) : undefined;
       if (current && item && ctx.browser) openBeside(store, ctx.browser, current, item.ref);
       return;
     }
     case 'fillLogin': {
       const id = viewedId(s);
-      const tab = id ? f.characters[id]?.browser?.active : undefined;
+      const tab = id ? f.robots[id]?.browser?.active : undefined;
       if (tab && shows(panesOf(s, id), 'browser') && canFill(s) && bridge.present) bridge.send({ type: 'browser.fill', tab });
       return;
     }

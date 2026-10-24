@@ -54,18 +54,18 @@ if (resume && !fs.existsSync(transcriptPath)) {
   process.exit(1);
 }
 
-const charId = process.env.SVALL_CHAR_ID;
+const robotId = process.env.SVALL_ROBOT_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const home = process.env.SVALL_HOME;
 
 function post(hook) {
-  if (!home || !charId) return Promise.resolve();
+  if (!home || !robotId) return Promise.resolve();
   return new Promise((resolve) => {
     const sock = net.createConnection(path.join(home, 'hooks.sock'));
     const done = () => { clearTimeout(timer); sock.destroy(); resolve(); };
     const timer = setTimeout(done, 2000);
     sock.on('error', done);
-    sock.on('connect', () => sock.end(`${JSON.stringify({ charId, term, pid: process.pid, hook: { session_id: sessionId, transcript_path: transcriptPath, cwd, ...hook } })}\n`, done));
+    sock.on('connect', () => sock.end(`${JSON.stringify({ robotId, term, pid: process.pid, hook: { session_id: sessionId, transcript_path: transcriptPath, cwd, ...hook } })}\n`, done));
   });
 }
 

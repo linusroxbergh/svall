@@ -4,7 +4,7 @@ import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, charactersOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
+import { boardViewed, robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -14,21 +14,21 @@ type ActionDeps = Pick<Deps, 'api' | 'store'>;
 
 const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.message);
 
-// making an island or character puts the settings window away, so what was made is in sight
+// making an island or robot puts the settings window away, so what was made is in sight
 const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false); };
 
-// a cwd taken from another character can be gone (a removed worktree), so one the fleet refuses as not a
+// a cwd taken from another robot can be gone (a removed worktree), so one the fleet refuses as not a
 // directory gives way once to the fleet's default; an agent's start command only runs where it was meant to
-export async function createCharacter(api: Pick<Api, 'call'>, params: Params<'char.create'>, fallback: string): Promise<Result<'char.create'>> {
+export async function createRobot(api: Pick<Api, 'call'>, params: Params<'robot.create'>, fallback: string): Promise<Result<'robot.create'>> {
   try {
-    return await api.call('char.create', params);
+    return await api.call('robot.create', params);
   } catch (e) {
     if (params.cwd === fallback || params.command || !/not a directory/.test((e as Error).message)) throw e;
-    return api.call('char.create', { ...params, cwd: fallback });
+    return api.call('robot.create', { ...params, cwd: fallback });
   }
 }
 
-// a new character opens its side card, whatever the side card was left at, and its terminal unless it is only selected
+// a new robot opens its side card, whatever the side card was left at, and its terminal unless it is only selected
 export const showCreated = (d: ActionDeps, id: string, how: 'focus' | 'select' = 'focus'): void => {
   const s = d.store.getState();
   if (how === 'focus') s.focus(id); else s.select(id);
@@ -45,58 +45,58 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   return unfound;
 }
 
-export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: string): Promise<void> {
+export async function newRobotOn(d: ActionDeps, islandId: string, cwd?: string): Promise<void> {
   closeSettings(d);
   const f = d.store.getState().fleet;
   const dir = cwd ?? islandCwd(f, islandId);
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   try {
-    const c = await createCharacter(d.api, { islandId, cwd: dir, ...start }, f.defaultCwd);
+    const c = await createRobot(d.api, { islandId, cwd: dir, ...start }, f.defaultCwd);
     showCreated(d, c.id);
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
   }
 }
 
-// A character row inserts before or after it, even across islands; an island row appends to its crew.
-export function moveCharacterTo(d: ActionDeps, id: string, target: DropTarget, after = false): void {
+// A robot row inserts before or after it, even across islands; an island row appends to its crew.
+export function moveRobotTo(d: ActionDeps, id: string, target: DropTarget, after = false): void {
   const f = d.store.getState().fleet;
-  const other = target.kind === 'char' ? f.characters[target.id] : undefined;
-  if (target.kind === 'char' && (!other || other.id === id)) return;
+  const other = target.kind === 'robot' ? f.robots[target.id] : undefined;
+  if (target.kind === 'robot' && (!other || other.id === id)) return;
   if (other) {
-    d.api.call('char.reorder', { id, targetId: other.id, after }).catch(toast(d));
+    d.api.call('robot.reorder', { id, targetId: other.id, after }).catch(toast(d));
     return;
   }
-  d.api.call('char.move', { id, islandId: target.id }).catch(toast(d));
+  d.api.call('robot.move', { id, islandId: target.id }).catch(toast(d));
 }
 
-// asking for the state a character already has sends nothing; char.star would move a starred one first
+// asking for the state a robot already has sends nothing; robot.star would move a starred one first
 export function setStar(d: ActionDeps, id: string, on: boolean): void {
-  const c = d.store.getState().fleet.characters[id];
+  const c = d.store.getState().fleet.robots[id];
   if (!c || on === (c.star !== undefined)) return;
-  (on ? d.api.call('char.star', { id }) : d.api.call('char.unstar', { id })).catch(toast(d));
+  (on ? d.api.call('robot.star', { id }) : d.api.call('robot.unstar', { id })).catch(toast(d));
 }
 
-// without a target the character goes first among the starred
-export function starCharacterAt(d: ActionDeps, id: string, targetId?: string, after?: boolean): void {
-  if (id !== targetId) d.api.call('char.star', { id, targetId, after }).catch(toast(d));
+// without a target the robot goes first among the starred
+export function starRobotAt(d: ActionDeps, id: string, targetId?: string, after?: boolean): void {
+  if (id !== targetId) d.api.call('robot.star', { id, targetId, after }).catch(toast(d));
 }
 
-// dropped on a free cell a character keeps that spot; without one the fleet stands it in the first free one
-export const moveCharacterToCell = (d: ActionDeps, id: string, islandId: string, cell?: Cell): void => {
-  d.api.call('char.move', { id, islandId, cell }).catch(toast(d));
+// dropped on a free cell a robot keeps that spot; without one the fleet stands it in the first free one
+export const moveRobotToCell = (d: ActionDeps, id: string, islandId: string, cell?: Cell): void => {
+  d.api.call('robot.move', { id, islandId, cell }).catch(toast(d));
 };
 
-// the island is centred on the drop cell; the fleet stands the character in from its coast
+// the island is centred on the drop cell; the fleet stands the robot in from its coast
 export function newIslandAround(d: ActionDeps, id: string, cell: Cell): void {
-  const c = d.store.getState().fleet.characters[id];
+  const c = d.store.getState().fleet.robots[id];
   if (!c) return;
   closeSettings(d);
   const size = DEFAULT_SIZE;
   const position = { x: cell.x - Math.floor(size.w / 2), y: cell.y - Math.floor(size.h / 2) };
   d.api.call('island.create', { name: islandName(c.cwd), position, size })
-    .then((island) => d.api.call('char.move', { id, islandId: island.id }))
+    .then((island) => d.api.call('robot.move', { id, islandId: island.id }))
     .catch(toast(d));
 }
 
@@ -139,13 +139,13 @@ export function newIsland(d: ActionDeps, cell?: Cell): void {
 
 const islandName = (cwd: string): string => (cwd === '~' ? 'island' : cwd.split('/').filter(Boolean).pop() ?? 'island');
 
-// the selected island, else the current character's island, else the first shown one, else the first hidden one,
-// which comes back with the character, else a fresh island
-export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
+// the selected island, else the current robot's island, else the first shown one, else the first hidden one,
+// which comes back with the robot, else a fresh island
+export async function newRobotTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
   const s = d.store.getState();
   const current = s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s);
   const islandSel = s.selectedIslandId;
-  const base = islandSel ? charactersOf(s.fleet, islandSel)[0] : current ? s.fleet.characters[current] : undefined;
+  const base = islandSel ? robotsOf(s.fleet, islandSel)[0] : current ? s.fleet.robots[current] : undefined;
   const start = base ? startCwd(base) : s.fleet.defaultCwd;
   const islandId = islandSel || base?.islandId || mapIslandsSorted(s.fleet)[0]?.id
     || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id
@@ -154,18 +154,18 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
   return { islandId, cwd };
 }
 
-// a named character wherever the map last was, with its note and links written on once it exists;
+// a named robot wherever the map last was, with its note and links written on once it exists;
 // it is the caller that reports a refusal, so the dialog can stay open on one
-export async function newNamedCharacter(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
+export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
   closeSettings(d);
-  const { islandId, cwd } = await newCharacterTarget(d);
+  const { islandId, cwd } = await newRobotTarget(d);
   const f = d.store.getState().fleet;
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
-  const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}), ...start }, f.defaultCwd);
+  const c = await createRobot(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}), ...start }, f.defaultCwd);
   if (p.note || p.refs.length) {
-    // the character already exists, so a refused path is reported rather than retried
-    await d.api.call('char.update', {
+    // the robot already exists, so a refused path is reported rather than retried
+    await d.api.call('robot.update', {
       id: c.id,
       ...(p.note ? { note: p.note } : {}),
       ...(p.refs.length ? { context: p.refs.map((ref) => ({ kind: contextKind(ref), ref, label: '', source: 'manual' as const })) } : {}),
@@ -178,9 +178,9 @@ export async function newNamedCharacter(d: ActionDeps, p: { name: string; note: 
 // mission control long before that, so it is selected from the mirror. A selection made meanwhile is
 // the user's, not ours: `before` is the one to yield to
 function selectOnArrival(d: ActionDeps, before: string | undefined): () => void {
-  const known = new Set(Object.keys(d.store.getState().fleet.characters));
+  const known = new Set(Object.keys(d.store.getState().fleet.robots));
   const stop = d.store.subscribe((s) => {
-    const fresh = Object.values(s.fleet.characters).find((c) => c.islandId === HOME_ISLAND && !known.has(c.id));
+    const fresh = Object.values(s.fleet.robots).find((c) => c.islandId === HOME_ISLAND && !known.has(c.id));
     if (!fresh) return;
     stop();
     if (d.store.getState().selectedId === before) showCreated(d, fresh.id, 'select');
@@ -190,23 +190,23 @@ function selectOnArrival(d: ActionDeps, before: string | undefined): () => void 
 
 // a fresh crew member in the home cwd, started with the home command and handed the prompt;
 // without a label the daemon names it. false when the fleet refused, the reason already on a toast
-export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; label?: string }): Promise<boolean> {
+export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?: string }): Promise<boolean> {
   closeSettings(d);
   const { home } = d.store.getState().fleet;
   const before = d.store.getState().selectedId;
   const stop = selectOnArrival(d, before);
   const unfound = warnUnfound(d, home.command);
   try {
-    const c = await d.api.call('char.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
+    const c = await d.api.call('robot.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
     // a crew member the mirror already has was chosen for, or yielded, on arrival
     const s = d.store.getState();
-    if (s.selectedId === before && !s.fleet.characters[c.id]) showCreated(d, c.id, 'select');
+    if (s.selectedId === before && !s.fleet.robots[c.id]) showCreated(d, c.id, 'select');
     // an agent that never reported in was booting slowly or is waiting on a question of its own; either
     // way the crew member is there and the prompt is still the user's to send, so it is not thrown away
     if (!unfound) {
       if (c.runSent === false) {
         d.store.getState().showToast(`${c.name} started, prompt not sent`, 'ok',
-          { label: 'Send it', run: () => { d.api.call('char.run', { id: c.id, text: p.prompt, enter: true }).catch(toast(d)); } });
+          { label: 'Send it', run: () => { d.api.call('robot.run', { id: c.id, text: p.prompt, enter: true }).catch(toast(d)); } });
       } else {
         d.store.getState().showToast(`${c.name} started`, 'ok');
       }
@@ -226,38 +226,38 @@ export const skillPrompt = (command: string, prompt: string): string =>
 
 // a button on the home island carries its own label and prompt
 export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promise<void> => {
-  await startHomeCharacter(d, { prompt: skillPrompt(d.store.getState().fleet.home.command, action.prompt), label: action.label });
+  await startHomeRobot(d, { prompt: skillPrompt(d.store.getState().fleet.home.command, action.prompt), label: action.label });
 };
 
 // an edit that never reached the fleet may have left with its field, so the toast keeps it to send again
 const unsent = (d: ActionDeps, retry: () => void) => (e: Error) =>
   d.store.getState().showToast(e.message, 'error', e instanceof ApiError ? undefined : { label: 'Retry', run: retry });
 
-export const saveCharacter = (d: ActionDeps, id: string, patch: Omit<Params<'char.update'>, 'id'>): void => {
-  d.api.call('char.update', { id, ...patch }).catch(unsent(d, () => saveCharacter(d, id, patch)));
+export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.update'>, 'id'>): void => {
+  d.api.call('robot.update', { id, ...patch }).catch(unsent(d, () => saveRobot(d, id, patch)));
 };
 
 // a context write carries the whole list, so a failed one is only reported: sent again later it could drop items added meanwhile
-export const saveCharacterContext = (d: ActionDeps, id: string, context: ContextItem[]): void => {
-  d.api.call('char.update', { id, context }).catch(toast(d));
+export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[]): void => {
+  d.api.call('robot.update', { id, context }).catch(toast(d));
 };
 
-export const reviveCharacter = (d: ActionDeps, id: string): Promise<boolean> =>
-  d.api.call('char.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
+export const reviveRobot = (d: ActionDeps, id: string): Promise<boolean> =>
+  d.api.call('robot.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
 
 // a new session in the terminal's folder, told what the session that could not resume held
 export const startFresh = (d: ActionDeps, id: string, second?: boolean): Promise<void> => {
-  const c = d.store.getState().fleet.characters[id];
+  const c = d.store.getState().fleet.robots[id];
   const old = (second ? c?.second : c)?.agent;
-  return d.api.call('char.fresh', { id, ...(second && { term: 2 as const }) })
+  return d.api.call('robot.fresh', { id, ...(second && { term: 2 as const }) })
     .then(() => { if (c && old) d.store.getState().showToast(`${c.name} started fresh; ${keptSession(old)}`, 'ok'); }, toast(d));
 };
 
 // the pane waits on the terminal it asked for, so a refusal closes that pane again and says why
 export const openSecondTerminal = (d: ActionDeps, id: string): void => {
-  d.api.call('char.second', { id }).catch((e: Error) => {
+  d.api.call('robot.second', { id }).catch((e: Error) => {
     const s = d.store.getState();
-    const c = s.fleet.characters[id];
+    const c = s.fleet.robots[id];
     if (c && !c.second) s.setPanes(id, withoutSecond(panesOf(s, id)));
     toast(d)(e);
   });
@@ -277,12 +277,12 @@ export const deleteIsland = (d: ActionDeps, id: string): void => {
 };
 
 // everything the robot started ends; opening it again resumes its session, and one svalld cannot resume is refused
-export const sleepCharacter = (d: ActionDeps, id: string): Promise<void> =>
-  d.api.call('char.sleep', { id }).then(() => {}, toast(d));
+export const sleepRobot = (d: ActionDeps, id: string): Promise<void> =>
+  d.api.call('robot.sleep', { id }).then(() => {}, toast(d));
 
-// an island's or a character's own field, written straight back to the fleet
+// an island's or a robot's own field, written straight back to the fleet
 export const saveEntityField = (d: ActionDeps, r: FieldRef, value: string): void => {
-  if (r.tier === 'character') saveCharacter(d, r.id, r.field === 'note' ? { note: value } : { instructions: value });
+  if (r.tier === 'robot') saveRobot(d, r.id, r.field === 'note' ? { note: value } : { instructions: value });
   else saveIsland(d, r.id, r.field === 'note' ? { description: value } : { instructions: value });
 };
 

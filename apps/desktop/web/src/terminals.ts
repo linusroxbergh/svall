@@ -1,4 +1,4 @@
-import { ApiError, charOfKey } from '@svall/protocol';
+import { ApiError, robotOfKey } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
 import { holdsTerminals } from './handover.js';
@@ -15,13 +15,13 @@ type Opts = { reshowDelayMs?: number };
 
 const RETRIED = new Set(['not_owner', 'frozen']);
 
-// the map shows the character in the card; the board shows the one it has selected
+// the map shows the robot in the card; the board shows the one it has selected
 export const viewedId = (s: BoardSelection & { view: View; card?: string }): string | undefined =>
   s.view === 'map' ? s.card : boardViewed(s);
 
 // a second terminal's surface; the shell treats surface ids as opaque
 export { secondKey } from '@svall/protocol';
-const target = (key: string): { id: string; term?: 2 } => { const id = charOfKey(key); return id === key ? { id } : { id, term: 2 }; };
+const target = (key: string): { id: string; term?: 2 } => { const id = robotOfKey(key); return id === key ? { id } : { id, term: 2 }; };
 
 export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore, opts: Opts = {}): TerminalManager {
   const attaching = new Map<string, Promise<Attach>>();
@@ -37,8 +37,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     lastOpacity.delete(id);
   };
   const focus = (id?: string) => bridge.send({ type: 'term.focus', id });
-  const seen = (id: string, term?: 2) => { api.call('char.seen', { id, ...(term ? { term } : {}) }).catch(() => {}); };
-  const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second?.tmux : c?.tmux); };
+  const seen = (id: string, term?: 2) => { api.call('robot.seen', { id, ...(term ? { term } : {}) }).catch(() => {}); };
+  const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.robots[id]; return Boolean(term ? c?.second?.tmux : c?.tmux); };
   const inView = (key: string) => viewedId(state()) === target(key).id;
   const lastOpacity = new Map<string, number | undefined>();
   // the surfaces a pane is showing now, and whether its latest show takes the keys; one whose pane was hidden or
@@ -66,7 +66,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     try {
       attach = await p;
     } catch (e) {
-      // the window died under the attach: the character is dormant, and Revive answers that better than a tmux error
+      // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
       // svalld refused: the user decides when to try again. svalld away, a daemon the fleet has left or one frozen
       // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again
@@ -89,7 +89,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       if (t) setTimeout(() => { if (wanted.has(m.id) && inView(m.id) && live(m.id) && !state().terminals[m.id]) show(m.id, t.rect, lastOpacity.get(m.id), wanted.get(m.id)).catch(() => {}); }, reshowDelayMs);
     }
     // a terminal on another machine is its panel's own
-    if ((m.type === 'term.failed' || m.type === 'term.focused') && !state().fleet.characters[target(m.id).id]) return;
+    if ((m.type === 'term.failed' || m.type === 'term.focused') && !state().fleet.robots[target(m.id).id]) return;
     if (m.type === 'term.failed') {
       state().termGone(m.id);
       state().termFailed(m.id, m.reason);
@@ -115,10 +115,10 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       }
     }
     const id = viewedId(s);
-    if (!id || !s.active || !s.fleet.characters[id]) return;
+    if (!id || !s.active || !s.fleet.robots[id]) return;
     const cameIntoView = id !== viewedId(prev) || !prev.active;
-    const now = s.fleet.characters[id];
-    const was = prev.fleet.characters[id];
+    const now = s.fleet.robots[id];
+    const was = prev.fleet.robots[id];
     const turned = (next: boolean, before: boolean | undefined) => s.fleet !== prev.fleet && next && !before;
     if (cameIntoView || turned(now.unread, was?.unread)) seen(id);
     const panes = panesOf(s, id);

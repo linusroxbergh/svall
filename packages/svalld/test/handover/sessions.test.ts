@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emptyState, FleetConfig, TRANSFER_SCHEMA_VERSION, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession, type Warning } from '@svall/protocol';
+import { emptyState, FleetConfig, TRANSFER_SCHEMA_VERSION, type AgentKind, type Robot, type MachineId, type ResumeFolder, type TransferSession, type Warning } from '@svall/protocol';
 import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
@@ -364,7 +364,7 @@ const MAC = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
 const TRIFT = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
 const FLEET = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' });
 
-function char(id: string, o: Partial<Character>): Character {
+function robot(id: string, o: Partial<Robot>): Robot {
   return {
     id, islandId: 'i1', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'fox', instructions: '', cwd: '/',
     context: [], shell: { lastOutputAt: 0 }, unread: false, ...o,
@@ -372,7 +372,7 @@ function char(id: string, o: Partial<Character>): Character {
 }
 
 /**
- * A source machine whose home is a temp folder: one character running the real 2.1.280 Claude session in its
+ * A source machine whose home is a temp folder: one robot running the real 2.1.280 Claude session in its
  * first terminal and the real 0.155.1 Codex rollout in its second, both made under a home of `/Users/source`.
  */
 function machines(homes?: MachineMaps['destination']['agentHomes']) {
@@ -388,7 +388,7 @@ function machines(homes?: MachineMaps['destination']['agentHomes']) {
     destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.svall'), agentHomes },
   };
   const state = emptyState();
-  state.characters.c1 = char('c1', {
+  state.robots.c1 = robot('c1', {
     cwd: work,
     agent: { kind: 'claude', sessionId: CLAUDE[0].id, transcriptPath: path.join(mac, '.claude/projects', CLAUDE[0].slug, `${CLAUDE[0].id}.jsonl`), status: 'idle', lastActivityAt: 0 },
     second: { cwd: work, unread: false, agent: { kind: 'codex', sessionId: CODEX[0].id, transcriptPath: path.join(mac, '.codex', CODEX[0].file), status: 'idle', lastActivityAt: 0 } },
@@ -404,7 +404,7 @@ describe('sessions in the transfer manifest', () => {
     const [claude, codex] = manifest.sessions;
     const { id, slug, agent } = CLAUDE[0];
     expect(claude).toMatchObject({
-      characterId: 'c1', agent: 'claude', sessionId: id, adapter: 1,
+      robotId: 'c1', agent: 'claude', sessionId: id, adapter: 1,
       sourceHome: path.join(m.mac, '.claude'), destinationHome: path.join(m.mac, '.claude'), destinationPath: claude.sourcePath,
     });
     expect(claude.files.map((f) => f.path)).toEqual([
@@ -413,7 +413,7 @@ describe('sessions in the transfer manifest', () => {
     const transcript = fs.readFileSync(claude.sourcePath);
     expect(claude.files[0]).toMatchObject({ type: 'file', size: transcript.length, sha256: sha(transcript) });
     expect(codex).toMatchObject({
-      characterId: 'c1', term: 2, agent: 'codex', adapter: 1, sourceHome: path.join(m.mac, '.codex'),
+      robotId: 'c1', term: 2, agent: 'codex', adapter: 1, sourceHome: path.join(m.mac, '.codex'),
       destinationPath: path.join(m.mac, '.codex', CODEX[0].file), files: [expect.objectContaining({ path: CODEX[0].file })],
     });
     // no session file becomes a root, and nothing under an agent home is mirrored
@@ -422,8 +422,8 @@ describe('sessions in the transfer manifest', () => {
 
   it('carries a session a CLI newer than every fixture wrote, whatever its records hold', async () => {
     const m = machines();
-    const transcript = m.state.characters.c1.agent!.transcriptPath!;
-    const rollout = m.state.characters.c1.second!.agent!.transcriptPath!;
+    const transcript = m.state.robots.c1.agent!.transcriptPath!;
+    const rollout = m.state.robots.c1.second!.agent!.transcriptPath!;
     fs.writeFileSync(transcript, `${fs.readFileSync(transcript, 'utf8').replaceAll('"version":"2.1.280"', '"version":"2.9.0"')}{"type":"holodeck","version":"2.9.0","attachment":{"type":"telepathy"},"scratchDir":"/Users/source/w"}\n`);
     fs.writeFileSync(rollout, `${fs.readFileSync(rollout, 'utf8').replaceAll('"cli_version":"0.155.1"', '"cli_version":"0.170.0"')}{"timestamp":"t","type":"hologram","payload":{"scratch_root":"/Users/source/w/.x"}}\n`);
     const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
@@ -434,15 +434,15 @@ describe('sessions in the transfer manifest', () => {
   it('blocks a session the destination has no agent home for', async () => {
     const m = machines({ codex: '/Users/target/.codex' });
     const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
-    expect(blockers).toEqual([expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'character', id: 'c1' } })]);
+    expect(blockers).toEqual([expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'robot', id: 'c1' } })]);
     expect(manifest.sessions.find((s) => s.agent === 'claude')?.destinationPath).toBeUndefined();
   });
 
   it('blocks a transcript that is gone', async () => {
     const m = machines();
-    fs.rmSync(m.state.characters.c1.second!.agent!.transcriptPath!);
+    fs.rmSync(m.state.robots.c1.second!.agent!.transcriptPath!);
     const { blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
-    expect(blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'character', id: 'c1' } })]);
+    expect(blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'robot', id: 'c1' } })]);
   });
 });
 
@@ -460,7 +460,7 @@ describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind,
     fs.cpSync(path.join(FIXTURES, kind, version), agents, { recursive: true });
     const transcriptPath = path.join(agents, transcript);
     const state = emptyState();
-    state.characters.c1 = char('c1', { cwd: mac, agent: { kind, sessionId: id, transcriptPath, status: 'idle', lastActivityAt: 0 } });
+    state.robots.c1 = robot('c1', { cwd: mac, agent: { kind, sessionId: id, transcriptPath, status: 'idle', lastActivityAt: 0 } });
     const at = { home: mac, fleetHome: path.join(mac, '.svall') };
     const { manifest, blockers } = await buildManifest(buildInventory(state, { fleet: FLEET }, {
       source: { machineId: MAC, ...at }, destination: { machineId: TRIFT, ...at, agentHomes: { [kind]: agents } },
@@ -476,7 +476,7 @@ describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind,
     const [session] = manifest.sessions;
     expect(installSession(session, staged)).toEqual({ transcriptPath });
     for (const f of session.files) expect(fs.readFileSync(path.join(agents, f.path)), f.path).toEqual(fs.readFileSync(path.join(staged, f.path)));
-    expect(placeTranscripts(manifest.snapshot, manifest.sessions).characters.c1.agent!.transcriptPath).toBe(transcriptPath);
+    expect(placeTranscripts(manifest.snapshot, manifest.sessions).robots.c1.agent!.transcriptPath).toBe(transcriptPath);
   });
 });
 
@@ -534,7 +534,7 @@ describe('a session arriving on the destination', () => {
   it('lands under the destination agent home at the place it had under the source\'s, byte for byte', async () => {
     const { m, claude, codex, stage } = await arrival((source) => {
       // a record naming a folder under the source's agent home, which the destination keeps elsewhere
-      const t = source.state.characters.c1.agent!.transcriptPath!;
+      const t = source.state.robots.c1.agent!.transcriptPath!;
       fs.appendFileSync(t, `${JSON.stringify({ type: 'user', cwd: path.join(source.mac, '.claude/plans'), version: '2.1.280', message: {} })}\n`);
     });
     const { id, slug } = CLAUDE[0];
@@ -660,9 +660,9 @@ describe('a session arriving on the destination', () => {
   it('points each imported agent at its placed transcript before anything starts', async () => {
     const { m, manifest } = await arrival();
     const placed = placeTranscripts(manifest.snapshot, manifest.sessions);
-    expect(placed.characters.c1.agent!.transcriptPath).toBe(manifest.sessions[0].destinationPath);
-    expect(placed.characters.c1.second!.agent!.transcriptPath).toBe(manifest.sessions[1].destinationPath);
-    expect(manifest.snapshot.characters.c1.agent!.transcriptPath).toBe(m.state.characters.c1.agent!.transcriptPath);
+    expect(placed.robots.c1.agent!.transcriptPath).toBe(manifest.sessions[0].destinationPath);
+    expect(placed.robots.c1.second!.agent!.transcriptPath).toBe(manifest.sessions[1].destinationPath);
+    expect(manifest.snapshot.robots.c1.agent!.transcriptPath).toBe(m.state.robots.c1.agent!.transcriptPath);
     expect(() => placeTranscripts(manifest.snapshot, manifest.sessions.slice(1))).toThrow(/c1/);
   });
 });
@@ -690,7 +690,7 @@ describe('OpenCode sessions', () => {
   async function leaving(from: ReturnType<typeof side>, to: ReturnType<typeof side>, work: string, transcriptPath: string) {
     await opencodeAdapter.exportSession!(ID, path.join(from.logs, opencodeAdapter.exportFile!(ID)), from.run, work);
     const state = emptyState();
-    state.characters.c1 = char('c1', { cwd: work, agent: { kind: 'opencode', sessionId: ID, transcriptPath, status: 'idle', lastActivityAt: 0 } });
+    state.robots.c1 = robot('c1', { cwd: work, agent: { kind: 'opencode', sessionId: ID, transcriptPath, status: 'idle', lastActivityAt: 0 } });
     const at = { home: work, fleetHome: path.dirname(path.dirname(from.logs)) };
     const { manifest, blockers } = await buildManifest(buildInventory(state, { fleet: FLEET }, {
       source: { machineId: MAC, ...at }, destination: { machineId: TRIFT, ...at, agentHomes: { opencode: to.logs } },
@@ -856,10 +856,10 @@ describe('OpenCode sessions', () => {
   }, 15_000);
 
   it('runs the CLI where it is told, or in the home, never the daemon\'s folder, and without the variables that make Svall\'s hooks act', async () => {
-    const env = { ...process.env, SVALL_CHAR_ID: 'c_ada', SVALL_TERM: '2', KEPT: 'yes' };
+    const env = { ...process.env, SVALL_ROBOT_ID: 'c_ada', SVALL_TERM: '2', KEPT: 'yes' };
     const printed = (await cliRunner(env)('env', [])).stdout;
     expect(printed).toContain('KEPT=yes');
-    expect(printed).not.toMatch(/^SVALL_(CHAR_ID|TERM)=/m);
+    expect(printed).not.toMatch(/^SVALL_(ROBOT_ID|TERM)=/m);
     const dir = tmp();
     expect((await cliRunner(env)('pwd', [], { cwd: dir })).stdout.trim()).toBe(dir);
     expect(fs.realpathSync((await cliRunner(env)('pwd', [])).stdout.trim())).toBe(fs.realpathSync(os.homedir()));
@@ -887,7 +887,7 @@ describe('the resume a carried terminal keeps', () => {
     const cwd = path.join(home, 'code/gamma');
     fs.mkdirSync(cwd, { recursive: true });
     const SID2 = '7c1d9e2f-3a4b-4c5d-8e6f-0a1b2c3d4e5f';
-    const agent = (sessionId: string): Character['agent'] => {
+    const agent = (sessionId: string): Robot['agent'] => {
       const transcriptPath = path.join(claude, 'projects', '-home-code-gamma', `${sessionId}.jsonl`);
       fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
       fs.writeFileSync(transcriptPath, record(cwd, 'one'));
@@ -896,7 +896,7 @@ describe('the resume a carried terminal keeps', () => {
     const closed = (sessionId: string) => `claude --dangerously-skip-permissions --effort high --resume ${sessionId}`;
     const imported = async (restedBy?: string, secondAgent = true) => {
       const state = emptyState();
-      state.characters.c1 = char('c1', {
+      state.robots.c1 = robot('c1', {
         cwd, agent: agent(SID), revive: { command: closed(SID) }, restedBy,
         second: { cwd, unread: false, ...(secondAgent && { agent: agent(SID2) }), revive: { command: closed(SID2) }, restedBy },
       });
@@ -905,7 +905,7 @@ describe('the resume a carried terminal keeps', () => {
         destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.svall'), agentHomes: { claude } },
       });
       const { manifest } = await buildManifest(inventory, { generation: 1 });
-      const c = importState({ ...manifest, transactionId: 't1' }).state.characters.c1;
+      const c = importState({ ...manifest, transactionId: 't1' }).state.robots.c1;
       return [c.revive, c.second?.revive];
     };
     expect(await imported()).toEqual([{ command: closed(SID) }, { command: closed(SID2) }]);
@@ -925,52 +925,52 @@ describe('the resume a carried terminal keeps', () => {
     // the source's agents ran as pids that name a live process here, this test's own
     const agent = { kind: 'claude' as const, sessionId: SID, transcriptPath, status: 'idle' as const, lastActivityAt: 0, pid: process.pid };
     const state = emptyState();
-    state.characters.c1 = char('c1', { cwd, agent, revive: { command: `claude --resume ${SID}` }, second: { cwd, unread: false, agent, revive: { command: `claude --resume ${SID}` } } });
+    state.robots.c1 = robot('c1', { cwd, agent, revive: { command: `claude --resume ${SID}` }, second: { cwd, unread: false, agent, revive: { command: `claude --resume ${SID}` } } });
     const inventory = buildInventory(state, { fleet: FLEET }, {
       source: { machineId: MAC, home, fleetHome: path.join(home, '.svall') },
       destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.svall'), agentHomes: { claude } },
     });
     const { manifest } = await buildManifest(inventory, { generation: 1 });
-    const c = importState({ ...manifest, transactionId: 't1' }).state.characters.c1;
+    const c = importState({ ...manifest, transactionId: 't1' }).state.robots.c1;
     const NEW = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
     for (const [slot, term] of [[c, undefined], [c.second!, 2]] as const) {
-      const next = applyHook(slot, { charId: 'c1', backend: 'claude', name: 'SessionStart', sessionId: NEW, pid: 999_999, ...(term && { term }) }, 5);
+      const next = applyHook(slot, { robotId: 'c1', backend: 'claude', name: 'SessionStart', sessionId: NEW, pid: 999_999, ...(term && { term }) }, 5);
       expect(next.agent).toMatchObject({ sessionId: NEW, pid: 999_999 });
     }
   });
 
   it('leaves behind the codex flags that name the source machine\'s own config: a profile and a local provider', () => {
     const state = emptyState();
-    const codex = (command: string): Partial<Character> => ({
+    const codex = (command: string): Partial<Robot> => ({
       agent: { kind: 'codex', sessionId: SID, transcriptPath: '/h/.codex/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command },
     });
-    state.characters.c1 = char('c1', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -p 'work' --local-provider 'ollama' -s 'workspace-write' ${SID}`) });
-    state.characters.c2 = char('c2', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --profile 'work' ${SID}`) });
-    state.characters.c3 = char('c3', { cwd: '/h', agent: { kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --effort 'high' --resume ${SID}` } });
+    state.robots.c1 = robot('c1', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -p 'work' --local-provider 'ollama' -s 'workspace-write' ${SID}`) });
+    state.robots.c2 = robot('c2', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --profile 'work' ${SID}`) });
+    state.robots.c3 = robot('c3', { cwd: '/h', agent: { kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --effort 'high' --resume ${SID}` } });
     // the flags remembered at a start are read again from the process the destination starts, never carried
-    state.characters.c4 = char('c4', { cwd: '/h', agent: { kind: 'codex', sessionId: SID, transcriptPath: '/h/.codex/r.jsonl', status: 'idle', lastActivityAt: 0, flags: ['--yolo', '-p', "'work'"] } });
-    const { characters } = importState({
+    state.robots.c4 = robot('c4', { cwd: '/h', agent: { kind: 'codex', sessionId: SID, transcriptPath: '/h/.codex/r.jsonl', status: 'idle', lastActivityAt: 0, flags: ['--yolo', '-p', "'work'"] } });
+    const { robots } = importState({
       version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h', destinationHome: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
     }).state;
-    expect(characters.c1.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -s 'workspace-write' ${SID}` });
-    expect(characters.c2.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
-    expect(characters.c3.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
-    expect(characters.c4.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
-    expect(characters.c4.agent?.flags).toBeUndefined();
+    expect(robots.c1.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -s 'workspace-write' ${SID}` });
+    expect(robots.c2.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
+    expect(robots.c3.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
+    expect(robots.c4.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
+    expect(robots.c4.agent?.flags).toBeUndefined();
   });
 
   it('keeps a resume a crash left interrupted, and marks none the handover rested', () => {
     const state = emptyState();
-    const agent = (status: 'idle' | 'working'): Character['agent'] => ({ kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status, lastActivityAt: 0 });
-    state.characters.c1 = char('c1', { cwd: '/h', agent: agent('idle'), revive: { command: `claude --resume ${SID}`, interrupted: true } });
-    state.characters.c2 = char('c2', { cwd: '/h', agent: agent('working') });
-    const { characters } = importState({
+    const agent = (status: 'idle' | 'working'): Robot['agent'] => ({ kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status, lastActivityAt: 0 });
+    state.robots.c1 = robot('c1', { cwd: '/h', agent: agent('idle'), revive: { command: `claude --resume ${SID}`, interrupted: true } });
+    state.robots.c2 = robot('c2', { cwd: '/h', agent: agent('working') });
+    const { robots } = importState({
       version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h', destinationHome: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
     }).state;
-    expect(characters.c1.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
-    expect(characters.c2.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(robots.c1.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+    expect(robots.c2.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 });
 
@@ -1021,7 +1021,7 @@ describe('agent preflight', () => {
     expect(await probeAgent('opencode', { ...deps(0, [], {}), run: runner({}) })).toEqual({ kind: 'opencode', home: logs, loggedIn: false, hooks: false });
   });
 
-  it("asks an agent's login with the fleet's .env keys, as a resumed character has them", async () => {
+  it("asks an agent's login with the fleet's .env keys, as a resumed robot has them", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-probe-'));
     const bin = path.join(dir, 'bin');
     fs.mkdirSync(bin);
@@ -1048,7 +1048,7 @@ describe('agent preflight', () => {
         ? { code: sandbox, stdout: '', stderr } : runner({ 'codex --version': { stdout: 'codex-cli 0.156.1\n' }, 'codex login status': { stdout: 'Logged in\n' } })(cmd, args)),
       read: async (f: string) => (f === USERNS_RESTRICTED ? restricted : codexHooksAt[f as keyof typeof codexHooksAt]), env: {}, homedir: '/home/t',
     });
-    expect((await probeAgent('codex', deps('1\n', 1))).sandbox).toBe(`AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`);
+    expect((await probeAgent('codex', deps('1\n', 1))).sandbox).toBe(`AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex robot asks before each one: ${BWRAP_PROFILE}`);
     // any other failure is named as it is
     expect((await probeAgent('codex', deps('1\n', 2, 'error: unknown subcommand'))).sandbox).toBe('codex sandbox -- true fails there (error: unknown subcommand): run it there to see why');
     expect(await probeAgent('codex', deps('1\n', 0))).toEqual({ kind: 'codex', version: '0.156.1', home: '/home/t/.codex', loggedIn: true, hooks: true });

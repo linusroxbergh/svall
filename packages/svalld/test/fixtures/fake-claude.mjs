@@ -5,18 +5,18 @@ import net from 'node:net';
 import path from 'node:path';
 import readline from 'node:readline';
 
-const charId = process.env.SVALL_CHAR_ID;
+const robotId = process.env.SVALL_ROBOT_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const home = process.env.SVALL_HOME;
 const sessionId = '0c6a3f0e-8b1d-4f2a-9e7c-1a2b3c4d5e6f';
-const transcriptPath = path.join(home, 'transcripts', `${charId}.jsonl`);
+const transcriptPath = path.join(home, 'transcripts', `${robotId}.jsonl`);
 fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
 
 function post(hook) {
   return new Promise((resolve) => {
     const sock = net.createConnection(path.join(home, 'hooks.sock'));
     sock.on('error', resolve);
-    sock.on('connect', () => sock.end(JSON.stringify({ charId, term, hook: { session_id: sessionId, transcript_path: transcriptPath, ...hook } }) + '\n', resolve));
+    sock.on('connect', () => sock.end(JSON.stringify({ robotId, term, hook: { session_id: sessionId, transcript_path: transcriptPath, ...hook } }) + '\n', resolve));
   });
 }
 

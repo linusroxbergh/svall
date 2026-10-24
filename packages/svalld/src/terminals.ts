@@ -26,7 +26,7 @@ const DRAIN_TIMEOUT = 30_000;
 export class TerminalHub {
   private viewers = new Map<string, Set<Viewer>>();
   private writes = new Map<string, Promise<void>>();
-  // characters whose tmux window a viewer has pinned to manual sizing
+  // robots whose tmux window a viewer has pinned to manual sizing
   private pinned = new Set<string>();
   // viewers whose socket has closed: an open still under way for one must not add it
   private left = new WeakSet<Viewer>();
@@ -97,7 +97,7 @@ export class TerminalHub {
     return { socket: this.tmux.socket, session, tmux: this.tmux.binary };
   }
 
-  /** Lets go of every desktop terminal attached to either of a character's terminals. */
+  /** Lets go of every desktop terminal attached to either of a robot's terminals. */
   async detach(id: string, signal?: AbortSignal): Promise<void> {
     await this.tmux.detachClients(viewerSession(id), signal);
     await this.tmux.detachClients(viewerSession(id, 2), signal);
@@ -114,7 +114,7 @@ export class TerminalHub {
   // a window nobody resized is already following the Mac
   private unpin(id: string): void {
     if (!this.pinned.delete(id)) return;
-    const windowId = this.store.state.characters[id]?.tmux?.windowId;
+    const windowId = this.store.state.robots[id]?.tmux?.windowId;
     if (windowId) void this.tmux.autoSize(windowId);
   }
 
@@ -180,7 +180,7 @@ export class TerminalHub {
   }
 
   private async resync(id: string, only?: Viewer): Promise<void> {
-    const c = this.store.state.characters[id];
+    const c = this.store.state.robots[id];
     if (!c?.tmux || !this.viewers.get(id)?.size) return;
     const screen = (await this.tmux.viewerScreen(c.tmux.paneId, SCROLLBACK)).toString('base64');
     const ev: Event = { event: 'term.resync', data: { id, screen } };

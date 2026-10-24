@@ -11,9 +11,9 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
 
   cmd.command('list').description('list every island').action(() => withFleet(connect, async (_c, state) => {
     const islands = Object.values(state.islands);
-    const count = (id: string) => Object.values(state.characters).filter((ch) => ch.islandId === id).length;
+    const count = (id: string) => Object.values(state.robots).filter((ch) => ch.islandId === id).length;
     printResult(islands, json(), () => table(islands.map((i) => ({
-      id: i.id, name: i.name, kind: i.kind ?? '', characters: String(count(i.id)), size: `${i.size.w}x${i.size.h}`, at: `${i.position.x},${i.position.y}`,
+      id: i.id, name: i.name, kind: i.kind ?? '', robots: String(count(i.id)), size: `${i.size.w}x${i.size.h}`, at: `${i.position.x},${i.position.y}`,
     }))));
   }));
 
@@ -22,7 +22,7 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
     .action((name: string, o: { at?: string; size?: string; description?: string; instructions?: string } & ContextFlags) => withFleet(connect, async (c, state) => {
       // the daemon would give a colliding name a number rather than refuse it, and the fleet would carry a twin
       const taken = Object.values(state.islands).find((i) => i.name.toLowerCase() === name.toLowerCase());
-      if (taken) throw new Error(`island "${taken.name}" already exists (${taken.id}); move characters onto it or pick another name`);
+      if (taken) throw new Error(`island "${taken.name}" already exists (${taken.id}); move robots onto it or pick another name`);
       const island = await c.call('island.create', {
         name, description: o.description, context: editContext([], o), instructions: o.instructions, position: point(o.at, '--at'), size: size(o.size, '--size'),
       });

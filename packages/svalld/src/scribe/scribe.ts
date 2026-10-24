@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { bareUrl, type Character, type ContextItem, type Island } from '@svall/protocol';
+import { bareUrl, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { condenseTurns, readTail } from '../agent/transcript.js';
 import { carryBrief } from '../context/brief.js';
 import { prFirst } from '../context/items.js';
@@ -9,15 +9,15 @@ import { pool } from '../pool.js';
 import type { Store } from '../store.js';
 import { eligible, type Seen } from './eligible.js';
 import {
-  CharacterAnswer, DESCRIPTION_MAX, IslandAnswer, NOTE_MAX, SYSTEM_CHARACTER, SYSTEM_ISLAND,
-  acceptLine, acceptLinks, acceptName, characterPrompt, islandPrompt, parseAnswer, prEvidence,
+  RobotAnswer, DESCRIPTION_MAX, IslandAnswer, NOTE_MAX, SYSTEM_ROBOT, SYSTEM_ISLAND,
+  acceptLine, acceptLinks, acceptName, robotPrompt, islandPrompt, parseAnswer, prEvidence,
 } from './prompt.js';
 import type { RunScribe } from './run.js';
 
 // at most one automatic pass starts per SPACING_MS; an island waits SETTLE_MS after its last member change
 export const SPACING_MS = 60_000;
 export const SETTLE_MS = 60_000;
-// a failing character waits RETRY_MS, doubling with each failure in a row up to MAX_RETRY_MS
+// a failing robot waits RETRY_MS, doubling with each failure in a row up to MAX_RETRY_MS
 export const RETRY_MS = 10 * 60_000;
 const MAX_RETRY_MS = 6 * 60 * 60_000;
 const TURNS = 40;
@@ -29,14 +29,14 @@ type Deps = {
   store: Store; log: Logger; run: RunScribe; now?: () => number;
   // whether a pass started now could finish; absent, always
   awake?: () => Promise<boolean>;
-  // how a character's brief reads; the fleet's carries the docs in scope
-  brief: (island: Island, character: Character) => string;
+  // how a robot's brief reads; the fleet's carries the docs in scope
+  brief: (island: Island, robot: Robot) => string;
 };
-type Job = { kind: 'char' | 'island'; id: string };
+type Job = { kind: 'robot' | 'island'; id: string };
 export type SweepOptions = { names?: boolean; islands?: boolean };
 
 // a path no file can have, too long or with a name too long, holds nothing
-const transcriptSize = (c: Character): number => {
+const transcriptSize = (c: Robot): number => {
   try { return (c.agent?.transcriptPath && fs.statSync(c.agent.transcriptPath, { throwIfNoEntry: false })?.size) || 0; } catch { return 0; }
 };
 
@@ -44,7 +44,7 @@ const scribeKey = (items: ContextItem[]): string =>
   items.filter((it) => it.source === 'scribe').map((it) => `${it.ref} ${it.label} ${it.pinned ?? ''}`).join('\n');
 
 // the scribe's own change stays out of the session's next prompt
-function carry(c: Character, before: string, after: string): void {
+function carry(c: Robot, before: string, after: string): void {
   const brief = c.agent && carryBrief(c.agent.brief, before, after);
   if (brief !== undefined) c.agent!.brief = brief;
 }
@@ -55,7 +55,7 @@ export class Scribe {
   // island id to the time a member last changed
   private dirty = new Map<string, number>();
   private queue: Job[] = [];
-  // characters with a pass running, which must not queue again before it records what it saw
+  // robots with a pass running, which must not queue again before it records what it saw
   private active = new Set<string>();
   private current?: Promise<unknown>;
   private lastStart = -Infinity;
@@ -66,12 +66,12 @@ export class Scribe {
 
   // what a transcript holds at a daemon start was there for the passes before it; only what it grows by is new
   constructor(private deps: Deps) {
-    for (const c of Object.values(deps.store.state.characters)) {
+    for (const c of Object.values(deps.store.state.robots)) {
       if (c.agent?.transcriptPath) this.seen.set(c.id, { lastPassAt: 0, path: c.agent.transcriptPath, bytes: transcriptSize(c) });
     }
   }
 
-  /** Drops what the scribe remembers of a character that is gone. */
+  /** Drops what the scribe remembers of a robot that is gone. */
   forget(id: string): void {
     this.seen.delete(id);
   }
@@ -91,7 +91,7 @@ export class Scribe {
   }
 
   private due(id: string, now: number): boolean {
-    const c = this.deps.store.state.characters[id];
+    const c = this.deps.store.state.robots[id];
     return !!c && eligible(c, this.seen.get(id), transcriptSize(c), now);
   }
 
@@ -99,8 +99,8 @@ export class Scribe {
   tick(): void {
     if (this.stopped || this.off() || this.sweeping) return;
     const now = this.now();
-    for (const id of Object.keys(this.deps.store.state.characters)) {
-      const job: Job = { kind: 'char', id };
+    for (const id of Object.keys(this.deps.store.state.robots)) {
+      const job: Job = { kind: 'robot', id };
       if (!this.active.has(id) && !this.queued(job) && this.due(id, now)) this.queue.push(job);
     }
     for (const [id, at] of this.dirty) {
@@ -109,9 +109,9 @@ export class Scribe {
       if (!this.queued({ kind: 'island', id })) this.queue.push({ kind: 'island', id });
     }
     if (this.current || now - this.lastStart < SPACING_MS) return;
-    // a character queued at rest may be working again, or waiting on the user, by its turn
+    // a robot queued at rest may be working again, or waiting on the user, by its turn
     let job = this.queue.shift();
-    while (job?.kind === 'char' && !this.due(job.id, now)) job = this.queue.shift();
+    while (job?.kind === 'robot' && !this.due(job.id, now)) job = this.queue.shift();
     if (!job) return;
     this.lastStart = now;
     this.current = this.start(job).finally(() => { this.current = undefined; });
@@ -144,15 +144,15 @@ export class Scribe {
   }
 
   private async doSweep(o: SweepOptions): Promise<string[]> {
-    // an automatic pass in flight finishes first, so two passes never write the same character at once
+    // an automatic pass in flight finishes first, so two passes never write the same robot at once
     await this.current;
     if (this.off()) throw new Invalid(SCRIBE_OFF);
     const state = this.deps.store.state;
     const lines: string[] = [];
     if (!o.islands) {
-      const ids = Object.values(state.characters).filter((c) => c.tmux && c.agent?.transcriptPath && c.agent.status !== 'blocked').map((c) => c.id);
-      this.queue = this.queue.filter((j) => j.kind !== 'char');
-      lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'char', id }, o.names))).flat());
+      const ids = Object.values(state.robots).filter((c) => c.tmux && c.agent?.transcriptPath && c.agent.status !== 'blocked').map((c) => c.id);
+      this.queue = this.queue.filter((j) => j.kind !== 'robot');
+      lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, o.names))).flat());
     }
     if (!o.names) {
       const ids = Object.values(this.deps.store.state.islands).filter((i) => i.kind !== 'home').map((i) => i.id);
@@ -171,12 +171,12 @@ export class Scribe {
 
   private async safe(job: Job, namesOnly?: boolean): Promise<string[]> {
     if (this.stopped || this.off()) return [];
-    if (job.kind === 'char') this.active.add(job.id);
+    if (job.kind === 'robot') this.active.add(job.id);
     try {
-      return job.kind === 'char' ? await this.passCharacter(job.id, namesOnly) : await this.passIsland(job.id);
+      return job.kind === 'robot' ? await this.passRobot(job.id, namesOnly) : await this.passIsland(job.id);
     } catch (e) {
       if (this.stopped) return [];
-      const what = job.kind === 'char' ? this.deps.store.state.characters[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
+      const what = job.kind === 'robot' ? this.deps.store.state.robots[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
       const { message: head, cause } = e as Error;
       // the child's stderr is shown, and kept out of the log a tester pastes into a bug report
       const message = `${head}${typeof cause === 'string' ? `: ${cause}` : ''}`.split('\n')[0];
@@ -184,7 +184,7 @@ export class Scribe {
       this.deps.store.update((d) => { d.scribeError = { message, at: this.now() }; });
       return [`${what ?? job.id}  failed: ${message}`];
     } finally {
-      if (job.kind === 'char') this.active.delete(job.id);
+      if (job.kind === 'robot') this.active.delete(job.id);
     }
   }
 
@@ -196,20 +196,20 @@ export class Scribe {
     return text;
   }
 
-  private async passCharacter(id: string, namesOnly?: boolean): Promise<string[]> {
+  private async passRobot(id: string, namesOnly?: boolean): Promise<string[]> {
     const state = this.deps.store.state;
-    const c = state.characters[id];
+    const c = state.robots[id];
     if (!c?.agent?.transcriptPath) return [];
     const path = c.agent.transcriptPath;
     const bytes = transcriptSize(c);
     const tail = readTail(path);
     const transcript = condenseTurns(c.agent.kind, tail, TURNS, { toolLinks: true }).slice(-TRANSCRIPT_MAX);
     if (!transcript.trim()) { this.seen.set(id, { lastPassAt: this.now(), path, bytes }); return []; }
-    const others = Object.values(state.characters).filter((o) => o.id !== id).map((o) => o.name);
+    const others = Object.values(state.robots).filter((o) => o.id !== id).map((o) => o.name);
     const prLinks = prEvidence(c, transcript, tail);
-    let answer: CharacterAnswer;
+    let answer: RobotAnswer;
     try {
-      answer = parseAnswer(CharacterAnswer, await this.ask(SYSTEM_CHARACTER, characterPrompt(c, transcript, others, prLinks)));
+      answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks)));
     } catch (e) {
       const last = this.seen.get(id) ?? { lastPassAt: 0, path, bytes: 0 };
       const failures = (last.failures ?? 0) + 1;
@@ -218,18 +218,18 @@ export class Scribe {
     }
     // a names-only pass leaves this transcript's note and links to the next pass
     if (!namesOnly) this.seen.set(id, { lastPassAt: this.now(), path, bytes });
-    return this.writeCharacter(c, answer, [transcript, ...prLinks].join('\n'), namesOnly);
+    return this.writeRobot(c, answer, [transcript, ...prLinks].join('\n'), namesOnly);
   }
 
   // each field is written only if nobody changed it while the model was thinking
-  private writeCharacter(before: Character, a: CharacterAnswer, transcript: string, namesOnly?: boolean): string[] {
+  private writeRobot(before: Robot, a: RobotAnswer, transcript: string, namesOnly?: boolean): string[] {
     const lines: string[] = [];
     this.deps.store.update((d) => {
-      const cur = d.characters[before.id];
+      const cur = d.robots[before.id];
       if (!cur) return;
       const island = d.islands[cur.islandId];
       const prevBrief = island ? this.deps.brief(island, cur) : '';
-      const taken = new Set(Object.values(d.characters).filter((o) => o.id !== cur.id).map((o) => o.name));
+      const taken = new Set(Object.values(d.robots).filter((o) => o.id !== cur.id).map((o) => o.name));
       const name = cur.name === before.name ? acceptName(cur.name, a.name, taken) : undefined;
       if (name) { lines.push(`${cur.name} → ${name}`); cur.name = name; }
       const note = namesOnly ? undefined : acceptLine(a.note, NOTE_MAX);
@@ -262,7 +262,7 @@ export class Scribe {
     const state = this.deps.store.state;
     const i = state.islands[id];
     if (!i || i.kind === 'home') return [];
-    const members = Object.values(state.characters).filter((c) => c.islandId === id);
+    const members = Object.values(state.robots).filter((c) => c.islandId === id);
     if (!members.length) return [];
     const a = parseAnswer(IslandAnswer, await this.ask(SYSTEM_ISLAND, islandPrompt(i, members)));
     const description = acceptLine(a.description, DESCRIPTION_MAX);
@@ -272,7 +272,7 @@ export class Scribe {
     this.deps.store.update((d) => {
       const cur = d.islands[id];
       if (!cur) return;
-      const crew = Object.values(d.characters).filter((c) => c.islandId === id);
+      const crew = Object.values(d.robots).filter((c) => c.islandId === id);
       const prev = new Map(crew.map((c) => [c.id, this.deps.brief(cur, c)]));
       if (description && description !== cur.description && cur.description === i.description && cur.descriptionSource !== 'manual') {
         cur.description = description;

@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
   FleetState, Generation, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
-  type Agent, type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
+  type Agent, type AgentKind, type Blocker, type Robot, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
   type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { codexHooksReview, readComposer } from '../agent/composer.js';
@@ -49,7 +49,7 @@ export type DestinationDeps = {
   /** The daemon's settings, shared by reference: activation puts the imported fleet.json into them. */
   config: Config;
   store: Pick<Store, 'state' | 'update' | 'promote' | 'reload'>;
-  fleet: Pick<Fleet, 'activate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveCharacter' | 'openSecond' | 'onSessionStart' | 'carries'>;
+  fleet: Pick<Fleet, 'activate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveRobot' | 'openSecond' | 'onSessionStart' | 'carries'>;
   tmux: Pick<Tmux, 'sendLine' | 'listWindows' | 'killWindow' | 'capture' | 'screen'>;
   /** This machine's processes, which say what holds a pane an activation finds open. */
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
@@ -139,9 +139,9 @@ export type SealRecord = z.infer<typeof SealRecord>;
 type Journal = Pick<HandoverService, 'journalState' | 'write' | 'close' | 'emitEntity'>;
 type Prepare = ParsedParams<'handover.prepare'>;
 type Claim = ParsedParams<'handover.claim'>;
-type Slot = { characterId: string; term?: 2 };
+type Slot = { robotId: string; term?: 2 };
 type Activation = NonNullable<DestinationJournal['activation']>[number];
-type CharacterResult = Result<'handover.activate'>['characters'][number];
+type RobotResult = Result<'handover.activate'>['robots'][number];
 /** What holds a terminal's pane: nothing once its window has gone, its shell at the prompt, its own agent, or another program, perhaps one ctrl+z stopped. */
 type Look = { held: 'gone' | 'shell' | 'agent' } | { held: 'other'; job: string; suspended?: true };
 /**
@@ -176,7 +176,7 @@ const realClock: Clock = {
   }),
 };
 
-const keyOf = (s: Slot): string => (s.term === 2 ? `${s.characterId}-2` : s.characterId);
+const keyOf = (s: Slot): string => (s.term === 2 ? `${s.robotId}-2` : s.robotId);
 const blocked = (blockers: Blocker[]): Error => {
   const found = settle(blockers);
   return handoverError({ code: 'blocked', message: found.map((b) => b.message).join('; '), blockers: found });
@@ -192,10 +192,10 @@ const present = (p: string): boolean => { try { fs.lstatSync(p); return true; } 
 const wire = (check: ReplicaCheck): WireCheck =>
   (check.ok ? { ok: true, path: check.path, kind: check.kind } : { ok: false, path: check.path, blocker: check.blocker });
 
-/** One result per character, from the results of its terminals: ok when every one came up. */
-export function characterResults(activation: readonly Activation[]): CharacterResult[] {
+/** One result per robot, from the results of its terminals: ok when every one came up. */
+export function robotResults(activation: readonly Activation[]): RobotResult[] {
   const byId = new Map<string, Activation[]>();
-  for (const a of activation) byId.set(a.characterId, [...(byId.get(a.characterId) ?? []), a]);
+  for (const a of activation) byId.set(a.robotId, [...(byId.get(a.robotId) ?? []), a]);
   return [...byId].map(([id, slots]) => {
     const error = slots.flatMap((s) => (s.error ? [s.error] : [])).join('; ');
     const notice = slots.flatMap((s) => (s.notice ? [s.notice] : [])).join('; ');
@@ -271,8 +271,8 @@ export class DestinationHandover {
       : machineLocal({ home, agentHomes: { claude: claudePaths(process.env, home).dir, codex: codexPaths(process.env, home).dir }, opencode: opencodeFolders(process.env, home) });
     this.replicas = new ReplicaStore({ fleetId: d.config.id, paths: d.paths, scanFs: d.scanFs, ...(local && { local }) });
     this.clock = d.clock ?? realClock;
-    d.fleet.onSessionStart((id, term, sessionId) => this.sessionStarted({ characterId: id, ...(term && { term }) }, sessionId));
-    d.fleet.carries((id, term) => this.carrying({ characterId: id, ...(term && { term }) }));
+    d.fleet.onSessionStart((id, term, sessionId) => this.sessionStarted({ robotId: id, ...(term && { term }) }, sessionId));
+    d.fleet.carries((id, term) => this.carrying({ robotId: id, ...(term && { term }) }));
   }
 
   /**
@@ -651,7 +651,7 @@ export class DestinationHandover {
     const placed: Blocker[] = [];
     m.sessions.forEach((s, i) => {
       try { installSession(s, this.d.paths.sessionStage(tx, i), this.d.install); } catch (e) {
-        placed.push({ code: e instanceof SessionError ? e.code : 'transcript_missing', message: (e as Error).message, entity: { kind: 'character', id: s.characterId } });
+        placed.push({ code: e instanceof SessionError ? e.code : 'transcript_missing', message: (e as Error).message, entity: { kind: 'robot', id: s.robotId } });
       }
     });
     if (placed.length) throw blocked(placed);
@@ -706,9 +706,9 @@ export class DestinationHandover {
     const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
     for (const [i, s] of m.sessions.entries()) {
       const adapter = sessionAdapter(s.agent, s.adapter);
-      const c = m.snapshot.characters[s.characterId];
+      const c = m.snapshot.robots[s.robotId];
       if (!adapter.exportFile || !c) continue;
-      const entity = { kind: 'character' as const, id: s.characterId };
+      const entity = { kind: 'robot' as const, id: s.robotId };
       const { cwd } = resumeFolder(c, s.term, at);
       // the folder goes to the CLI as an argument
       if (!path.posix.isAbsolute(cwd)) {
@@ -798,7 +798,7 @@ export class DestinationHandover {
     }
     await this.run();
     await this.wake(tx);
-    return { characters: characterResults(this.open(tx)?.activation ?? []) };
+    return { robots: robotResults(this.open(tx)?.activation ?? []) };
   }
 
   /** Lets the fleet it activated run here. */
@@ -888,9 +888,9 @@ export class DestinationHandover {
       const row = rows.get(keyOf(s));
       return slot?.restedBy === tx && (!row || (!row.ok && !slot.tmux));
     };
-    const slots = Object.values(this.d.store.state.characters).flatMap((c): Slot[] => [
-      ...(waiting({ characterId: c.id }, c) ? [{ characterId: c.id }] : []),
-      ...(waiting({ characterId: c.id, term: 2 }, c.second) ? [{ characterId: c.id, term: 2 as const }] : []),
+    const slots = Object.values(this.d.store.state.robots).flatMap((c): Slot[] => [
+      ...(waiting({ robotId: c.id }, c) ? [{ robotId: c.id }] : []),
+      ...(waiting({ robotId: c.id, term: 2 }, c.second) ? [{ robotId: c.id, term: 2 as const }] : []),
     ]);
     await pool(slots, this.d.concurrency ?? CONCURRENCY, (s) => this.wakeSlot(tx, s));
   }
@@ -901,7 +901,7 @@ export class DestinationHandover {
    * does not come up is left dormant with the session it carries.
    */
   private async wakeSlot(tx: string, s: Slot): Promise<void> {
-    const c = this.d.store.state.characters[s.characterId];
+    const c = this.d.store.state.robots[s.robotId];
     const slot = s.term === 2 ? c?.second : c;
     if (!c || !slot) return;
     const which = s.term === 2 ? `${c.name}'s second terminal` : `${c.name}'s terminal`;
@@ -1001,7 +1001,7 @@ export class DestinationHandover {
         const nap = new AbortController();
         await Promise.race([this.clock.sleep(every, nap.signal), start]);
         nap.abort();
-        const c = this.d.store.state.characters[s.characterId];
+        const c = this.d.store.state.robots[s.robotId];
         const slot = s.term === 2 ? c?.second : c;
         // a later handover's rest answers for it from then on
         if (heard || slot?.restedBy !== tx || !this.open(tx) || this.clock.now() >= until) return;
@@ -1032,8 +1032,8 @@ export class DestinationHandover {
     }
   }
 
-  private openSlot(s: Slot): Promise<Character> {
-    return boundary('destination.activate.open', () => (s.term === 2 ? this.d.fleet.openSecond(s.characterId) : this.d.fleet.reviveCharacter(s.characterId)));
+  private openSlot(s: Slot): Promise<Robot> {
+    return boundary('destination.activate.open', () => (s.term === 2 ? this.d.fleet.openSecond(s.robotId) : this.d.fleet.reviveRobot(s.robotId)));
   }
 
   /** What holds a terminal's pane now, read afresh through tmux and ps. */
@@ -1064,7 +1064,7 @@ export class DestinationHandover {
     let ran = false;
     let seen = '';
     for (;;) {
-      const c = this.d.store.state.characters[s.characterId];
+      const c = this.d.store.state.robots[s.robotId];
       const slot = s.term === 2 ? c?.second : c;
       let look: Look | undefined;
       try { look = slot?.tmux ? await this.holding(slot) : { held: 'gone' }; } catch (e) { seen = `its pane could not be read (${(e as Error).message})`; }
@@ -1098,11 +1098,11 @@ export class DestinationHandover {
   /** Leaves a terminal dormant with the agent and resume command it carries, its window closed; `restore` puts that agent back in place of another session. */
   private async lay(s: Slot, carried?: Carried, restore = false): Promise<void> {
     this.heard.delete(keyOf(s));
-    const c = this.d.store.state.characters[s.characterId];
+    const c = this.d.store.state.robots[s.robotId];
     const windowId = (s.term === 2 ? c?.second : c)?.tmux?.windowId;
     // dormant first, so the fleet hears the window close for a terminal that no longer holds it
     this.d.store.update((d) => {
-      const cur = d.characters[s.characterId];
+      const cur = d.robots[s.robotId];
       const slot = s.term === 2 ? cur?.second : cur;
       if (restore && slot && carried) slot.agent = structuredClone(carried.agent);
       if (s.term !== 2) { if (cur) { markDormant(cur); delete cur.revive?.interrupted; } } else if (cur?.second) markSlotDormant(cur.second);
@@ -1124,7 +1124,7 @@ export class DestinationHandover {
     if (this.watched.has(keyOf(s))) return true;
     const state = this.journal.journalState();
     const j = state.kind === 'open' && state.journal.role === 'destination' ? state.journal : undefined;
-    const c = this.d.store.state.characters[s.characterId];
+    const c = this.d.store.state.robots[s.robotId];
     const slot = s.term === 2 ? c?.second : c;
     return !!j && slot?.restedBy === j.transactionId && !j.activation?.some((a) => keyOf(a) === keyOf(s));
   }
@@ -1166,7 +1166,7 @@ export class DestinationHandover {
     this.heard.delete(keyOf(entry));
     // why a terminal did not come up stays on its record, which outlives this journal
     this.d.store.update((d) => {
-      const c = d.characters[entry.characterId];
+      const c = d.robots[entry.robotId];
       const slot = entry.term === 2 ? c?.second : c;
       if (!slot) return;
       if (entry.error) slot.resumeError = entry.error; else delete slot.resumeError;
@@ -1175,9 +1175,9 @@ export class DestinationHandover {
     if (!j) return;
     const activation = [...(j.activation ?? []).filter((a) => keyOf(a) !== keyOf(entry)), entry];
     boundary('destination.activate.record', () => this.journal.write({ ...j, activation, updatedAt: this.clock.now() }));
-    const result = characterResults(activation).find((r) => r.id === entry.characterId)!;
+    const result = robotResults(activation).find((r) => r.id === entry.robotId)!;
     this.journal.emitEntity({
-      transactionId: tx, kind: 'character', id: entry.characterId, phase: 'activate', ...(result.error && { error: result.error }), ...(result.notice && { notice: result.notice }),
+      transactionId: tx, kind: 'robot', id: entry.robotId, phase: 'activate', ...(result.error && { error: result.error }), ...(result.notice && { notice: result.notice }),
     });
   }
 

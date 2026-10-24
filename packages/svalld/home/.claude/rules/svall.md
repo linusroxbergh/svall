@@ -11,21 +11,20 @@ and start or drive other agents.
     svall status
 
 It is the only read you need. It prints every island (id, name, kind,
-characters) and every robot (id, name, island, state, context, cwd, note).
-`--json` prints the whole state, where `islands` and `characters` are objects
+robots) and every robot (id, name, island, state, context, cwd, note).
+`--json` prints the whole state, where `islands` and `robots` are objects
 keyed by id, not lists.
 
 Names work wherever an id does, for robots and islands, in any letter case.
 An ambiguous name is refused with the ids to pick from.
 
 A robot is one tmux window on the map: a plain shell, or a Claude Code, Codex
-or OpenCode session. Commands and `--json` call it a character (`svall char`,
-`characters`).
+or OpenCode session.
 States: `working`, `idle`, `blocked` (waiting on a permission or a question),
 `done` (`*` means nobody has looked at it yet), `shell`, `dormant`
 (its window is gone, because its agent sat idle past the wait set in Settings,
-the app was quit, or the Mac restarted; `svall char run` wakes a Claude, Codex or OpenCode one with the prompt, and
-`svall char revive <name>` brings any back).
+the app was quit, or the Mac restarted; `svall robot run` wakes a Claude, Codex or OpenCode one with the prompt, and
+`svall robot revive <name>` brings any back).
 
 This island has kind `home`. Its crew are agents started from the mission
 control buttons; each finishes its task and stays `done` until closed.
@@ -34,27 +33,27 @@ control buttons; each finishes its task and stays `done` until closed.
 
 | Ask | Command |
 | --- | --- |
-| move a robot | `svall char move bob --island review` |
+| move a robot | `svall robot move bob --island review` |
 | refresh names, notes and links, and island descriptions and links | `svall scribe sweep` |
-| rename one | `svall char update bob --name "#472 login review"` |
-| close one | `svall char close bob` |
-| note what it is doing | `svall char update bob --note "rewriting the auth helpers"` |
-| add links | `svall char update bob --context "https://github.com/x/y/pull/472 PR 472"` |
-| see what it is doing | `svall char read bob --transcript --lines 30` |
-| type into it | `svall char run bob "run the tests again"` |
-| wait for it | `svall char wait bob --until done,blocked` |
+| rename one | `svall robot update bob --name "#472 login review"` |
+| close one | `svall robot close bob` |
+| note what it is doing | `svall robot update bob --note "rewriting the auth helpers"` |
+| add links | `svall robot update bob --context "https://github.com/x/y/pull/472 PR 472"` |
+| see what it is doing | `svall robot read bob --transcript --lines 30` |
+| type into it | `svall robot run bob "run the tests again"` |
+| wait for it | `svall robot wait bob --until done,blocked` |
 | reach its second terminal | add `--term 2` to `read`, `run` or `wait` |
 | new island (the scribe describes and links it) | `svall island create review` |
 | describe an island | `svall island update review --description "PRs waiting on a human"` |
 | tidy the map | `svall island arrange` |
-| start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall char new --island review --cwd ~/repo --run "review PR 472"` |
-| start one in a role (a file in the fleet's agent-profiles folder) | `svall char new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472"` |
-| start a Claude one on another model | `svall char new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472"` |
+| start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall robot new --island review --cwd ~/repo --run "review PR 472"` |
+| start one in a role (a file in the fleet's agent-profiles folder) | `svall robot new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472"` |
+| start a Claude one on another model | `svall robot new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472"` |
 
-`svall char wait` exits 0 on a matched state, 2 on timeout and 3 when the
+`svall robot wait` exits 0 on a matched state, 2 on timeout and 3 when the
 robot has no terminal (deleted or dormant), so a loop can branch on the exit code.
 
-`svall char run` prints `delivered`, or `queued` while the user has a draft or a
+`svall robot run` prints `delivered`, or `queued` while the user has a draft or a
 dialog in that terminal: it goes in once they are gone and the agent is between
 turns, and is dropped if the terminal or its agent session ends. Text sent with
 `--no-enter` stays in the prompt line, so what follows it is queued too. It exits
@@ -63,15 +62,15 @@ user's to answer.
 
 A new agent that stays `shell`, or whose id comes back with `(prompt not sent)`,
 is most often asking whether to trust a folder it has not seen.
-`svall char read <id>` shows the question, which is the user's to answer. A
+`svall robot read <id>` shows the question, which is the user's to answer. A
 claude or codex takes its `--run` prompt once it is answered; only an id that came back
-with `(prompt not sent)` needs `svall char run <id> "<prompt>"` after that.
+with `(prompt not sent)` needs `svall robot run <id> "<prompt>"` after that.
 
 `--instructions` is text only the agent reads. `--context` takes a url, a file
 or a folder and replaces the manual list, so re-pass the items worth keeping.
 `--pin <ref>` marks one to read before starting, `--unpin <ref>` clears that and
 `--drop <ref>` removes one. Instructions and context both go into the brief the
-robot's agent gets at SessionStart; `svall char show <name>` prints it.
+robot's agent gets at SessionStart; `svall robot show <name>` prints it.
 
 ## Rules
 

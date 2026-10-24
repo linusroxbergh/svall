@@ -16,7 +16,7 @@ const STEPS: Step[] = [
   {
     at: ({ id }) => ({ sel: id ? `[data-testid="token-${id}"]` : '[data-testid^="island-new-"]', side: 'bottom' }),
     title: 'Your first robot',
-    body: (k, cwd) => <>A shell in <code>{cwd}</code>. Double-click it or press Enter, then type <code>claude</code>, <code>codex</code> or <code>opencode</code>. {k('newCharacter')} makes another.</>,
+    body: (k, cwd) => <>A shell in <code>{cwd}</code>. Double-click it or press Enter, then type <code>claude</code>, <code>codex</code> or <code>opencode</code>. {k('newRobot')} makes another.</>,
   },
   {
     at: () => ({ sel: '[data-testid="side-card"]', side: 'left' }),
@@ -55,8 +55,8 @@ export const readStep = (): number => {
   }
 };
 
-// the oldest character off mission control: the shell a new fleet starts with
-const firstCharacter = (s: AppState) => Object.values(s.fleet.characters).find((c) => s.fleet.islands[c.islandId]?.kind !== 'home');
+// the oldest robot off mission control: the shell a new fleet starts with
+const firstRobot = (s: AppState) => Object.values(s.fleet.robots).find((c) => s.fleet.islands[c.islandId]?.kind !== 'home');
 
 // radius is the corner of the one element matched, so the ring keeps a pill round and a card's corners soft
 type Box = { left: number; top: number; right: number; bottom: number; radius?: number };
@@ -84,10 +84,10 @@ function place(side: Side, b: Box, w: number, h: number): React.CSSProperties {
 
 export function Tour() {
   const [step, setStep] = useState(readStep);
-  const ready = useApp((s) => s.loaded && s.view === 'map' && !s.settingsOpen && !s.fleet.scribeAsk && !s.namingCharacter && !s.fleetPicker);
-  const first = useApp((s) => firstCharacter(s)?.id);
-  const islandId = useApp((s) => firstCharacter(s)?.islandId);
-  const cwd = useApp((s) => shortPath(firstCharacter(s)?.cwd ?? s.fleet.defaultCwd ?? '~'));
+  const ready = useApp((s) => s.loaded && s.view === 'map' && !s.settingsOpen && !s.fleet.scribeAsk && !s.namingRobot && !s.fleetPicker);
+  const first = useApp((s) => firstRobot(s)?.id);
+  const islandId = useApp((s) => firstRobot(s)?.islandId);
+  const cwd = useApp((s) => shortPath(firstRobot(s)?.cwd ?? s.fleet.defaultCwd ?? '~'));
   const bindings = useApp((s) => s.settings.bindings);
   const [box, setBox] = useState<Box>();
   const [size, setSize] = useState({ w: 300, h: 0 });

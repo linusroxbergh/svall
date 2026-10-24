@@ -1,12 +1,12 @@
 export type Chord = string;
 
 export type KeyAction =
-  | { type: 'newCharacter' }
+  | { type: 'newRobot' }
   | { type: 'missionControl' }
   | { type: 'arrange' }
-  | { type: 'closeCharacter' }
-  | { type: 'prevCharacter' }
-  | { type: 'nextCharacter' }
+  | { type: 'closeRobot' }
+  | { type: 'prevRobot' }
+  | { type: 'nextRobot' }
   | { type: 'toggleView' }
   | { type: 'toggleSideCard' }
   | { type: 'toggleSides' }
@@ -24,8 +24,8 @@ export type KeyAction =
   | { type: 'none' };
 
 export type ActionId =
-  | 'newCharacter' | 'missionControl' | 'arrange' | 'closeCharacter'
-  | 'prevCharacter' | 'nextCharacter' | 'nextIsland'
+  | 'newRobot' | 'missionControl' | 'arrange' | 'closeRobot'
+  | 'prevRobot' | 'nextRobot' | 'nextIsland'
   | 'toggleView' | 'toggleSideCard' | 'toggleSides' | 'toggleCardSize' | 'toggleSettings' | 'toggleResources'
   | 'paneTerminal' | 'paneBrowser' | 'paneFiles' | 'paneChanges'
   | 'toggleBrowser' | 'focusAddress' | 'openLink' | 'fillLogin' | 'openFleets'
@@ -38,12 +38,12 @@ type ActionSpec = { label: string; action: KeyAction; chord: Chord; also?: Chord
 // Shipped chords stay on letters and digits: a bracket or a slash needs Option on many layouts,
 // and Option is what keeps a chord out of the terminal's reach.
 export const ACTIONS: Record<ActionId, ActionSpec> = {
-  newCharacter: { label: 'New robot', action: { type: 'newCharacter' }, chord: 'cmd+t' },
+  newRobot: { label: 'New robot', action: { type: 'newRobot' }, chord: 'cmd+t' },
   missionControl: { label: 'Mission control', action: { type: 'missionControl' }, chord: 'cmd+g' },
   arrange: { label: 'Arrange the fleet', action: { type: 'arrange' }, chord: 'cmd+shift+a' },
-  closeCharacter: { label: 'Close', action: { type: 'closeCharacter' }, chord: 'cmd+w' },
-  prevCharacter: { label: 'Previous character', action: { type: 'prevCharacter' }, chord: 'cmd+k' },
-  nextCharacter: { label: 'Next character', action: { type: 'nextCharacter' }, chord: 'cmd+j' },
+  closeRobot: { label: 'Close', action: { type: 'closeRobot' }, chord: 'cmd+w' },
+  prevRobot: { label: 'Previous robot', action: { type: 'prevRobot' }, chord: 'cmd+k' },
+  nextRobot: { label: 'Next robot', action: { type: 'nextRobot' }, chord: 'cmd+j' },
   nextIsland: { label: 'Next island', action: { type: 'nextIsland' }, chord: 'cmd+shift+j' },
   toggleView: { label: 'Map or board', action: { type: 'toggleView' }, chord: 'cmd+m' },
   toggleSideCard: { label: 'Side card', action: { type: 'toggleSideCard' }, chord: 'cmd+i' },

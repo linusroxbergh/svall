@@ -1,9 +1,9 @@
 # Moving a fleet
 
-A handover moves a whole fleet between this Mac and its gateway machine: every island and character, the folders and
+A handover moves a whole fleet between this Mac and its gateway machine: every island and robot, the folders and
 Git repositories they work in, and each agent's conversation. It moves no running process: agents resume from their
 transcripts and shells reopen in their folders. One machine runs the fleet at a time, and a handover that fails part
-way leaves it either still on the machine it came from, or on the machine it went to with any character that could
+way leaves it either still on the machine it came from, or on the machine it went to with any robot that could
 not resume waiting to be retried. It never leaves both running.
 
 Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and run `svall host doctor <name>`
@@ -15,11 +15,11 @@ about such an agent, for the move to the side behind.
 
 Choose **Handover** at the foot of the sidebar, then the machine to move the fleet to: the gateway's name, or **This
 Mac** to bring it back. That runs the checks alone: the sheet lists the folders, files and size that would be
-carried, which characters stop and how each comes back, anything that blocks, and warnings. Nothing is touched until
+carried, which robots stop and how each comes back, anything that blocks, and warnings. Nothing is touched until
 you choose **Move**, which runs the checks once more and goes on through six steps:
 
 1. **Checks.** Nothing is touched yet. A blocker found here stops the move before anything rests.
-2. **Resting characters.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
+2. **Resting robots.** The fleet freezes: nothing may change it until the handover commits or aborts. Each
    terminal is brought to rest, and its window closed; its pane says which step the handover is at, and a click on it
    opens the sheet. The Load tab still reads; its Sleep and Delete are refused.
 3. **Transferring files and sessions.** Each folder and agent session is copied, with progress, the rate so far and
@@ -27,7 +27,7 @@ you choose **Move**, which runs the checks once more and goes on through six ste
 4. **Verifying.** The copy is checked, and the other machine prepares the fleet. Abort still gives it back.
 5. **Committing.** The gateway commits the fleet to that machine. From here there is no way back, and the sheet says
    so.
-6. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
+6. **Resuming robots.** The fleet runs on the other machine, and each robot resumes there.
 
 When something needs your answer, the sheet waits for one. You can close it meanwhile, such as to answer an agent in
 its terminal, and open it again from **Handover**, which is marked while a decision waits:
@@ -36,12 +36,12 @@ its terminal, and open it again from **Handover**, which is marked while a decis
 | --- | --- | --- |
 | Continue waiting | an agent still working | Waits for it to finish its turn. |
 | Interrupt and carry | an agent working or waiting on an answer | Sends Escape to each such agent, waits for it to settle, and carries it. It resumes from its transcript on the other machine. |
-| Terminate and carry | a shell running a command, a job suspended with ctrl+z, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in the terminals of each character named. The shell reopens in its folder on the other machine. |
+| Terminate and carry | a shell running a command, a job suspended with ctrl+z, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in the terminals of each robot named. The shell reopens in its folder on the other machine. |
 | Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh; when at most 20 files there differ from what the fleet left, none of them in a repository's `.git`, only those move, and the copy brings the rest up to date, with `README.archived.txt` in the archive naming any file deleted there, which the copy brings back. Nothing is deleted, and the folder's row says where the old copy is kept. Each `.git` file in the archive that names a Git directory outside it is kept as `.git.archived` beside a `.git` that names no repository, so git there leaves the live repository alone and finds no repository above it: an archived linked worktree's and its submodules', and that of each linked worktree an archived main checkout registers in it, in an excluded folder too. Other excluded folders, such as `node_modules/`, are not searched. `README.archived.txt` names each one's checkout, branch and commit. |
-| Carry the folder whole | a terminal in a folder that holds Git repositories no character works in, such as a shell in `~/Developer` | Carries that folder with those repositories. |
+| Carry the folder whole | a terminal in a folder that holds Git repositories no robot works in, such as a shell in `~/Developer` | Carries that folder with those repositories. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
-A character marked **keep on this machine** on its card blocks the handover until you turn that off.
+A robot marked **keep on this machine** on its card blocks the handover until you turn that off.
 
 Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own, and quitting
 leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
@@ -54,7 +54,7 @@ says: keep the Mac awake until the handover finishes. With notifications on, a h
 you, is ready to move, finishes or stops while the app is in the background posts a banner, which opens the sheet; a
 stop past the commit that the sheet resumes by itself posts none.
 
-Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
+Once the fleet has moved, the app reconnects to it where it runs, keeping the robot you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.
 
 ## From a terminal
@@ -75,7 +75,7 @@ svall handover --forget --source              # give up the side of a finished h
 - `svall handover <machine>` runs the checks and, with nothing in the way, goes straight on to rest and move the
   fleet. `--check` stops after the checks, as the app's first look does.
 - In a terminal, a decision shows as a short menu. It starts from the choices the run already holds, on a `--resume`
-  too. While characters rest, type `i` and Enter to interrupt and carry the agents still working, or `c` to cancel.
+  too. While robots rest, type `i` and Enter to interrupt and carry the agents still working, or `c` to cancel.
   Ctrl-D cancels the decision on screen, or the next one asked; in `attach` it stops following.
 - Ctrl-C before the commit aborts the handover, and the fleet stays where it was. After the commit the move goes on;
   a second Ctrl-C stops watching, and `svall handover --resume` finishes it.
@@ -89,7 +89,7 @@ svall handover --forget --source              # give up the side of a finished h
 
 A run in the foreground with no terminal to ask in (`--json`, or stdin not a terminal) stops at the first blocker and
 gives the fleet back. A `--detach` helper waits at a blocker found after Checks until someone answers it through
-`svall handover attach` or the app. One found while characters rest lets the fleet run again where it is, with the
+`svall handover attach` or the app. One found while robots rest lets the fleet run again where it is, with the
 terminals the handover stopped reopened, while the handover stays open at the gateway; an answer freezes it again.
 One found later waits with the fleet frozen. These flags answer ahead:
 
@@ -98,7 +98,7 @@ One found later waits with the fleet frozen. These flags answer ahead:
 | `--interrupt-after <duration>` | Interrupt and carry the agents still working after this long: a number with `ms`, `s`, `m` or `h`, such as `1500ms`, `30s` or `2m`; `0` interrupts at once. A time past three minutes makes the rest wait that long. |
 | `--terminate-shells` | Terminate and carry every terminal kept busy by a command, a suspended job, or an agent that will not settle. |
 | `--archive <root>` | Archive and carry this destination folder, by the root id a blocker names or its path. Repeat it for more. |
-| `--carry-unused` | Carry the folder whole: each folder a terminal is in moves with the Git repositories there that no character works in. |
+| `--carry-unused` | Carry the folder whole: each folder a terminal is in moves with the Git repositories there that no robot works in. |
 
 `svall handover` exits 0 when it did what it was asked and 1 otherwise. [Every code it can report](errors.md) is
 listed with what to do about it.
@@ -107,11 +107,11 @@ listed with what to do about it.
 
 | Moves | Stays on each machine |
 | --- | --- |
-| Islands, characters, their places on the map, notes, instructions, links, context, agent profile and dormancy | `node.json`: the daemon's port and host, the shell, the phone's https port |
+| Islands, robots, their places on the map, notes, instructions, links, context, agent profile and dormancy | `node.json`: the daemon's port and host, the shell, the phone's https port |
 | `fleet.json`, and the fleet's entity docs and `agent-profiles` folder | The fleet's token, the phone key and pass, push keys and subscriptions, and `owner.json` |
 | Browser tab URLs | Browser cookies and logins, and each Mac's own layout |
-| Every folder a character works in, a file or folder named in its context, and mission control's folder (`home.cwd`), which no other fleet on the same machine may use | Folders left out by the excludes below |
-| Each repository a character works in: its Git directory, the main checkout, every worktree a character uses (one OpenCode made in `~/.local/share/opencode/worktree` too), and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no character uses (its branch and stash still move); the copy deletes no Git object from a repository that keeps one |
+| Every folder a robot works in, a file or folder named in its context, and mission control's folder (`home.cwd`), which no other fleet on the same machine may use | Folders left out by the excludes below |
+| Each repository a robot works in: its Git directory, the main checkout, every worktree a robot uses (one OpenCode made in `~/.local/share/opencode/worktree` too), and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no robot uses (its branch and stash still move); the copy deletes no Git object from a repository that keeps one |
 | Each agent's session: Claude Code's transcript with the session's own folder (subagents and saved tool output), Codex's rollout file, OpenCode's session export with Svall's log of it | Agent logins, user-wide settings, skills, MCP servers and hooks; Claude's file history, which `/rewind` uses, and session environment; OpenCode's own folders (`~/.local/share/opencode`, `~/.config/opencode`, `~/.local/state/opencode`, `~/.cache/opencode`) but for its worktrees, its undo snapshots, subagent sessions, and shell and tool-output files |
 | `.env` files inside the folders that move | The fleet's own `.env`, unless `handover.transferFleetEnv` is on in `fleet.json` |
 | | Every running process, its pid, its tmux window and its scrollback |
@@ -120,7 +120,7 @@ Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `tar
 `.ruff_cache/` and `.mypy_cache/`, and `*.tsbuildinfo` files, are left out by default, and each
 machine keeps its own. `handover.exclude` in `fleet.json`
 adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A folder a terminal is in moves whole, so a
-shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in
+shell open in `~/Developer` would carry every repository there: the checks stop at the ones no robot works in
 until you choose Carry the folder whole (`--carry-unused`), move the terminal, or leave them out.
 
 A path under the home the fleet leaves lands at the same place under the home it lands in, and any other path lands as
@@ -141,7 +141,7 @@ folder named `<folder>.overwritten-<handover id>`, a subfolder for each pass, an
 those files, twenty at most and a count of the rest.
 
 A repository can say where it runs with `.svall/handover.json`, such as `{ "platforms": ["darwin"] }`, which
-blocks a move to Linux while a character works in it. An Xcode project in a folder moving to Linux is only a warning.
+blocks a move to Linux while a robot works in it. An Xcode project in a folder moving to Linux is only a warning.
 
 ## Agents
 
@@ -149,7 +149,7 @@ A handover carries Claude Code sessions from release 2.1.251 on, Codex sessions 
 from 2.0.22 on, with no upper limit: a Claude or Codex session's files are copied byte for byte to the same place on
 the other machine, so a newer release works as long as it keeps its sessions where it did. An OpenCode session travels
 as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
-character resumes. Svall's OpenCode plugin reports the session on OpenCode's command line as it loads, so an OpenCode
+robot resumes. Svall's OpenCode plugin reports the session on OpenCode's command line as it loads, so an OpenCode
 that opens a fresh session in its place still counts as up; the checks confirm the import, which leaves that session
 there to resume. A login never moves; log in on each machine.
 
@@ -180,31 +180,31 @@ When a new Claude Code or Codex release comes out:
    another CLI on the remote machine, such as an older release still installed there.
 3. If both pass, nothing changes. A release that keeps its session files somewhere new, or resumes differently,
    needs the session adapter updated: until then the checks stop with `incompatible_adapter` or `transcript_missing`,
-   or the character stays dormant on the other machine with its transcript and the error. The adapter's minimum rises
+   or the robot stays dormant on the other machine with its transcript and the error. The adapter's minimum rises
    only when an older release stops working.
 
 Until its probe passes, a new release is untested with handover, not refused. [The security notes](../security/fleet-handover.md#agent-versions)
 say what a new release can break.
 
 An agent asks for your word the first time it resumes in a folder on a machine: the checks warn about each such
-character, and after the move its row says that it waits.
+robot, and after the move its row says that it waits.
 
 - **Claude** asks whether to trust the folder, with "No, exit" preselected: choose "Yes, I trust this folder".
 - **Claude in Bypass Permissions mode** asks once per machine: choose "Yes, I accept".
 - **Codex** asks whether to trust the folder: answer it in that terminal. A Codex that has not trusted Svall's hooks
-  stops at its "Hooks need review" screen first: the checks warn (`codex_hooks`), and a character Svall finds there
+  stops at its "Hooks need review" screen first: the checks warn (`codex_hooks`), and a robot Svall finds there
   is left dormant until you trust them and revive it.
 - **OpenCode** asks nothing.
 
 Svall never writes an agent's own settings to answer these for you.
 
 On a Linux machine whose AppArmor keeps Codex from sandboxing the commands it runs, as Ubuntu 24.04 does until its
-profile for bwrap is installed, a Codex character asks before each command. The checks warn about it
+profile for bwrap is installed, a Codex robot asks before each command. The checks warn about it
 (`codex_sandbox`) and name the commands that install the profile, or, when `codex sandbox -- true` fails there for
 another reason, what it said.
 
 A resumed Codex reports its process only with its first turn, as it runs its SessionStart hook then: until that turn,
-`svall char list` shows its `pid` as null while it runs, idle dormancy leaves that terminal be, and a sleep refuses
+`svall robot list` shows its `pid` as null while it runs, idle dormancy leaves that terminal be, and a sleep refuses
 it, as both find the agent by its pid.
 
 ## What restarts
@@ -228,20 +228,20 @@ On the other machine:
 - Each agent terminal the handover rested resumes as a new process in its folder, with `claude --resume <id>`,
   `codex resume <id>` or `opencode --standalone -s <id>` and the launch flags it had, such as its model or permission
   mode. Codex's `-p`/`--profile` and `--local-provider` are dropped, because they name configuration on the machine
-  it came from. It has its whole conversation. An agent the handover interrupted or terminated in a character's main
+  it came from. It has its whole conversation. An agent the handover interrupted or terminated in a robot's main
   terminal resumes with a note that its turn was cut short and that what it ran in the background was stopped, and
   carries on; in a second terminal, tell it to continue.
 - A plain shell opens in its folder and prints: *Svall restarted this shell after a handover; whatever ran here
   before did not move.*
-- A character that was dormant before the handover stays dormant.
+- A robot that was dormant before the handover stays dormant.
 - A terminal counts as up only once it starts the session it carries. Claude Code and OpenCode report that session
   as they resume; one that starts another session, or none within a minute, is closed and stays dormant with its own.
   One waiting to trust its folder or to accept Bypass Permissions mode stays open, and its row says which answer goes
   on; if it then starts another session, it is closed the same way. Codex reports nothing until its first turn, so it counts once its prompt shows, or else once it has held its
   terminal for 3 s, which its row then says.
 - A terminal that does not come up stays dormant with its session, and its card and row say why, as do
-  `svall status` and `svall char list` (`resume failed: <why>`). Retry it from the row, or open it like any dormant
-  character. When it will not resume at all, **Start fresh from summary** on its terminal (`svall char revive <id>
+  `svall status` and `svall robot list` (`resume failed: <why>`). Retry it from the row, or open it like any dormant
+  robot. When it will not resume at all, **Start fresh from summary** on its terminal (`svall robot revive <id>
   --fresh`, with `--term 2` for a second terminal) starts a new session in its folder whose first prompt summarises
   the old one's last turns. The app asks first, and both say where the old session stays; its files are left as they are.
 - Servers, builds and watchers do not restart: start them again. Ports are not forwarded to the Mac in this version.
@@ -309,7 +309,7 @@ What else to know:
   handover until you copy the changes back or archive it. What a pass after a folder's first replaces there is kept
   aside; only a file saved there after the checks and before the folder's first pass reaches it is lost, and the checks
   cover every folder at once, before the first is copied.
-- **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
+- **After the commit** a robot that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
 - **The fleet's daemon on the machine it came from no longer answering** once the destination finished, such as
   after that fleet's home was removed there, leaves this Mac's journal open: the app resumes it again at each launch,
@@ -429,11 +429,11 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   machine's copy of the session still holds the unfinished turn, and OpenCode's shared background service resumes it
   there; any `opencode` command run outside Svall without `--standalone` starts that service. Until the fleet comes
   back, run OpenCode there only with `--standalone`, or first remove the copy with `opencode session delete
-  --standalone <id>`, taking the id from `opencode session list --standalone` in the character's folder.
-- **A plain `codex` typed in a character's bash, fish or nested zsh does not move.** It runs on Codex's shared
+  --standalone <id>`, taking the id from `opencode session list --standalone` in the robot's folder.
+- **A plain `codex` typed in a robot's bash, fish or nested zsh does not move.** It runs on Codex's shared
   background server, whose hooks Svall ignores, so its terminal has no agent: the checks show `shell_busy` (*is running
   codex*), and Terminate and carry leaves its session on the machine the fleet left. Type `codex --no-daemon` there
-  instead; a character's own zsh and the agents Svall starts add it already.
+  instead; a robot's own zsh and the agents Svall starts add it already.
 - **An edit on the other machine before the copy reaches it can be lost.** The checks compare every folder there with
   what was last carried, all at once, just before the copy starts. Folders are then copied one after another, and every
   pass after a folder's first keeps aside what it replaces, but a file saved in a folder after the checks and before
@@ -469,7 +469,7 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   Linux machine, so does `svall handover --resume` there. The machine the fleet went to confirms the commit with the
   gateway; when it cannot reach the gateway, it takes the gateway's answer to the commit that the controller kept.
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
-  The character waits at that prompt until you answer it.
+  The robot waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,
   `--resume` rebuilds it from the other three without your interrupt, terminate, archive or carry choices, and may
   stop at the same blockers again; choose again.
@@ -486,7 +486,7 @@ it holds from the last handover; what was done on the Mac since is gone with it.
 - **A copy of `machine.json` made before Svall tied it to the hardware goes unnoticed.** The first machine to read
   a file that names no hardware binds it to its own, so two machines that held copies of it before then each bind
   theirs, and both pass as that machine. Move one aside so it mints its own id.
-- **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
+- **The phone** shows a robot that failed to resume as asleep, without the reason the Mac shows.
 - **Version 1 covers one Mac and one Linux gateway per fleet**. It does not move a
-  single character or island, forward ports, keep a phone URL across machines, or move from one Linux machine to
+  single robot or island, forward ports, keep a phone URL across machines, or move from one Linux machine to
   another.

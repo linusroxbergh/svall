@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, TRANSFER_SCHEMA_VERSION, TransferManifestV1, type Character, type GitCheckout, type MachineId } from '@svall/protocol';
+import { emptyState, FleetConfig, TRANSFER_SCHEMA_VERSION, TransferManifestV1, type Robot, type GitCheckout, type MachineId } from '@svall/protocol';
 import { repoSlug } from '../../src/docs.js';
 import { destinationView, docsBlockers, docsRenames, relocate, relocationProblem } from '../../src/handover/relocate.js';
 
@@ -53,10 +53,10 @@ describe('relocationProblem', () => {
 });
 
 function checkout(p: string, gitDir: string): GitCheckout {
-  return { path: p, gitDir, head: COMMIT, branch: 'main', status: [], index: SHA, characters: ['c1'] };
+  return { path: p, gitDir, head: COMMIT, branch: 'main', status: [], index: SHA, robots: ['c1'] };
 }
 
-function char(id: string, o: Partial<Character>): Character {
+function robot(id: string, o: Partial<Robot>): Robot {
   return {
     id, islandId: 'i1', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'fox', instructions: '', cwd: '/',
     context: [], shell: { lastOutputAt: 0 }, unread: false, ...o,
@@ -71,7 +71,7 @@ function manifest(destinationHome: string): TransferManifestV1 {
     id: 'i1', name: 'i1', description: '', instructions: '', position: { x: 0, y: 0 }, size: { w: 4, h: 3 }, seed: 1,
     context: [{ kind: 'folder', ref: '/Users/ada/notes', label: '', source: 'manual' }],
   };
-  snapshot.characters.c1 = char('c1', {
+  snapshot.robots.c1 = robot('c1', {
     cwd: '/Users/ada/app-feature',
     repo: { root: '/Users/ada/app-feature', mainRoot: '/Users/ada/app', branch: 'feature', isWorktree: true },
     context: [
@@ -93,7 +93,7 @@ function manifest(destinationHome: string): TransferManifestV1 {
       { id: 'r_3', kind: 'context', entry: 'file', path: '/Volumes/work/spec.md', files: [] },
     ],
     sessions: [{
-      characterId: 'c1', agent: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: '/Users/ada/.claude/projects/-Users-ada-app-feature/s.jsonl',
+      robotId: 'c1', agent: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: '/Users/ada/.claude/projects/-Users-ada-app-feature/s.jsonl',
       sourceHome: '/Users/ada/.claude', destinationHome: `${destinationHome}/.claude`, destinationPath: `${destinationHome}/.claude/projects/-Users-ada-app-feature/s.jsonl`, files: [],
     }],
     git: [{
@@ -122,7 +122,7 @@ describe('destinationView', () => {
     expect([g.commonDir, g.main!.path, g.main!.gitDir, g.worktrees[0].path, g.worktrees[0].gitDir, g.unused[0].path, g.commands![0].at]).toEqual([
       '/home/ada/app/.git', '/home/ada/app', '/home/ada/app/.git', '/home/ada/app-feature', '/home/ada/app/.git/worktrees/app-feature', '/home/ada/app-old', '/home/ada/app/.git/config',
     ]);
-    const c = v.snapshot.characters.c1;
+    const c = v.snapshot.robots.c1;
     expect([c.cwd, c.repo!.root, c.repo!.mainRoot, c.second!.cwd]).toEqual(['/home/ada/app-feature', '/home/ada/app-feature', '/home/ada/app', '/home/ada/scratch']);
     expect(c.context.map((x) => x.ref)).toEqual(['/home/ada/notes/plan.md', 'https://github.com/ada/app/pull/1', '/Volumes/work/spec.md']);
     expect(c.browser!.tabs.map((t) => t.url)).toEqual(['file:///home/ada/app/a%20b.html?x=1#top', 'https://x.test/Users/ada', 'file:///home/ada/50%25off.html']);
@@ -136,7 +136,7 @@ describe('destinationView', () => {
     const v = destinationView(m);
     expect(v.roots[0].files).toEqual([{ type: 'symlink', path: 'cfg', target: '/Users/ada/cfg' }]);
     expect(v.sessions).toEqual(m.sessions);
-    expect(v.snapshot.characters.c1.agent!.transcriptPath).toBe('/Users/ada/.claude/projects/-Users-ada-app-feature/s.jsonl');
+    expect(v.snapshot.robots.c1.agent!.transcriptPath).toBe('/Users/ada/.claude/projects/-Users-ada-app-feature/s.jsonl');
     expect(v.destinationHome).toBe('/home/ada');
     expect(TransferManifestV1.parse(v)).toEqual(v);
     expect(m).toEqual(before);
@@ -163,10 +163,10 @@ describe('destinationView', () => {
 describe('docsRenames and docsBlockers', () => {
   const slug = (p: string): string => `repos/${repoSlug(p)}`;
   const [from, to] = [slug('/Users/ada/app'), slug('/home/ada/app')];
-  /** The manifest with a docs root holding `dirs`, and a character standing in each of `cwds` beside c1. */
+  /** The manifest with a docs root holding `dirs`, and a robot standing in each of `cwds` beside c1. */
   const withDocs = (dirs: string[], cwds: string[] = [], m = manifest('/home/ada')): TransferManifestV1 => {
     const snapshot = structuredClone(m.snapshot);
-    cwds.forEach((cwd, i) => { snapshot.characters[`c${i + 2}`] = char(`c${i + 2}`, { cwd }); });
+    cwds.forEach((cwd, i) => { snapshot.robots[`c${i + 2}`] = robot(`c${i + 2}`, { cwd }); });
     const files = dirs.map((d) => ({ type: 'file' as const, path: `${d}/n.md`, mode: 0o644, size: 1, mtimeMs: 0, sha256: SHA }));
     return { ...m, snapshot, roots: [...m.roots, { id: 'r_d', kind: 'docs', entry: 'dir', path: `${m.home}/.svall/docs`, files }] };
   };

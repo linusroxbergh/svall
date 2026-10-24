@@ -41,9 +41,9 @@ describe('handoff', () => {
   it('hands off a run whose -p comes after --, where it is text', () => {
     install();
     const exited = exit();
-    handoff(['node', 'svall', 'char', 'run', 'c1', '--', 'claude', '-p', 'hi']);
+    handoff(['node', 'svall', 'robot', 'run', 'c1', '--', 'claude', '-p', 'hi']);
     expect(exited).toHaveBeenCalledWith(3);
-    expect(fs.readFileSync(`${shim()}.args`, 'utf8')).toBe('char\nrun\nc1\n--\nclaude\n-p\nhi\n');
+    expect(fs.readFileSync(`${shim()}.args`, 'utf8')).toBe('robot\nrun\nc1\n--\nclaude\n-p\nhi\n');
   });
   it('leaves a run that names its fleet to this build', () => {
     install();

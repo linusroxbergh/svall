@@ -55,7 +55,7 @@ describe('phone terminal', () => {
     expect(still.calls.map((c) => c.method)).toEqual(['term.open']);
   });
 
-  it('ignores frames for another character', async () => {
+  it('ignores frames for another robot', async () => {
     const h = harness();
     await h.link.open();
     h.emit({ event: 'term.output', data: { id: 'c9', data: b64('elsewhere') } });
@@ -99,15 +99,15 @@ describe('phone fleet list', () => {
   it('leads with the island whose crew needs the user, and lists empty islands last', () => {
     const f = fleet();
     f.islands.i_z = isl('i_z', 'zulu', 24);
-    f.characters.c3 = chr('c3', 'i_z', { x: 1, y: 1 }, { agent: { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'blocked', lastActivityAt: 0 } });
+    f.robots.c3 = chr('c3', 'i_z', { x: 1, y: 1 }, { agent: { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'blocked', lastActivityAt: 0 } });
     const groups = sections(f);
     expect(groups.map((g) => g.island.name)).toEqual(['zulu', 'alpha', 'beta', 'empty', 'mission control']);
-    expect(groups[3].characters).toEqual([]);
-    expect(groups[0].characters.map((c) => c.id)).toEqual(['c3']);
+    expect(groups[3].robots).toEqual([]);
+    expect(groups[0].robots.map((c) => c.id)).toEqual(['c3']);
     expect(waiting(f)).toBe(1);
   });
 
-  it("puts a character's own note under its name, on one line, and nothing when there is none", () => {
+  it("puts a robot's own note under its name, on one line, and nothing when there is none", () => {
     expect(subtitle(chr('c', 'i_b', { x: 0, y: 0 }, { note: 'fix the login\n\nsee the PR ' }))).toBe('fix the login · see the PR');
     const noteless = chr('c', 'i_b', { x: 0, y: 0 }, {
       agent: { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', brief: '# Svall context', lastActivityAt: 0 },
@@ -118,13 +118,13 @@ describe('phone fleet list', () => {
 });
 
 describe('phone routes', () => {
-  it('reads a character out of the path and writes it back', () => {
+  it('reads a robot out of the path and writes it back', () => {
     expect(parseRoute('/')).toEqual({ view: 'fleet' });
-    expect(parseRoute('/char/c_ab12')).toEqual({ view: 'char', id: 'c_ab12' });
-    expect(parseRoute('/char/c_ab12/')).toEqual({ view: 'char', id: 'c_ab12' });
+    expect(parseRoute('/robot/c_ab12')).toEqual({ view: 'robot', id: 'c_ab12' });
+    expect(parseRoute('/robot/c_ab12/')).toEqual({ view: 'robot', id: 'c_ab12' });
     expect(parseRoute('/settings')).toEqual({ view: 'fleet' });
-    expect(parseRoute('/char/%')).toEqual({ view: 'fleet' });
-    expect(routePath({ view: 'char', id: 'c_ab12' })).toBe('/char/c_ab12');
+    expect(parseRoute('/robot/%')).toEqual({ view: 'fleet' });
+    expect(routePath({ view: 'robot', id: 'c_ab12' })).toBe('/robot/c_ab12');
     expect(routePath({ view: 'fleet' })).toBe('/');
   });
 });
@@ -132,21 +132,21 @@ describe('phone routes', () => {
 describe('phone cwd choices', () => {
   it("offers the island's own directories first, then the fleet's, then the default, once each", () => {
     const f = fleet();
-    f.characters.c0.cwd = '/Users/me/a';
-    f.characters.c1.cwd = '/Users/me/a-wt';
-    f.characters.c1.repo = { root: '/Users/me/a-wt', mainRoot: '/Users/me/a', branch: 'x', isWorktree: true };
-    f.characters.c2.cwd = '/Users/me/b';
+    f.robots.c0.cwd = '/Users/me/a';
+    f.robots.c1.cwd = '/Users/me/a-wt';
+    f.robots.c1.repo = { root: '/Users/me/a-wt', mainRoot: '/Users/me/a', branch: 'x', isWorktree: true };
+    f.robots.c2.cwd = '/Users/me/b';
     expect(cwdChoices(f, 'i_b').map((c) => c.path)).toEqual(['/Users/me/a', '/Users/me/b', '~', '/mc']);
     expect(cwdChoices(f, 'i_b')[0].label).toBe('~/a');
     expect(cwdChoices(f, 'home').map((c) => c.path)).toEqual(['/mc', '/Users/me/a', '/Users/me/b', '~']);
     expect(cwdChoices(f, 'i_e').map((c) => c.path)).toEqual(['/Users/me/a', '/Users/me/b', '~', '/mc']);
   });
 
-  it("starts a one-tap character in its island's repo, the home cwd, or the fleet default", () => {
+  it("starts a one-tap robot in its island's repo, the home cwd, or the fleet default", () => {
     const f = fleet();
-    f.characters.c0.cwd = '/Users/me/a-wt';
-    f.characters.c0.repo = { root: '/Users/me/a-wt', mainRoot: '/Users/me/a', branch: 'x', isWorktree: true };
-    f.characters.c1.cwd = '/Users/me/b';
+    f.robots.c0.cwd = '/Users/me/a-wt';
+    f.robots.c0.repo = { root: '/Users/me/a-wt', mainRoot: '/Users/me/a', branch: 'x', isWorktree: true };
+    f.robots.c1.cwd = '/Users/me/b';
     expect(islandCwd(f, 'i_b')).toBe('/Users/me/a');
     expect(islandCwd(f, 'home')).toBe('/mc');
     expect(islandCwd(f, 'i_e')).toBe('~');

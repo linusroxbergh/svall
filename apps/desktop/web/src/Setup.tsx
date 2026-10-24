@@ -123,7 +123,7 @@ export function Setup() {
         </section>}
         {plan.agents.length > 0 && <section>
           <h2>Your agents</h2>
-          <p>Your characters run these. Uncheck one to leave it alone.</p>
+          <p>Your robots run these. Uncheck one to leave it alone.</p>
           <div className="setup-list">
             {plan.agents.map((a) => (
               <label key={a.kind} className="setup-row">

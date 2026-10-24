@@ -57,7 +57,7 @@ runIf('Tmux.listWindows', () => {
 });
 
 // what tmux prints for the rows of a -F format: 3.5 and later print each byte as it is, while 3.4 prints a control
-// character other than a tab or a newline as its C escape or else its octal one, a $ before a letter as \$, and a
+// robot other than a tab or a newline as its C escape or else its octal one, a $ before a letter as \$, and a
 // backslash as itself
 const C_ESCAPES: Record<string, string> = { '\x07': 'a', '\b': 'b', '\f': 'f', '\r': 'r', '\v': 'v' };
 const SHAPES: [string, (s: string) => string][] = [

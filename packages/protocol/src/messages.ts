@@ -6,11 +6,11 @@ import {
   TransferRoot, Warning,
 } from './handover.js';
 import { Portrait } from './portraits.js';
-import { AgentKind, AgentStatus, BrowserTab, Cell, Character, ContextItem, FleetState, Island, Size } from './state.js';
+import { AgentKind, AgentStatus, BrowserTab, Cell, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
 const TermSize = z.object({ cols: z.number().int().min(2), rows: z.number().int().min(1) });
-// which of a character's terminals a call means; absent, the main one
+// which of a robot's terminals a call means; absent, the main one
 export const Term = z.literal(2).optional();
 export type Term = z.infer<typeof Term>;
 
@@ -46,10 +46,10 @@ export type UsageSnapshot = z.infer<typeof UsageSnapshot>;
 // cpu is a percent of one core; mem is bytes
 export const LoadUsage = z.object({ cpu: z.number(), mem: z.number(), procs: z.number() });
 export type LoadUsage = z.infer<typeof LoadUsage>;
-export const LoadChar = LoadUsage.extend({ shellOnly: z.boolean(), sleepable: z.boolean() });
-export type LoadChar = z.infer<typeof LoadChar>;
+export const LoadRobot = LoadUsage.extend({ shellOnly: z.boolean(), sleepable: z.boolean() });
+export type LoadRobot = z.infer<typeof LoadRobot>;
 // cores is the machine's logical cores
-export const LoadSnapshot = z.object({ at: z.number(), cores: z.number(), total: LoadUsage, app: LoadUsage, codex: LoadUsage.optional(), chars: z.record(z.string(), LoadChar) });
+export const LoadSnapshot = z.object({ at: z.number(), cores: z.number(), total: LoadUsage, app: LoadUsage, codex: LoadUsage.optional(), robots: z.record(z.string(), LoadRobot) });
 export type LoadSnapshot = z.infer<typeof LoadSnapshot>;
 
 // a phone socket the proxy vouched for, one row per login, timed from the earliest socket that login holds
@@ -74,7 +74,7 @@ export const MobileStatus = z.object({
 });
 export type MobileStatus = z.infer<typeof MobileStatus>;
 
-// how long the daemon waits for a fresh agent to attach before it answers char.create with a run
+// how long the daemon waits for a fresh agent to attach before it answers robot.create with a run
 export const RUN_TIMEOUT_MS = 30_000;
 
 // how long enabling the phone link may take, since a checkout with no phone bundle builds one first
@@ -86,7 +86,7 @@ const SWEEP_TIMEOUT_MS = 15 * 60_000;
 // how long starting another fleet may take: its daemon gets 15 s to answer, after its home is set up
 const FLEET_START_TIMEOUT_MS = 20_000;
 
-// how long char.wait waits when not told, and the most it may: past 2^31-1 ms a timer fires at once, and a client waits a little longer
+// how long robot.wait waits when not told, and the most it may: past 2^31-1 ms a timer fires at once, and a client waits a little longer
 const WAIT_DEFAULT_MS = 600_000;
 const WAIT_MAX_MS = 2_000_000_000;
 // how long a source may take to hash its fleet for preflight, or a destination to read its roots against their records
@@ -102,10 +102,10 @@ export const COMPLETE_TIMEOUT_MS = 2 * 60_000;
 // how long taking a forced record may take, since the machine it names reopens the terminals its handover rested
 export const ADOPT_TIMEOUT_MS = 2 * 60_000;
 
-// how long the daemon holds a call before it answers: char.wait blocks for its timeout, char.create with a run until the agent attaches
+// how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
-  if (method === 'char.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
-  if (method === 'char.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
+  if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
+  if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   if (method === 'mobile.set') return MOBILE_SET_TIMEOUT_MS;
   if (method === 'fleets.create' || method === 'fleets.start') return FLEET_START_TIMEOUT_MS;
@@ -151,11 +151,11 @@ export const deletable = (kind: string, item: Pick<ResourceItem, 'name' | 'open'
   item.open !== undefined && (kind === 'skills' || kind === 'agents' || kind === 'commands' || (kind === 'autoMemory' && item.name !== 'MEMORY.md'));
 export const ResourceGroup = z.object({ kind: ResourceKind, items: z.array(ResourceItem) });
 export type ResourceGroup = z.infer<typeof ResourceGroup>;
-export const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'character']);
+export const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'robot']);
 // docs is the root id a new doc goes to, agentProfiles the one a new agent profile goes to; a global source has neither
 export const ResourceSource = z.object({
   rootId: z.string(), root: z.string(), name: z.string(), tier: ResourceTier, docs: z.string().optional(), agentProfiles: z.string().optional(),
-  islandIds: z.array(z.string()), characterIds: z.array(z.string()), groups: z.array(ResourceGroup),
+  islandIds: z.array(z.string()), robotIds: z.array(z.string()), groups: z.array(ResourceGroup),
 });
 export type ResourceSource = z.infer<typeof ResourceSource>;
 
@@ -178,54 +178,54 @@ export const methods = {
   'island.arrange': { params: z.object({ aspect: z.number().min(0.01).max(100).optional(), homeRoom: z.number().int().min(0).max(10_000).optional() }), result: z.object({}) },
   'island.show': { params: Id, result: z.object({ text: z.string() }) },
   'island.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: Island },
-  'char.create': {
+  'robot.create': {
     params: z.object({
       islandId: z.string(), cwd: z.string(), name: z.string().optional(),
       command: z.string().optional(), cell: Cell.optional(),
       run: z.string().optional(), agentProfile: z.string().optional(),
     }),
-    result: Character.extend({ runSent: z.boolean().optional() }),
+    result: Robot.extend({ runSent: z.boolean().optional() }),
   },
-  'char.update': {
+  'robot.update': {
     params: z.object({
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // '' clears it
-      agentProfile: z.string().optional(), portrait: Portrait.optional(), robot: z.number().int().min(1).optional(), keepHere: z.boolean().optional(),
+      agentProfile: z.string().optional(), portrait: Portrait.optional(), figure: z.number().int().min(1).optional(), keepHere: z.boolean().optional(),
     }),
-    result: Character,
+    result: Robot,
   },
-  'char.move': { params: z.object({ id: z.string(), islandId: z.string(), cell: Cell.optional() }), result: Character },
-  'char.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: Character },
-  // without a target the character goes first among the starred
-  'char.star': { params: z.object({ id: z.string(), targetId: z.string().optional(), after: z.boolean().optional() }), result: Character },
-  'char.unstar': { params: Id, result: Character },
-  'char.close': { params: Id, result: z.object({}) },
-  'char.sleep': { params: Id, result: z.object({}) },
-  'char.revive': { params: Id, result: Character },
+  'robot.move': { params: z.object({ id: z.string(), islandId: z.string(), cell: Cell.optional() }), result: Robot },
+  'robot.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: Robot },
+  // without a target the robot goes first among the starred
+  'robot.star': { params: z.object({ id: z.string(), targetId: z.string().optional(), after: z.boolean().optional() }), result: Robot },
+  'robot.unstar': { params: Id, result: Robot },
+  'robot.close': { params: Id, result: z.object({}) },
+  'robot.sleep': { params: Id, result: z.object({}) },
+  'robot.revive': { params: Id, result: Robot },
   // starts a dormant terminal's agent in a new session, its first prompt a summary of the one it could not resume
-  'char.fresh': { params: Id.extend({ term: Term }), result: Character },
-  'char.seen': { params: Id.extend({ term: Term }), result: Character },
-  // starts the character's second terminal when it has none
-  'char.second': { params: Id, result: Character },
+  'robot.fresh': { params: Id.extend({ term: Term }), result: Robot },
+  'robot.seen': { params: Id.extend({ term: Term }), result: Robot },
+  // starts the robot's second terminal when it has none
+  'robot.second': { params: Id, result: Robot },
   // an agent waiting on an answer refuses the text with `blocked`; one with a draft or a dialog on screen holds it, queued
-  'char.run': { params: z.object({ id: z.string(), text: z.string(), enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
-  'char.read': {
+  'robot.run': { params: z.object({ id: z.string(), text: z.string(), enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
+  'robot.read': {
     params: z.object({ id: z.string(), source: z.enum(['screen', 'transcript']).default('screen'), lines: z.number().int().min(1).default(50), term: Term }),
     result: z.object({ text: z.string() }),
   },
-  'char.prompts': {
+  'robot.prompts': {
     params: z.object({ id: z.string(), limit: z.number().int().min(1).max(200).default(20) }),
     result: z.object({ prompts: z.array(z.string()) }),
   },
-  'char.show': { params: Id, result: z.object({ text: z.string() }) },
-  'char.wait': {
+  'robot.show': { params: Id, result: z.object({ text: z.string() }) },
+  'robot.wait': {
     params: z.object({ id: z.string(), until: z.array(AgentStatus).min(1), timeoutMs: z.number().int().min(0).max(WAIT_MAX_MS).default(WAIT_DEFAULT_MS), term: Term }),
     result: z.object({ status: z.union([AgentStatus, z.enum(['timeout', 'gone'])]) }),
   },
   // Enter takes the permission dialog's highlighted "Yes"; Esc is its "No". promptId is the agent's promptId the answer was
   // shown with; a newer question is not answered by it
-  'char.answer': { params: z.object({ id: z.string(), answer: z.enum(['approve', 'deny']), promptId: z.string().optional() }), result: z.object({}) },
+  'robot.answer': { params: z.object({ id: z.string(), answer: z.enum(['approve', 'deny']), promptId: z.string().optional() }), result: z.object({}) },
   // names writes only names; islands runs only the island descriptions
   'scribe.sweep': {
     params: z.object({ names: z.boolean().optional(), islands: z.boolean().optional() }),
@@ -242,19 +242,19 @@ export const methods = {
   'fleets.create': { params: z.object({ name: z.string() }), result: z.object({ home: z.string() }) },
   'fleets.start': { params: z.object({ home: z.string() }), result: z.object({ home: z.string() }) },
   'fleet.rename': { params: z.object({ name: z.string() }), result: z.object({}) },
-  // the app quitting: every terminal ends, each character resumes when opened, and the daemon exits once it has answered
+  // the app quitting: every terminal ends, each robot resumes when opened, and the daemon exits once it has answered
   'fleet.stop': { params: z.object({}), result: z.object({}) },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
   'load.get': { params: z.object({}), result: LoadSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
   'resources.get': { params: z.object({}), result: z.object({ sources: z.array(ResourceSource) }) },
-  // paths are relative to the character's root: repo.root, else cwd
+  // paths are relative to the robot's root: repo.root, else cwd
   'fs.list': { params: RootPath, result: z.object({ entries: z.array(FsEntry) }) },
-  // root is the folder the path was read under, which moves with the character
+  // root is the folder the path was read under, which moves with the robot
   'fs.read': { params: RootPath, result: z.object({ text: z.string(), mtimeMs: z.number(), root: z.string() }) },
   // mtimeMs is the one fs.read gave, 0 for no file; a file changed or gone since is left alone and answered with conflict and
-  // the disk's mtime, 0 when it is gone. root is the one fs.read gave, and a write after the character moved away is refused
+  // the disk's mtime, 0 when it is gone. root is the one fs.read gave, and a write after the robot moved away is refused
   'fs.write': { params: RootPath.extend({ text: z.string(), mtimeMs: z.number(), root: z.string().optional() }), result: z.object({ mtimeMs: z.number(), conflict: z.literal(true).optional() }) },
   // a docs folder's own .md files; every other root stays read and write
   'docs.create': { params: RootPath.extend({ text: z.string() }), result: z.object({ mtimeMs: z.number() }) },
@@ -352,10 +352,10 @@ export const methods = {
     result: z.object({ preparedDigest: Sha256 }),
   },
   // `committed` is the gateway's answer that committed the handover, which the destination takes only when the gateway
-  // gives no answer of its own; `notice` is what a character that came up still waits on in its terminal
+  // gives no answer of its own; `notice` is what a robot that came up still waits on in its terminal
   'handover.activate': {
     params: z.object({ transactionId: TransactionId, generation: Generation, committed: OwnerRecord.optional() }),
-    result: z.object({ characters: z.array(z.object({ id: z.string(), ok: z.boolean(), error: z.string().optional(), notice: z.string().optional() })) }),
+    result: z.object({ robots: z.array(z.object({ id: z.string(), ok: z.boolean(), error: z.string().optional(), notice: z.string().optional() })) }),
   },
   // each side seals the roots it holds at g + 1 and closes its journal; the source seals what the transfer verified, `landed`
   'handover.complete': {
@@ -435,4 +435,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 27;
+export const PROTOCOL_VERSION = 28;

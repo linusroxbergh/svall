@@ -51,12 +51,12 @@ function far(profile = 'private') {
 type Far = ReturnType<typeof far>;
 
 /** A fleet home as `host add` leaves it: its own id and no gateway, owned by this machine at generation 0, with nothing in it. */
-function hostAdded(f: Far, o: { characters?: Record<string, unknown>; owner?: Record<string, unknown>; journal?: boolean } = {}): void {
+function hostAdded(f: Far, o: { robots?: Record<string, unknown>; owner?: Record<string, unknown>; journal?: boolean } = {}): void {
   fs.mkdirSync(f.home, { recursive: true });
   fs.writeFileSync(f.paths.fleetConfig, JSON.stringify({ id: OTHER, home: { cwd: '~/.svall/home' } }));
   fs.writeFileSync(f.paths.nodeConfig, JSON.stringify({ host: '127.0.0.1', port: 47800 }));
   fs.writeFileSync(f.paths.owner, JSON.stringify({ fleetId: OTHER, generation: 0, ownerMachineId: HERE, ...o.owner }));
-  fs.writeFileSync(f.paths.state, JSON.stringify({ version: 9, islands: {}, characters: o.characters ?? {} }));
+  fs.writeFileSync(f.paths.state, JSON.stringify({ version: 10, islands: {}, robots: o.robots ?? {} }));
   if (o.journal) {
     fs.mkdirSync(f.paths.handoverDir, { recursive: true });
     fs.writeFileSync(f.paths.journal, JSON.stringify({ role: 'destination', transactionId: 'tx-1' }));
@@ -236,7 +236,7 @@ describe('provisionFleet', () => {
 
   it('refuses a home whose fleet has been used, naming the home and why, and changes nothing', async () => {
     const used: [Parameters<typeof hostAdded>[1], RegExp][] = [
-      [{ characters: { c_1: { id: 'c_1' } } }, /holds 1 character/],
+      [{ robots: { c_1: { id: 'c_1' } } }, /holds 1 robot/],
       [{ owner: { generation: 2, ownerMachineId: HERE } }, /generation 2/],
       [{ owner: { transaction: { id: 'tx-9', fromMachineId: HERE, toMachineId: GATEWAY, phase: 'preparing', startedAt: 1 } } }, /handover tx-9/],
       [{ journal: true }, /handover journal/],

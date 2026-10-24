@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Agent, Character, FleetState } from '@svall/protocol';
+import type { Agent, Robot, FleetState } from '@svall/protocol';
 import { drowsy, freshCommand, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, unsaved, RESUME_NOTE } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
@@ -10,47 +10,47 @@ const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 const HOUR = 3_600_000;
 const agent = (over: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 0, ...over });
-const char = (over: Partial<Character> = {}): Character => ({
+const robot = (over: Partial<Robot> = {}): Robot => ({
   id: 'c_a', islandId: 'i_1', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/repo', context: [],
   tmux: { windowId: '@1', paneId: '%1' }, shell: { lastOutputAt: 0 }, unread: false, agent: agent(), ...over,
 });
 
 describe('drowsy', () => {
   it('takes an idle or done agent once it has rested the whole limit', () => {
-    expect(drowsy(char(), 12 * HOUR, 12 * HOUR)).toBe(true);
-    expect(drowsy(char({ agent: agent({ status: 'done' }) }), 12 * HOUR, 12 * HOUR)).toBe(true);
-    expect(drowsy(char(), 12 * HOUR - 1, 12 * HOUR)).toBe(false);
+    expect(drowsy(robot(), 12 * HOUR, 12 * HOUR)).toBe(true);
+    expect(drowsy(robot({ agent: agent({ status: 'done' }) }), 12 * HOUR, 12 * HOUR)).toBe(true);
+    expect(drowsy(robot(), 12 * HOUR - 1, 12 * HOUR)).toBe(false);
   });
 
   it('counts the rest from the last look the user took, if later', () => {
-    expect(drowsy(char(), 12 * HOUR, 12 * HOUR, HOUR)).toBe(false);
-    expect(drowsy(char(), 13 * HOUR, 12 * HOUR, HOUR)).toBe(true);
+    expect(drowsy(robot(), 12 * HOUR, 12 * HOUR, HOUR)).toBe(false);
+    expect(drowsy(robot(), 13 * HOUR, 12 * HOUR, HOUR)).toBe(true);
   });
 
   it('leaves an agent at work, waiting on the user, with news the user has not seen, or on a failed turn', () => {
     const late = 100 * HOUR;
-    expect(drowsy(char({ agent: agent({ status: 'working' }) }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ agent: agent({ status: 'blocked' }) }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ agent: agent({ status: 'done', background: true }) }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ agent: agent({ status: 'done', monitors: ['b1'] }) }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ unread: true }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ agent: agent({ status: 'idle', prompt: "You've hit your limit · resets 9pm" }) }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: agent({ status: 'working' }) }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: agent({ status: 'blocked' }) }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: agent({ status: 'done', background: true }) }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: agent({ status: 'done', monitors: ['b1'] }) }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ unread: true }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: agent({ status: 'idle', prompt: "You've hit your limit · resets 9pm" }) }), late, HOUR)).toBe(false);
   });
 
-  it('leaves a plain shell, a dormant character, and a session no resume could name', () => {
+  it('leaves a plain shell, a dormant robot, and a session no resume could name', () => {
     const late = 100 * HOUR;
-    expect(drowsy(char({ agent: undefined }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ tmux: undefined }), late, HOUR)).toBe(false);
-    expect(drowsy(char({ agent: agent({ sessionId: 'x; rm -rf ~' }) }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: undefined }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ tmux: undefined }), late, HOUR)).toBe(false);
+    expect(drowsy(robot({ agent: agent({ sessionId: 'x; rm -rf ~' }) }), late, HOUR)).toBe(false);
   });
 
-  it('leaves a character with a second terminal open, which only a sleep closes', () => {
-    expect(drowsy(char({ second: { cwd: '/repo', tmux: { windowId: '@2', paneId: '%2' }, unread: false } }), 100 * HOUR, HOUR)).toBe(false);
+  it('leaves a robot with a second terminal open, which only a sleep closes', () => {
+    expect(drowsy(robot({ second: { cwd: '/repo', tmux: { windowId: '@2', paneId: '%2' }, unread: false } }), 100 * HOUR, HOUR)).toBe(false);
   });
 
-  it('takes a character whose second terminal is dormant, with no window to close', () => {
+  it('takes a robot whose second terminal is dormant, with no window to close', () => {
     const second = { cwd: '/repo', unread: false, agent: agent(), revive: { command: `claude --resume ${SID}` } };
-    expect(drowsy(char({ second }), 100 * HOUR, HOUR)).toBe(true);
+    expect(drowsy(robot({ second }), 100 * HOUR, HOUR)).toBe(true);
   });
 });
 
@@ -106,7 +106,7 @@ describe('startFlags', () => {
     expect(startFlags('codex --no-daemon -m gpt-5.5 -- fix it', 'codex')).toEqual(['-m', "'gpt-5.5'"]);
   });
 
-  it("reads a codex resume or fork typed into the character's zsh, which puts --no-daemon before it", () => {
+  it("reads a codex resume or fork typed into the robot's zsh, which puts --no-daemon before it", () => {
     expect(startFlags(`codex --no-daemon resume -m gpt-5.5 ${SID}`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
     expect(startFlags(`codex --no-daemon fork --yolo ${SID}`, 'codex')).toEqual(['--yolo']);
     expect(startFlags(`codex --no-daemon resume ${SID}`, 'codex')).toEqual([]);
@@ -156,34 +156,34 @@ describe('runsInBackground', () => {
 
 describe('reviveCommand', () => {
   it('resumes with the flags the agent was started with', () => {
-    expect(reviveCommand(char(), ['--effort', "'high'"])).toBe(`claude --effort 'high' --resume ${SID}`);
-    expect(reviveCommand(char({ agent: agent({ kind: 'codex' }) }), ['-m', "'gpt-5.5'"]))
+    expect(reviveCommand(robot(), ['--effort', "'high'"])).toBe(`claude --effort 'high' --resume ${SID}`);
+    expect(reviveCommand(robot({ agent: agent({ kind: 'codex' }) }), ['-m', "'gpt-5.5'"]))
       .toBe(`codex resume -c tui.resume_cwd=session -m 'gpt-5.5' ${SID}`);
-    expect(reviveCommand(char())).toBe(`claude --resume ${SID}`);
+    expect(reviveCommand(robot())).toBe(`claude --resume ${SID}`);
   });
 
   it('resumes an opencode session with -s', () => {
-    expect(reviveCommand(char({ agent: agent({ kind: 'opencode', sessionId: OSID }) }), ['--auto'])).toBe(`opencode --auto -s ${OSID}`);
+    expect(reviveCommand(robot({ agent: agent({ kind: 'opencode', sessionId: OSID }) }), ['--auto'])).toBe(`opencode --auto -s ${OSID}`);
   });
 });
 
 describe('markDormant', () => {
   it('marks an agent ended mid-turn or on a question interrupted, and one at rest not', () => {
     for (const status of ['working', 'blocked'] as const) {
-      const c = char({ agent: agent({ status }) });
+      const c = robot({ agent: agent({ status }) });
       markDormant(c);
       expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
       expect(c.agent?.status).toBe('idle');
     }
     for (const status of ['idle', 'done'] as const) {
-      const c = char({ agent: agent({ status }) });
+      const c = robot({ agent: agent({ status }) });
       markDormant(c);
       expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
     }
   });
   it('marks an agent whose monitors were still watching or subagents still running interrupted, and forgets them', () => {
     for (const running of [{ monitors: ['b1'] }, { subagents: ['a1'] }]) {
-      const c = char({ agent: agent({ status: 'done', ...running }) });
+      const c = robot({ agent: agent({ status: 'done', ...running }) });
       markDormant(c);
       expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
       expect(c.agent).toMatchObject({ status: 'done' });
@@ -192,13 +192,13 @@ describe('markDormant', () => {
     }
   });
   it('resumes with the flags remembered at the start when none are read off the process', () => {
-    const c = char({ agent: agent({ pid: 7 }) });
+    const c = robot({ agent: agent({ pid: 7 }) });
     rememberFlags(c, [{ pid: 7, ppid: 1, pgid: 7, args: 'claude --effort high' }]);
     expect(c.agent?.flags).toEqual(['--effort', "'high'"]);
     markDormant(c);
     expect(c.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
     // read off the process, the flags ps shows win
-    const again = char({ agent: agent({ pid: 7, flags: ['--effort', "'high'"] }) });
+    const again = robot({ agent: agent({ pid: 7, flags: ['--effort', "'high'"] }) });
     markDormant(again, []);
     expect(again.revive).toEqual({ command: `claude --resume ${SID}` });
     // a launch without flags, or one no resume repeats, remembers none
@@ -208,11 +208,11 @@ describe('markDormant', () => {
     }
   });
   it('forgets the brief the session was told, going dormant or already dormant at a listing', () => {
-    const c = char({ agent: agent({ brief: '# Svall context' }) });
+    const c = robot({ agent: agent({ brief: '# Svall context' }) });
     markDormant(c);
     expect(c.agent).not.toHaveProperty('brief');
-    const asleep = char({ tmux: undefined, revive: { command: 'claude --resume x', interrupted: true }, agent: agent({ brief: '# Svall context' }) });
-    syncWindow(asleep, new Map(), snapshot({ islands: {}, characters: { [asleep.id]: asleep } } as unknown as FleetState));
+    const asleep = robot({ tmux: undefined, revive: { command: 'claude --resume x', interrupted: true }, agent: agent({ brief: '# Svall context' }) });
+    syncWindow(asleep, new Map(), snapshot({ islands: {}, robots: { [asleep.id]: asleep } } as unknown as FleetState));
     expect(asleep.agent).not.toHaveProperty('brief');
     expect(asleep.revive).toEqual({ command: 'claude --resume x', interrupted: true });
   });
@@ -220,7 +220,7 @@ describe('markDormant', () => {
 
 describe('sleepFlags', () => {
   const transcript = path.join(os.tmpdir(), `sleepflags-${process.pid}.jsonl`);
-  const withAgent = (over: Partial<Agent> = {}) => char({ agent: agent({ pid: 7, transcriptPath: transcript, ...over }) });
+  const withAgent = (over: Partial<Agent> = {}) => robot({ agent: agent({ pid: 7, transcriptPath: transcript, ...over }) });
   beforeAll(() => fs.writeFileSync(transcript, ''));
   afterAll(() => fs.rmSync(transcript, { force: true }));
 
@@ -260,7 +260,7 @@ describe('unsaved', () => {
   beforeAll(() => { projects = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-unsaved-')), 'projects'); fs.mkdirSync(path.join(projects, '-a'), { recursive: true }); fs.mkdirSync(path.join(projects, '-b')); });
   afterAll(() => fs.rmSync(path.dirname(projects), { recursive: true, force: true }));
   const slot = (over: Partial<Agent> = {}, command = `claude --effort 'high' --resume ${SID}`) =>
-    char({ tmux: undefined, revive: { command }, agent: agent({ transcriptPath: path.join(projects, '-a', `${SID}.jsonl`), ...over }) });
+    robot({ tmux: undefined, revive: { command }, agent: agent({ transcriptPath: path.join(projects, '-a', `${SID}.jsonl`), ...over }) });
 
   it('starts claude afresh with its flags when the session it resumes saved no transcript, as one never prompted', () => {
     expect(unsaved(slot())).toBe("claude --effort 'high'");
@@ -279,7 +279,7 @@ describe('unsaved', () => {
     expect(unsaved(slot({ transcriptPath: missing }, 'claude --resume f0f0f0f0-1111-4000-8000-000000000000'))).toBeUndefined();
     expect(unsaved(slot({ transcriptPath: missing }, `: --resume ${SID}`))).toBeUndefined();
     expect(unsaved(slot({ kind: 'codex', transcriptPath: missing }, `codex resume -c tui.resume_cwd=session ${SID}`))).toBeUndefined();
-    expect(unsaved(char({ revive: undefined }))).toBeUndefined();
+    expect(unsaved(robot({ revive: undefined }))).toBeUndefined();
   });
 });
 

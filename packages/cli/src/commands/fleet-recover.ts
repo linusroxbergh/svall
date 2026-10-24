@@ -521,7 +521,8 @@ export function render(e: RecoverEvent, name: (id: MachineId) => string): string
 /** Why this run is not a person's at a terminal outside the fleets, or undefined when it is. */
 export function unattended(env: NodeJS.ProcessEnv, tty: boolean): string | undefined {
   if (!tty) return 'has no terminal';
-  if (env.SVALL_CHAR_ID) return 'is a character\'s';
+  // a session an older svalld started carries SVALL_CHAR_ID
+  if (env.SVALL_ROBOT_ID || env.SVALL_CHAR_ID) return 'is a robot\'s';
   // $TMUX names the server the terminal runs in, and a fleet's is the tmux.sock in its home
   const sock = env.TMUX?.split(',')[0];
   const home = sock && path.dirname(sock);

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character, type TerminalSlot } from '@svall/protocol';
+import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Robot, type TerminalSlot } from '@svall/protocol';
 import { running, settle } from './agent/reducer.js';
 import { claudeTranscript, hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
@@ -15,7 +15,7 @@ const exec = promisify(execFile);
 // flags are the launch flags to resume with, already quoted
 export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
   if (!t.agent || !isSessionId(t.agent.sessionId)) return '';
-  // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
+  // a codex robot's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
   const words = t.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
     : t.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
   return [...words, t.agent.sessionId].join(' ');
@@ -73,7 +73,7 @@ export const resumeNote = (moved?: { from: string; to: string }): string => (mov
 // a revive's SessionStart gets the whole brief, so what the session was told before is never read again
 export const dropBrief = (t: TerminalSlot): void => { if (t.agent) delete t.agent.brief; };
 
-export function markDormant(c: Character, flags?: string[]): void {
+export function markDormant(c: Robot, flags?: string[]): void {
   delete c.hint;
   delete c.codexDaemon;
   // its monitors and subagents die with it, which a finished turn says nothing of
@@ -84,7 +84,7 @@ export function markDormant(c: Character, flags?: string[]): void {
 
 // a plain side shell goes with its window; a second that ran an agent stays behind to be revived, unless the agent
 // sends no SessionEnd and the last poll saw it quit `atShell`
-export function loseSecond(c: Character, flags?: string[], atShell = false): void {
+export function loseSecond(c: Robot, flags?: string[], atShell = false): void {
   const a = c.second?.agent;
   if (a && !(atShell && !hooksFor(a.kind).includes('SessionEnd'))) markSlotDormant(c.second!, flags);
   else delete c.second;
@@ -93,7 +93,7 @@ export function loseSecond(c: Character, flags?: string[], atShell = false): voi
 // an agent resting this long, since its last turn or the user's last look, with nothing running for it and nothing
 // the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets.
 // A second terminal open is the user's own shell beside the agent, which only a sleep closes
-export function drowsy(c: Character, now: number, afterMs: number, seenAt = 0): boolean {
+export function drowsy(c: Robot, now: number, afterMs: number, seenAt = 0): boolean {
   const a = c.agent;
   if (!c.tmux || c.second?.tmux || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
   return (a.status === 'idle' || a.status === 'done') && now - Math.max(a.lastActivityAt, seenAt) >= afterMs;
@@ -144,7 +144,7 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
     const w = words[i];
     // svalld puts an OpenCode prompt last, and its words can pass for flags
     if (w === '--' || (kind === 'opencode' && w === '--prompt')) return out;
-    // codex takes resume or fork after its global flags, as the character's zsh puts --no-daemon first, and the
+    // codex takes resume or fork after its global flags, as the robot's zsh puts --no-daemon first, and the
     // session as a word among the options
     if (kind === 'codex' && !resume && (w === 'resume' || w === 'fork')) { resume = true; continue; }
     if (resume && isSessionId(w)) continue;
@@ -177,7 +177,7 @@ export function runsAgent(args: string, kind: AgentKind): boolean {
 }
 
 /** The launch flags a resume would repeat for `c`'s agent among `procs`; undefined when it can't be resumed. */
-export function sleepFlags(c: Character, procs: Pick<Proc, 'pid' | 'args'>[]): string[] | undefined {
+export function sleepFlags(c: Robot, procs: Pick<Proc, 'pid' | 'args'>[]): string[] | undefined {
   const a = c.agent;
   const proc = a && procs.find((p) => p.pid === a.pid);
   if (!a || !proc || !runsAgent(proc.args, a.kind) || !isSessionId(a.sessionId) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) return undefined;
@@ -243,15 +243,15 @@ export async function exited(pid: number, waitMs = 60_000): Promise<void> {
  *  put to sleep, until tmux has closed them, the agent has exited and a sleep has ended what it started. */
 export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>> };
 
-// an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
-// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each character, and
+// an agent idle past the fleet's limit is ended to free what it holds; its robot goes dormant, and a revive
+// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each robot, and
 // one `holding` a prompt for its agent has work still to come
 export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean, holding: (id: string) => boolean): Promise<void> {
   const hours = o.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
   if (!hours) return;
   const afterMs = hours * 3_600_000;
-  const due = (c: Character) => !holding(c.id) && drowsy(c, Date.now(), afterMs, seen.get(c.id));
-  const idle = Object.values(o.store.state.characters).filter(due);
+  const due = (c: Robot) => !holding(c.id) && drowsy(c, Date.now(), afterMs, seen.get(c.id));
+  const idle = Object.values(o.store.state.robots).filter(due);
   if (!idle.length) return;
   const procs = await o.processes();
   for (const c of idle) {
@@ -264,10 +264,10 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
     const flags = proc && startFlags(proc.args, a.kind);
     if (!proc || !flags || runsInBackground(proc.pid, procs) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) continue;
     // a prompt, a close or a revive while ps ran leaves it be
-    const cur = o.store.state.characters[c.id];
+    const cur = o.store.state.robots[c.id];
     if (!cur?.tmux || cur.tmux.windowId !== c.tmux?.windowId || !due(cur)) continue;
-    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
-    o.store.update((d) => { markDormant(d.characters[c.id], flags); });
+    // dormant before the kill: the SessionEnd the kill sends then finds no live robot to clear
+    o.store.update((d) => { markDormant(d.robots[c.id], flags); });
     const closing = o.tmux.killWindow(cur.tmux.windowId).then(
       () => exited(proc.pid).then(() => o.log.info(`${cur.name} dormant after ${hours} h idle`)),
       (e) => o.log.error(`dormant ${c.id}: ${String(e)}`),
@@ -278,7 +278,7 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
   }
 }
 
-// the quit's own work: every character dormant with the revive that resumes it, then the tmux server gone
+// the quit's own work: every robot dormant with the revive that resumes it, then the tmux server gone
 export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unknown>>): Promise<void> {
   // an agent ended for idleness or a sleep can take a minute to exit, and the server's end reaches it anyway
   const settled = Promise.all([...o.ending.values(), ...reviving.values()].map((p) => p.catch(() => {})));
@@ -288,9 +288,9 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
   // only a pid still running its agent is waited on, and killed if it outstays the wait
   const agentProc = (a?: Agent) => a && procs.find((p) => p.pid === a.pid && runsAgent(p.args, a.kind));
   const pids: number[] = [];
-  // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
+  // dormant before the kill: the SessionEnd the kill sends then finds no live robot to clear
   o.store.update((d) => {
-    for (const c of Object.values(d.characters)) {
+    for (const c of Object.values(d.robots)) {
       const second = agentProc(c.second?.agent);
       if (second) pids.push(second.pid);
       if (c.second?.tmux) loseSecond(c, second ? startFlags(second.args, c.second.agent!.kind) : undefined);

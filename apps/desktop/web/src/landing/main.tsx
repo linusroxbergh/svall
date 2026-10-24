@@ -6,7 +6,7 @@ import { Island } from '../map/Island.js';
 import { cardScale, labelScale } from '../map/layout.js';
 import { Token } from '../map/Token.js';
 import { theme } from '../theme.js';
-import { character, hold, islandModel, none, pointer, type Member, type Status } from './demo.js';
+import { robot, hold, islandModel, none, pointer, type Member, type Status } from './demo.js';
 import '../tokens.css';
 import '../fonts.css';
 import '../map/map.css';
@@ -21,13 +21,13 @@ const issue = (repo: string, n: number): ContextItem => ({ kind: 'issue', ref: `
 const linear = (n: number): ContextItem => ({ kind: 'linear', ref: `https://linear.app/acme/issue/SHOP-${n}`, label: `SHOP-${n}`, source: 'scribe' });
 
 const CAST: Crew[] = ([
-  { name: 'checkout redesign', portrait: 'fox', robot: 89, status: 'working', ctx: 46, links: [issue('storefront', 6)] },
-  { name: 'fix cart total', portrait: 'deer', robot: 88, status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
-  { name: 'a11y audit', portrait: 'owl', robot: 62, status: 'done', ctx: 71, links: [linear(133)] },
-  { name: 'flaky e2e', portrait: 'frog', robot: 83, status: 'idle', ctx: 12, links: [] },
-  { name: 'refund webhooks', portrait: 'elephant', robot: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
-  { name: 'review #1', portrait: 'lemur', robot: 80, status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
-  { name: 'changelog', portrait: 'penguin', robot: 8, status: 'working', ctx: 27, links: [] },
+  { name: 'checkout redesign', portrait: 'fox', figure: 89, status: 'working', ctx: 46, links: [issue('storefront', 6)] },
+  { name: 'fix cart total', portrait: 'deer', figure: 88, status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
+  { name: 'a11y audit', portrait: 'owl', figure: 62, status: 'done', ctx: 71, links: [linear(133)] },
+  { name: 'flaky e2e', portrait: 'frog', figure: 83, status: 'idle', ctx: 12, links: [] },
+  { name: 'refund webhooks', portrait: 'elephant', figure: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
+  { name: 'review #1', portrait: 'lemur', figure: 80, status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
+  { name: 'changelog', portrait: 'penguin', figure: 8, status: 'working', ctx: 27, links: [] },
 ] satisfies Omit<Member, 'id'>[]).map((m) => ({ ...m, id: m.name, since: 0 }));
 
 const ISLANDS = [
@@ -103,7 +103,7 @@ function DemoMap({ at }: { at: Cell[] }) {
           land={pointer} label={pointer} handle={pointer} hold={hold} />
       ))}
       {ISLANDS.flatMap((isl, i) => isl.crew.map((ci, k) => (
-        <Token key={ci} c={character(crew[ci], isl.id)} status={crew[ci].status}
+        <Token key={ci} c={robot(crew[ci], isl.id)} status={crew[ci].status}
           world={{ x: at[i].x + GRIDS[i].cells[k].x, y: at[i].y + GRIDS[i].cells[k].y }}
           selected={false} dragging={false} hover={false} pointer={pointer}
           onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />

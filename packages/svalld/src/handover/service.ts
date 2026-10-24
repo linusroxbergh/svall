@@ -305,7 +305,7 @@ export class HandoverService {
     if (last) this.emit({ event: 'handover.changed', data: { transactionId: last.transactionId, phase: last.phase } });
   }
 
-  /** Reports how far one character or root has come. */
+  /** Reports how far one robot or root has come. */
   emitEntity(data: Extract<Event, { event: 'handover.entity' }>['data']): void {
     this.emit({ event: 'handover.entity', data });
   }

@@ -1,4 +1,4 @@
-import type { Character, ContextItem } from '@svall/protocol';
+import type { Robot, ContextItem } from '@svall/protocol';
 import type { DisplayStatus } from '../selectors.js';
 
 // a github PR or issue reads as `repo #number`, so the pill says which repository it belongs to
@@ -24,11 +24,11 @@ export function linkText(l: ContextItem): string {
 }
 
 // Silence can mean an untrusted hook, a missing receiver, or another delivery failure.
-export const hintText = (c: Character): string | undefined =>
+export const hintText = (c: Robot): string | undefined =>
   c.hint && c.codexDaemon ? "This codex runs on Codex's shared background server, whose hooks can't tell terminals apart. Quit it and run codex --no-daemon."
   : c.hint === 'codex-silent' ? 'No updates from Codex. Run svall doctor and check /hooks in Codex.' : undefined;
 
-export const hintLabel = (c: Character): string => (c.codexDaemon ? '--no-daemon' : '/hooks');
+export const hintLabel = (c: Robot): string => (c.codexDaemon ? '--no-daemon' : '/hooks');
 
 // working, blocked and done spell the status out; idle and a bare shell read from the ring
 export function statusWord(status: DisplayStatus): string | undefined {

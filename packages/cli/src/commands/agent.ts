@@ -27,7 +27,7 @@ async function fleetState(home: string): Promise<FleetState | undefined> {
 
 export function agentCommand(target: () => Target, json: () => boolean): Command {
   return new Command('agent')
-    .description('show or set the main agent: what the scribe, mission control and svall char new --run run by default')
+    .description('show or set the main agent: what the scribe, mission control and svall robot new --run run by default')
     .argument('[name]', 'claude, codex or opencode')
     .action(async (name: string | undefined) => {
       const t = target();

@@ -2,37 +2,37 @@ import { expect, test } from './fixtures.js';
 
 test('drives the app with the Cmd chords', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('keys') });
-  // the path tmux reports for the pane, which the poll writes over the one a character was made with
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/private/tmp', name: 'ka' });
+  // the path tmux reports for the pane, which the poll writes over the one a robot was made with
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/private/tmp', name: 'ka' });
   await svall.open();
-  await page.getByTestId(`sb-char-${a.id}`).click();
+  await page.getByTestId(`sb-robot-${a.id}`).click();
 
   await page.keyboard.press('Meta+t');
-  await page.getByTestId('new-character-name').fill('kb');
-  await page.getByTestId('new-character-name').press('Enter');
+  await page.getByTestId('new-robot-name').fill('kb');
+  await page.getByTestId('new-robot-name').press('Enter');
   const surface = page.getByTestId('surface');
   const find = async () =>
-    Object.values((await svall.api.call('state.get', {})).characters).find((c) => c.islandId === island.id && c.id !== a.id);
+    Object.values((await svall.api.call('state.get', {})).robots).find((c) => c.islandId === island.id && c.id !== a.id);
   await expect.poll(async () => (await find())?.id).toBeTruthy();
   const created = (await find())!;
   expect(created.cwd).toBe('/private/tmp');
-  // the new character is viewed on the board: no card, no view change
+  // the new robot is viewed on the board: no card, no view change
   await expect(page.getByTestId('board')).toBeVisible();
-  await expect(surface).toHaveAttribute('data-char', created.id);
+  await expect(surface).toHaveAttribute('data-robot', created.id);
 
   // Cmd+2 shows the browser beside the terminal and Cmd+1 puts it away again
   await page.keyboard.press('Meta+2');
   await expect(page.getByTestId('browser-area')).toBeVisible();
   await page.keyboard.press('Meta+1');
   await expect(page.getByTestId('browser-area')).toHaveCount(0);
-  await expect(surface).toHaveAttribute('data-char', created.id);
+  await expect(surface).toHaveAttribute('data-robot', created.id);
 
-  // the side card edits the viewed character; Escape closes it and the terminal stays put
+  // the side card edits the viewed robot; Escape closes it and the terminal stays put
   await expect(page.getByTestId('side-card')).toBeVisible();
   await expect(page.getByTestId('side-name')).toHaveValue('kb');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('side-card')).toBeHidden();
-  await expect(surface).toHaveAttribute('data-char', created.id);
+  await expect(surface).toHaveAttribute('data-robot', created.id);
 
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('map')).toBeVisible();
@@ -43,11 +43,11 @@ test('drives the app with the Cmd chords', async ({ page, svall }) => {
   await page.keyboard.press('Meta+j');
   await expect(page.getByTestId(`token-${created.id}`)).toHaveAttribute('data-selected', 'true');
   await page.keyboard.press('Enter');
-  await expect(card).toHaveAttribute('data-char', created.id);
+  await expect(card).toHaveAttribute('data-robot', created.id);
 
   await page.keyboard.press('Meta+w');
   await expect(card).toHaveCount(0);
-  // closing the character itself is confirmed: Enter deletes
+  // closing the robot itself is confirmed: Enter deletes
   await page.keyboard.press('Meta+w');
   await expect(page.getByTestId('confirm-close')).toBeVisible();
   await page.keyboard.press('Enter');
@@ -56,9 +56,9 @@ test('drives the app with the Cmd chords', async ({ page, svall }) => {
   await expect(card).toHaveCount(0);
 });
 
-test('Cmd+W asks before deleting: Esc, Cancel and × keep the character, Delete removes it', async ({ page, svall }) => {
+test('Cmd+W asks before deleting: Esc, Cancel and × keep the robot, Delete removes it', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('confirm') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'kc' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'kc' });
   await svall.open('map');
   const token = page.getByTestId(`token-${c.id}`);
   const dialog = page.getByTestId('confirm-close');
@@ -75,7 +75,7 @@ test('Cmd+W asks before deleting: Esc, Cancel and × keep the character, Delete 
   await expect(dialog).toHaveCount(0);
   await expect(token).toBeVisible();
 
-  // Enter presses the × it reached, which keeps the character too
+  // Enter presses the × it reached, which keeps the robot too
   await page.keyboard.press('Meta+w');
   await page.keyboard.press('Shift+Tab');
   await expect(page.getByTestId('confirm-close-close')).toBeFocused();
@@ -90,7 +90,7 @@ test('Cmd+W asks before deleting: Esc, Cancel and × keep the character, Delete 
 
 test('a second Cmd+W deletes like Enter', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('confirmw') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'kw' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'kw' });
   await svall.open('map');
   const token = page.getByTestId(`token-${c.id}`);
   await token.click();
@@ -102,25 +102,25 @@ test('a second Cmd+W deletes like Enter', async ({ page, svall }) => {
   await expect(token).toHaveCount(0);
 });
 
-test('Cmd+W on the board confirms with Enter and views the next character', async ({ page, svall }) => {
+test('Cmd+W on the board confirms with Enter and views the next robot', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('confirmb') });
-  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ba' });
-  const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'bb' });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'ba' });
+  const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'bb' });
   await svall.open();
-  await page.getByTestId(`sb-char-${a.id}`).click();
+  await page.getByTestId(`sb-robot-${a.id}`).click();
   const surface = page.getByTestId('surface');
-  await expect(surface).toHaveAttribute('data-char', a.id);
+  await expect(surface).toHaveAttribute('data-robot', a.id);
 
   await page.keyboard.press('Meta+w');
   await expect(page.getByTestId('confirm-close')).toContainText('ba');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId(`sb-char-${a.id}`)).toHaveCount(0);
-  await expect(surface).toHaveAttribute('data-char', b.id);
+  await expect(page.getByTestId(`sb-robot-${a.id}`)).toHaveCount(0);
+  await expect(surface).toHaveAttribute('data-robot', b.id);
 });
 
 test('Enter opens the selection after a button was pressed with the mouse', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('focus') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'kf' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'kf' });
   await svall.open('map');
 
   await page.getByTestId(`token-${c.id}`).click();
@@ -129,5 +129,5 @@ test('Enter opens the selection after a button was pressed with the mouse', asyn
   await page.getByTestId('home-arrange').click();
 
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-char', c.id);
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
 });

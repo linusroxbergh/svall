@@ -13,22 +13,22 @@ beforeEach(() => {
   vi.useFakeTimers();
   freshStore();
   const f = fleet();
-  delete f.characters.c1.tmux;
+  delete f.robots.c1.tmux;
   store.getState().setFleet(f);
 });
 
 afterEach(() => { vi.useRealTimers(); });
 
-test('opening a dormant character wakes it once it has stayed in view a moment', () => {
+test('opening a dormant robot wakes it once it has stayed in view a moment', () => {
   render(<TerminalArea id="c1" />);
   expect(screen.getByTestId('resuming')).toBeTruthy();
   expect(screen.queryByTestId('revive')).toBeNull();
   expect(call).not.toHaveBeenCalled();
   act(() => { vi.advanceTimersByTime(1000); });
-  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c1' });
+  expect(call).toHaveBeenCalledWith('robot.revive', { id: 'c1' });
 });
 
-test('passing by a dormant character wakes nothing', () => {
+test('passing by a dormant robot wakes nothing', () => {
   const { unmount } = render(<TerminalArea id="c1" />);
   act(() => { vi.advanceTimersByTime(500); });
   unmount();
@@ -36,10 +36,10 @@ test('passing by a dormant character wakes nothing', () => {
   expect(call).not.toHaveBeenCalled();
 });
 
-test('a character that goes dormant while open waits for the button', () => {
+test('a robot that goes dormant while open waits for the button', () => {
   render(<TerminalArea id="c0" />);
   const f = fleet();
-  delete f.characters.c0.tmux;
+  delete f.robots.c0.tmux;
   act(() => store.getState().setFleet(f));
   act(() => { vi.advanceTimersByTime(1000); });
   expect(screen.getByTestId('revive')).toBeTruthy();
@@ -48,18 +48,18 @@ test('a character that goes dormant while open waits for the button', () => {
 
 const closedForIdleness = () => {
   const f = fleet();
-  f.characters.c0.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 0 };
+  f.robots.c0.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 0 };
   render(<TerminalArea id="c0" />);
-  delete f.characters.c0.tmux;
-  f.characters.c0.revive = { command: 'claude --resume s' };
+  delete f.robots.c0.tmux;
+  f.robots.c0.revive = { command: 'claude --resume s' };
   act(() => store.getState().setFleet(f));
 };
 
-test('a character closed for idleness while open resumes rather than asking', () => {
+test('a robot closed for idleness while open resumes rather than asking', () => {
   closedForIdleness();
   expect(screen.getByTestId('resuming').textContent).toBe('Resuming the session…');
   act(() => { vi.advanceTimersByTime(1000); });
-  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c0' });
+  expect(call).toHaveBeenCalledWith('robot.revive', { id: 'c0' });
 });
 
 test('one closed for idleness while the app is away waits for it to come back', () => {
@@ -69,10 +69,10 @@ test('one closed for idleness while the app is away waits for it to come back', 
   expect(call).not.toHaveBeenCalled();
   act(() => store.getState().setActive(true));
   act(() => { vi.advanceTimersByTime(1000); });
-  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c0' });
+  expect(call).toHaveBeenCalledWith('robot.revive', { id: 'c0' });
 });
 
-test('a character with no session to resume says it is starting its terminal', () => {
+test('a robot with no session to resume says it is starting its terminal', () => {
   render(<TerminalArea id="c1" />);
   expect(screen.getByTestId('resuming').textContent).toBe('Starting the terminal…');
 });
@@ -88,8 +88,8 @@ test('a wake the fleet refuses says why and leaves the button', async () => {
 test('one a handover could not resume says why and waits for the button while the fleet asks for handover', () => {
   act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
   const f = fleet();
-  delete f.characters.c1.tmux;
-  f.characters.c1.resumeError = 'codex exited back to its shell';
+  delete f.robots.c1.tmux;
+  f.robots.c1.resumeError = 'codex exited back to its shell';
   act(() => store.getState().setFleet(f));
   render(<TerminalArea id="c1" />);
   act(() => { vi.advanceTimersByTime(1000); });
@@ -101,9 +101,9 @@ test('one a handover could not resume says why and waits for the button while th
 test('starting afresh from a failed resume asks first, and says where the old session stays once it has started', async () => {
   act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
   const f = fleet();
-  delete f.characters.c1.tmux;
-  f.characters.c1.agent = { kind: 'claude', sessionId: 'old-1', transcriptPath: '/h/.claude/projects/-w/old-1.jsonl', status: 'idle', lastActivityAt: 0 };
-  f.characters.c1.resumeError = 'claude exited back to its shell';
+  delete f.robots.c1.tmux;
+  f.robots.c1.agent = { kind: 'claude', sessionId: 'old-1', transcriptPath: '/h/.claude/projects/-w/old-1.jsonl', status: 'idle', lastActivityAt: 0 };
+  f.robots.c1.resumeError = 'claude exited back to its shell';
   act(() => store.getState().setFleet(f));
   render(<TerminalArea id="c1" />);
   act(() => { screen.getByTestId('fresh').click(); });
@@ -114,11 +114,11 @@ test('starting afresh from a failed resume asks first, and says where the old se
 
   act(() => { screen.getByTestId('fresh').click(); });
   await act(async () => { screen.getByTestId('fresh-go').click(); });
-  expect(call).toHaveBeenCalledWith('char.fresh', { id: 'c1' });
+  expect(call).toHaveBeenCalledWith('robot.fresh', { id: 'c1' });
   expect(store.getState().toast).toEqual({ text: 'c1 started fresh; old session old-1 kept at /h/.claude/projects/-w/old-1.jsonl', tone: 'ok' });
 });
 
-test('a dormant character wakes nothing while a handover rests the fleet', () => {
+test('a dormant robot wakes nothing while a handover rests the fleet', () => {
   act(() => store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', safe: [], reason: 'moving' } }));
   render(<TerminalArea id="c1" />);
   act(() => { vi.advanceTimersByTime(5000); });

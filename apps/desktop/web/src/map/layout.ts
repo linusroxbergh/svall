@@ -1,4 +1,4 @@
-import { SPACING, isLand, pillWidth, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { SPACING, isLand, pillWidth, type Cell, type Robot, type FleetState, type Island } from '@svall/protocol';
 import { mapIslands } from '../selectors.js';
 import { theme, tokenPx } from '../theme.js';
 
@@ -12,7 +12,7 @@ const foot = (i: Island): number => i.position.y + i.size.h;
 export type Crew = Record<string, Cell[]>;
 export const crewOf = (f: FleetState): Crew => {
   const out: Crew = {};
-  for (const c of Object.values(f.characters)) (out[c.islandId] ??= []).push(c.cell);
+  for (const c of Object.values(f.robots)) (out[c.islandId] ??= []).push(c.cell);
   return out;
 };
 
@@ -175,9 +175,9 @@ export function cellOwner(f: FleetState, cell: Cell): { island: Island; local: C
 export const islandNear = (f: FleetState, c: Cell): string | undefined =>
   mapIslands(f).find((i) => c.x >= i.position.x - 1 && c.y >= i.position.y - 1 && c.x <= i.position.x + i.size.w && c.y <= i.position.y + i.size.h)?.id;
 
-export const characterAt = (f: FleetState, islandId: string, local: Cell): Character | undefined =>
-  Object.values(f.characters).find((c) => c.islandId === islandId && c.cell.x === local.x && c.cell.y === local.y);
+export const robotAt = (f: FleetState, islandId: string, local: Cell): Robot | undefined =>
+  Object.values(f.robots).find((c) => c.islandId === islandId && c.cell.x === local.x && c.cell.y === local.y);
 
-// a cell within SPACING of another character is taken (the other's own cell swaps)
+// a cell within SPACING of another robot is taken (the other's own cell swaps)
 export const crowded = (f: FleetState, islandId: string, local: Cell, exceptId: string): boolean =>
-  Object.values(f.characters).some((c) => c.id !== exceptId && c.islandId === islandId && Math.max(Math.abs(c.cell.x - local.x), Math.abs(c.cell.y - local.y)) <= SPACING);
+  Object.values(f.robots).some((c) => c.id !== exceptId && c.islandId === islandId && Math.max(Math.abs(c.cell.x - local.x), Math.abs(c.cell.y - local.y)) <= SPACING);

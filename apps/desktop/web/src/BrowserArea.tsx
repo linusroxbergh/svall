@@ -11,7 +11,7 @@ import { isVeiled } from './selectors.js';
 export const rectOf = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
 
 export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
-  const c = useApp((s) => s.fleet.characters[id]);
+  const c = useApp((s) => s.fleet.robots[id]);
   const veiled = useApp(isVeiled);
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);

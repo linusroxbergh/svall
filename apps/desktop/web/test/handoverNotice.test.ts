@@ -29,8 +29,8 @@ describe('banners for a handover while the app is in the background', () => {
     expect(w.posted()).toEqual([]);
     w.store.getState().handoverEvent({ event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: 'ada is still working' }] } });
     // the same decision again posts nothing more
-    w.store.getState().handoverEvent({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'character', id: 'c1', phase: 'freeze' } });
-    w.store.getState().handoverEvent(result({ status: 'complete', transactionId: 'tx', generation: 2, characters: [] }));
+    w.store.getState().handoverEvent({ event: 'handover.entity', data: { transactionId: 'tx', kind: 'robot', id: 'c1', phase: 'freeze' } });
+    w.store.getState().handoverEvent(result({ status: 'complete', transactionId: 'tx', generation: 2, robots: [] }));
     expect(w.posted()).toEqual([
       { type: 'notify.post', key: 'handover', title: 'Handover waits for you', subtitle: '', body: 'One thing to decide before the fleet goes on.', sound: false, actions: false },
       { type: 'notify.post', key: 'handover', title: 'Handover done', subtitle: '', body: 'The fleet runs on studio now.', sound: false, actions: false },
@@ -74,7 +74,7 @@ describe('banners for a handover while the app is in the background', () => {
   it('posts nothing in front, with banners off, or for a run read back at launch', () => {
     for (const w of [world({ active: true }), world({ on: false })]) {
       w.store.getState().handoverFollow('studio');
-      w.store.getState().handoverEvent(result({ status: 'complete', transactionId: 'tx', generation: 2, characters: [] }));
+      w.store.getState().handoverEvent(result({ status: 'complete', transactionId: 'tx', generation: 2, robots: [] }));
       expect(w.posted()).toEqual([]);
     }
     const w = world();

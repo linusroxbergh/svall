@@ -1,5 +1,5 @@
 // Svall's plugin for OpenCode, which svalld writes into OpenCode's plugins folder and OpenCode loads into every server.
-// Inside a Svall character it reports the session to svalld as hook events, gives the agent its brief as system text,
+// Inside a Svall robot it reports the session to svalld as hook events, gives the agent its brief as system text,
 // and logs the session for Svall to read.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ const MAX_PROMPT = 4000;
 const MAX_TOOL = 2000;
 const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
 
-// Svall resumes a dormant character with `opencode --standalone -s <id>`, and its private server runs plugins as a
+// Svall resumes a dormant robot with `opencode --standalone -s <id>`, and its private server runs plugins as a
 // child process, so the TUI's command line is read from ps, where a prompt's words pass for flags
 const resumedFrom = (argv) => {
   const end = argv.indexOf('--prompt');
@@ -43,16 +43,17 @@ const monitors = new Map();
 const exited = new Set();
 
 async function setup(ctx) {
-  const charId = process.env.SVALL_CHAR_ID;
+  // a session an older svalld started carries SVALL_CHAR_ID
+  const robotId = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
   const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
   // the shared background service serves every session of the user, whatever pane started it
-  if (!charId || variantOf(home) !== VARIANT || process.argv.includes('--service')) return;
+  if (!robotId || variantOf(home) !== VARIANT || process.argv.includes('--service')) return;
   // worktree_create puts a worktree in OpenCode's data folder, away from the repository; without it the agent makes
   // one inside the main checkout, as its brief says. An OpenCode that refuses keeps the tool, and the hooks below still go on
   try {
     await ctx.tool.transform((t) => t.remove('opencode_worktree_create'));
   } catch (e) {
-    process.stderr.write(`svall: OpenCode kept opencode_worktree_create for this character's agent: ${e?.message ?? e}\n`);
+    process.stderr.write(`svall: OpenCode kept opencode_worktree_create for this robot's agent: ${e?.message ?? e}\n`);
   }
   const directory = ctx.location.directory;
   const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
@@ -100,7 +101,7 @@ async function setup(ctx) {
   // where the agent works
   let workdir;
   const hook = (name, session, fields = {}) => send({
-    charId, term, backend: 'opencode', pid,
+    robotId, term, backend: 'opencode', pid,
     hook: { hook_event_name: name, session_id: session, transcript_path: logOf(session), cwd: workdir ?? directory, ...fields },
   }, name === 'SessionStart' || name === 'UserPromptSubmit');
 
@@ -168,7 +169,7 @@ async function setup(ctx) {
   const resumed = resumedFrom(process.argv) ?? resumedFrom(commandLine());
   if (resumed) void start(resumed).then(() => {
     if (term) return;
-    const file = path.join(home, `${charId}.prompt`);
+    const file = path.join(home, `${robotId}.prompt`);
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); fs.rmSync(file); } catch { return; }
     if (text.trim()) void wake(resumed, text);
@@ -189,7 +190,7 @@ async function setup(ctx) {
     const max = await limitOf(model);
     if (!max) return;
     const used = t.input + t.output + t.reasoning + (t.cache?.read ?? 0) + (t.cache?.write ?? 0);
-    void send({ charId, term, status: { sessionId: id, contextPct: Math.round((used / max) * 100), model: model.id } });
+    void send({ robotId, term, status: { sessionId: id, contextPct: Math.round((used / max) * 100), model: model.id } });
   };
 
   const watching = (root) => ({ background_tasks: [...monitors].flatMap(([shell, r]) => (r === root ? [{ type: 'shell', id: shell }] : [])) });

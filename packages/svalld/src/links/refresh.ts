@@ -13,7 +13,7 @@ export type Deps = {
 };
 const defaults: Deps = { lookupPr: defaultLookupPr, originUrl: defaultOriginUrl };
 
-// how many characters may be out asking git and gh at once
+// how many robots may be out asking git and gh at once
 export const CONCURRENCY = 4;
 // the ticks a full pass over the fleet is spread across, so no one tick carries the whole crew
 export const SLICES = 10;
@@ -27,17 +27,17 @@ const repoLabel = (url: string): string => { try { return new URL(url).pathname.
 
 type Change = (d: FleetState) => void;
 
-/** What a character's links should become, as a change to apply; nothing when the character is gone. */
-async function linkChange(store: Store, config: Config, charId: string, deps: Partial<Deps>): Promise<Change | undefined> {
+/** What a robot's links should become, as a change to apply; nothing when the robot is gone. */
+async function linkChange(store: Store, config: Config, robotId: string, deps: Partial<Deps>): Promise<Change | undefined> {
   const { lookupPr, originUrl } = { ...defaults, ...deps };
-  const c = store.state.characters[charId];
+  const c = store.state.robots[robotId];
   if (!c) return undefined;
   const repo = await resolveRepo(c.cwd);
   // a detached HEAD names no branch to find a PR or ticket by: in the checkout on record, as mid-rebase, the links stand
   const detached = repo?.branch === 'HEAD';
   const hold = detached && c.repo?.root === repo.root;
   const auto: ContextItem[] = [];
-  // a lookup that failed says nothing of the PR, so the one on record stands while the character keeps to its branch
+  // a lookup that failed says nothing of the PR, so the one on record stands while the robot keeps to its branch
   let failed = false;
   if (repo && !hold) {
     const pr = detached ? undefined : await lookupPr(c.cwd, repo.branch).catch(() => { failed = true; return undefined; });
@@ -52,8 +52,8 @@ async function linkChange(store: Store, config: Config, charId: string, deps: Pa
     }
   }
   return (d) => {
-    const cur = d.characters[charId];
-    // a character that moved while its links were being read is left to the refresh that follows the move
+    const cur = d.robots[robotId];
+    // a robot that moved while its links were being read is left to the refresh that follows the move
     if (!cur || cur.cwd !== c.cwd) return;
     if (repo) cur.repo = repo; else delete cur.repo;
     if (hold) return;
@@ -78,8 +78,8 @@ async function linkChange(store: Store, config: Config, charId: string, deps: Pa
   };
 }
 
-export async function refreshLinks(store: Store, config: Config, charId: string, deps: Partial<Deps> = {}): Promise<void> {
-  const change = await linkChange(store, config, charId, deps);
+export async function refreshLinks(store: Store, config: Config, robotId: string, deps: Partial<Deps> = {}): Promise<void> {
+  const change = await linkChange(store, config, robotId, deps);
   if (change) store.update(change);
 }
 

@@ -3,10 +3,10 @@ import type { Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import type { AppStore } from './store/index.js';
 
-export type DropTarget = { kind: 'island' | 'char'; id: string; after?: boolean };
+export type DropTarget = { kind: 'island' | 'robot'; id: string; after?: boolean };
 
 export function parseDropTarget(attr: string | null | undefined): DropTarget | undefined {
-  const m = attr?.match(/^(island|char):(.+)$/);
+  const m = attr?.match(/^(island|robot):(.+)$/);
   return m ? { kind: m[1] as DropTarget['kind'], id: m[2] } : undefined;
 }
 
@@ -20,7 +20,7 @@ export function appendItems(api: Api, fleet: FleetState, target: DropTarget, pat
   const items: ContextItem[] = paths.map((ref) => ({ kind: 'file', ref, label: '', source: 'manual' }));
   const call = target.kind === 'island'
     ? fleet.islands[target.id] && (() => api.call('island.update', { id: target.id, context: [...fleet.islands[target.id].context, ...items] }))
-    : fleet.characters[target.id] && (() => api.call('char.update', { id: target.id, context: [...fleet.characters[target.id].context, ...items] }));
+    : fleet.robots[target.id] && (() => api.call('robot.update', { id: target.id, context: [...fleet.robots[target.id].context, ...items] }));
   call?.()?.catch((e: Error) => onError(e.message));
 }
 

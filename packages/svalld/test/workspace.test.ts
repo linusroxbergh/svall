@@ -640,7 +640,7 @@ describe('Workspace watch', () => {
     ws.close();
   });
 
-  it('follows a character whose root moves, and lets go of one that is gone', async () => {
+  it('follows a robot whose root moves, and lets go of one that is gone', async () => {
     const a = repo();
     const b = repo();
     const roots: Record<string, string> = { c: a };

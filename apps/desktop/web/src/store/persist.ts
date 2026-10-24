@@ -63,6 +63,8 @@ export const SETTINGS_KEY = 'svall.settings';
 // the first-run tour's step, or 'done'
 export const TOUR_KEY = 'svall.tour';
 
+// an older app saved a robot's side card sections as character.* and its shelf group as character
+const liftRobot = (raw: string | null): string | null => raw?.replaceAll('"character', '"robot') ?? null;
 const isView = (v: unknown): v is View => v === 'map' || v === 'board';
 const readJson = <T,>(raw: string | null, ok: (v: unknown) => v is T): T | undefined => {
   if (raw === null) return undefined;
@@ -105,13 +107,13 @@ export function localAppStorage(fleet?: string): AppStorage | undefined {
       setResourceCols: (v) => write(COLS_KEY, JSON.stringify(v)),
       getResourceSize: () => { const v = readJson(read(SIZE_KEY), isHalf); return v && { w: clampHalf(v.w), h: clampHalf(v.h) }; },
       setResourceSize: (v) => write(SIZE_KEY, JSON.stringify(v)),
-      getResourceGroups: () => readJson(read(GROUPS_KEY), isTiers),
+      getResourceGroups: () => readJson(liftRobot(read(GROUPS_KEY)), isTiers),
       setResourceGroups: (v) => write(GROUPS_KEY, JSON.stringify(v)),
       getSideWidths: () => { const w = readJson(read(SIDES_KEY), isSides); return w && clampSides(w); },
       setSideWidths: (v) => write(SIDES_KEY, JSON.stringify(v)),
       getFilesTree: () => { const t = readJson(read(TREE_KEY), isTree); return t?.width === undefined ? t : { ...t, width: clampTree(t.width) }; },
       setFilesTree: (v) => write(TREE_KEY, JSON.stringify(v)),
-      getSections: () => readJson(read(SECTIONS_KEY), isSections),
+      getSections: () => readJson(liftRobot(read(SECTIONS_KEY)), isSections),
       setSections: (v) => write(SECTIONS_KEY, JSON.stringify(v)),
       getSettings: () => { const raw = read(SETTINGS_KEY); if (raw === null) return undefined; try { return readSettings(JSON.parse(raw)); } catch { return undefined; } },
       setSettings: (v) => write(SETTINGS_KEY, JSON.stringify(v)),

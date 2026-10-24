@@ -192,7 +192,7 @@ describe('home island', () => {
   });
   it('an occupied slot swaps', () => {
     const f = fleet();
-    f.characters.c9 = chr('c9', 'home', { x: 1, y: 1 });
+    f.robots.c9 = chr('c9', 'home', { x: 1, y: 1 });
     const it_ = createInteractions();
     it_.handle({ type: 'down', cell: { x: 1, y: 1 }, target: { kind: 'figure', id: 'c0' }, time: 0 }, f);
     it_.handle({ type: 'move', cell: { x: 99, y: 99 }, home: { x: 1, y: 1 }, time: 10 }, f);
@@ -202,8 +202,8 @@ describe('home island', () => {
   });
   it('past the last slot of a full row asks for home alone, so the fleet widens it', () => {
     const f = fleet();
-    f.characters.h1 = chr('h1', 'home', { x: 1, y: 1 });
-    f.characters.h4 = chr('h4', 'home', { x: 4, y: 1 });
+    f.robots.h1 = chr('h1', 'home', { x: 1, y: 1 });
+    f.robots.h4 = chr('h4', 'home', { x: 4, y: 1 });
     const it_ = createInteractions();
     it_.handle({ type: 'down', cell: { x: 1, y: 1 }, target: { kind: 'figure', id: 'c0' }, time: 0 }, f);
     it_.handle({ type: 'move', cell: { x: 99, y: 99 }, home: { x: 7, y: 1 }, time: 10 }, f);

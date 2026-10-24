@@ -62,7 +62,7 @@ export function manifestProblems(m: TransferManifestV1, landed: readonly LandedR
   }
   for (const s of m.sessions) {
     const problem = absoluteProblem(s.destinationHome) ?? absoluteProblem(s.destinationPath) ?? filesProblem(s.files, 'dir');
-    if (problem) bad({ kind: 'character', id: s.characterId }, `session ${s.sessionId}: ${problem}`);
+    if (problem) bad({ kind: 'robot', id: s.robotId }, `session ${s.sessionId}: ${problem}`);
   }
   for (const g of m.git ?? []) {
     const places = [g.commonDir, ...(g.main ? [g.main.path, g.main.gitDir] : []), ...g.worktrees.flatMap((w) => [w.path, w.gitDir])];
@@ -91,7 +91,7 @@ export function gitProblems(m: TransferManifestV1, carried: readonly string[]): 
 export function sessionProblems(m: TransferManifestV1, homes: Partial<Record<AgentKind, string>>): Blocker[] {
   const blockers: Blocker[] = [];
   for (const s of m.sessions) {
-    const entity: HandoverEntity = { kind: 'character', id: s.characterId };
+    const entity: HandoverEntity = { kind: 'robot', id: s.robotId };
     const home = homes[s.agent];
     if (!home || s.destinationHome !== home) {
       blockers.push({ code: 'agent_cli_missing', message: `${s.agent} keeps its sessions in ${home ?? 'no home'} on this machine, not ${s.destinationHome}`, entity });
@@ -125,7 +125,7 @@ export type Imported = { state: FleetState; fleet: FleetConfig };
  */
 export function importState(m: TransferManifestV1): Imported {
   const state = exportSnapshot(FleetState.parse(m.snapshot));
-  for (const c of Object.values(state.characters)) {
+  for (const c of Object.values(state.robots)) {
     // a terminal keeps the resume it went dormant with, launch flags and all, while it still has the agent whose session travels
     const [kept, keptSecond] = [c, c.second].map((t) => (t?.agent && t.revive?.command ? { command: portableRevive(t.revive.command) } : undefined));
     // a turn a crash, or the handover's rest, cut short travels with it

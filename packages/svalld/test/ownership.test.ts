@@ -279,9 +279,9 @@ describe('the mutation fence', () => {
     }
   });
 
-  it('refuses starring a character, unstarring one, and updating one, on an inactive replica and while frozen', async () => {
+  it('refuses starring a robot, unstarring one, and updating one, on an inactive replica and while frozen', async () => {
     for (const [o, code] of [[inactive(), 'not_owner'], [await frozen(), 'frozen']] as const) {
-      for (const method of ['char.star', 'char.unstar', 'char.update'] as const) {
+      for (const method of ['robot.star', 'robot.unstar', 'robot.update'] as const) {
         const res = await call(o, method);
         expect('error' in res && res.error.code, method).toBe(code);
       }
@@ -290,7 +290,7 @@ describe('the mutation fence', () => {
 
   it('refuses putting a robot to sleep on an inactive replica and while frozen, and reads the load on either', async () => {
     for (const [o, code] of [[inactive(), 'not_owner'], [await frozen(), 'frozen']] as const) {
-      const slept = await dispatch({ id: 1, method: 'char.sleep', params: { id: 'c_a' } }, trapCtx(o));
+      const slept = await dispatch({ id: 1, method: 'robot.sleep', params: { id: 'c_a' } }, trapCtx(o));
       expect('error' in slept && slept.error.code).toBe(code);
       const load = await call(o, 'load.get');
       expect('error' in load && load.error.code).toBe(REACHED);
@@ -394,8 +394,8 @@ runIf('an inactive replica', () => {
     const transcript = path.join(home, 'transcript.jsonl');
     fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'imported turn' } })}\n`);
     fs.writeFileSync(paths.state, JSON.stringify({
-      version: 9, islands: { i1: { id: 'i1', name: 'isle', description: 'an imported isle', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 6 }, seed: 1 } },
-      characters: {
+      version: 10, islands: { i1: { id: 'i1', name: 'isle', description: 'an imported isle', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 6 }, seed: 1 } },
+      robots: {
         c1: {
           id: 'c1', islandId: 'i1', cell: { x: 1, y: 1 }, name: 'ada', note: '', portrait: 'owl', instructions: '', cwd: repo, context: [],
           shell: { lastOutputAt: 1 }, unread: false,
@@ -411,16 +411,16 @@ runIf('an inactive replica', () => {
     homes.push(home);
     const client = await TestClient.connect(d.port, d.token);
     try {
-      const snap = await client.call('state.get') as { result: { characters: Record<string, unknown> } };
-      expect(Object.keys(snap.result.characters)).toEqual(['c1']);
-      expect((await client.call('char.show', { id: 'c1' }) as { result: { text: string } }).result.text).toContain('ada');
-      expect((await client.call('char.read', { id: 'c1', source: 'transcript' }) as { result: { text: string } }).result.text).toContain('imported turn');
+      const snap = await client.call('state.get') as { result: { robots: Record<string, unknown> } };
+      expect(Object.keys(snap.result.robots)).toEqual(['c1']);
+      expect((await client.call('robot.show', { id: 'c1' }) as { result: { text: string } }).result.text).toContain('ada');
+      expect((await client.call('robot.read', { id: 'c1', source: 'transcript' }) as { result: { text: string } }).result.text).toContain('imported turn');
       const status = await client.call('repo.status', { id: 'c1' });
       expect('result' in status).toBe(true);
 
       for (const [method, params] of [
         ['island.create', { name: 'no' }],
-        ['char.create', { islandId: 'i1', cwd: '/tmp' }],
+        ['robot.create', { islandId: 'i1', cwd: '/tmp' }],
         ['term.attach', { id: 'c1' }],
         ['fs.write', { id: 'c1', path: 'x.txt', text: 'no', mtimeMs: 0 }],
         ['browser.open', { id: 'c1', url: 'https://example.com' }],
@@ -732,7 +732,7 @@ runIf('a frozen fleet', () => {
   it('leaves a window that closes under it alone', async () => {
     const { fleet, store, tmux, ownership, paths } = await boot();
     const island = fleet.createIsland({ name: 'held' });
-    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    const c = await fleet.createRobot({ islandId: island.id, cwd: '/tmp' });
     await ownership.freeze(transaction);
     await fleet.settle();
     const written = fs.statSync(paths.state).mtimeMs;
@@ -742,7 +742,7 @@ runIf('a frozen fleet', () => {
     await waitFor(async () => !(await tmux.listWindows()).some((w) => w.windowId === c.tmux!.windowId));
     await new Promise((r) => setTimeout(r, 400));
 
-    expect(store.state.characters[c.id].tmux).toEqual(c.tmux);
+    expect(store.state.robots[c.id].tmux).toEqual(c.tmux);
     expect(JSON.stringify(store.state)).toBe(snapshot);
     expect(fs.statSync(paths.state).mtimeMs).toBe(written);
   });
@@ -750,13 +750,13 @@ runIf('a frozen fleet', () => {
   it('settles the background writes that were already running when it froze', async () => {
     let release = (): void => {};
     const gate = new Promise<void>((r) => { release = r; });
-    const refreshLinks: RefreshLinks = async (store, _config, charId) => {
+    const refreshLinks: RefreshLinks = async (store, _config, robotId) => {
       await gate;
-      store.update((d) => { const c = d.characters[charId]; if (c) c.note = 'refreshed'; });
+      store.update((d) => { const c = d.robots[robotId]; if (c) c.note = 'refreshed'; });
     };
     const { fleet, store, ownership } = await boot({ refreshLinks });
     const island = fleet.createIsland({ name: 'busy' });
-    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    const c = await fleet.createRobot({ islandId: island.id, cwd: '/tmp' });
 
     await ownership.freeze(transaction);
     let settled = false;
@@ -764,11 +764,11 @@ runIf('a frozen fleet', () => {
     await new Promise((r) => setTimeout(r, 200));
     // the refresh started before the freeze is still in flight, so settle is still waiting on it
     expect(settled).toBe(false);
-    expect(store.state.characters[c.id].note).toBe('');
+    expect(store.state.robots[c.id].note).toBe('');
 
     release();
     await done;
-    expect(store.state.characters[c.id].note).toBe('refreshed');
+    expect(store.state.robots[c.id].note).toBe('refreshed');
     const after = JSON.stringify(store.state);
     await new Promise((r) => setTimeout(r, 400));
     expect(JSON.stringify(store.state)).toBe(after);
@@ -802,17 +802,17 @@ runIf('a replica that becomes the owner', () => {
     // mission control is the poll's first write, and a live pane proves the control client attached
     expect(store.state.islands.home.kind).toBe('home');
     const island = fleet.createIsland({ name: 'woken' });
-    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    const c = await fleet.createRobot({ islandId: island.id, cwd: '/tmp' });
     await fleet.run(c.id, 'echo awake', true);
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('awake'));
 
-    const before = store.state.characters[c.id];
+    const before = store.state.robots[c.id];
     const windows = (await tmux.listWindows()).length;
     await fleet.activate();
     await new Promise((r) => setTimeout(r, 300));
     // a second activate leaves no second control client behind, and so no second poll either
     expect(connect).toHaveBeenCalledTimes(1);
-    expect(store.state.characters[c.id].tmux).toEqual(before.tmux);
+    expect(store.state.robots[c.id].tmux).toEqual(before.tmux);
     expect((await tmux.listWindows()).length).toBe(windows);
   });
 });

@@ -33,27 +33,27 @@ describe('store', () => {
     const store = createAppStore();
     store.getState().setFleet(fleet());
     expect(store.getState().loaded).toBe(true);
-    store.getState().applyPatch([{ op: 'add', path: '/characters/c9', value: chr('c9', 'i_a', { x: 1, y: 0 }) }, { op: 'replace', path: '/characters/c0/unread', value: true }]);
-    expect(store.getState().fleet.characters.c9.name).toBe('c9');
-    expect(store.getState().fleet.characters.c0.unread).toBe(true);
+    store.getState().applyPatch([{ op: 'add', path: '/robots/c9', value: chr('c9', 'i_a', { x: 1, y: 0 }) }, { op: 'replace', path: '/robots/c0/unread', value: true }]);
+    expect(store.getState().fleet.robots.c9.name).toBe('c9');
+    expect(store.getState().fleet.robots.c0.unread).toBe(true);
   });
-  it('a patch leaves what it does not touch as it was: the islands, the other characters, the editors', () => {
+  it('a patch leaves what it does not touch as it was: the islands, the other robots, the editors', () => {
     const store = createAppStore();
     store.getState().setFleet(fleet());
     store.getState().openFile('c1', 'src/a.ts');
     const before = store.getState();
     store.getState().applyPatch([
-      { op: 'replace', path: '/characters/c0/shell/lastOutputAt', value: 5 },
-      { op: 'add', path: '/characters/c0/context/-', value: { kind: 'folder', ref: '/tmp', label: '', source: 'manual' } },
+      { op: 'replace', path: '/robots/c0/shell/lastOutputAt', value: 5 },
+      { op: 'add', path: '/robots/c0/context/-', value: { kind: 'folder', ref: '/tmp', label: '', source: 'manual' } },
     ]);
     const after = store.getState();
-    expect(after.fleet.characters.c0.shell.lastOutputAt).toBe(5);
-    expect(after.fleet.characters.c0.context).toHaveLength(1);
-    expect(before.fleet.characters.c0.shell.lastOutputAt).toBe(0);
-    expect(before.fleet.characters.c0.context).toEqual([]);
+    expect(after.fleet.robots.c0.shell.lastOutputAt).toBe(5);
+    expect(after.fleet.robots.c0.context).toHaveLength(1);
+    expect(before.fleet.robots.c0.shell.lastOutputAt).toBe(0);
+    expect(before.fleet.robots.c0.context).toEqual([]);
     expect(after.fleet.islands).toBe(before.fleet.islands);
-    expect(after.fleet.characters.c1).toBe(before.fleet.characters.c1);
-    expect(after.fleet.characters.c0.tmux).toBe(before.fleet.characters.c0.tmux);
+    expect(after.fleet.robots.c1).toBe(before.fleet.robots.c1);
+    expect(after.fleet.robots.c0.tmux).toBe(before.fleet.robots.c0.tmux);
     expect(after.ide).toBe(before.ide);
   });
   it('a patch that does not apply leaves the mirror as it was, for the snapshot to replace', () => {
@@ -61,27 +61,27 @@ describe('store', () => {
     store.getState().setFleet(fleet());
     const before = store.getState().fleet;
     expect(() => store.getState().applyPatch([
-      { op: 'replace', path: '/characters/c0/unread', value: true },
-      { op: 'replace', path: '/characters/gone/name', value: 'x' },
+      { op: 'replace', path: '/robots/c0/unread', value: true },
+      { op: 'replace', path: '/robots/gone/name', value: 'x' },
     ])).toThrow();
     expect(store.getState().fleet).toBe(before);
-    expect(before.characters.c0.unread).toBe(false);
+    expect(before.robots.c0.unread).toBe(false);
   });
   it('takes a patch on the whole fleet for drift, for the snapshot to replace', () => {
     const store = createAppStore();
     store.getState().setFleet(fleet());
     const before = store.getState().fleet;
-    expect(() => store.getState().applyPatch([{ op: 'move', from: '/characters/c0', path: '' }])).toThrow();
+    expect(() => store.getState().applyPatch([{ op: 'move', from: '/robots/c0', path: '' }])).toThrow();
     expect(store.getState().fleet).toBe(before);
-    expect(before.characters.c0).toBeDefined();
+    expect(before.robots.c0).toBeDefined();
   });
   it('ignores patches until the snapshot has loaded', () => {
     const store = createAppStore();
-    store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/unread', value: true }]);
-    expect(store.getState().fleet.characters).toEqual({});
+    store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/unread', value: true }]);
+    expect(store.getState().fleet.robots).toEqual({});
     store.getState().setFleet(fleet());
-    store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/unread', value: true }]);
-    expect(store.getState().fleet.characters.c0.unread).toBe(true);
+    store.getState().applyPatch([{ op: 'replace', path: '/robots/c0/unread', value: true }]);
+    expect(store.getState().fleet.robots.c0.unread).toBe(true);
   });
   it('focus opens the card on the map, selects, and persists', () => {
     const storage = memStorage();
@@ -123,7 +123,7 @@ describe('store', () => {
     expect(storage.focus).toBe('c1');
     expect(storage.view).toBeUndefined();
   });
-  it('restores a remembered focus only if the character still exists', () => {
+  it('restores a remembered focus only if the robot still exists', () => {
     const storage = memStorage();
     storage.focus = 'c1';
     const a = createAppStore(storage);
@@ -137,14 +137,14 @@ describe('store', () => {
   it('leaves the chords the user already spends in Ghostty, and takes the rest, on a new machine', () => {
     const store = createAppStore(memStorage());
     store.getState().setShell(shellInfo({ 'cmd+t': 'new_split:right' }));
-    expect(store.getState().settings.bindings).toEqual({ newCharacter: null });
+    expect(store.getState().settings.bindings).toEqual({ newRobot: null });
   });
   it('asks once: a later shell.info does not re-decide what the user has answered since', () => {
     const store = createAppStore(memStorage());
     store.getState().setShell(shellInfo({}));
-    store.getState().setSettings({ bindings: { newCharacter: 'cmd+t' } });
+    store.getState().setSettings({ bindings: { newRobot: 'cmd+t' } });
     store.getState().setShell(shellInfo({ 'cmd+t': 'new_split:right' }));
-    expect(store.getState().settings.bindings).toEqual({ newCharacter: 'cmd+t' });
+    expect(store.getState().settings.bindings).toEqual({ newRobot: 'cmd+t' });
   });
   it('leaves a machine that has been used alone, however its Ghostty config reads', () => {
     const storage = memStorage();
@@ -212,28 +212,28 @@ describe('store', () => {
     expect(s.getState().toast).toBeUndefined();
   });
 
-  it('drops the card when its character disappears', () => {
+  it('drops the card when its robot disappears', () => {
     const s = createAppStore();
     s.getState().setFleet(fleet());
     s.getState().focus('c1');
-    s.getState().applyPatch([{ op: 'remove', path: '/characters/c1' }]);
+    s.getState().applyPatch([{ op: 'remove', path: '/robots/c1' }]);
     expect(s.getState().card).toBeUndefined();
     s.getState().focus('c0');
     const next = fleet();
-    delete next.characters.c0;
+    delete next.robots.c0;
     s.getState().setFleet(next);
     expect(s.getState().card).toBeUndefined();
   });
 
-  it('clears the selection when its character disappears', () => {
+  it('clears the selection when its robot disappears', () => {
     const s = createAppStore();
     s.getState().setFleet(fleet());
     s.getState().select('c1');
-    s.getState().applyPatch([{ op: 'remove', path: '/characters/c1' }]);
+    s.getState().applyPatch([{ op: 'remove', path: '/robots/c1' }]);
     expect(s.getState().selectedId).toBeUndefined();
     s.getState().select('c0');
     const next = fleet();
-    delete next.characters.c0;
+    delete next.robots.c0;
     s.getState().setFleet(next);
     expect(s.getState().selectedId).toBeUndefined();
   });
@@ -252,7 +252,7 @@ describe('store', () => {
     s.getState().setFleet(fleet());
     s.getState().setView('board');
     s.getState().focus('c1');
-    s.getState().applyPatch([{ op: 'remove', path: '/characters/c1' }]);
+    s.getState().applyPatch([{ op: 'remove', path: '/robots/c1' }]);
     expect(s.getState().focusedId).toBeUndefined();
   });
 
@@ -307,12 +307,12 @@ describe('store', () => {
     const storage = memStorage();
     const store = createAppStore(storage);
     expect(store.getState().sections).toEqual({});
-    store.getState().setSection('character.details', { shut: true });
-    store.getState().setSection('character.note', { height: 180 }, false);
-    expect(store.getState().sections['character.note']).toEqual({ height: 180 });
-    expect(storage.sections).toEqual({ 'character.details': { shut: true } });
-    store.getState().setSection('character.note', { height: 180 });
-    expect(createAppStore(storage).getState().sections).toEqual({ 'character.details': { shut: true }, 'character.note': { height: 180 } });
+    store.getState().setSection('robot.details', { shut: true });
+    store.getState().setSection('robot.note', { height: 180 }, false);
+    expect(store.getState().sections['robot.note']).toEqual({ height: 180 });
+    expect(storage.sections).toEqual({ 'robot.details': { shut: true } });
+    store.getState().setSection('robot.note', { height: 180 });
+    expect(createAppStore(storage).getState().sections).toEqual({ 'robot.details': { shut: true }, 'robot.note': { height: 180 } });
   });
 
   it('remembers the settings', () => {
@@ -355,17 +355,17 @@ describe('store', () => {
     expect(store.getState()).toMatchObject({ resourcesOpen: true, loadOpen: false });
   });
 
-  it('a sleep waiting on its answer veils the surfaces, and goes with the other dialogs and with its character', () => {
+  it('a sleep waiting on its answer veils the surfaces, and goes with the other dialogs and with its robot', () => {
     const store = createAppStore();
     store.getState().setFleet(fleet());
-    store.getState().setSleepingCharacter('c0');
+    store.getState().setSleepingRobot('c0');
     expect(isVeiled(store.getState())).toBe(true);
     openFleetPicker(store);
-    expect(store.getState().sleepingCharacter).toBeUndefined();
+    expect(store.getState().sleepingRobot).toBeUndefined();
     store.getState().setFleetPicker(undefined);
-    store.getState().setSleepingCharacter('c0');
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0' }]);
-    expect(store.getState().sleepingCharacter).toBeUndefined();
+    store.getState().setSleepingRobot('c0');
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c0' }]);
+    expect(store.getState().sleepingRobot).toBeUndefined();
   });
 
   it('keeps the phone panel through turning the link off, and puts it away with the tab it hangs from', () => {
@@ -450,7 +450,7 @@ describe('store', () => {
     expect(store.getState().webviews).toEqual({});
   });
 
-  it('keeps panes per character, starts each on one terminal, and counts address-bar focus requests', () => {
+  it('keeps panes per robot, starts each on one terminal, and counts address-bar focus requests', () => {
     const store = createAppStore(memStorage());
     store.getState().setFleet(fleet());
     expect(panesOf(store.getState(), 'c1')).toEqual({ left: 'terminal' });
@@ -462,7 +462,7 @@ describe('store', () => {
     const held = store.getState().ide.c1;
     store.getState().setRatio('c1', 0.6);
     expect(store.getState().ide.c1).toBe(held);
-    // panes are the character's own: another one is still on its terminal
+    // panes are the robot's own: another one is still on its terminal
     expect(panesOf(store.getState(), 'c2')).toEqual({ left: 'terminal' });
     expect(store.getState().addressFocus).toBe(false);
     store.getState().focusAddress();
@@ -475,7 +475,7 @@ describe('store', () => {
     const store = createAppStore();
     const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
     const withSecond = fleet();
-    withSecond.characters.c1 = { ...withSecond.characters.c1, second };
+    withSecond.robots.c1 = { ...withSecond.robots.c1, second };
     store.getState().setFleet(withSecond);
     store.getState().setPanes('c1', { left: 'terminal', right: 'terminal2' });
     store.getState().setPanes('c0', { left: 'terminal', right: 'terminal2' });
@@ -491,24 +491,24 @@ describe('store', () => {
   it('keeps that pane open while the second terminal is dormant', () => {
     const store = createAppStore();
     const withSecond = fleet();
-    withSecond.characters.c1 = { ...withSecond.characters.c1, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false } };
+    withSecond.robots.c1 = { ...withSecond.robots.c1, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false } };
     store.getState().setFleet(withSecond);
     store.getState().setPanes('c1', { left: 'terminal', right: 'terminal2' });
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c1/second/tmux' }]);
-    expect(store.getState().fleet.characters.c1.second?.tmux).toBeUndefined();
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c1/second/tmux' }]);
+    expect(store.getState().fleet.robots.c1.second?.tmux).toBeUndefined();
     expect(panesOf(store.getState(), 'c1')).toEqual({ left: 'terminal', right: 'terminal2' });
   });
   it('closes that pane when the second terminal goes in a patch', () => {
     const store = createAppStore();
     const withSecond = fleet();
-    withSecond.characters.c1 = { ...withSecond.characters.c1, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false } };
+    withSecond.robots.c1 = { ...withSecond.robots.c1, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false } };
     store.getState().setFleet(withSecond);
     store.getState().setPanes('c1', { left: 'terminal', right: 'terminal2' });
-    store.getState().applyPatch([{ op: 'remove', path: '/characters/c1/second' }]);
-    expect(store.getState().fleet.characters.c1.second).toBeUndefined();
+    store.getState().applyPatch([{ op: 'remove', path: '/robots/c1/second' }]);
+    expect(store.getState().fleet.robots.c1.second).toBeUndefined();
     expect(panesOf(store.getState(), 'c1')).toEqual({ left: 'terminal' });
   });
-  it('keeps open files and folders per character, and forgets a character that goes', () => {
+  it('keeps open files and folders per robot, and forgets a robot that goes', () => {
     const store = createAppStore();
     store.getState().setFleet(fleet());
     const s = () => store.getState();
@@ -536,7 +536,7 @@ describe('store', () => {
     expect(s().ide.c1).toMatchObject({ open: ['src/b.ts'], active: 'src/b.ts' });
     s().closeFile('c1', 'src/b.ts');
     expect(s().ide.c1).toMatchObject({ open: [], active: undefined });
-    s().applyPatch([{ op: 'remove', path: '/characters/c1' }]);
+    s().applyPatch([{ op: 'remove', path: '/robots/c1' }]);
     expect(s().ide.c1).toBeUndefined();
     expect(s().ide.c0).toBeUndefined();
   });
@@ -576,7 +576,7 @@ describe('store', () => {
 });
 
 const source = (rootId: string): ResourceSource =>
-  ({ rootId, root: rootId.slice(2), name: rootId, tier: 'repo', islandIds: [], characterIds: [], groups: [] });
+  ({ rootId, root: rootId.slice(2), name: rootId, tier: 'repo', islandIds: [], robotIds: [], groups: [] });
 
 describe('resources', () => {
   it('opens on the map with the filter it is given, and keeps the last filter otherwise', () => {
@@ -681,7 +681,7 @@ describe('toast action', () => {
 });
 
 describe('resource groups', () => {
-  const source = (tier: 'global' | 'fleet' | 'repo' | 'island' | 'character', rootId: string) => ({ rootId, root: rootId.slice(2), name: rootId, tier, islandIds: [], characterIds: [], groups: [] });
+  const source = (tier: 'global' | 'fleet' | 'repo' | 'island' | 'robot', rootId: string) => ({ rootId, root: rootId.slice(2), name: rootId, tier, islandIds: [], robotIds: [], groups: [] });
   const memory = () => { let kept: unknown; return { get: () => kept, storage: { ...memStorage(), getResourceGroups: () => kept, setResourceGroups: (v: unknown) => { kept = v; } } }; };
 
   it('opens with Global and Fleet, toggles a group, and keeps the open set across a reload', () => {
@@ -695,12 +695,12 @@ describe('resource groups', () => {
   });
   it('opens the group of a source it is sent to', () => {
     const store = createAppStore();
-    store.getState().setResources([source('global', 'r:/c'), source('character', 'r:/d/characters/c1')]);
-    store.getState().setResourcesFilter({ where: 'r:/d/characters/c1' });
-    expect(store.getState().resourceGroups).toEqual(['global', 'fleet', 'character']);
+    store.getState().setResources([source('global', 'r:/c'), source('robot', 'r:/d/robots/c1')]);
+    store.getState().setResourcesFilter({ where: 'r:/d/robots/c1' });
+    expect(store.getState().resourceGroups).toEqual(['global', 'fleet', 'robot']);
     store.getState().toggleResourceGroup('global');
     store.getState().toggleResources(true, { where: 'r:/c' });
-    expect(store.getState().resourceGroups.sort()).toEqual(['character', 'fleet', 'global']);
+    expect(store.getState().resourceGroups.sort()).toEqual(['fleet', 'global', 'robot']);
   });
   it('opens the fleet for a user whose saved groups predate it, once the shelf is sent there', () => {
     const m = memory();
@@ -719,7 +719,7 @@ describe('the machine that owns the fleet', () => {
     store.getState().setFleet(fleet());
     store.getState().setConnectionState({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
     expect(store.getState().loaded).toBe(true);
-    expect(store.getState().fleet.characters.c0).toBeTruthy();
+    expect(store.getState().fleet.robots.c0).toBeTruthy();
     expect(store.getState().connection).toEqual({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
     store.getState().setConnectionState({ state: 'online', owner: 'studio' });
     expect(store.getState().connection?.state).toBe('online');
@@ -831,7 +831,7 @@ describe('the handover sheet', () => {
     store.getState().handoverReplay([changed('begin'), changed('freeze'),
       { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } },
       changed('transfer'), changed('activate'), changed('complete'),
-      { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, characters: [] } },
+      { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [] } },
       { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
     expect(store.getState().handoverOpen).toBe(false);
     store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway did not answer' } }]);
@@ -852,17 +852,17 @@ describe('the handover sheet', () => {
     expect(store.getState().handoverOpen).toBe(false);
   });
 
-  it('keeps the selected character, its card and its panes while the fleet moves, and lets the terminals go once it has loaded there', () => {
+  it('keeps the selected robot, its card and its panes while the fleet moves, and lets the terminals go once it has loaded there', () => {
     const store = createAppStore(undefined, 'map');
     store.getState().setFleet(fleet());
     store.getState().focus('c0');
     store.getState().setPanes('c0', { left: 'terminal', right: 'files' });
     store.getState().handoverFollow('studio');
     for (const p of ['begin', 'freeze', 'transfer', 'activate', 'complete'] as const) store.getState().handoverEvent(changed(p));
-    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, characters: [{ id: 'c0', ok: true }] } });
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [{ id: 'c0', ok: true }] } });
     store.getState().handoverExit(0);
     expect(store.getState().handover?.awaitingOwner).toBe(true);
-    // the new owner's fleet: the same characters, now running there
+    // the new owner's fleet: the same robots, now running there
     store.getState().setFleet(fleet());
     expect(store.getState().handover?.awaitingOwner).toBe(false);
     expect(store.getState()).toMatchObject({ card: 'c0', selectedId: 'c0', focusedId: 'c0' });

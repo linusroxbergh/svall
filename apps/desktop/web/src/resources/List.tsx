@@ -56,7 +56,7 @@ function CardRow({ kind, item }: { kind: Kind; item: CardItem }) {
     <div className="res-row">
       <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-opens={opensItself(item)}
         title={link ? link.link.ref : `Edit the ${item.name.toLowerCase()}`}
-        onClick={(e) => { if (link) followLink(link.link, link.charId, { x: e.clientX, y: e.clientY }); else void chooseResource(deps(), item); }}>
+        onClick={(e) => { if (link) followLink(link.link, link.robotId, { x: e.clientX, y: e.clientY }); else void chooseResource(deps(), item); }}>
         <b>
           {link && <i className="lg"><LinkIcon item={link.link} /></i>}{item.name}
           {link?.link.pinned && <em>pinned</em>}

@@ -130,7 +130,7 @@ export type FromShell =
   | { type: 'term.exited'; id: string }
   | { type: 'term.failed'; id: string; reason: string }
   | { type: 'term.focused'; id: string }
-  // a link followed in a terminal, for the character's own browser
+  // a link followed in a terminal, for the robot's own browser
   | { type: 'term.openUrl'; id: string; url: string; x: number; y: number }
   // error: what stopped the last navigation, empty once one gets somewhere
   | { type: 'browser.state'; tab: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }

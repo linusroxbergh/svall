@@ -1,26 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { charOfKey, contextPctOf, emptyState, isNews, isPushStatus, secondKey, sessionsOf, type Agent, type Character } from '../src/index.js';
+import { robotOfKey, contextPctOf, emptyState, isNews, isPushStatus, secondKey, sessionsOf, type Agent, type Robot } from '../src/index.js';
 
 const agent = (status: Agent['status'], extra: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 0, ...extra });
-const char = (id: string, extra: Partial<Character> = {}): Character =>
+const robot = (id: string, extra: Partial<Robot> = {}): Robot =>
   ({ id, islandId: 'i', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'fox', instructions: '', context: [], cwd: '/tmp', shell: { lastOutputAt: 0 }, unread: false, ...extra });
 
 describe('sessions', () => {
-  it('keys a second terminal by its character, and reads the character back off either key', () => {
+  it('keys a second terminal by its robot, and reads the robot back off either key', () => {
     expect(secondKey('c_1')).toBe('c_1-2');
-    expect(charOfKey(secondKey('c_1'))).toBe('c_1');
-    expect(charOfKey('c_1')).toBe('c_1');
+    expect(robotOfKey(secondKey('c_1'))).toBe('c_1');
+    expect(robotOfKey('c_1')).toBe('c_1');
   });
 
   it('lists a session per terminal, the second under its own key', () => {
-    const f = { ...emptyState(), characters: {
-      a: char('a', { agent: agent('working') }),
-      b: char('b', { unread: true, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked') } }),
+    const f = { ...emptyState(), robots: {
+      a: robot('a', { agent: agent('working') }),
+      b: robot('b', { unread: true, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked') } }),
     } };
     expect([...sessionsOf(f).values()]).toEqual([
-      { key: 'a', charId: 'a', agent: agent('working'), unread: false },
-      { key: 'b', charId: 'b', agent: undefined, unread: true },
-      { key: 'b-2', charId: 'b', term: 2, agent: agent('blocked'), unread: false },
+      { key: 'a', robotId: 'a', agent: agent('working'), unread: false },
+      { key: 'b', robotId: 'b', agent: undefined, unread: true },
+      { key: 'b-2', robotId: 'b', term: 2, agent: agent('blocked'), unread: false },
     ]);
   });
 
@@ -34,7 +34,7 @@ describe('sessions', () => {
 
   it('takes the fuller of the two contexts', () => {
     const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('idle', { contextPct: 80 }) };
-    expect(contextPctOf(char('a'))).toBeUndefined();
-    expect(contextPctOf(char('a', { agent: agent('idle', { contextPct: 12 }), second }))).toBe(80);
+    expect(contextPctOf(robot('a'))).toBeUndefined();
+    expect(contextPctOf(robot('a', { agent: agent('idle', { contextPct: 12 }), second }))).toBe(80);
   });
 });

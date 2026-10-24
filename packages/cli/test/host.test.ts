@@ -397,7 +397,7 @@ describe('host add', () => {
 
   it('names what Svall\'s hooks there still need, from the companion\'s own doctor, without stopping setup', async () => {
     const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
-    const disabled = `${HOME}/.claude/settings.json sets disableAllHooks, so no character gets a status; remove it`;
+    const disabled = `${HOME}/.claude/settings.json sets disableAllHooks, so no robot gets a status; remove it`;
     const plugin = `not installed in ${HOME}/.config/opencode/plugins/svall.js: svall setup`;
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'opencode plugin', status: 'fail', detail: plugin, run: 'svall setup' }] }) });
     const d = await daemon();
@@ -419,7 +419,7 @@ describe('host add', () => {
 
   it('names the AppArmor profile Codex\'s sandbox needs there, from the companion\'s own doctor', async () => {
     const fix = 'sudo apt install bubblewrap apparmor-profiles, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
-    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex character asks before each one: ${fix}`;
+    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex robot asks before each one: ${fix}`;
     const run = 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'ok', detail: 'trusted' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run }] }) });
     const d = await daemon();
@@ -438,7 +438,7 @@ describe('host add', () => {
   it('names both fixes a fresh Ubuntu leaves Codex, and the first one\'s command to type', async () => {
     const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
     const fix = 'sudo apt install bubblewrap apparmor-profiles, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
-    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${fix}`;
+    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex robot asks before each one: ${fix}`;
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run: 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict' }] }) });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
@@ -452,7 +452,7 @@ describe('host add', () => {
 
   it('names every Codex check that warns there, untrusted hooks and a blocked sandbox alike', async () => {
     const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
-    const blocked = 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex character asks before each one: sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    const blocked = 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex robot asks before each one: sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
     healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted }, { name: 'codex sandbox', status: 'warn', detail: blocked }] }) });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
@@ -460,7 +460,7 @@ describe('host add', () => {
     await d.close();
     expect(step('codex').at(-1)).toMatchObject({
       status: 'warn',
-      detail: 'codex-cli 0.156.1, logged in; the codex hooks check there says not trusted yet; the codex sandbox check there says AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex character asks before each one',
+      detail: 'codex-cli 0.156.1, logged in; the codex hooks check there says not trusted yet; the codex sandbox check there says AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: denied), so a Codex robot asks before each one',
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
     });
   });
@@ -2033,7 +2033,7 @@ describe('host enable', () => {
 
   it('names the far fleet home that holds another fleet in use, and leaves fleet.json and the registry alone', async () => {
     ssh.reply(['owner', 'get'], answers({}));
-    const said = `${HOME}/.svall holds fleet 47a74455-7dbc-46c0-8076-30d830cf4f72, and it holds 3 characters, so it is not this fleet's to replace`;
+    const said = `${HOME}/.svall holds fleet 47a74455-7dbc-46c0-8076-30d830cf4f72, and it holds 3 robots, so it is not this fleet's to replace`;
     ssh.reply(['fleet', 'provision'], { stderr: `svall: ${said}\n`, code: 3 });
     const home = fleetHome();
 

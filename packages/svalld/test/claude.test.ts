@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { characterKeyEnv, readEnvFile, rendererEnv, spawnClaude } from '../src/claude.js';
+import { robotKeyEnv, readEnvFile, rendererEnv, spawnClaude } from '../src/claude.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 // a stand-in for `claude`, found first on PATH: it reports its own arguments and the environment it was given
 const FAKE = `#!/bin/sh
 cat > /dev/null
 echo "args=$*"
-echo "char=\${SVALL_CHAR_ID:-none}"
+echo "robot=\${SVALL_ROBOT_ID:-none}"
 echo "key=\${ANTHROPIC_API_KEY:-none}"
 echo "cwd=$(pwd)"
 `;
@@ -32,7 +32,7 @@ describe('spawnClaude', () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'claude'), FAKE, { mode: 0o755 });
     vi.stubEnv('PATH', `${home}:${process.env.PATH}`);
-    vi.stubEnv('SVALL_CHAR_ID', 'c_parent');
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_parent');
     vi.stubEnv('ANTHROPIC_API_KEY', undefined);
     cwd = path.join(home, 'pass');
     envFile = path.join(home, '.env');
@@ -48,8 +48,8 @@ describe('spawnClaude', () => {
     expect(out).toContain('args=-p --model sonnet --tools  --setting-sources project --strict-mcp-config --no-session-persistence');
   });
 
-  it('runs without the character id, so the hook does not mistake the pass for a character', async () => {
-    await expect(read({ args: [], cwd, envFile })).resolves.toContain('char=none');
+  it('runs without the robot id, so the hook does not mistake the pass for a robot', async () => {
+    await expect(read({ args: [], cwd, envFile })).resolves.toContain('robot=none');
   });
 
   it('passes the fleet .env, read afresh on every spawn', async () => {
@@ -78,10 +78,10 @@ describe('readEnvFile', () => {
     expect(readEnvFile('/tmp/svall-no-such-env')).toEqual({});
   });
 
-  it('passes only agent API keys to character shells', () => {
+  it('passes only agent API keys to robot shells', () => {
     const file = path.join(makeHome(), '.env');
-    fs.writeFileSync(file, 'ANTHROPIC_API_KEY=anthropic\nOPENAI_API_KEY=openai\nOTHER_SECRET=private\nSVALL_CHAR_ID=wrong\n');
-    expect(characterKeyEnv(file)).toEqual({ ANTHROPIC_API_KEY: 'anthropic', OPENAI_API_KEY: 'openai' });
+    fs.writeFileSync(file, 'ANTHROPIC_API_KEY=anthropic\nOPENAI_API_KEY=openai\nOTHER_SECRET=private\nSVALL_ROBOT_ID=wrong\n');
+    expect(robotKeyEnv(file)).toEqual({ ANTHROPIC_API_KEY: 'anthropic', OPENAI_API_KEY: 'openai' });
   });
 });
 

@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession, type Warning,
+  type AgentKind, type AgentAdapter, type Blocker, type Robot, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession, type Warning,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
 import { AGENTS, compareVersions, versionOf, versionOk } from '../../agents.js';
-import { characterKeyEnv } from '../../claude.js';
+import { robotKeyEnv } from '../../claude.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
@@ -98,31 +98,31 @@ export function installSession(session: TransferSession, staged: string, io: Ins
   return { transcriptPath: destinationPath };
 }
 
-/** Where a terminal's agent resumes and, when its character's repository holds that, the repository's main checkout and the top of its own; `at` makes each absolute. */
-export function resumeFolder(c: Character, term: 2 | undefined, at: (p: string) => string): Omit<ResumeFolder, 'kind'> {
+/** Where a terminal's agent resumes and, when its robot's repository holds that, the repository's main checkout and the top of its own; `at` makes each absolute. */
+export function resumeFolder(c: Robot, term: 2 | undefined, at: (p: string) => string): Omit<ResumeFolder, 'kind'> {
   const cwd = at(term === 2 ? c.second?.cwd ?? c.cwd : c.cwd);
   if (!c.repo || !holds(at(c.repo.root), cwd)) return { cwd };
   return { cwd, repo: at(c.repo.mainRoot), root: at(c.repo.root) };
 }
 
 /** Where each session the manifest carries resumes on the destination, which is where it ran on the source, and whether its revive asks for bypass mode. */
-export function resumeFolders(m: TransferManifestV1): (ResumeFolder & { characterId: string })[] {
+export function resumeFolders(m: TransferManifestV1): (ResumeFolder & { robotId: string })[] {
   const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
   return m.sessions.flatMap((s) => {
-    const c = m.snapshot.characters[s.characterId];
+    const c = m.snapshot.robots[s.robotId];
     if (!c) return [];
     const bypass = sessionAdapter(s.agent).asksBypass?.((s.term === 2 ? c.second : c)?.revive?.command ?? '');
-    return [{ characterId: s.characterId, kind: s.agent, ...resumeFolder(c, s.term, at), ...(bypass && { bypass }) }];
+    return [{ robotId: s.robotId, kind: s.agent, ...resumeFolder(c, s.term, at), ...(bypass && { bypass }) }];
   });
 }
 
 /** The imported state with every agent pointing at the transcript its session was placed as. */
 export function placeTranscripts(state: FleetState, sessions: readonly TransferSession[]): FleetState {
   const next = structuredClone(state);
-  for (const c of Object.values(next.characters)) {
+  for (const c of Object.values(next.robots)) {
     for (const [term, slot] of [[undefined, c], [2, c.second]] as const) {
       if (!slot?.agent) continue;
-      const placed = sessions.find((s) => s.characterId === c.id && s.term === term && s.sessionId === slot.agent!.sessionId)?.destinationPath;
+      const placed = sessions.find((s) => s.robotId === c.id && s.term === term && s.sessionId === slot.agent!.sessionId)?.destinationPath;
       if (!placed) throw new Error(`${c.id}'s ${term ? 'second ' : ''}${slot.agent.kind} session was not placed on this machine`);
       slot.agent.transcriptPath = placed;
     }
@@ -172,7 +172,7 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   const tried = (await d.read(USERNS_RESTRICTED))?.trim() === '1' ? await d.run('codex', ['sandbox', '--', 'true']) : undefined;
   const said = tried?.stderr?.trim() ?? '';
   const sandbox = !tried?.code ? undefined : /bwrap:|namespace|operation not permitted/i.test(said)
-    ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${BWRAP_PROFILE}`
+    ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex robot asks before each one: ${BWRAP_PROFILE}`
     : `codex sandbox -- true fails there (${said.split('\n').at(-1) || `exit ${tried.code}, nothing said`}): run it there to see why`;
   return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
@@ -194,11 +194,11 @@ const KILL_GRACE = 2000;
 
 /**
  * Runs an agent CLI with this daemon's env, which places its files as the agents it starts find them, less the
- * variables that would make Svall's own hooks take the run for a character's, in the home unless told where. One
+ * variables that would make Svall's own hooks take the run for a robot's, in the home unless told where. One
  * still running at `timeoutMs` is sent SIGTERM, then SIGKILL, and the run rejects at once.
  */
 export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
-  const { SVALL_CHAR_ID: _id, SVALL_TERM: _term, ...rest } = env;
+  const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, SVALL_TERM: _term, ...rest } = env;
   const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);
   const child = spawn(cmd, args, { env: rest, cwd: o.cwd ?? os.homedir(), stdio: ['ignore', out, 'pipe'] });
   if (typeof out === 'number') fs.closeSync(out);
@@ -223,9 +223,9 @@ export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_
   });
 });
 
-// each CLI is asked with the fleet's .env keys, as a resumed character and doctor have them
+// each CLI is asked with the fleet's .env keys, as a resumed robot and doctor have them
 export const realProbeDeps = (envFile: string): ProbeDeps => ({
-  run: runAgent(() => characterKeyEnv(envFile)), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
+  run: runAgent(() => robotKeyEnv(envFile)), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
 });
 
 /** How to ask this machine's agent CLIs: as they last answered, or `fresh`. */

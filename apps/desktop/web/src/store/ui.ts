@@ -16,7 +16,7 @@ export type Webview = { tab: string; rect: Rect; url: string; title: string; loa
 // a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back
 export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void } };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
-export type LinkAsk = { url: string; charId: string; x: number; y: number; surface?: string };
+export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
 // a right-click's menu, by the pointer that asked for it; an entry without run shows greyed out
 export type MenuEntry = { title: string; run?: () => void; danger?: boolean };
 export type PageMenu = { x: number; y: number; items: MenuEntry[] };
@@ -26,15 +26,15 @@ export type UiState = {
   focusedId?: string;
   selectedId?: string;
   selectedIslandId?: string;
-  // the starred character picked or walked to on its Starred row, so the character keys go on from that row
+  // the starred robot picked or walked to on its Starred row, so the robot keys go on from that row
   starredRow?: string;
   sideCardOpen: boolean;
   sideCardCollapsed: boolean;
-  namingCharacter: boolean;
+  namingRobot: boolean;
   missionPrompt: boolean;
-  closingCharacter?: string;
+  closingRobot?: string;
   // a working robot's sleep waits on the user's answer
-  sleepingCharacter?: string;
+  sleepingRobot?: string;
   deletingIsland?: string;
   // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it
   fleetPicker?: 'bare' | 'menu';
@@ -89,10 +89,10 @@ export type UiActions = {
   closeCard(): void;
   toggleCardSize(): void;
   toggleSideCard(open?: boolean): void;
-  setNamingCharacter(open: boolean): void;
+  setNamingRobot(open: boolean): void;
   setMissionPrompt(open: boolean): void;
-  setClosingCharacter(id?: string): void;
-  setSleepingCharacter(id?: string): void;
+  setClosingRobot(id?: string): void;
+  setSleepingRobot(id?: string): void;
   setDeletingIsland(id?: string): void;
   setFleetPicker(mode?: 'bare' | 'menu'): void;
   termOpened(id: string, rect: Rect): void;
@@ -157,13 +157,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     focusedId: storage?.getFocus(),
     selectedId: undefined,
     selectedIslandId: undefined,
-    // the board reads a character and its card together; the map opens the card on demand
+    // the board reads a robot and its card together; the map opens the card on demand
     sideCardOpen: view === 'board',
     sideCardCollapsed: false,
-    namingCharacter: false,
+    namingRobot: false,
     missionPrompt: false,
-    closingCharacter: undefined,
-    sleepingCharacter: undefined,
+    closingRobot: undefined,
+    sleepingRobot: undefined,
     deletingIsland: undefined,
     card: undefined,
     cardSize: 'half',
@@ -194,7 +194,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     sections: storage?.getSections() ?? {},
     dropHover: undefined,
     setActive: (active) => set({ active }),
-    // the board's character comes to the map in its card
+    // the board's robot comes to the map in its card
     setView: (v) => {
       storage?.setView(v);
       const s = get();
@@ -207,7 +207,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     },
     select: (id, card) => set((s) => ({ selectedId: id, selectedIslandId: undefined, sideCardOpen: (card ?? id !== undefined) && !s.sideCardCollapsed })),
     selectIsland: (id) => set((s) => ({ selectedIslandId: id, selectedId: undefined, sideCardOpen: id !== undefined && !s.sideCardCollapsed })),
-    // on the map a character's terminal is its card; on the board it is the terminal the board already shows
+    // on the map a robot's terminal is its card; on the board it is the terminal the board already shows
     focus: (id) => {
       storage?.setFocus(id);
       set((s) => s.view === 'board'
@@ -217,10 +217,10 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setStarredRow: (id) => set({ starredRow: id }),
     closeCard: () => set({ card: undefined }),
     toggleCardSize: () => set((s) => ({ cardSize: s.cardSize === 'half' ? 'full' : 'half' })),
-    setNamingCharacter: (open) => set({ namingCharacter: open }),
+    setNamingRobot: (open) => set({ namingRobot: open }),
     setMissionPrompt: (open) => set({ missionPrompt: open }),
-    setClosingCharacter: (id) => set({ closingCharacter: id }),
-    setSleepingCharacter: (id) => set({ sleepingCharacter: id }),
+    setClosingRobot: (id) => set({ closingRobot: id }),
+    setSleepingRobot: (id) => set({ sleepingRobot: id }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
     toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),

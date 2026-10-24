@@ -117,12 +117,12 @@ runIf('Tmux', () => {
   });
   it('creates windows named by id, lists them without _keep, and round-trips input', async () => {
     const t = await boot();
-    const w = await t.newWindow('c_abc', '/tmp', { SVALL_CHAR_ID: 'c_abc' });
+    const w = await t.newWindow('c_abc', '/tmp', { SVALL_ROBOT_ID: 'c_abc' });
     expect(w.windowId).toMatch(/^@\d+$/);
     expect(w.paneId).toMatch(/^%\d+$/);
     const list = await t.listWindows();
     expect(list.map((x) => x.name)).toEqual(['c_abc']);
-    await t.sendLine(w.paneId, 'echo $SVALL_CHAR_ID-ok', true);
+    await t.sendLine(w.paneId, 'echo $SVALL_ROBOT_ID-ok', true);
     await waitFor(async () => (await t.capture(w.paneId, 50)).toString().includes('c_abc-ok'));
     await t.sendBytes(w.paneId, Buffer.from('echo å\n'));
     await waitFor(async () => (await t.capture(w.paneId, 50)).toString('utf8').split('\n').some((l) => l.trim() === 'å'));

@@ -44,15 +44,15 @@ describe('cells', () => {
     expect(Math.abs(near.x - from.x) + Math.abs(near.y - from.y)).toBe(1);
     expect(nearestFreeLand(i, { x: 0, y: 0 }, new Set(cells.map((c) => `${c.x},${c.y}`)))).toBeUndefined();
   });
-  it('occupiedCells lists the island characters cells', () => {
+  it('occupiedCells lists the island robots cells', () => {
     const s = withIslands(island('a', 0, 0));
-    s.characters.c = { id: 'c', islandId: 'a', cell: { x: 2, y: 1 }, name: 'c', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
+    s.robots.c = { id: 'c', islandId: 'a', cell: { x: 2, y: 1 }, name: 'c', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
     expect([...occupiedCells(s, 'a')]).toEqual(['2,1']);
     expect([...occupiedCells(s, 'a', 'c')]).toEqual([]);
   });
-  it('blockedCells covers each character and everything within Chebyshev distance 2', () => {
+  it('blockedCells covers each robot and everything within Chebyshev distance 2', () => {
     const s = withIslands(island('a', 0, 0));
-    s.characters.c = { id: 'c', islandId: 'a', cell: { x: 2, y: 1 }, name: 'c', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
+    s.robots.c = { id: 'c', islandId: 'a', cell: { x: 2, y: 1 }, name: 'c', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
     const b = blockedCells(s, 'a');
     expect(b.size).toBe(25);                            // a 5x5 block around 2,1
     expect(b.has('0,-1') && b.has('4,3') && b.has('2,1')).toBe(true);
@@ -159,7 +159,7 @@ describe('arrangeFleet', () => {
   const crew = (s: FleetState, islandId: string, n: number): void => {
     for (let i = 0; i < n; i++) {
       const id = `${islandId}c${i}`;
-      s.characters[id] = { id, islandId, cell: { x: 1, y: 1 }, name: id, portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
+      s.robots[id] = { id, islandId, cell: { x: 1, y: 1 }, name: id, portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
     }
   };
   const pairs = (s: FleetState): [Island, Island][] => {
@@ -172,7 +172,7 @@ describe('arrangeFleet', () => {
     crew(st, 'a', 3);
     arrangeFleet(st);
     expect(st.islands.b.size).toEqual(sizeForCrew(0));
-    const cells = Object.values(st.characters).map((c) => c.cell);
+    const cells = Object.values(st.robots).map((c) => c.cell);
     const { w, h } = st.islands.a.size;
     for (const c of cells) expect(isLand(st.islands.a, c)).toBe(true);
     // a cell in from the coast on every side, so the card standing there stays on the island
@@ -213,7 +213,7 @@ describe('arrangeFleet', () => {
     arrangeFleet(st);
     arrangeFleet(bare);
     expect(st.islands.b).toEqual(folded);
-    expect(st.characters.bc0.cell).toEqual({ x: 1, y: 1 });
+    expect(st.robots.bc0.cell).toEqual({ x: 1, y: 1 });
     for (const id of ['a', 'c', 'home']) expect(st.islands[id]).toEqual(bare.islands[id]);
   });
 
@@ -255,7 +255,7 @@ describe('arrangeFleet', () => {
       const st = withIslands(island('a', 0, 0), home(99));
       crew(st, 'a', n);
       arrangeFleet(st, 8);
-      const rows = new Set(Object.values(st.characters).map((c) => c.cell.y)).size;
+      const rows = new Set(Object.values(st.robots).map((c) => c.cell.y)).size;
       expect(rows).toBeGreaterThan(1);
       expect(Math.ceil(n / rows)).toBeLessThanOrEqual(2 * rows);
     }
@@ -289,12 +289,12 @@ describe('arrangeFleet', () => {
 
   it('gives mission control an empty slot past its crew where the map has room for it, and takes it back where not', () => {
     const st = withIslands(island('a', 0, 0), { ...home(9), size: homeSizeFor(2) });
-    for (const x of [1, 4]) st.characters[`h${x}`] = { id: `h${x}`, islandId: 'home', cell: { x, y: 1 }, name: `h${x}`, portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
+    for (const x of [1, 4]) st.robots[`h${x}`] = { id: `h${x}`, islandId: 'home', cell: { x, y: 1 }, name: `h${x}`, portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
     arrangeFleet(st);
     expect(st.islands.home.size).toEqual(homeSizeFor(2));
     arrangeFleet(st, 4 / 3, 11);
     expect(st.islands.home.size).toEqual(homeSizeFor(3));
-    expect([st.characters.h1.cell, st.characters.h4.cell]).toEqual([{ x: 1, y: 1 }, { x: 4, y: 1 }]);
+    expect([st.robots.h1.cell, st.robots.h4.cell]).toEqual([{ x: 1, y: 1 }, { x: 4, y: 1 }]);
     arrangeFleet(st, 4 / 3, 10);
     expect(st.islands.home.size).toEqual(homeSizeFor(2));
   });

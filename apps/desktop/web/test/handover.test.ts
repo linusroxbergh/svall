@@ -9,7 +9,7 @@ import { chr } from './fixtures.js';
 const tx = 'tx-1';
 const summary = { digest: 'a'.repeat(64), roots: 2, files: 120, bytes: 42_000_000, sessions: 1 };
 const changed = (phase: HandoverPhase): HandoverEvent => ({ event: 'handover.changed', data: { transactionId: tx, phase } });
-const entity = (data: Partial<Extract<HandoverEvent, { event: 'handover.entity' }>['data']> & { kind: 'character' | 'root' | 'session' | 'git'; id: string }): HandoverEvent =>
+const entity = (data: Partial<Extract<HandoverEvent, { event: 'handover.entity' }>['data']> & { kind: 'robot' | 'root' | 'session' | 'git'; id: string }): HandoverEvent =>
   ({ event: 'handover.entity', data: { transactionId: tx, phase: 'freeze', ...data } });
 const play = (events: HandoverEvent[], run: HandoverRun = followRun('studio')) => events.reduce((r, e) => applyEvent(r, e), run);
 
@@ -19,13 +19,13 @@ const through = (phase: 'freeze' | 'transfer' | 'verify' | 'commit' | 'activate'
 };
 
 describe('the handover a sheet follows', () => {
-  it('keeps one row per character, root and session, in the section it belongs to, whatever order its updates come in', () => {
+  it('keeps one row per robot, root and session, in the section it belongs to, whatever order its updates come in', () => {
     const run = play([
       { event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } },
       ...through('freeze'),
-      entity({ kind: 'character', id: 'c1' }),
-      entity({ kind: 'character', id: 'c2' }),
-      entity({ kind: 'character', id: 'c1', done: 1, total: 1 }),
+      entity({ kind: 'robot', id: 'c1' }),
+      entity({ kind: 'robot', id: 'c2' }),
+      entity({ kind: 'robot', id: 'c1', done: 1, total: 1 }),
       changed('transfer'),
       entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes: 0, totalBytes: 40_000_000 }),
       entity({ kind: 'session', id: 's0', phase: 'transfer', bytes: 100, totalBytes: 1500 }),
@@ -33,7 +33,7 @@ describe('the handover a sheet follows', () => {
       entity({ kind: 'session', id: 's0', phase: 'verify', bytes: 1500, totalBytes: 1500 }),
     ]);
     expect(run.rows.map((r) => [r.section, r.kind, r.id])).toEqual([
-      ['rest', 'character', 'c1'], ['rest', 'character', 'c2'], ['transfer', 'root', 'r_a'], ['transfer', 'session', 's0'],
+      ['rest', 'robot', 'c1'], ['rest', 'robot', 'c2'], ['transfer', 'root', 'r_a'], ['transfer', 'session', 's0'],
     ]);
     expect(run.rows[0]).toMatchObject({ done: 1, total: 1 });
     expect(run.rows[2]).toMatchObject({ bytes: 12_000_000, totalBytes: 40_000_000 });
@@ -42,22 +42,22 @@ describe('the handover a sheet follows', () => {
     expect(run.preflight?.summary.roots).toBe(2);
   });
 
-  it('names each character, root and session by what preflight said of them, and a blocker by the same', () => {
-    const names = { characters: { c1: 'ada' }, roots: { r_a: '/home/ada/app' }, sessions: { s0: 'ada' } };
+  it('names each robot, root and session by what preflight said of them, and a blocker by the same', () => {
+    const names = { robots: { c1: 'ada' }, roots: { r_a: '/home/ada/app' }, sessions: { s0: 'ada' } };
     const run = play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [], names } }]);
-    const name = (id: string) => run.preflight?.names?.characters[id] ?? id;
-    expect(entityLabel({ kind: 'character', id: 'c1' }, name, run.preflight?.names)).toBe('ada');
+    const name = (id: string) => run.preflight?.names?.robots[id] ?? id;
+    expect(entityLabel({ kind: 'robot', id: 'c1' }, name, run.preflight?.names)).toBe('ada');
     expect(entityLabel({ kind: 'root', id: 'r_a' }, name, run.preflight?.names, undefined, '/home/ada')).toBe('~/app');
     expect(entityLabel({ kind: 'session', id: 's0' }, name, run.preflight?.names)).toBe("ada's session");
     // a repository is named by the path its message leads with
-    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no character uses are not registered', '/Users/ada')).toBe('~/src/beta');
+    expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, '/Users/ada/src/beta: worktrees no robot uses are not registered', '/Users/ada')).toBe('~/src/beta');
     // without what preflight said, the id is what there is
     expect(entityLabel({ kind: 'root', id: 'r_b' }, name, run.preflight?.names)).toBe('folder r_b');
     expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, 'the destination has no git')).toBe('repository');
   });
 
   it('names a root by where it lands for what is about the destination, and by its path here for the rest', () => {
-    const names = { characters: {}, roots: { r_a: '/Users/ada/app', r_b: '/srv/b' }, landing: { r_a: '/home/ada/app' } };
+    const names = { robots: {}, roots: { r_a: '/Users/ada/app', r_b: '/srv/b' }, landing: { r_a: '/home/ada/app' } };
     const run = play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [], names } }]);
     const occupied: Blocker = { code: 'destination_occupied', message: '/home/ada/app already exists', entity: { kind: 'root', id: 'r_a' } };
     const there = namesOn(run.preflight?.names, blockerSide(occupied));
@@ -66,13 +66,13 @@ describe('the handover a sheet follows', () => {
     expect(entityLabel(occupied.entity, (id) => id, namesOn(run.preflight?.names, 'source'), undefined, '/Users/ada')).toBe('~/app');
   });
 
-  it('puts a character the destination brought up under Resuming, apart from its rest row', () => {
+  it('puts a robot the destination brought up under Resuming, apart from its rest row', () => {
     const run = play([
-      ...through('freeze'), entity({ kind: 'character', id: 'c1', done: 1, total: 1 }),
+      ...through('freeze'), entity({ kind: 'robot', id: 'c1', done: 1, total: 1 }),
       ...through('activate').slice(2),
-      entity({ kind: 'character', id: 'c1', phase: 'activate' }),
-      entity({ kind: 'character', id: 'c2', phase: 'activate', error: 'claude --resume exited 1' }),
-      entity({ kind: 'character', id: 'c3', phase: 'activate', notice: 'codex waits at its "Trust this folder?" prompt in cy\'s terminal; answer it there' }),
+      entity({ kind: 'robot', id: 'c1', phase: 'activate' }),
+      entity({ kind: 'robot', id: 'c2', phase: 'activate', error: 'claude --resume exited 1' }),
+      entity({ kind: 'robot', id: 'c3', phase: 'activate', notice: 'codex waits at its "Trust this folder?" prompt in cy\'s terminal; answer it there' }),
     ]);
     expect(run.rows.map((r) => [r.section, r.id])).toEqual([['rest', 'c1'], ['resume', 'c1'], ['resume', 'c2'], ['resume', 'c3']]);
     expect(rowText(run.rows[1])).toBe('resumed');
@@ -85,7 +85,7 @@ describe('the handover a sheet follows', () => {
     const asked: HandoverEvent = { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [{ code: 'agent_working', message: 'still working' }] } };
     expect(play([...through('freeze'), asked]).decision?.phase).toBe('freeze');
     // a rest row the source sent before it refused can reach the stream after the decision it led to
-    expect(play([...through('freeze'), asked, entity({ kind: 'character', id: 'c1', error: 'still working' })]).decision?.phase).toBe('freeze');
+    expect(play([...through('freeze'), asked, entity({ kind: 'robot', id: 'c1', error: 'still working' })]).decision?.phase).toBe('freeze');
     expect(play([...through('freeze'), asked, changed('transfer')]).decision).toBeUndefined();
     expect(play([...through('freeze'), asked, { event: 'handover.result', data: { status: 'aborted', transactionId: tx, phase: 'freeze' } }]).decision).toBeUndefined();
   });
@@ -98,7 +98,7 @@ describe('the handover a sheet follows', () => {
   it('says how far each of the six sections has come, with the commit, past which nothing goes back, a section of its own', () => {
     const states = (run: HandoverRun) => sectionStates(run).map((s) => `${s.label}: ${s.state}`);
     expect(states(play(through('transfer')))).toEqual([
-      'Checks: done', 'Resting characters: done', 'Transferring files and sessions: active', 'Verifying: pending', 'Committing: pending', 'Resuming characters: pending',
+      'Checks: done', 'Resting robots: done', 'Transferring files and sessions: active', 'Verifying: pending', 'Committing: pending', 'Resuming robots: pending',
     ]);
     expect(states(play([...through('verify'), changed('prepare'), changed('ready')])).slice(3, 5)).toEqual(['Verifying: active', 'Committing: pending']);
     expect(states(play(through('commit'))).slice(3, 5)).toEqual(['Verifying: done', 'Committing: active']);
@@ -106,7 +106,7 @@ describe('the handover a sheet follows', () => {
     expect(sectionStates(blocked)[1].state).toBe('waiting');
     const stopped = play([...through('transfer'), { event: 'handover.result', data: { status: 'interrupted', transactionId: tx, phase: 'transfer', error: 'ssh closed', safe: ['resume', 'abort'] } }]);
     expect(sectionStates(stopped)[2].state).toBe('stopped');
-    const done = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, characters: [] } }]);
+    const done = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, robots: [] } }]);
     expect(sectionStates(done).every((s) => s.state === 'done')).toBe(true);
   });
 
@@ -177,7 +177,7 @@ describe('the handover a sheet follows', () => {
   });
 
   it('says where a handover stands on a terminal it rested', () => {
-    expect(restingLine(play(through('freeze')))).toBe('Resting for the handover: Resting characters…');
+    expect(restingLine(play(through('freeze')))).toBe('Resting for the handover: Resting robots…');
     const moving = play([...through('transfer'), entity({ kind: 'root', id: 'r_a', phase: 'transfer', bytes: 25, totalBytes: 100 })]);
     expect(restingLine(moving)).toBe('Resting for the handover: Transferring files and sessions, 25%…');
     const asks = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'transfer', blockers: [{ code: 'destination_diverged', message: 'changed' }] } }]);
@@ -231,7 +231,7 @@ describe('what the sheet offers', () => {
       [said('open', ['resume', 'abort'], `${id} is preparing and has not committed; it can go on, or be aborted back to ${mac}`, 'aborted', 'studio'),
         'An abort stopped part way, before the commit: the fleet has not moved.'],
       [said('committed', ['resume'], `${id} is committed: the fleet belongs to ${studio} at generation 4, and only its activation can go on`, 'activate', 'studio'),
-        "The fleet is studio's now, and stopped before its characters resumed there."],
+        "The fleet is studio's now, and stopped before its robots resumed there."],
       [said('moved', ['resume'], `the gateway has moved this fleet to ${studio} at generation 4; what ${id} left open is only to be finished`, 'activate'),
         'The fleet runs on the other machine now; what the handover left open there is still to finish.'],
       [said('committed', [], `${id} moved this fleet to ${studio}, whose handover journal could not be read and was moved to /home/ada/.svall/handover.json.broken-1; nothing is safe until someone looks at that machine`, 'activate', 'studio'),
@@ -366,12 +366,12 @@ describe('what the sheet offers', () => {
   });
 
   it('says why what is left to finish is left once the fleet has moved', () => {
-    const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, characters: [], pending: ['source'], error: "mac: the Mac's daemon is restarting" })]);
+    const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, robots: [], pending: ['source'], error: "mac: the Mac's daemon is restarting" })]);
     expect(headline(moved, 'studio')).toContain("source has not heard that it finished (mac: the Mac's daemon is restarting); Retry tells it.");
   });
 
   it('asks for a new start with the choices made when preflight blocked', () => {
-    const blocked = endFollow(play([result({ status: 'blocked', phase: 'begin', blockers: [{ code: 'shell_busy', message: "bo's terminal is running npm test", entity: { kind: 'character', id: 'c2' } }] })]), 1);
+    const blocked = endFollow(play([result({ status: 'blocked', phase: 'begin', blockers: [{ code: 'shell_busy', message: "bo's terminal is running npm test", entity: { kind: 'robot', id: 'c2' } }] })]), 1);
     expect(actionsOf(blocked)).toMatchObject({ tryAgain: true, cancel: false });
   });
 
@@ -385,7 +385,7 @@ describe('what the sheet offers', () => {
 
   it('never speaks of going back once the fleet has moved', () => {
     const rollback = /abort|roll ?back|undo|revert|cancel/i;
-    const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, characters: [{ id: 'c1', ok: true }, { id: 'c2', ok: false, error: 'exited 1' }], pending: ['source'] })]);
+    const moved = play([...through('activate'), result({ status: 'complete', transactionId: tx, generation: 4, robots: [{ id: 'c1', ok: true }, { id: 'c2', ok: false, error: 'exited 1' }], pending: ['source'] })]);
     expect(headline(moved, 'studio')).toMatch(/runs on studio/);
     expect(headline(moved, 'studio')).not.toMatch(rollback);
     const stuck = play([...through('activate'), result({ status: 'interrupted', transactionId: tx, phase: 'activate', error: 'studio did not answer', safe: ['resume'] })]);
@@ -396,8 +396,8 @@ describe('what the sheet offers', () => {
 
 describe('who stops for a handover, and how', () => {
   const agent = (status: 'working' | 'idle' | 'blocked' | 'done', extra: object = {}) => ({ kind: 'claude' as const, sessionId: 's', status, lastActivityAt: 0, ...extra });
-  it('groups the characters by what their main terminal does now, in the fleet\'s order', () => {
-    const characters = {
+  it('groups the robots by what their main terminal does now, in the fleet\'s order', () => {
+    const robots = {
       a: chr('a', 'i', { x: 0, y: 0 }, { name: 'ada', agent: agent('idle') }),
       b: chr('b', 'i', { x: 0, y: 0 }, { name: 'bo', agent: agent('working') }),
       c: chr('c', 'i', { x: 0, y: 0 }, { name: 'cy', agent: agent('blocked') }),
@@ -407,7 +407,7 @@ describe('who stops for a handover, and how', () => {
       f: chr('f', 'i', { x: 0, y: 0 }, { name: 'fi', tmux: undefined, agent: agent('idle') }),
       g: chr('g', 'i', { x: 0, y: 0 }, { name: 'gu', agent: agent('done') }),
     };
-    expect(restPlan(characters)).toEqual([
+    expect(restPlan(robots)).toEqual([
       { how: 'resume', names: ['ada', 'gu'] }, { how: 'wait', names: ['bo'] }, { how: 'answer', names: ['cy'] },
       { how: 'background', names: ['di'] }, { how: 'shell', names: ['ed'] }, { how: 'dormant', names: ['fi'] },
     ]);
@@ -422,7 +422,7 @@ describe('the terminals while the fleet moves', () => {
     // a freeze that could not rest gave the fleet back while it waits for the user
     expect(holdsTerminals(play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [] } }]))).toBe(false);
     expect(holdsTerminals(play([...through('transfer'), { event: 'handover.result', data: { status: 'aborted', transactionId: tx, phase: 'transfer' } }]))).toBe(false);
-    const moved = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, characters: [] } }]);
+    const moved = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, robots: [] } }]);
     expect(moved.awaitingOwner).toBe(true);
     expect(holdsTerminals(moved)).toBe(true);
     expect(holdsTerminals({ ...moved, awaitingOwner: false })).toBe(false);
@@ -435,7 +435,7 @@ describe('the terminals while the fleet moves', () => {
     expect(holdsTerminals(status('open', 'begin'))).toBe(false);
     expect(holdsTerminals(status('moved', 'transfer'))).toBe(false);
     // the events file ends with the run's result, then the status: a finished move holds nothing
-    const replay = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, characters: [] } },
+    const replay = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, robots: [] } },
       { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }], followRun());
     expect(holdsTerminals(replay)).toBe(false);
   });
@@ -451,10 +451,10 @@ describe('the choices a blocker takes', () => {
     expect(choiceFor(b('agent_unsettled'))).toBe('terminate');
     expect(choiceFor(b('destination_diverged', { kind: 'root', id: 'r_a' }))).toBe('archive');
     expect(choiceFor(b('destination_occupied', { kind: 'root', id: 'r_a' }))).toBe('archive');
-    expect(choiceFor(b('character_pinned'))).toBeUndefined();
-    const working = b('agent_working', { kind: 'character', id: 'c3' });
-    const unsettled = b('agent_unsettled', { kind: 'character', id: 'c1' });
-    const busy = b('shell_busy', { kind: 'character', id: 'c2' });
+    expect(choiceFor(b('robot_pinned'))).toBeUndefined();
+    const working = b('agent_working', { kind: 'robot', id: 'c3' });
+    const unsettled = b('agent_unsettled', { kind: 'robot', id: 'c1' });
+    const busy = b('shell_busy', { kind: 'robot', id: 'c2' });
     const occupied = b('destination_occupied', { kind: 'root', id: 'r_a' });
     const shown = [working, unsettled, busy, occupied];
     let choices = withChoice({}, working, shown);
@@ -470,7 +470,7 @@ describe('the choices a blocker takes', () => {
   });
 
   it('adds the terminals named here to those chosen before, and holds a choice of every terminal as one', () => {
-    const busy = b('shell_busy', { kind: 'character', id: 'c2' });
+    const busy = b('shell_busy', { kind: 'robot', id: 'c2' });
     expect(chosen({ terminateShells: ['c9'] }, busy)).toBe(false);
     expect(withChoice({ terminateShells: ['c9'] }, busy, [busy])).toEqual({ terminateShells: ['c9', 'c2'] });
     expect(withChoice({ terminateShells: ['c9', 'c2'] }, busy, [busy])).toEqual({ terminateShells: ['c9'] });
@@ -479,8 +479,8 @@ describe('the choices a blocker takes', () => {
     expect(withChoice({ terminateShells: true }, busy, [busy])).toEqual({});
   });
 
-  it('carries a folder whole with the repositories no character works in as one choice, kept beside the others', () => {
-    const unused = b('repository_unused', { kind: 'character', id: 'c1' });
+  it('carries a folder whole with the repositories no robot works in as one choice, kept beside the others', () => {
+    const unused = b('repository_unused', { kind: 'robot', id: 'c1' });
     expect(choiceFor(unused)).toBe('carry');
     expect(chosen({}, unused)).toBe(false);
     const held = { terminateShells: ['c2'], archiveRoots: ['r_a'] };
@@ -493,7 +493,7 @@ describe('the choices a blocker takes', () => {
 
   it('starts from the choices the run holds, in a sheet opened after the start that made them', () => {
     const held = { terminateShells: true, archiveRoots: ['r_a'] };
-    const working = b('agent_working', { kind: 'character', id: 'c1' });
+    const working = b('agent_working', { kind: 'robot', id: 'c1' });
     // a relaunched sheet follows a resume with nothing chosen yet
     const run = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [working], choices: held } }], followRun());
     expect(run.choices).toEqual(held);
@@ -505,7 +505,7 @@ describe('what each blocker and warning is explained with', () => {
   const ctx = { destination: 'studio', source: 'This Mac', pull: false, name: (id: string) => ({ c1: 'Ada' }[id] ?? id) };
 
   it('explains what terminating a terminal that will not settle does, hooks included', () => {
-    const hint = blockerHint({ code: 'agent_unsettled', message: "Ada's terminal did not come to rest after it was interrupted", entity: { kind: 'character', id: 'c1' } }, ctx);
+    const hint = blockerHint({ code: 'agent_unsettled', message: "Ada's terminal did not come to rest after it was interrupted", entity: { kind: 'robot', id: 'c1' } }, ctx);
     expect(hint).toMatch(/hook/);
     expect(hint).toMatch(/Terminate and carry/);
   });
@@ -523,7 +523,7 @@ describe('what each blocker and warning is explained with', () => {
   });
 
   it('sends a path that cannot travel to the terminal it is in, or a folder to what the message names', () => {
-    const terminal = blockerHint({ code: 'path_unsupported', message: "Ada's terminal is in /Users/ada/.ssh, which stays on its machine", entity: { kind: 'character', id: 'c1' } }, ctx);
+    const terminal = blockerHint({ code: 'path_unsupported', message: "Ada's terminal is in /Users/ada/.ssh, which stays on its machine", entity: { kind: 'robot', id: 'c1' } }, ctx);
     expect(terminal).toMatch(/cd that terminal/);
     const folder = blockerHint({ code: 'path_unsupported', message: 'handover.exclude pattern "[" cannot be read by rsync', entity: { kind: 'root', id: 'r_a' } }, ctx);
     expect(folder).not.toMatch(/terminal/);
@@ -574,8 +574,8 @@ describe('what each blocker and warning is explained with', () => {
     expect(other).toBe('Codex on studio cannot sandbox its commands, so it asks before each one.\nFix what the message names there.');
   });
 
-  it('points a kept character at its toggle', () => {
-    expect(blockerHint({ code: 'character_pinned', message: 'Ada is kept on this machine', entity: { kind: 'character', id: 'c1' } }, ctx))
+  it('points a kept robot at its toggle', () => {
+    expect(blockerHint({ code: 'robot_pinned', message: 'Ada is kept on this machine', entity: { kind: 'robot', id: 'c1' } }, ctx))
       .toMatch(/Keep on this machine.*Ada/);
   });
 
@@ -637,7 +637,7 @@ describe('what each blocker and warning is explained with', () => {
 
   it('sends a session the destination went on with to that machine, with OpenCode\'s commands, and a folder to Archive', () => {
     const id = 'ses_0123456789abABCDEFGHIJKLMN';
-    const session = (message: string): Blocker => ({ code: 'destination_diverged', message, entity: { kind: 'character', id: 'c1' } });
+    const session = (message: string): Blocker => ({ code: 'destination_diverged', message, entity: { kind: 'robot', id: 'c1' } });
     const opencode = blockerHint(session(`the destination's OpenCode went on with session ${id} past the copy coming in`), ctx);
     expect(opencode).toMatch(/studio/);
     expect(opencode).toContain(`opencode session export --standalone ${id} > keep.json`);
@@ -666,13 +666,13 @@ describe('what each blocker and warning is explained with', () => {
 // The lines `svall handover --json` prints (packages/cli/src/controller/events.ts), each with the fields the sheet
 // reads from it. A line without one of them, from an older release's events file or a newer helper, is passed over.
 describe('the helper lines the sheet reads', () => {
-  const blocker = { code: 'agent_working', message: 'ada is still working', entity: { kind: 'character', id: 'c1' } };
+  const blocker = { code: 'agent_working', message: 'ada is still working', entity: { kind: 'robot', id: 'c1' } };
   const lines: { line: Record<string, unknown>; reads: string[] }[] = [
     {
-      line: { event: 'handover.preflight', data: { summary, blockers: [blocker], warnings: [blocker], names: { characters: { c1: 'ada' }, roots: {}, sessions: {} } } },
+      line: { event: 'handover.preflight', data: { summary, blockers: [blocker], warnings: [blocker], names: { robots: { c1: 'ada' }, roots: {}, sessions: {} } } },
       reads: ['data.summary', 'data.summary.roots', 'data.summary.files', 'data.summary.bytes', 'data.summary.sessions', 'data.blockers',
         'data.blockers.0.code', 'data.blockers.0.message', 'data.blockers.0.entity.kind', 'data.blockers.0.entity.id', 'data.warnings',
-        'data.warnings.0.message', 'data.names.characters', 'data.names.roots'],
+        'data.warnings.0.message', 'data.names.robots', 'data.names.roots'],
     },
     { line: { event: 'handover.changed', data: { transactionId: tx, phase: 'freeze' } }, reads: ['data.phase'] },
     {
@@ -682,8 +682,8 @@ describe('the helper lines the sheet reads', () => {
     { line: { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [blocker] } }, reads: ['data.phase', 'data.blockers', 'data.blockers.0.message'] },
     { line: { event: 'handover.retry', data: { transactionId: tx, phase: 'transfer', attempt: 2, error: 'ssh closed' } }, reads: ['data.phase', 'data.attempt', 'data.error'] },
     {
-      line: { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 3, characters: [{ id: 'c1', ok: true }] } },
-      reads: ['data.status', 'data.characters', 'data.characters.0.id', 'data.characters.0.ok'],
+      line: { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 3, robots: [{ id: 'c1', ok: true }] } },
+      reads: ['data.status', 'data.robots', 'data.robots.0.id', 'data.robots.0.ok'],
     },
     { line: { event: 'handover.result', data: { status: 'none', reason: 'no handover is open' } }, reads: ['data.reason'] },
     { line: { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [blocker] } }, reads: ['data.phase', 'data.blockers'] },

@@ -1,17 +1,17 @@
 import { useApp } from './hooks.js';
-import { charactersOf, countsByStatus, DISPLAY_STATUSES, islandsSorted, isUnread, statusOf } from './selectors.js';
+import { robotsOf, countsByStatus, DISPLAY_STATUSES, islandsSorted, isUnread, statusOf } from './selectors.js';
 
 export function FleetSummary() {
   const fleet = useApp((s) => s.fleet);
-  const chars = Object.values(fleet.characters);
+  const robots = Object.values(fleet.robots);
   const islands = islandsSorted(fleet);
   const counts = countsByStatus(fleet);
-  const blocked = chars.filter((c) => statusOf(c) === 'blocked').length;
-  const unread = chars.filter(isUnread).length;
+  const blocked = robots.filter((c) => statusOf(c) === 'blocked').length;
+  const unread = robots.filter(isUnread).length;
   return (
     <aside className="side" data-testid="fleet-summary">
       <div className="kicker">The fleet</div>
-      <h2 className="h2">{chars.length} {chars.length === 1 ? 'character' : 'characters'}<br />on {islands.length} {islands.length === 1 ? 'island' : 'islands'}</h2>
+      <h2 className="h2">{robots.length} {robots.length === 1 ? 'robot' : 'robots'}<br />on {islands.length} {islands.length === 1 ? 'island' : 'islands'}</h2>
       <div className="desc">{blocked} blocked, {unread} unread.</div>
       <div className="rows">
         {DISPLAY_STATUSES.map((s) => (
@@ -22,7 +22,7 @@ export function FleetSummary() {
         ))}
       </div>
       <div className="rows">
-        {islands.map((i) => <div key={i.id} className="row">{i.name}<b className="tnum">{charactersOf(fleet, i.id).length}</b></div>)}
+        {islands.map((i) => <div key={i.id} className="row">{i.name}<b className="tnum">{robotsOf(fleet, i.id).length}</b></div>)}
       </div>
     </aside>
   );

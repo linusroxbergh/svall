@@ -89,13 +89,13 @@ write(session);
 const server = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve', '--stdio'], { argv0: 'opencode', detached: true, stdio: ['pipe', 'ignore', 'ignore'] });
 server.on('error', () => {});
 
-const charId = process.env.SVALL_CHAR_ID;
+const robotId = process.env.SVALL_ROBOT_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
 const transcriptPath = path.join(home, 'transcripts', 'opencode', `${sessionId}.jsonl`);
 
 function post(name, fields = {}) {
-  if (!charId) return Promise.resolve();
+  if (!robotId) return Promise.resolve();
   return new Promise((resolve) => {
     const sock = net.createConnection(path.join(home, 'hooks.sock'));
     const done = () => { clearTimeout(timer); sock.destroy(); resolve(); };
@@ -104,7 +104,7 @@ function post(name, fields = {}) {
     // the answer svalld gives SessionStart and UserPromptSubmit
     sock.on('data', done);
     const hook = { hook_event_name: name, session_id: sessionId, transcript_path: transcriptPath, cwd, ...fields };
-    sock.write(`${JSON.stringify({ charId, term, backend: 'opencode', pid: process.pid, hook })}\n`);
+    sock.write(`${JSON.stringify({ robotId, term, backend: 'opencode', pid: process.pid, hook })}\n`);
     if (name !== 'SessionStart' && name !== 'UserPromptSubmit') sock.end(done);
   });
 }

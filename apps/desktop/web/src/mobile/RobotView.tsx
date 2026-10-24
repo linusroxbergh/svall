@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { useApp } from '../hooks.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
-import { CharacterMenu } from './CharacterMenu.js';
+import { RobotMenu } from './RobotMenu.js';
 import { statusLabel } from './list.js';
 import { dragToScroll, holdScroll, scrollTerm, withoutClicks } from './scroll.js';
 import { linkTerminal, type TerminalLink } from './term.js';
@@ -36,9 +36,9 @@ const readSize = (): number => {
   } catch { return 11; }
 };
 
-export function CharacterView({ id, onBack }: { id: string; onBack(): void }): JSX.Element {
-  const character = useApp((s) => s.fleet.characters[id]);
-  const island = useApp((s) => s.fleet.islands[s.fleet.characters[id]?.islandId ?? '']);
+export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.Element {
+  const robot = useApp((s) => s.fleet.robots[id]);
+  const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
   const status = useApp((s) => s.status);
   const online = status === 'online';
   const host = useRef<HTMLDivElement>(null);
@@ -108,15 +108,15 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     let left = false;
     setFailed(undefined);
     setSendError(undefined);
-    // opening a dormant character wakes it, as on the desktop
-    const woken = character && !character.tmux ? phone.api().call('char.revive', { id }) : Promise.resolve();
+    // opening a dormant robot wakes it, as on the desktop
+    const woken = robot && !robot.tmux ? phone.api().call('robot.revive', { id }) : Promise.resolve();
     woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
-    phone.api().fire('char.seen', { id });
+    phone.api().fire('robot.seen', { id });
     return () => { left = true; };
   }, [id, online, attempt]);
 
   // a window lost while the view is open waits for revive, as on the desktop; one that comes back clears it
-  const windowId = character?.tmux?.windowId;
+  const windowId = robot?.tmux?.windowId;
   useEffect(() => {
     if (!windowId) return;
     setFailed(undefined);
@@ -124,8 +124,8 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
   }, [windowId]);
 
   // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
-  const blocked = character?.agent?.status === 'blocked';
-  const promptId = character?.agent?.promptId;
+  const blocked = robot?.agent?.status === 'blocked';
+  const promptId = robot?.agent?.promptId;
   const asking = useRef(promptId);
   useEffect(() => { asking.current = promptId; setAnswering(false); setAnswerError(undefined); }, [blocked, promptId]);
 
@@ -152,7 +152,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     setAnswering(true);
     setAnswerError(undefined);
     try {
-      await phone.api().call('char.answer', { id, answer: a, promptId });
+      await phone.api().call('robot.answer', { id, answer: a, promptId });
     } catch (e) {
       // a refusal that comes back after a newer question is up is not that question's
       if (asking.current !== promptId) return;
@@ -168,21 +168,21 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     xterm.current?.scrollToBottom();
     setPrompt('');
     setSendError(undefined);
-    phone.api().call('char.run', { id, text, enter: true })
+    phone.api().call('robot.run', { id, text, enter: true })
       .catch((e: Error) => { setPrompt((p) => p || text); setSendError(e.message); });
   };
 
   return (
-    <div className="character">
+    <div className="robot">
       <header className="top">
         <button className="back" onClick={onBack}>‹ fleet</button>
         <span className="title">
-          {character?.name ?? 'gone'}
+          {robot?.name ?? 'gone'}
           {island && <small>{island.name}</small>}
         </span>
-        {/* without svalld the character's status is stale, so the header says so instead */}
-        <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'gone'}>
-          {!online ? status : character ? statusLabel(statusOf(character)) : 'gone'}
+        {/* without svalld the robot's status is stale, so the header says so instead */}
+        <span className="conn" data-status={!online ? status : robot ? statusOf(robot) : 'gone'}>
+          {!online ? status : robot ? statusLabel(statusOf(robot)) : 'gone'}
         </span>
         <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context ›</button>
       </header>
@@ -192,17 +192,17 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
           <div className="failed">
             <p>{failed}</p>
             <span>
-              {character && !character.tmux && (
-                <button onClick={() => { phone.api().call('char.revive', { id }).then(() => setAttempt((n) => n + 1), (e: Error) => setFailed(e.message)); }}>revive</button>
+              {robot && !robot.tmux && (
+                <button onClick={() => { phone.api().call('robot.revive', { id }).then(() => setAttempt((n) => n + 1), (e: Error) => setFailed(e.message)); }}>revive</button>
               )}
               <button onClick={() => setAttempt((n) => n + 1)}>retry</button>
             </span>
           </div>
         )}
       </div>
-      {blocked && character && (
+      {blocked && robot && (
         <div className="ask" role="status">
-          <p>{character.agent?.prompt ?? `${character.name} is waiting on you`}</p>
+          <p>{robot.agent?.prompt ?? `${robot.name} is waiting on you`}</p>
           <span>
             <button type="button" disabled={answering} onClick={() => void answer('approve')}>approve</button>
             <button type="button" disabled={answering} onClick={() => void answer('deny')}>deny</button>
@@ -231,7 +231,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
         />
         <button type="submit" disabled={!prompt.trim()}>send</button>
       </form>
-      {menu && <CharacterMenu id={id} onClose={() => setMenu(false)} onClosed={onBack} />}
+      {menu && <RobotMenu id={id} onClose={() => setMenu(false)} onClosed={onBack} />}
     </div>
   );
 }

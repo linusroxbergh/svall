@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { Character, ContextItem } from '@svall/protocol';
+import type { Robot, ContextItem } from '@svall/protocol';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { DisplayStatus } from '../../src/selectors.js';
 import { chr } from '../fixtures.js';
@@ -17,7 +17,7 @@ const agent = (monitors?: string[]) => ({ kind: 'claude' as const, sessionId: 's
 
 beforeEach(() => { freshStore(); });
 
-const card = (c: Character, { onLink = vi.fn(), status = 'idle' as DisplayStatus, links = false } = {}) => {
+const card = (c: Robot, { onLink = vi.fn(), status = 'idle' as DisplayStatus, links = false } = {}) => {
   render(<Token c={c} status={status} world={{ x: 0, y: 0 }} links={links} selected={false} dragging={false} hover={false} pointer={{} as never}
     onHoverStart={() => {}} onHoverEnd={() => {}} onOpen={() => {}} onLink={onLink} onMenu={() => {}} />);
   return onLink;
@@ -26,13 +26,13 @@ const card = (c: Character, { onLink = vi.fn(), status = 'idle' as DisplayStatus
 test('a sidebar row marks a PR in review and a monitor, and names both in its title', () => {
   render(<Sidebar />);
   act(() => store.getState().applyPatch([
-    { op: 'replace', path: '/characters/c1/context', value: [pr(41, 'open')] },
-    { op: 'add', path: '/characters/c1/agent', value: agent(['m1']) },
+    { op: 'replace', path: '/robots/c1/context', value: [pr(41, 'open')] },
+    { op: 'add', path: '/robots/c1/agent', value: agent(['m1']) },
   ]));
-  const marks = screen.getByTestId('sb-char-c1').querySelector('.sb-ind')!;
+  const marks = screen.getByTestId('sb-robot-c1').querySelector('.sb-ind')!;
   expect(marks.getAttribute('title')).toBe('PR #41 in review · Monitoring');
   expect([...marks.children].map((i) => i.getAttribute('data-kind'))).toEqual(['review', 'monitor']);
-  expect(screen.getByTestId('sb-char-c0').querySelector('.sb-ind')).toBeNull();
+  expect(screen.getByTestId('sb-robot-c0').querySelector('.sb-ind')).toBeNull();
 });
 
 test('a card marks a PR in review and a monitor on its corner, and a click follows the PR as a link chip does', () => {

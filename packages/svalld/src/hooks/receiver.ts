@@ -22,7 +22,7 @@ export const hooksFor = (backend: AgentKind): readonly HookName[] => HOOKS[backe
 const MAX_LINE = 256 * 1024;
 
 export type HookEvent = {
-  charId: string;
+  robotId: string;
   backend: AgentKind;
   name: HookName;
   sessionId?: string;
@@ -45,7 +45,7 @@ export type HookEvent = {
   // the tool a tool or permission event is about
   toolName?: string;
   cwd?: string;
-  // 2 when the event comes from the character's second terminal
+  // 2 when the event comes from the robot's second terminal
   term?: 2;
   // the agent process that ran the hook
   pid?: number;
@@ -53,11 +53,11 @@ export type HookEvent = {
 
 // what Claude Code hands its statusLine command, forwarded by claude-status.mjs
 export type StatusEvent = {
-  charId: string;
+  robotId: string;
   sessionId?: string;
   contextPct: number;
   model?: string;
-  // 2 when the event comes from the character's second terminal
+  // 2 when the event comes from the robot's second terminal
   term?: 2;
 };
 
@@ -122,12 +122,13 @@ const SHELL_TASKS = new Set(['shell']);
 
 export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
-  const { charId, status, term } = raw as { charId?: unknown; status?: unknown; term?: unknown };
-  if (typeof charId !== 'string' || !status || typeof status !== 'object') return undefined;
+  // an OpenCode plugin loaded by an older svalld names its robot charId
+  const { robotId = (raw as { charId?: unknown }).charId, status, term } = raw as { robotId?: unknown; status?: unknown; term?: unknown };
+  if (typeof robotId !== 'string' || !status || typeof status !== 'object') return undefined;
   const s = status as Record<string, unknown>;
   const contextPct = num(s.contextPct);
   if (contextPct === undefined) return undefined;
-  const ev: StatusEvent = { charId, contextPct: Math.max(0, Math.min(100, contextPct)) };
+  const ev: StatusEvent = { robotId, contextPct: Math.max(0, Math.min(100, contextPct)) };
   if (term === 2) ev.term = 2;
   const id = sessionId(s.sessionId);
   const model = str(s.model);
@@ -137,7 +138,7 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
 }
 
 // the events kept from a subagent. A codex subagent shares its parent's session, so its tool calls and permission
-// requests are the character working and waiting; a Claude subagent's say only whether the question it asked is still open
+// requests are the robot working and waiting; a Claude subagent's say only whether the question it asked is still open
 const FROM_SUBAGENT: Record<AgentKind, Set<unknown>> = {
   claude: new Set(['PreToolUse', 'PermissionRequest', 'SubagentStart', 'SubagentStop']),
   codex: new Set(['PreToolUse', 'PermissionRequest', 'PostToolUse', 'SubagentStart', 'SubagentStop']),
@@ -148,20 +149,20 @@ const AGENT_ID = /^[\w-]{1,64}$/;
 
 export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
-  const { charId, backend, hook, term, pid } = raw as { charId?: unknown; backend?: unknown; hook?: unknown; term?: unknown; pid?: unknown };
-  if (typeof charId !== 'string' || !hook || typeof hook !== 'object') return undefined;
+  const { robotId = (raw as { charId?: unknown }).charId, backend, hook, term, pid } = raw as { robotId?: unknown; backend?: unknown; hook?: unknown; term?: unknown; pid?: unknown };
+  if (typeof robotId !== 'string' || !hook || typeof hook !== 'object') return undefined;
   // a script that names no backend is Claude Code's
   const kind = AgentKind.safeParse(backend ?? 'claude');
   if (!kind.success) return undefined;
   const h = hook as Record<string, unknown>;
   const name = h.hook_event_name;
   if (!(hooksFor(kind.data) as readonly unknown[]).includes(name)) return undefined;
-  // a subagent's hooks are not the character's turn
+  // a subagent's hooks are not the robot's turn
   const valid = typeof h.agent_id === 'string' && AGENT_ID.test(h.agent_id) ? h.agent_id : undefined;
   const subagent = kind.data === 'claude' || SUBAGENT_LIFE.has(name) ? valid : undefined;
   if (h.agent_id && !(FROM_SUBAGENT[kind.data].has(name) && (subagent || kind.data === 'codex'))) return undefined;
   if (SUBAGENT_LIFE.has(name) && !subagent) return undefined;
-  const ev: HookEvent = { charId, backend: kind.data, name: name as HookName };
+  const ev: HookEvent = { robotId, backend: kind.data, name: name as HookName };
   if (subagent) ev.agentId = subagent;
   if (term === 2) ev.term = 2;
   if (Number.isInteger(pid) && (pid as number) > 0) ev.pid = pid as number;
@@ -203,7 +204,7 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
 const REPLIES = new Set<HookName>(['SessionStart', 'UserPromptSubmit']);
 
 // A crashed daemon can leave a socket file behind. Only remove it when nothing answers there;
-// an active receiver belongs to another daemon and must keep serving its characters.
+// an active receiver belongs to another daemon and must keep serving its robots.
 async function clearStaleSocket(sockPath: string): Promise<void> {
   let before: fs.Stats;
   try { before = fs.lstatSync(sockPath); }

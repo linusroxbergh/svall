@@ -22,14 +22,14 @@ const DORMANCY_EVERY = 20;
 const RESUME_MS = 60_000;
 
 /** A resume typed into a revived terminal: the session it resumes and the command that resumes it again. */
-export type Resume = { characterId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean };
+export type Resume = { robotId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean };
 
 // the resume a revive types, when it brings back the session of the agent the terminal keeps for a handover that
 // carries it or could not resume it; any other resume that fails leaves its terminal at the shell
-export function resumeOf(slot: TerminalSlot | undefined, carried: boolean, characterId: string, term?: 2): Resume | undefined {
+export function resumeOf(slot: TerminalSlot | undefined, carried: boolean, robotId: string, term?: 2): Resume | undefined {
   const { agent, revive } = slot ?? {};
   if (!agent || !revive?.command.includes(agent.sessionId) || (!carried && slot?.resumeError === undefined)) return undefined;
-  return { characterId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
+  return { robotId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
 }
 
 const exec = promisify(execFile);
@@ -41,7 +41,7 @@ async function stoppedPids(pids: number[]): Promise<Set<number>> {
   return new Set(out.split('\n').flatMap((line) => { const m = /^\s*(\d+)\s+\S*T/.exec(line); return m ? [Number(m[1])] : []; }));
 }
 
-const interrupt = <T extends Slot>(charId: string, slot: T): T => applyHook(slot, { charId, backend: 'claude', name: 'Interrupt' }, Date.now());
+const interrupt = <T extends Slot>(robotId: string, slot: T): T => applyHook(slot, { robotId, backend: 'claude', name: 'Interrupt' }, Date.now());
 
 type Deps = {
   store: Store; tmux: Tmux; config: Config; log: Logger; scribe: Scribe; pollMs?: number; staleSessionMs?: number; resumeMs?: number; linkDeps?: Partial<LinkDeps>;
@@ -58,7 +58,7 @@ type Deps = {
   processes: () => Promise<Proc[]>;
 };
 
-/** The fleet's poll: characters matched to tmux's windows, agents that ended without a word let go, a slice of the
+/** The fleet's poll: robots matched to tmux's windows, agents that ended without a word let go, a slice of the
  *  links looked at, and now and then stale viewer sessions swept and idle agents ended. */
 export class Poll {
   private timer?: NodeJS.Timeout;
@@ -68,7 +68,7 @@ export class Poll {
   private shellStreak = new Map<string, number>();
   private codexStreak = new Map<string, number>();
   private transcriptSize = new Map<string, number>();
-  // one link sweep at a time, so the cap on characters out asking holds across ticks; the characters a
+  // one link sweep at a time, so the cap on robots out asking holds across ticks; the robots a
   // tick found moved wait in `pendingLinks` for the sweep that follows the one running
   private sweeping = false;
   private pendingLinks = new Set<string>();
@@ -127,7 +127,7 @@ export class Poll {
   private async tick(): Promise<void> {
     if (!this.deps.writable()) return;
     const before = snapshot(this.deps.store.state);
-    const activeAt = new Map(Object.values(this.deps.store.state.characters)
+    const activeAt = new Map(Object.values(this.deps.store.state.robots)
       .flatMap((c) => [[c.id, c.agent?.lastActivityAt], [secondName(c.id), c.second?.agent?.lastActivityAt]]));
     const live = await this.deps.listWindows();
     // a stop while tmux answered has ended what the listing shows, and a freeze leaves the fleet to the handover
@@ -135,7 +135,7 @@ export class Poll {
     const byName = new Map(live.map((w) => [w.name, w]));
     const atShell = (key: string, agent?: Agent) => (agent?.pid && isShellCommand(byName.get(key)?.command ?? '', this.deps.config.shell) ? [agent.pid] : []);
     // an agent ctrl+z stopped leaves its shell in front until `fg` brings it back
-    const suspended = await stoppedPids(Object.values(this.deps.store.state.characters)
+    const suspended = await stoppedPids(Object.values(this.deps.store.state.robots)
       .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
     if (this.stopped || !this.deps.writable()) return;
     const cwdChanged: string[] = [];
@@ -158,7 +158,7 @@ export class Poll {
         this.shellStreak.delete(key);
         if (!resume) { delete slot.agent; return; }
         if (!resume.ran && Date.now() - resume.at < resumeMs) return;
-        const which = `${this.deps.store.state.characters[resume.characterId]?.name}'s ${resume.term === 2 ? 'second ' : ''}terminal`;
+        const which = `${this.deps.store.state.robots[resume.robotId]?.name}'s ${resume.term === 2 ? 'second ' : ''}terminal`;
         const left = resume.ran ? `${resume.kind} exited back to its shell` : `${resume.kind} did not come up within ${Math.round(resumeMs / 1000)} s`;
         const error = `${which} resumed ${resume.kind} session ${resume.sessionId}, but ${left} before that session started, so it is dormant again with that session; revive it to see`;
         closing.push({ key, windowId: slot.tmux!.windowId, error });
@@ -171,7 +171,7 @@ export class Poll {
       }
     };
     this.deps.store.update((d) => {
-      for (const c of Object.values(d.characters)) {
+      for (const c of Object.values(d.robots)) {
         const cwd = c.cwd;
         const w = syncWindow(c, byName, before, { carried: this.deps.carried, settle: settleAgent, atShell: (key) => this.atShell(key) });
         if (c.cwd !== cwd) cwdChanged.push(c.id);
@@ -186,9 +186,9 @@ export class Poll {
           delete c.hint;
           delete c.codexDaemon;
         }
-        if (this.interrupted(c.id, c.agent)) d.characters[c.id] = interrupt(c.id, c);
-        const second = d.characters[c.id].second;
-        if (second && this.interrupted(secondName(c.id), second.agent)) d.characters[c.id].second = interrupt(c.id, second);
+        if (this.interrupted(c.id, c.agent)) d.robots[c.id] = interrupt(c.id, c);
+        const second = d.robots[c.id].second;
+        if (second && this.interrupted(secondName(c.id), second.agent)) d.robots[c.id].second = interrupt(c.id, second);
       }
     });
     // what a poll saw in a window says nothing of the next window opened under its name
@@ -201,14 +201,14 @@ export class Poll {
     }
     // a terminal gone dormant by any other way has no resume left to wait on
     for (const [key, r] of resuming) {
-      const c = this.deps.store.state.characters[r.characterId];
+      const c = this.deps.store.state.robots[r.robotId];
       if (!(r.term === 2 ? c?.second : c)?.tmux) resuming.delete(key);
     }
     if (silent.length) await this.markSilent(silent);
     await this.dialogsGone();
     this.ticks++;
     // the fleet's links are looked at a slice per tick, so the whole crew never spawns git and gh in the same breath
-    const awake = Object.values(this.deps.store.state.characters).filter((c) => c.tmux).map((c) => c.id);
+    const awake = Object.values(this.deps.store.state.robots).filter((c) => c.tmux).map((c) => c.id);
     for (const id of cwdChanged) this.pendingLinks.add(id);
     if (!this.sweeping) {
       const toRefresh = [...new Set([...this.pendingLinks, ...slice(awake, this.ticks)])];
@@ -225,7 +225,7 @@ export class Poll {
   // Claude Code fires no hook when its dialog about a tool is answered until the tool ends, which a long command runs on
   // for minutes; the prompt line back in view and empty says the dialog is gone. A field of the dialog's own reads as a draft
   private async dialogsGone(): Promise<void> {
-    const asking = Object.values(this.deps.store.state.characters).flatMap((c) => [c, c.second].flatMap((t, i) => {
+    const asking = Object.values(this.deps.store.state.robots).flatMap((c) => [c, c.second].flatMap((t, i) => {
       const a = t?.agent;
       return t?.tmux && a?.kind === 'claude' && a.status === 'blocked' && a.askedTool && !a.asking ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId }] : [];
     }));
@@ -233,7 +233,7 @@ export class Poll {
       const screen = await this.deps.tmux.screen(q.paneId).catch(() => undefined);
       if (!screen || isShellCommand(screen.command, this.deps.config.shell) || readComposer('claude', screen) !== 'empty') continue;
       this.deps.store.update((d) => {
-        const t = q.second ? d.characters[q.id]?.second : d.characters[q.id];
+        const t = q.second ? d.robots[q.id]?.second : d.robots[q.id];
         const a = t?.agent;
         if (t?.tmux?.paneId !== q.paneId || a?.status !== 'blocked' || a.promptId !== q.promptId || a.asking) return;
         a.status = 'working';
@@ -250,7 +250,7 @@ export class Poll {
     if (!procs || this.stopped || !this.deps.writable()) return;
     this.deps.store.update((d) => {
       for (const { id, pid } of silent) {
-        const c = d.characters[id];
+        const c = d.robots[id];
         if (!c || c.agent || !this.codexStreak.has(id)) continue;
         c.hint = 'codex-silent';
         if (onSharedServer(pid, procs)) c.codexDaemon = true; else delete c.codexDaemon;
@@ -258,7 +258,7 @@ export class Poll {
     });
   }
 
-  // a desktop terminal that never attached leaves its v-<charId> session behind
+  // a desktop terminal that never attached leaves its v-<robotId> session behind
   private async sweepViewerSessions(): Promise<void> {
     const staleMs = this.deps.staleSessionMs ?? 60_000;
     for (const s of await this.deps.tmux.listSessions()) {

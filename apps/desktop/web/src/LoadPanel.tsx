@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import type { Character, LoadChar, LoadUsage } from '@svall/protocol';
-import { sleepCharacter } from './actions.js';
+import type { Robot, LoadRobot, LoadUsage } from '@svall/protocol';
+import { sleepRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { useLoad } from './load.js';
@@ -39,18 +39,18 @@ function Row({ testid, name, use, of, appRow, children }: { testid: string; name
   );
 }
 
-function RobotRow({ c, use, of }: { c: Character; use: LoadChar; of: number }) {
+function RobotRow({ c, use, of }: { c: Robot; use: LoadRobot; of: number }) {
   const open = () => { app.store.getState().focus(c.id); app.store.getState().toggleLoad(false); };
   // a robot mid-turn in either terminal, working or waiting on the user, would lose that turn, so its sleep asks first
   const sleep = () => {
-    if (([1, 2] as const).some((t) => ['working', 'blocked'].includes(slotStatus(c, t)))) app.store.getState().setSleepingCharacter(c.id);
-    else void sleepCharacter(deps(), c.id);
+    if (([1, 2] as const).some((t) => ['working', 'blocked'].includes(slotStatus(c, t)))) app.store.getState().setSleepingRobot(c.id);
+    else void sleepRobot(deps(), c.id);
   };
   return (
     <Row testid={`load-row-${c.id}`} use={use} of={of}
       name={<button className="load-nm" onClick={open}>{c.name}{!c.tmux && <small>asleep</small>}</button>}>
       {c.tmux && use.sleepable && <button className="load-ib" data-testid={`load-sleep-${c.id}`} title="Sleep" onClick={sleep}><Moon /></button>}
-      <button className="load-ib dan" data-testid={`load-delete-${c.id}`} title="Delete" onClick={() => app.store.getState().setClosingCharacter(c.id)}><Cross /></button>
+      <button className="load-ib dan" data-testid={`load-delete-${c.id}`} title="Delete" onClick={() => app.store.getState().setClosingRobot(c.id)}><Cross /></button>
     </Row>
   );
 }
@@ -58,14 +58,14 @@ function RobotRow({ c, use, of }: { c: Character; use: LoadChar; of: number }) {
 /** Every robot and Svall itself by what they cost the machine, each robot with its Sleep and Delete. */
 export function LoadPanel() {
   const { load, error } = useLoad(true);
-  const characters = useApp((s) => s.fleet.characters);
+  const robots = useApp((s) => s.fleet.robots);
   const note = error ? <div className="use-note" data-testid="load-error">{error}</div> : null;
   if (!load) return note;
 
   const of = load.total.cpu;
   // a robot running only its shell costs nothing worth a row
-  const rows = Object.entries(load.chars).flatMap(([id, use]) => {
-    const c = characters[id];
+  const rows = Object.entries(load.robots).flatMap(([id, use]) => {
+    const c = robots[id];
     return c && !use.shellOnly ? [{ cpu: use.cpu, row: <RobotRow key={id} c={c} use={use} of={of} /> }] : [];
   });
   if (load.codex) rows.push({ cpu: load.codex.cpu, row: <Row key="codex" testid="load-codex" name={<span className="load-nm">Codex server (shared)</span>} use={load.codex} of={of} /> });

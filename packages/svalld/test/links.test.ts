@@ -95,7 +95,7 @@ describe('prState and lookupPr', () => {
     await lookupPr('/r', 'b', { exec, now: () => 400_000 });
     expect(calls).toBe(2);
   });
-  // two characters in one checkout miss together in the same refresh
+  // two robots in one checkout miss together in the same refresh
   it('asks gh once for lookups of one checkout and branch that miss together', async () => {
     let calls = 0;
     let answer!: () => void;
@@ -151,7 +151,7 @@ describe('prState and lookupPr', () => {
   it('gives each entry its own deadline, so a fleet filled in one sweep does not expire in one sweep', async () => {
     let calls = 0;
     const exec = async () => { calls++; return JSON.stringify({ url: 'https://x/pr/1', number: 1, state: 'OPEN', isDraft: false, reviewDecision: '' }); };
-    // two characters ask in the same moment; the earliest and latest deadlines the jitter allows
+    // two robots ask in the same moment; the earliest and latest deadlines the jitter allows
     await lookupPr('/early', 'b', { exec, now: () => 0, rand: () => 0 });
     await lookupPr('/late', 'b', { exec, now: () => 0, rand: () => 1 });
     expect(calls).toBe(2);
@@ -176,14 +176,14 @@ describe('refreshLinks', () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [{ kind: 'other', ref: 'https://keep', label: 'keep', source: 'manual' }, { kind: 'pr', ref: 'https://old', label: 'old', source: 'auto' }],
         shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => undefined });
-    const c = store.state.characters.c_a;
+    const c = store.state.robots.c_a;
     expect(c.repo?.branch).toBe('linus/eng-1907-thing');
     expect(c.context.map((l) => l.label)).toEqual(['keep', 'ENG-1907']);
   });
@@ -192,21 +192,21 @@ describe('refreshLinks', () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [{ kind: 'other', ref: 'https://doc', label: 'doc', source: 'scribe' }, { kind: 'pr', ref: 'https://old', label: 'old', source: 'auto' }],
         shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => undefined });
-    expect(store.state.characters.c_a.context.map((l) => `${l.source} ${l.label}`)).toEqual(['scribe doc', 'auto ENG-1907']);
+    expect(store.state.robots.c_a.context.map((l) => `${l.source} ${l.label}`)).toEqual(['scribe doc', 'auto ENG-1907']);
   });
 
   it('puts the branch PR in front of the links already there', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [{ kind: 'other', ref: 'https://keep', label: 'keep', source: 'manual' }, { kind: 'other', ref: 'https://doc', label: 'doc', source: 'scribe' }],
         shell: { lastOutputAt: 0 }, unread: false,
@@ -214,21 +214,21 @@ describe('refreshLinks', () => {
     });
     const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' };
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => pr });
-    expect(store.state.characters.c_a.context.map((l) => l.label)).toEqual(['#7', 'keep', 'doc', 'ENG-1907']);
+    expect(store.state.robots.c_a.context.map((l) => l.label)).toEqual(['#7', 'keep', 'doc', 'ENG-1907']);
   });
 
   it('keeps a pin on an auto item that survives the refresh under the same ref', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [{ kind: 'linear', ref: 'https://linear.app/acme/issue/ENG-1907', label: 'ENG-1907', source: 'auto', pinned: true }],
         shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => undefined });
-    const c = store.state.characters.c_a;
+    const c = store.state.robots.c_a;
     expect(c.context).toEqual([{ kind: 'linear', ref: 'https://linear.app/acme/issue/ENG-1907', label: 'ENG-1907', source: 'auto', pinned: true }]);
   });
 
@@ -237,32 +237,32 @@ describe('refreshLinks', () => {
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const mine = { kind: 'github' as const, ref: 'https://github.com/o/r', label: 'the repo', source: 'manual' as const, pinned: true as const };
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [mine], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     const originUrl = async () => 'https://github.com/o/r';
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => undefined, originUrl });
-    expect(store.state.characters.c_a.context).toEqual([mine]);
+    expect(store.state.robots.c_a.context).toEqual([mine]);
     // the PR opens and the repository is no longer worth an auto chip: the link the user made stays
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const };
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => pr, originUrl });
-    expect(store.state.characters.c_a.context).toEqual([pr, mine]);
+    expect(store.state.robots.c_a.context).toEqual([pr, mine]);
   });
 
   it('reads a manual item written without the scheme as the same link', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [{ kind: 'github', ref: 'github.com/o/r/', label: 'the repo', source: 'manual' }],
         shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => undefined, originUrl: async () => 'https://github.com/o/r' });
-    expect(store.state.characters.c_a.context).toEqual([{ kind: 'github', ref: 'github.com/o/r/', label: 'the repo', source: 'manual' }]);
+    expect(store.state.robots.c_a.context).toEqual([{ kind: 'github', ref: 'github.com/o/r/', label: 'the repo', source: 'manual' }]);
   });
 
   it('puts the state of a PR on the scribe or manual link to it, for as long as the lookup reads it', async () => {
@@ -270,16 +270,16 @@ describe('refreshLinks', () => {
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const review = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/5', label: 'my review', source: 'scribe' as const };
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [review], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     const pr = (n: number) => ({ kind: 'pr' as const, ref: `https://github.com/o/r/pull/${n}`, label: `#${n}`, source: 'auto' as const, prState: 'approved' as const });
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => pr(5) });
-    expect(store.state.characters.c_a.context).toEqual([{ ...review, prState: 'approved' }]);
+    expect(store.state.robots.c_a.context).toEqual([{ ...review, prState: 'approved' }]);
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => pr(9) });
-    expect(store.state.characters.c_a.context).toEqual([pr(9), review]);
+    expect(store.state.robots.c_a.context).toEqual([pr(9), review]);
   });
 
   it('keeps the PR state on the manual link to it through a failed lookup', async () => {
@@ -287,7 +287,7 @@ describe('refreshLinks', () => {
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const mine = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/5', label: 'mine', source: 'manual' as const };
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [mine], shell: { lastOutputAt: 0 }, unread: false,
       };
@@ -295,7 +295,7 @@ describe('refreshLinks', () => {
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'auto' as const, prState: 'approved' as const };
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => pr });
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => { throw new Error('gh: offline'); } });
-    expect(store.state.characters.c_a.context).toEqual([{ ...mine, prState: 'approved' }]);
+    expect(store.state.robots.c_a.context).toEqual([{ ...mine, prState: 'approved' }]);
   });
 
   it('keeps the PR it has, pin and all, through a failed lookup, and still reads the ticket and the repository', async () => {
@@ -303,46 +303,46 @@ describe('refreshLinks', () => {
     const repo = await resolveRepo(wt);
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const, pinned: true as const };
-    const character = (id: string, context: ContextItem[]) => ({
+    const robot = (id: string, context: ContextItem[]) => ({
       id, islandId: 'i', cell: { x: 0, y: 1 }, name: id, portrait: 'fox' as const, note: '', instructions: '', cwd: wt, repo, context, shell: { lastOutputAt: 0 }, unread: false,
     });
-    store.update((d) => { d.characters.c_a = character('c_a', [pr]); d.characters.c_b = character('c_b', []); });
+    store.update((d) => { d.robots.c_a = robot('c_a', [pr]); d.robots.c_b = robot('c_b', []); });
     const deps = { lookupPr: async () => { throw new Error('gh: offline'); }, originUrl: async () => 'https://github.com/o/r' };
     const config = Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } });
     await refreshMany(store, config, ['c_a', 'c_b'], deps);
     const ticket = { kind: 'linear', ref: 'https://linear.app/acme/issue/ENG-1907', label: 'ENG-1907', source: 'auto' };
-    expect(store.state.characters.c_a.context).toEqual([pr, ticket]);
-    expect(store.state.characters.c_b.context).toEqual([ticket, { kind: 'github', ref: 'https://github.com/o/r', label: 'o/r', source: 'auto' }]);
+    expect(store.state.robots.c_a.context).toEqual([pr, ticket]);
+    expect(store.state.robots.c_b.context).toEqual([ticket, { kind: 'github', ref: 'https://github.com/o/r', label: 'o/r', source: 'auto' }]);
   });
 
-  it('lets the PR of a checkout the character has left go, even when the lookup fails', async () => {
+  it('lets the PR of a checkout the robot has left go, even when the lookup fails', async () => {
     const { main, wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const };
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt, repo: { root: main, mainRoot: main, branch: 'main', isWorktree: false },
         context: [pr], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => { throw new Error('gh: offline'); }, originUrl: async () => undefined });
-    expect(store.state.characters.c_a.context.map((l) => l.label)).toEqual(['ENG-1907']);
+    expect(store.state.robots.c_a.context.map((l) => l.label)).toEqual(['ENG-1907']);
   });
 
-  it('lets the PR of a branch the character has left go, even when the lookup fails', async () => {
+  it('lets the PR of a branch the robot has left go, even when the lookup fails', async () => {
     const { wt } = makeRepo();
     const repo = await resolveRepo(wt);
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const, pinned: true as const };
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt, repo,
         context: [pr], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     execFileSync('git', ['-C', wt, 'checkout', '-q', '-b', 'linus/eng-2000-other']);
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => { throw new Error('gh: offline'); }, originUrl: async () => undefined });
-    expect(store.state.characters.c_a.context.map((l) => l.label)).toEqual(['ENG-2000']);
+    expect(store.state.robots.c_a.context.map((l) => l.label)).toEqual(['ENG-2000']);
   });
 
   it('leaves the links as they are without asking gh while HEAD is detached, as it is mid-rebase', async () => {
@@ -354,7 +354,7 @@ describe('refreshLinks', () => {
     ];
     const repo = await resolveRepo(wt);
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt, repo,
         context, shell: { lastOutputAt: 0 }, unread: false,
       };
@@ -364,20 +364,20 @@ describe('refreshLinks', () => {
     const config = Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } });
     await refreshLinks(store, config, 'c_a', { lookupPr: async () => { asked++; return undefined; }, originUrl: async () => 'https://github.com/o/r' });
     expect(asked).toBe(0);
-    expect(store.state.characters.c_a.context).toEqual(context);
-    expect(store.state.characters.c_a.repo?.branch).toBe('HEAD');
+    expect(store.state.robots.c_a.context).toEqual(context);
+    expect(store.state.robots.c_a.repo?.branch).toBe('HEAD');
     // the rebase done, a lookup that fails keeps the PR of the branch it came back to
     execFileSync('git', ['-C', wt, 'checkout', '-q', 'linus/eng-1907-thing']);
     await refreshLinks(store, config, 'c_a', { lookupPr: async () => { throw new Error('gh: offline'); }, originUrl: async () => 'https://github.com/o/r' });
-    expect(store.state.characters.c_a.context).toEqual(context);
+    expect(store.state.robots.c_a.context).toEqual(context);
   });
 
-  it('lets the links of a checkout the character has left go when the one it is in has HEAD detached', async () => {
+  it('lets the links of a checkout the robot has left go when the one it is in has HEAD detached', async () => {
     const { main, wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const repo = await resolveRepo(wt);
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: main, repo,
         context: [
           { kind: 'pr', ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto', prState: 'open' },
@@ -390,28 +390,28 @@ describe('refreshLinks', () => {
     let asked = 0;
     await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => { asked++; return undefined; }, originUrl: async () => 'https://github.com/o/s' });
     expect(asked).toBe(0);
-    expect(store.state.characters.c_a.context).toEqual([{ kind: 'github', ref: 'https://github.com/o/s', label: 'o/s', source: 'auto' }]);
-    expect(store.state.characters.c_a.repo).toMatchObject({ root: (await resolveRepo(main))?.root, branch: 'HEAD' });
+    expect(store.state.robots.c_a.context).toEqual([{ kind: 'github', ref: 'https://github.com/o/s', label: 'o/s', source: 'auto' }]);
+    expect(store.state.robots.c_a.repo).toMatchObject({ root: (await resolveRepo(main))?.root, branch: 'HEAD' });
   });
 
   it('labels a repository by its path, however many segments it has', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => undefined, originUrl: async () => 'https://gitlab.com/g/sub/r' });
-    expect(store.state.characters.c_a.context[0].label).toBe('g/sub/r');
+    expect(store.state.robots.c_a.context[0].label).toBe('g/sub/r');
   });
 
   it('adds the origin only while there is no PR to point at', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [], shell: { lastOutputAt: 0 }, unread: false,
       };
@@ -419,11 +419,11 @@ describe('refreshLinks', () => {
     const originUrl = async () => 'https://github.com/o/r';
     const repo = { kind: 'github', ref: 'https://github.com/o/r', label: 'o/r', source: 'auto' };
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => undefined, originUrl });
-    expect(store.state.characters.c_a.context).toEqual([repo]);
+    expect(store.state.robots.c_a.context).toEqual([repo]);
 
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const };
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => pr, originUrl });
-    expect(store.state.characters.c_a.context).toEqual([pr]);
+    expect(store.state.robots.c_a.context).toEqual([pr]);
   });
 
   it('does not restore the repo fallback when the scribe linked a PR for that repo', async () => {
@@ -431,46 +431,46 @@ describe('refreshLinks', () => {
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/42', label: '#42', source: 'scribe' as const };
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [pr], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr: async () => undefined, originUrl: async () => 'https://github.com/o/r' });
-    expect(store.state.characters.c_a.context).toEqual([pr]);
+    expect(store.state.robots.c_a.context).toEqual([pr]);
   });
 
-  it('leaves a character alone that moved while its links were being read', async () => {
+  it('leaves a robot alone that moved while its links were being read', async () => {
     const { main, wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     store.update((d) => {
-      d.characters.c_a = {
+      d.robots.c_a = {
         id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
         context: [], shell: { lastOutputAt: 0 }, unread: false,
       };
     });
     const moved = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/9', label: '#9', source: 'auto' as const, prState: 'open' as const };
     const lookupPr = async () => {
-      store.update((d) => { d.characters.c_a.cwd = main; d.characters.c_a.context = [moved]; });
+      store.update((d) => { d.robots.c_a.cwd = main; d.robots.c_a.context = [moved]; });
       return { ...moved, ref: 'https://github.com/o/r/pull/7', label: '#7' };
     };
     await refreshLinks(store, Config.parse({}), 'c_a', { lookupPr, originUrl: async () => undefined });
-    expect(store.state.characters.c_a.repo).toBeUndefined();
-    expect(store.state.characters.c_a.context).toEqual([moved]);
+    expect(store.state.robots.c_a.repo).toBeUndefined();
+    expect(store.state.robots.c_a.context).toEqual([moved]);
   });
 });
 
 describe('refreshMany', () => {
-  const character = (id: string, cwd: string) => ({
+  const robot = (id: string, cwd: string) => ({
     id, islandId: 'i', cell: { x: 0, y: 1 }, name: id, portrait: 'fox' as const, note: '', instructions: '', cwd,
     context: [], shell: { lastOutputAt: 0 }, unread: false,
   });
 
-  it('asks about at most CONCURRENCY characters at a time', async () => {
+  it('asks about at most CONCURRENCY robots at a time', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const ids = Array.from({ length: 12 }, (_, i) => `c_${i}`);
-    store.update((d) => { for (const id of ids) d.characters[id] = character(id, wt); });
+    store.update((d) => { for (const id of ids) d.robots[id] = robot(id, wt); });
 
     let inFlight = 0, peak = 0;
     const lookupPr = async () => {
@@ -488,13 +488,13 @@ describe('refreshMany', () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
     const ids = ['c_a', 'c_b', 'c_c'];
-    store.update((d) => { for (const id of ids) d.characters[id] = character(id, wt); });
+    store.update((d) => { for (const id of ids) d.robots[id] = robot(id, wt); });
 
     let updates = 0;
     store.subscribe(() => { updates++; });
     await refreshMany(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), ids, { lookupPr: async () => undefined });
     expect(updates).toBe(1);
-    for (const id of ids) expect(store.state.characters[id].context.map((l) => l.label)).toEqual(['ENG-1907']);
+    for (const id of ids) expect(store.state.robots[id].context.map((l) => l.label)).toEqual(['ENG-1907']);
   });
 
   it('writes nothing when the sweep changes nothing', async () => {
@@ -507,7 +507,7 @@ describe('refreshMany', () => {
 });
 
 describe('slice', () => {
-  it('covers every character across SLICES ticks, and none of them twice', () => {
+  it('covers every robot across SLICES ticks, and none of them twice', () => {
     const ids = Array.from({ length: 23 }, (_, i) => `c_${i}`);
     const seen = Array.from({ length: SLICES }, (_, tick) => slice(ids, tick)).flat();
     expect([...seen].sort()).toEqual([...ids].sort());
@@ -518,7 +518,7 @@ describe('slice', () => {
     for (let tick = 0; tick < SLICES; tick++) expect(slice(ids, tick).length).toBe(20);
   });
 
-  it('gives a fleet smaller than SLICES one character per tick at most', () => {
+  it('gives a fleet smaller than SLICES one robot per tick at most', () => {
     const ids = ['c_a', 'c_b', 'c_c'];
     for (let tick = 0; tick < SLICES; tick++) expect(slice(ids, tick).length).toBeLessThanOrEqual(1);
   });

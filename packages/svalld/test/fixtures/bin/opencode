@@ -13,13 +13,13 @@ if (args[0] === 'auth') {
   if (args.includes('json')) process.stdout.write('[{"id":"opencode","name":"OpenCode Zen","connections":[{"type":"env","name":"OPENCODE_API_KEY"}]}]\n');
   process.exit(0);
 }
-const charId = process.env.SVALL_CHAR_ID;
-if (!charId) process.exit(0);
+const robotId = process.env.SVALL_ROBOT_ID;
+if (!robotId) process.exit(0);
 
 if (args[0] !== 'serve') {
   const dir = path.join(process.env.SVALL_HOME, 'fake-opencode');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `${charId}.argv`), JSON.stringify(args));
+  fs.writeFileSync(path.join(dir, `${robotId}.argv`), JSON.stringify(args));
   const i = args.indexOf('--prompt');
   const server = spawn(process.execPath, [import.meta.filename, 'serve', '--stdio'], {
     stdio: ['pipe', 'inherit', 'inherit'], env: { ...process.env, ...(i !== -1 && { FAKE_PROMPT: args[i + 1] }), ...(args.includes('-s') && { FAKE_RESUMED: '1' }) },
@@ -73,7 +73,7 @@ if (args[0] !== 'serve') {
     event('session.execution.started', { sessionID });
     const request = { sessionID, system: [] };
     await hooks['session.context'](request);
-    fs.writeFileSync(path.join(dir, `${charId}.system`), JSON.stringify(request.system.map((s) => s.text)));
+    fs.writeFileSync(path.join(dir, `${robotId}.system`), JSON.stringify(request.system.map((s) => s.text)));
     await hooks['tool.execute.before']({ tool: 'shell', sessionID, input: { command: 'ls' } });
     await hooks['tool.execute.after']({ tool: 'shell', sessionID, input: { command: 'ls' }, status: 'completed', result: { content: [{ type: 'text', text: 'ok' }] } });
     event('session.step.started', { sessionID, model });

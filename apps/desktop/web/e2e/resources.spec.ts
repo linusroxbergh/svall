@@ -66,7 +66,7 @@ test('the lighthouse wears the map’s grain, cut to its outline, and it rises w
 
 test('a narrow map keeps the islet at 0.65 of its size or more, clear of the edge and of mission control, which shrinks for it', async ({ page, svall }) => {
   // five crew make home 17 cells wide
-  for (let n = 0; n < 5; n++) await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` });
+  for (let n = 0; n < 5; n++) await svall.api.call('robot.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` });
   await svall.open('map');
   // the land in each drawing lies a pad in from its edges, at the scale it is drawn
   const pair = async () => {
@@ -151,29 +151,29 @@ test('a kind with one file shows it with no row to press', async ({ page, svall 
   await expect(page.getByTestId('editor').locator('.cm-content')).toContainText('# e2e');
 });
 
-test('the tree folds a tier a folder, lists its sources when picked, and a character’s chain leads to its island', async ({ page, svall }) => {
+test('the tree folds a tier a folder, lists its sources when picked, and a robot’s chain leads to its island', async ({ page, svall }) => {
   await page.setViewportSize(WIDE);
   const island = await svall.api.call('island.create', { name: svall.uniq('isle') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: os.tmpdir() });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: os.tmpdir() });
   await svall.open('map');
   await page.getByTestId('resources-lighthouse').click();
 
   // Global and Fleet stand open by default; the other three are one row each
   await expect(page.getByTestId('resources-group-global')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('resources-group-fleet')).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('resources-group-robot')).toHaveAttribute('aria-expanded', 'false');
 
   // a press on the folder picks the tier, and the list is its sources; the caret opens it
   const docs = path.join(svall.home, 'docs');
-  const charRoot = `r:${path.join(docs, 'characters', c.id)}`;
-  await page.getByTestId('resources-group-character').click();
-  await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByTestId(`resources-list-source-${charRoot}`)).toContainText(c.name);
-  await page.getByTestId('resources-caret-character').click();
-  await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-expanded', 'true');
-  await page.getByTestId(`resources-where-${charRoot}`).click();
-  await expect(page.getByTestId(`resources-where-${charRoot}`)).toHaveAttribute('aria-pressed', 'true');
+  const robotRoot = `r:${path.join(docs, 'robots', c.id)}`;
+  await page.getByTestId('resources-group-robot').click();
+  await expect(page.getByTestId('resources-group-robot')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resources-group-robot')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId(`resources-list-source-${robotRoot}`)).toContainText(c.name);
+  await page.getByTestId('resources-caret-robot').click();
+  await expect(page.getByTestId('resources-group-robot')).toHaveAttribute('aria-expanded', 'true');
+  await page.getByTestId(`resources-where-${robotRoot}`).click();
+  await expect(page.getByTestId(`resources-where-${robotRoot}`)).toHaveAttribute('aria-pressed', 'true');
   // only the kinds the source holds are offered, and the whole of it is listed
   await expect(page.getByTestId('resources-what-skills')).toHaveCount(0);
   await expect(page.getByTestId('resources-what-docs')).toBeVisible();
@@ -189,7 +189,7 @@ test('the tree folds a tier a folder, lists its sources when picked, and a chara
   await page.waitForFunction(() => '__map' in window);
   await page.getByTestId('resources-lighthouse').click();
   await expect(page.getByTestId('resources-group-island')).toHaveAttribute('aria-expanded', 'true');
-  await svall.api.call('char.close', { id: c.id });
+  await svall.api.call('robot.close', { id: c.id });
 });
 
 test('a kind says whether it is attached or looked up, and the breadcrumb leads with the tier', async ({ page, svall }) => {
@@ -297,18 +297,18 @@ test('a hook opens settings.json with the cursor on its event, and Esc closes th
   await expect(page.getByTestId('resources-shelf')).toHaveCount(0);
 });
 
-test('the side card’s button opens the shelf on that character’s repository', async ({ page, svall }) => {
+test('the side card’s button opens the shelf on that robot’s repository', async ({ page, svall }) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-res-'));
   fs.mkdirSync(path.join(dir, '.claude/skills/prepush'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude/skills/prepush/SKILL.md'), '---\nname: prepush\ndescription: Before pushing\n---\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('res') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'pusher' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'pusher' });
   await page.setViewportSize(WIDE);
   await svall.open('map');
   await page.getByTestId(`token-${c.id}`).click();
   await page.getByTestId('side-resources').click();
   const { sources } = await svall.api.call('resources.get', {});
-  const mine = sources.find((s) => s.characterIds.includes(c.id))!;
+  const mine = sources.find((s) => s.robotIds.includes(c.id))!;
   await expect(page.getByTestId(`resources-where-${mine.rootId}`)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-item-skills-prepush')).toBeVisible();
 
@@ -331,7 +331,7 @@ test('a repository skill and agent are deleted from their rows, and Undo puts th
   fs.writeFileSync(path.join(dir, '.claude/agents/critic.md'), '---\nname: critic\n---\n');
   fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# repo\n');
   const island = await svall.api.call('island.create', { name: svall.uniq('del') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'deleter' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'deleter' });
   await page.setViewportSize(WIDE);
   await svall.open('map');
   await page.getByTestId(`token-${c.id}`).click();
@@ -356,12 +356,12 @@ test('a repository skill and agent are deleted from their rows, and Undo puts th
 
 test('the shelf stands over an open terminal card', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('under') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'under' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'under' });
   await page.setViewportSize(WIDE);
   await svall.open('map');
-  await page.getByTestId(`sb-char-${c.id}`).dblclick();
+  await page.getByTestId(`sb-robot-${c.id}`).dblclick();
   const card = page.getByTestId('terminal-card');
-  await expect(card).toHaveAttribute('data-char', c.id);
+  await expect(card).toHaveAttribute('data-robot', c.id);
   await page.getByTestId('resources-pill').click();
   await expect(page.getByTestId('resources-shelf')).toBeVisible();
   const box = (await card.boundingBox())!;
@@ -641,7 +641,7 @@ test('an island’s note, agent instructions and links stand among its resources
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[island.id].instructions).toBe('Run the by-eye pass before merging.');
   await expect(page.getByTestId('resources-item-agentInstructions-Instructions')).toContainText('Run the by-eye pass before merging.');
 
-  // only an island and a character have a card; nothing else is offered its kinds
+  // only an island and a robot have a card; nothing else is offered its kinds
   await page.getByTestId(`resources-where-r:${path.join(svall.home, 'claude')}`).click();
   await expect(page.getByTestId('resources-what-note')).toHaveCount(0);
 });
@@ -662,12 +662,12 @@ test('the arrow keys walk the tree as folders, and the list on into the editor',
   await expect(page.getByTestId(`resources-where-${claude}`)).toHaveAttribute('aria-pressed', 'true');
 
   // a shut folder opens under right and shuts under left; only an open one lets right go on to the list
-  await page.getByTestId('resources-group-character').focus();
+  await page.getByTestId('resources-group-robot').focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-expanded', 'true');
-  expect(await focused()).toBe('resources-group-character');
+  await expect(page.getByTestId('resources-group-robot')).toHaveAttribute('aria-expanded', 'true');
+  expect(await focused()).toBe('resources-group-robot');
   await page.keyboard.press('ArrowLeft');
-  await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('resources-group-robot')).toHaveAttribute('aria-expanded', 'false');
 
   // right from a source into the list, which keeps its pick; down picks the next row, up the row before it
   await page.getByTestId(`resources-where-${claude}`).focus();
@@ -744,14 +744,14 @@ test('the fleet’s own docs stand in a tier of their own, named for the fleet, 
   await expect.poll(() => fs.readFileSync(path.join(dir, `${name}.md`), 'utf8')).toContain('description: Plain words, no filler.');
 });
 
-test('a new agent profile is written in the fleet’s shelf and offered to every character', async ({ page, svall }) => {
+test('a new agent profile is written in the fleet’s shelf and offered to every robot', async ({ page, svall }) => {
   await page.setViewportSize(WIDE);
   const file = path.join(svall.home, 'agent-profiles', 'critic.md');
   fs.rmSync(file, { force: true });
   const island = await svall.api.call('island.create', { name: svall.uniq('critic') });
-  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'critiqued' });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'critiqued' });
   await svall.open();
-  await page.getByTestId(`sb-char-${c.id}`).click();
+  await page.getByTestId(`sb-robot-${c.id}`).click();
   const pick = page.getByTestId('side-card').getByTestId('side-agent-profile');
   await pick.click();
   await page.getByTestId('side-agent-profile-opt-manage').click();
@@ -776,7 +776,7 @@ test('a new agent profile is written in the fleet’s shelf and offered to every
   await pick.click();
   await page.getByTestId('side-agent-profile-opt-critic').click();
   await expect(page.getByTestId('side-agent-profile-hint')).toHaveText('Argues against the plan.');
-  await expect.poll(async () => (await svall.api.call('char.show', { id: c.id })).text)
+  await expect.poll(async () => (await svall.api.call('robot.show', { id: c.id })).text)
     .toContain('Agent profile: critic — follow this role.\nYou argue against every plan you are shown.');
 
   // written past the cap, it stops reaching the agent, and the card says so without a reload
@@ -785,6 +785,6 @@ test('a new agent profile is written in the fleet’s shelf and offered to every
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.insertText(` ${'x'.repeat(1600)}`);
   await expect(page.getByTestId('side-agent-profile-hint')).toHaveText('critic is over 1500 characters');
-  expect((await svall.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');
+  expect((await svall.api.call('robot.show', { id: c.id })).text).not.toContain('Agent profile');
   fs.rmSync(file, { force: true });
 });

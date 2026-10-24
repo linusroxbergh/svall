@@ -20,7 +20,7 @@ const source = (over: Partial<SourceJournal> = {}): SourceJournal => SourceJourn
   toMachineId: crypto.randomUUID(),
   phase: 'freeze',
   manifestDigest: digest,
-  stoppedTerminals: [{ characterId: 'c_1', term: 2 }],
+  stoppedTerminals: [{ robotId: 'c_1', term: 2 }],
   updatedAt: 1,
   ...over,
 });
@@ -35,7 +35,7 @@ const destination = (over: Partial<DestinationJournal> = {}): DestinationJournal
   phase: 'prepare',
   manifestDigest: digest,
   preparedPath: '/x/handover/prepared-tx-1.json',
-  activation: [{ characterId: 'c_1', ok: false, error: 'no tmux' }],
+  activation: [{ robotId: 'c_1', ok: false, error: 'no tmux' }],
   updatedAt: 2,
   ...over,
 });
@@ -53,14 +53,14 @@ describe('journal schemas', () => {
   });
 
   it('names a stopped terminal the way every other call does: absent is the main one', () => {
-    expect(SourceJournal.parse({ ...source(), stoppedTerminals: [{ characterId: 'c_1' }] }).stoppedTerminals)
-      .toEqual([{ characterId: 'c_1' }]);
-    expect(() => SourceJournal.parse({ ...source(), stoppedTerminals: [{ characterId: 'c_1', term: 1 }] })).toThrow();
+    expect(SourceJournal.parse({ ...source(), stoppedTerminals: [{ robotId: 'c_1' }] }).stoppedTerminals)
+      .toEqual([{ robotId: 'c_1' }]);
+    expect(() => SourceJournal.parse({ ...source(), stoppedTerminals: [{ robotId: 'c_1', term: 1 }] })).toThrow();
   });
 
   it('keeps stopped terminals on the source', () => {
     const j = source({ error: 'rsync died' });
-    expect(j.stoppedTerminals).toEqual([{ characterId: 'c_1', term: 2 }]);
+    expect(j.stoppedTerminals).toEqual([{ robotId: 'c_1', term: 2 }]);
     expect(j.error).toBe('rsync died');
   });
 });
@@ -78,6 +78,14 @@ describe('openJournal', () => {
     expect(fs.statSync(paths.journal).mode & 0o777).toBe(0o600);
     const loaded = openJournal(paths).load();
     expect(loaded).toMatchObject({ kind: 'open', journal: { role: 'source', phase: 'transfer' } });
+  });
+
+  it("loads a journal an older svalld wrote, which names each terminal's robot characterId", () => {
+    const paths = resolvePaths(makeHome());
+    const old = JSON.stringify(source({ terminated: [{ robotId: 'c_2', term: undefined, processes: ['vim'] }] })).replaceAll('"robotId"', '"characterId"');
+    fs.mkdirSync(path.dirname(paths.journal), { recursive: true });
+    fs.writeFileSync(paths.journal, old);
+    expect(openJournal(paths).load()).toMatchObject({ kind: 'open', journal: { stoppedTerminals: [{ robotId: 'c_1', term: 2 }], terminated: [{ robotId: 'c_2', processes: ['vim'] }] } });
   });
 
   it('survives a crash between the rename and the directory fsync', () => {

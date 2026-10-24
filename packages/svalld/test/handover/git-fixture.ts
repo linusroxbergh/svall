@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { emptyState, type Character, type FleetState } from '@svall/protocol';
+import { emptyState, type Robot, type FleetState } from '@svall/protocol';
 
 export const hasGit = (() => {
   try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; }
@@ -96,23 +96,23 @@ export function seedHere(made: string[]): Layout {
   return layout(base);
 }
 
-/** The fixture's crew: one character in each used checkout and the submodule, none in the main checkout. */
+/** The fixture's crew: one robot in each used checkout and the submodule, none in the main checkout. */
 export function crew(l: Layout): FleetState {
   const s = l.source;
   const state = emptyState();
-  state.characters = {
-    nested: char('nested', { cwd: s.nested }),
-    sib: char('sib', { cwd: s.sibling, second: { cwd: s.sibling, unread: false } }),
-    det: char('det', { cwd: s.detached }),
-    lock: char('lock', { cwd: s.locked }),
-    sub: char('sub', { cwd: s.sub }),
+  state.robots = {
+    nested: robot('nested', { cwd: s.nested }),
+    sib: robot('sib', { cwd: s.sibling, second: { cwd: s.sibling, unread: false } }),
+    det: robot('det', { cwd: s.detached }),
+    lock: robot('lock', { cwd: s.locked }),
+    sub: robot('sub', { cwd: s.sub }),
     // a shell at the home root, which is on both machines and so copies nothing
-    plain: char('plain', { cwd: path.dirname(s.work) }),
+    plain: robot('plain', { cwd: path.dirname(s.work) }),
   };
   return state;
 }
 
-export function char(id: string, o: Partial<Character>): Character {
+export function robot(id: string, o: Partial<Robot>): Robot {
   return {
     id, islandId: 'i1', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'fox', instructions: '', cwd: '/',
     context: [], shell: { lastOutputAt: 0 }, unread: false, ...o,
