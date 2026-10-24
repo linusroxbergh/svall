@@ -25,9 +25,12 @@ export const repoSlug = (mainRoot: string): string =>
 
 export const docsDir = (docs: string, tier: EntityTier, id: string): string => path.join(docs, TREE[tier], id);
 
-/** The main root a character's repository docs hang off, a worktree counted as its repository; mission control's crew has none. */
-export const repoRootOf = (c: Character): string | undefined =>
-  (c.islandId === HOME_ISLAND ? undefined : c.repo?.mainRoot ?? expandHome(c.cwd));
+/**
+ * The main root a character's repository docs hang off, a worktree counted as its repository, with `~` read against
+ * `home`; mission control's crew has none.
+ */
+export const repoRootOf = (c: Character, home?: string): string | undefined =>
+  (c.islandId === HOME_ISLAND ? undefined : c.repo?.mainRoot ?? expandHome(c.cwd, home));
 
 function readHead(file: string): string {
   const fd = fs.openSync(file, 'r');

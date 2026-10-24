@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState, FleetConfig, TRANSFER_SCHEMA_VERSION, TransferManifestV1, type Character, type GitCheckout, type MachineId } from '@svall/protocol';
-import { destinationView, relocate, relocationProblem } from '../../src/handover/relocate.js';
+import { repoSlug } from '../../src/docs.js';
+import { destinationView, docsBlockers, docsRenames, relocate, relocationProblem } from '../../src/handover/relocate.js';
 
 const MAC = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
 const TRIFT = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -156,5 +157,21 @@ describe('destinationView', () => {
     const v = destinationView(m);
     const back = destinationView({ ...v, home: '/home/ada', destinationHome: '/Users/ada' });
     expect({ ...back, home: m.home, destinationHome: m.destinationHome }).toEqual(m);
+  });
+});
+
+describe('docsBlockers', () => {
+  const [from, to] = [`repos/${repoSlug('/Users/ada/app')}`, `repos/${repoSlug('/home/ada/app')}`];
+  const withDocs = (...dirs: string[]): TransferManifestV1 => {
+    const m = manifest('/home/ada');
+    const files = dirs.map((d) => ({ type: 'file' as const, path: `${d}/n.md`, mode: 0o644, size: 1, mtimeMs: 0, sha256: SHA }));
+    return { ...m, roots: [...m.roots, { id: 'r_d', kind: 'docs', entry: 'dir', path: '/Users/ada/.svall/docs', files }] };
+  };
+
+  it('renames the folder of each repository that moves, and refuses only docs that hold both names', () => {
+    expect(docsRenames(withDocs())).toEqual([{ from, to }]);
+    expect(docsBlockers(withDocs(from))).toEqual([]);
+    expect(docsBlockers(withDocs(to))).toEqual([]);
+    expect(docsBlockers(withDocs(from, to))).toEqual([expect.objectContaining({ code: 'path_unsupported', entity: { kind: 'root', id: 'r_d' } })]);
   });
 });

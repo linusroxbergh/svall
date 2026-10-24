@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { TransferManifestV1 } from '@svall/protocol';
+import type { Blocker, TransferManifestV1 } from '@svall/protocol';
+import { docsDir, repoRootOf, repoSlug } from '../docs.js';
 import { clean, fieldValues, holds, PATH_FIELDS, type PortableForm } from './portable-path.js';
 
 /**
@@ -76,4 +77,30 @@ export function destinationView(m: TransferManifestV1): TransferManifestV1 {
       })),
     }),
   };
+}
+
+/**
+ * The repository docs folders a move between homes renames, relative to the docs root: each is named for its main root's
+ * path, so the folder a character's repository or folder names on the source is named for where that lands.
+ */
+export function docsRenames(sent: Pick<TransferManifestV1, 'home' | 'destinationHome' | 'snapshot'>): { from: string; to: string }[] {
+  const r: Relocation = { from: sent.home, to: sent.destinationHome };
+  const renames = new Map<string, string>();
+  for (const c of Object.values(sent.snapshot.characters)) {
+    const root = repoRootOf(c, sent.home);
+    const there = root && relocate(root, r);
+    if (root && there !== root) renames.set(docsDir('', 'repo', repoSlug(root)), docsDir('', 'repo', repoSlug(there!)));
+  }
+  return [...renames].map(([from, to]) => ({ from, to }));
+}
+
+/** A docs folder the move renames whose new name the carried docs hold as well. */
+export function docsBlockers(sent: Pick<TransferManifestV1, 'home' | 'destinationHome' | 'snapshot' | 'roots'>): Blocker[] {
+  const docs = sent.roots.find((r) => r.kind === 'docs');
+  if (!docs) return [];
+  const held = (dir: string): boolean => docs.files.some((f) => holds(dir, f.path));
+  return docsRenames(sent).filter(({ from, to }) => held(from) && held(to)).map(({ from, to }) => ({
+    code: 'path_unsupported', entity: { kind: 'root', id: docs.id },
+    message: `${docs.path} holds ${to} as well as ${from}, which the handover renames to it where the fleet lands; move one of them out of ${docs.path}`,
+  }));
 }
