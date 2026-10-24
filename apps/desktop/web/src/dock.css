@@ -37,7 +37,8 @@
 .use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
   padding: var(--sp-2xl) var(--sp-3xl); pointer-events: auto; }
 .use-panel[data-load] { width: 390px; }
-.use-panel-title { margin-bottom: var(--sp-xl); font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
+.use-panel-title { display: flex; align-items: center; gap: var(--sp-lg); margin-bottom: var(--sp-xl); font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
+.use-panel-title > span { flex: 1; min-width: 0; }
 @media (max-width: 620px) {
   .use { flex-direction: column-reverse; align-items: flex-start; }
   .use-panel { width: min(330px, calc(100vw - 16px)); margin: 0 0 var(--sp-md) var(--sp-md); }
@@ -55,7 +56,6 @@
 
 /* the phone link shares the utility dock with the usage meter */
 .mob { display: flex; flex-direction: column; gap: var(--sp-xl); }
-.mob-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-lg); }
 .mob-qr { width: 100%; border-radius: var(--r-sm); background: var(--white); }
 .mob-url { padding: var(--sp-sm) var(--sp-md); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--fill-1);
   font-family: var(--mono); font-size: var(--text-sm); color: var(--ink-2); word-break: break-all; text-align: left; }

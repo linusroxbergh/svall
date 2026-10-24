@@ -4,7 +4,7 @@ import { loginForward } from './host.js';
 
 /**
  * A terminal on the machine, over an ssh of its own, with `run` typed at its prompt for the user to run or change.
- * `onEnd` once the user is done with it or its shell exits.
+ * `onEnd` once its shell exits.
  */
 export function MachineTerminal({ name, ssh, run, onEnd }: { name: string; ssh: string; run?: string; onEnd: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -64,9 +64,6 @@ export function MachineTerminal({ name, ssh, run, onEnd }: { name: string; ssh: 
         </div>
       )}
       <div ref={ref} className="host-term-surface" data-testid="host-terminal-surface" />
-      <div className="acts">
-        <button className="btn" data-testid="host-terminal-done" title="Close the terminal" onClick={onEnd}>Done</button>
-      </div>
     </div>
   );
 }

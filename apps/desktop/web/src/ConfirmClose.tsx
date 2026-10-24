@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { app, deps } from './boot.js';
+import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
 import { closeCharacter } from './keyboard.js';
 
@@ -28,7 +29,7 @@ export function ConfirmClose() {
           if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirm(); }
           if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
         }}>
-        <div className="kicker">Delete character</div>
+        <div className="kicker">Delete character<CloseX onClose={cancel} testid="confirm-close-close" /></div>
         <div className="modal-name">{name}</div>
         <div className="modal-note" data-testid="confirm-close-note">
           Closing kills its terminal and deletes its docs.{unsaved > 0 && ` ${unsaved} unsaved ${unsaved === 1 ? 'file goes' : 'files go'} with it.`}

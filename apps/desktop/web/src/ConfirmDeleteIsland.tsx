@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { deleteIsland } from './actions.js';
 import { app, deps } from './boot.js';
+import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
 
 // an island's docs go with it, so its delete asks once more; a reflex Enter keeps it
@@ -23,7 +24,7 @@ export function ConfirmDeleteIsland() {
           if (e.key === 'Enter') e.stopPropagation();
           if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
         }}>
-        <div className="kicker">Delete island</div>
+        <div className="kicker">Delete island<CloseX onClose={cancel} testid="confirm-delete-island-close" /></div>
         <div className="modal-name">{name}</div>
         <div className="modal-note">Its docs go with it.</div>
         <div className="acts">

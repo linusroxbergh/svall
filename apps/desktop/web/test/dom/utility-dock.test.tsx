@@ -22,6 +22,15 @@ test('a press on the map closes the usage panel', async () => {
   expect(store.getState().usageOpen).toBe(false);
 });
 
+test('the × closes the open panel and hands the keys back to the terminal', async () => {
+  store.getState().toggleLoad(true);
+  render(<UtilityDock />);
+  await act(async () => {});
+  fireEvent.click(screen.getByTestId('corner-panel-close'));
+  expect(store.getState().loadOpen).toBe(false);
+  expect(store.getState().keepPageFocus).toBe(false);
+});
+
 // the dialogs a panel's buttons open stand outside the dock
 test('answering a dialog the load panel opened leaves the panel open', async () => {
   store.getState().toggleLoad(true);

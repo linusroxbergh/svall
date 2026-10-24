@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
+import { CloseX } from './CloseX.js';
 import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
@@ -146,7 +147,7 @@ export function HostSetup() {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      // a terminal there hangs up what runs in it, so only Done or × closes it
+      // a terminal there hangs up what runs in it, so only × closes it
       if (!app.store.getState().hostTerminal) app.store.getState().toggleHost(false);
     };
     window.addEventListener('keydown', key, true);
@@ -176,8 +177,7 @@ export function HostSetup() {
       <div className="modal host panel" onPointerDown={(e) => e.stopPropagation()}>
         <div className="kicker">
           {machine ? <span data-testid="host-machine">{machine}</span> : 'Add a machine'}
-          <span className="spacer" />
-          <button ref={shut} className="side-x" data-testid="host-close" title="Close" aria-label="Close" onClick={close}>×</button>
+          <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} onEnd={ended} /> : (
           <>

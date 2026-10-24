@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import { openFolder } from './bridge.js';
+import { CloseX } from './CloseX.js';
 import {
   accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
   entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, namesOn, planOf, problemOf, restPlan, resumeTally, rowText, sectionStates, staysInSight,
@@ -330,7 +331,6 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
   const way = wayOut(run, ctx);
   const detail = detailOf(run);
   const { tone, sub } = footerNote(run, ctx);
-  const close = () => store().toggleHandover(false);
   let buttons: ReactNode[];
   if (decisionPending(run)) {
     const blockers = run.decision!.blockers;
@@ -351,8 +351,6 @@ function Footer({ run, ctx, onAgain }: { run: HandoverRun; ctx: HintContext; onA
           onClick={() => follow(run, 'handover.forget')}>Forget</button>
       ),
       acts.follow && <button key="follow" className="btn" data-testid="handover-follow" onClick={() => follow(run, 'handover.attach')}>Check again</button>,
-      tone === 'done' && !acts.resume && <button key="close" className="btn pri" data-testid="handover-done" onClick={close}>Close</button>,
-      tone === 'stop' && !acts.tryAgain && !acts.resume && !acts.follow && !acts.forget && <button key="close" className="btn" data-testid="handover-done" onClick={close}>Close</button>,
     ].filter(Boolean);
   }
   return (
@@ -425,11 +423,7 @@ export function HandoverSheet() {
     <div className="modal-back" data-testid="handover-sheet" onPointerDown={close}>
       <div className="modal host panel ho" onPointerDown={(e) => e.stopPropagation()}>
         <div className="ho-top">
-          <div className="kicker">
-            Handover
-            <span className="spacer" />
-            <button ref={shut} className="side-x" data-testid="handover-close" title="Close" aria-label="Close" onClick={close}>×</button>
-          </div>
+          <div className="kicker">Handover<CloseX ref={shut} onClose={close} testid="handover-close" /></div>
           {shown && to && <Route run={run} ctx={ctx} />}
         </div>
         <div className="ho-body">

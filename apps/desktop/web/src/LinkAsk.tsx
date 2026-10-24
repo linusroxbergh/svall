@@ -3,6 +3,7 @@ import type { ContextItem } from '@svall/protocol';
 import { app } from './boot.js';
 import { openItem, openUrl } from './bridge.js';
 import { openBeside, opensInside } from './browser.js';
+import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { theme } from './theme.js';
@@ -51,7 +52,10 @@ export function LinkAsk() {
         top: Math.min(ask.y + theme.linkAsk.gap, window.innerHeight - theme.linkAsk.height - theme.linkAsk.margin),
         width: theme.linkAsk.width,
       }}>
-      <div className="linkask-ref mono">{ask.url.replace(/^https?:\/\//, '')}</div>
+      <div className="linkask-head">
+        <span className="linkask-ref mono">{ask.url.replace(/^https?:\/\//, '')}</span>
+        <CloseX onClose={() => { app.store.getState().closeLinkAsk(); giveBack(ask.surface); }} testid="link-ask-close" />
+      </div>
       <button className="btn pri" data-testid="link-ask-here" onClick={here}>Open here</button>
       <button className="btn" data-testid="link-ask-outside" onClick={outside}>Open outside</button>
     </div>

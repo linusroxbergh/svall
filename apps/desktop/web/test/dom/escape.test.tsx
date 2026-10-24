@@ -7,6 +7,9 @@ vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModu
 
 const { NewCharacter } = await import('../../src/NewCharacter.js');
 const { MissionPrompt } = await import('../../src/MissionPrompt.js');
+const { ConfirmClose } = await import('../../src/ConfirmClose.js');
+const { ConfirmSleep } = await import('../../src/ConfirmSleep.js');
+const { ConfirmDeleteIsland } = await import('../../src/ConfirmDeleteIsland.js');
 const { Sidebar } = await import('../../src/Sidebar.js');
 const { dispatchKey, installKeyHandlers } = await import('../../src/keyboard.js');
 
@@ -33,6 +36,20 @@ test('Esc in the mission prompt closes it and leaves the board side card open', 
   fireEvent.keyDown(screen.getByTestId('mission-prompt-text'), { key: 'Escape' });
   expect(store.getState().missionPrompt).toBe(false);
   expect(store.getState().sideCardCollapsed).toBe(false);
+});
+
+test.each([
+  ['new-character-close', () => store.getState().setNamingCharacter(true), <NewCharacter />, () => store.getState().namingCharacter],
+  ['mission-prompt-close', () => store.getState().setMissionPrompt(true), <MissionPrompt />, () => store.getState().missionPrompt],
+  ['confirm-close-close', () => store.getState().setClosingCharacter('c0'), <ConfirmClose />, () => store.getState().closingCharacter],
+  ['confirm-sleep-close', () => store.getState().setSleepingCharacter('c0'), <ConfirmSleep />, () => store.getState().sleepingCharacter],
+  ['confirm-delete-island-close', () => store.getState().setDeletingIsland('i_a'), <ConfirmDeleteIsland />, () => store.getState().deletingIsland],
+] as const)('the × at %s closes its dialog and does nothing else', (testid, open, dialog, shown) => {
+  open();
+  render(dialog);
+  fireEvent.click(screen.getByTestId(testid));
+  expect(shown()).toBeFalsy();
+  expect(call).not.toHaveBeenCalled();
 });
 
 test('the new-character key sets a typed mission prompt aside for the next open, and Esc gives it up', async () => {
