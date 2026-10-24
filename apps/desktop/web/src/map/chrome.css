@@ -26,16 +26,16 @@
 .hover-card .top { display: flex; align-items: baseline; gap: var(--sp-lg); }
 .hover-card .hname { font-size: var(--text-2xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); }
 .hover-card .hst { font-size: var(--text-xs); font-weight: var(--w-bold); letter-spacing: var(--track-caps); text-transform: uppercase; margin-left: auto; }
-.hover-card .task { margin: var(--sp-md) 0 var(--sp-xl); color: var(--ink-2); font-size: var(--text-md); line-height: 1.4; }
+.hover-card .task { margin: var(--sp-md) 0 var(--sp-xl); color: var(--ink-2); font-size: var(--text-md); line-height: var(--lh); }
 .hover-card .hint { margin-top: calc(var(--sp-lg) + 1px); padding-top: var(--sp-lg); border-top: 1px solid var(--line-soft); font-size: var(--text-xs); color: var(--ink-3); }
 .toast { position: absolute; z-index: var(--z-toast); padding: var(--sp-lg) var(--sp-2xl); border-radius: var(--r-md); background: color-mix(in srgb, var(--blocked) 95%, transparent); color: var(--ink-on-blocked); font-weight: var(--w-semibold); font-size: var(--text-md); max-width: 340px; pointer-events: none; border: 0; opacity: 1; transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); }
 /* a confirmation wears the colour of the button that set it going, so only a refusal reads as alarm */
 .toast[data-tone="ok"] { background: color-mix(in srgb, var(--sand) 95%, transparent); color: var(--ink-sand); }
 @starting-style { .toast { opacity: 0; transform: translateY(8px); } }
-.toast[data-corner$="left"] { left: 26px; }
-.toast[data-corner$="right"] { right: 26px; }
-.toast[data-corner^="top"] { top: 26px; }
-.toast[data-corner^="bottom"] { bottom: 26px; }
+.toast[data-corner$="left"] { left: var(--map-inset); }
+.toast[data-corner$="right"] { right: var(--map-inset); }
+.toast[data-corner^="top"] { top: var(--map-inset); }
+.toast[data-corner^="bottom"] { bottom: var(--map-inset); }
 .toast:has(.toast-act) { pointer-events: auto; }
 .toast-act { margin-left: var(--sp-xl); padding: 0; background: none; border: 0; font: inherit; font-weight: var(--w-semibold); color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .terminal-card { position: absolute; z-index: var(--z-card); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; opacity: .94;
@@ -44,12 +44,11 @@
 .linkask { position: fixed; z-index: var(--z-ask); display: flex; flex-direction: column; gap: var(--sp-sm); padding: var(--sp-lg); }
 .linkask-ref { font-size: var(--text-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .linkask .btn { padding: var(--sp-md) var(--sp-lg); font-size: var(--text-md); }
-.ctx-menu { position: fixed; z-index: var(--z-ask); min-width: 148px; padding: var(--sp-xs); border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--surface-2); box-shadow: var(--shadow-2); font-size: var(--text-md); color: var(--ink); user-select: none; }
+.ctx-menu { position: fixed; z-index: var(--z-ask); min-width: 148px; padding: var(--sp-xs); font-size: var(--text-md); color: var(--ink); user-select: none; }
 .ctx-item { padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); cursor: default; }
 .ctx-item[data-active="true"] { background: var(--fill-2); }
-.ctx-item[data-danger] { color: color-mix(in srgb, var(--blocked) 70%, var(--ink)); }
-.ctx-item[aria-disabled="true"] { opacity: .55; }
+.ctx-item[data-danger] { color: var(--danger); }
+.ctx-item[aria-disabled="true"] { opacity: var(--disabled); }
 .ctx-sep { height: 1px; margin: var(--sp-xs) var(--sp-md); background: var(--line-soft); }
 
 .card-body { position: relative; flex: 1; min-height: 0; background: var(--surface-0); }

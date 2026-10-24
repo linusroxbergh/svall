@@ -105,7 +105,7 @@ export function AgentProfilePick({ id }: { id: string }) {
             onClick={() => { shelf(); void chooseResource(deps(), current); }}>View</button>
         )}
         {open && (
-          <div ref={menu} className="side-profile-menu" role="listbox" id={`side-profile-menu-${id}`} aria-label="Agent profile"
+          <div ref={menu} className="side-profile-menu popover" role="listbox" id={`side-profile-menu-${id}`} aria-label="Agent profile"
             style={place}
             onMouseDown={(e) => e.preventDefault()}>
             {opts.map((o, i) => (

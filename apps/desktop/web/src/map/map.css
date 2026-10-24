@@ -36,13 +36,13 @@
 .ilabel{position:absolute;left:50%;transform:translateX(-50%);z-index:12;cursor:pointer;
   display:flex;align-items:center;gap:var(--sp-md);white-space:nowrap;
   padding:var(--sp-sm) var(--sp-lg) var(--sp-sm) var(--sp-lg);border-radius:var(--r-md);
-  background:var(--glass);backdrop-filter:blur(7px);
+  background:var(--glass);backdrop-filter:blur(var(--blur));
   border:1px solid var(--line-soft);
   transition:background var(--dur-slow) var(--ease),border-color var(--dur-slow) var(--ease)}
 /* a backdrop filter rasterises at its own scale and blurs on a pill the map scales up, so only mission control's label,
    at screen scale, keeps the glass; the pill takes only a share of the map's growth past 1, shrinking towards its island */
 .map-world .ilabel{backdrop-filter:none;transform:translateX(-50%) scale(var(--lk,1));transform-origin:50% 100%}
-.ilabel .itog{margin-left:calc(-1 * var(--sp-xs));width:18px;height:18px;padding:0;flex:none;display:grid;place-items:center;
+.ilabel .itog{margin-left:calc(-1 * var(--sp-xs));width:var(--ctl-xs);height:var(--ctl-xs);padding:0;flex:none;display:grid;place-items:center;
   border:0;border-radius:var(--r-xs);background:none;color:var(--ink-2);cursor:pointer}
 .ilabel .itog:hover{background:var(--fill-1);color:var(--ink)}
 .ilabel .itog svg{display:block}
@@ -59,7 +59,7 @@
 .map-world .inew[data-empty="true"]{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(var(--lk,1));
   padding:var(--sp-xs) var(--sp-lg);font-size:var(--text-xs)}
 .map-world .inew[data-empty="false"]{transform:translateX(-100%)}
-.map-world .inew:focus-visible{opacity:1;pointer-events:auto;outline:2px solid var(--sel);outline-offset:2px}
+.map-world .inew:focus-visible{opacity:1;pointer-events:auto}
 .map-world .ihandle{position:absolute;z-index:13;width:15px;height:15px;opacity:0;pointer-events:none;
   transform:rotate(45deg);border-radius:var(--r-xs);background:var(--sand);cursor:nwse-resize;
   box-shadow:var(--shadow-1);transition:opacity var(--dur) var(--ease)}
@@ -281,14 +281,14 @@
 .home .hrow .ilabel{position:static;transform:none;cursor:pointer}
 .home-create{display:flex;align-items:center;justify-content:center;gap:var(--sp-sm);flex-wrap:wrap}
 .htog{width:28px;height:28px;border-radius:var(--r-sm);padding:0;display:grid;place-items:center;cursor:pointer;color:var(--ink);
-  background:var(--glass);backdrop-filter:blur(7px);border:1px solid var(--line-soft)}
+  background:var(--glass);backdrop-filter:blur(var(--blur));border:1px solid var(--line-soft)}
 .htog:hover{background:var(--glass-hi);border-color:var(--line-strong)}
 .htog svg{display:block}
 .hact{padding:var(--sp-xs) var(--sp-xl);border-radius:var(--r-sm);font-size:var(--text-sm);font-weight:var(--w-semibold);font-family:inherit;border:0;cursor:pointer;
   background:var(--sand);color:var(--ink-sand);box-shadow:var(--shadow-1)}
 .hact:hover{background:var(--sand-hi)}
-.hact:disabled{opacity:.5;cursor:default}
-.hact.dim{background:var(--glass);color:var(--ink-2);border:1px solid var(--line);box-shadow:none;backdrop-filter:blur(7px)}
+.hact:disabled{opacity:var(--disabled);cursor:default}
+.hact.dim{background:var(--glass);color:var(--ink-2);border:1px solid var(--line);box-shadow:none;backdrop-filter:blur(var(--blur))}
 .hact.dim:hover{background:var(--glass-hi);color:var(--ink)}
 
 /* the resources islet: a rock beside mission control, a lighthouse standing on it, and the compact fallback pill */
@@ -308,7 +308,8 @@
 /* the button is the tower itself: its box is the drawing, and the pill, glow and shadow hang off it */
 .res-tower{position:absolute;z-index:calc(var(--z-scenery) + 3);left:50%;bottom:var(--foot);height:var(--lh);transform:translateX(-50%);pointer-events:auto;padding:0;border:0;background:none;overflow:visible;filter:brightness(var(--map-tone,1));font-family:inherit;cursor:pointer}
 .res-tower:focus-visible{outline:none}
-.res-tower:focus-visible .res-tower-pill{outline:2px solid var(--sand-hi);outline-offset:3px}
+.res-tower:focus-visible{outline:none}
+.res-tower:focus-visible .res-tower-pill{outline:2px solid var(--sand);outline-offset:2px}
 .res-tower img{position:relative;z-index:8;display:block;height:100%;width:auto;max-width:none;
   filter:saturate(.9) contrast(.96) drop-shadow(0 2px 2px var(--shade-1));transition:transform var(--dur) var(--ease)}
 .res-tower:hover img,.res-tower[data-selected="true"] img,

@@ -123,7 +123,7 @@ export function UtilityDock() {
       </div>
       {open && (
         // the load reads anew every few seconds, which a live region would announce each time
-        <div className="use-panel" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : 'mobile-panel'}
+        <div className="use-panel popover" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : 'mobile-panel'}
           data-load={loadOpen || undefined} aria-live={loadOpen ? 'off' : 'polite'}>
           {usageOpen ? <><div className="use-panel-title">Plan usage</div><UsagePanel /></> : loadOpen ? <><div className="use-panel-title">Load</div><LoadPanel /></> : <MobilePanel />}
         </div>

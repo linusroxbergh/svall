@@ -58,7 +58,7 @@ export function TerminalCard({ id, host }: Props) {
               <button className="ticon" data-testid="card-size" title={size === 'half' ? 'Fill the window' : 'Back to the card'}
                 aria-label={size === 'half' ? 'Fill the window' : 'Back to the card'} onClick={() => app.store.getState().toggleCardSize()}>{size === 'half' ? '⤢' : '⤡'}</button>
               <button className="tx" data-testid="card-close" title="Close" aria-label="Close the card"
-                onClick={() => app.store.getState().closeCard()}>✕</button>
+                onClick={() => app.store.getState().closeCard()}>×</button>
             </span>
           } />
       </div>

@@ -45,7 +45,7 @@ function Shelf({ tip }: { tip: number }) {
   }, []);
   return (
     <div className="res-room">
-      <div className="res-shelf" ref={box} data-testid="resources-shelf" role="dialog" aria-label="Resources" tabIndex={-1}
+      <div className="res-shelf panel" ref={box} data-testid="resources-shelf" role="dialog" aria-label="Resources" tabIndex={-1}
         data-full={full} data-resizing={resizing}
         style={{ left: `${(1 - w) * 50}%`, top: `${(1 - h) * 50}%`, width: `${w * 100}%`, height: `${h * 100}%`,
           '--tip': `${tip}px`, '--rail': `${cols.rail}px`, '--list': `${cols.list}px` } as React.CSSProperties}
