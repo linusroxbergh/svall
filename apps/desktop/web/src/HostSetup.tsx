@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
+import { CloseX } from './CloseX.js';
 import { added, groupSteps, machineName, OP_TITLE, outcomeOf, runActions, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
@@ -190,8 +191,7 @@ export function HostSetup() {
       <div className="modal host panel" onPointerDown={(e) => e.stopPropagation()}>
         <div className="kicker">
           {machine ? <span data-testid="host-machine">{machine}</span> : 'Add a machine'}
-          <span className="spacer" />
-          <button ref={shut} className="side-x" data-testid="host-close" title="Close" aria-label="Close" onClick={close}>×</button>
+          <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} onEnd={ended} /> : (
           <>

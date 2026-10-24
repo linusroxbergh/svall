@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { sleepCharacter } from './actions.js';
 import { app, deps } from './boot.js';
+import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
 
 // a working robot loses the turn it is on, so its sleep asks once more; a reflex Enter keeps it
@@ -23,7 +24,7 @@ export function ConfirmSleep() {
           if (e.key === 'Enter') e.stopPropagation();
           if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
         }}>
-        <div className="kicker">Sleep</div>
+        <div className="kicker">Sleep<CloseX onClose={cancel} testid="confirm-sleep-close" /></div>
         <div className="modal-name">{name}</div>
         <div className="modal-note">{name} is working. Sleep anyway?</div>
         <div className="acts">

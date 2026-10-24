@@ -68,6 +68,14 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
   await receive({ type: 'shell.pressedAway' });
   await expect(ask).toHaveCount(0);
 
+  // its × does what Esc does
+  await follow('https://example.com/x');
+  await expect(ask).toBeVisible();
+  from = await mark();
+  await page.getByTestId('link-ask-close').click();
+  await expect(ask).toHaveCount(0);
+  expect(await since(from)).toContainEqual({ type: 'term.focus', id: c.id });
+
   await follow('https://example.com/c');
   from = await mark();
   await page.getByTestId('link-ask-outside').click();

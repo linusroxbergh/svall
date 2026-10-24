@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { newNamedCharacter, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
+import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
 
 // name is enough: Enter creates. A note and links are there when the name alone is not.
@@ -40,7 +41,7 @@ export function NewCharacter() {
     <div className="modal-back" data-testid="new-character" onPointerDown={close}>
       <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}>
-        <div className="kicker">New robot</div>
+        <div className="kicker">New robot<CloseX onClose={close} testid="new-character-close" /></div>
         <input ref={field} className="h2" placeholder="name" aria-label="Name" value={name} data-testid="new-character-name"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />

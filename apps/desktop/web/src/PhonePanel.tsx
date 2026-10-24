@@ -28,7 +28,7 @@ export function MobileSwitch({ testId }: { testId: string }) {
   );
 }
 
-/** The switch and, once the fleet is served, the link to reach it by. */
+/** Once the fleet is served, the link to reach it by; the panel's title carries the switch. */
 export function MobilePanel() {
   const status = useApp((s) => s.mobile);
   const [copied, setCopied] = useState(false);
@@ -46,10 +46,6 @@ export function MobilePanel() {
   if (!status) return null;
   return (
     <div className="mob" data-testid="mobile-body">
-      <div className="mob-head">
-        <span className="use-label">phone</span>
-        <MobileSwitch testId="mobile-switch" />
-      </div>
       {status.serving && (
         <>
           {status.qr && <img className="mob-qr" src={status.qr} alt={`QR code for ${status.url}`} />}

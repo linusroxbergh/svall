@@ -99,6 +99,14 @@ test('Escape on the agent select keeps the scribe off, same as elsewhere in the 
   expect(call).toHaveBeenCalledWith('scribe.set', { enabled: false });
 });
 
+test('the × keeps the scribe off, as Escape does', () => {
+  act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));
+  render(<ScribeAsk />);
+  fireEvent.click(screen.getByTestId('scribe-ask-close'));
+  expect(call).toHaveBeenCalledWith('scribe.set', { enabled: false });
+  expect(call).not.toHaveBeenCalledWith('scribe.set', { enabled: true });
+});
+
 // Enter on the select is left to the browser's own popup, not answered as a dialog press
 test('Enter on the agent select answers nothing', () => {
   act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { startHomeCharacter } from './actions.js';
 import { app, deps } from './boot.js';
+import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
 import { covered } from './keyboard.js';
 
@@ -37,7 +38,7 @@ export function MissionPrompt() {
     <div className="modal-back" data-testid="mission-prompt" onPointerDown={close}>
       <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}>
-        <div className="kicker">Mission control</div>
+        <div className="kicker">Mission control<CloseX onClose={close} testid="mission-prompt-close" /></div>
         <textarea ref={field} className="fld mission" placeholder="what should the fleet do?" aria-label="Prompt"
           value={text} data-testid="mission-prompt-text" onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />

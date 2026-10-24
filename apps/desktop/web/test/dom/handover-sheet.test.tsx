@@ -405,7 +405,6 @@ test('while transferring, one bar sums every folder and session, a verified fold
   expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 characters at rest');
   expect(screen.getByTestId('handover-headline').textContent).toBe('Transferring files and sessions…');
   expect(screen.getByTestId('handover-abort')).toBeTruthy();
-  expect(screen.queryByTestId('handover-done')).toBeNull();
 });
 
 test('a folder whose copy kept files aside shows that above the folded rows', () => {
@@ -804,7 +803,7 @@ const finished = (...characters: { id: string; ok: boolean; error?: string }[]):
   { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 2, characters } },
 ];
 
-test('done, the footer says where the fleet runs with a Close, the route points at the destination, and every character is accounted for', () => {
+test('done, the footer says where the fleet runs, the route points at the destination, and every character is accounted for', () => {
   render(<HandoverSheet />);
   say(...finished({ id: 'c0', ok: true }, { id: 'c1', ok: true }));
   act(() => store.getState().handoverExit(0));
@@ -815,7 +814,9 @@ test('done, the footer says where the fleet runs with a Close, the route points 
   expect(screen.getByTestId('handover-rest-rows').querySelector('summary')?.textContent).toBe('3 characters at rest');
   expect(screen.getByTestId('handover-transfer-total').textContent).toContain('1 folder verified on trift, 1.0 MB');
   expect(screen.getByTestId('handover-section-resume').dataset.state).toBe('done');
-  fireEvent.click(screen.getByTestId('handover-done'));
+  // the × is the way out, so the footer holds no buttons of its own
+  expect(screen.getByTestId('handover-footer').querySelector('.acts')).toBeNull();
+  fireEvent.click(screen.getByTestId('handover-close'));
   expect(store.getState().handoverOpen).toBe(false);
   // the sheet opens on the finished run, and the way to another move is a click away
   act(() => store.getState().toggleHandover(true));
@@ -843,5 +844,4 @@ test('done with a character that did not resume, the tally and its row say so, a
   expect(row.dataset.status).toBe('fail');
   expect(row.textContent).toContain('codex exited 1');
   expect(screen.getByTestId('handover-retry-c1')).toBeTruthy();
-  expect(screen.getByTestId('handover-done').textContent).toBe('Close');
 });
