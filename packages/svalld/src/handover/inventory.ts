@@ -22,8 +22,10 @@ export type InventorySession = Pick<TransferSession, 'characterId' | 'term' | 'a
 export type Inventory = {
   fromMachineId: MachineId;
   toMachineId: MachineId;
-  /** the home path both machines share */
+  /** the source's home */
   home: string;
+  /** the destination's home, where each path under the source's lands */
+  destinationHome: string;
   fleet: FleetConfig;
   snapshot: FleetState;
   excludes: string[];
@@ -351,6 +353,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
     fromMachineId: source.machineId,
     toMachineId: destination.machineId,
     home,
+    destinationHome: destination.home,
     fleet,
     snapshot,
     excludes,

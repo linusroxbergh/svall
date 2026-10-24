@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, MAX_MANIFEST_BYTES, type Character, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@svall/protocol';
+import { emptyState, FleetConfig, MAX_MANIFEST_BYTES, TRANSFER_SCHEMA_VERSION, type Character, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@svall/protocol';
 import { gitIndexDigest } from '../../src/handover/git-graph.js';
 import { canonicalDigest, canonicalJson, hashStream } from '../../src/handover/hash.js';
 import { buildInventory, DEFAULT_EXCLUDES, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, type Inventory, type MachineMaps } from '../../src/handover/inventory.js';
@@ -116,7 +116,8 @@ describe('buildManifest', () => {
       sourceHome: path.join(s.mac, '.claude'), destinationHome: path.join(s.mac, '.claude'), destinationPath: s.transcript,
       files: [expect.objectContaining({ type: 'file', path: `projects/app/${SESSION}.jsonl`, sha256: sha(LINE(s.nested)) })],
     }]);
-    expect(manifest).toMatchObject({ version: 1, transactionId: 't1', generation: 4, fromMachineId: MAC, toMachineId: TRIFT, home: s.mac, fleet: FLEET });
+    expect(manifest).toMatchObject({ version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: MAC, toMachineId: TRIFT, home: s.mac, destinationHome: s.mac, fleet: FLEET });
+    expect((await buildManifest({ ...inventory(s), destinationHome: '/home/linus' }, HEADER)).manifest).toMatchObject({ home: s.mac, destinationHome: '/home/linus' });
   });
 
   it('warns that repository and fleet .env files travel, and carries the fleet one only when asked', async () => {

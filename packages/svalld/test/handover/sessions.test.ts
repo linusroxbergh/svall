@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession, type Warning } from '@svall/protocol';
+import { emptyState, FleetConfig, TRANSFER_SCHEMA_VERSION, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession, type Warning } from '@svall/protocol';
 import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
@@ -950,7 +950,7 @@ describe('the resume a carried terminal keeps', () => {
     // the flags remembered at a start are read again from the process the destination starts, never carried
     state.characters.c4 = char('c4', { cwd: '/h', agent: { kind: 'codex', sessionId: SID, transcriptPath: '/h/.codex/r.jsonl', status: 'idle', lastActivityAt: 0, flags: ['--yolo', '-p', "'work'"] } });
     const { characters } = importState({
-      version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h',
+      version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h', destinationHome: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
     }).state;
     expect(characters.c1.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -s 'workspace-write' ${SID}` });
@@ -966,7 +966,7 @@ describe('the resume a carried terminal keeps', () => {
     state.characters.c1 = char('c1', { cwd: '/h', agent: agent('idle'), revive: { command: `claude --resume ${SID}`, interrupted: true } });
     state.characters.c2 = char('c2', { cwd: '/h', agent: agent('working') });
     const { characters } = importState({
-      version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h',
+      version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h', destinationHome: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
     }).state;
     expect(characters.c1.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });

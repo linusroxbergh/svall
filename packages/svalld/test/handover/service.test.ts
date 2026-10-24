@@ -25,8 +25,8 @@ const digest = 'a'.repeat(64);
 const config = Config.parse({ id: fleetId });
 // a manifest these calls are refused before they read
 const manifest = {
-  version: 1 as const, transactionId: 'tx-1', generation: 4, fromMachineId: other, toMachineId: me,
-  home: '/Users/linus',
+  version: 2 as const, transactionId: 'tx-1', generation: 4, fromMachineId: other, toMachineId: me,
+  home: '/Users/linus', destinationHome: '/Users/linus',
   fleet: FleetConfig.parse({ id: fleetId }), snapshot: emptyState(), excludes: [], roots: [], sessions: [],
 };
 
