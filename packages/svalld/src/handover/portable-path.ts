@@ -193,7 +193,7 @@ export function fieldValues(doc: unknown, field: string): Found[] {
 /** One path a portable field names, absolute on the machine it was read on. */
 export type PathValue = { field: string; pointer: Found['pointer']; form: PortableForm; path: string };
 
-const clean = (p: string): string => trim(path.posix.normalize(p));
+export const clean = (p: string): string => trim(path.posix.normalize(p));
 
 function pathOf(form: PortableForm, found: Found, home: string | undefined): string | undefined {
   const { value, parent } = found;

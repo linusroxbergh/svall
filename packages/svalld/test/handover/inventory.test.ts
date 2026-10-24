@@ -261,7 +261,9 @@ describe('buildInventory', () => {
   it('blocks a destination whose home is not this machine\'s, naming the commands that make one that is', () => {
     const s = seed();
     s.maps.destination.home = '/home/linus';
-    expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toEqual([{
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    expect([inv.home, inv.destinationHome]).toEqual([s.mac, '/home/linus']);
+    expect(inv.blockers).toEqual([{
       code: 'home_mismatch',
       message: `the destination's home is /home/linus and this machine's ${s.mac}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(s.mac)}; then svall host remove <name>, svall host add at that account, and svall host enable <name> --fleet <fleet>`,
     }]);

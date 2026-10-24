@@ -117,6 +117,7 @@ describe('buildManifest', () => {
       files: [expect.objectContaining({ type: 'file', path: `projects/app/${SESSION}.jsonl`, sha256: sha(LINE(s.nested)) })],
     }]);
     expect(manifest).toMatchObject({ version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: MAC, toMachineId: TRIFT, home: s.mac, destinationHome: s.mac, fleet: FLEET });
+    expect((await buildManifest({ ...inventory(s), destinationHome: '/home/linus' }, HEADER)).manifest).toMatchObject({ home: s.mac, destinationHome: '/home/linus' });
   });
 
   it('warns that repository and fleet .env files travel, and carries the fleet one only when asked', async () => {

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  Blocker, type AgentKind, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
+  Blocker, TRANSFER_SCHEMA_VERSION, type AgentKind, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
   type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
@@ -559,7 +559,8 @@ export class Handover {
       }
       if (answer === 'chosen') continue;
       const m = answer.manifest;
-      const wrong = m.transactionId !== tx ? `handover ${m.transactionId}` : m.generation !== generation ? `generation ${m.generation}`
+      const wrong = m.version !== TRANSFER_SCHEMA_VERSION ? `transfer schema ${m.version}`
+        : m.transactionId !== tx ? `handover ${m.transactionId}` : m.generation !== generation ? `generation ${m.generation}`
         : m.fromMachineId !== source.route.machineId || m.toMachineId !== destination.route.machineId ? `a move from ${m.fromMachineId} to ${m.toMachineId}`
           : m.fleet.id !== this.d.fleetId ? `fleet ${m.fleet.id}`
             : m.home !== source.home ? 'a home other than the one it was sent'

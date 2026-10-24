@@ -21,12 +21,22 @@ describe('relocate', () => {
     const back = { from: TO_LINUX.to, to: TO_LINUX.from };
     for (const p of ['/Users/ada', '/Users/ada/a b/ü', '/Volumes/work/repo', '/srv/x']) expect(relocate(relocate(p, TO_LINUX), back)).toBe(p);
   });
+
+  it('reads a path and the homes as the inventory does, with no .., // or trailing slash', () => {
+    expect(relocate('/Users//ada/x/', TO_LINUX)).toBe('/home/ada/x');
+    expect(relocate('/Users/ada/../shared/repo', TO_LINUX)).toBe('/Users/shared/repo');
+    const slashed = { from: '/Users/ada/', to: '/home/ada/' };
+    expect(relocate('/Users/ada/x', slashed)).toBe('/home/ada/x');
+    expect(relocate('/home/ada/x', { from: slashed.to, to: slashed.from })).toBe('/Users/ada/x');
+  });
 });
 
 describe('relocationProblem', () => {
   it('refuses a path in the destination\'s home outside this machine\'s, which would land where one of this home lands', () => {
     expect(relocationProblem('/home/ada/x', TO_LINUX)).toContain('/home/ada/x lies in the destination\'s home /home/ada but not in this machine\'s home /Users/ada');
     expect(relocationProblem('/home/ada', TO_LINUX)).toBeDefined();
+    expect(relocationProblem('/Users/ada/../../home/ada/x', TO_LINUX)).toBeDefined();
+    expect(relocationProblem('/home/ada/x', { from: '/Users/ada', to: '/home/ada/' })).toBeDefined();
   });
 
   it('takes a path under this machine\'s home, one outside both homes, and any path between accounts with the same home', () => {
@@ -68,9 +78,9 @@ function manifest(destinationHome: string): TransferManifestV1 {
       { kind: 'github', ref: 'https://github.com/ada/app/pull/1', label: '', source: 'auto' },
       { kind: 'file', ref: '/Volumes/work/spec.md', label: '', source: 'manual' },
     ],
-    browser: { tabs: [{ id: 't1', url: 'file:///Users/ada/app/a%20b.html?x=1#top', title: '' }, { id: 't2', url: 'https://x.test/Users/ada', title: '' }] },
+    browser: { tabs: [{ id: 't1', url: 'file:///Users/ada/app/a%20b.html?x=1#top', title: '' }, { id: 't2', url: 'https://x.test/Users/ada', title: '' }, { id: 't3', url: 'file:///Users/ada/50%25off.html', title: '' }] },
     agent: { kind: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', transcriptPath: '/Users/ada/.claude/projects/-Users-ada-app-feature/s.jsonl', status: 'idle', lastActivityAt: 0 },
-    second: { cwd: '~/scratch', unread: false },
+    second: { cwd: '/Users/ada/scratch', unread: false },
   });
   const fleet = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', home: { cwd: '/Users/ada/.svall/home' }, defaultCwd: '/Users/ada/code' });
   return TransferManifestV1.parse({
@@ -112,9 +122,9 @@ describe('destinationView', () => {
       '/home/ada/app/.git', '/home/ada/app', '/home/ada/app/.git', '/home/ada/app-feature', '/home/ada/app/.git/worktrees/app-feature', '/home/ada/app-old', '/home/ada/app/.git/config',
     ]);
     const c = v.snapshot.characters.c1;
-    expect([c.cwd, c.repo!.root, c.repo!.mainRoot, c.second!.cwd]).toEqual(['/home/ada/app-feature', '/home/ada/app-feature', '/home/ada/app', '~/scratch']);
+    expect([c.cwd, c.repo!.root, c.repo!.mainRoot, c.second!.cwd]).toEqual(['/home/ada/app-feature', '/home/ada/app-feature', '/home/ada/app', '/home/ada/scratch']);
     expect(c.context.map((x) => x.ref)).toEqual(['/home/ada/notes/plan.md', 'https://github.com/ada/app/pull/1', '/Volumes/work/spec.md']);
-    expect(c.browser!.tabs.map((t) => t.url)).toEqual(['file:///home/ada/app/a%20b.html?x=1#top', 'https://x.test/Users/ada']);
+    expect(c.browser!.tabs.map((t) => t.url)).toEqual(['file:///home/ada/app/a%20b.html?x=1#top', 'https://x.test/Users/ada', 'file:///home/ada/50%25off.html']);
     expect(v.snapshot.islands.i1.context[0].ref).toBe('/home/ada/notes');
     expect([v.snapshot.home.cwd, v.snapshot.defaultCwd, v.fleet.home.cwd, v.fleet.defaultCwd]).toEqual(['/home/ada/.svall/home', '~/code', '/home/ada/.svall/home', '/home/ada/code']);
   });
