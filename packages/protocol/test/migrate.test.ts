@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NewerStateVersion, OlderStateVersion, migrateState } from '../src/migrate.js';
-import { defaultHome, emptyState } from '../src/state.js';
+import { DEFAULT_CWD, columnOf, defaultColumns, defaultHome, emptyState } from '../src/state.js';
 
 const island = (id: string) => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 7 });
 const robot = (id: string, islandId: string) => ({
@@ -12,14 +12,14 @@ const older = <T extends object>(version: number, rest: T) => {
   const { robots: _, ...base } = emptyState();
   return { ...base, version, ...rest };
 };
-const asCurrent = <T extends { characters: object }>({ characters, ...rest }: T) => ({ ...rest, version: 10, robots: characters });
+const asCurrent = <T extends { characters: object }>({ characters, ...rest }: T) => ({ ...rest, version: 11, robots: characters });
 
 describe('migrateState', () => {
-  it('passes a version 10 file through', () => {
+  it('passes a version 11 file through', () => {
     const { state, migrated, dropped } = migrateState(emptyState());
     expect(migrated).toBe(false);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(10);
+    expect(state.version).toBe(11);
   });
 
   const agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 3 };
@@ -32,11 +32,11 @@ describe('migrateState', () => {
   });
 
   for (const version of [7, 8]) {
-    it(`lifts a version ${version} file to 10: a second terminal gets its robot's cwd, and an absent one stays absent`, () => {
+    it(`lifts a version ${version} file to 11: a second terminal gets its robot's cwd, and an absent one stays absent`, () => {
       const { state, migrated, dropped } = migrateState(withSecond(version));
       expect(migrated).toBe(true);
       expect(dropped).toEqual([]);
-      expect(state.version).toBe(10);
+      expect(state.version).toBe(11);
       expect(state.robots.c0.second).toEqual({ cwd: '/work', tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent });
       expect(state.robots.c1.second).toBeUndefined();
     });
@@ -102,6 +102,16 @@ describe('migrateState', () => {
     expect(state).not.toHaveProperty('characters');
   });
 
+  it('lifts a version 10 file: the board gets the default columns with every robot in the first, and placing waits on the ask', () => {
+    const raw = { version: 10, islands: { i_a: island('i_a') }, robots: { c_a: robot('c_a', 'i_a') }, home: defaultHome(), defaultCwd: DEFAULT_CWD };
+    const { state, migrated, dropped } = migrateState(raw);
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 11, columns: defaultColumns(), placingAsk: true });
+    expect(state.columns.map((k) => k.name)).toEqual(['To do', 'In progress', 'In review', 'Done']);
+    expect(columnOf(state, state.robots.c_a).name).toBe('To do');
+  });
+
   it('reads a current file whose fleet still has the animals switch, and drops the key', () => {
     const raw = { ...emptyState(), islands: { i_a: island('i_a') }, robots: { c_a: robot('c_a', 'i_a') } };
     const { state, migrated, dropped } = migrateState({ ...raw, animals: true });
@@ -119,8 +129,8 @@ describe('migrateState', () => {
   });
 
   it('refuses a file from a newer svalld', () => {
-    expect(() => migrateState({ version: 11, islands: {}, robots: {} })).toThrow(NewerStateVersion);
-    expect(() => migrateState({ version: 11, islands: {}, robots: {} })).toThrow(/newer than this svalld reads \(10\)/);
+    expect(() => migrateState({ version: 12, islands: {}, robots: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 12, islands: {}, robots: {} })).toThrow(/newer than this svalld reads \(11\)/);
   });
 
   it('rejects garbage', () => {
@@ -157,6 +167,12 @@ describe('migrateState', () => {
     expect(state.scribeAsk).toBe(true);
     expect(Object.keys(state.robots)).toEqual(['c_a']);
     expect(dropped).toEqual([expect.stringMatching(/^field home: cwd/), expect.stringMatching(/^field scribeError: /)]);
+  });
+
+  it('loads the default columns in place of a board with none', () => {
+    const { state, dropped } = migrateState({ ...emptyState(), columns: [] });
+    expect(state.columns).toEqual(defaultColumns());
+    expect(dropped).toEqual([expect.stringMatching(/^field columns: /)]);
   });
 
   it('still refuses a file whose islands or robots are not records', () => {

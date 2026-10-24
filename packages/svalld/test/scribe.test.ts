@@ -252,6 +252,52 @@ describe('Scribe, automatically', () => {
     expect(w.store.state.robots.a).toMatchObject({ name: 'my name', note: 'typed meanwhile' });
   });
 
+  it('moves a robot to the column its answer names in any case while placing is on, and starts no island pass for it', async () => {
+    const w = world(answer({ column: ' in review ' }));
+    w.store.update((d) => { delete d.placingAsk; });
+    w.island('i1');
+    w.robot('a');
+    w.scribe.tick();
+    await settle();
+    expect(w.store.state.robots.a.column).toBe('review');
+    expect(w.calls[0].prompt).toContain('Columns, left to right: To do · In progress · In review · Done\nColumn: To do\n');
+    w.advance(SETTLE_MS);
+    w.scribe.tick();
+    await settle();
+    expect(w.calls).toHaveLength(1);
+  });
+
+  it('neither shows nor moves the column while placing waits on its ask or is off', async () => {
+    for (const off of [false, true]) {
+      const w = world(answer({ column: 'Done' }));
+      if (off) w.store.update((d) => { delete d.placingAsk; d.placingOff = true; });
+      w.island('i1');
+      w.robot('a');
+      w.scribe.tick();
+      await settle();
+      expect(w.store.state.robots.a).not.toHaveProperty('column');
+      expect(w.calls[0].prompt).not.toContain('Column');
+    }
+  });
+
+  it('never moves a robot placed by hand, before the pass or during it, nor to a column the board lacks', async () => {
+    let w!: ReturnType<typeof world>;
+    w = world(({ prompt }) => {
+      if (prompt.includes('Name: during')) w.store.update((d) => { d.robots.b.column = 'doing'; d.robots.b.columnSource = 'manual'; });
+      return JSON.stringify({ column: prompt.includes('Name: unknown') ? 'Shipped' : 'Done' });
+    });
+    w.store.update((d) => { delete d.placingAsk; });
+    w.island('i1');
+    w.robot('a', { name: 'by hand', column: 'doing', columnSource: 'manual' });
+    w.robot('b', { name: 'during' });
+    w.robot('c', { name: 'unknown', column: 'review' });
+    await w.scribe.sweep({});
+    expect(w.store.state.robots.a).toMatchObject({ column: 'doing', columnSource: 'manual' });
+    expect(w.store.state.robots.b).toMatchObject({ column: 'doing', columnSource: 'manual' });
+    expect(w.store.state.robots.c.column).toBe('review');
+    expect(w.calls.find((c) => c.prompt.includes('Name: by hand'))!.prompt).toContain('Column (placed by hand): In progress');
+  });
+
   it('holds off a failing robot longer each time, and shows the failure until a pass succeeds', async () => {
     let fail = true;
     const w = world(() => { if (fail) throw new Error('not logged in\nrun claude'); return JSON.stringify({ note: 'third try' }); });

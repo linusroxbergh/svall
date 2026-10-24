@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FleetState, Island, Robot, STATE_SCHEMA_VERSION } from './state.js';
+import { FleetState, Island, Robot, STATE_SCHEMA_VERSION, defaultColumns } from './state.js';
 
 /** The oldest state.json version any release has read, which this one still lifts to its own. */
 export const OLDEST_STATE_SCHEMA_VERSION = 7;
@@ -68,12 +68,17 @@ function liftV10(raw: object): object {
   };
 }
 
+// a v10 file has no board: it gets the default columns with every robot in the first, and placing waits on the user's ask
+function liftV11(raw: object): object {
+  return { ...raw, columns: defaultColumns(), placingAsk: true };
+}
+
 export function migrateState(raw: unknown): { state: FleetState; migrated: boolean; dropped: string[] } {
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version === 'number' && version > CURRENT) throw new NewerStateVersion(version);
   if (typeof version === 'number' && version < OLDEST) throw new OlderStateVersion(version);
-  if (version !== 7 && version !== 8 && version !== 9 && version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
+  if (version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
   if (version === CURRENT) return { ...salvage(raw as object), migrated: false };
-  const lifted = version === 9 ? raw as object : liftV9(raw as object);
-  return { ...salvage({ ...liftV10(lifted), version: CURRENT }), migrated: true };
+  const lifted = version === 9 || version === 10 ? raw as object : liftV9(raw as object);
+  return { ...salvage({ ...liftV11(version === 10 ? lifted : liftV10(lifted)), version: CURRENT }), migrated: true };
 }

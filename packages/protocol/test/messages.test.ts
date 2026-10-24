@@ -52,7 +52,7 @@ describe('messages', () => {
     }
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 10, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
@@ -67,7 +67,7 @@ describe('messages', () => {
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
     const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 10, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
   it('waits a whole number of milliseconds a timer can hold', () => {
@@ -150,8 +150,16 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it("is 28 with robot.* methods, the fleet's robots and each one's figure", () => {
-    expect(PROTOCOL_VERSION).toBe(28);
+  it("is 29 with the board's columns, robots placed by hand or let go, and placing.set", () => {
+    expect(PROTOCOL_VERSION).toBe(29);
+    expect(methods['robot.place'].params.safeParse({ id: 'c_a', columnId: 'todo' }).success).toBe(true);
+    expect(methods['column.delete'].params.safeParse({ id: 'todo' }).success).toBe(false);
+    expect(methods['column.reorder'].params.safeParse({ id: 'todo', targetId: 'done' }).success).toBe(false);
+    expect(methods['column.add'].result.parse(emptyState().columns)).toEqual(emptyState().columns);
+    expect(methods['placing.set'].params.safeParse({ enabled: false }).success).toBe(true);
+  });
+
+  it("was 28 with robot.* methods, the fleet's robots and each one's figure", () => {
     expect(methods['robot.update'].params.parse({ id: 'c_a', figure: 7 })).toEqual({ id: 'c_a', figure: 7 });
     expect('char.update' in methods).toBe(false);
     expect(FleetState.safeParse({ ...emptyState(), robots: {} }).success).toBe(true);

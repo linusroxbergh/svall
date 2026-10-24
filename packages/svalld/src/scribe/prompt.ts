@@ -1,5 +1,5 @@
 import { z, type ZodType } from 'zod';
-import { bareUrl, itemUrl, linkKind, trimEnd, type Robot, type ContextItem, type Island } from '@svall/protocol';
+import { bareUrl, columnOf, itemUrl, linkKind, trimEnd, type Column, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { LINK } from '../agent/jsonl.js';
 import { MAX_REF } from '../context/items.js';
 import { isGeneratedName } from '../names.js';
@@ -13,7 +13,7 @@ export const DESCRIPTION_MAX = 280;
 const LABEL_MAX = 40;
 
 export const SYSTEM_ROBOT = `You describe one coding agent's work for a map of a fleet of agents. You get its name, directory, branch, note, links, and the end of its transcript. Reply with one JSON object and nothing else:
-{"name": {"value": "...", "reason": "generated" | "identifier"}, "note": "...", "links": [{"url": "...", "label": "..."}]}
+{"name": {"value": "...", "reason": "generated" | "identifier"}, "note": "...", "links": [{"url": "...", "label": "..."}], "column": "..."}
 
 name: omit it unless the name should change. Any name that is not a placeholder is the user's and keeps its words.
 - generated: the current name is marked as a generated placeholder. Replace it whenever you can write a note.
@@ -23,6 +23,8 @@ A name is at most 4 words and ${NAME_MAX} characters, count them; lower case exc
 note: one line under ${NOTE_MAX} characters on the session's overall goal, the feature or fix the work is for, never the step it is on: "rewrite of the auth test helpers", not "finishing task 2, task 3 next". Omit it when the note is hand-written or the current note still names the goal.
 
 links: full URLs the transcript, the PR evidence or an auto PR names, copied exactly, for the things the work is about: every PR it opens, reviews or works on, and its issues, tickets and docs. A PR named by number may have its URL in the PR evidence. Link the item itself, not a comment, commit or file inside it, and not a repository or home page. Leave out links listed as manual, and auto links other than PRs. Keep the scribe links still worth having. Short labels: "#542", "ENG-1907", "design doc". List the PR the work is on first. [] when there are none.
+
+column: one of the column names, the stage the work is at: To do before the first real task, In review while its PR waits on others, Done once merged or finished. Omit it when the column is right or placed by hand.
 
 With too little to go on, omit name and note.`;
 
@@ -40,6 +42,7 @@ export const RobotAnswer = z.object({
   note: z.string().nullish(),
   // absent keeps the scribe's links as they are
   links: z.array(z.object({ url: z.string(), label: z.string().default('') })).nullish(),
+  column: z.string().nullish(),
 });
 export type RobotAnswer = z.infer<typeof RobotAnswer>;
 
@@ -98,7 +101,8 @@ export function prEvidence(c: Robot, transcript: string, tail: string): string[]
   return [...found].slice(-8);
 }
 
-export function robotPrompt(c: Robot, transcript: string, others: string[], prLinks: string[] = []): string {
+// columns is the board's while the scribe places robots
+export function robotPrompt(c: Robot, transcript: string, others: string[], prLinks: string[] = [], columns?: Column[]): string {
   const note = !c.note ? 'Note: (none)' : c.noteSource === 'manual' ? `Note (hand-written): ${c.note}` : `Note: ${c.note}`;
   return [
     `Name: ${c.name}${isGeneratedName(c.name) ? ' (generated placeholder)' : ''}`,
@@ -106,6 +110,8 @@ export function robotPrompt(c: Robot, transcript: string, others: string[], prLi
     c.repo && `Branch: ${c.repo.branch}`,
     note,
     c.context.length ? ['Links:', ...c.context.map(linkLine)].join('\n') : 'Links: (none)',
+    columns && `Columns, left to right: ${columns.map((k) => k.name).join(' · ')}`,
+    columns && `Column${c.columnSource === 'manual' ? ' (placed by hand)' : ''}: ${columnOf({ columns }, c).name}`,
     prLinks.length ? ['PR evidence (candidate links; choose only those this work is about):', ...prLinks.map((url) => `- ${url}`)].join('\n') : '',
     others.length ? `Names other agents have, which a new name must not repeat: ${others.join(', ')}` : '',
     '',
