@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { AUTHORITY_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
 import { machineId, machineIdFailure } from '@svall/svalld/machine';
-import { releaseVersion } from '@svall/svalld/release';
+import { releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { printResult } from '../format.js';
 
 // a controller registers a far machine by the id its --json names, so only the human view goes on without one
@@ -20,6 +20,7 @@ export function versionCommand(json: () => boolean): Command {
     .action(() => {
       const v = {
         release: releaseVersion(),
+        signed: releaseSigned(),
         machineId: thisMachine(json()),
         protocol: PROTOCOL_VERSION,
         stateSchema: STATE_SCHEMA_VERSION,
@@ -28,7 +29,7 @@ export function versionCommand(json: () => boolean): Command {
         runtime: { node: process.version, platform: process.platform, arch: process.arch },
       };
       printResult(v, json(), () => [
-        `release          ${v.release}`,
+        `release          ${v.release} (${v.signed ? 'signed' : 'unsigned'})`,
         `machine          ${v.machineId}`,
         `protocol         ${v.protocol}`,
         `state schema     ${v.stateSchema}`,

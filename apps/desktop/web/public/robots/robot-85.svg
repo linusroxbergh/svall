@@ -1,4 +1,4 @@
-<svg width="296" height="452" viewBox="132 24 296 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc" class="r85" data-idle="blink blink tilt tilt dip" data-work="barrier barrier fold fold dip tilt blink"><style>
+<svg width="302" height="452" viewBox="124 24 302 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc" class="r85" data-idle="blink blink tilt tilt dip" data-work="barrier barrier fold fold dip tilt blink"><style>
 .r85[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r85-blink .4s ease-in-out}
 .r85[data-act=tilt] .head{animation:r85-tilt 1.6s ease-in-out}
 .r85[data-act=tilt] .mast{animation:r85-lag 1.6s ease-in-out}
@@ -75,49 +75,49 @@
   <rect x="258" y="466" width="60" height="10" rx="3" fill="#3d4853"/>
   <g class="body" style="transform-origin:256px 476px">
   <!-- Relay cabinet with a door, hinges and rivets -->
-  <rect x="212" y="350" width="88" height="16" rx="4" fill="#3d4853"/>
-  <rect x="192" y="216" width="128" height="142" rx="8" fill="#d9a441"/>
-  <path d="M304 218h8q8 0 8 8v124q0 8-8 8h-8Z" fill="#b5822c"/>
-  <path d="M198 202H314L330 218H182Z" fill="#ecc163"/>
-  <rect x="182" y="216" width="148" height="6" rx="2" fill="#b5822c"/>
-  <rect x="208" y="234" width="84" height="112" rx="6" fill="#b5822c"/>
-  <rect x="212" y="238" width="76" height="104" rx="4" fill="#d9a441"/>
-  <rect x="212" y="238" width="76" height="6" rx="3" fill="#ecc163"/>
-  <rect x="204" y="252" width="9" height="16" rx="2" fill="#3d4853"/>
-  <rect x="204" y="312" width="9" height="16" rx="2" fill="#3d4853"/>
-  <rect x="274" y="282" width="7" height="26" rx="3.5" fill="#3d4853"/>
-  <circle cx="246" cy="276" r="17" fill="#3d4853"/>
-  <circle cx="246" cy="276" r="13" fill="#fff8de"/>
-  <path d="m238 268 16 16m0-16-16 16" stroke="#3d4853" stroke-width="3.5" stroke-linecap="round"/>
-  <circle cx="200" cy="232" r="3" fill="#b5822c"/>
-  <circle cx="200" cy="344" r="3" fill="#b5822c"/>
-  <circle cx="300" cy="232" r="3" fill="#b5822c"/>
-  <circle cx="300" cy="344" r="3" fill="#b5822c"/>
+  <rect x="204" y="350" width="104" height="16" rx="4" fill="#3d4853"/>
+  <rect x="184" y="216" width="144" height="142" rx="8" fill="#d9a441"/>
+  <path d="M312 218h8q8 0 8 8v124q0 8-8 8h-8Z" fill="#b5822c"/>
+  <path d="M190 202H322L338 218H174Z" fill="#ecc163"/>
+  <rect x="174" y="216" width="164" height="6" rx="2" fill="#b5822c"/>
+  <rect x="202" y="234" width="94" height="112" rx="6" fill="#b5822c"/>
+  <rect x="206" y="238" width="86" height="104" rx="4" fill="#d9a441"/>
+  <rect x="206" y="238" width="86" height="6" rx="3" fill="#ecc163"/>
+  <rect x="198" y="252" width="9" height="16" rx="2" fill="#3d4853"/>
+  <rect x="198" y="312" width="9" height="16" rx="2" fill="#3d4853"/>
+  <rect x="277" y="282" width="7" height="26" rx="3.5" fill="#3d4853"/>
+  <circle cx="245" cy="276" r="17" fill="#3d4853"/>
+  <circle cx="245" cy="276" r="13" fill="#fff8de"/>
+  <path d="m237 268 16 16m0-16-16 16" stroke="#3d4853" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="192" cy="232" r="3" fill="#b5822c"/>
+  <circle cx="192" cy="344" r="3" fill="#b5822c"/>
+  <circle cx="304" cy="232" r="3" fill="#b5822c"/>
+  <circle cx="304" cy="344" r="3" fill="#b5822c"/>
   <!-- Claw arm -->
-  <g class="arm" style="transform-origin:192px 238px">
-  <path d="M188 240 160 298" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-  <g class="fore" style="transform-origin:160px 298px">
-  <path d="M160 298 154 350" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="160" cy="298" r="10" fill="#3d4853"/>
-  <circle cx="160" cy="298" r="4" fill="#92a1b2"/>
-  <circle cx="154" cy="352" r="9" fill="#3d4853"/>
-  <g class="claw-l" style="transform-origin:146px 360px"><path d="M146 360a15 15 0 0 0 2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
-  <g class="claw-r" style="transform-origin:162px 360px"><path d="M162 360a15 15 0 0 1-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="arm" style="transform-origin:184px 238px">
+  <path d="M180 240 152 298" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="fore" style="transform-origin:152px 298px">
+  <path d="M152 298 146 350" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="152" cy="298" r="10" fill="#3d4853"/>
+  <circle cx="152" cy="298" r="4" fill="#92a1b2"/>
+  <circle cx="146" cy="352" r="9" fill="#3d4853"/>
+  <g class="claw-l" style="transform-origin:138px 360px"><path d="M138 360a15 15 0 0 0 2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="claw-r" style="transform-origin:154px 360px"><path d="M154 360a15 15 0 0 1-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
   </g></g>
-  <circle cx="192" cy="238" r="14" fill="#3d4853"/>
-  <circle cx="192" cy="238" r="6" fill="#92a1b2"/>
+  <circle cx="184" cy="238" r="14" fill="#3d4853"/>
+  <circle cx="184" cy="238" r="6" fill="#92a1b2"/>
   <!-- Striped barrier boom arm with a counterweight at the shoulder -->
-  <g class="boom" style="transform-origin:320px 238px"><g transform="translate(320 238) rotate(-45)">
+  <g class="boom" style="transform-origin:328px 238px"><g transform="translate(328 238) rotate(-45)">
     <rect x="-38" y="-15" width="34" height="30" rx="4" fill="#3d4853"/>
     <rect x="-34" y="-11" width="10" height="22" rx="2" fill="#697785"/>
-    <rect x="4" y="-8" width="138" height="16" rx="8" fill="#fff8de"/>
-    <rect x="22" y="-8" width="16" height="16" fill="#3d4853"/>
-    <rect x="56" y="-8" width="16" height="16" fill="#3d4853"/>
-    <rect x="90" y="-8" width="16" height="16" fill="#3d4853"/>
-    <path d="M124-8h10a8 8 0 0 1 0 16h-10Z" fill="#3d4853"/>
+    <rect x="4" y="-8" width="124" height="16" rx="8" fill="#fff8de"/>
+    <rect x="18.5" y="-8" width="16" height="16" fill="#3d4853"/>
+    <rect x="49" y="-8" width="16" height="16" fill="#3d4853"/>
+    <rect x="79.5" y="-8" width="16" height="16" fill="#3d4853"/>
+    <path d="M110-8h10a8 8 0 0 1 0 16h-10Z" fill="#3d4853"/>
   </g></g>
-  <circle cx="320" cy="238" r="14" fill="#3d4853"/>
-  <circle cx="320" cy="238" r="6" fill="#92a1b2"/>
+  <circle cx="328" cy="238" r="14" fill="#3d4853"/>
+  <circle cx="328" cy="238" r="6" fill="#92a1b2"/>
   <!-- Neck mast -->
   <rect x="248" y="190" width="16" height="16" fill="#3d4853"/>
   <!-- Signal backplate head with hooded lamp eyes -->

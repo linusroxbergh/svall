@@ -83,6 +83,7 @@ export const PATH_FIELDS: Record<string, PathField> = {
   'MachineRecord.home': LOCAL,
   'MachineRecord.svallBase': LOCAL,
   'TransferManifestV1.home': LOCAL,
+  'TransferManifestV1.destinationHome': LOCAL,
   'TransferManifestV1.git[].commonDir': LOCAL,
   'TransferManifestV1.git[].main.path': LOCAL,
   'TransferManifestV1.git[].main.gitDir': LOCAL,
@@ -192,7 +193,7 @@ export function fieldValues(doc: unknown, field: string): Found[] {
 /** One path a portable field names, absolute on the machine it was read on. */
 export type PathValue = { field: string; pointer: Found['pointer']; form: PortableForm; path: string };
 
-const clean = (p: string): string => trim(path.posix.normalize(p));
+export const clean = (p: string): string => trim(path.posix.normalize(p));
 
 function pathOf(form: PortableForm, found: Found, home: string | undefined): string | undefined {
   const { value, parent } = found;

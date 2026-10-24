@@ -82,7 +82,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     openMaster: (destination) => SshMaster.open({ destination, socketDir: ssh.socketDir }),
     interactiveSsh: () => Promise.resolve({ code: 0, stderr: '' }),
     fetch: () => Promise.reject(new Error('no download in this test')),
-    controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release') },
+    controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release'), signed: true },
     machineId: () => MAC,
     homedir: work,
     verify: (dir, id) => signer.verify(dir, id),
@@ -169,6 +169,7 @@ describe('host add', () => {
       'svall connection-info', 'svall gateway', 'sh -c',
     ]);
     expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on its own private fleet, its gateway authority answers, and tmux opens and closes a window there' });
+    expect(step('release').at(-1)?.detail).toMatch(/^1\.2\.3 for linux-arm64 from the archive you named \(signed\)$/);
   });
 
   it('fails the probe on a gateway authority that does not answer, or a tmux that cannot open a window, and registers nothing', async () => {
@@ -246,13 +247,30 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login' });
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login', run: 'claude auth login' });
     expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.156.0 or newer', action: 'ssh trift.test, then update Codex' });
+    expect(step('codex').at(-1)).not.toHaveProperty('run');
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: Svall needs 2.0.22 or newer', action: 'ssh trift.test, then update OpenCode' });
     expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex', 'ssh trift.test, then update OpenCode']);
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
     expect(agentCalls.length).toBe(4);
     expect(agentCalls.every((w) => w[0] === 'env' && w[1] === UNIT_PATH)).toBe(true);
+  });
+
+  it('asks each agent with the agent homes the companion\'s units carry, as its doctor names them, where a login in the login shell lands', async () => {
+    const homes = { CLAUDE_CONFIG_DIR: `${HOME}/agents/claude`, CODEX_HOME: `${HOME}/agents/codex home` };
+    // a name that is no plain variable never reaches env
+    healthy({ agents: false, doctor: JSON.stringify({ ...JSON.parse(DOCTOR), daemonEnv: { ...homes, '-S': '/x' } }) });
+    const env = [UNIT_PATH, `CLAUDE_CONFIG_DIR=${homes.CLAUDE_CONFIG_DIR}`, `CODEX_HOME=${homes.CODEX_HOME}`];
+    ssh.reply([...env, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
+    ssh.reply([...env, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278 (Claude Code), logged in' });
+    const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
+    expect(agentCalls.every((w) => w.slice(0, 4).join('\n') === ['env', ...env].join('\n') && !w.includes('-S=/x'))).toBe(true);
   });
 
   it('names an OpenCode whose auth list fails as not logged in', async () => {
@@ -283,27 +301,33 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: 'claude is not installed on this machine', action: 'ssh trift.test, then install Claude Code' });
-    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex' });
-    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh trift.test, then install OpenCode' });
+    // setup writes Svall's hooks only for the agents it finds, so one installed later needs it again
+    expect(step('claude').at(-1)).toMatchObject({
+      status: 'warn', detail: 'claude is not installed on this machine', action: 'ssh trift.test, then install Claude Code, then svall setup',
+      run: 'curl -fsSL https://claude.ai/install.sh | bash',
+    });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex, then svall setup', run: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh trift.test, then install OpenCode, then svall setup', run: 'curl -fsSL https://opencode.ai/v2/install | bash' });
   });
 
   it('names what Svall\'s hooks there still need, from the companion\'s own doctor, without stopping setup', async () => {
     const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
     const disabled = `${HOME}/.claude/settings.json sets disableAllHooks, so no character gets a status; remove it`;
     const plugin = `not installed in ${HOME}/.config/opencode/plugins/svall.js: svall setup`;
-    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted }, { name: 'opencode plugin', status: 'fail', detail: plugin }] }) });
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'opencode plugin', status: 'fail', detail: plugin, run: 'svall setup' }] }) });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     await d.close();
+    // a fix that is no one command to type leaves the step without one
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: `2.1.278 (Claude Code), logged in; the hooks check there says ${disabled}`, action: `ssh trift.test, then ${disabled}` });
+    expect(step('claude').at(-1)).not.toHaveProperty('run');
     expect(step('codex').at(-1)).toMatchObject({
       status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex hooks check there says ${untrusted}`,
-      action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks',
+      action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks', run: 'codex',
     });
-    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says ${plugin}`, action: 'ssh trift.test, then svall setup' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says ${plugin}`, action: 'ssh trift.test, then svall setup', run: 'svall setup' });
     expect(out.result).toBe('actions');
     expect(registry.get('trift')?.id).toBe(REMOTE);
   });
@@ -311,15 +335,31 @@ describe('host add', () => {
   it('names the AppArmor profile Codex\'s sandbox needs there, from the companion\'s own doctor', async () => {
     const fix = 'sudo apt install bubblewrap apparmor-profiles, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
     const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex character asks before each one: ${fix}`;
-    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'ok', detail: 'trusted' }, { name: 'codex sandbox', status: 'warn', detail: blocked }] }) });
+    const run = 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'ok', detail: 'trusted' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run }] }) });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('codex').at(-1)).toMatchObject({
-      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked}`, action: `ssh trift.test, then ${fix}`,
+      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked}`, action: `ssh trift.test, then ${fix}`, run,
     });
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok' });
+  });
+
+  it('names both fixes a fresh Ubuntu leaves Codex, and the first one\'s command to type', async () => {
+    const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
+    const fix = 'sudo apt install bubblewrap apparmor-profiles, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${fix}`;
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run: 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict' }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    // the doctor shown once that terminal ends lists the sandbox on its own, with its own command
+    expect(step('codex').at(-1)).toMatchObject({
+      status: 'warn', action: `ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and ${fix}`, run: 'codex',
+    });
   });
 
   it('names every Codex check that warns there, untrusted hooks and a blocked sandbox alike', async () => {
@@ -442,7 +482,7 @@ describe('host add', () => {
     healthy({ tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
-    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git rsync' });
+    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git rsync', run: 'sudo apt install git rsync' });
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 
@@ -509,9 +549,9 @@ describe('host add', () => {
     await d.close();
     expect(step('linger').at(-1)).toMatchObject({
       status: 'warn', detail: 'off for linus, and the system refused to turn it on: the fleet stops when you log out',
-      action: 'ssh trift.test, then sudo loginctl enable-linger linus',
+      action: 'ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus',
     });
-    expect(step('service').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then sudo loginctl enable-linger linus' });
+    expect(step('service').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus' });
     // both steps name the one command, which the user is left to run once
     expect(out).toEqual({ result: 'actions', actions: ['ssh trift.test, then sudo loginctl enable-linger linus'] });
   });
@@ -776,6 +816,19 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
   });
 
+  it('says whether the machine\'s release and this controller\'s are signed, taking a release that does not say as unsigned', async () => {
+    const release = async (version: Record<string, unknown>, signed: boolean) => {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...version }) });
+      ssh.reply(['svall-space'], { stdout: DF });
+      const report = await doctorHost('trift', deps({ registry: registered(), controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: work, signed } }));
+      return report.checks.find((c) => c.name === 'release')?.detail;
+    };
+    expect(await release({ signed: true }, true)).toBe(`1.2.3 (signed), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (signed), protocol ${PROTOCOL_VERSION}`);
+    expect(await release({}, false)).toBe(`1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}`);
+  });
+
   it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off for linus' }) });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
@@ -812,7 +865,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=no\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     const linger = report.checks.find((c) => c.name === 'linger');
-    expect(linger).toMatchObject({ status: 'warn', detail: 'off for linus: the fleet stops when you log out; ssh trift.test, then sudo loginctl enable-linger linus' });
+    expect(linger).toMatchObject({ status: 'warn', detail: 'off for linus: the fleet stops when you log out; ssh trift.test, then sudo loginctl enable-linger linus', run: 'sudo loginctl enable-linger linus' });
     // a check only reads
     expect(ssh.remoteCalls().some((c) => c.join(' ').includes('enable-linger'))).toBe(false);
   });

@@ -206,6 +206,7 @@ logs.
      the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
      caches it. The release step names that URL, and the cached file is the pinned companion.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
+   - Either way, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The
      linger step turns lingering on, and the tmux step finds the release's own.
    - The result lists exactly three things to do: the three installs.
@@ -217,6 +218,8 @@ logs.
    - `current` and `~/.local/bin/svall` lead to that release.
    - There is no `node` outside the releases and no `pnpm-workspace.yaml` anywhere.
    - `svall host doctor` fails nothing, and its systemd, gateway, linger, svalld, release and home checks are `ok`.
+     The release check names the release the machine runs and whether the machine reports it signed, as the
+     manifest does.
 6. **`svall host upgrade`** from the second release's controller, by the same route rule as step 3: every step is
    `ok`, there is no rollback, and step 5's checks pass against the second release, with both releases kept.
 7. **`svall setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, all three
@@ -244,8 +247,9 @@ only, as the controller build is:
 - the controller tree, whose manifest names each companion at `<url>/<archive>` with its digest, packed as
   `svall-controller-<id>-darwin-<arch>.tar.gz`.
 
-With `SVALL_RELEASE_KEY` set, every manifest is signed; without it, every manifest is marked unsigned. The script
-ends by scanning the three archives, and a hit fails it.
+With `SVALL_RELEASE_KEY` set, every manifest is signed; without it, every manifest is marked unsigned. A key
+`scripts/release/allowed_signers` does not list stops the build before anything is built. The script ends by scanning
+the three archives, and a hit fails it.
 
 `scripts/release-build.sh --sign <key> --out <dir>` signs, in place, the archives a build without the key left in
 `<dir>`. It takes no `--version` or `--url-base`. It signs the companions first, as the controller's manifest pins
@@ -288,9 +292,9 @@ included, and drops the rest.
   step writes it to a 0600 file and deletes it when the step ends. The `sign` job signs the manifests inside the
   archives before any other job takes them, so the archives the jobs test are the ones published. Every action runs
   at a pinned commit.
-- **The signers.** Before the first signed tag, `scripts/release/allowed_signers` needs the key's public half, as
-  its header says. The `key` job checks that first and fails at once, naming the file, when the key is not there or
-  is not an OpenSSH key without a passphrase.
+- **The signers.** `scripts/release/allowed_signers` lists the release key and its offline backup. The `key` job
+  fails at once, naming the file, when the secret is not an OpenSSH key without a passphrase or its public half is not
+  listed there. See [Release keys](security/fleet-handover.md#release-integrity) for retiring a key.
 - **Dry run.** A tag in a repository without the secret builds, hands over and fresh-installs everything, and
   uploads nothing. A tag with a `-`, such as `v1.0.0-test1`, does the same, signed when the secret is there.
 - **Logs.** A failed job's logs are scanned with `--secrets-only` before they are uploaded, and a hit keeps them back.

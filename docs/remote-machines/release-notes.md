@@ -62,8 +62,6 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 
 ## Not yet
 
-- A release signing key: every companion the app installs is unsigned, checked by the digest the app's own release
-  pins.
 - A stable phone URL that follows the fleet between machines, and forwarding a remote dev server's ports to the Mac.
 - More than one Linux machine per fleet, moving a single character or island, and machines whose home paths differ.
 

@@ -77,7 +77,8 @@ Both run the same steps and show each as it finishes:
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
-   own `svall doctor` finds them.
+   own `svall doctor` finds them. Each agent is asked on the `PATH` and with the `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and
+   `XDG_*` folders the Svall daemon runs with, which setup takes from your login shell there.
 6. **Trying it out.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **This Mac's list of machines.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
@@ -92,7 +93,8 @@ and never copies a login, so these are yours:
 - Lingering the system would not turn on: `ssh ada@studio, then sudo loginctl enable-linger ada`. Svall turns it on
   itself where polkit lets an account do so, as on Ubuntu Server; a machine without polkit refuses. Without it the
   fleet stops when you log out, and a handover to the machine stops at its checks until it is on.
-- An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
+- An agent not installed or not logged in: `ssh ada@studio`, install it with its vendor's command and run
+  `svall setup`, which writes Svall's hooks for an agent installed since, then `claude auth login`, `codex login` or
   `opencode auth login`. OpenCode runs OpenCode Zen's free models with no login. A handover to the machine needs a
   model provider's login or key there, as `opencode auth list` shows, unless OpenCode on the machine the fleet comes
   from has none either and its agent has answered there: then the checks only warn.
@@ -121,21 +123,29 @@ not logged in. Put the key in the fleet's `.env`, which the checks read each tim
 ### The companion release
 
 `svall host add` installs the companion matching the Mac's release exactly: a handover needs the same release on both
-machines. It takes the one Svall.app carries and checks it against the digest the app's release pins.
+machines. It takes the one Svall.app carries, checks it against the digest the app's release pins, and checks its
+signature against the keys the app's release lists. The `release` step says whether the companion is signed, and
+`svall host doctor` says it of the machine's release and the Mac's.
 
-- Svall.app carries a companion for x86-64 Linux only. For an arm64 machine, name one of the same release: the GitHub
-  release of a signed tag carries it, or build one from a checkout of that release under the name `svall version`
-  shows, which is the tag `v<version>` for a Svall from svall.dev and `git describe`'s name for a local
-  `pnpm app:build`:
+- Svall.app carries a companion for x86-64 Linux only. For an arm64 machine, take the one of the same release from
+  its GitHub release, the tag `v<version>` that `svall version` shows:
 
   ```sh
-  pnpm release:companion --out /tmp/companions --arch arm64 --version v<version>
-  svall host add studio --ssh ada@studio --release /tmp/companions/svall-companion-v<version>-linux-arm64.tar.gz --allow-unsigned
+  curl -fLO https://github.com/linusroxbergh/svall/releases/download/v<version>/svall-companion-v<version>-linux-arm64.tar.gz
+  svall host add studio --ssh ada@studio --release svall-companion-v<version>-linux-arm64.tar.gz
   ```
 
-- `--release <archive>` installs that archive instead; `--allow-unsigned` accepts one without a signature, as every
-  development build is. No release signing key exists yet, so every install today is unsigned; see
-  [the security notes](../security/fleet-handover.md) for how releases are checked.
+- A local `pnpm app:build` without `SVALL_RELEASE_KEY` is unsigned, and is named by `git describe`. Build its arm64
+  companion from the same checkout under that name, and add `--allow-unsigned`:
+
+  ```sh
+  pnpm release:companion --out /tmp/companions --arch arm64 --version <name>
+  svall host add studio --ssh ada@studio --release /tmp/companions/svall-companion-<name>-linux-arm64.tar.gz --allow-unsigned
+  ```
+
+- `--release <archive>` installs that archive instead. A signed one must be signed by a key the Mac's release lists;
+  `--allow-unsigned` accepts one without a signature. See [the security notes](../security/fleet-handover.md) for how
+  releases are checked.
 
 ## Making it the fleet's gateway
 

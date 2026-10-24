@@ -13,6 +13,7 @@ const MANIFEST = {
   fromMachineId: UUID_B,
   toMachineId: UUID_A,
   home: '/Users/linus',
+  destinationHome: '/Users/linus',
   fleet: FleetConfig.parse({ id: UUID_A }),
   snapshot: emptyState(),
   excludes: ['node_modules/'],
@@ -186,9 +187,12 @@ describe('handover errors', () => {
 });
 
 describe('transfer manifest', () => {
-  it('carries every root and session with the content of each file, and the home both machines share', () => {
+  it('carries every root and session with the content of each file, and the home of each machine', () => {
     expect(TransferManifestV1.parse(MANIFEST)).toEqual(MANIFEST);
     expect(() => TransferManifestV1.parse({ ...MANIFEST, home: '~' })).toThrow();
+    expect(() => TransferManifestV1.parse({ ...MANIFEST, destinationHome: '~' })).toThrow();
+    const { destinationHome: _, ...older } = MANIFEST;
+    expect(() => TransferManifestV1.parse(older)).toThrow();
     expect(() => TransferManifestV1.parse({ ...MANIFEST, version: 99 })).toThrow();
     expect(() => TransferManifestV1.parse({ ...MANIFEST, generation: -1 })).toThrow();
     expect(() => TransferManifestV1.parse({ ...MANIFEST, fromMachineId: 'trift' })).toThrow();

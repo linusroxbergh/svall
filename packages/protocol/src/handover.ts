@@ -174,7 +174,7 @@ export const HandoverChoices = z.object({
 export type HandoverChoices = z.infer<typeof HandoverChoices>;
 
 /** The version of the transfer manifest a machine writes and reads. */
-export const TRANSFER_SCHEMA_VERSION = 1;
+export const TRANSFER_SCHEMA_VERSION = 2;
 
 /** One file of a transfer as the source scanned it, by its path under its root. A link is carried as its text, never followed. */
 export const TransferFile = z.discriminatedUnion('type', [
@@ -192,7 +192,7 @@ export const TransferFile = z.discriminatedUnion('type', [
 export type TransferFile = z.infer<typeof TransferFile>;
 
 /**
- * One filesystem root of the transfer, at the path it has on both machines. A folded root lies inside a root
+ * One filesystem root of the transfer, at its path on the source. A folded root lies inside a root
  * that carries its files, and stays listed so the Git import still checks a worktree among them.
  */
 export const TransferRoot = z.object({
@@ -278,8 +278,9 @@ export const TransferManifestV1 = z.object({
   generation: Generation,
   fromMachineId: MachineId,
   toMachineId: MachineId,
-  // the home path both machines share
+  // the source's home, and the destination's, where each path under the source's lands
   home: MachinePath,
+  destinationHome: MachinePath,
   fleet: FleetConfig,
   snapshot: FleetState,
   excludes: z.array(z.string()),

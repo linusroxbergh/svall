@@ -464,7 +464,7 @@ Preflight creates an immutable, versioned manifest containing:
 - file or folder context refs not already covered by another root;
 - exact agent-session files and required sidecars;
 - excludes, modes and sizes;
-- source and destination machine ids and their shared home path.
+- source and destination machine ids and homes.
 
 Nested filesystem roots are folded so a file is sent once.
 

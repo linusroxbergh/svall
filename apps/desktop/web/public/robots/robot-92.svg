@@ -1,0 +1,115 @@
+<svg width="346" height="420" viewBox="82 56 346 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dial-title dial-desc" class="r92" data-idle="blink blink peer peer shift dial ring" data-work="dial dial ring ring shift blink"><style>
+.r92[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r92-blink .4s ease-in-out}
+.r92[data-act=peer] .head{animation:r92-tilt 1.8s ease-in-out}
+.r92[data-act=peer] .eyes{animation:r92-look 1.8s ease-in-out}
+.r92[data-act=peer] .handset{animation:r92-lag 1.8s ease-in-out}
+.r92[data-act=shift] .bot{animation:r92-shift 1.8s ease-in-out}
+.r92[data-act=shift] .arm-l,.r92[data-act=shift] .arm-r{animation:r92-counter 1.8s ease-in-out}
+.r92[data-act=dial] .arm-r{animation:r92-reach 2s ease-in-out}
+.r92[data-act=dial] .wheel{animation:r92-wind 2s ease-in-out}
+.r92[data-act=dial] .eyes{animation:r92-watch 2s ease-in-out}
+.r92[data-act=dial] .head{animation:r92-nod 2s ease-in-out}
+.r92[data-act=ring] .handset{animation:r92-hop 2s ease-in-out}
+.r92[data-act=ring] .clapper{animation:r92-clap 2s linear}
+.r92[data-act=ring] .arm-l{animation:r92-jig 2s ease-in-out}
+.r92[data-act=ring] .shell{animation:r92-shimmy 2s ease-in-out}
+/* the head rocks on one neck corner or the other: translate(±22px) moves the pivot from the neck's centre to that corner */
+@keyframes r92-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r92-tilt{0%,100%{transform:translate(0) rotate(0) translate(0)}18%,40%{transform:translate(22px) rotate(4.5deg) translate(-22px)}58%,78%{transform:translate(-22px) rotate(-4deg) translate(22px)}91%{transform:translate(22px) rotate(.8deg) translate(-22px)}}
+@keyframes r92-look{0%,100%{transform:none}14%,40%{transform:translate(6px,1px)}54%,78%{transform:translate(-6px,1px)}}
+@keyframes r92-lag{0%,100%{transform:none}24%{transform:rotate(-2deg)}46%{transform:rotate(1deg)}64%{transform:rotate(2deg)}84%{transform:rotate(-.8deg)}}
+@keyframes r92-shift{0%,100%{transform:translate(0) rotate(0) translate(0)}24%{transform:translate(-76px) rotate(-1.4deg) translate(76px)}54%{transform:translate(76px) rotate(1.1deg) translate(-76px)}80%{transform:translate(-76px) rotate(-.4deg) translate(76px)}}
+@keyframes r92-counter{0%,100%{transform:none}30%{transform:rotate(4deg)}60%{transform:rotate(-3deg)}85%{transform:rotate(1.2deg)}}
+@keyframes r92-reach{0%,100%{transform:none}10%{transform:rotate(-4deg)}26%,60%{transform:rotate(38deg)}74%{transform:rotate(-5deg)}86%{transform:rotate(2deg)}}
+@keyframes r92-wind{0%,28%,100%{transform:none}52%,60%{transform:rotate(150deg)}84%{transform:rotate(-5deg)}92%{transform:rotate(1.5deg)}}
+@keyframes r92-watch{0%,100%{transform:none}16%,70%{transform:translate(5px,5px)}}
+@keyframes r92-nod{0%,100%{transform:none}20%,68%{transform:translateY(4px)}}
+@keyframes r92-hop{0%,32%,52%,72%,100%{transform:none}4%{transform:translateY(-14px) rotate(-4deg)}8%,16%,24%,60%,68%{transform:translateY(0) rotate(0)}12%{transform:translateY(-12px) rotate(3.5deg)}20%{transform:translateY(-13px) rotate(-3deg)}28%{transform:translateY(-8px) rotate(2deg)}56%{transform:translateY(-14px) rotate(4deg)}64%{transform:translateY(-11px) rotate(-3deg)}}
+@keyframes r92-clap{0%,34%,52%,72%,100%{transform:none}2%,8%,14%,20%,26%,55%,61%,67%{transform:rotate(24deg)}5%,11%,17%,23%,29%,58%,64%,70%{transform:rotate(-24deg)}}
+@keyframes r92-jig{0%,36%,52%,72%,100%{transform:none}6%,22%,58%{transform:rotate(3deg)}14%,66%{transform:rotate(-2.5deg)}30%{transform:rotate(-2deg)}}
+@keyframes r92-shimmy{0%,36%,52%,72%,100%{transform:none}4%,16%,56%{transform:rotate(1deg)}10%,22%,62%{transform:rotate(-1deg)}28%,68%{transform:rotate(.6deg)}33%{transform:rotate(-.3deg)}}
+</style>
+  <title id="dial-title">Dial — rotary telephone robot</title>
+  <desc id="dial-desc">A chubby plum robot shaped like a domed desk telephone, with a big rotary dial on its belly, its handset resting in a cradle on top of its head, two eyes in a slate window, coiled cord arms ending in a pair of ringer bells and a dialling finger, on stubby legs and round feet.</desc>
+  <g class="bot" style="transform-origin:256px 476px">
+  <!-- Stubby legs and round feet -->
+  <rect x="200" y="398" width="36" height="52" fill="#3d4853"/>
+  <rect x="276" y="398" width="36" height="52" fill="#3d4853"/>
+  <path d="M200 420h36v10h-36Zm76 0h36v10h-36Z" fill="#697785"/>
+  <path d="M180 476v-6q0-30 38-30t38 30v6Zm76 0v-6q0-30 38-30t38 30v6Z" fill="#8e4560"/>
+  <path d="M230 442q26 8 26 28v6h-14v-6q0-18-12-28Zm76 0q26 8 26 28v6h-14v-6q0-18-12-28Z" fill="#6d3049"/>
+  <g class="shell" style="transform-origin:256px 404px">
+  <!-- Domed telephone body on a slate base plate -->
+  <rect x="136" y="388" width="240" height="18" rx="7" fill="#3d4853"/>
+  <path d="M148 372L166 236Q172 198 210 198H302Q340 198 346 236L364 372Q364 396 340 396H172Q148 396 148 372Z" fill="#8e4560"/>
+  <path d="M166 236Q172 198 210 198H302Q340 198 346 236Z" fill="#b4637e"/>
+  <path d="M316 199Q341 204 346 236L364 372Q364 396 340 396H326Q342 392 341 372L327 240Q324 212 316 199Z" fill="#6d3049"/>
+  <path d="M150 358H362L364 372Q364 396 340 396H172Q148 396 148 372Z" fill="#6d3049"/>
+  <!-- Rotary dial: number plate, finger wheel and stop -->
+  <circle cx="256" cy="296" r="67" fill="#6d3049"/>
+  <circle cx="256" cy="296" r="60" fill="#fff8de"/>
+  <g class="wheel" style="transform-origin:256px 296px">
+  <path d="M256 238a58 58 0 1 1 0 116a58 58 0 1 1 0-116Zm0 33a25 25 0 1 0 0 50a25 25 0 1 0 0-50Z" fill="#3d4853" fill-rule="evenodd"/>
+  <g fill="#fff8de"><circle cx="252.5" cy="335.8" r="9.5"/><circle cx="233.1" cy="328.8" r="9.5"/><circle cx="219.7" cy="312.9" r="9.5"/><circle cx="216.2" cy="292.5" r="9.5"/><circle cx="223.2" cy="273.1" r="9.5"/><circle cx="239.1" cy="259.7" r="9.5"/><circle cx="259.5" cy="256.2" r="9.5"/><circle cx="278.9" cy="263.2" r="9.5"/><circle cx="292.3" cy="279.1" r="9.5"/><circle cx="295.8" cy="299.5" r="9.5"/></g>
+  </g>
+  <circle cx="256" cy="296" r="22" fill="#fff8de"/>
+  <circle cx="256" cy="296" r="9" fill="#8e4560"/>
+  <path d="M286.8 335.4L297.9 349.6" stroke="#f6c354" stroke-width="7" stroke-linecap="round"/>
+  <!-- Head: eye window under the handset cradle -->
+  <rect x="234" y="182" width="44" height="22" fill="#3d4853"/>
+  <g class="head" style="transform-origin:256px 190px">
+  <rect x="184" y="100" width="20" height="20" rx="4" fill="#6d3049"/>
+  <rect x="308" y="100" width="20" height="20" rx="4" fill="#6d3049"/>
+  <rect x="190" y="112" width="132" height="80" rx="22" fill="#8e4560"/>
+  <path d="M212 112h88q22 0 22 22v2H190v-2q0-22 22-22Z" fill="#b4637e"/>
+  <path d="M300 114q22 2 22 24v32q0 20-22 22Z" fill="#6d3049"/>
+  <rect x="204" y="130" width="104" height="46" rx="23" fill="#3d4853"/>
+  <g class="eyes">
+  <circle cx="233" cy="153" r="12" fill="#79d6eb"/>
+  <circle cx="279" cy="153" r="12" fill="#79d6eb"/>
+  <circle cx="237" cy="149" r="4" fill="#fffae0"/>
+  <circle cx="283" cy="149" r="4" fill="#fffae0"/>
+  </g>
+  <!-- Handset resting in the cradle -->
+  <g class="handset" style="transform-origin:256px 88px">
+  <path d="M188 70Q256 50 324 70V88Q256 70 188 88Z" fill="#8e4560"/>
+  <path d="M190 68Q256 48 322 68V74Q256 56 190 74Z" fill="#b4637e"/>
+  <path d="M182 68H214Q220 68 222 76L228 96Q230 106 220 106H174Q164 106 166 96L172 76Q174 68 182 68Z" fill="#8e4560"/>
+  <path d="M298 68H330Q338 68 340 76L346 96Q348 106 338 106H292Q282 106 284 96L290 76Q292 68 298 68Z" fill="#8e4560"/>
+  <path d="M182 68H214Q220 68 221 72H175Q176 68 182 68ZM298 68H330Q336 68 339 72H291Q293 68 298 68Z" fill="#b4637e"/>
+  <path d="M208 68H214Q220 68 222 76L228 96Q230 106 220 106H214Q220 104 219 96L215 76Q213 70 208 68ZM326 68H330Q338 68 340 76L346 96Q348 106 338 106H332Q338 104 337 96L333 76Q331 70 326 68Z" fill="#6d3049"/>
+  <path d="M168 100H228M286 100H346" stroke="#6d3049" stroke-width="5"/>
+  </g>
+  </g>
+  <!-- Coiled cord arms: ringer bells on the left, dialling finger on the right -->
+  <g class="arm-l" style="transform-origin:164px 250px">
+  <path d="M164 250C128 258 112 290 114 332" fill="none" stroke="#6d3049" stroke-width="18"/>
+  <g fill="none" stroke="#b4637e" stroke-width="4"><ellipse cx="160.3" cy="250.9" rx="4" ry="11" transform="rotate(164.4 160.3 250.9)"/><ellipse cx="153.1" cy="253.4" rx="4" ry="11" transform="rotate(157.7 153.1 253.4)"/><ellipse cx="146.5" cy="256.6" rx="4" ry="11" transform="rotate(150.7 146.5 256.6)"/><ellipse cx="140.1" cy="260.7" rx="4" ry="11" transform="rotate(143 140.1 260.7)"/><ellipse cx="134.5" cy="265.6" rx="4" ry="11" transform="rotate(135.4 134.5 265.6)"/><ellipse cx="129.5" cy="271.2" rx="4" ry="11" transform="rotate(128 129.5 271.2)"/><ellipse cx="125.3" cy="277.4" rx="4" ry="11" transform="rotate(120.9 125.3 277.4)"/><ellipse cx="121.8" cy="284" rx="4" ry="11" transform="rotate(114.6 121.8 284)"/><ellipse cx="119" cy="290.9" rx="4" ry="11" transform="rotate(109 119 290.9)"/><ellipse cx="116.9" cy="298.3" rx="4" ry="11" transform="rotate(103.8 116.9 298.3)"/><ellipse cx="115.4" cy="305.6" rx="4" ry="11" transform="rotate(99.4 115.4 305.6)"/><ellipse cx="114.4" cy="313" rx="4" ry="11" transform="rotate(95.5 114.4 313)"/><ellipse cx="113.9" cy="320.6" rx="4" ry="11" transform="rotate(91.9 113.9 320.6)"/><ellipse cx="113.9" cy="327.9" rx="4" ry="11" transform="rotate(88.9 113.9 327.9)"/></g>
+  <g class="hand-l">
+  <path d="M85 366a13 16 0 0 1 26 0Zm32 0a13 16 0 0 1 26 0Z" fill="#f6c354"/>
+  <path d="M83 364h32v6h-32Zm32 0h30v6h-30Z" fill="#f6c354"/>
+  <path d="M104 352q4 4 4 12M136 352q4 4 4 12" stroke="#fbe2ab" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <g class="clapper" style="transform-origin:114px 342px">
+  <path d="M114 342V368" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="114" cy="372" r="6.5" fill="#3d4853"/>
+  </g>
+  <rect x="96" y="328" width="36" height="16" rx="5" fill="#8e4560"/>
+  </g>
+  <circle cx="164" cy="250" r="19" fill="#3d4853"/>
+  <circle cx="164" cy="250" r="8" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:348px 250px">
+  <path d="M348 250C384 258 400 290 398 332" fill="none" stroke="#6d3049" stroke-width="18"/>
+  <g fill="none" stroke="#b4637e" stroke-width="4"><ellipse cx="351.7" cy="250.9" rx="4" ry="11" transform="rotate(15.6 351.7 250.9)"/><ellipse cx="358.9" cy="253.4" rx="4" ry="11" transform="rotate(22.3 358.9 253.4)"/><ellipse cx="365.5" cy="256.6" rx="4" ry="11" transform="rotate(29.3 365.5 256.6)"/><ellipse cx="371.9" cy="260.7" rx="4" ry="11" transform="rotate(37 371.9 260.7)"/><ellipse cx="377.5" cy="265.6" rx="4" ry="11" transform="rotate(44.6 377.5 265.6)"/><ellipse cx="382.5" cy="271.2" rx="4" ry="11" transform="rotate(52 382.5 271.2)"/><ellipse cx="386.7" cy="277.4" rx="4" ry="11" transform="rotate(59.1 386.7 277.4)"/><ellipse cx="390.2" cy="284" rx="4" ry="11" transform="rotate(65.4 390.2 284)"/><ellipse cx="393" cy="290.9" rx="4" ry="11" transform="rotate(71 393 290.9)"/><ellipse cx="395.1" cy="298.3" rx="4" ry="11" transform="rotate(76.2 395.1 298.3)"/><ellipse cx="396.6" cy="305.6" rx="4" ry="11" transform="rotate(80.6 396.6 305.6)"/><ellipse cx="397.6" cy="313" rx="4" ry="11" transform="rotate(84.5 397.6 313)"/><ellipse cx="398.1" cy="320.6" rx="4" ry="11" transform="rotate(88.1 398.1 320.6)"/><ellipse cx="398.1" cy="327.9" rx="4" ry="11" transform="rotate(91.1 398.1 327.9)"/></g>
+  <g class="hand-r">
+  <path d="M404 342v22q0 14-14 16" fill="none" stroke="#3d4853" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="389" cy="380" r="5" fill="#697785"/>
+  <path d="M386 342v8" stroke="#3d4853" stroke-width="10" stroke-linecap="round"/>
+  <rect x="380" y="328" width="36" height="16" rx="5" fill="#8e4560"/>
+  </g>
+  <circle cx="348" cy="250" r="19" fill="#3d4853"/>
+  <circle cx="348" cy="250" r="8" fill="#92a1b2"/>
+  </g>
+  </g>
+  </g>
+</svg>

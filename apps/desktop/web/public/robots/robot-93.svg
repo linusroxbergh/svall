@@ -1,0 +1,133 @@
+<svg width="340" height="420" viewBox="86 56 340 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vault-title vault-desc" class="r93" data-idle="blink blink peer peer shift listen crack" data-work="listen listen crack crack shift blink"><style>
+.r93[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r93-blink .4s ease-in-out}
+.r93[data-act=peer] .head{animation:r93-tilt 1.8s ease-in-out}
+.r93[data-act=peer] .eyes{animation:r93-look 1.8s ease-in-out}
+.r93[data-act=shift] .bot{animation:r93-shift 2s ease-in-out}
+.r93[data-act=shift] .arm-l,.r93[data-act=shift] .arm-r{animation:r93-counter 2s ease-in-out}
+.r93[data-act=shift] .fore-l,.r93[data-act=shift] .fore-r{animation:r93-counter 2s ease-in-out .12s}
+.r93[data-act=listen] .arm-r{animation:r93-reach 2s ease-in-out}
+.r93[data-act=listen] .fore-r{animation:r93-bend 2s ease-in-out}
+.r93[data-act=listen] .combo{animation:r93-turn 2s ease-in-out}
+.r93[data-act=listen] .head{animation:r93-lean 2s ease-in-out}
+.r93[data-act=listen] .eyes{animation:r93-down 2s ease-in-out}
+.r93[data-act=crack] .wheel{animation:r93-spin 2s ease-in-out}
+.r93[data-act=crack] .door{animation:r93-door 2s ease-in-out}
+.r93[data-act=crack] .eyes{animation:r93-peek 2s ease-in-out}
+.r93[data-act=crack] .head{animation:r93-bob 2s ease-in-out}
+/* the head rocks on one neck corner or the other: translate(±34px) moves the pivot from the neck's centre to that corner; the door swings on its hinge edge */
+@keyframes r93-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r93-tilt{0%,100%{transform:translate(0) rotate(0) translate(0)}18%,40%{transform:translate(34px) rotate(5deg) translate(-34px)}58%,78%{transform:translate(-34px) rotate(-4.5deg) translate(34px)}91%{transform:translate(34px) rotate(.9deg) translate(-34px)}}
+@keyframes r93-look{0%,100%{transform:none}14%,40%{transform:translate(3px,.5px)}54%,78%{transform:translate(-3px,.5px)}}
+@keyframes r93-shift{0%,100%{transform:translate(0) rotate(0) translate(0)}24%{transform:translate(-88px) rotate(-1deg) translate(88px)}54%{transform:translate(88px) rotate(.8deg) translate(-88px)}80%{transform:translate(-88px) rotate(-.3deg) translate(88px)}}
+@keyframes r93-counter{0%,100%{transform:none}30%{transform:rotate(3.5deg)}60%{transform:rotate(-2.5deg)}85%{transform:rotate(1deg)}}
+@keyframes r93-reach{0%,100%{transform:none}10%{transform:rotate(-4deg)}28%,70%{transform:rotate(48deg)}82%{transform:rotate(-4deg)}92%{transform:rotate(1.5deg)}}
+@keyframes r93-bend{0%,100%{transform:none}12%{transform:rotate(-3deg)}32%,68%{transform:rotate(46deg)}84%{transform:rotate(-5deg)}94%{transform:rotate(1.5deg)}}
+@keyframes r93-turn{0%,32%,74%,100%{transform:none}44%{transform:rotate(80deg)}56%{transform:rotate(-40deg)}66%{transform:rotate(30deg)}}
+@keyframes r93-lean{0%,100%{transform:translate(0) rotate(0) translate(0)}24%,70%{transform:translate(34px) rotate(5deg) translate(-34px)}86%{transform:translate(34px) rotate(-.8deg) translate(-34px)}}
+@keyframes r93-down{0%,100%{transform:none}20%,72%{transform:translate(2px,2px)}}
+@keyframes r93-spin{0%,100%{transform:none}26%,76%{transform:rotate(-144deg)}92%{transform:rotate(5deg)}}
+@keyframes r93-door{0%,30%,68%,76%,100%{transform:none}44%,60%{transform:scaleX(.78)}72%{transform:scaleX(.97)}}
+@keyframes r93-peek{0%,100%{transform:none}40%,62%{transform:translate(3px,1px)}}
+@keyframes r93-bob{0%,64%,84%,100%{transform:none}69%{transform:translateY(3px)}76%{transform:translateY(-1px)}}
+</style>
+  <title id="vault-title">Vault — bank safe robot</title>
+  <desc id="vault-desc">A chubby navy teal robot shaped like an old bank safe, its door trimmed with a gold pinstripe and fitted with a combination dial and a spoked wheel handle, two eyes behind brass peep lenses in a short head under a cornice, heavy slate arms ending in a clamp and a stethoscope disc, on stubby legs and block feet.</desc>
+  <g class="bot" style="transform-origin:256px 476px">
+  <!-- Stubby legs and block feet -->
+  <rect x="186" y="414" width="34" height="40" fill="#3d4853"/>
+  <rect x="292" y="414" width="34" height="40" fill="#3d4853"/>
+  <path d="M186 430h34v9h-34Zm106 0h34v9h-34Z" fill="#697785"/>
+  <path d="M168 476v-14q0-12 12-12h46q12 0 12 12v14Zm106 0v-14q0-12 12-12h46q12 0 12 12v14Z" fill="#2e6b7a"/>
+  <path d="M220 450h6q12 0 12 12v14h-12v-14q0-8-6-12Zm106 0h6q12 0 12 12v14h-12v-14q0-8-6-12Z" fill="#21505d"/>
+  <!-- Safe body on a plinth -->
+  <rect x="132" y="398" width="248" height="22" rx="7" fill="#21505d"/>
+  <rect x="132" y="398" width="248" height="6" rx="3" fill="#4a8c9b"/>
+  <rect x="138" y="164" width="236" height="240" rx="44" fill="#2e6b7a"/>
+  <path d="M182 164h148q44 0 44 44H138q0-44 44-44Z" fill="#4a8c9b"/>
+  <path d="M340 168q34 10 34 46v146q0 36-34 44Z" fill="#21505d"/>
+  <path d="M138 372h236q-2 32-44 32H182q-42 0-44-32Z" fill="#21505d"/>
+  <!-- Door in its frame, gold inside -->
+  <rect x="166" y="190" width="180" height="198" rx="20" fill="#21505d"/>
+  <rect x="172" y="196" width="168" height="186" rx="16" fill="#3d4853"/>
+  <path d="M306 340h28v18h-28Zm-6 20h34v18h-34Z" fill="#f6c354"/>
+  <path d="M306 340h28v5h-28Zm-6 20h34v5h-34Z" fill="#fbe2ab"/>
+  <g class="door" style="transform-origin:172px 289px">
+  <rect x="172" y="196" width="168" height="186" rx="16" fill="#2e6b7a"/>
+  <path d="M188 196h136q16 0 16 16v2H172v-2q0-16 16-16Z" fill="#4a8c9b"/>
+  <path d="M324 197q16 2 16 18v150q0 16-16 17Z" fill="#21505d"/>
+  <rect x="186" y="212" width="138" height="156" rx="10" fill="none" stroke="#f6c354" stroke-width="3"/>
+  <circle cx="256" cy="260" r="32" fill="#3d4853"/>
+  <path d="M250 220h12l-6 9Z" fill="#f6c354"/>
+  <g class="combo" style="transform-origin:256px 260px">
+  <circle cx="256" cy="260" r="25" fill="#fff8de"/>
+  <path d="M272 260L279 260M272.5 269.5L275.9 271.5M265.5 276.5L267.5 279.9M256 276L256 283M246.5 276.5L244.5 279.9M239.5 269.5L236.1 271.5M240 260L233 260M239.5 250.5L236.1 248.5M246.5 243.5L244.5 240.1M256 244L256 237M265.5 243.5L267.5 240.1M272.5 250.5L275.9 248.5" stroke="#3d4853" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="256" cy="260" r="11" fill="#3d4853"/>
+  <circle cx="256" cy="253" r="2.5" fill="#92a1b2"/>
+  </g>
+  <g class="wheel" style="transform-origin:256px 332px">
+  <path d="M256 332L256 304M256 332L282.6 323.3M256 332L272.5 354.7M256 332L239.5 354.7M256 332L229.4 323.3" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <g fill="#f6c354"><circle cx="256" cy="304" r="7"/><circle cx="282.6" cy="323.3" r="7"/><circle cx="272.5" cy="354.7" r="7"/><circle cx="239.5" cy="354.7" r="7"/><circle cx="229.4" cy="323.3" r="7"/></g>
+  <circle cx="256" cy="332" r="12" fill="#3d4853"/>
+  <circle cx="256" cy="332" r="5" fill="#92a1b2"/>
+  </g>
+  </g>
+  <rect x="164" y="214" width="12" height="30" rx="4" fill="#3d4853"/>
+  <rect x="164" y="334" width="12" height="30" rx="4" fill="#3d4853"/>
+  <!-- Short head with brass peep lenses under a cornice and pediment -->
+  <rect x="222" y="150" width="68" height="20" fill="#3d4853"/>
+  <g class="head" style="transform-origin:256px 158px">
+  <path d="M206 84Q256 52 306 84Z" fill="#2e6b7a"/>
+  <path d="M214 79Q256 54 298 79L292 80Q256 60 220 80Z" fill="#4a8c9b"/>
+  <rect x="182" y="80" width="148" height="14" rx="6" fill="#21505d"/>
+  <rect x="190" y="90" width="132" height="68" rx="16" fill="#2e6b7a"/>
+  <path d="M204 90h104q14 0 14 14v2H190v-2q0-14 14-14Z" fill="#4a8c9b"/>
+  <path d="M304 92q18 2 18 16v34q0 14-18 16Z" fill="#21505d"/>
+  <circle cx="230" cy="125" r="21" fill="#21505d"/>
+  <circle cx="282" cy="125" r="21" fill="#21505d"/>
+  <circle cx="230" cy="125" r="18" fill="#f6c354"/>
+  <circle cx="282" cy="125" r="18" fill="#f6c354"/>
+  <circle cx="230" cy="125" r="14" fill="#3d4853"/>
+  <circle cx="282" cy="125" r="14" fill="#3d4853"/>
+  <g class="eyes">
+  <circle cx="230" cy="125" r="11" fill="#79d6eb"/>
+  <circle cx="282" cy="125" r="11" fill="#79d6eb"/>
+  <circle cx="234" cy="121" r="4" fill="#fffae0"/>
+  <circle cx="286" cy="121" r="4" fill="#fffae0"/>
+  </g>
+  </g>
+  <!-- Heavy arms: clamp on the left, stethoscope disc on the right -->
+  <g class="arm-l" style="transform-origin:138px 236px">
+  <path d="M138 236L114 290" stroke="#697785" stroke-width="30" stroke-linecap="round"/>
+  <path d="M130 242L106 288" stroke="#92a1b2" stroke-width="7" stroke-linecap="round"/>
+  <g class="fore-l" style="transform-origin:114px 290px">
+  <path d="M114 290L110 336" stroke="#697785" stroke-width="26" stroke-linecap="round"/>
+  <path d="M108 296L104 330" stroke="#92a1b2" stroke-width="5" stroke-linecap="round"/>
+  <path d="M106 346h8v48h-8Z" fill="#f6c354"/>
+  <path d="M106 370h-16v7h7v5h-7v12h16Z" fill="#f6c354"/>
+  <path d="M102 352h16v7h-16Z" fill="#3d4853"/>
+  <rect x="92" y="332" width="36" height="16" rx="5" fill="#2e6b7a"/>
+  </g>
+  <circle cx="114" cy="290" r="16" fill="#3d4853"/>
+  <circle cx="114" cy="290" r="6" fill="#92a1b2"/>
+  <circle cx="138" cy="236" r="19" fill="#3d4853"/>
+  <circle cx="138" cy="236" r="8" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:374px 236px">
+  <path d="M374 236L398 290" stroke="#697785" stroke-width="30" stroke-linecap="round"/>
+  <path d="M366 242L390 288" stroke="#92a1b2" stroke-width="7" stroke-linecap="round"/>
+  <g class="fore-r" style="transform-origin:398px 290px">
+  <path d="M398 290L402 336" stroke="#697785" stroke-width="26" stroke-linecap="round"/>
+  <path d="M392 296L396 330" stroke="#92a1b2" stroke-width="5" stroke-linecap="round"/>
+  <path d="M402 348v8" stroke="#3d4853" stroke-width="8"/>
+  <circle cx="402" cy="370" r="17" fill="#f6c354"/>
+  <circle cx="402" cy="370" r="11" fill="#3d4853"/>
+  <circle cx="402" cy="370" r="4.5" fill="#92a1b2"/>
+  <rect x="384" y="332" width="36" height="16" rx="5" fill="#2e6b7a"/>
+  </g>
+  <circle cx="398" cy="290" r="16" fill="#3d4853"/>
+  <circle cx="398" cy="290" r="6" fill="#92a1b2"/>
+  <circle cx="374" cy="236" r="19" fill="#3d4853"/>
+  <circle cx="374" cy="236" r="8" fill="#92a1b2"/>
+  </g>
+  </g>
+</svg>
