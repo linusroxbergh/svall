@@ -1,0 +1,135 @@
+import XCTest
+@testable import Svall
+
+final class QuitFlowTests: XCTestCase {
+    private var sent: [String] = []
+    private var asked: [String] = []
+    private var kills = 0
+    private var holds = 0
+    private var answers: [Bool] = []
+
+    private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false, following: Bool = false, running: Bool = false) -> QuitFlow {
+        QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
+                 elsewhere: { elsewhere }, handoverOpen: { handover }, handoverFollowed: { following }, handoverRunning: { running || following },
+                 confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); return true },
+                 kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 })
+    }
+
+    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0) {
+        XCTAssertEqual(flow.ask(confirm: true) { [unowned self] in answers.append($0) }, .terminateLater)
+        flow.answered(unsaved: unsaved, working: working)
+    }
+
+    func testALocalFleetIsPutToSleepByThePage() {
+        let local = flow()
+        quit(local, working: 1)
+        XCTAssertEqual(sent, ["quit.ask", "quit.stop"])
+        XCTAssertEqual(asked, ["Quit Svall? 1 character is working and will stop. Everything picks up where it left off when you open Svall again."])
+        XCTAssertEqual(answers, [])
+        local.stopped(ok: true)
+        XCTAssertEqual(answers, [true])
+        XCTAssertEqual(kills, 0)
+    }
+
+    func testAFleetThatRunsElsewhereIsNeverAskedToStop() {
+        quit(flow(elsewhere: true), working: 1)
+        XCTAssertEqual(sent, ["quit.ask"])
+        XCTAssertEqual(asked, ["Quit Svall? Your characters keep working on the machine this fleet runs on."])
+        // this Mac's daemon alone
+        XCTAssertEqual(kills, 1)
+        XCTAssertEqual(answers, [true])
+    }
+
+    func testADaemonStartAlreadyUnderWayIsHeldOnceTheFleetIsBeingStopped() {
+        let local = flow()
+        quit(local)
+        XCTAssertEqual(holds, 1)
+        local.stopped(ok: true)
+        XCTAssertEqual(holds, 1)
+        holds = 0
+        quit(flow(elsewhere: true))
+        XCTAssertEqual(holds, 1)
+        holds = 0
+        // an open handover leaves this Mac's daemon running
+        quit(flow(handover: true))
+        XCTAssertEqual(holds, 0)
+    }
+
+    func testAnOpenHandoverKeepsThisMacsDaemonOnEitherRoute() {
+        for elsewhere in [false, true] {
+            sent = []; asked = []; kills = 0; answers = []
+            quit(flow(elsewhere: elsewhere, handover: true, following: true), working: 2)
+            XCTAssertEqual(sent, ["quit.ask"], "elsewhere: \(elsewhere)")
+            XCTAssertEqual(kills, 0, "elsewhere: \(elsewhere)")
+            XCTAssertEqual(answers, [true], "elsewhere: \(elsewhere)")
+            // this Mac may be where the fleet is going, and its characters may be at rest for the move
+            XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed. Keep this Mac awake until it finishes."], "elsewhere: \(elsewhere)")
+        }
+    }
+
+    func testAHandoverNoHelperOfThisWindowRunsAsksNoOneToKeepTheMacAwake() {
+        quit(flow(handover: true), working: 2)
+        XCTAssertEqual(asked, ["Quit Svall? The open handover waits in the Handover sheet until you open Svall again."])
+        XCTAssertEqual(sent, ["quit.ask"])
+        XCTAssertEqual(kills, 0)
+        // one started from a terminal, or not yet attached to, runs on without this window
+        asked = []
+        quit(flow(handover: true, running: true))
+        XCTAssertEqual(asked, ["Quit Svall? The handover carries on while Svall is closed."])
+    }
+
+    func testAHandoverRunsWhileALiveProcessHoldsItsLock() throws {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-quit-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let lock = home.appendingPathComponent("controller/handover.lock")
+        try FileManager.default.createDirectory(at: lock.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
+        try Data("\(ProcessInfo.processInfo.processIdentifier)\n".utf8).write(to: lock)
+        XCTAssertTrue(SvallHome.handoverRunning(at: home.path))
+        // a holder that is gone, as after a kill -9
+        let gone = Process()
+        gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try gone.run()
+        gone.waitUntilExit()
+        try Data("\(gone.processIdentifier)\n".utf8).write(to: lock)
+        XCTAssertFalse(SvallHome.handoverRunning(at: home.path))
+    }
+
+    func testUnsavedFilesAreNamedBesideAnOpenHandover() {
+        quit(flow(handover: true, following: true), unsaved: ["notes.md"], working: 1)
+        XCTAssertEqual(asked, ["Quit with unsaved changes? notes.md has changes that were not saved. Quitting drops them. The handover carries on while Svall is closed. Keep this Mac awake until it finishes."])
+        XCTAssertEqual(sent, ["quit.ask"])
+        XCTAssertEqual(kills, 0)
+    }
+
+    func testAPageThatIsNotUpHasTheFleetEndedFromHere() {
+        XCTAssertEqual(flow(listening: false).ask(confirm: false) { [unowned self] in answers.append($0) }, .terminateLater)
+        XCTAssertEqual(kills, 1)
+        XCTAssertEqual(answers, [true])
+    }
+
+    func testAHandoverIsOpenWhileTheControllerOrTheDaemonKeepsAJournalOfIt() throws {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-quit-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let write = { (file: String) in
+            let url = home.appendingPathComponent(file)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("{}".utf8).write(to: url)
+        }
+        // what a finished run leaves behind
+        try write("controller/events.ndjson")
+        try write("controller/handover.log")
+        XCTAssertFalse(SvallHome.handoverOpen(at: home.path))
+        for journal in ["controller/handover.json", "handover/journal.json"] {
+            try write(journal)
+            XCTAssertTrue(SvallHome.handoverOpen(at: home.path), journal)
+            try FileManager.default.removeItem(at: home.appendingPathComponent(journal))
+        }
+    }
+
+    func testAPageThatIsNotUpLeavesAnOpenHandoversDaemon() {
+        XCTAssertEqual(flow(listening: false, handover: true).ask(confirm: false) { [unowned self] in answers.append($0) }, .terminateNow)
+        XCTAssertEqual(sent, [])
+        XCTAssertEqual(kills, 0)
+    }
+}

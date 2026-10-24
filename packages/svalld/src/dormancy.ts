@@ -2,8 +2,9 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character } from '@svall/protocol';
+import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character, type TerminalSlot } from '@svall/protocol';
 import { running, settle } from './agent/reducer.js';
+import { hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
 import type { Store } from './store.js';
 import { shq } from './text.js';
@@ -12,12 +13,34 @@ import type { Tmux } from './tmux/tmux.js';
 const exec = promisify(execFile);
 
 // flags are the launch flags to resume with, already quoted
-export function reviveCommand(c: Character, flags: string[] = []): string {
-  if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
+export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
+  if (!t.agent || !isSessionId(t.agent.sessionId)) return '';
   // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
-    : c.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
-  return [...words, c.agent.sessionId].join(' ');
+  const words = t.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
+    : t.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
+  return [...words, t.agent.sessionId].join(' ');
+}
+
+/** The command that starts a new session with the launch flags `revive`, as `reviveCommand` built it for `sessionId`, resumes with. */
+export function freshCommand(revive: string, kind: AgentKind, sessionId: string): string {
+  const resume = kind === 'codex' ? /^codex resume -c tui\.resume_cwd=session(.*) (\S+)$/ : kind === 'opencode' ? /^opencode(.*) -s (\S+)$/ : /^claude(.*) --resume (\S+)$/;
+  const m = resume.exec(revive);
+  return m?.[2] === sessionId ? `${kind}${m[1]}` : kind;
+}
+
+// a terminal without a window keeps its directory and the command that brings its session back. `flags` are the
+// launch flags ps showed the agent's process; without them, the ones remembered at its start
+export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
+  delete t.tmux;
+  dropBrief(t);
+  t.revive = { command: reviveCommand(t, flags ?? t.agent?.flags) };
+  delete t.agent?.monitors;
+  delete t.agent?.subagents;
+  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
+  if (t.agent && (t.agent.status === 'blocked' || t.agent.status === 'working')) {
+    settle(t.agent, 'idle');
+    delete t.agent.asking;
+  }
 }
 
 // a resumed session sits at its prompt, and its subagents, background agents and commands died with the process
@@ -26,35 +49,31 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
   + 'and carry on with the task.';
 
 // a revive's SessionStart gets the whole brief, so what the session was told before is never read again
-export const dropBrief = (c: Character): void => { if (c.agent) delete c.agent.brief; };
+export const dropBrief = (t: TerminalSlot): void => { if (t.agent) delete t.agent.brief; };
 
-// `flags` are the launch flags ps showed the agent's process; without them, the ones remembered at its start
 export function markDormant(c: Character, flags?: string[]): void {
-  delete c.tmux;
   delete c.hint;
   delete c.codexDaemon;
-  dropBrief(c);
-  c.revive = { command: reviveCommand(c, flags ?? c.agent?.flags) };
   // its monitors and subagents die with it, which a finished turn says nothing of
-  if (c.agent?.monitors || c.agent?.subagents) {
-    if (c.revive.command) c.revive.interrupted = true;
-    delete c.agent.monitors;
-    delete c.agent.subagents;
-  }
-  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
-  if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
-    if (c.revive.command) c.revive.interrupted = true;
-    settle(c.agent, 'idle');
-    delete c.agent.asking;
-  }
+  const interrupted = !!c.agent?.monitors || !!c.agent?.subagents || c.agent?.status === 'blocked' || c.agent?.status === 'working';
+  markSlotDormant(c, flags);
+  if (interrupted && c.revive?.command) c.revive.interrupted = true;
+}
+
+// a plain side shell goes with its window; a second that ran an agent stays behind to be revived, unless the agent
+// sends no SessionEnd and the last poll saw it quit `atShell`
+export function loseSecond(c: Character, flags?: string[], atShell = false): void {
+  const a = c.second?.agent;
+  if (a && !(atShell && !hooksFor(a.kind).includes('SessionEnd'))) markSlotDormant(c.second!, flags);
+  else delete c.second;
 }
 
 // an agent resting this long, since its last turn or the user's last look, with nothing running for it and nothing
 // the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets.
-// A second terminal is the user's own shell beside the agent, which only a sleep closes
+// A second terminal open is the user's own shell beside the agent, which only a sleep closes
 export function drowsy(c: Character, now: number, afterMs: number, seenAt = 0): boolean {
   const a = c.agent;
-  if (!c.tmux || c.second || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
+  if (!c.tmux || c.second?.tmux || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
   return (a.status === 'idle' || a.status === 'done') && now - Math.max(a.lastActivityAt, seenAt) >= afterMs;
 }
 
@@ -83,6 +102,8 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
 };
 // the flags whose value may be left out
 const OPTIONAL = ['-w', '--worktree', '-r', '--resume'];
+// kept codex flags whose values name entries in the launching machine's own config.toml
+const MACHINE_LOCAL = ['-p', '--profile', '--local-provider'];
 // a value is typed into a shell on revive, so only a plain word is carried
 const PLAIN = /^[\w.:@/[\]-]+$/;
 
@@ -141,6 +162,13 @@ export function sleepFlags(c: Character, procs: Pick<Proc, 'pid' | 'args'>[]): s
   return startFlags(proc.args, a.kind);
 }
 
+/** A revive command, as `reviveCommand` builds it, without the flags that mean something only on the machine it was made on. */
+export function portableRevive(command: string): string {
+  const words = command.split(' ');
+  if (words[0] !== 'codex') return command;
+  return words.filter((w, i) => !MACHINE_LOCAL.includes(w) && !MACHINE_LOCAL.includes(words[i - 1])).join(' ');
+}
+
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };
 
 /** Every process, as ps lists them; throws when ps fails or outstays 5 s. */
@@ -152,10 +180,10 @@ export async function processes(): Promise<Proc[]> {
   });
 }
 
-/** Remembers on `c`'s agent the launch flags a resume repeats, read off its process among `procs`, for a dormancy
+/** Remembers on `t`'s agent the launch flags a resume repeats, read off its process among `procs`, for a dormancy
  *  that finds no process to read them from. */
-export function rememberFlags(c: Character, procs: Proc[]): void {
-  const a = c.agent;
+export function rememberFlags(t: TerminalSlot, procs: Proc[]): void {
+  const a = t.agent;
   const proc = a && procs.find((p) => p.pid === a.pid);
   if (!a || !proc) return;
   const flags = startFlags(proc.args, a.kind);
@@ -243,7 +271,7 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
     for (const c of Object.values(d.characters)) {
       const second = agentProc(c.second?.agent);
       if (second) pids.push(second.pid);
-      delete c.second;
+      if (c.second?.tmux) loseSecond(c, second ? startFlags(second.args, c.second.agent!.kind) : undefined);
       if (!c.tmux) continue;
       const proc = agentProc(c.agent);
       if (proc) pids.push(proc.pid);

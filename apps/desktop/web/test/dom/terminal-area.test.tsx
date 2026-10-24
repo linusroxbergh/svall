@@ -84,3 +84,55 @@ test('a wake the fleet refuses says why and leaves the button', async () => {
   expect(screen.getByTestId('revive')).toBeTruthy();
   expect(store.getState().toast?.text).toBe('no session to resume');
 });
+
+test('one a handover could not resume says why and waits for the button while the fleet asks for handover', () => {
+  act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
+  const f = fleet();
+  delete f.characters.c1.tmux;
+  f.characters.c1.resumeError = 'codex exited back to its shell';
+  act(() => store.getState().setFleet(f));
+  render(<TerminalArea id="c1" />);
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(screen.getByTestId('resume-error').textContent).toBe('codex exited back to its shell');
+  expect(screen.getByTestId('revive')).toBeTruthy();
+  expect(call).not.toHaveBeenCalled();
+});
+
+test('starting afresh from a failed resume asks first, and says where the old session stays once it has started', async () => {
+  act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
+  const f = fleet();
+  delete f.characters.c1.tmux;
+  f.characters.c1.agent = { kind: 'claude', sessionId: 'old-1', transcriptPath: '/h/.claude/projects/-w/old-1.jsonl', status: 'idle', lastActivityAt: 0 };
+  f.characters.c1.resumeError = 'claude exited back to its shell';
+  act(() => store.getState().setFleet(f));
+  render(<TerminalArea id="c1" />);
+  act(() => { screen.getByTestId('fresh').click(); });
+  expect(call).not.toHaveBeenCalled();
+  expect(screen.getByTestId('fresh-ask').textContent).toBe('Start a new Claude Code session here from a summary of old-1? The old session stays where it is.');
+  act(() => { screen.getByTestId('fresh-cancel').click(); });
+  expect(screen.queryByTestId('fresh-ask')).toBeNull();
+
+  act(() => { screen.getByTestId('fresh').click(); });
+  await act(async () => { screen.getByTestId('fresh-go').click(); });
+  expect(call).toHaveBeenCalledWith('char.fresh', { id: 'c1' });
+  expect(store.getState().toast).toEqual({ text: 'c1 started fresh; old session old-1 kept at /h/.claude/projects/-w/old-1.jsonl', tone: 'ok' });
+});
+
+test('a dormant character wakes nothing while a handover rests the fleet', () => {
+  act(() => store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', safe: [], reason: 'moving' } }));
+  render(<TerminalArea id="c1" />);
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(screen.getByTestId('terminal-held')).toBeTruthy();
+  expect(call).not.toHaveBeenCalled();
+});
+
+test('a terminal rested for a handover says the step it is at, and opens the sheet on a click', () => {
+  act(() => {
+    store.getState().handoverFollow('trift');
+    for (const phase of ['begin', 'freeze', 'transfer'] as const) store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase } });
+  });
+  render(<TerminalArea id="c1" />);
+  expect(screen.getByTestId('terminal-held').textContent).toBe('Resting for the handover: Transferring files and sessions…');
+  act(() => screen.getByTestId('terminal-held').click());
+  expect(store.getState().handoverOpen).toBe(true);
+});

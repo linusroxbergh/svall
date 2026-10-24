@@ -11,12 +11,22 @@ final class ShellRouter {
     private let browsers: BrowserManager
     private let keys = KeyMonitor()
     private let notifier = Notifier()
+    private var remote: RemoteConnection!
+    // one host operation at a time: the page watches this one until it ends or is cancelled
+    private var hostRun: HostProcess?
+    // `svall host list` for the Machines pane, and whether it was asked for again while it ran
+    private var listing: LineChild?
+    private var listAgain = false
+    private var switching: LineChild?
+    // the handover helper the page follows; absent in a build with no svall beside it
+    private var handover: HandoverSession?
     private let awake = KeepAwake()
     private var sentConfigErrors = false
     // whether a page panel holds a rect of the surfaces
     private var holding = false
     private var presses: Any?
-    // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that
+    // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that;
+    // before it has, a token would be sent into nothing
     private var listening = false
     private var pendingNotify: [FromShell] = []
     // since when the app has sat in the background or minimised, until its page is offered a fresh start
@@ -24,7 +34,14 @@ final class ShellRouter {
     // the menu's Quit, which shows the chord the page quits with
     private let quitItem: NSMenuItem
     private lazy var quitFlow = QuitFlow(send: { [weak self] in self?.bridge.send($0) }, isListening: { [weak self] in self?.listening ?? false },
-                                         hideWindow: { [weak self] in self?.webView.window?.orderOut(nil) })
+                                         hideWindow: { [weak self] in self?.webView.window?.orderOut(nil) },
+                                         elsewhere: { [weak self] in
+                                             guard let route = self?.remote.route, case .remote = route else { return false }
+                                             return true
+                                         },
+                                         handoverOpen: { [weak self] in self?.handover?.isFollowing == true || SvallHome.handoverOpen() },
+                                         handoverFollowed: { [weak self] in self?.handover?.isFollowing == true },
+                                         handoverRunning: { SvallHome.handoverRunning() })
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
@@ -51,6 +68,36 @@ final class ShellRouter {
         browsers.onState = { [weak self] s in self?.bridge.send(.browserState(s)) }
         browsers.onOpened = { [weak self] from, tab, url in self?.bridge.send(.browserOpened(from: from, tab: tab, url: url)) }
         browsers.onClosed = { [weak self] tab in self?.bridge.send(.browserClosed(tab: tab)) }
+
+        let helper = ControllerProcess.locate().map {
+            ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
+        }
+        remote = RemoteConnection(helper: helper, local: { SvallHome.connection() }, localOnly: { !SvallHome.namesGateway() },
+                                  cachedHere: { RemoteConnection.cachedRouteIsHere(home: SvallHome.path, configDir: SvallHome.configDir) })
+        remote.onConnection = { [weak self] connection in
+            guard self?.listening == true else { return }
+            self?.bridge.send(.connection(connection))
+        }
+        remote.onState = { [weak self] state in
+            self?.webView.window?.title = RemoteConnection.windowTitle(base: SvallHome.displayName, owner: state.owner)
+            guard self?.listening == true else { return }
+            self?.bridge.send(.connectionState(state))
+        }
+        remote.onSurfaces = { [weak self] in self?.surfaces.rebuild() }
+        surfaces.route = { [weak self] in self?.remote.route ?? .local }
+        remote.start()
+
+        handover = ControllerProcess.locate().map {
+            HandoverSession(executable: $0, profile: SvallHome.profile, eventsFile: SvallHome.path + "/controller/events.ndjson")
+        }
+        handover?.onLine = { [weak self] line in self?.bridge.send(.handoverEvent(line.json)) }
+        handover?.onReplay = { [weak self] lines in self?.bridge.send(.handoverReplay(lines.map(\.json))) }
+        handover?.onExit = { [weak self] code, error in self?.bridge.send(.handoverExit(code: code, error: error)) }
+        // the move is done: where the fleet runs now is asked afresh, rather than on the old helper's next tick
+        handover?.onMoved = { [weak self] in
+            guard let helper = ControllerProcess.locate() else { return }
+            self?.remote.reconnect(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+        }
 
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
         notifier.onOpen = { [weak self] key in self?.open(key) }
@@ -142,6 +189,10 @@ final class ShellRouter {
     }
 
     func closeAll() {
+        hostRun?.cancel()
+        // the helper goes on without the app: only the attach following it ends
+        handover?.stop()
+        remote.stop()
         surfaces.closeAll()
         browsers.closeAll()
         browsers.dropDownloads()
@@ -170,8 +221,10 @@ final class ShellRouter {
         case .connection:
             // the daemon runs while the window is open: started with it, and again if it stops on its own
             if !quitFlow.stopping { FleetDaemon.start() }
-            bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil, ghosttyKeys: GhosttyKeybinds.userChords()))
-            bridge.send(.connection(SvallHome.connection()))
+            followGateway()
+            sendShellInfo()
+            bridge.send(.connection(remote.connection))
+            if let state = remote.state { bridge.send(.connectionState(state)) }
             sendAppActive()
             notifier.refreshPermission()
             bridge.send(.updateAvailable(Updates.shared.waiting))
@@ -206,8 +259,10 @@ final class ShellRouter {
         case .openUrl(let url):
             ExternalURL.open(url)
         case .openFolder(let path):
+            guard isHere(path) else { return }
             ExternalURL.openFolder(path)
         case .reveal(let path):
+            guard isHere(path) else { return }
             ExternalURL.reveal(path)
         case .setupPlan:
             AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
@@ -241,7 +296,11 @@ final class ShellRouter {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         case .openConfig(let which):
-            guard let path = which == "ghostty" ? GhosttyRuntime.configPath() : SvallHome.configPath() else { return }
+            guard let path = which == "ghostty" ? GhosttyRuntime.configPath() : SvallHome.configPath() else {
+                NSLog("svall: no %@ config to open", which)
+                return
+            }
+            if let notice = remote.notice(forConfig: which, at: path) { return bridge.send(.notice(text: notice)) }
             ExternalURL.openText(path)
         case .zoom(let factor, let fontDelta):
             // the page lays itself out again at the new size and restates every terminal's rect from there
@@ -266,6 +325,31 @@ final class ShellRouter {
             browsers.fillLogin(tab: tab)
         case .browserFocus(let tab):
             browsers.focus(tab: tab)
+        case .hostStart(let op, let args):
+            startHost(op: op, args: args)
+        case .hostCancel:
+            hostRun?.cancel()
+        case .hostList:
+            listMachines()
+        case .handoverEnable(let on):
+            turnHandover(on)
+        case .handoverStart(let to, let choices, let check):
+            guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile, check: check ?? false) else {
+                return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices svall handover takes"))
+            }
+            followHandover { try $0.launch(argv) }
+        case .handoverResume:
+            followHandover { try $0.launch(HandoverCommand.resume(profile: SvallHome.profile)) }
+        case .handoverAbort:
+            followHandover { try $0.launch(HandoverCommand.abort(profile: SvallHome.profile)) }
+        case .handoverAttach:
+            followHandover { try $0.observe() }
+        case .handoverForget:
+            followHandover { try $0.forget() }
+        case .handoverChoose(let choices):
+            handover?.send(.choose(choices))
+        case .handoverCancel:
+            handover?.send(.cancel)
         case .shellCutout(let rects, let passive):
             holding = !rects.isEmpty || !passive.isEmpty
             surfaces.setCutout(rects: rects, passive: passive)
@@ -283,10 +367,16 @@ final class ShellRouter {
         case .openFleet(let home, let quit):
             openFleet(home, quit: quit ?? false)
         case .retitle:
-            webView.window?.title = SvallHome.displayName
+            webView.window?.title = RemoteConnection.windowTitle(base: SvallHome.displayName, owner: remote.state?.owner ?? "local")
             awake.apply()
-        case .awake(let reason):
-            awake.hold(reason)
+        case .awake(let reason, let battery):
+            awake.hold(reason, battery: battery ?? false)
+        case .connectionRetry:
+            // a helper that gave up waits to be stopped; one still retrying starts over from the first wait
+            guard let helper = ControllerProcess.locate() else { return }
+            remote.retry(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile)))
+        case .connectionHere:
+            if let why = remote.openHere() { bridge.send(.notice(text: why)) }
         }
     }
 
@@ -312,6 +402,107 @@ final class ShellRouter {
                 if let error { self?.bridge.send(.openFleetFailed(home: home, reason: error.localizedDescription)) } else { done() }
             }
         }
+    }
+
+    /// The page names an operation and its arguments; the argv, and the binary, are the shell's own.
+    private func startHost(op: HostOp, args: HostArgs) {
+        guard hostRun == nil else { return }
+        let svall = ControllerProcess.locate()
+        let fleet = SvallHome.fleetProfile(of: SvallHome.path, in: NSHomeDirectory())
+        guard let executable = svall, let argv = HostCommand.arguments(op: op, args: args, fleet: fleet) else {
+            let detail = svall == nil ? "this build has no svall beside it to set a machine up with"
+                : op == .enable && fleet == nil ? "\(SvallHome.path) is not a profile's home, so svall host enable cannot name it"
+                : "these are not arguments svall host \(op.rawValue) takes"
+            bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: detail, action: nil)))
+            bridge.send(.hostDone(op: op.rawValue, code: 1))
+            return
+        }
+        let child = HostProcess(executable: executable, arguments: argv, report: op.printsReport)
+        hostRun = child
+        child.onStep = { [weak self] step in self?.bridge.send(.hostStep(op: op.rawValue, step: step)) }
+        child.onExit = { [weak self] code in
+            self?.hostRun = nil
+            self?.bridge.send(.hostDone(op: op.rawValue, code: code))
+            self?.listMachines()
+            if op.rewritesFleetConfig {
+                self?.followGateway()
+                self?.sendShellInfo()
+            }
+            // the version a helper gave up on may be the gateway's, which the upgrade has just changed
+            if op == .upgrade || op == .rollback, code == 0, args.name == SvallHome.gatewayName() {
+                self?.remote.retryIfIdle(with: ControllerProcess.locate().map {
+                    ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
+                })
+            }
+        }
+        do { try child.start() } catch {
+            hostRun = nil
+            bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: "\(error)", action: nil)))
+            bridge.send(.hostDone(op: op.rawValue, code: 1))
+        }
+    }
+
+    /// The registry as `svall host list --json` gives it; a list asked for while one runs is read again after it.
+    private func listMachines() {
+        if listing != nil { listAgain = true; return }
+        guard let executable = ControllerProcess.locate() else {
+            return bridge.send(.hostMachines(machines: [], error: "this build has no svall beside it to list machines with"))
+        }
+        let child = LineChild(executable: executable, arguments: ["host", "list", "--json"], stdin: false)
+        var text = ""
+        child.onLine = { text += $0 + "\n" }
+        child.onExit = { [weak self] code, stderr in
+            guard let self else { return }
+            listing = nil
+            let rows = code == 0 ? (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [[String: Any]] : nil
+            bridge.send(.hostMachines(machines: rows ?? [], error: rows == nil ? stderr.last ?? "svall host list exited with code \(code)" : nil))
+            if listAgain { listAgain = false; listMachines() }
+        }
+        listing = child
+        do { try child.start() } catch {
+            listing = nil
+            bridge.send(.hostMachines(machines: [], error: "\(error)"))
+        }
+    }
+
+    private func turnHandover(_ on: Bool) {
+        guard switching == nil else { return }
+        let said = { [weak self] (error: String?) in
+            guard let self else { return }
+            switching = nil
+            if let error { bridge.send(.notice(text: "Remote machines could not be turned \(on ? "on" : "off"): \(error)")) }
+            sendShellInfo()
+        }
+        guard let executable = ControllerProcess.locate() else { return said("this build has no svall beside it") }
+        switching = HandoverSwitch.turn(on, executable: executable, profile: SvallHome.profile, done: said)
+    }
+
+    // `svall host enable`, from the page or a terminal, can name a gateway for a fleet whose window went without a helper
+    private func followGateway() {
+        remote.followIfGatewayNamed(with: ControllerProcess.locate().map {
+            ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
+        })
+    }
+
+    // read afresh each time: the gateway and handover.enabled change when svall host rewrites fleet.json
+    private func sendShellInfo() {
+        bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
+                               ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: SvallHome.handoverEnabled(),
+                               gateway: SvallHome.gatewayName(), profile: SvallHome.profile,
+                               copyHere: RemoteConnection.copyHere(home: SvallHome.path, daemon: SvallHome.connection() != nil)))
+    }
+
+    private func followHandover(_ run: (HandoverSession) throws -> Void) {
+        guard let handover else {
+            return bridge.send(.handoverExit(code: 1, error: "this build has no svall beside it to hand the fleet over with"))
+        }
+        do { try run(handover) } catch { bridge.send(.handoverExit(code: 1, error: "\(error)")) }
+    }
+
+    private func isHere(_ path: String) -> Bool {
+        guard let notice = remote.notice(forOpening: path) else { return true }
+        bridge.send(.notice(text: notice))
+        return false
     }
 
     // a press the page can see is answered by the page's own listener, which knows the panel's own tab from

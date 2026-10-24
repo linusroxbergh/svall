@@ -26,7 +26,9 @@ function events(procs: Proc[], delayMs = 20) {
   const said: string[] = [];
   let reads = 0;
   const processes = async () => { reads++; const listed = [...procs]; await new Promise((r) => setTimeout(r, delayMs)); return listed; };
-  const ev = new AgentEvents({ store, config: Config.parse({}), log, render: () => '', processes });
+  const ev = new AgentEvents({
+    store, config: Config.parse({}), log, render: () => '', processes, refreshLinks: async () => {}, writable: () => true, frozen: () => false, track: () => {},
+  });
   const hook = (name: HookEvent['name'], pid: number, o: Partial<HookEvent> = {}) => ev.apply({ hook: { charId: 'c_a', backend: 'codex', name, sessionId: SID, pid, ...o } });
   return { store, hook, said, reads: () => reads };
 }

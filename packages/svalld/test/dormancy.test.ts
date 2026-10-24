@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Character, FleetState } from '@svall/protocol';
-import { drowsy, markDormant, rememberFlags, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
+import { drowsy, freshCommand, markDormant, rememberFlags, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -45,7 +45,12 @@ describe('drowsy', () => {
   });
 
   it('leaves a character with a second terminal open, which only a sleep closes', () => {
-    expect(drowsy(char({ second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false } }), 100 * HOUR, HOUR)).toBe(false);
+    expect(drowsy(char({ second: { cwd: '/repo', tmux: { windowId: '@2', paneId: '%2' }, unread: false } }), 100 * HOUR, HOUR)).toBe(false);
+  });
+
+  it('takes a character whose second terminal is dormant, with no window to close', () => {
+    const second = { cwd: '/repo', unread: false, agent: agent(), revive: { command: `claude --resume ${SID}` } };
+    expect(drowsy(char({ second }), 100 * HOUR, HOUR)).toBe(true);
   });
 });
 
@@ -231,5 +236,21 @@ describe('sleepFlags', () => {
 
   it('gives none for a session it could not resume', () => {
     expect(sleepFlags(withAgent({ sessionId: 'not a session' }), [{ pid: 7, args: 'claude' }])).toBeUndefined();
+  });
+});
+
+describe('freshCommand', () => {
+  const SID = '1fb0d1a7-29a9-4159-a932-5ffd2da8faba';
+  const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+  it('starts a new session with the launch flags the resume carries', () => {
+    expect(freshCommand(`claude --dangerously-skip-permissions --effort 'high' --resume ${SID}`, 'claude', SID)).toBe("claude --dangerously-skip-permissions --effort 'high'");
+    expect(freshCommand(`codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6' ${SID}`, 'codex', SID)).toBe("codex --yolo -m 'gpt-6'");
+    expect(freshCommand(`opencode --auto -s ${OSID}`, 'opencode', OSID)).toBe('opencode --auto');
+    expect(freshCommand(`claude --resume ${SID}`, 'claude', SID)).toBe('claude');
+  });
+
+  it('starts the bare agent from a resume of another session, or of none', () => {
+    expect(freshCommand(`claude --effort 'high' --resume ${SID}`, 'claude', 'another')).toBe('claude');
+    expect(freshCommand('', 'codex', SID)).toBe('codex');
   });
 });

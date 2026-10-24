@@ -1,19 +1,31 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { MachineId, OwnerRecord } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { fleetMainAgent, keptPorts, loadConfig, saveConfig } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig, setGateway } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
+import { fleetAuthority } from './gateway/client.js';
+import { openJournal } from './handover/journal.js';
+import { ProcessTable } from './handover/processes.js';
+import { HandoverService } from './handover/service.js';
+import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
+import type { Authority } from './handover/source.js';
+import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
+import { lingerState, realRun } from './linux/service.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
+import { configDir, copiedRemedy, machineIdentity, machineIdFailure, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
-import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
+import { OwnershipState } from './ownership/state.js';
+import { claudePaths, fleetKeys, installedScripts, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
@@ -49,20 +61,45 @@ export function readOrCreateToken(file: string): string {
 // macOS's O_EXLOCK, which node names no constant for
 const O_EXLOCK = 0x20;
 
-// a kernel lock: it holds until the file is closed or the daemon dies, however it dies
-function lockHome(home: string): () => void {
+export class AlreadyRunning extends Error {}
+const alreadyRunning = (home: string): Error => new AlreadyRunning(`svalld is already running for ${home}`);
+
+// a kernel lock: it holds until it is let go or the daemon dies, however it dies
+function lockHome(home: string): Promise<() => void> {
+  return process.platform === 'linux' ? lockSocket(home) : Promise.resolve(lockFile(home));
+}
+
+function lockFile(home: string): () => void {
   const { O_RDWR, O_CREAT, O_NONBLOCK } = fs.constants;
   try {
     let fd = fs.openSync(path.join(home, 'daemon.lock'), O_RDWR | O_CREAT | O_NONBLOCK | O_EXLOCK, 0o600);
     // once only: by a second close the number may name another open file
     return () => { if (fd >= 0) fs.closeSync(fd); fd = -1; };
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EAGAIN') throw new Error(`svalld is already running for ${home}`);
+    if ((e as NodeJS.ErrnoException).code === 'EAGAIN') throw alreadyRunning(home);
     throw e;
   }
 }
 
-type Options = { home: string; port?: number; host?: string; log?: Logger };
+// Linux ignores O_EXLOCK; there the lock is an abstract unix socket named after the home's real path, whose name the
+// kernel keeps only while the socket is open
+function lockSocket(home: string): Promise<() => void> {
+  const name = `\0svall-svalld-${crypto.createHash('sha256').update(fs.realpathSync(home)).digest('hex')}`;
+  const server = net.createServer((s) => s.destroy());
+  return new Promise((resolve, reject) => {
+    server.once('error', (e: NodeJS.ErrnoException) => reject(e.code === 'EADDRINUSE' ? alreadyRunning(home) : e));
+    server.listen(name, () => {
+      server.unref();
+      resolve(() => { if (server.listening) server.close(); });
+    });
+  });
+}
+
+/**
+ * `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh; `gatewayEveryMs`, how
+ * often a running daemon asks it again; `hardware`, for the reader of this machine's hardware id.
+ */
+type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority; gatewayEveryMs?: number; hardware?: HardwareReader };
 
 export class OtherBuildHome extends Error {}
 
@@ -72,9 +109,49 @@ export async function startDaemon(opts: Options): Promise<Daemon> {
   const owner = variantOf(opts.home);
   if (owner && owner !== variant) throw new OtherBuildHome(`${opts.home} belongs to ${owner === 'dev' ? 'Svall Dev' : 'Svall'}, not to this build`);
   fs.mkdirSync(opts.home, { recursive: true, mode: 0o700 });
-  const unlock = lockHome(opts.home);
+  const unlock = await lockHome(opts.home);
   const daemon = await start(opts).catch((e: unknown) => { unlock(); throw e; });
   return { ...daemon, stop: async () => { await daemon.stop(); unlock(); } };
+}
+
+// every fleet home in this account's home, set up or not
+const fleetHomes = (home: string): string[] => [home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
+
+// a fleet no gateway holds needs no machine id of its own: without one it runs as its owner record's, or as a new one
+// that record keeps for the next start. A machine.json made on other hardware is another machine's id: `copied` names it
+// while a gateway holds this fleet, and it becomes this machine's once no fleet here names a gateway
+function fleetMachineId(paths: Paths, gateway: MachineId | undefined, log: Logger, hardware?: HardwareReader): { id: MachineId; copied?: string } {
+  let identity: ReturnType<typeof machineIdentity>;
+  try {
+    identity = machineIdentity(configDir(), hardware);
+  } catch (e) {
+    if (gateway) throw new Error(machineIdFailure(e), { cause: e });
+    let id: MachineId;
+    try { id = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { id = MachineId.parse(crypto.randomUUID()); }
+    log.error(`${machineIdFailure(e)}; no gateway holds this fleet, so it runs as ${id}`);
+    return { id };
+  }
+  const { id, hardware: seen } = identity;
+  if (!seen) return { id };
+  const file = path.join(configDir(), 'machine.json');
+  const made = `${file} was made on hardware ${seen.stored}, and this machine is ${seen.actual}`;
+  if (gateway) {
+    log.error(`${made}, so this fleet is read-only here: ${copiedRemedy(file)}; \`svall doctor\` checks it`);
+    return { id, copied: file };
+  }
+  // a fleet that cannot be read may name one
+  const gatewayed = fleetHomes(paths.home).some((h) => { try { return !!peekConfig(resolvePaths(h)).gatewayMachineId; } catch { return true; } });
+  if (gatewayed) {
+    log.error(`${made}, and another fleet here names a gateway: ${copiedRemedy(file)}`);
+    return { id };
+  }
+  try {
+    rebindMachine(seen.actual);
+    log.error(`${made}; no fleet here names a gateway, so the file is this machine's from now on`);
+  } catch (e) {
+    log.error(`${made}; no fleet here names a gateway, and the file could not be bound to this machine: ${(e as Error).message}`);
+  }
+  return { id };
 }
 
 async function start(opts: Options): Promise<Daemon> {
@@ -82,11 +159,11 @@ async function start(opts: Options): Promise<Daemon> {
   fs.chmodSync(paths.home, 0o700);
   rotateLog(paths.log);
   const log = opts.log ?? createLogger();
-  const config = loadConfig(paths.config);
+  const config = loadConfig(paths, log.info);
+  if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
   installHookScripts(paths);
-  fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
   const token = readOrCreateToken(paths.token);
   const key = phoneKey(paths.mobileKey, readOrCreateToken(paths.mobileKey));
   // what a phone proves itself by, handed over in the QR code and never in a command line
@@ -112,28 +189,57 @@ async function start(opts: Options): Promise<Daemon> {
   }
 
   const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
+  // the conf leaves out what this tmux would refuse, so the version is read before it is written
   const tmuxVersion = await tmux.version();
-  if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);
+  fs.writeFileSync(paths.tmuxConf, tmuxConfText(config, { tmuxVersion }));
+  if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
-  const fleet = new Fleet({ store, tmux, paths, config, log, agentsFound });
+  // without a gateway no other machine can hold this fleet, so a record this one cannot read is repaired
+  const { id: me, copied } = fleetMachineId(paths, config.gatewayMachineId, log, opts.hardware);
+  const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !config.gatewayMachineId, copied });
+  // a handover reads state.json back from disk, so a frozen, held or replica fleet writes each change at once
+  store.batchWritesWhile(() => ownership.writable());
+  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound });
   const terminals = new TerminalHub(fleet, tmux, store, log);
+  // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
+  const authority = (): Authority | undefined => {
+    let named: MachineId | undefined;
+    try { named = namedGateway(paths); } catch { named = config.gatewayMachineId; }
+    return named ? opts.authority ?? { get: (id) => fleetAuthority({ gatewayMachineId: named, machineId: me }).get(id) } : undefined;
+  };
+  const handover = new HandoverService({
+    ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps(paths.env)), fleet, setGateway: (id) => setGateway(paths, config, id),
+    ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
+    authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
+    source: {
+      paths, store, fleet, tmux, viewers: terminals, log,
+      processes: (signal) => ProcessTable.read({ signal, scripts: installedScripts(paths.home) }),
+      authority,
+    },
+    destination: { paths, config, store, fleet, tmux, log, authority },
+  });
+  const journal = handover.journalState();
+  await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !config.gatewayMachineId });
+  // a machine that shares another's id takes no record from the gateway: one naming that id may mean the other machine
+  const asked = (): Authority | undefined => (copied ? undefined : authority());
+  const answered = await adoptAtStart({ handover, authority: asked(), fleetId: config.id, log });
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
   // counts, set up or not
-  const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
+  const homes = () => fleetHomes(paths.home);
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   const phones = new Phones();
   const mobile = mobileControl(realDeps(), {
-    home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
+    home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
     kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
     savePort: (httpsPort) => {
-      try { saveConfig(paths.config, { mobile: { httpsPort } }); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
+      try { saveConfig(paths, { mobile: { httpsPort } }, log.info); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
     },
   });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
@@ -152,12 +258,13 @@ async function start(opts: Options): Promise<Daemon> {
   try {
     await fleet.start();
     teardown.push(startPusher({ store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: config.mobile.pushContact }));
-    // a running server keeps its old options if the new conf has a line this tmux rejects
-    await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
+    // a running server keeps its old options if the new conf has a line this tmux rejects; a replica
+    // has no server to source into
+    if (ownership.writable()) await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
-      origins: config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
+      origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
@@ -170,6 +277,8 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
+    // a record the gateway took while this daemon ran that names another owner, as a recovery that could not reach it writes, lets the fleet go here
+    teardown.push(watchGateway({ handover, authority: asked, fleetId: config.id, machineId: me, log, everyMs: opts.gatewayEveryMs, answered }));
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));

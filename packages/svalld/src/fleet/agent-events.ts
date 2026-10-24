@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import type { Character, Island } from '@svall/protocol';
+import type { Character, Island, TerminalSlot } from '@svall/protocol';
 import { lastTokenCount } from '../agent/codex-transcript.js';
 import { followRollout, type RolloutMark } from '../agent/codex-workdir.js';
 import { applyHook, applyStatus, type Slot } from '../agent/reducer.js';
@@ -8,13 +8,16 @@ import { underCodexServer } from '../codex/server.js';
 import type { Config } from '../config.js';
 import { briefReply } from '../context/brief.js';
 import type { Proc } from '../dormancy.js';
+import type { RefreshLinks } from '../fleet.js';
 import type { SocketEvent } from '../hooks/receiver.js';
 import { resolveRepo } from '../links/git.js';
-import { refreshLinks } from '../links/refresh.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
 
-type Deps = { store: Store; config: Config; log: Logger; render: (island: Island, c?: Character) => string; processes: () => Promise<Proc[]> };
+type Deps = {
+  store: Store; config: Config; log: Logger; render: (island: Island, c?: Character) => string; refreshLinks: RefreshLinks;
+  writable: () => boolean; frozen: () => boolean; track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
+};
 
 // a pid is looked at again after this long, as one an ended server freed may come back as an agent
 const SERVER_CHECK_MS = 60_000;
@@ -43,10 +46,13 @@ export class AgentEvents {
   private async run(e: SocketEvent): Promise<string | undefined> {
     if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.charId, e.hook.pid); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
+    const frozen = this.deps.frozen();
     let reply: string | undefined;
     this.deps.store.update((d) => {
       const c = d.characters[ev.charId];
       if (!Object.hasOwn(d.characters, ev.charId)) return;
+      // a terminal the handover has closed carries its agent to the next machine; a late SessionEnd must not take it
+      if (frozen && !(ev.term === 2 ? c.second : c)?.tmux) return;
       const apply = <T extends Slot>(slot: T): T => {
         let next = 'hook' in e ? applyHook(slot, e.hook, Date.now()) : applyStatus(slot, e.status);
         // codex has no statusline to push its context reading, so each hook reads it off the tail of the rollout
@@ -64,11 +70,12 @@ export class AgentEvents {
         }
         return next;
       };
+      // a dormant terminal keeps the agent its revive resumes; the end its closing window sends does not clear it
+      const slot = ev.term === 2 ? c.second : c;
+      if (slot && !slot.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
       // an event from a second terminal that has already gone has nowhere to land
       if (ev.term === 2) { if (c.second) c.second = apply(c.second); }
       else {
-        // a dormant character keeps the agent its revive resumes; the end its closing window sends does not clear it
-        if (!c.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
         const next = apply(c);
         if (next.agent) delete next.hint;
         // the shell's activity shows again once the agent has gone, and its end is that activity
@@ -79,9 +86,9 @@ export class AgentEvents {
     // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the character
     const agent = this.deps.store.state.characters[ev.charId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
-    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && !e.hook.agentId) {
+    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && !e.hook.agentId && this.deps.writable()) {
       const cwd = agent?.kind === 'codex' ? this.codexCwd(ev.charId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd;
-      this.followCwd(ev.charId, cwd).catch((err) => this.deps.log.error(`follow ${ev.charId} to ${cwd}: ${String(err)}`));
+      this.deps.track(this.followCwd(ev.charId, cwd), `follow ${ev.charId} to ${cwd}`);
     }
     return reply;
   }
@@ -121,14 +128,15 @@ export class AgentEvents {
     return this.listing;
   }
 
-  // a slot a server's events took before svalld dropped them would never hear its end
+  // a slot a server's events took before svalld dropped them would never hear its end; a dormant one keeps the agent its revive resumes
   private letGo(charId: string, pid: number): void {
+    const took = (t?: TerminalSlot) => !!t?.tmux && t.agent?.pid === pid;
     const c = this.deps.store.state.characters[charId];
-    if (c?.agent?.pid !== pid && c?.second?.agent?.pid !== pid) return;
+    if (!took(c) && !took(c?.second)) return;
     this.deps.store.update((d) => {
       const held = d.characters[charId];
-      if (held.agent?.pid === pid) delete held.agent;
-      if (held.second?.agent?.pid === pid) delete held.second.agent;
+      if (took(held)) delete held.agent;
+      if (held.second && took(held.second)) delete held.second.agent;
     });
   }
 
@@ -149,7 +157,9 @@ export class AgentEvents {
     const [to, now] = await Promise.all([resolveRepo(cwd), resolveRepo(from)]);
     // a report that came in while git answered is the newer one
     if (this.hookCwd.get(charId) !== cwd || !to || to.root === now?.root) return;
-    this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; });
-    await refreshLinks(this.deps.store, this.deps.config, charId);
+    try { this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; }); }
+    // a write that fails leaves the directory for the next hook that reports it
+    catch (e) { this.hookCwd.delete(charId); throw e; }
+    await this.deps.refreshLinks(this.deps.store, this.deps.config, charId);
   }
 }

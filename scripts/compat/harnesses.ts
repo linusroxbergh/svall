@@ -20,10 +20,11 @@ export type Release = { version: string; fresh: string; note?: string; problem?:
 /** A vendor source that couldn't be reached, as opposed to one that answered without the file. */
 export class Unreachable extends Error {}
 
-async function fetchOk(url: string): Promise<Response | undefined> {
+// `ms` bounds the body's download too
+async function fetchOk(url: string, ms = 30_000): Promise<Response | undefined> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { 'user-agent': 'svall-compat' }, signal: AbortSignal.timeout(30_000) });
+    res = await fetch(url, { headers: { 'user-agent': 'svall-compat' }, signal: AbortSignal.timeout(ms) });
   } catch (e) {
     throw new Unreachable(`${url}: ${(e as Error).message}`);
   }
@@ -41,6 +42,23 @@ const raw = (repo: string, ref: string, file: string) => text(`https://raw.githu
 async function rawAll(repo: string, ref: string, paths: string[]): Promise<Files> {
   return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await raw(repo, ref, p)] as const)));
 }
+
+/** A file of an npm tarball, or undefined when the tarball or the file is gone. */
+async function untar(url: string | undefined, file: string, ms?: number): Promise<Buffer | undefined> {
+  const tgz = url === undefined ? undefined : await fetchOk(url, ms);
+  if (!tgz) return undefined;
+  const input = Buffer.from(await tgz.arrayBuffer());
+  try {
+    return execFileSync('tar', ['-xzOf', '-', `package/${file}`], { input, maxBuffer: 1 << 30, stdio: ['pipe', 'pipe', 'ignore'] });
+  } catch {
+    // tar fails when the tarball no longer holds the file
+    return undefined;
+  }
+}
+
+/** Each word that a file of `words` no longer holds, as `<label> <word>`; a file that is gone is left to the caller. */
+const lost = (f: Files, words: Record<string, string[]>, label: string): string[] =>
+  Object.entries(words).flatMap(([p, ws]) => (f[p] === undefined ? [] : ws.filter((w) => !f[p]!.includes(w)).map((w) => `${label} ${w}`)));
 
 // hook fields Svall keeps (agent-hook.mjs KEEP) or reads before keeping, on every event and per event
 const HOOK_COMMON = ['hook_event_name', 'session_id', 'transcript_path', 'cwd'];
@@ -76,6 +94,13 @@ type SdkDoc = { versions: Record<string, { claudeCodeVersion?: string; dist: { t
 let sdkDoc: Promise<SdkDoc> | undefined;
 const sdk = () => (sdkDoc ??= json<SdkDoc>('https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk'));
 const SDK_TYPES = 'sdk.d.ts';
+// no SDK holds Claude Code's config keys or session paths; its native binary, published with each release, holds its JS as plain text
+const CLAUDE_BIN = 'claude';
+const binTarball = (version: string) => `https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-${version}.tgz`;
+// what the session adapter (src/handover/sessions/claude.ts) reads: projects/<slug>/<id>.jsonl, by the minified joins that
+// build it, and the config and settings keys that trust a folder and accept bypass mode
+const CLAUDE_STRINGS = [',"projects")', '}.jsonl`', '.claude.json', '.config.json', 'settings.local.json',
+  'hasTrustDialogAccepted', 'bypassPermissionsModeAccepted', 'skipDangerousModePermissionPrompt'];
 
 /** The Claude Code release to check: the newest, or while its Agent SDK isn't out yet, the newest one an SDK types. */
 const DAY = 24 * 60 * 60 * 1000;
@@ -99,19 +124,15 @@ const claude: Harness = {
   },
   async files(version) {
     const pkg = Object.values((await sdk()).versions).find((v) => v.claudeCodeVersion === version);
-    const tgz = pkg && (await fetchOk(pkg.dist.tarball));
-    if (!tgz) return { [SDK_TYPES]: undefined };
-    const input = Buffer.from(await tgz.arrayBuffer());
-    try {
-      return { [SDK_TYPES]: execFileSync('tar', ['-xzOf', '-', `package/${SDK_TYPES}`], { input, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['pipe', 'pipe', 'ignore'] }) };
-    } catch {
-      // tar fails when the tarball no longer holds the file
-      return { [SDK_TYPES]: undefined };
-    }
+    // the binary runs to a hundred megabytes and more
+    const [types, bin] = await Promise.all([untar(pkg?.dist.tarball, SDK_TYPES), untar(binTarball(version), CLAUDE_BIN, 10 * 60_000)]);
+    return { [SDK_TYPES]: types?.toString('utf8'), [CLAUDE_BIN]: bin?.toString('latin1') };
   },
   check(f) {
+    const bin = f[CLAUDE_BIN];
+    const sessions = bin === undefined ? ["Claude Code's native binary"] : CLAUDE_STRINGS.filter((w) => !bin.includes(w)).map((w) => `session ${w}`);
     const src = f[SDK_TYPES];
-    if (src === undefined) return { missing: [`the Agent SDK's ${SDK_TYPES}`], events: [] };
+    if (src === undefined) return { missing: [`the Agent SDK's ${SDK_TYPES}`, ...sessions], events: [] };
     const base = tsTypeProps(src, 'BaseHookInput') ?? [];
     const missing = CLAUDE_HOOKS.flatMap((e) => {
       const own = tsTypeProps(src, `${e}HookInput`);
@@ -119,7 +140,7 @@ const claude: Harness = {
       return [...HOOK_COMMON, ...CLAUDE_FIELDS[e]].filter((k) => !base.includes(k) && !own.includes(k)).map((k) => `${e}.${k}`);
     });
     const events = tsConstStrings(src, 'HOOK_EVENTS');
-    return { missing: events ? missing : [...missing, 'HOOK_EVENTS'], events: events ?? [] };
+    return { missing: [...missing, ...(events ? [] : ['HOOK_EVENTS']), ...sessions], events: events ?? [] };
   },
 };
 
@@ -148,6 +169,22 @@ export const CODEX_LOG: [file: string, kind: 'enum' | 'struct', name: string, na
   [ITEMS, 'struct', 'CommandExecutionItem', ['cwd']],
   [MODELS, 'enum', 'ResponseItem', ['function_call', 'custom_tool_call']],
 ];
+const CONFIG_TOML = 'codex-rs/config/src/config_toml.rs';
+const CONFIG_TYPES = 'codex-rs/config/src/types.rs';
+// the config.toml keys the session adapter reads to trust a folder, and the -c tui.resume_cwd=session a revive passes
+export const CODEX_CONFIG: typeof CODEX_LOG = [
+  [CONFIG_TOML, 'struct', 'ConfigToml', ['projects', 'tui']],
+  [CONFIG_TOML, 'struct', 'ProjectConfig', ['trust_level']],
+  ['codex-rs/protocol/src/config_types.rs', 'enum', 'TrustLevel', ['trusted']],
+  [CONFIG_TYPES, 'struct', 'Tui', ['resume_cwd']],
+  [CONFIG_TYPES, 'enum', 'ResumeCwdMode', ['session']],
+];
+// where the session adapter (src/handover/sessions/codex.ts) finds a rollout: sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl
+const CODEX_PATHS: Record<string, string[]> = {
+  'codex-rs/rollout/src/lib.rs': ['SESSIONS_SUBDIR: &str = "sessions"'],
+  'codex-rs/rollout/src/recorder.rs': ['push(SESSIONS_SUBDIR)', 'push(timestamp.year().to_string())', '"{:02}", u8::from(timestamp.month())', '"{:02}", timestamp.day()'],
+  'codex-rs/rollout/src/rollout_file_name.rs': ['"[year]-[month]-[day]T[hour]-[minute]-[second]"', '"rollout-{timestamp}-{}.jsonl"'],
+};
 
 const codex: Harness = {
   async latest() {
@@ -158,7 +195,7 @@ const codex: Harness = {
     const ref = `rust-v${version}`;
     const listing = await fetchOk(`https://api.github.com/repos/${CODEX}/contents/${HOOK_DIR}?ref=${ref}`);
     const names = listing && ((await listing.json()) as { name: string }[]).map((x) => x.name).join('\n');
-    const paths = [...CODEX_HOOKS.map(hookSchema), ...new Set(CODEX_LOG.map(([file]) => file))];
+    const paths = [...CODEX_HOOKS.map(hookSchema), ...new Set([...CODEX_LOG, ...CODEX_CONFIG].map(([file]) => file)), ...Object.keys(CODEX_PATHS)];
     return { [HOOK_LIST]: names, ...(await rawAll(CODEX, ref, paths)) };
   },
   check(f) {
@@ -169,12 +206,13 @@ const codex: Harness = {
       const props = Object.keys((JSON.parse(schema) as { properties?: object }).properties ?? {});
       missing.push(...[...HOOK_COMMON, ...CODEX_FIELDS[e]].filter((k) => !props.includes(k)).map((k) => `${e}.${k}`));
     }
-    for (const [file, kind, name, names] of CODEX_LOG) {
+    for (const [file, kind, name, names] of [...CODEX_LOG, ...CODEX_CONFIG]) {
       const src = f[file];
       const have = src === undefined ? undefined : kind === 'enum' ? rustEnumTags(src, name) : rustStructFields(src, name);
       if (!have) { missing.push(`${kind} ${name}`); continue; }
       missing.push(...names.filter((n) => !have.includes(n)).map((n) => `${name}.${n}`));
     }
+    missing.push(...Object.keys(CODEX_PATHS).filter((p) => f[p] === undefined), ...lost(f, CODEX_PATHS, 'session'));
     const events = (f[HOOK_LIST] ?? '').split('\n').flatMap((n) => /^(.+)\.command\.input\.schema\.json$/.exec(n)?.[1] ?? []).map(pascal);
     return { missing: f[HOOK_LIST] === undefined ? [...missing, HOOK_LIST] : missing, events };
   },
@@ -182,13 +220,31 @@ const codex: Harness = {
 
 const OPENCODE = 'anomalyco/opencode';
 const SCHEMA = ['packages/schema/src/session-event.ts', 'packages/schema/src/permission.ts', 'packages/schema/src/form.ts', 'packages/schema/src/shell.ts'];
-// the plugin API calls hooks/opencode-plugin.js makes, and what it reads of the shell tool's result, by the file that declares them
+// the plugin API calls hooks/opencode-plugin.js makes, what it reads of the shell tool's result, and the tool it takes away,
+// by the file that declares them
 const PLUGIN_API: Record<string, string[]> = {
   'packages/plugin/src/promise/session.ts': ['"prompt"', '"context"'],
-  'packages/plugin/src/promise/tool.ts': ['"execute.before"', '"execute.after"'],
+  'packages/plugin/src/promise/tool.ts': ['"execute.before"', '"execute.after"', 'transform', 'remove('],
   'packages/plugin/src/promise/event.ts': ['subscribe'],
   'packages/core/src/tool/plugin/shell.ts': ['status: output.status', 'shellID: output.shellID', 'status: "running"'],
+  'packages/core/src/tool/plugin/opencode.ts': ['name: "worktree_create"', 'namespace: "opencode"'],
 };
+// what the session adapter (src/handover/sessions/opencode.ts) reads: an export's message ids, pending undo and folder, and
+// what export, import and a session it does not hold print
+const SESSION_API: Record<string, string[]> = {
+  'packages/cli/src/commands/handlers/session/export.ts': ['process.stdout.write(JSON.stringify(data'],
+  'packages/cli/src/commands/handlers/session/import.ts': ['`Imported session: ${', 'Session already exists'],
+  'packages/server/src/handlers/session-error.ts': ['`Session not found: '],
+  'packages/schema/src/session-transfer.ts': ['info: Session.Info', 'messages: Schema.Array(SessionMessage.Info)'],
+  'packages/schema/src/session.ts': ['location: Location.Ref', 'revert: Revert'],
+  'packages/schema/src/location.ts': ['directory: AbsolutePath'],
+  'packages/schema/src/session-message.ts': ['id: ID'],
+};
+// the JSON `auth list --format json` writes, which the login probe counts providers in
+const LOGIN_API: Record<string, string[]> = {
+  'packages/cli/src/commands/handlers/auth/list.ts': ['input.format === "json"', 'id: integration.id', 'name: integration.name', 'connections: integration.connections'],
+};
+const OPENCODE_FILES = [...SCHEMA, ...Object.keys(PLUGIN_API), ...Object.keys(SESSION_API), ...Object.keys(LOGIN_API)];
 // the events hooks/opencode-plugin.js handles, and the payload fields it reads
 export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'session.step.started', 'session.step.ended', 'session.text.ended',
   'permission.asked', 'form.created', 'permission.replied', 'form.replied', 'form.cancelled',
@@ -213,16 +269,18 @@ const opencode: Harness = {
     const [v2, v3, fresh] = await Promise.all([refs(2), refs(3), json<{ version: string }>('https://opencode.ai/update/api/latest/cli/npm')]);
     return opencodeRelease(v2.map((t) => t.ref), v3.map((t) => t.ref), fresh.version);
   },
-  files: (version) => rawAll(OPENCODE, `v${version}`, [...SCHEMA, ...Object.keys(PLUGIN_API)]),
+  files: (version) => rawAll(OPENCODE, `v${version}`, OPENCODE_FILES),
   check(f) {
-    const gone = [...SCHEMA, ...Object.keys(PLUGIN_API)].filter((p) => f[p] === undefined);
+    const gone = OPENCODE_FILES.filter((p) => f[p] === undefined);
     const schema = SCHEMA.map((p) => f[p] ?? '').join('\n');
     const events = quotedTypes(schema);
     const missing = [
       ...gone,
       ...OPENCODE_EVENTS.filter((e) => !events.includes(e)).map((e) => `event ${e}`),
       ...OPENCODE_FIELDS.filter((k) => !hasKey(schema, k)).map((k) => `field ${k}`),
-      ...Object.entries(PLUGIN_API).flatMap(([p, words]) => (f[p] === undefined ? [] : words.filter((w) => !f[p]!.includes(w)).map((w) => `plugin API ${w}`))),
+      ...lost(f, PLUGIN_API, 'plugin API'),
+      ...lost(f, SESSION_API, 'session'),
+      ...lost(f, LOGIN_API, 'login'),
     ];
     return { missing, events };
   },
@@ -246,7 +304,9 @@ export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
   opencode: [
     [['--help'], ['--standalone', '-s', '--prompt']],
     [['run', '--help'], ['--standalone', '--format', '--agent', '-m']],
+    [['session', 'export', '--help'], ['--standalone']],
+    [['session', 'import', '--help'], ['--standalone', '--directory']],
     [['session', 'delete', '--help'], ['--standalone']],
-    [['auth', 'list', '--help'], ['--standalone']],
+    [['auth', 'list', '--help'], ['--standalone', '--format']],
   ],
 };

@@ -1,4 +1,4 @@
-import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
 import { ApiError, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
@@ -244,6 +244,14 @@ export const saveCharacterContext = (d: ActionDeps, id: string, context: Context
 
 export const reviveCharacter = (d: ActionDeps, id: string): Promise<boolean> =>
   d.api.call('char.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
+
+// a new session in the terminal's folder, told what the session that could not resume held
+export const startFresh = (d: ActionDeps, id: string, second?: boolean): Promise<void> => {
+  const c = d.store.getState().fleet.characters[id];
+  const old = (second ? c?.second : c)?.agent;
+  return d.api.call('char.fresh', { id, ...(second && { term: 2 as const }) })
+    .then(() => { if (c && old) d.store.getState().showToast(`${c.name} started fresh; ${keptSession(old)}`, 'ok'); }, toast(d));
+};
 
 // the pane waits on the terminal it asked for, so a refusal closes that pane again and says why
 export const openSecondTerminal = (d: ActionDeps, id: string): void => {

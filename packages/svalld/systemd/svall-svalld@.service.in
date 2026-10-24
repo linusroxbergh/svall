@@ -1,0 +1,22 @@
+# One per fleet, rendered by `svall setup` as svall-svalld@<fleet>.service: the daemon
+# reads its fleet home from the environment, which an instance specifier cannot give it.
+[Unit]
+Description=Svall daemon for the @FLEET@ fleet
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@EXEC_START@
+Environment="SVALL_HOME=@SVALL_HOME@"
+Environment="HOME=@HOME@"
+Environment="PATH=@PATH@"
+Environment=LANG=C.UTF-8@ENV@
+Restart=always
+RestartSec=2
+# the daemon starts the fleet's tmux server, which a crash, a restart or a stop must leave running
+KillMode=process
+StandardOutput=append:@LOG@
+StandardError=append:@LOG@
+
+[Install]
+WantedBy=default.target

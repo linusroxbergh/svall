@@ -1,12 +1,15 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
+import { emptyState } from '@svall/protocol';
 import { codexInstalled } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
+import { machineId } from '../src/machine.js';
 import { readOrCreateToken, startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
 import { runtimeVersion } from '../src/runtime.js';
@@ -33,6 +36,23 @@ runIf('startDaemon', () => {
     cleanHomes();
   });
 
+  it('keeps the fleet home, its keys and its hook socket to this account, a home an earlier start left open included', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.chmodSync(home, 0o755);
+    const d = await start({ home, port: 0, log: silentLogger });
+    const p = resolvePaths(home);
+    const mode = (f: string): number => fs.statSync(f).mode & 0o777;
+    try {
+      expect(mode(home)).toBe(0o700);
+      for (const f of [p.token, p.mobileKey, p.vapid]) expect(mode(f), f).toBe(0o600);
+      expect(fs.statSync(p.hooksSock).isSocket()).toBe(true);
+      expect(mode(p.hooksSock)).toBe(0o600);
+    } finally {
+      await d.stop();
+    }
+  });
+
   it('writes the codex hooks when the private fleet starts, and no other fleet does', async () => {
     const codex = codexPaths();
     fs.mkdirSync(codex.dir, { recursive: true });
@@ -48,6 +68,51 @@ runIf('startDaemon', () => {
     const written = JSON.parse(fs.readFileSync(codex.hooks, 'utf8'));
     expect(codexInstalled(written, resolvePaths(home).hookScript)).toBe(true);
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
+  });
+
+  it('says once in its log that a config.json linked back to the file its split moved aside is not read', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const dotfile = path.join(makeHome(), 'svall.json');
+    fs.writeFileSync(dotfile, JSON.stringify({ shell: '/bin/sh' }));
+    fs.symlinkSync(dotfile, p.legacyConfig);
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    // `stow -R` or `home-manager switch` puts the link back
+    fs.symlinkSync(dotfile, p.legacyConfig);
+    const logged: string[] = [];
+    await (await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } })).stop();
+    expect(logged.filter((l) => l.startsWith(`${p.legacyConfig} is not read`))).toHaveLength(1);
+  });
+
+  it('starts again on its split after a downgrade wrote config.json beside it, saying where that file went', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    // a fleet as the release before this one left it: state schema 8 and one config.json
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), version: 8 }));
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', mainAgent: 'codex' }));
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    const fleet = fs.readFileSync(p.fleetConfig, 'utf8');
+
+    // the older release reads its kept state back, and its setup writes a config.json of its own
+    const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.v8-'))!;
+    fs.copyFileSync(path.join(home, kept), p.state);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ mainAgent: 'claude' }));
+
+    const logged: string[] = [];
+    const again = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
+    try {
+      expect(again.store.state.version).toBe(9);
+      expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe(fleet);
+      expect(JSON.parse(fleet).mainAgent).toBe('codex');
+      expect(fs.existsSync(p.legacyConfig)).toBe(false);
+      const aside = fs.readdirSync(home).filter((f) => f.startsWith('config.json.unread-'));
+      expect(aside).toHaveLength(1);
+      expect(logged.filter((l) => l.startsWith(`${p.legacyConfig} moved to ${path.join(home, aside[0])} unread`))).toHaveLength(1);
+    } finally {
+      await again.stop();
+    }
   });
 
   it('has the fleet on disk by the time its port file goes', async () => {
@@ -93,23 +158,24 @@ runIf('startDaemon', () => {
     const home = path.join(os.homedir(), '.svall');
     fs.mkdirSync(home, { recursive: true });
     homes.push(home);
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ integrations: ['claude'] }));
+    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({ integrations: ['claude'] }));
     await (await start({ home, port: 0, log: silentLogger })).stop();
     expect(fs.existsSync(codex.hooks)).toBe(false);
   });
 
   it('gives a fleet with no main agent of its own the private fleet\'s, and keeps one it has', async () => {
-    const privateConfig = path.join(os.homedir(), '.svall', 'config.json');
+    const privateConfig = path.join(os.homedir(), '.svall', 'fleet.json');
     fs.mkdirSync(path.dirname(privateConfig), { recursive: true });
     const before = fs.existsSync(privateConfig) ? fs.readFileSync(privateConfig, 'utf8') : undefined;
-    fs.writeFileSync(privateConfig, JSON.stringify({ mainAgent: 'codex' }));
+    fs.writeFileSync(privateConfig, JSON.stringify({ id: crypto.randomUUID(), mainAgent: 'codex' }));
     try {
       const home = makeHome();
       homes.push(home);
       const d = await start({ home, port: 0, log: silentLogger });
       expect(d.store.state.mainAgent).toBe('codex');
       await d.stop();
-      fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
+      const own = resolvePaths(home).fleetConfig;
+      fs.writeFileSync(own, JSON.stringify({ ...JSON.parse(fs.readFileSync(own, 'utf8')), mainAgent: 'claude' }));
       const again = await start({ home, port: 0, log: silentLogger });
       expect(again.store.state.mainAgent).toBe('claude');
       await again.stop();
@@ -301,7 +367,9 @@ runIf('startDaemon', () => {
       for (const p of ['.svall-files/token', '.svall-files/mobile-key', '.svall-files/vapid.json', '.svall-files/.env', '.svall-later/token']) {
         expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ error: { code: 'invalid' } });
       }
-      expect(await call('fs.read', { id: c.id, path: '.svall-files/config.json' })).toMatchObject({ result: { text: expect.any(String) } });
+      for (const p of ['.svall-files/fleet.json', '.svall-files/node.json']) {
+        expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ result: { text: expect.any(String) } });
+      }
       expect(await call('fs.read', { id: `r:${claudeDir}`, path: '.credentials.json' })).toMatchObject({ error: { code: 'invalid' } });
       expect(await call('fs.read', { id: `r:${claudeDir}`, path: 'CLAUDE.md' })).toMatchObject({ result: { text: '# me\n' } });
     } finally {
@@ -319,6 +387,123 @@ runIf('startDaemon', () => {
     } finally {
       process.env.PATH = saved;
     }
+  });
+});
+
+runIf('a daemon that may not write its fleet', () => {
+  const homes: string[] = [];
+  afterEach(async () => {
+    for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
+    cleanHomes();
+  });
+
+  // a home with a fleet id we know, so the journal beside it names the same fleet
+  function seed(journal: object): { home: string; paths: ReturnType<typeof resolvePaths>; fleetId: string } {
+    const home = makeHome();
+    homes.push(home);
+    const fleetId = crypto.randomUUID();
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ id: fleetId, shell: '/bin/sh' }));
+    const paths = resolvePaths(home);
+    fs.mkdirSync(paths.handoverDir, { recursive: true });
+    const common = { transactionId: 'tx-1', generation: 0, fleetId, updatedAt: 1 };
+    fs.writeFileSync(paths.journal, JSON.stringify({ ...common, ...journal }));
+    return { home, paths, fleetId };
+  }
+
+  it('stays frozen on a source journal, adopting no window and writing no state', async () => {
+    const other = crypto.randomUUID();
+    const { home, paths } = seed({ role: 'source', fromMachineId: machineId(), toMachineId: other, phase: 'freeze', stoppedTerminals: [] });
+    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    try {
+      expect(fs.existsSync(paths.state)).toBe(false);
+      // no window, because a daemon that may not write its fleet starts no tmux server
+      expect(fs.existsSync(paths.tmuxSock)).toBe(false);
+      await expect(new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows')).rejects.toThrow();
+      // the journal outranks the record this fleet started with, and the surrender survives a restart
+      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).toMatchObject({ surrendered: true });
+    } finally {
+      await d.stop();
+    }
+  });
+
+  it('waits for activation on a committed destination journal', async () => {
+    const other = crypto.randomUUID();
+    const { home, paths } = seed({ role: 'destination', fromMachineId: other, toMachineId: machineId(), phase: 'commit', manifestDigest: 'a'.repeat(64) });
+    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    try {
+      expect(fs.existsSync(paths.state)).toBe(false);
+      // no window, because a daemon that may not write its fleet starts no tmux server
+      expect(fs.existsSync(paths.tmuxSock)).toBe(false);
+      await expect(new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows')).rejects.toThrow();
+      // only the journal holds it back, so nothing durable says this machine gave the fleet up
+      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8')).surrendered).toBeUndefined();
+    } finally {
+      await d.stop();
+    }
+  });
+
+  it('takes a standalone fleet back when its owner record is corrupt', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.owner, '{ not json');
+    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    try {
+      expect(d.store.state.islands.home.kind).toBe('home');
+      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).toMatchObject({ generation: 0, ownerMachineId: machineId() });
+    } finally {
+      await d.stop();
+    }
+  });
+});
+
+runIf('a daemon on a machine whose ~/.config/svall cannot be used', () => {
+  const homes: string[] = [];
+  afterEach(async () => {
+    delete process.env.SVALL_CONFIG_DIR;
+    for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
+    cleanHomes();
+  });
+
+  // a ~/.config whose machine id can be neither read nor made, and what the log says to do about it
+  function brokenConfig(how: 'read-only' | 'a file' | 'holding a corrupt machine.json'): string {
+    const config = path.join(makeHome(), '.config');
+    process.env.SVALL_CONFIG_DIR = path.join(config, 'svall');
+    if (how === 'read-only') { fs.mkdirSync(config, { mode: 0o555 }); return `sudo chown -R $USER ${config}`; }
+    if (how === 'a file') { fs.writeFileSync(config, ''); return 'move it aside'; }
+    fs.mkdirSync(path.join(config, 'svall'), { recursive: true });
+    fs.writeFileSync(path.join(config, 'svall', 'machine.json'), '{"id":');
+    return 'invalid machine file';
+  }
+
+  it.each(['read-only', 'a file', 'holding a corrupt machine.json'] as const)('starts a fleet no gateway holds with ~/.config %s, as the same machine each time', async (how) => {
+    const says = brokenConfig(how);
+    const home = makeHome();
+    homes.push(home);
+    const errors: string[] = [];
+    const log = { info() {}, error: (line: string) => { errors.push(line); } };
+    const owners: unknown[] = [];
+    for (let i = 0; i < 2; i++) {
+      const d = await startDaemon({ home, port: 0, log });
+      try {
+        expect(d.store.state.islands.home.kind).toBe('home');
+        owners.push(JSON.parse(fs.readFileSync(resolvePaths(home).owner, 'utf8')));
+      } finally {
+        await d.stop();
+      }
+    }
+    // a second start on another id would take the fleet back from the first, at generation 0 again
+    expect(owners[1]).toEqual(owners[0]);
+    expect(errors.filter((l) => l.includes(says))).toHaveLength(2);
+  });
+
+  it('refuses to start a fleet a gateway holds', async () => {
+    brokenConfig('read-only');
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', gatewayMachineId: crypto.randomUUID() }));
+    await expect(startDaemon({ home, port: 0, log: silentLogger })).rejects.toThrow('EACCES');
   });
 });
 

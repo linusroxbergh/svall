@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
+import { isRelease, mobileDistDir } from './release.js';
 
 // the app's runtime bundles define both; there every asset sits beside the bundle, and the helpers in Contents/Helpers
 declare const SVALL_BUNDLED: boolean;
@@ -19,14 +21,14 @@ export const runtimeVersion = (): string => bundledVersion ?? 'dev';
 
 export type Variant = 'release' | 'dev';
 // a checkout is Svall Dev, so it never touches the release's fleets; the tests pin the release's names with SVALL_VARIANT
-export const variant: Variant = bundled || process.env.SVALL_VARIANT === 'release' ? 'release' : 'dev';
+export const variant: Variant = bundled || isRelease() || process.env.SVALL_VARIANT === 'release' ? 'release' : 'dev';
 
-/** A folder the daemon reads its own files from. */
+/** A folder the daemon reads its own files from; a companion release's bundles sit in lib/, beside these folders. */
 export const assetDir = (name: 'hooks' | 'home' | 'agent-profiles'): string =>
   bundled ? path.join(here, name) : path.resolve(here, '..', name);
 
 /** The phone page svalld serves. */
-export const mobileDist = bundled ? path.join(here, 'mobile') : path.resolve(here, '../../../apps/desktop/web/dist-mobile');
+export const mobileDist = (): string => (bundled ? path.join(here, 'mobile') : mobileDistDir());
 
 /** A binary the app ships in Contents/Helpers; undefined in a checkout. */
 export const helper = (name: string): string | undefined => bundled ? path.resolve(here, '../../Helpers', name) : undefined;
@@ -43,8 +45,8 @@ export const hookHelperSources = (): string[] => bundled ? [] : [
   ...['agent-hook.mjs', 'claude-status.mjs'].map((name) => path.join(assetDir('hooks'), name)),
 ];
 
-/** How to run the daemon and the CLI: from a checkout's sources through tsx, or on the app's own node. */
-export type Runtime = { daemon: string[]; cli: string[]; bundle?: string };
+/** How to run the daemon and the CLI: from a checkout's sources through tsx, on the app's own node, or from a companion release. */
+export type Runtime = { daemon: string[]; cli: string[]; bundle?: string; release?: string };
 
 // tsx otherwise reads the tsconfig of the caller's cwd, whose paths can point @svall/* at another checkout
 export const checkoutRuntime = (root: string): Runtime => {
@@ -61,5 +63,12 @@ export const bundleRuntime = (app: string): Runtime => {
   return { daemon: [node, path.join(dir, 'svalld.mjs')], cli: [node, path.join(dir, 'svall.mjs')], bundle: app };
 };
 
+/** A companion release reached through `release`, the `current` link, so an upgrade that moves it needs no rewrite. */
+export const releaseRuntime = (release: string): Runtime =>
+  ({ daemon: [path.join(release, 'bin', 'svalld')], cli: [path.join(release, 'bin', 'svall')], release });
+
 /** The runtime this code is running from. */
-export const ownRuntime = (): Runtime => (bundled ? bundleRuntime(path.resolve(here, '../../..')) : checkoutRuntime(path.resolve(here, '../../..')));
+export const ownRuntime = (): Runtime => {
+  if (bundled) return bundleRuntime(path.resolve(here, '../../..'));
+  return isRelease() ? releaseRuntime(path.join(DEFAULT_PREFIX, 'current')) : checkoutRuntime(path.resolve(here, '../../..'));
+};

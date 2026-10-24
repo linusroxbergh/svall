@@ -1,9 +1,13 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isProfileName } from '@svall/protocol';
+import { HELD_COMMANDS, isProfileName, RESERVED } from '@svall/protocol';
 import { variant, type Variant } from './runtime.js';
 
 export { isProfileName };
+
+// a fleet home's name: a profile's, or a command's an existing fleet's home may hold
+export const isFleetName = (name: string): boolean => isProfileName(name) || HELD_COMMANDS.includes(name);
 
 const release = variant === 'release';
 export const PRIVATE = 'private';
@@ -31,6 +35,19 @@ export function profileHome(name: string, homedir = os.homedir()): string {
 
 export function profileLabel(name: string): string {
   return name === PRIVATE ? LAUNCHD_LABEL : `${LAUNCHD_LABEL}.${name}`;
+}
+
+/**
+ * Each `~/.svall-<name>` holding a fleet under a name svall now keeps for a command of its own, which no `-p`
+ * reaches, with a name it can move to.
+ */
+export function reservedProfileHomes(homedir = os.homedir()): { home: string; name: string; rename: string }[] {
+  let names: string[];
+  try { names = fs.readdirSync(homedir).sort(); } catch { return []; }
+  return names.filter((f) => f.startsWith(homePrefix) && RESERVED.includes(f.slice(homePrefix.length)))
+    .map((f) => ({ home: path.join(homedir, f), name: f.slice(homePrefix.length) }))
+    .filter(({ home }) => ['fleet.json', 'config.json'].some((c) => fs.existsSync(path.join(home, c))))
+    .map(({ home, name }) => ({ home, name, rename: `${name}-fleet` }));
 }
 
 export function profileOf(home: string, homedir = os.homedir()): string {

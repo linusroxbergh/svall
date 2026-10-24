@@ -1,0 +1,10 @@
+#!/bin/sh
+# ssh's askpass while the app runs `svall host add` with no terminal: the question in a dialog, a
+# password or passphrase answered hidden. The prompt reaches AppleScript as an argument, never as code.
+case $1 in
+  *assword*|*assphrase*|*PIN*) hidden=' with hidden answer' ;;
+  *) hidden= ;;
+esac
+exec osascript -e 'on run argv' \
+  -e "display dialog (item 1 of argv) default answer \"\"$hidden with title \"Svall\" buttons {\"Cancel\", \"OK\"} default button \"OK\"" \
+  -e 'text returned of result' -e 'end run' -- "$1"

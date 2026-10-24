@@ -1,13 +1,41 @@
-import type { AgentKind, ContextItem } from '@svall/protocol';
+import type { AgentKind, ContextItem, HandoverChoices } from '@svall/protocol';
+import type { HandoverEvent } from './handover.js';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Attach = { socket: string; session: string };
 export type Connection = { host: string; port: number; token: string };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string> };
+// handoverEnabled: fleet.json's handover.enabled, which every control for another machine waits on
+// gateway: the registry name of the machine fleet.json names as its gateway
+// profile: the one `svall -p` names this fleet by, absent for the private fleet and a home of its own
+// copyHere: this Mac's daemon runs and the gateway has named no owner here before, so its copy may be opened while the gateway is away
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string; profile?: string; copyHere?: boolean };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
+
+// the machines a fleet can be handed to: what the shell may run `svall host …` for, and with what
+export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable';
+// enable names no fleet: the shell supplies the one this window runs
+export type HostArgs = { name: string; ssh?: string; forget?: boolean };
+export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
+export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string };
+// one machine as `svall host list --json` gives it: no ssh for this Mac, the fleets here it is the gateway of, and its last check
+export type MachineRow = {
+  name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[];
+  check?: { at: number; failed: number; warned: number; release?: string };
+};
+
+// where the fleet this window shows is running, as the shell's connect helper reports it;
+// machine: the one that did not answer (`local` for this Mac's daemon), destination: the ssh that reaches it
+export type ConnectionState = {
+  state: 'connecting' | 'online' | 'error' | 'owner-changed';
+  owner: string;
+  kind?: string;
+  message?: string;
+  machine?: string;
+  destination?: string;
+};
 
 export type ToShell =
   | { type: 'connection' }
@@ -44,6 +72,23 @@ export type ToShell =
   | { type: 'notify.settings' }
   // brings up Sparkle's window for the update update.available named
   | { type: 'update.install' }
+  // the shell runs the bundled svall for one host operation at a time, and stops it on cancel
+  | { type: 'host.start'; op: HostOp; args: HostArgs }
+  | { type: 'host.cancel' }
+  // `svall host list`, answered by host.machines
+  | { type: 'host.list' }
+  // sets fleet.json's handover.enabled, then sends shell.info again
+  | { type: 'handover.enable'; on: boolean }
+  // the shell starts, resumes or aborts a handover as a detached helper, then follows it with `handover attach`,
+  // whose stdin carries the user's answers; `to` is `local` or the gateway's name, and `check` runs the checks alone
+  | { type: 'handover.start'; to: string; choices?: HandoverChoices; check?: boolean }
+  | { type: 'handover.resume' }
+  | { type: 'handover.abort' }
+  // follows a live helper, or reads back the last run and the status when none is live
+  | { type: 'handover.attach' }
+  | { type: 'handover.forget' }
+  | { type: 'handover.choose'; choices: HandoverChoices }
+  | { type: 'handover.cancel' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
   | { type: 'quit.answer'; unsaved: string[]; working: number }
   // the fleet has stopped, or could not be asked to
@@ -56,11 +101,26 @@ export type ToShell =
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string }
-  // keeps the Mac from idle-sleeping under this reason; none lets go
-  | { type: 'awake'; reason?: string };
+  // keeps the Mac from idle-sleeping under this reason, on battery too when asked; none lets go
+  | { type: 'awake'; reason?: string; battery?: boolean }
+  // a fresh connect helper, whatever the last one gave up on
+  | { type: 'connection.retry' }
+  // the fleet's copy on this Mac, while the helper cannot say where the fleet runs
+  | { type: 'connection.here' };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
+  | ({ type: 'connection.state' } & ConnectionState)
+  // something the page asked for that only the machine the fleet runs on can do
+  | { type: 'notice'; text: string }
+  | { type: 'host.step'; op: HostOp; event: HostStep }
+  | { type: 'host.done'; op: HostOp; code: number }
+  // the registry, read again after every host operation too; `error` when it could not be read
+  | { type: 'host.machines'; machines: MachineRow[]; error?: string }
+  // each line the helper printed, and the end of the process the page was following
+  | { type: 'handover.event'; event: HandoverEvent }
+  | { type: 'handover.replay'; events: HandoverEvent[] }
+  | { type: 'handover.exit'; code: number; error?: string }
   | ({ type: 'shell.info' } & ShellInfo)
   | { type: 'key'; chord: string }
   | { type: 'term.exited'; id: string }

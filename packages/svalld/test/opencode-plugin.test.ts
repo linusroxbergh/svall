@@ -35,6 +35,8 @@ const fakeContext = (parents: Record<string, string> = {}) => {
   const register = (domain: string) => vi.fn(async (name: string, cb: Hook) => { hooks[`${domain}.${name}`] = cb; return { dispose: async () => {} }; });
   let pull: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void } | undefined;
   let taken: (() => void) | undefined;
+  // the tools a transform takes away
+  const removed: string[] = [];
   const ctx = {
     location: { directory: '/repo' },
     session: {
@@ -45,7 +47,10 @@ const fakeContext = (parents: Record<string, string> = {}) => {
       // resolves once the session is idle
       wait: vi.fn(async (_: { sessionID: string }) => {}),
     },
-    tool: { hook: register('tool') },
+    tool: {
+      hook: register('tool'),
+      transform: vi.fn(async (edit: (t: { remove: (id: string) => void }) => void) => { edit({ remove: (id) => removed.push(id) }); return { dispose: async () => {} }; }),
+    },
     permission: { list: vi.fn(async (_: { sessionID: string }): Promise<unknown[]> => []) },
     command: { list: vi.fn(async () => ({ data: [{ name: 'svall-status' }] })) },
     model: { list: vi.fn(async () => ({ data: [{ ...MODEL, limit: { context: 200_000 } }] })) },
@@ -72,7 +77,7 @@ const fakeContext = (parents: Record<string, string> = {}) => {
     pull = undefined;
     p.reject(new Error('encode'));
   };
-  return { ctx, hooks, emit, fail };
+  return { ctx, hooks, emit, fail, removed };
 };
 const load = async (f = fakeContext()) => ({ ...f, cleanup: await (await import(PLUGIN)).default.setup(f.ctx) });
 const prompt = (h: Record<string, Hook>, sessionID: string, text = 'go') => h['session.prompt']({ sessionID, messageID: 'msg_u1', prompt: { text } });
@@ -115,6 +120,30 @@ describe('the OpenCode plugin', () => {
     const argv = process.argv;
     process.argv = [...argv, 'serve', '--service'];
     try { expect((await load()).hooks).toEqual({}); } finally { process.argv = argv; }
+  });
+
+  it("takes OpenCode's worktree_create from a character's agent, so its worktrees are made inside the repository", async () => {
+    expect((await load()).removed).toEqual(['opencode_worktree_create']);
+    vi.stubEnv('SVALL_CHAR_ID', '');
+    expect((await load()).removed).toEqual([]);
+  });
+
+  it('still reports turns and gives the brief when OpenCode refuses to take worktree_create away', async () => {
+    for (const [transform, why] of [[async () => { throw new Error('no such tool'); }, 'no such tool'], [() => { throw new TypeError('transform is not a function'); }, 'transform is not a function']] as const) {
+      got = [];
+      const f = fakeContext();
+      f.ctx.tool.transform = vi.fn(transform);
+      const said = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        const { hooks: h } = await load(f);
+        expect(said.mock.calls.map(([line]) => line)).toEqual([`svall: OpenCode kept opencode_worktree_create for this character's agent: ${why}\n`]);
+        await prompt(h, SID, 'go');
+        await waitFor(() => names().includes('UserPromptSubmit'));
+        expect(await system(h, SID)).toEqual(['BRIEF']);
+      } finally {
+        said.mockRestore();
+      }
+    }
   });
 
   it('reports a turn, gives the agent its brief, reads its context and logs the session', async () => {
@@ -235,7 +264,7 @@ describe('the OpenCode plugin', () => {
     const child = `setTimeout(() => process.exit(1), 4000);
       const { default: plugin } = await import(${JSON.stringify(PLUGIN)});
       const on = { hook: async () => {} };
-      await plugin.setup({ location: { directory: '/repo' }, tool: on, event: { subscribe: () => [] },
+      await plugin.setup({ location: { directory: '/repo' }, tool: { ...on, transform: async () => ({}) }, event: { subscribe: () => [] },
         session: { ...on, get: async () => ({}), prompt: async (o) => { console.log(JSON.stringify(o)); process.exit(0); } } });`;
     // the TUI starts its server as a child, which takes none of its arguments
     const tui = `const c = require('node:child_process').spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(child)}], { stdio: 'inherit' });

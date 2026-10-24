@@ -1,8 +1,9 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, fleetMainAgent, keptPorts, loadConfig, saveConfig } from '../src/config.js';
+import { Config, configuredMainAgent, fleetMainAgent, keptPorts, loadConfig, patchFleetConfig, peekConfig, saveConfig, saveMainAgent, setGateway } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -10,14 +11,14 @@ import { cleanHomes, makeHome } from './helpers.js';
 afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 
 describe('config and paths', () => {
-  it('defaults when the file is missing', () => {
-    const c = loadConfig('/nonexistent/config.json');
+  it('defaults when the fleet has no home', () => {
+    const c = loadConfig(resolvePaths('/nonexistent'));
     expect([c.port, c.host]).toEqual([undefined, '127.0.0.1']);
   });
   it('merges a partial file', () => {
     const home = makeHome();
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ port: 1234 }));
-    expect(loadConfig(path.join(home, 'config.json')).port).toBe(1234);
+    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({ port: 1234 }));
+    expect(loadConfig(resolvePaths(home)).port).toBe(1234);
   });
   it('derives all paths from home', () => {
     const p = resolvePaths('/x');
@@ -26,6 +27,10 @@ describe('config and paths', () => {
     expect(p.statusScript).toBe('/x/hooks/claude-status.mjs');
     expect(p.push).toBe(path.join('/x', 'push.json'));
     expect(p.vapid).toBe(path.join('/x', 'vapid.json'));
+    expect([p.fleetConfig, p.nodeConfig, p.legacyConfig]).toEqual(['/x/fleet.json', '/x/node.json', '/x/config.json']);
+    expect([p.owner, p.handoverDir, p.journal, p.replicas]).toEqual(['/x/owner.json', '/x/handover', '/x/handover/journal.json', '/x/replicas']);
+    expect(p.preparedState('tx-1')).toBe('/x/handover/prepared-tx-1.json');
+    expect(p.preparedState('../escape')).toBe('/x/handover/prepared-..%2Fescape.json');
   });
   it('finds the Claude settings in CLAUDE_CONFIG_DIR when it is set', () => {
     const home = path.join(os.homedir(), '.claude', 'settings.json');
@@ -43,15 +48,15 @@ describe('config and paths', () => {
     expect(Config.parse({ mobile: { httpsPort: 10000 } }).mobile.httpsPort).toBe(10000);
     expect(Config.parse({ mobile: { httpsPort: 8444 } }).mobile.httpsPort).toBe(8444);
     expect(() => Config.parse({ mobile: { httpsPort: 0 } })).toThrow();
-    expect(loadConfig('/nonexistent/config.json').home).toEqual({
+    expect(loadConfig(resolvePaths('/nonexistent')).home).toEqual({
       cwd: '~/.svall/home',
       actions: [
         { label: 'update info', prompt: '/svall-update-info' }, { label: 'status', prompt: '/svall-status' },
       ],
     });
     const home = makeHome();
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] } }));
-    expect(loadConfig(path.join(home, 'config.json')).home).toEqual({ cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] });
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID(), home: { cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] } }));
+    expect(loadConfig(resolvePaths(home)).home).toEqual({ cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] });
     expect(Config.parse({ home: { command: 'my-agent' } }).home.command).toBe('my-agent');
   });
   it('makes prefixed ids', () => {
@@ -60,65 +65,129 @@ describe('config and paths', () => {
   });
 });
 
-describe('saveConfig', () => {
-  const file = () => path.join(makeHome(), 'config.json');
-  it('sets the key and keeps every other one', () => {
-    const f = file();
-    fs.writeFileSync(f, JSON.stringify({ port: 47801, scribe: { model: 'haiku' } }));
-    saveConfig(f, { mainAgent: 'codex' });
-    expect(JSON.parse(fs.readFileSync(f, 'utf8'))).toEqual({ port: 47801, scribe: { model: 'haiku' }, mainAgent: 'codex' });
-    expect(loadConfig(f).mainAgent).toBe('codex');
+describe('saveMainAgent', () => {
+  const paths = () => resolvePaths(makeHome());
+  it('sets the key in fleet.json and keeps every other one', () => {
+    const p = paths();
+    const id = crypto.randomUUID();
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id, scribe: { model: 'haiku' } }));
+    saveMainAgent(p, 'codex');
+    expect(JSON.parse(fs.readFileSync(p.fleetConfig, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, mainAgent: 'codex' });
+    expect(loadConfig(p).mainAgent).toBe('codex');
   });
-  it('creates the file when there is none', () => {
-    const f = file();
-    saveConfig(f, { mainAgent: 'claude' });
-    expect(loadConfig(f).mainAgent).toBe('claude');
+  it('creates fleet.json when there is none', () => {
+    const p = paths();
+    saveMainAgent(p, 'claude');
+    expect(loadConfig(p).mainAgent).toBe('claude');
+  });
+  it('splits a config.json out first, so the choice lands beside what it held', () => {
+    const p = paths();
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ port: 47801, scribe: { model: 'haiku' } }));
+    saveMainAgent(p, 'codex');
+    expect(fs.existsSync(p.legacyConfig)).toBe(false);
+    expect(loadConfig(p)).toMatchObject({ port: 47801, scribe: { model: 'haiku' }, mainAgent: 'codex' });
   });
   it('refuses a file that does not parse, and leaves it as it was', () => {
-    const f = file();
-    fs.writeFileSync(f, '{ "port": 1,');
-    expect(() => saveConfig(f, { mainAgent: 'codex' })).toThrow(/invalid config/);
-    expect(fs.readFileSync(f, 'utf8')).toBe('{ "port": 1,');
+    const p = paths();
+    fs.writeFileSync(p.nodeConfig, '{}');
+    fs.writeFileSync(p.fleetConfig, '{ "id": 1,');
+    expect(() => saveMainAgent(p, 'codex')).toThrow(/invalid config/);
+    expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe('{ "id": 1,');
   });
-  it('writes a linked config.json where it points, keeping its mode', () => {
-    const dir = makeHome();
-    const real = path.join(dir, 'dotfiles.json');
-    const f = path.join(dir, 'config.json');
-    fs.writeFileSync(real, '{}', { mode: 0o600 });
-    fs.symlinkSync(real, f);
-    saveConfig(f, { mainAgent: 'codex' });
-    expect(fs.lstatSync(f).isSymbolicLink()).toBe(true);
+  it('writes a linked fleet.json where it points, keeping its mode', () => {
+    const p = paths();
+    const real = path.join(p.home, 'dotfiles.json');
+    fs.writeFileSync(real, JSON.stringify({ id: crypto.randomUUID() }), { mode: 0o640 });
+    fs.symlinkSync(real, p.fleetConfig);
+    saveMainAgent(p, 'codex');
+    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
     expect(JSON.parse(fs.readFileSync(real, 'utf8')).mainAgent).toBe('codex');
-    expect(fs.statSync(real).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
   });
-  it('saves the phone port beside the mobile keys already there', () => {
-    const f = file();
-    fs.writeFileSync(f, JSON.stringify({ mobile: { logins: ['me@example.com'] } }));
-    saveConfig(f, { mobile: { httpsPort: 8444 } });
-    expect(JSON.parse(fs.readFileSync(f, 'utf8')).mobile).toEqual({ logins: ['me@example.com'], httpsPort: 8444 });
+  it('saves the phone port in node.json, beside the mobile keys fleet.json keeps', () => {
+    const p = paths();
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: crypto.randomUUID(), mobile: { logins: ['me@example.com'] } }));
+    saveConfig(p, { mobile: { httpsPort: 8444 } });
+    expect(JSON.parse(fs.readFileSync(p.nodeConfig, 'utf8')).mobile).toEqual({ httpsPort: 8444 });
+    expect(loadConfig(p).mobile).toMatchObject({ logins: ['me@example.com'], httpsPort: 8444 });
   });
   it('leaves the scribe agent unset unless it is named', () => {
-    expect(loadConfig(file()).scribe.agent).toBeUndefined();
+    expect(loadConfig(paths()).scribe.agent).toBeUndefined();
   });
+  it('is read from fleet.json, or from a config.json not yet split, without splitting it', () => {
+    const p = paths();
+    expect(configuredMainAgent(p)).toBeUndefined();
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ mainAgent: 'codex' }));
+    expect(configuredMainAgent(p)).toBe('codex');
+    expect(fs.existsSync(p.fleetConfig)).toBe(false);
+    saveMainAgent(p, 'claude');
+    expect(configuredMainAgent(p)).toBe('claude');
+  });
+  it('is peeked at in fleet.json and node.json, or in a config.json not yet split, without splitting it', () => {
+    const p = paths();
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ name: 'side', host: '127.0.0.2' }));
+    expect(peekConfig(p)).toMatchObject({ name: 'side', host: '127.0.0.2' });
+    expect(fs.existsSync(p.fleetConfig)).toBe(false);
+    loadConfig(p);
+    expect(peekConfig(p)).toMatchObject({ name: 'side', host: '127.0.0.2' });
+  });
+});
+
+describe('patchFleetConfig', () => {
+  const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+  const linked = () => {
+    const p = resolvePaths(makeHome());
+    const real = path.join(p.home, 'dotfiles.json');
+    const id = crypto.randomUUID();
+    fs.writeFileSync(real, JSON.stringify({ id, scribe: { model: 'haiku' }, laterKey: 1 }), { mode: 0o640 });
+    fs.symlinkSync(real, p.fleetConfig);
+    return { p, real, id };
+  };
+
+  it('sets and drops keys and keeps every other one as the file held it, through a link and with its mode', () => {
+    const { p, real, id } = linked();
+    patchFleetConfig(p.fleetConfig, { gatewayMachineId: GATEWAY });
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
+    patchFleetConfig(p.fleetConfig, { gatewayMachineId: undefined });
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1 });
+    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
+  });
+
+  it('refuses a change that leaves no fleet config, and leaves the file as it was', () => {
+    const { p, real } = linked();
+    const before = fs.readFileSync(real, 'utf8');
+    expect(() => patchFleetConfig(p.fleetConfig, { gatewayMachineId: 'trift' })).toThrow(/invalid config .*gatewayMachineId/);
+    expect(fs.readFileSync(real, 'utf8')).toBe(before);
+  });
+
   it('keeps the fleet name, and refuses one svall could not open the fleet by', () => {
-    const f = file();
-    saveConfig(f, { name: 'home' });
-    expect(loadConfig(f).name).toBe('home');
-    fs.writeFileSync(f, JSON.stringify({ name: 'Home Base' }));
-    expect(() => loadConfig(f)).toThrow(/name: /);
+    const { p, real, id } = linked();
+    patchFleetConfig(p.fleetConfig, { name: 'home' });
+    expect(loadConfig(p).name).toBe('home');
+    fs.writeFileSync(real, JSON.stringify({ id, name: 'Home Base' }));
+    expect(() => loadConfig(p)).toThrow(/name: /);
+  });
+
+  it('is how the daemon names a gateway, in the file and in the running config', () => {
+    const { p, real, id } = linked();
+    const config = loadConfig(p);
+    setGateway(p, config, GATEWAY as never);
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
+    expect(config.gatewayMachineId).toBe(GATEWAY);
+    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
   });
 });
 
 describe('the agents setup turns off', () => {
   it('leaves an agent Svall supports after a setup on', () => {
-    const home = makeHome();
-    const file = path.join(home, 'config.json');
+    const p = resolvePaths(makeHome());
     // the list setup saved before OpenCode, which could name only Claude Code and Codex
-    fs.writeFileSync(file, JSON.stringify({ integrations: ['claude'] }));
-    expect(loadConfig(file).integrations).toEqual(['claude', 'opencode']);
-    saveConfig(file, { integrations: ['claude', 'opencode'] });
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ agentsOff: ['codex'] });
-    expect(loadConfig(file).integrations).toEqual(['claude', 'opencode']);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ integrations: ['claude'] }));
+    expect(loadConfig(p).integrations).toEqual(['claude', 'opencode']);
+    saveConfig(p, { integrations: ['claude', 'opencode'] });
+    expect(JSON.parse(fs.readFileSync(p.nodeConfig, 'utf8'))).toEqual({ agentsOff: ['codex'] });
+    expect(loadConfig(p).integrations).toEqual(['claude', 'opencode']);
   });
 });
 

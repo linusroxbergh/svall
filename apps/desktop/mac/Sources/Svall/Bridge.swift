@@ -37,6 +37,17 @@ enum ToShell: Decodable {
     case notifyEnable
     case notifySettings
     case updateInstall
+    case hostStart(op: HostOp, args: HostArgs)
+    case hostCancel
+    case hostList
+    case handoverEnable(on: Bool)
+    case handoverStart(to: String, choices: HandoverChoices?, check: Bool?)
+    case handoverResume
+    case handoverAbort
+    case handoverAttach
+    case handoverChoose(choices: HandoverChoices)
+    case handoverCancel
+    case handoverForget
     case quitAnswer(unsaved: [String], working: Int)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
@@ -44,9 +55,11 @@ enum ToShell: Decodable {
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
-    case awake(reason: String?)
+    case awake(reason: String?, battery: Bool?)
+    case connectionRetry
+    case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, reason }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -81,6 +94,17 @@ enum ToShell: Decodable {
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings
         case "update.install": self = .updateInstall
+        case "host.start": self = .hostStart(op: try c.decode(HostOp.self, forKey: .op), args: try c.decode(HostArgs.self, forKey: .args))
+        case "host.cancel": self = .hostCancel
+        case "host.list": self = .hostList
+        case "handover.enable": self = .handoverEnable(on: try c.decode(Bool.self, forKey: .on))
+        case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices), check: try c.decodeIfPresent(Bool.self, forKey: .check))
+        case "handover.resume": self = .handoverResume
+        case "handover.abort": self = .handoverAbort
+        case "handover.attach": self = .handoverAttach
+        case "handover.choose": self = .handoverChoose(choices: try c.decode(HandoverChoices.self, forKey: .choices))
+        case "handover.cancel": self = .handoverCancel
+        case "handover.forget": self = .handoverForget
         case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working))
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
@@ -88,7 +112,9 @@ enum ToShell: Decodable {
         case "setup.plan": self = .setupPlan
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
-        case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
+        case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason), battery: try c.decodeIfPresent(Bool.self, forKey: .battery))
+        case "connection.retry": self = .connectionRetry
+        case "connection.here": self = .connectionHere
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -97,7 +123,15 @@ enum ToShell: Decodable {
 /// Messages to the webview. Mirrors FromShell in bridge.ts.
 enum FromShell {
     case connection(SvallConnection?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String])
+    case connectionState(RemoteConnection.State)
+    case notice(text: String)
+    case hostStep(op: String, step: HostProcess.Step)
+    case hostDone(op: String, code: Int32)
+    case hostMachines(machines: [[String: Any]], error: String?)
+    case handoverEvent([String: Any])
+    case handoverReplay([[String: Any]])
+    case handoverExit(code: Int32, error: String?)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?, profile: String?, copyHere: Bool)
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -127,7 +161,35 @@ enum FromShell {
     var json: [String: Any] {
         switch self {
         case .connection(let c): return ["type": "connection", "host": c?.host ?? "", "port": c?.port ?? 0, "token": c?.token ?? ""]
-        case .shellInfo(let home, let log, let op, let ghosttyKeys): return ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
+        case .connectionState(let s):
+            var json: [String: Any] = ["type": "connection.state", "state": s.state, "owner": s.owner]
+            if let kind = s.kind { json["kind"] = kind }
+            if let message = s.message { json["message"] = message }
+            if let machine = s.machine { json["machine"] = machine }
+            if let destination = s.destination { json["destination"] = destination }
+            return json
+        case .notice(let text): return ["type": "notice", "text": text]
+        case .hostStep(let op, let step):
+            var event: [String: Any] = ["step": step.step, "status": step.status]
+            if let detail = step.detail { event["detail"] = detail }
+            if let action = step.action { event["action"] = action }
+            return ["type": "host.step", "op": op, "event": event]
+        case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
+        case .hostMachines(let machines, let error):
+            var json: [String: Any] = ["type": "host.machines", "machines": machines]
+            if let error { json["error"] = error }
+            return json
+        case .handoverEvent(let event): return ["type": "handover.event", "event": event]
+        case .handoverReplay(let events): return ["type": "handover.replay", "events": events]
+        case .handoverExit(let code, let error):
+            var json: [String: Any] = ["type": "handover.exit", "code": Int(code)]
+            if let error { json["error"] = error }
+            return json
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway, let profile, let copyHere):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled, "copyHere": copyHere]
+            if let gateway { json["gateway"] = gateway }
+            if let profile { json["profile"] = profile }
+            return json
         case .key(let chord): return ["type": "key", "chord": chord]
         case .termExited(let id): return ["type": "term.exited", "id": id]
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]

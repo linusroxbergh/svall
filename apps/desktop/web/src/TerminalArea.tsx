@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
-import { reviveCharacter } from './actions.js';
+import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
+import { openSecondTerminal, reviveCharacter, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
+import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
-import { isVeiled } from './selectors.js';
+import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
 
 // the fleet only closes an agent left idle past its limit; one that ends sooner was ended by hand
@@ -17,17 +18,23 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const c = useApp((s) => s.fleet.characters[id]);
   const key = second ? secondKey(id) : id;
   const error = useApp((s) => s.terminalErrors[key]);
+  const failed = useApp((s) => resumeErrorOf(s, second ? s.fleet.characters[id]?.second : s.fleet.characters[id]));
   const veiled = useApp(isVeiled);
+  // the fleet is between machines: its terminals were rested at the source and reopen where it lands
+  const resting = useApp((s) => holdsTerminals(s.handover));
+  const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
   const ref = useRef<HTMLDivElement>(null);
-  const dormant = second ? !c?.second : !c?.tmux;
+  const dormant = second ? !c?.second?.tmux : !c?.tmux;
   const alpha = useRef(opacity);
   alpha.current = opacity;
 
   // opening a dormant character wakes it once it has stayed in view a moment, so passing by wakes nothing.
-  // One whose window is lost while open, bar a close for idleness, or that fails to wake, waits for the button
+  // One whose window is lost while open, bar a close for idleness, or that fails to wake or to resume after a
+  // handover, waits for the button
   const [held, setHeld] = useState(false);
+  const [asked, setAsked] = useState(false);
   const windowId = c?.tmux?.windowId;
   useEffect(() => {
     if (!windowId) return;
@@ -36,16 +43,16 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   }, [windowId]);
   const active = useApp((s) => s.active);
   useEffect(() => {
-    if (second || !dormant || held || !active) return;
+    if (second || !dormant || held || failed || resting || !active) return;
     const t = setTimeout(() => {
       const cur = app.store.getState().fleet.characters[id];
       if (cur && !cur.tmux) void reviveCharacter(deps(), id).then((ok) => { if (!ok) setHeld(true); });
     }, 1000);
     return () => clearTimeout(t);
-  }, [id, second, dormant, held, active]);
+  }, [id, second, dormant, held, failed, resting, active]);
 
   useEffect(() => {
-    if (dormant || error || veiled) return;
+    if (resting || dormant || error || veiled) return;
     const el = ref.current;
     if (!el) return;
     const rect = () => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
@@ -54,19 +61,22 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     const ro = new ResizeObserver(() => m.move(key, rect()));
     ro.observe(el);
     return () => { ro.disconnect(); m.hide(key); };
-  }, [key, dormant, error, veiled]);
+  }, [key, resting, dormant, error, veiled]);
 
   // a changed opacity restates the surface where it is; re-running the attach effect would flicker it.
   // the settings sliders keep the keyboard, so the surface only takes focus while they are away
   useEffect(() => {
     const el = ref.current;
     const s = app.store.getState();
-    if (!el || veiled || !s.terminals[key]) return;
+    if (!el || resting || veiled || !s.terminals[key]) return;
     const r = el.getBoundingClientRect();
     app.manager().show(key, { x: r.left, y: r.top, width: r.width, height: r.height }, opacity, !s.settingsOpen && !keepPageFocus && !aside).catch(() => {});
-  }, [key, opacity, veiled]);
+  }, [key, opacity, resting, veiled]);
 
   if (!c) return null;
+  if (resting) {
+    return <button type="button" className="revive held" data-testid="terminal-held" onClick={() => app.store.getState().toggleHandover(true)}>{restingSays}</button>;
+  }
   if (error) {
     return (
       <div className="revive" data-testid="terminal-error">
@@ -76,11 +86,25 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     );
   }
   if (dormant) {
-    if (second) return <div className="revive" data-testid="second-starting">Starting the terminal…</div>;
-    if (held) {
+    // a second terminal with no record yet is still being opened; one with a record is dormant and waits for the button
+    if (second && !c.second) return <div className="revive" data-testid="second-starting">Starting the terminal…</div>;
+    if (second || held || failed) {
+      const old = failed ? (second ? c.second : c)?.agent : undefined;
       return (
         <div className="revive">
-          <button data-testid="revive" onClick={() => void reviveCharacter(deps(), id)}>Revive {c.name}</button>
+          {failed && <span data-testid="resume-error">{failed}</span>}
+          {old && asked ? (
+            <>
+              <span data-testid="fresh-ask">Start a new {AGENT_LABEL[old.kind]} session here from a summary of {old.sessionId}? The old session stays where it is.</span>
+              <button data-testid="fresh-go" onClick={() => { setAsked(false); void startFresh(deps(), id, second); }}>Start fresh</button>
+              <button data-testid="fresh-cancel" onClick={() => setAsked(false)}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button data-testid="revive" onClick={() => (second ? openSecondTerminal(deps(), id) : void reviveCharacter(deps(), id))}>Revive {c.name}</button>
+              {old && <button data-testid="fresh" onClick={() => setAsked(true)}>Start fresh from summary</button>}
+            </>
+          )}
         </div>
       );
     }
