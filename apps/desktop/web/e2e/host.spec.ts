@@ -10,6 +10,10 @@ const ADD_STEPS = [
   { step: 'tmux', status: 'warn', detail: 'tmux 3.4: Shift+Enter needs tmux 3.5 or newer' },
   { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth login', run: 'claude auth login' },
   { step: 'opencode', status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh linus@studio, then install OpenCode' },
+  {
+    step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac: a handover there and back needs the same release on both',
+    action: 'ssh linus@studio, then claude update', run: 'claude update',
+  },
   { step: 'probe', status: 'fail', detail: 'ws://127.0.0.1:47800 refused token=s3cr3t', action: 'ssh linus@studio and run svall doctor' },
 ] as const;
 
@@ -70,10 +74,13 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   for (const event of ADD_STEPS) await receive(page, { type: 'host.step', op: 'add', event });
   await receive(page, { type: 'host.done', op: 'add', code: 1 });
 
-  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching the machine', 'Svall on the machine', 'Agent logins', 'Trying it out']);
+  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching the machine', 'Svall on the machine', 'Agent CLIs', 'Trying it out']);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
   await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth login');
   await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');
+  await expect(page.getByTestId('host-step-versions')).toContainText('Agent versions');
+  await expect(page.getByTestId('host-action-versions')).toHaveText('ssh linus@studio, then claude update');
+  await expect(page.getByTestId('host-terminal-versions')).toBeVisible();
   // what the step said is kept, without the token it carried
   await expect(page.getByTestId('host-step-probe')).toContainText('ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-step-probe')).not.toContainText('s3cr3t');

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord, type AgentKind } from '@svall/protocol';
-import { AGENTS, versionOk } from '@svall/svalld/agents';
+import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { unitPath } from '@svall/svalld/linux/setup';
@@ -47,6 +47,8 @@ export type HostDeps = {
   interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
   fetch: FetchLike;
   controller: { release: string; protocol: number; releaseRoot: string; signed: boolean };
+  /** this Mac's agent CLIs, as its own fleet's daemon finds them for a handover; rejects when it cannot be asked */
+  localAgents(): Promise<{ kind: AgentKind; version?: string }[]>;
   /** this Mac's own id: the owner a fleet's first authority record names */
   machineId(): MachineId;
   homedir: string;
@@ -252,27 +254,37 @@ async function tmuxCheck(master: SshMaster, o: { destination: string; home: stri
 // the companion doctor's checks of each agent's Svall hooks and of Codex's sandbox, whose details end with what to do there
 const AGENT_CHECKS: Record<AgentKind, string[]> = { claude: ['hooks'], codex: ['codex hooks', 'codex sandbox'], opencode: ['opencode plugin'] };
 
-/**
- * The agent checks, on the PATH and with the agent homes the companion's units run with, which a login over ssh does not
- * see all of, and the companion doctor's checks of that agent: every one of them is something to go and do, never
- * something that stops setup.
- */
-async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<void> {
+type AgentCall = (bin: string, args: string[]) => ReturnType<SshMaster['run']>;
+// the --version line of each agent CLI there
+type FarVersions = Partial<Record<AgentKind, string>>;
+
+/** Runs an agent CLI there on the PATH and with the agent homes the companion's units run it with, which a login over ssh does not see all of. */
+function agentCall(master: SshMaster, o: { home: string; svallBase: string; report?: RemoteDoctor }): AgentCall {
   const PATH = unitPathOf(o.home, o.svallBase);
-  const homes = Object.entries(o.report.daemonEnv ?? {}).filter(([k]) => /^[A-Z][A-Z0-9_]*$/.test(k)).map(([k, v]) => shq(`${k}=${v}`));
+  const homes = Object.entries(o.report?.daemonEnv ?? {}).filter(([k]) => /^[A-Z][A-Z0-9_]*$/.test(k)).map(([k, v]) => shq(`${k}=${v}`));
+  return (bin, args) => master.run(['env', shq(`PATH=${PATH}`), ...homes, bin, ...args], { timeoutMs: PROBE_TIMEOUT });
+}
+
+/**
+ * The agent checks, as the companion's units run each CLI, and the companion doctor's checks of that agent: every one
+ * of them is something to go and do, never something that stops setup. Hands back each version Svall's floor takes.
+ */
+async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<FarVersions> {
+  const call = agentCall(master, o);
+  const versions: FarVersions = {};
   for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
-      const call = (args: string[]) => master.run(['env', shq(`PATH=${PATH}`), ...homes, a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
       const todo = (detail: string, how: string, command?: string): Outcome<void> =>
         ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
-      const v = await call(['--version']);
+      const v = await call(a.bin, ['--version']);
       // env exits 127 for a program it finds nowhere on that PATH; setup writes Svall's hooks only for the agents it finds
       if (v.code === 127) return todo(`${kind} is not installed on this machine`, `install ${a.label}, then svall setup`, a.installCommand);
       const version = v.stdout.trim().split('\n')[0];
       if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
-      if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
-      const login = await call(a.loginArgs);
+      if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, a.updateCommand, a.updateCommand);
+      versions[kind] = version;
+      const login = await call(a.bin, a.loginArgs);
       if (login.code === 0 && a.loggedIn(login.stdout)) {
         const checks = o.report.checks.filter((c) => AGENT_CHECKS[kind].includes(c.name) && (c.status === 'warn' || c.status === 'fail'));
         if (!checks.length) return { value: undefined, detail: `${version}, logged in` };
@@ -283,6 +295,39 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint, a.loginHint);
     });
   }
+  return versions;
+}
+
+async function farVersions(call: AgentCall): Promise<FarVersions> {
+  const versions: FarVersions = {};
+  for (const kind of AGENT_KINDS) {
+    const v = await call(AGENTS[kind].bin, ['--version']);
+    if (v.code === 0) versions[kind] = v.stdout.trim().split('\n')[0];
+  }
+  return versions;
+}
+
+/**
+ * Each agent CLI on both machines at the same release: a handover goes only to a machine whose release of each agent the
+ * fleet runs is at least the source's, so there and back needs the same. The side behind is named with its update.
+ */
+function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: string }[] | Error, destination: string): Outcome<void> {
+  if (mine instanceof Error) return { value: undefined, status: 'skip', detail: `not compared: ${mine.message}` };
+  const both = AGENT_KINDS.flatMap((kind) => {
+    const [there, here] = [versionOf(far[kind] ?? ''), mine.find((m) => m.kind === kind)?.version];
+    return there && here ? [{ kind, there, here, order: compareVersions(there, here) ?? 0 }] : [];
+  });
+  if (!both.length) return { value: undefined, status: 'skip', detail: 'no agent CLI to compare' };
+  const apart = both.filter((b) => b.order !== 0);
+  if (!apart.length) return { value: undefined, detail: `${both.map((b) => `${b.kind} ${b.there}`).join(', ')}, as on this Mac` };
+  const updates = (order: number) => apart.filter((b) => b.order === order).map((b) => AGENTS[b.kind].updateCommand);
+  const [there, here] = [updates(-1), updates(1)];
+  return {
+    value: undefined, status: 'warn',
+    detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on this Mac`).join('; ')}: a handover there and back needs the same release on both`,
+    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`on this Mac, run ${here.join(', then ')}`] : [])].join('; '),
+    ...(there.length > 0 && { run: there.join(' && ') }),
+  };
 }
 
 /**
@@ -452,7 +497,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
 
-      await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report }, run);
+      const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report }, run);
+      await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
 
       const record: MachineRecord = {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
@@ -509,8 +555,9 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   let release: string | undefined;
   try {
     const base = entry.record.svallBase;
+    let report: RemoteDoctor | undefined;
     try {
-      const report = await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json');
+      report = await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json');
       checks.push(...report.checks);
     } catch (err) { checks.push(failed('doctor', err)); }
     try {
@@ -522,6 +569,10 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
         detail: `${v.release} (${signedWord(v.signed)}), protocol ${v.protocol}; this controller runs ${d.controller.release} (${signedWord(d.controller.signed)}), protocol ${d.controller.protocol}`,
       });
     } catch (err) { checks.push(failed('release', err)); }
+    try {
+      const far = await farVersions(agentCall(master, { home: entry.record.home, svallBase: base, report }));
+      checks.push({ name: 'versions', ...pick(versionsOutcome(far, await d.localAgents().catch((err: Error) => err), entry.record.ssh)) });
+    } catch (err) { checks.push(failed('versions', err)); }
     try {
       checks.push({ name: 'space', ...pick(spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME'))) });
     } catch (err) { checks.push(failed('space', err)); }

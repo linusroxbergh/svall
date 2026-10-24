@@ -248,7 +248,7 @@ function runs(label, rel, releases) {
 
 const ADVICE = new Set(['claude', 'codex', 'opencode']);
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
-  'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
+  'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
 
 // with no --release the controller fetches the companion its manifest pins, checks its digest and caches it
 const named = (rel) => (rel.served || rel.carried ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
@@ -269,8 +269,11 @@ function hostAdd(a) {
   save('host-add.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  // a fresh machine has no agents yet: each is something to go and do
-  for (const s of steps) check(`host add ${s.step}`, s.status === 'ok' || (s.status === 'warn' && ADVICE.has(s.step)), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+  // a fresh machine has no agents yet: each is something to go and do, and none has a release to compare
+  for (const s of steps) {
+    check(`host add ${s.step}`, s.status === 'ok' || (s.status === 'warn' && ADVICE.has(s.step)) || (s.status === 'skip' && s.step === 'versions'),
+      () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+  }
   check('host add steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(ADD_STEPS), () => brief(steps.map((s) => s.step)));
   const at = (name) => steps.find((s) => s.step === name);
   check('host add linger', at('linger')?.detail?.startsWith(`turned on for ${USER}:`), () => brief(at('linger')));

@@ -76,7 +76,8 @@ The first published release supports:
   which cannot protect remote arguments or report byte progress, so the desktop release bundles
   its own rsync, and a Mac without it has none a handover runs: only Linux falls back to the
   system rsync;
-- Claude Code, Codex and OpenCode CLI at or above each session adapter's minimum version.
+- Claude Code, Codex and OpenCode CLI at or above each session adapter's minimum version, and for a fleet that
+  goes and comes back, each agent it runs at the same release on both machines.
 
 The Mac app is distributed as a signed and notarized direct download. Mac App Store distribution,
 whose sandbox is incompatible with the required SSH, subprocess and filesystem integration, is not
@@ -642,9 +643,13 @@ Session files are copied byte for byte. An adapter therefore depends only on whe
 session's files, or for OpenCode on its export and import, not on the record format, and has a
 minimum supported version but no maximum.
 The imported `agent.transcriptPath` always points at the destination file before activation.
-Preflight blocks an agent below its adapter's minimum, a destination release older than the
-source's, or a session whose required file is missing. A terminal whose resume failed offers
-**Start fresh from summary** (`svall char revive <id> --fresh`): a new session of the same agent in
+Preflight blocks (`incompatible_adapter`) each agent kind the fleet runs whose release on either
+machine is below its adapter's minimum, whose two releases are read by different adapters, or whose
+destination release is older than the source's (a prerelease is older than its release), each as
+that machine's daemon probes its CLI; it also blocks a session whose required file is missing. A
+kind the fleet does not run is not checked. The way back swaps source and destination, so a fleet
+that goes and comes back needs each agent it runs at the same release on both machines. A terminal
+whose resume failed offers **Start fresh from summary** (`svall char revive <id> --fresh`): a new session of the same agent in
 its folder, with its launch flags, whose first prompt summarises the old session's last turns and
 says it is a new one. The old session's files stay. It is never the automatic handover path.
 
@@ -657,7 +662,11 @@ data folder. OpenCode makes the Git worktrees its agent asks for there, so such 
 user's code, and a worktree there travels as any other worktree of the repository Git names, the
 main checkout with it. It lands as any other path does, and the destination's OpenCode finds it through
 Git once the Git import has registered it.
-Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
+Host add and host doctor check installation, login and hooks on the machine, and compare each
+agent's release there, as the companion's units run it, with this Mac's, as its own daemon reports
+it in `system.info`: a difference is a warning that names the side behind and the
+vendor's update (`claude update`, `codex update`, `opencode upgrade`), typed in the machine's
+in-app terminal when the machine is behind. Preflight reads the destination's agent logins
 afresh, blocks (`incompatible_adapter`) when an agent CLI the fleet runs is older on the destination
 than on the source, and warns (`config_difference`) when it is newer there; the warning names the
 settings, skills and MCP servers each machine keeps, which are not compared. Repository and project-local instructions travel with their filesystem

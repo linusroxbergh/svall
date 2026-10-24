@@ -8,7 +8,8 @@ not resume waiting to be retried. It never leaves both running.
 
 Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and run `svall host doctor <name>`
 (**Check** in the app): no check should fail (✗). A warning (!) about `tmux`, `gh` or `path` does not stop a handover;
-an agent your fleet runs that is missing or not logged in there does, and so does `linger` off.
+an agent your fleet runs that is missing or not logged in there does, and so do `linger` off and a `versions` warning
+about such an agent, for the move to the side behind.
 
 ## From the app
 
@@ -150,9 +151,17 @@ the other machine, so a newer release works as long as it keeps its sessions whe
 as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
 character resumes. Svall's OpenCode plugin reports the session on OpenCode's command line as it loads, so an OpenCode
 that opens a fresh session in its place still counts as up; the checks confirm the import, which leaves that session
-there to resume. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
-with Svall's hooks, as the daemon finds it. The destination's release must also be at least the source's, since an
-older one may not read what the newer wrote; a newer one only warns. A login never moves; log in on each machine.
+there to resume. A login never moves; log in on each machine.
+
+Before anything moves, the checks hold each agent the fleet runs, as each machine's daemon finds it, to this rule: the
+destination has it installed, logged in and with Svall's hooks; both machines run a release at or above those
+minimums; and the destination's release is the source's or newer, since an older one may not read what the newer
+wrote. A newer one there only warns. An agent the fleet does not run is not checked. The way back swaps the two
+machines, so a fleet that goes and comes back needs each agent at the same release on both. `svall host add` and
+`svall host doctor` (**Check**) compare each agent there with this Mac's and name the side behind with the vendor's
+update, `claude update`, `codex update` or `opencode upgrade`, which the app offers to type in the machine's terminal
+when it is behind. Each update goes to the latest release, and each CLI updates itself as releases come out, so check
+again before a handover: the other machine may then be the one behind.
 
 When a new Claude Code or Codex release comes out:
 

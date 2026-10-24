@@ -48,6 +48,8 @@ const doctorJson = (linger?: { status: string; detail: string }): string => JSON
   ],
 });
 const DOCTOR = doctorJson({ status: 'ok', detail: 'on for linus: the fleet keeps running after you log out' });
+// this Mac's agents as its own daemon names them, at the releases a healthy companion answers
+const MAC_AGENTS = [{ kind: 'claude', version: '2.1.278' }, { kind: 'codex', version: '0.156.1' }, { kind: 'opencode', version: '2.0.22' }] as const;
 
 let work: string;
 let ssh: FakeSsh;
@@ -85,6 +87,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     interactiveSsh: () => Promise.resolve({ code: 0, stderr: '' }),
     fetch: () => Promise.reject(new Error('no download in this test')),
     controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release'), signed: true },
+    localAgents: () => Promise.resolve([...MAC_AGENTS]),
     machineId: () => MAC,
     homedir: work,
     verify: (dir, id) => signer.verify(dir, id),
@@ -172,6 +175,7 @@ describe('host add', () => {
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall gateway', 'sh -c',
     ]);
+    expect(step('versions').at(-1)).toMatchObject({ status: 'ok', detail: 'claude 2.1.278, codex 0.156.1, opencode 2.0.22, as on this Mac' });
     expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on its own private fleet, its gateway authority answers, and tmux opens and closes a window there' });
     expect(step('release').at(-1)?.detail).toMatch(/^1\.2\.3 for linux-arm64 from the archive you named \(signed\)$/);
   });
@@ -252,10 +256,11 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login', run: 'claude auth login' });
-    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.156.0 or newer', action: 'ssh trift.test, then update Codex' });
-    expect(step('codex').at(-1)).not.toHaveProperty('run');
-    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: Svall needs 2.0.22 or newer', action: 'ssh trift.test, then update OpenCode' });
-    expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex', 'ssh trift.test, then update OpenCode']);
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.156.0 or newer', action: 'ssh trift.test, then codex update', run: 'codex update' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: Svall needs 2.0.22 or newer', action: 'ssh trift.test, then opencode upgrade', run: 'opencode upgrade' });
+    // one below the floor is compared no further, as its own row names the update
+    expect(step('versions').at(-1)).toMatchObject({ status: 'ok', detail: 'claude 2.1.278, as on this Mac' });
+    expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then codex update', 'ssh trift.test, then opencode upgrade']);
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
     expect(agentCalls.length).toBe(4);
     expect(agentCalls.every((w) => w[0] === 'env' && w[1] === UNIT_PATH)).toBe(true);
@@ -312,6 +317,53 @@ describe('host add', () => {
     });
     expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex, then svall setup', run: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' });
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh trift.test, then install OpenCode, then svall setup', run: 'curl -fsSL https://opencode.ai/v2/install | bash' });
+    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'no agent CLI to compare' });
+  });
+
+  it("names each agent whose release there is not this Mac's, which side is behind, and the vendor's update for it", async () => {
+    healthy({ agents: false });
+    ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.280 (Claude Code)\n' });
+    ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
+    ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.162.1-alpha.2\n' });
+    ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
+    ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.26\n' });
+    ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: '[{"id":"openai"}]\n' });
+    const mac = [{ kind: 'claude', version: '2.1.310' }, { kind: 'codex', version: '0.162.1' }, { kind: 'opencode', version: '2.0.22' }] as const;
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([...mac]) }));
+    await d.close();
+    // each machine alone is fine; only a handover between them stops
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.280 (Claude Code), logged in' });
+    const action = 'ssh trift.test, then claude update, then codex update; on this Mac, run opencode upgrade';
+    expect(step('versions').at(-1)).toEqual({
+      step: 'versions', status: 'warn',
+      detail: 'claude 2.1.280 there, behind 2.1.310 on this Mac; codex 0.162.1-alpha.2 there, behind 0.162.1 on this Mac; opencode 2.0.26 there, ahead of 2.0.22 on this Mac: a handover there and back needs the same release on both',
+      action, run: 'claude update && codex update',
+    });
+    expect(out).toEqual({ result: 'actions', actions: [action] });
+  });
+
+  it("names no update for an agent behind only on this Mac's side, as the terminal it would be typed in is the machine's", async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([{ kind: 'claude', version: '2.1.270' }]) }));
+    await d.close();
+    expect(step('versions').at(-1)).toEqual({
+      step: 'versions', status: 'warn',
+      detail: 'claude 2.1.278 there, ahead of 2.1.270 on this Mac: a handover there and back needs the same release on both', action: 'on this Mac, run claude update',
+    });
+  });
+
+  it("adds the machine without comparing when this Mac's own daemon cannot be asked", async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.reject(new Error('svalld is not running (no port file)')) }));
+    await d.close();
+    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'not compared: svalld is not running (no port file)' });
+    expect(out.result).toBe('ready');
   });
 
   it('names what Svall\'s hooks there still need, from the companion\'s own doctor, without stopping setup', async () => {
@@ -611,7 +663,7 @@ describe('host add', () => {
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
       'name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger',
-      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry',
+      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry',
     ]);
   });
 
@@ -846,6 +898,25 @@ describe('host doctor', () => {
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.map((c) => c.name)).toEqual(expect.arrayContaining(['systemd', 'linger', 'release', 'space']));
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
+  });
+
+  it("compares each agent's release, as the companion's units run it, with this Mac's, and names the update there", async () => {
+    const homes = { CLAUDE_CONFIG_DIR: `${HOME}/agents/claude` };
+    ssh.reply(['doctor', '--json'], { stdout: JSON.stringify({ ...JSON.parse(DOCTOR), daemonEnv: homes }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    const env = [UNIT_PATH, `CLAUDE_CONFIG_DIR=${homes.CLAUDE_CONFIG_DIR}`];
+    // the machine's own claude check names no command for one below Svall's floor
+    ssh.reply([...env, 'claude', '--version'], { stdout: '2.1.250 (Claude Code)\n' });
+    ssh.reply([...env, 'codex', '--version'], { stdout: 'codex-cli 0.156.1\n' });
+    const report = await doctorHost('trift', deps({ registry: registered() }));
+    expect(report.checks.find((c) => c.name === 'versions')).toEqual({
+      name: 'versions', status: 'warn',
+      detail: 'claude 2.1.250 there, behind 2.1.278 on this Mac: a handover there and back needs the same release on both; ssh trift.test, then claude update',
+      run: 'claude update',
+    });
+    // a check only reads
+    expect(ssh.remoteCalls().filter((w) => w.includes('claude')).map((w) => w.slice(-1))).toEqual([['--version']]);
   });
 
   it('says whether the machine\'s release and this controller\'s are signed, taking a release that does not say as unsigned', async () => {
