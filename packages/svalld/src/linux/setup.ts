@@ -12,7 +12,7 @@ import { writeAtomic } from '../jsonfile.js';
 import type { Runtime } from '../runtime.js';
 import { readJsonSettings } from '../settings-file.js';
 import { setupFleetHome, setupUser } from '../setup.js';
-import { SystemdError, daemonReload, enableUnit, lingerState, restartUnit, type Run } from './service.js';
+import { SystemdError, daemonReload, enableLinger, enableUnit, lingerState, restartUnit, type Run } from './service.js';
 
 export const GATEWAY_UNIT = 'svall-gateway.service';
 
@@ -161,8 +161,13 @@ async function startUnit(o: LinuxSetup, rewritten: string[]): Promise<UnitStart>
   }
   const done = [...rewritten.map((u) => `systemctl --user restart ${u}`), ...units.map((u) => `systemctl --user enable --now ${u}`)];
   try {
-    const linger = await lingerState(o.run, o.user);
-    if (!linger.linger) done.push(`the fleet stops when you log out until you run: ${linger.action}`);
+    let linger = await lingerState(o.run, o.user);
+    if (!linger.linger) {
+      // where polkit refuses, the reread still says off and the user is left the action
+      await enableLinger(o.run, o.user).catch(() => undefined);
+      linger = await lingerState(o.run, o.user);
+      done.push(linger.linger ? `loginctl enable-linger ${o.user}` : `the fleet stops when you log out until you run: ${linger.action}`);
+    }
   } catch (e) {
     done.push(`lingering could not be read: ${(e as Error).message}`);
   }

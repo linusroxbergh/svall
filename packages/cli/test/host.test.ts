@@ -158,7 +158,7 @@ describe('host add', () => {
     expect(order.slice(0, 8)).toEqual([
       'uname -sm', 'cat /etc/os-release',
       'printf "%s\\n%s\\n" "$', 'for c in "$@"; do if',
-      'tmux -V', 'rsync --version | he', 'df -Pk "$HOME"', 'loginctl show-user "',
+      'tmux -V', 'rsync --version | he', 'df -Pk "$HOME"', 'l=$(loginctl show-us',
     ]);
     expect(order.slice(8)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
@@ -462,17 +462,32 @@ describe('host add', () => {
     expect(out.result).toBe('ready');
   });
 
-  it('surfaces the enable-linger command, and the machine to run it on, when lingering is off', async () => {
-    const off = { status: 'warn', detail: 'off for linus: the fleet stops when you log out; loginctl enable-linger linus' };
-    healthy({ linger: 'Linger=no\n', doctor: doctorJson(off) });
+  it('turns lingering on where it is off, and leaves nothing to do when the system lets it', async () => {
+    healthy({ linger: 'Linger=no\nLinger=yes\n' });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('linger').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then loginctl enable-linger linus' });
-    expect(step('service').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then loginctl enable-linger linus' });
+    expect(ssh.remoteCalls().find((c) => c.includes('svall-linger'))?.join(' ')).toContain('loginctl enable-linger "$USER"');
+    expect(step('linger').at(-1)).toMatchObject({ status: 'ok', detail: 'turned on for linus: the fleet keeps running after you log out' });
+    expect(step('service').at(-1)).toMatchObject({ status: 'ok' });
+    expect(out).toEqual({ result: 'ready', actions: [] });
+  });
+
+  it('surfaces the sudo enable-linger command, and the machine to run it on, when the system refuses to turn lingering on', async () => {
+    const off = { status: 'warn', detail: 'off for linus: the fleet stops when you log out; run sudo loginctl enable-linger linus' };
+    healthy({ linger: 'Linger=no\nLinger=no\n', doctor: doctorJson(off) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('linger').at(-1)).toMatchObject({
+      status: 'warn', detail: 'off for linus, and the system refused to turn it on: the fleet stops when you log out',
+      action: 'ssh trift.test, then sudo loginctl enable-linger linus',
+    });
+    expect(step('service').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then sudo loginctl enable-linger linus' });
     // both steps name the one command, which the user is left to run once
-    expect(out).toEqual({ result: 'actions', actions: ['ssh trift.test, then loginctl enable-linger linus'] });
+    expect(out).toEqual({ result: 'actions', actions: ['ssh trift.test, then sudo loginctl enable-linger linus'] });
   });
 
   it('takes the service from a companion doctor that exits 1 over a check the service does not need', async () => {
@@ -771,9 +786,9 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=no\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     const linger = report.checks.find((c) => c.name === 'linger');
-    expect(linger).toMatchObject({ status: 'warn' });
-    expect(linger?.detail).toContain('ssh trift.test, then loginctl enable-linger linus');
-    expect(linger?.detail).not.toContain('trift:');
+    expect(linger).toMatchObject({ status: 'warn', detail: 'off for linus: the fleet stops when you log out; ssh trift.test, then sudo loginctl enable-linger linus' });
+    // a check only reads
+    expect(ssh.remoteCalls().some((c) => c.join(' ').includes('enable-linger'))).toBe(false);
   });
 
   it('reads the report a companion doctor prints before it exits 1 for a failing check', async () => {

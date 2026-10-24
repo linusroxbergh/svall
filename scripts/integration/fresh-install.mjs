@@ -6,8 +6,8 @@
 // Each folder holds one release as scripts/release-build.sh writes it: the controller tree the app carries, packed, and
 // the companion archives its manifest pins. The controller runs here, on this host, from that tree, with a home of its
 // own; the machine is a clean Ubuntu 24.04 container with systemd and sshd, an account at the controller's home path
-// and no Node. The run adds the machine with the first release (`svall host add`), turns lingering on as host add
-// asks, gives it a second fleet (`svall host enable`), checks the units run that release and nothing else, upgrades to
+// and no Node. The run adds the machine with the first release (`svall host add`), which turns lingering on, gives it
+// a second fleet (`svall host enable`), checks the units run that release and nothing else, upgrades to
 // the second release (`svall host upgrade`), then goes back with `svall setup --rollback` on the machine, checking the
 // units each time. A release that pins its companion on this host's loopback is served from its folder and downloaded,
 // as the app does; any other is named by path with --release.
@@ -243,7 +243,7 @@ function runs(label, rel, releases) {
 
 // ---------------------------------------------------------------------------------------------- the provisioning
 
-const ADVICE = new Set(['tmux', 'claude', 'codex', 'opencode', 'linger', 'service']);
+const ADVICE = new Set(['tmux', 'claude', 'codex', 'opencode']);
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'service',
   'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
 
@@ -262,27 +262,20 @@ function hostAdd(a) {
   save('host-add.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  // a fresh machine has no agents yet, lingering off and Ubuntu's tmux 3.4: each is something to go and do
+  // a fresh machine has no agents yet and Ubuntu's tmux 3.4: each is something to go and do
   for (const s of steps) check(`host add ${s.step}`, s.status === 'ok' || (s.status === 'warn' && ADVICE.has(s.step)), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   check('host add steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(ADD_STEPS), () => brief(steps.map((s) => s.step)));
   const at = (name) => steps.find((s) => s.step === name);
-  const lingerOn = `ssh fresh, then loginctl enable-linger ${USER}`;
-  check('host add linger', at('linger')?.status === 'warn' && at('linger').action === lingerOn, () => brief(at('linger')));
-  // the units run, and the service step warns only that they stop at logout
-  check('host add service', at('service')?.action === lingerOn && ADDED.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
+  check('host add linger', at('linger')?.detail?.startsWith(`turned on for ${USER}:`), () => brief(at('linger')));
+  check('host add service', at('service')?.status === 'ok' && ADDED.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
     () => brief(at('service')));
   check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
-    && JSON.stringify(result.actions) === JSON.stringify([lingerOn, 'ssh fresh, then install Claude Code', 'ssh fresh, then install Codex',
+    && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code', 'ssh fresh, then install Codex',
       'ssh fresh, then install OpenCode']), () => brief(result));
-}
-
-function linger() {
-  // the action host add named, as the user takes it on the machine
-  root(`loginctl enable-linger ${USER}`);
 }
 
 /** A second fleet whose gateway the machine is, as a handover moves one: its own daemon's unit on the machine. */
@@ -344,10 +337,7 @@ try {
   say(`   logs in ${out}; controller home ${HOME}`);
   step(`a clean Ubuntu 24.04 ${o.arch} machine, an account at the controller's home path`, machine);
   step(`host add from ${a.version}${a.served ? ', downloaded' : ', by path'}`, () => hostAdd(a));
-  step(`lingering on, as host add asks, and host enable --fleet ${FLEET}`, () => {
-    linger();
-    enable(a);
-  });
+  step(`host enable --fleet ${FLEET}`, () => enable(a));
   step('after a restart with no login, both fleets and the gateway run the release', () => {
     reboot();
     runs('added', a, [a.version]);

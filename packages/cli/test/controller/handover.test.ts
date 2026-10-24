@@ -339,7 +339,7 @@ describe('preflight', () => {
     w.infos[trift] = { linger: { user: 'ada', on: false } };
     expect(await lingering()).toEqual([{
       code: 'linger_off',
-      message: 'lingering is off for ada on trift, so the fleet with its gateway stops there when you log out and stays down after a restart until you log in; ssh trift, then loginctl enable-linger ada',
+      message: 'lingering is off for ada on trift, so the fleet with its gateway stops there when you log out and stays down after a restart until you log in; ssh trift, then sudo loginctl enable-linger ada',
     }]);
     w.infos[trift] = { linger: { user: 'ada', on: true } };
     expect(await lingering()).toEqual([]);
@@ -357,7 +357,7 @@ describe('preflight', () => {
       }) as never;
       return (await controller(w).preflight(mac, {})).blockers.filter((b) => b.code === 'linger_off').map((b) => b.message);
     };
-    expect(await lingering(trift)).toEqual([expect.stringMatching(/^lingering is off for ada on trift, so the fleet's gateway stops there .*; ssh trift, then loginctl enable-linger ada$/)]);
+    expect(await lingering(trift)).toEqual([expect.stringMatching(/^lingering is off for ada on trift, so the fleet's gateway stops there .*; ssh trift, then sudo loginctl enable-linger ada$/)]);
     // a source that is not the gateway runs nothing of the fleet once it has moved
     expect(await lingering(mac)).toEqual([]);
   });

@@ -288,18 +288,43 @@ describe('setupLinux', () => {
     expect(again.done.some((l) => l.startsWith('systemd unit ->'))).toBe(false);
   });
 
-  it('reloads and enables this fleet and the machine\'s gateway, and reports the linger action without running it', async () => {
+  it('reloads and enables this fleet and the machine\'s gateway, and turns lingering on', async () => {
     const f = installed();
-    const fake = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=no\n' });
-    const { done, started } = await setupLinux({ ...f.o, systemctl: true, run: fake.run });
+    const answers: Record<string, string> = { 'loginctl show-user linus --property=Linger': 'Linger=no\n' };
+    const fake = fakeRun(answers);
+    const run: Run = async (cmd, args) => {
+      if (args[0] === 'enable-linger') answers['loginctl show-user linus --property=Linger'] = 'Linger=yes\n';
+      return fake.run(cmd, args);
+    };
+    const { done, started } = await setupLinux({ ...f.o, systemctl: true, run });
     expect(started).toBe(true);
     expect(fake.calls.filter(([, first]) => first !== '-lic')).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
       ['systemctl', '--user', 'enable', '--now', 'svall-gateway.service'],
       ['loginctl', 'show-user', 'linus', '--property=Linger'],
+      ['loginctl', 'enable-linger', 'linus'],
+      ['loginctl', 'show-user', 'linus', '--property=Linger'],
     ]);
-    expect(done.some((l) => l.includes('loginctl enable-linger linus'))).toBe(true);
+    expect(done).toContain('loginctl enable-linger linus');
+    expect(done.some((l) => l.includes('stops when you log out'))).toBe(false);
+  });
+
+  it('names the sudo command when the system refuses to let the account linger, and tries nothing where loginctl cannot be read', async () => {
+    const f = installed();
+    const refused = fakeRun({
+      'loginctl show-user linus --property=Linger': 'Linger=no\n',
+      'loginctl enable-linger linus': Object.assign(new Error('exit 1'), { stderr: 'Could not enable linger: Access denied\n' }),
+    });
+    const { done, started } = await setupLinux({ ...f.o, systemctl: true, run: refused.run });
+    expect(started).toBe(true);
+    expect(refused.calls.filter(([cmd]) => cmd === 'loginctl').map(([, verb]) => verb)).toEqual(['show-user', 'enable-linger', 'show-user']);
+    expect(done).toContain('the fleet stops when you log out until you run: sudo loginctl enable-linger linus');
+
+    const unread = fakeRun({ 'loginctl show-user linus --property=Linger': Object.assign(new Error('exit 1'), { stderr: 'Failed to connect to bus: No medium found\n' }) });
+    const again = await setupLinux({ ...f.o, systemctl: true, run: unread.run });
+    expect(unread.calls.some(([cmd, verb]) => cmd === 'loginctl' && verb === 'enable-linger')).toBe(false);
+    expect(again.done.some((l) => l.startsWith('lingering could not be read:'))).toBe(true);
   });
 
   it('restarts a unit it rewrote, which enable --now would leave running on the file it started from', async () => {
@@ -514,7 +539,7 @@ describe('systemctl and loginctl wrappers', () => {
 
   it('reads linger and names the exact action, never running it', async () => {
     const off = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=no\n' });
-    expect(await lingerState(off.run, 'linus')).toEqual({ user: 'linus', linger: false, action: 'loginctl enable-linger linus' });
+    expect(await lingerState(off.run, 'linus')).toEqual({ user: 'linus', linger: false, action: 'sudo loginctl enable-linger linus' });
     expect(off.calls).toEqual([['loginctl', 'show-user', 'linus', '--property=Linger']]);
 
     const on = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });

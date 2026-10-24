@@ -10,7 +10,7 @@ machine needs, how to add it, and how to look after it.
 | --- | --- | --- |
 | System | macOS 15 or newer | Ubuntu LTS, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and any other system is refused. |
 | Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and needs no clone, pnpm or build tools. |
-| Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out |
+| Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
 | Tools | tmux, Git | tmux 3.x, Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install tmux git rsync`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
 | Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
@@ -67,7 +67,8 @@ Both run the same steps and show each as it finishes:
 1. **Reaching the machine.** One interactive ssh, so you can accept the host key and log in, then one control
    connection for the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
 2. **What the machine needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
-   Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering.
+   Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering,
+   which it turns on where it is off.
 3. **Svall on the machine.** The Linux release matching this Mac's own release, checked against the digest this
    Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
 4. **Running Svall there.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
@@ -86,8 +87,9 @@ and never copies a login, so these are yours:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
-- Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out, and a
-  handover to the machine stops at its checks until it is on.
+- Lingering the system would not turn on: `ssh ada@studio, then sudo loginctl enable-linger ada`. Svall turns it on
+  itself where polkit lets an account do so, as on Ubuntu Server; a machine without polkit refuses. Without it the
+  fleet stops when you log out, and a handover to the machine stops at its checks until it is on.
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
   `opencode auth login`. OpenCode runs OpenCode Zen's free models with no login. A handover to the machine needs a
   model provider's login or key there, as `opencode auth list` shows, unless OpenCode on the machine the fleet comes

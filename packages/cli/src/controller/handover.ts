@@ -167,7 +167,7 @@ function differences(source: Side, a: SystemInfo, destination: Side, b: SystemIn
 /** A Linux machine that will run `what` of the fleet, whose account stops its services at logout and starts them again only at a login. */
 function lingerOff(side: Side, info: SystemInfo, what: string): Blocker[] {
   if (info.linger?.on !== false) return [];
-  const run = `loginctl enable-linger ${info.linger.user}`;
+  const run = `sudo loginctl enable-linger ${info.linger.user}`;
   return [{
     code: 'linger_off',
     message: `lingering is off for ${info.linger.user} on ${side.route.name}, so ${what} stops there when you log out and stays down after a restart until you log in; ${side.route.ssh ? `ssh ${side.route.ssh}, then ${run}` : `run ${run}`}`,

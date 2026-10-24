@@ -172,13 +172,18 @@ function spaceProbe(df: string): Outcome<number> {
     : { value: free, detail: `${gib} GiB free on the remote home` };
 }
 
+const LINGER = 'loginctl show-user "$USER" -p Linger';
+// lingering read, and where it is off turned on and read again: polkit lets an account do that without sudo on a stock systemd
+const SELF_LINGER = `l=$(${LINGER}) || exit; echo "$l"; [ "$l" = Linger=yes ] && exit; loginctl enable-linger "$USER" >/dev/null 2>&1; ${LINGER}; exit 0`;
+
 function lingerProbe(out: string, user: string, destination: string): Outcome<boolean> {
-  const on = /^Linger=yes$/m.test(out.trim());
-  return on
-    ? { value: true, detail: `on for ${user}: the fleet keeps running after you log out` }
+  const said = out.trim().split('\n');
+  const tried = said.length > 1;
+  return said.at(-1) === 'Linger=yes'
+    ? { value: true, detail: `${tried ? 'turned on' : 'on'} for ${user}: the fleet keeps running after you log out` }
     : {
-      value: false, status: 'warn', detail: `off for ${user}: the fleet stops when you log out`,
-      action: onThere(destination, `loginctl enable-linger ${user}`),
+      value: false, status: 'warn', detail: `off for ${user}${tried ? ', and the system refused to turn it on' : ''}: the fleet stops when you log out`,
+      action: onThere(destination, `sudo loginctl enable-linger ${user}`),
     };
 }
 
@@ -213,7 +218,7 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
     return unit.detail;
   });
   const linger = named('linger');
-  const command = linger?.status === 'warn' ? /loginctl enable-linger \S+/.exec(linger.detail)?.[0] : undefined;
+  const command = linger?.status === 'warn' ? /(?:sudo )?loginctl enable-linger \S+/.exec(linger.detail)?.[0] : undefined;
   const action = command ? onThere(destination, command) : undefined;
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
@@ -389,7 +394,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           : { value: undefined, detail: line };
       });
       await run.step('space', async () => spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME')));
-      await run.step('linger', async () => lingerProbe(await probe(master, sh('svall-linger', 'loginctl show-user "$USER" -p Linger'), 'loginctl show-user'), user, o.ssh));
+      await run.step('linger', async () => lingerProbe(await probe(master, sh('svall-linger', SELF_LINGER), 'loginctl show-user'), user, o.ssh));
 
       const companion = await run.step('release', () => companionFor(o, d, arch));
       const remote = remotePaths(home, companion.version);
@@ -509,7 +514,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     } catch (err) { checks.push(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {
       try {
-        const out = await probe(master, sh('svall-linger', 'loginctl show-user "$USER" -p Linger'), 'loginctl show-user');
+        const out = await probe(master, sh('svall-linger', LINGER), 'loginctl show-user');
         checks.push({ name: 'linger', ...pick(lingerProbe(out, far.user, entry.record.ssh)) });
       } catch (err) { checks.push(failed('linger', err)); }
     }
