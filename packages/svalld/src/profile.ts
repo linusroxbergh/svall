@@ -60,5 +60,5 @@ export function profileOf(home: string, homedir = os.homedir()): string {
  *  any other fleet, which keeps HOME_CWD. */
 export function profileHomeCwd(home: string, homedir = os.homedir()): string | undefined {
   const name = profileOf(home, homedir);
-  return name !== PRIVATE && path.resolve(home) === profileHome(name, homedir) ? `~/${path.basename(home)}/home` : undefined;
+  return name !== PRIVATE && isProfileName(name) && path.resolve(home) === profileHome(name, homedir) ? `~/${path.basename(home)}/home` : undefined;
 }

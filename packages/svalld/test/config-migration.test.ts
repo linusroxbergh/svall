@@ -332,6 +332,10 @@ describe('a fleet with nothing to split', () => {
       expect(read(p.fleetConfig).home).toBeUndefined();
       expect(loadConfig(p).home.cwd).toBe('~/.svall/home');
     }
+    const away = resolvePaths(path.join(makeHome(), '.svall-away'));
+    fs.mkdirSync(away.home);
+    initConfig(away);
+    expect(read(away.fleetConfig).home).toBeUndefined();
     const split = resolvePaths(legacyHome(LEGACY, 'old'));
     vi.stubEnv('HOME', path.dirname(split.home));
     expect(loadConfig(split).home.cwd).toBe('~/.svall/home');

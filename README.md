@@ -377,7 +377,7 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 | `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
 | `agentsOff` | `node.json` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
 | `integrations` | `node.json` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
-| `home` | `fleet.json` | Mission control: `cwd` for its crew (`~/.svall/home` unless set; a fleet `svall -p <name>` makes gets `~/.svall-<name>/home` here), the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
+| `home` | `fleet.json` | Mission control: `cwd` for its crew (`~/.svall/home` unless set; a new profile fleet in `~/.svall-<name>` gets `~/.svall-<name>/home` here), the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
 | `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode). |
 | `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
 | `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |
@@ -390,15 +390,16 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
   logs why and waits for it to change; `svall doctor` shows the error too.
 - Mission control's folder, `home.cwd`, is rewritten on each daemon start from
   that fleet's release, apart from `CLAUDE.md`, which is yours, and
-  `.claude/settings.json`, which only `svall setup` resets, keeping a `.bak`
-  copy. A Codex crew reads your `CLAUDE.md` through the `AGENTS.md` built from
-  it. The skills behind the buttons live there too; list `/svall-organise` or
-  `/svall-rename` in `home.actions` to give them a button. Claude Code and
-  Codex each ask once whether to trust the folder. Fleets whose `fleet.json`
-  names no `home.cwd` share `~/.svall/home`, and a fleet that shares its folder
-  cannot be handed over: set `home.cwd` in one's `fleet.json`, such as
-  `~/.svall-work/home`, to give it its own. Its crew already open keeps working
-  in the old folder, so copy over any notes you want in the new one.
+  `.claude/settings.json`, which only `svall setup` resets, in the private
+  fleet's folder, keeping a `.bak` copy. A Codex crew reads your `CLAUDE.md`
+  through the `AGENTS.md` built from it. The skills behind the buttons live
+  there too; list `/svall-organise` or `/svall-rename` in `home.actions` to give
+  them a button. Claude Code and Codex each ask once whether to trust the
+  folder. Fleets whose `fleet.json` names no `home.cwd` share `~/.svall/home`,
+  and a fleet that shares its folder cannot be handed over: set `home.cwd` in
+  one's `fleet.json` to give it its own, such as `~/.svall-work/home` for the
+  fleet in `~/.svall-work`. Its crew already open keeps working in the old
+  folder, so copy over any notes you want in the new one.
 - The daemon runs under launchd, without your shell's environment. The fleet's
   `.env` gives the Claude scribe every value in it, and gives new character
   shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
@@ -465,8 +466,8 @@ also writes:
   fleet, which the app uses to start each daemon.
 - `~/.local/bin/svall`: a shim into `Svall.app`.
 - `~/.svall` and `~/.svall-<name>`: each fleet's state, config, log, hook
-  scripts and tmux server; `~/.svall/home` is the private fleet's mission
-  control folder, and `~/.svall-<name>/home` another fleet's.
+  scripts and tmux server; mission control's folder is `~/.svall/home` unless
+  `home.cwd` names another, and a new profile fleet's is `~/.svall-<name>/home`.
 
 Svall Dev writes the same under `.svall-dev`, `svall-dev` and
 `io.github.linusroxbergh.svall.dev.svalld*`, and neither variant's hook acts on

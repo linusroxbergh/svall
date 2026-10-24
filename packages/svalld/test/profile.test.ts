@@ -45,7 +45,7 @@ describe('profile', () => {
   it("puts a profile's mission control in its own fleet home, and names none for the private fleet or another home", () => {
     expect(profileHomeCwd('/u/.svall-work', '/u')).toBe('~/.svall-work/home');
     expect(profileHomeCwd('/u/.svall-work/', '/u')).toBe('~/.svall-work/home');
-    for (const other of ['/u/.svall', '/tmp/.svall-work', '/u/fleet']) expect(profileHomeCwd(other, '/u')).toBeUndefined();
+    for (const other of ['/u/.svall', '/tmp/.svall-work', '/u/fleet', '/u/.svall-dev', '/u/.svall-Work', '/u/.svall-host']) expect(profileHomeCwd(other, '/u')).toBeUndefined();
   });
 
   it('names the profile a home belongs to', () => {

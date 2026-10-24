@@ -85,7 +85,10 @@ describe('provisionFleet', () => {
   it('creates an absent fleet home with the fleet\'s id and gateway, and starts its unit on it', async () => {
     const f = far('work');
     expect(await provisionFleet(f.o)).toEqual({ outcome: 'created', home: f.home, unit: f.unit });
-    expect(fleetOf(f)).toMatchObject({ id: FLEET, gatewayMachineId: GATEWAY });
+    expect(fleetOf(f)).toMatchObject({ id: FLEET, gatewayMachineId: GATEWAY, home: { cwd: '~/.svall-work/home' } });
+    const own = far();
+    await provisionFleet(own.o);
+    expect(fleetOf(own)).toMatchObject({ home: { cwd: '~/.svall/home' } });
     // a profile beside the private fleet takes a port of its own
     expect(JSON.parse(fs.readFileSync(f.paths.nodeConfig, 'utf8'))).toMatchObject({ port: 0 });
     expect(fs.existsSync(f.paths.hookScript)).toBe(true);

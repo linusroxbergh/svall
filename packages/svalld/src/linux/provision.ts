@@ -7,7 +7,7 @@ import { writeJsonAtomic } from '../atomic.js';
 import { DurableJson } from '../handover/durable.js';
 import { OwnerCache } from '../ownership/state.js';
 import { resolvePaths, type Paths } from '../paths.js';
-import { PRIVATE } from '../profile.js';
+import { PRIVATE, profileHomeCwd } from '../profile.js';
 import { installHomeTemplate, setupFleetHome } from '../setup.js';
 import { fleetHomes } from '../uninstall.js';
 import { daemonReload, enableUnit, restartUnit, stopUnit, type Run } from './service.js';
@@ -124,7 +124,8 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   const absent = ![paths.fleetConfig, paths.legacyConfig, paths.state, paths.owner, paths.journal].some((f) => fs.existsSync(f));
   if (absent) {
     fs.mkdirSync(o.home, { recursive: true, mode: 0o700 });
-    writeJsonAtomic(paths.fleetConfig, FleetConfig.parse({ id: o.fleetId, gatewayMachineId: o.gatewayMachineId }));
+    const cwd = profileHomeCwd(o.home, o.homedir);
+    writeJsonAtomic(paths.fleetConfig, FleetConfig.parse({ id: o.fleetId, gatewayMachineId: o.gatewayMachineId, ...(cwd && { home: { cwd } }) }));
     return { outcome: 'created', home: o.home, unit: await run() };
   }
   const fleet = readJson(paths.fleetConfig);
