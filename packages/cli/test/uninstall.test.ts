@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { bundleRuntime, releaseRuntime } from '@svall/svalld/runtime';
 import { UninstallRefused } from '@svall/svalld/uninstall';
-import { uninstall, uninstallCommand, type UninstallDeps } from '../src/commands/uninstall.js';
+import { keptLine, uninstall, uninstallCommand, type UninstallDeps } from '../src/commands/uninstall.js';
 import { REFUSED } from '../src/controller/host.js';
 
 function fake(o: { answer?: string; isTTY?: boolean; data?: string[] } = {}) {
@@ -51,6 +52,13 @@ describe('uninstall', () => {
     const f = fake({ data: [] });
     expect(await uninstall({ purge: false }, f.deps)).toEqual({ done: ['removed /u/.local/bin/svall'], kept: [] });
     expect(f.prompts).toEqual([]);
+  });
+
+  it('says how to delete what it kept with a command that is still there', () => {
+    expect(keptLine(['/u/.svall', '/u/.svall-work'], releaseRuntime('/u/.local/share/svall/current')))
+      .toBe("kept /u/.svall, /u/.svall-work; rm -rf '/u/.svall' '/u/.svall-work' deletes them");
+    expect(keptLine(['/u/.svall'], bundleRuntime('/Applications/Svall.app')))
+      .toBe("kept /u/.svall; '/Applications/Svall.app/Contents/Helpers/node' '/Applications/Svall.app/Contents/Resources/runtime/svall.mjs' uninstall --purge deletes them");
   });
 });
 
