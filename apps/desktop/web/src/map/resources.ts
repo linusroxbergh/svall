@@ -1,8 +1,8 @@
 import { theme } from '../theme.js';
 
-// the islet's land: five cells by two and a half, 80px of it above the bottom edge, the tower's footing 36px up that,
+// the islet's land: five and a half cells by two and three quarters, 88px of it above the bottom edge, the tower's footing 40px up that,
 // a cell of water from home, a margin from the map's side
-export const ISLET = { w: 5 * theme.cell, h: 2.5 * theme.cell, visible: 80, foot: 36, gap: theme.cell, margin: 26 };
+export const ISLET = { w: 5.5 * theme.cell, h: 2.75 * theme.cell, visible: 88, foot: 40, gap: theme.cell, margin: 26 };
 
 // what a map too narrow for the pair gives up first: the water between the two, then the side margins
 const TIGHT = { gap: 6, margin: 8 };
