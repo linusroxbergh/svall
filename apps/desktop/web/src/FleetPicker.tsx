@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fleetNameProblem, type FleetEntry } from '@svall/protocol';
 import { app } from './boot.js';
 import { shim } from './bridge.js';
+import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
@@ -72,7 +73,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
           if (e.key === 'Enter') e.stopPropagation();
           if (e.key === 'Escape') { e.stopPropagation(); close(); }
         }}>
-        <div className="kicker">Fleets</div>
+        <div className="kicker">Fleets<CloseX onClose={close} testid="fleet-picker-close" /></div>
         {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
         {away && <div className="modal-note" data-testid="fleet-picker-away">This fleet runs on {away}; open other fleets from a window of a fleet on this Mac.</div>}
         {listError && <div className="fleet-error">{listError}</div>}

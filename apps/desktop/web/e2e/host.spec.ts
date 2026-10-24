@@ -52,9 +52,9 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await page.getByTestId('machine-add').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
   // before any run, what the machine needs
-  await expect(page.getByTestId('host-intro')).toContainText('whose home need not be yours on this Mac');
+  await expect(page.getByTestId('host-intro')).toContainText('An account you reach over ssh, with any home');
   // the app carries the x86-64 and arm64 companions
-  await expect(page.getByTestId('host-intro')).toContainText('on x86-64 or arm64');
+  await expect(page.getByTestId('host-intro')).toContainText('x86-64 or arm64');
   await expect(page.getByTestId('host-intro')).not.toContainText('--release');
 
   // a name the registry would refuse never reaches the shell
@@ -214,8 +214,11 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding. Port 1455 on this Mac is taken');
   await panel.getByTestId('host-terminal-again').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show')).toHaveLength(3);
+  // Done goes back to the checks, which look again, and the panel stays
   await panel.getByTestId('host-terminal-done').click();
   await expect.poll(async () => (await sent(page)).slice(-2)).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
+  await expect(panel.getByTestId('host-terminal')).toHaveCount(0);
+  await expect(panel.getByTestId('host-steps')).toBeVisible();
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
   // a plain terminal types nothing, and closing the panel closes it and checks the machine again
@@ -241,7 +244,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
 
   await row.getByTestId('machine-remove').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'remove');
-  await expect(page.getByTestId('host-confirm')).toContainText('uninstalls Svall there');
+  await expect(page.getByTestId('host-confirm')).toContainText('uninstalls Svall on studio');
   expect(await starts()).toEqual([]);
   await page.getByTestId('host-confirm-no').click();
   await expect(page.getByTestId('host-confirm')).toHaveCount(0);
@@ -259,6 +262,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await page.getByTestId('host-close').click();
   await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
+  await expect(page.getByTestId('host-confirm')).toContainText('Svall stays installed there');
   expect(await starts()).toHaveLength(1);
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio', forget: true } });

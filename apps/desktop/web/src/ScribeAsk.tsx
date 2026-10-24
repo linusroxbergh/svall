@@ -3,6 +3,7 @@ import { AGENT_LABEL, fleetNameProblem, type AgentKind } from '@svall/protocol';
 import { renameFleet, setMainAgent, setScribe } from './actions.js';
 import { deps } from './boot.js';
 import { shim } from './bridge.js';
+import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
@@ -29,7 +30,7 @@ function NameAsk({ skip }: { skip(): void }) {
           if (e.key === 'Enter') e.stopPropagation();
           if (e.key === 'Escape') { e.stopPropagation(); skip(); }
         }}>
-        <div className="kicker">Your fleet</div>
+        <div className="kicker">Your fleet<CloseX onClose={skip} testid="fleet-name-close" /></div>
         <div className="modal-name">Name this fleet</div>
         <input className="fld" autoFocus placeholder="private" aria-label="Fleet name" value={name} data-testid="fleet-name-input" {...AS_TYPED}
           onChange={(e) => { setName(e.target.value.trim()); setError(undefined); }} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
@@ -71,7 +72,7 @@ export function ScribeAsk() {
           if (e.key === 'Enter') e.stopPropagation();
           if (e.key === 'Escape') { e.stopPropagation(); void answer(false); }
         }}>
-        <div className="kicker">Scribe</div>
+        <div className="kicker">Scribe<CloseX onClose={() => void answer(false)} testid="scribe-ask-close" /></div>
         <div className="modal-name">Keep names and notes up to date?</div>
         <div className="modal-note">Runs a headless {AGENT_LABEL[scribeAgent]} call after an agent stops, which may cost API credits.</div>
         {found.length > 1 && (

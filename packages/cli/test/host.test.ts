@@ -1580,6 +1580,12 @@ describe('host remove', () => {
     expect(registry.get('trift')).toBeUndefined();
   });
 
+  it('names the machine on the line the far uninstall ends with, whose rm -rf is for that machine', async () => {
+    ssh.reply(['uninstall'], { stdout: `removed ${BASE}/current\nkept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them\n` });
+    await removeHost('trift', {}, deps({ registry: registered('trift.test') }));
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'ok', detail: `on trift.test: kept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them` });
+  });
+
   it('uninstalls nothing on a machine that answers as another than the registry names, as an alias that now leads elsewhere', async () => {
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
     ssh.reply(['uninstall'], { stdout: 'removed\n' });

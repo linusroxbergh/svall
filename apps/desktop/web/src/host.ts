@@ -93,6 +93,9 @@ export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, runnin
 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
+/** An add is done once its machine is in the registry, whatever it left to do; a stopped one never got there. */
+export const added = (run: HostRun): boolean => run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok');
+
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
@@ -137,8 +140,7 @@ export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list, ...rollback };
-  // an add is done once its machine is in the registry, whatever it left to do; a stopped one never got there
-  if (run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok')) {
+  if (added(run)) {
     return { text: `${name} is added${actions.length ? '; still to do:' : theGateway ? ': ready for handover' : ''}`, ...list, ...onward };
   }
   if (run.code !== 0) return { text: actions.length ? 'still to do:' : `${OP_TITLE[run.op]} ended with exit ${run.code}`, ...list, ...rollback };

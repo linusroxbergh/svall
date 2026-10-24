@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { app } from './boot.js';
+import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
 import { badgeOf } from './handover.js';
 import { useApp } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
 import { LoadPanel } from './LoadPanel.js';
-import { MobilePanel } from './PhonePanel.js';
+import { MobilePanel, MobileSwitch } from './PhonePanel.js';
 import { UsagePanel } from './Usage.js';
 
 // the glyphs share one 24-square and stroke weight
@@ -135,7 +136,13 @@ export function UtilityDock() {
         // the load reads anew every few seconds, which a live region would announce each time
         <div className="use-panel popover" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : 'mobile-panel'}
           data-load={loadOpen || undefined} aria-live={loadOpen ? 'off' : 'polite'}>
-          {usageOpen ? <><div className="use-panel-title">Plan usage</div><UsagePanel /></> : loadOpen ? <><div className="use-panel-title">Load</div><LoadPanel /></> : <MobilePanel />}
+          <div className="use-panel-title">
+            <span>{usageOpen ? 'Plan usage' : loadOpen ? 'Load' : 'Phone link'}</span>
+            {mobileOpen && <MobileSwitch testId="mobile-switch" />}
+            {/* closing any one of the three closes whichever is open */}
+            <CloseX onClose={() => app.store.getState().toggleUsage(false)} testid="corner-panel-close" />
+          </div>
+          {usageOpen ? <UsagePanel /> : loadOpen ? <LoadPanel /> : <MobilePanel />}
         </div>
       )}
     </div>

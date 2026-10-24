@@ -56,7 +56,7 @@ test('drives the app with the Cmd chords', async ({ page, svall }) => {
   await expect(card).toHaveCount(0);
 });
 
-test('Cmd+W asks before deleting: Esc and Cancel keep the character, Delete removes it', async ({ page, svall }) => {
+test('Cmd+W asks before deleting: Esc, Cancel and × keep the character, Delete removes it', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('confirm') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'kc' });
   await svall.open('map');
@@ -72,6 +72,14 @@ test('Cmd+W asks before deleting: Esc and Cancel keep the character, Delete remo
 
   await page.keyboard.press('Meta+w');
   await page.getByTestId('confirm-close-cancel').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(token).toBeVisible();
+
+  // Enter presses the × it reached, which keeps the character too
+  await page.keyboard.press('Meta+w');
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByTestId('confirm-close-close')).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
   await expect(token).toBeVisible();
 
