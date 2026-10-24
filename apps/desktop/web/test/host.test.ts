@@ -160,7 +160,7 @@ describe('the attended checklist', () => {
       ['Reaching the machine', ['ssh', 'master']],
       ['What the machine needs', ['rsync']],
       ['Svall on the machine', ['release', 'tmux']],
-      ['Agent logins', ['claude', 'codex', 'opencode', 'versions']],
+      ['Agent CLIs', ['claude', 'codex', 'opencode', 'versions']],
       ['Trying it out', ['probe']],
     ]);
   });

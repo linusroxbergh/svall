@@ -47,8 +47,8 @@ export type HostDeps = {
   interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
   fetch: FetchLike;
   controller: { release: string; protocol: number; releaseRoot: string; signed: boolean };
-  /** this Mac's agent CLIs, as its own fleet's daemon finds them for a handover; undefined when it cannot be asked */
-  localAgents(): Promise<{ kind: AgentKind; version?: string }[] | undefined>;
+  /** this Mac's agent CLIs, as its own fleet's daemon finds them for a handover; rejects when it cannot be asked */
+  localAgents(): Promise<{ kind: AgentKind; version?: string }[]>;
   /** this Mac's own id: the owner a fleet's first authority record names */
   machineId(): MachineId;
   homedir: string;
@@ -311,13 +311,13 @@ async function farVersions(call: AgentCall): Promise<FarVersions> {
  * Each agent CLI on both machines at the same release: a handover goes only to a machine whose release of each agent the
  * fleet runs is at least the source's, so there and back needs the same. The side behind is named with its update.
  */
-function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: string }[] | undefined, destination: string): Outcome<void> {
-  if (!mine) return { value: undefined, status: 'skip', detail: "not compared: this Mac's own svalld could not be asked" };
+function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: string }[] | Error, destination: string): Outcome<void> {
+  if (mine instanceof Error) return { value: undefined, status: 'skip', detail: `not compared: ${mine.message}` };
   const both = AGENT_KINDS.flatMap((kind) => {
     const [there, here] = [versionOf(far[kind] ?? ''), mine.find((m) => m.kind === kind)?.version];
     return there && here ? [{ kind, there, here, order: compareVersions(there, here) ?? 0 }] : [];
   });
-  if (!both.length) return { value: undefined, status: 'skip', detail: 'no agent CLI is on both machines' };
+  if (!both.length) return { value: undefined, status: 'skip', detail: 'no agent CLI to compare' };
   const apart = both.filter((b) => b.order !== 0);
   if (!apart.length) return { value: undefined, detail: `${both.map((b) => `${b.kind} ${b.there}`).join(', ')}, as on this Mac` };
   const updates = (order: number) => apart.filter((b) => b.order === order).map((b) => AGENTS[b.kind].updateCommand);
@@ -498,7 +498,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       });
 
       const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report }, run);
-      await run.step('versions', async () => versionsOutcome(versions, await d.localAgents(), o.ssh));
+      await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
 
       const record: MachineRecord = {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
@@ -571,7 +571,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     } catch (err) { checks.push(failed('release', err)); }
     try {
       const far = await farVersions(agentCall(master, { home: entry.record.home, svallBase: base, report }));
-      checks.push({ name: 'versions', ...pick(versionsOutcome(far, await d.localAgents(), entry.record.ssh)) });
+      checks.push({ name: 'versions', ...pick(versionsOutcome(far, await d.localAgents().catch((err: Error) => err), entry.record.ssh)) });
     } catch (err) { checks.push(failed('versions', err)); }
     try {
       checks.push({ name: 'space', ...pick(spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME'))) });

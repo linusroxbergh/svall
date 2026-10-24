@@ -43,7 +43,7 @@ const PHASES = [
   // the tmux the units start, which the release installed carries
   { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'tmux', 'uninstall'] },
   { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'authority', 'fleet'] },
-  { phase: 'agents', label: 'Agent logins', steps: ['claude', 'codex', 'opencode', 'versions'] },
+  { phase: 'agents', label: 'Agent CLIs', steps: ['claude', 'codex', 'opencode', 'versions'] },
   // an upgrade puts the release before back when its probe fails
   { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback'] },
   // an add writes the registry after its final probe, and a removal after its uninstall

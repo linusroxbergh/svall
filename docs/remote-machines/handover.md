@@ -159,9 +159,9 @@ minimums; and the destination's release is the source's or newer, since an older
 wrote. A newer one there only warns. An agent the fleet does not run is not checked. The way back swaps the two
 machines, so a fleet that goes and comes back needs each agent at the same release on both. `svall host add` and
 `svall host doctor` (**Check**) compare each agent there with this Mac's and name the side behind with the vendor's
-update, `claude update`, `codex update` or `opencode upgrade`, which the app types in the machine's terminal. Each
-update goes to the latest release, and each CLI updates itself as releases come out, so check again before a
-handover: the other machine may then be the one behind.
+update, `claude update`, `codex update` or `opencode upgrade`, which the app offers to type in the machine's terminal
+when it is behind. Each update goes to the latest release, and each CLI updates itself as releases come out, so check
+again before a handover: the other machine may then be the one behind.
 
 When a new Claude Code or Codex release comes out:
 

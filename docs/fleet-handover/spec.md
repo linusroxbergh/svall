@@ -663,8 +663,8 @@ user's code, and a worktree there travels as any other worktree of the repositor
 main checkout with it. It lands as any other path does, and the destination's OpenCode finds it through
 Git once the Git import has registered it.
 Host add and host doctor check installation, login and hooks on the machine, and compare each
-agent's release there, as the companion's units run it, with this Mac's, as its private fleet's
-daemon reports it in `system.info`: a difference is a warning that names the side behind and the
+agent's release there, as the companion's units run it, with this Mac's, as its own daemon reports
+it in `system.info`: a difference is a warning that names the side behind and the
 vendor's update (`claude update`, `codex update`, `opencode upgrade`), typed in the machine's
 in-app terminal when the machine is behind. Preflight reads the destination's agent logins
 afresh, blocks (`incompatible_adapter`) when an agent CLI the fleet runs is older on the destination

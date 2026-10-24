@@ -54,7 +54,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string): HostDeps {
     interactiveSsh,
     fetch: (url) => fetch(url),
     controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot(), signed: releaseSigned() },
-    localAgents: () => withClient(() => Client.connect(), async (c) => (await c.call('system.info', {})).agentAdapters).catch(() => undefined),
+    localAgents: () => withClient(() => Client.connect(), async (c) => (await c.call('system.info', {})).agentAdapters),
     machineId: () => machineId(dir),
     homedir: os.homedir(),
     verify: sshVerify({ allowedSigners: controllerSigners() }),

@@ -69,7 +69,7 @@ Both run the same steps and show each as it finishes:
    Mac's release pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there,
    and the tmux it brings checked.
 4. **Running Svall there.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
-5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
+5. **Agent CLIs.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
    own `svall doctor` finds them. Each agent is asked on the `PATH` and with the `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and

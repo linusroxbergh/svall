@@ -317,7 +317,7 @@ describe('host add', () => {
     });
     expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex, then svall setup', run: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' });
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh trift.test, then install OpenCode, then svall setup', run: 'curl -fsSL https://opencode.ai/v2/install | bash' });
-    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'no agent CLI is on both machines' });
+    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'no agent CLI to compare' });
   });
 
   it("names each agent whose release there is not this Mac's, which side is behind, and the vendor's update for it", async () => {
@@ -360,9 +360,9 @@ describe('host add', () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve(undefined) }));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.reject(new Error('svalld is not running (no port file)')) }));
     await d.close();
-    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: "not compared: this Mac's own svalld could not be asked" });
+    expect(step('versions').at(-1)).toMatchObject({ status: 'skip', detail: 'not compared: svalld is not running (no port file)' });
     expect(out.result).toBe('ready');
   });
 
