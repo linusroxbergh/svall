@@ -206,6 +206,7 @@ logs.
      the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
      caches it. The release step names that URL, and the cached file is the pinned companion.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
+   - Either way, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, and Claude Code, Codex and OpenCode not
      installed. The linger step turns lingering on.
    - The result lists exactly three things to do: the three installs.
@@ -217,6 +218,8 @@ logs.
    - `current` and `~/.local/bin/svall` lead to that release.
    - There is no `node` outside the releases and no `pnpm-workspace.yaml` anywhere.
    - `svall host doctor` fails nothing, and its systemd, gateway, linger, svalld, release and home checks are `ok`.
+     The release check names the release the machine runs and whether the machine reports it signed, as the
+     manifest does.
 6. **`svall host upgrade`** from the second release's controller, by the same route rule as step 3: every step is
    `ok`, there is no rollback, and step 5's checks pass against the second release, with both releases kept.
 7. **`svall setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, all three
