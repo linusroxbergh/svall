@@ -356,7 +356,7 @@ shows it once a fleet turns it on with `"handover": { "enabled": true }` in its
 `fleet.json`; the `svall host`, `svall handover`, `svall gateway` and
 `svall fleet recover` commands work either way.
 [docs/remote-machines](docs/remote-machines/README.md) covers the
-machine it needs (Ubuntu, with the same home path as your Mac), adding it with
+machine it needs (Ubuntu, at any account you reach with ssh), adding it with
 `svall host add`, moving the fleet with `svall handover`, and what to do when a
 handover stops part way.
 

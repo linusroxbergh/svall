@@ -8,7 +8,7 @@ import {
   type Blocker, type FleetState as State, type GitCheckout, type GitGraph, type MachineId, type Warning,
 } from '@svall/protocol';
 import { discoverGit } from '../../src/handover/git-graph.js';
-import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, homeCommands, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
+import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
 import { exportSnapshot, NOT_BOUND, NOT_PATHS, PATH_FIELDS, portablePathValues } from '../../src/handover/portable-path.js';
 import { relocationProblem } from '../../src/handover/relocate.js';
 import { git, hasGit } from './git-fixture.js';
@@ -259,18 +259,6 @@ describe('buildInventory', () => {
     expect(inv.blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'character', id: 'w2' } })]);
   });
 
-  it('blocks a destination whose home is not this machine\'s, naming the commands that make one that is', () => {
-    const s = seed();
-    s.maps.destination.home = '/home/linus';
-    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-    expect([inv.home, inv.destinationHome]).toEqual([s.mac, '/home/linus']);
-    expect(inv.blockers).toEqual([{
-      code: 'home_mismatch',
-      message: `the destination's home is /home/linus and this machine's ${s.mac}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(s.mac)}; then svall host remove <name>, svall host add at that account, and svall host enable <name> --fleet <fleet>`,
-    }]);
-    expect(homeCommands("/Users/Linus's")).toBe("sudo mkdir -p /Users, then sudo useradd -m -d '/Users/Linus'\\''s' <user> for a new account, or sudo usermod -d '/Users/Linus'\\''s' -m <user> for an existing one you are not logged in as");
-  });
-
   describe('between accounts with different homes', () => {
     // the destination's home, and where a path of this home lands there
     const away = (s: ReturnType<typeof seed>): { linux: string; at: (p: string) => string } => {
@@ -278,7 +266,6 @@ describe('buildInventory', () => {
       s.maps.destination = { ...s.maps.destination, home: linux, fleetHome: path.join(linux, '.svall') };
       return { linux, at: (p) => path.join(linux, path.relative(s.mac, p)) };
     };
-    const moved = (blockers: Blocker[]): Blocker[] => blockers.filter((b) => b.code !== 'home_mismatch');
 
     it('carries the docs, agent profiles and fleet .env to where the destination\'s fleet home keeps them', () => {
       const s = seed();
@@ -287,7 +274,7 @@ describe('buildInventory', () => {
       for (const d of ['docs/fleet', 'agent-profiles']) fs.mkdirSync(path.join(fleetHome, d), { recursive: true });
       fs.writeFileSync(path.join(fleetHome, '.env'), 'KEY=1\n');
       const inv = buildInventory(s.state, { fleet: { ...FLEET, handover: { ...FLEET.handover, transferFleetEnv: true } } }, s.maps);
-      expect(moved(inv.blockers)).toEqual([]);
+      expect(inv.blockers).toEqual([]);
       expect(inv.roots.filter((r) => ['docs', 'profiles', 'env'].includes(r.kind)).map((r) => r.path)).toEqual(['.env', 'agent-profiles', 'docs'].map((n) => path.join(fleetHome, n)));
       expect(inv.destinationHome).toBe(path.join(s.base, 'linux'));
     });
@@ -297,11 +284,11 @@ describe('buildInventory', () => {
       const { at } = away(s);
       const scratch = path.join(s.mac, 'scratch');
       s.maps.destination.agentHomes = { claude: at(scratch) };
-      expect(moved(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers)).toEqual([
+      expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toEqual([
         { code: 'path_unsupported', message: `${at(scratch)} holds ${at(scratch)}/.credentials.json, which stays on its machine`, entity: { kind: 'root', id: expect.any(String) } },
       ]);
       s.maps.destination = { ...s.maps.destination, agentHomes: {}, fleetHome: at(path.join(scratch, 'svall')) };
-      expect(moved(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers)).toContainEqual(
+      expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toContainEqual(
         { code: 'path_unsupported', message: `${scratch} overlaps the fleet home ${at(path.join(scratch, 'svall'))}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: expect.any(String) } },
       );
     });
@@ -313,7 +300,7 @@ describe('buildInventory', () => {
       fs.mkdirSync(odd, { recursive: true });
       s.state.characters.w2.context.push({ kind: 'folder', ref: odd, label: '', source: 'manual' });
       const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-      expect(moved(inv.blockers)).toEqual([{ code: 'path_unsupported', message: relocationProblem(odd, { from: s.mac, to: linux }), entity: { kind: 'root', id: expect.any(String) } }]);
+      expect(inv.blockers).toEqual([{ code: 'path_unsupported', message: relocationProblem(odd, { from: s.mac, to: linux }), entity: { kind: 'root', id: expect.any(String) } }]);
       expect(inv.roots.some((r) => r.path === odd)).toBe(false);
     });
   });

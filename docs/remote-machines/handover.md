@@ -122,8 +122,11 @@ adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A fo
 shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in
 until you choose Carry the folder whole (`--carry-unused`), move the terminal, or leave them out.
 
-Paths are never rewritten: both machines have the same home path, so every path in the fleet means the same thing on
-either. A repository's `origin` that names a path on the Mac travels as it is, and the checks warn about it.
+A path under the home the fleet leaves lands at the same place under the home it lands in, and any other path lands as
+it is ([home paths](setup.md#home-paths)). A repository's `origin` that names a path on the Mac travels as it is, and
+the checks warn about it. Between different homes the checks stop at a repository Git cannot move by itself: one whose
+`core.worktree`, `core.hooksPath` or `includeIf`, or a main checkout's `.git` file, names a full path under the old
+home, one that borrows objects from outside it, one whose submodules would be split across the home boundary, and one whose old place is still on the other machine.
 
 A folder the fleet left on a machine stays there as a replica of what was last carried. Moving back copies only what
 changed. If something on that replica changed while the machine did not own the fleet, the checks before the copy stop
@@ -156,7 +159,7 @@ When a new Claude Code or Codex release comes out:
 1. Record a session made by it as a fixture beside the others in
    `packages/svalld/test/fixtures/handover/claude/<version>` or `codex/<version>`, sanitized as the README there
    describes. `packages/svalld/test/handover/sessions.test.ts` checks the session adapter against every fixture.
-2. Run the live probe against a machine with the same home path and both agents logged in. It carries a session from
+2. Run the live probe against a Linux machine with both agents logged in. It carries a session from
    this Mac there and back, and one started there to this Mac, checks each resumes with its memory, and removes what it
    made. It spends a few tiny turns on each account:
 
@@ -433,9 +436,9 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   stops the copy with an rsync error once a pass after its first has something to keep aside, since
   `<folder>.overwritten-<handover id>` goes beside it.
 - **Saved tool output can name the other machine's folder.** A Claude transcript names each full tool output it
-  saved by path. They move to the same path when both machines keep Claude's files in the same folder (`~/.claude`,
-  unless `CLAUDE_CONFIG_DIR` says otherwise). Where they differ, the agent sees only each output's preview; running
-  the tool again gets it whole.
+  saved by path, which keeps the source's home. It resolves only when both machines keep Claude's files at the same
+  path, as a `CLAUDE_CONFIG_DIR` outside both homes can; otherwise the agent sees only each output's preview, and
+  running the tool again gets it whole.
 - **`/rewind` does not reach back across a handover**, because Claude's file history stays on its machine.
 - **A dropped link takes up to about two and a half minutes** to end the run.
 - **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`): half the heap
@@ -473,6 +476,6 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   a file that names no hardware binds it to its own, so two machines that held copies of it before then each bind
   theirs, and both pass as that machine. Move one aside so it mints its own id.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
-- **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a
+- **Version 1 covers one Mac and one Linux gateway per fleet**. It does not move a
   single character or island, forward ports, keep a phone URL across machines, or move from one Linux machine to
   another.

@@ -8,8 +8,8 @@ this pass covers what only the app and real machines show. What each step should
 ## What you need
 
 - The app built from the commit under test with `pnpm desktop:install`, and `svall doctor` showing its `rsync` check ok.
-- An Ubuntu 24.04 machine on your tailnet with a throwaway account whose home is your Mac home's path
-  ([how](../../../docs/remote-machines/setup.md#the-same-home-path)), reachable with `ssh <account>@<machine>`.
+- An Ubuntu 24.04 machine on your tailnet with a throwaway account, reachable with `ssh <account>@<machine>`; its home need not
+  be your Mac's ([home paths](../../../docs/remote-machines/setup.md#home-paths)).
 - Claude Code, Codex and OpenCode (2.0.22 or newer) installed and logged in on both machines.
 - A test fleet, so your own stays untouched: `svall smoke` offers to create one named `smoke`. In its window, turn on
   Settings → The fleet → **remote machines (experimental)**: Machines and Handover appear without a relaunch. Every

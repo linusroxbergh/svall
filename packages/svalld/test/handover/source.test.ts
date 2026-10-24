@@ -402,18 +402,10 @@ describe('source preflight', () => {
     expect(await codes({}, alone)).toEqual(['identity_mismatch']);
   });
 
-  it('blocks a destination whose home is not this machine\'s, at preflight and at freeze, naming the commands that make one that is', async () => {
+  it('takes a destination whose home is not this machine\'s at preflight', async () => {
     const b = boot();
-    const elsewhere = { home: '/home/linus' };
-    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines(elsewhere) });
-    expect(r.blockers).toEqual([{
-      code: 'home_mismatch',
-      message: `the destination's home is /home/linus and this machine's ${b.work}; a fleet moves only between accounts with the same home path. On the destination, sudo mkdir -p ${path.dirname(b.work)}, then sudo useradd -m -d ${b.work} <user> for a new account, or sudo usermod -d ${b.work} -m <user> for an existing one you are not logged in as; then svall host remove <name>, svall host add at that account, and svall host enable <name> --fleet <fleet>`,
-    }]);
-    b.gateway.begin();
-    const refused = await refusal(b.handover.freeze(b.freezeParams(b.machines(elsewhere))));
-    expect((refused.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['home_mismatch']);
-    expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ home: '/home/linus' }) });
+    expect(r.blockers).toEqual([]);
   });
 
   it('asks the gateway who owns the fleet, as Freeze will, and blocks with why it could not, ssh_interactive only for an ssh that would have to ask', async () => {
@@ -1008,6 +1000,24 @@ describe('source freeze', () => {
     const carried = moved();
     const { manifest } = await carried.b.handover.freeze(carried.b.freezeParams({ choices: { carryUnused: true } }));
     expect(manifest.roots.find((x) => x.path === carried.dev)!.files.map((f) => f.path)).toContain('old-stuff/a.txt');
+  });
+
+  withGit('refuses a repository a second terminal moved into unseen whose config names a path the move to another home leaves behind', async () => {
+    const b = boot({
+      realGit: true,
+      characters: (work) => [char('c_app', path.join(work, 'app'), { tmux: win(3), second: { cwd: path.join(work, 'app'), unread: false, tmux: win(4) } })],
+    });
+    for (const name of ['app', 'hooked']) {
+      fs.mkdirSync(path.join(b.work, name), { recursive: true });
+      repo(path.join(b.work, name), { 'a.txt': name });
+    }
+    const hooks = path.join(b.work, 'hooks');
+    execFileSync('git', ['config', 'core.hooksPath', hooks], { cwd: path.join(b.work, 'hooked') });
+    // its shell went into another repository since the fleet last read where it stands
+    b.world.panes.get('@4')!.path = path.join(b.work, 'hooked');
+    b.gateway.begin();
+    const r = await refusal(b.handover.freeze(b.freezeParams(b.machines({ home: '/home/linus' }))));
+    expect(r.data.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`core.hookspath names ${hooks}`) })]);
   });
 
   it('finds a name it cannot carry, a transcript that is gone or a character kept here before it touches a terminal', async () => {

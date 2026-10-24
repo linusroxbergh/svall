@@ -159,6 +159,7 @@ async function snap(o) {
   const fleet = JSON.parse(fs.readFileSync(path.join(FLEET, 'fleet.json'), 'utf8'));
   const out = {
     machineId: info.machineId ?? null,
+    home: HOME,
     info,
     ownership: await settled(() => rpc('ownership.get')),
     handover: await settled(() => rpc('handover.status')),

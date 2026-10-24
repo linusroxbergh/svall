@@ -132,7 +132,7 @@ export function readable(e: unknown): e is HandoverEvent {
     case 'handover.preflight':
       return isObject(d.summary) && ['roots', 'files', 'bytes', 'sessions'].every((k) => isNumber((d.summary as Fields)[k]))
         && isEach(d.blockers, isIssue) && isEach(d.warnings, isIssue)
-        && optional(d.names, (n) => isObject(n) && isObject(n.characters) && isObject(n.roots) && optional(n.sessions, isObject));
+        && optional(d.names, (n) => isObject(n) && isObject(n.characters) && isObject(n.roots) && optional(n.landing, isObject) && optional(n.sessions, isObject));
     case 'handover.changed': return isPhase(d.phase) && optional(d.transactionId, isString);
     case 'handover.entity':
       return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
@@ -470,7 +470,7 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
 
 export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry', carry: 'Carry the folder whole' };
 
-// home: the account's home, which is the same path on both machines, when the page knows it; svall: the command for this window's fleet;
+// home: this Mac's account home, when the page knows it; svall: the command for this window's fleet;
 // gateway: the fleet's gateway by its registry name
 export type HintContext = { destination: string; source: string; pull: boolean; home?: string; svall?: string; gateway?: string; name(id: string): string };
 
@@ -491,7 +491,9 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'incompatible_adapter':
       return "Update the agent CLI on the machine the message names; for a file in a session, move it out of that session's folder.";
     case 'home_mismatch':
-      return `Both machines need the same home path: make an account on ${linux} whose home is this Mac's, then add the machine again at that account.`;
+      return ctx.pull
+        ? `This Mac's account no longer has the home this handover was sent to: start a new handover.`
+        : `The account on ${linux} no longer has the home this handover was sent to: add the machine again as \`${svall} host doctor ${linux}\` says, then start a new handover.`;
     case 'parent_missing':
       return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
     case 'worktree_unresolved':
@@ -504,7 +506,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
       return `Rename one of the files on ${ctx.source}, or move the file in the way on ${ctx.destination}.`;
     case 'path_symlinked':
       return blockerSide(b) === 'destination'
-        ? `Remove the link on ${ctx.destination}, or rename the folder there to the spelling ${ctx.source} uses; then try again.`
+        ? `Remove the link on ${ctx.destination}, or rename the folder there to the path the handover gives it, as the message says; then try again.`
         : "Use the real path the message names: cd there in the character's terminal, or change the context item or home.cwd that names the link.";
     case 'mission_control_shared':
       return 'Give one of the fleets a mission control folder of its own: set home.cwd in its fleet.json, such as ~/.svall-work/home.';
@@ -618,6 +620,10 @@ export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'dest
 // warnings about what the user meets on the destination, which stay in sight while the rest fold away
 const AFTER_MOVE: string[] = ['claude_trust', 'claude_bypass', 'codex_trust', 'codex_sandbox', 'config_difference'];
 export const staysInSight = (w: Warning): boolean => AFTER_MOVE.includes(w.code);
+
+/** `names` with each root that lands at another path named by where it lands, for what is about the destination. */
+export const namesOn = (names: Names | undefined, side: 'source' | 'destination' | undefined): Names | undefined =>
+  (side === 'destination' && names?.landing ? { ...names, roots: { ...names.roots, ...names.landing } } : names);
 
 /** The full path a blocker or row is about, when it is about a folder: a root's, or the one a Git message leads with. */
 export function entityPath(e: Blocker['entity'], names?: Names, message?: string): string | undefined {

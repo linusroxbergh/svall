@@ -5,7 +5,8 @@
 //                                               [--prefix <name>]
 //
 // Two Ubuntu 24.04 containers on one network: `svall-local` runs the controller from the companion release built from
-// this checkout, and `svall-remote` is provisioned from the same archive by `svall host add`. `--prefix` replaces
+// this checkout, and `svall-remote` is provisioned from the same archive by `svall host add`. Their accounts have
+// different homes, as a Mac's and a Linux machine's do, so every handover moves each path from one home to the other. `--prefix` replaces
 // `svall` in their names and the network's, so another run can share the docker host. The run builds a small
 // fleet on local, hands it local -> remote -> local, then kills the controller or drops the ssh link at each boundary
 // in both directions and takes the action `svall handover status` offers. Every check that fails is printed; the run
@@ -22,13 +23,13 @@ const prefix = o.prefix ?? 'svall';
 const L = `${prefix}-local`;
 const R = `${prefix}-remote`;
 const NET = `${prefix}-it`;
-const HOME = '/home/svall';
-// each agent character: the flag its revive names its session with, and where it works
+const HOMES = { [L]: '/Users/svall', [R]: '/home/svall' };
+// each agent character: the flag its revive names its session with, and where it works in its machine's home
 const AGENTS = [
-  { key: 'agent', kind: 'claude', resume: '--resume', cwd: `${HOME}/src/app-wt` },
-  { key: 'oc', kind: 'opencode', resume: '-s', cwd: `${HOME}/src/app` },
+  { key: 'agent', kind: 'claude', resume: '--resume', dir: 'src/app-wt' },
+  { key: 'oc', kind: 'opencode', resume: '-s', dir: 'src/app' },
 ];
-const USER_ENV = ['HOME=/home/svall', 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
+const userEnv = (machine) => [`HOME=${HOMES[machine]}`, 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
   'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
 // pre-commit boundaries abort back to the source; post-commit ones resume onto the destination
 const POST = new Set(['commit', 'activate']);
@@ -41,7 +42,7 @@ const { say, docker, check, step, booted } = harness(out);
 
 /** A login shell on a machine, as svall unless `root`; throws on a nonzero exit unless `ok: false`. */
 function sh(machine, script, opts = {}) {
-  const who = opts.root ? [] : ['-u', 'svall', '-w', HOME, ...USER_ENV];
+  const who = opts.root ? [] : ['-u', 'svall', '-w', HOMES[machine], ...userEnv(machine)];
   const r = docker(['exec', '-i', ...who, machine, 'bash', '-lc', script], { input: opts.input ?? '' });
   if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
   return r;
@@ -54,8 +55,10 @@ function up() {
   docker(['network', 'rm', NET]);
   if (docker(['network', 'create', NET]).code !== 0) throw new Error('docker network create failed');
   for (const m of [L, R]) {
+    // the image's account lives in /home/svall; local's moves to its own home before systemd starts
+    const home = HOMES[m] === '/home/svall' ? [] : ['bash', '-c', `mkdir -p ${path.posix.dirname(HOMES[m])} && usermod -d ${HOMES[m]} -m svall && exec /sbin/init`];
     const r = docker(['run', '-d', '--name', m, '--hostname', m, '--network', NET, '--privileged', '--cgroupns=private',
-      '--tmpfs', '/run', '--tmpfs', '/run/lock', image]);
+      '--tmpfs', '/run', '--tmpfs', '/run/lock', image, ...home]);
     if (r.code !== 0) throw new Error(`${m} did not start: ${r.stderr}`);
   }
   for (const m of [L, R]) {
@@ -178,6 +181,9 @@ function snap(machine, ids) {
 
 // ---------------------------------------------------------------------------------------------- assertions
 
+// a machine's path, or text naming its paths, with its home read as `~`, so the two machines' compare
+const tilde = (s, v) => (typeof v === 'string' ? v.replaceAll(s.home, '~') : v);
+
 const withoutExcluded = (tree) => (tree ? Object.fromEntries(Object.entries(tree).filter(([k]) => !/^node_modules(\/|$)/.test(k))) : tree);
 
 function gatewayIs(label, remote, owner, generation) {
@@ -201,7 +207,8 @@ function runsFleet(label, s, base, owner, generation, fx) {
   check(`${label} windows`, [fx.agent, fx.oc, fx.shell].every((id) => names.includes(id)), () => brief(s.windows));
   check(`${label} shell`, s.windows.find((w) => w.name === fx.shell)?.command === 'bash', () => brief(s.windows));
   check(`${label} agent processes`, s.agents.length === AGENTS.length, () => brief(s.agents));
-  for (const { key, kind, resume, cwd } of AGENTS) {
+  for (const { key, kind, resume, dir } of AGENTS) {
+    const cwd = `${s.home}/${dir}`;
     const a = s.characters.find((c) => c.id === fx[key]);
     const b = base.characters.find((c) => c.id === fx[key]);
     check(`${label} ${kind} session id`, a?.agent?.sessionId && a.agent.sessionId === b?.agent?.sessionId, () => `${a?.agent?.sessionId} vs ${b?.agent?.sessionId}`);
@@ -216,15 +223,16 @@ function runsFleet(label, s, base, owner, generation, fx) {
       check(`${label} opencode command line`, args[0] === 'opencode' && args[1]?.startsWith('-'), () => brief(args));
       check(`${label} opencode server`, s.servers.length === 1 && s.servers[0].ppid === procs[0]?.pid, () => brief(s.servers));
       // an import lands in the terminal's folder, and never as an empty session a resume made up
-      check(`${label} opencode session`, same(s.opencode[b?.agent?.sessionId], base.opencode[b?.agent?.sessionId])
+      const session = (x) => x.opencode[b?.agent?.sessionId] && { ...x.opencode[b.agent.sessionId], directory: tilde(x, x.opencode[b.agent.sessionId].directory) };
+      check(`${label} opencode session`, same(session(s), session(base))
         && s.opencode[b?.agent?.sessionId]?.directory === cwd && s.opencode[b?.agent?.sessionId]?.messages > 0,
       () => `${brief(s.opencode)} vs ${brief(base.opencode)}`);
     }
   }
-  check(`${label} characters`, same(s.characters.map((c) => [c.id, c.name, c.cwd, c.islandId]), base.characters.map((c) => [c.id, c.name, c.cwd, c.islandId])),
+  check(`${label} characters`, same(s.characters.map((c) => [c.id, c.name, tilde(s, c.cwd), c.islandId]), base.characters.map((c) => [c.id, c.name, tilde(base, c.cwd), c.islandId])),
     () => brief(s.characters));
   for (const repo of Object.keys(base.git)) {
-    for (const k of Object.keys(base.git[repo])) check(`${label} git ${repo} ${k}`, same(s.git[repo]?.[k], base.git[repo][k]), () => `${brief(s.git[repo]?.[k])} vs ${brief(base.git[repo][k])}`);
+    for (const k of Object.keys(base.git[repo])) check(`${label} git ${repo} ${k}`, same(tilde(s, s.git[repo]?.[k]), tilde(base, base.git[repo][k])), () => `${brief(s.git[repo]?.[k])} vs ${brief(base.git[repo][k])}`);
     check(`${label} git ${repo} fsck`, s.git[repo]?.fsck === '', () => s.git[repo]?.fsck);
     check(`${label} tree ${repo}`, same(withoutExcluded(s.trees[repo]), withoutExcluded(base.trees[repo])), () => treeDiff(s.trees[repo], base.trees[repo]));
   }
@@ -243,13 +251,13 @@ function holdsNothing(label, s, owner, generation) {
   check(`${label} agents`, s.agents.length === 0 && s.servers.length === 0, () => brief([s.agents, s.servers]));
 }
 
-const MANIFEST_ROOTS = ['.svall/agent-profiles', '.svall/home', 'src/app', 'src/app-wt'].map((r) => `${HOME}/${r}`);
+const MANIFEST_ROOTS = ['.svall/agent-profiles', '.svall/home', 'src/app', 'src/app-wt'];
 
-/** The preflight manifest: the four carried roots, a session for each agent, and nothing that blocks. */
-function manifestIs(label, driven) {
+/** The preflight manifest: the four carried roots, at their paths in the source's `home`, a session for each agent, and nothing that blocks. */
+function manifestIs(label, driven, home) {
   const pre = lines(driven.log).find((e) => e.event === 'handover.preflight')?.data;
   check(`${label} preflight`, pre && pre.blockers.length === 0, () => brief(pre?.blockers));
-  check(`${label} manifest roots`, same(Object.values(pre?.names?.roots ?? {}).sort(), MANIFEST_ROOTS), () => brief(pre?.names?.roots));
+  check(`${label} manifest roots`, same(Object.values(pre?.names?.roots ?? {}).sort(), MANIFEST_ROOTS.map((r) => `${home}/${r}`)), () => brief(pre?.names?.roots));
   check(`${label} manifest sessions`, pre?.summary?.sessions === AGENTS.length
     && same(Object.values(pre?.names?.sessions ?? {}).sort(), AGENTS.map((a) => a.key).sort()), () => brief([pre?.summary, pre?.names?.sessions]));
   // every root and session the manifest carries was verified in full
@@ -292,7 +300,7 @@ function clean(ids, fx, to) {
   const d = drive(to);
   check('result', d.summary.result?.status === 'complete' && d.summary.exit.code === 0, () => brief(d.summary.result));
   check('characters ok', d.summary.result?.characters?.length === 3 && d.summary.result.characters.every((c) => c.ok), () => brief(d.summary.result?.characters));
-  manifestIs('clean', d);
+  manifestIs('clean', d, base.home);
   ctx.owner = to;
   ctx.generation += 1;
   const [l, r] = [snap(L, ids), snap(R, ids)];

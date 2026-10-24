@@ -50,6 +50,7 @@ describe('the controller transaction', () => {
     expect(entity('s0')).toMatchObject({ data: { kind: 'session', phase: 'verify' } });
     expect(entity('c_bo')).toEqual({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'activate', error: expect.stringContaining('SessionStart') } });
     expect(w.events[0]).toMatchObject({ event: 'handover.preflight', data: { blockers: [], summary: { roots: 2 } } });
+    expect(w.events[0]).not.toHaveProperty('data.names.landing');
     expect(settledOn(w)).toBe('destination');
     expect(w.events.at(-1)).toEqual({ event: 'handover.result', data: out });
   });
@@ -914,6 +915,9 @@ describe('preflight', () => {
     w.destination.diverged.add('r_app');
     const pre = await controller(w).preflight(trift, { archiveRoots: [at('app')] });
     expect(asked!.roots.map((r) => r.path)).toEqual(['/home/ada/app', '/home/ada/app.git']);
+    expect(w.events.find((e) => e.event === 'handover.preflight')?.data).toMatchObject({
+      names: { roots: { r_app: at('app') }, landing: { r_app: '/home/ada/app', r_wt: '/home/ada/app/.claude/worktrees/x', r_git: '/home/ada/app.git' } },
+    });
     expect(asked!.folders).toEqual(['/home/ada', '/home/ada/app', '/home/ada/app.git']);
     expect(asked!.links).toEqual(['/Users/ada/cfg']);
     expect(asked!.resumes!.map((f) => f.cwd)).toEqual(['/home/ada/app', '/home/ada/app']);

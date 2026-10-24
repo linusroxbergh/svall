@@ -59,7 +59,7 @@ async function manifestOf(l: Layout, state = crew(l), to = l.home): Promise<Tran
   expect(discovery.blockers).toEqual([]);
   const inventory = buildInventory(state, { fleet: FLEET }, { source: { machineId: MAC, ...at }, destination: { machineId: TRIFT, home: to, fleetHome: path.join(to, '.svall') } }, discovery);
   const built = await buildManifest(inventory, { generation: 1 });
-  expect(built.blockers.filter((b) => b.code !== 'home_mismatch' || to === l.home)).toEqual([]);
+  expect(built.blockers).toEqual([]);
   return built.manifest;
 }
 

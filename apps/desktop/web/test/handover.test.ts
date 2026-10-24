@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HandoverIssueCode, type Blocker, type HandoverPhase, type MachineId, type SafeAction, type Standing, type StopReason } from '@svall/protocol';
 import {
-  actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
+  actionsOf, applyEvent, asksStatus, blockerHint, choiceFor, chosen, destinationName, destinationOf, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, namesOn, needsUser,
   blockerSide, goOn, restingLine, restPlan, rowText, sectionStates, shortPath, svallFor, transferPace, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 import { chr } from './fixtures.js';
@@ -54,6 +54,16 @@ describe('the handover a sheet follows', () => {
     // without what preflight said, the id is what there is
     expect(entityLabel({ kind: 'root', id: 'r_b' }, name, run.preflight?.names)).toBe('folder r_b');
     expect(entityLabel({ kind: 'git', id: 'g_1' }, name, run.preflight?.names, 'the destination has no git')).toBe('repository');
+  });
+
+  it('names a root by where it lands for what is about the destination, and by its path here for the rest', () => {
+    const names = { characters: {}, roots: { r_a: '/Users/ada/app', r_b: '/srv/b' }, landing: { r_a: '/home/ada/app' } };
+    const run = play([{ event: 'handover.preflight', data: { summary, blockers: [], warnings: [], names } }]);
+    const occupied: Blocker = { code: 'destination_occupied', message: '/home/ada/app already exists', entity: { kind: 'root', id: 'r_a' } };
+    const there = namesOn(run.preflight?.names, blockerSide(occupied));
+    expect(entityLabel(occupied.entity, (id) => id, there, occupied.message, '/Users/ada')).toBe('/home/ada/app');
+    expect(entityLabel({ kind: 'root', id: 'r_b' }, (id) => id, there)).toBe('/srv/b');
+    expect(entityLabel(occupied.entity, (id) => id, namesOn(run.preflight?.names, 'source'), undefined, '/Users/ada')).toBe('~/app');
   });
 
   it('puts a character the destination brought up under Resuming, apart from its rest row', () => {
@@ -519,6 +529,12 @@ describe('what each blocker and warning is explained with', () => {
     expect(folder).not.toMatch(/terminal/);
     expect(folder).toMatch(/handover\.exclude.*writable on studio/);
     expect(blockerHint({ code: 'path_unsupported', message: 'the destination keeps this fleet\'s docs at another path' }, ctx)).toBe(folder);
+  });
+
+  it('sends a home the destination no longer has to host doctor for the Linux machine, and only to a new handover for this Mac', () => {
+    const mismatch = { code: 'home_mismatch' as const, message: "this account's home is /home/ada2, and the handover was sent to /home/ada" };
+    expect(blockerHint(mismatch, ctx)).toMatch(/`svall host doctor studio`/);
+    expect(blockerHint(mismatch, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toBe("This Mac's account no longer has the home this handover was sent to: start a new handover.");
   });
 
   it('gives every code that blocks a line on what to do', () => {

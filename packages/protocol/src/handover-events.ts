@@ -65,8 +65,11 @@ export type EntityData = {
   done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string; verified?: boolean;
 };
 
-/** What a blocker or a row points at, for a person: each character's name, where each root lands, and whose each session row `s<i>` is. */
-export type Names = { characters: Record<string, string>; roots: Record<string, string>; sessions?: Record<string, string> };
+/**
+ * What a blocker or a row points at, for a person: each character's name, each root's path on the source and, for one
+ * that lands at another path, where it lands, and whose each session row `s<i>` is.
+ */
+export type Names = { characters: Record<string, string>; roots: Record<string, string>; landing?: Record<string, string>; sessions?: Record<string, string> };
 
 /** One line of what a handover tells whoever watches it. */
 export type HandoverEvent =

@@ -4,7 +4,7 @@ import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import {
   accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
-  entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, planOf, problemOf, restPlan, resumeTally, rowText, sectionStates, staysInSight,
+  entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, namesOn, planOf, problemOf, restPlan, resumeTally, rowText, sectionStates, staysInSight,
   svallFor, transferBytes, transferPace, transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type RestHow, type Row, type SectionId, type SectionState,
 } from './handover.js';
@@ -58,13 +58,13 @@ function More({ label, children, testid }: { label: string; children: ReactNode;
 
 /** One thing in the way, with the one choice that clears it or the way out beside it. */
 function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx: HintContext; run: HandoverRun; warning?: boolean; blockers?: Blocker[] }) {
-  const names = run.preflight?.names;
+  const side = blockerSide(b, run.decision?.phase ?? (run.result?.status === 'blocked' ? run.result.phase : undefined));
+  const names = namesOn(run.preflight?.names, side);
   const choice = warning ? undefined : choiceFor(b);
   const hint = blockerHint(b, ctx, warning);
   const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
   const path = entityPath(b.entity, names, b.message);
   const upgrade = upgradeAsked(b, ctx);
-  const side = blockerSide(b, run.decision?.phase ?? (run.result?.status === 'blocked' ? run.result.phase : undefined));
   // the shell opens a folder only on this Mac, and only while the fleet runs here
   const finder = !ctx.pull && side === 'source' && app.bridge.present;
   const picked = !!choice && chosen(run.choices, b);

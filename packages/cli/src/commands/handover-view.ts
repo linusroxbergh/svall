@@ -62,6 +62,8 @@ const characters = (blockers: Blocker[], codes: (c: string) => boolean): string[
   unique(blockers.flatMap((b) => (codes(b.code) && b.entity?.kind === 'character' ? [b.entity.id] : [])));
 const roots = (blockers: Blocker[]): string[] =>
   unique(blockers.flatMap((b) => (ARCHIVABLE.has(b.code) && b.entity?.kind === 'root' ? [b.entity.id] : [])));
+// a root the destination holds, by where it lands there
+const landing = (names: Names, id: string): string => names.landing?.[id] ?? names.roots[id] ?? id;
 
 export type Option = { key: string; label: string; answer: HandoverChoices | 'cancel' };
 
@@ -94,7 +96,7 @@ export function options(blockers: Blocker[], phase: HandoverPhase, names: Names,
   }
   if (archive.length) {
     out.push({
-      key: 'a', label: `Archive ${archive.map((id) => names.roots[id] ?? id).join(', ')}: each is moved to a timestamped sibling first, then copied afresh`,
+      key: 'a', label: `Archive ${archive.map((id) => landing(names, id)).join(', ')}: each is moved to a timestamped sibling first, then copied afresh`,
       answer: { ...held, archiveRoots: union(held.archiveRoots, archive) },
     });
   }
@@ -116,7 +118,7 @@ function flags(blockers: Blocker[], names: Names): string[] {
   const out: string[] = [];
   if (characters(blockers, (c) => REST.has(c)).length) out.push('--interrupt-after <duration> interrupts the agents still working');
   if (characters(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled').length) out.push('--terminate-shells terminates what keeps a terminal busy');
-  for (const id of roots(blockers)) out.push(`--archive ${names.roots[id] ?? id} moves what is there aside first`);
+  for (const id of roots(blockers)) out.push(`--archive ${landing(names, id)} moves what is there aside first`);
   if (characters(blockers, (c) => c === 'repository_unused').length) out.push('--carry-unused carries the Git repositories a folder holds that no character works in');
   return out;
 }

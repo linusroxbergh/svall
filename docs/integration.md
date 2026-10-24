@@ -49,14 +49,16 @@ the first failed step. The output folder holds:
 | Installed by | `svall setup --release <archive>` | `svall host add remote --release <archive>` from local |
 | Runs | svalld and the controller (`svall handover …`) | svalld and the gateway, as systemd user units with linger |
 
-- **One account.** Both machines have `svall` with home `/home/svall`. Local reaches remote with its own key, made
+- **One account.** Both machines have `svall`, at home `/Users/svall` on local, as on a Mac, and `/home/svall` on
+  remote, so each handover moves every path from one home to the other. Local reaches remote with its own key, made
   when the run starts.
 - **Node.** Neither machine has Node on PATH. The release brings its own. The harness keeps a copy of the release's
   node at `/opt/it/node`, which the mocked agents and the in-machine checks run on.
 - **Tailscale.** The containers have no tailnet, so `tailscale` is a double that answers its version and nothing else.
 - **Mocked Claude.** `scripts/integration/claude.mjs` is a hook-speaking Claude. It posts
-  its hooks to `$SVALL_HOME/hooks.sock`, keeps a Claude Code 2.1.x transcript, and resumes only a session whose
-  transcript is under its cwd's slug.
+  its hooks to `$SVALL_HOME/hooks.sock` and keeps a Claude Code 2.1.x transcript. As Claude Code does after its folder
+  moved, it resumes a session from the transcript under its cwd's slug, or else the newest of that id in another
+  project folder, appending there while its SessionStart names the cwd's slug.
   - `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads as
     Claude.
   - There is no Codex, so `host add` advises installing it.
@@ -87,14 +89,16 @@ the first failed step. The output folder holds:
    one turn, and a shell character runs in the main checkout.
 3. **local → remote, then remote → local**, each with a turn on the new owner, all through the controller on local.
    Each handover checks:
-   - **The manifest:** four roots (the two checkouts, mission control's folder and the agent profiles) and two
-     sessions, Claude's and OpenCode's, no blockers, and each root and session verified in full.
+   - **The manifest:** four roots at their paths in the source's home (the two checkouts, mission control's folder
+     and the agent profiles) and two sessions, Claude's and OpenCode's, no blockers, and each root and session
+     verified in full.
    - **Git:** on the new owner, each checkout's HEAD, branch, `status --porcelain=v2`, index (`ls-files --stage`),
-     stash, worktree list, refs and `fsck` equal the source's before the handover. Every file of both working
+     stash, worktree list, refs and `fsck` equal the source's before the handover, with each machine's home read as
+     `~`, so a worktree list that still names the old home fails. Every file of both working
      trees, ignored ones included, has the same content and mode. `node_modules/` never reaches remote.
-   - **The state:** the same characters, names, cwds and islands, and the shell character's terminal runs bash.
+   - **The state:** the same characters, names, cwds (each in the new owner's home) and islands, and the shell character's terminal runs bash.
    - **The agents:** Claude runs as `claude --resume <its session id>` and OpenCode as
-     `opencode --standalone -s <its session id>`, each in its cwd, under the same session id and pid the state records. Claude's transcript is identical, and the
+     `opencode --standalone -s <its session id>`, each in its cwd in the new owner's home, under the same session id and pid the state records. Claude's transcript is identical, and the
      next turn appends to the same file. OpenCode runs one private server, and holds its session with the same
      messages, in the terminal's folder, never as an empty session a resume made up; the next turn adds to it.
    - **Ownership:** the new owner's daemon owns the fleet at the next generation and is not frozen. The old one is
