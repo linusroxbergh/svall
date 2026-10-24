@@ -4,13 +4,15 @@ import { app } from './boot.js';
 import { openFolder } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import {
-  accountHome, actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
+  actionsOf, answered, asksStatus, blockerHint, blockerSide, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, destinationOf, detailOf,
   entityLabel, entityPath, formatBytes, fraction, goesOnByItself, headline, isCommitted, namesOn, planOf, problemOf, restPlan, resumeTally, rowText, sectionStates, staysInSight,
   svallFor, transferBytes, transferPace, transferTotals, upgradeAsked, verdictOf, verified, wayOut, withChoice,
   type HandoverRun, type HintContext, type RestHow, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
+import { plural } from './host.js';
 import { startHost } from './HostSetup.js';
+import { accountHome } from './paths.js';
 
 const MARK: Record<SectionState, string> = { pending: '·', active: '›', waiting: '!', done: '✓', stopped: '×' };
 
@@ -43,8 +45,6 @@ function openCard(id: string): void {
   store().select(id, true);
   store().toggleHandover(false);
 }
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Text with the commands it names, between backticks, as code a click selects whole. */
 const withCode = (text: string): ReactNode[] => text.split('`').map((part, i) => (i % 2 ? <code key={i} className="ho-cmd">{part}</code> : part));

@@ -1,7 +1,10 @@
-import { byCell, byIslandOrder, starredOf, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, starredOf, type AgentKind, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
+
+// a stable identity, so a selector defaulting to "no CLIs found" does not retrigger on every render
+export const NO_AGENTS: AgentKind[] = [];
 
 export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byIslandOrder);
 

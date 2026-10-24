@@ -1,11 +1,10 @@
 import { frontmatter } from '@svall/protocol';
-import { getBuffer, isDirty, subscribeBuffer, type Buffer } from '../ide/buffers.js';
+import { getBuffer, isDirty, key, subscribeBuffer, type Buffer } from '../ide/buffers.js';
 import { onSaved, saveFile } from '../ide/files.js';
 import { theme } from '../theme.js';
 import { reloadResources, type ResourcesDeps } from './load.js';
 import { isAgentProfiles } from './model.js';
 
-const key = (id: string, path: string): string => `${id}\0${path}`;
 const watched = new WeakSet<Buffer>();
 // every doc watched, with the deps its saves go through
 const docs = new Map<string, { d: ResourcesDeps; id: string; path: string }>();

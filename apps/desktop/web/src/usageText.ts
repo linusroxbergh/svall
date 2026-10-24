@@ -12,7 +12,7 @@ export function untilReset(iso: string, now: number): string {
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const pad = (n: number): string => String(n).padStart(2, '0');
+export const pad = (n: number): string => String(n).padStart(2, '0');
 
 // the wall clock this machine keeps, spelled out: Wed 17 Sep, 18:50
 export function resetAt(iso: string): string {

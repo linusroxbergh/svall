@@ -3,14 +3,15 @@ import {
   type Blocker, type Robot, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type StopReason, type Verdict,
   type Warning,
 } from '@svall/protocol';
-import { machineName, withoutTokens } from './host.js';
+import { ids, machineName, withoutGenerations, withoutTokens } from './host.js';
+import { shortPath } from './paths.js';
 
 // what `svall handover --json` prints
-export type { RobotResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@svall/protocol';
+export type { HandoverEvent, Names, Outcome, Verdict } from '@svall/protocol';
 
 export type SectionId = 'checks' | 'rest' | 'transfer' | 'verify' | 'commit' | 'resume';
 // Abort is possible up to the commit, which has a section of its own
-export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }[] = [
+const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }[] = [
   { id: 'checks', label: 'Checks', phases: ['begin'] },
   { id: 'rest', label: 'Resting robots', phases: ['freeze'] },
   { id: 'transfer', label: 'Transferring files and sessions', phases: ['transfer'] },
@@ -79,18 +80,13 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
 
 const scrubbed = (blockers: Blocker[]): Blocker[] => blockers.map((b) => ({ ...b, message: withoutTokens(b.message) }));
 
-// an id inside a path names a file or a folder, and stays
-const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
-const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
 /**
  * The controller's words without the ids and generations it names: the shapes it writes in whole, a transaction as the
  * handover, and any other id as a machine.
  */
-const plain = (text: string): string => withoutTokens(text)
+const plain = (text: string): string => withoutGenerations(withoutTokens(text)
   .replace(ids('\\b(holds|with) UUID at generation \\d+(?: in handover UUID \\([^)]*\\))?'), '$1 a different record of the fleet')
-  .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
-  .replace(ids(' in handover UUID'), ' in another handover')
-  .replace(/ at generation \d+/g, '')
+  .replace(ids(' in handover UUID'), ' in another handover'))
   .replace(ids('(^|; )UUID\\b'), '$1the handover')
   .replace(ids(': UUID is committed'), ': the handover is committed')
   .replace(ids('\\bhandover UUID\\b'), 'the handover')
@@ -600,12 +596,6 @@ export function upgradeAsked(b: Blocker, ctx: HintContext): string | undefined {
   return machineName(linux) ? linux : undefined;
 }
 
-/** A path as the user says it: the account's home, when known, as `~`. */
-export const shortPath = (p: string, home?: string): string => (home && (p === home || p.startsWith(`${home}/`)) ? `~${p.slice(home.length)}` : p);
-
-/** The account's home a fleet home lies in, such as `/Users/ada` for `/Users/ada/.svall`. */
-export const accountHome = (fleetHome: string | undefined): string | undefined => (fleetHome ? /^\/(?:Users|home)\/[^/]+(?=\/|$)/.exec(fleetHome)?.[0] : undefined);
-
 /** Which machine the folder a blocker names is on, when its code, its message or the step that found it (`phase`) says. */
 export function blockerSide(b: Blocker, phase?: HandoverPhase): 'source' | 'destination' | undefined {
   switch (b.code) {
@@ -641,7 +631,8 @@ export function entityLabel(e: Blocker['entity'], name: (id: string) => string, 
   if (e.kind === 'robot') return name(e.id);
   if (e.kind === 'session') return names?.sessions?.[e.id] ? `${names.sessions[e.id]}'s session` : `session ${e.id}`;
   const path = entityPath(e, names, message);
-  if (path) return shortPath(path, home);
+  // with no home known the path may be the other machine's, so it stays whole
+  if (path) return home ? shortPath(path, home) : path;
   return e.kind === 'root' ? `folder ${e.id}` : 'repository';
 }
 

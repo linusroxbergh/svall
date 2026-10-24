@@ -1,7 +1,6 @@
 import { PORTRAITS, type Robot } from '@svall/protocol';
 
-// robot-NN.svg in public/robots, in stepping order. 34–39 recolour 20, 06 and 07 two ways each,
-// so they come last and take turns, never beside their own figure or each other
+// robot-NN.svg in public/robots, in stepping order; 38 recolours 07, so the two never stand side by side
 const FIGURES = [
   1, 2, 4, 7, 8, 18, 19,
   46, 47, 48, 49, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 63, 64,

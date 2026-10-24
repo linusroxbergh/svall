@@ -143,4 +143,3 @@
 .tour[data-side="left"] { --from: 8px 0; }
 .tour[data-side="right"] { --from: -8px 0; }
 @keyframes tour-pop { from { opacity: 0; translate: var(--from); } }
-@media (prefers-reduced-motion: reduce) { .tour-ring, .tour { animation: none; transition: none; } }

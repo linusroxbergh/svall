@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useMeasure } from './hooks.js';
 import { placeTip } from './settings.js';
 
 // long enough for the pointer to cross the gap from the mark onto the tip it opened
@@ -16,19 +17,13 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
 
   // the row at the foot of the panel has no room under it, so the tip is placed against the panel it lives in,
   // and placed again whenever the panel scrolls or the window resizes under an open tip
-  useLayoutEffect(() => {
+  useMeasure(open, () => {
     const el = tip.current;
     const row = el?.offsetParent as HTMLElement | null;
-    if (!open || !el || !row) return;
-    const measure = () => {
-      const panel = el.closest('.side-secs, .side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
-      setPlace(placeTip(row.getBoundingClientRect(), el.scrollHeight, panel));
-    };
-    measure();
-    window.addEventListener('scroll', measure, true);
-    window.addEventListener('resize', measure);
-    return () => { window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); };
-  }, [open]);
+    if (!el || !row) return;
+    const panel = el.closest('.side-secs, .side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+    setPlace(placeTip(row.getBoundingClientRect(), el.scrollHeight, panel));
+  });
 
   return (
     <span className="set-info" onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>

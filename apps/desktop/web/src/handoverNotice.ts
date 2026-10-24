@@ -6,7 +6,7 @@ import type { AppStore } from './store/index.js';
 const KEY = 'handover';
 
 /** What a banner says as the run the page follows comes to want the user: a decision or the move the checks cleared, its end, or a stop. */
-export function handoverNotice(prev: HandoverRun | undefined, next: HandoverRun | undefined, destination: string): { title: string; body: string } | undefined {
+function handoverNotice(prev: HandoverRun | undefined, next: HandoverRun | undefined, destination: string): { title: string; body: string } | undefined {
   if (!next) return undefined;
   const body = headline(next, destination);
   if (decisionPending(next) && !decisionPending(prev)) return { title: 'Handover waits for you', body };

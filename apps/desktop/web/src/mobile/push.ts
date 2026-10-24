@@ -49,7 +49,8 @@ export async function readPush(api: Api): Promise<PushState> {
 }
 
 /** Runs from a tap only: the permission prompt is refused otherwise. */
-export async function enablePush(api: Api, publicKey: string, statuses: PushStatus[] = [...PUSH_STATUSES]): Promise<PushState> {
+export async function enablePush(api: Api, publicKey: string): Promise<PushState> {
+  const statuses = [...PUSH_STATUSES];
   const reg = await worker();
   let sub = await reg.pushManager.getSubscription();
   if (sub && !sameApplicationServerKey(sub.options.applicationServerKey, publicKey)) {

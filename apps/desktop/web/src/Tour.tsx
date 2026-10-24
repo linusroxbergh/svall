@@ -4,7 +4,8 @@ import { app } from './boot.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { keyLabel } from './keys.js';
-import { shortPath } from './resources/model.js';
+import { shortPath } from './paths.js';
+import { clamp } from './settings.js';
 import { scopedKey, SETTINGS_KEY, TOUR_KEY, type AppState } from './store/index.js';
 
 const GAP = 14;
@@ -70,8 +71,6 @@ function boxOf(selector: string): Box | undefined {
   const radius = els.length === 1 ? parseFloat(getComputedStyle(els[0]).borderTopLeftRadius) || 0 : undefined;
   return { left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)), right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)), radius };
 }
-
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // beside the anchor on its side, kept in the window; the arrow follows the anchor's middle
 function place(side: Side, b: Box, w: number, h: number): React.CSSProperties {

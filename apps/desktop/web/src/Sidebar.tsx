@@ -3,15 +3,13 @@ import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { moveRobotTo, newRobotOn, newIsland, reorderIsland, saveRobot, saveIsland, setStar, starRobotAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
-import { memoByValue, useApp } from './hooks.js';
+import { memoByValue, stop, useApp } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
 import { boardIsland, boardViewed, robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
 const attentionIn = (robots: Robot[]): number => robots.filter(wantsUser).length;
-
-const stop = (e: React.MouseEvent) => e.stopPropagation();
 
 // a robot dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
 const ROBOT_DRAG = 'application/x-svall-robot';

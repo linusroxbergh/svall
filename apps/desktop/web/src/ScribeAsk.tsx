@@ -6,10 +6,7 @@ import { shim } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
-import { directoryName } from './selectors.js';
-
-// a stable identity, so a selector defaulting to "no CLIs found" does not retrigger on every render
-const NO_AGENTS: AgentKind[] = [];
+import { directoryName, NO_AGENTS } from './selectors.js';
 
 // the private fleet lives in ~/.svall
 const isPrivateHome = (): boolean => window.__svallHome !== undefined && directoryName(window.__svallHome) === 'private';

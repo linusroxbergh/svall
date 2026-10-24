@@ -1,5 +1,6 @@
 import type { ContextItem, FleetState, ResourceItem, ResourceKind, ResourceSource } from '@svall/protocol';
 import { linkText } from '../map/tokenText.js';
+import { shortPath } from '../paths.js';
 import { islandsSorted } from '../selectors.js';
 
 // what an island or a robot carries on its card rather than on disk
@@ -121,7 +122,6 @@ const TIERS: { tier: Tier; label: string; one: string; glyph: string; colour: st
 
 export const tierOf = (tier: Tier) => TIERS.find((t) => t.tier === tier)!;
 
-export const shortPath = (p: string): string => p.replace(/^\/Users\/[^/]+/, '~');
 const plural = (n: number, one: string): string => (n === 0 ? `no ${one}s` : n === 1 ? `1 ${one}` : `${n} ${one}s`);
 
 /** The second line of a source's row: what tells it from another of the same name. */

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { basename } from '../paths.js';
 import { useWidthGrip } from '../widthGrip.js';
 import { Editor } from './Editor.js';
 import { checkDisk, openFile } from './files.js';
@@ -40,7 +41,7 @@ export function FilesArea({ id }: { id: string }) {
     <div className="ide ide-files" data-testid="files" style={tree.width === undefined ? undefined : { '--tree-w': `${tree.width}px` } as React.CSSProperties}>
       {tree.open && (
         <div className="ide-side" data-testid="files-tree">
-          <div className="ide-root" title={root}>{root.slice(root.lastIndexOf('/') + 1)}</div>
+          <div className="ide-root" title={root}>{basename(root)}</div>
           <Tree id={id} dir="" depth={0} tick={tick} onOpen={open} />
         </div>
       )}

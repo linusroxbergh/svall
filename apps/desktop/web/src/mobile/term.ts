@@ -34,7 +34,7 @@ export const encode = (bytes: Uint8Array): string => {
  * starts the stream; calling it again after a reconnect repaints, which is what Safari needs every time
  * it drops the socket on lock.
  */
-export function linkTerminal(deps: LinkDeps, id: string, screen: Screen, lines = 2000): TerminalLink {
+export function linkTerminal(deps: LinkDeps, id: string, screen: Screen): TerminalLink {
   let unsubscribe: (() => void) | undefined;
   let closed = false;
 
@@ -50,7 +50,7 @@ export function linkTerminal(deps: LinkDeps, id: string, screen: Screen, lines =
       });
       try {
         const { cols, rows } = screen;
-        const { screen: seed } = await deps.api.call('term.open', { id, cols, rows, lines });
+        const { screen: seed } = await deps.api.call('term.open', { id, cols, rows, lines: 2000 });
         if (closed) return;
         paint(seed);
         // the daemon takes no size from a viewer still opening, so one the screen settled on meanwhile goes now

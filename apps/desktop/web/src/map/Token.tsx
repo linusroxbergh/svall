@@ -48,7 +48,7 @@ export const Token = memoByValue(function Token({
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
-  const cls = ['tok', 'bot', `s-${status}`, selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
+  const cls = dragging ? 'tok drag' : 'tok';
   const review = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
   const subs = subagentCount(c);
