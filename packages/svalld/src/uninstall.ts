@@ -225,9 +225,8 @@ export async function runUninstall(o: {
     fs.rmSync(plist, { force: true });
     done.push(`removed ${plist}`);
   }
-  if (o.prefix) done.push(...removeReleases(o.prefix));
-
-  // a character's agent would run on in tmux, spending usage with no app left to show it
+  // a character's agent would run on in tmux, spending usage with no app left to show it; a companion's server is
+  // stopped by the tmux its release carries, so before the release goes
   for (const home of o.homes) {
     const sock = resolvePaths(home).tmuxSock;
     if (!fs.existsSync(sock)) continue;
@@ -236,6 +235,7 @@ export async function runUninstall(o: {
       () => { done.push(`could not stop tmux server ${sock}`); },
     );
   }
+  if (o.prefix) done.push(...removeReleases(o.prefix));
   return [...done, ...removeShims(o.shimDir)];
 }
 

@@ -17,6 +17,14 @@ final class AttachCommandTests: XCTestCase {
         XCTAssertEqual(command, "env TERM=xterm-256color ssh -S '/tmp/svall/studio.sock' -o ControlMaster=no -o BatchMode=yes -tt -- 'linus@studio' tmux -S ''\\''/tmp/svall/fleet.sock'\\''' attach -t ''\\''=char-1'\\'''")
     }
 
+    /// The far daemon names the tmux that serves its socket, which a companion carries in its own release.
+    func testRemoteAttachRunsTheTmuxTheFarDaemonNames() {
+        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
+        let bundled = WebAttach(socket: "/tmp/svall/fleet.sock", session: "char-1", tmux: "/home/linus/.local/share/svall/releases/v1/bin/tmux")
+        let command = AttachCommand.build(route: route, attach: bundled, tmux: "/opt/homebrew/bin/tmux", masterAnswers: { _ in true })
+        XCTAssertEqual(command, "env TERM=xterm-256color ssh -S '/tmp/svall/studio.sock' -o ControlMaster=no -o BatchMode=yes -tt -- 'linus@studio' ''\\''/home/linus/.local/share/svall/releases/v1/bin/tmux'\\''' -S ''\\''/tmp/svall/fleet.sock'\\''' attach -t ''\\''=char-1'\\'''")
+    }
+
     /// With the helper's master gone, ssh would dial the destination itself, where no check covers which machine answers.
     func testNoCommandIsBuiltWhileTheMasterDoesNotAnswer() {
         let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
@@ -47,7 +55,7 @@ final class AttachCommandTests: XCTestCase {
 
     /// ssh joins the words after the destination into one line, and the far login shell splits it
     /// again: a fake ssh on PATH does both, so this is the argv the far tmux is handed.
-    func testTheFarShellGetsTheSocketAndSessionAsOneWordEach() throws {
+    func testTheFarShellGetsTheTmuxSocketAndSessionAsOneWordEach() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("svall-ssh-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
@@ -56,7 +64,7 @@ final class AttachCommandTests: XCTestCase {
             .write(toFile: ssh, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ssh)
 
-        let odd = WebAttach(socket: "/home/li nus/.svall/tmux.sock", session: "v-it's $(x)")
+        let odd = WebAttach(socket: "/home/li nus/.svall/tmux.sock", session: "v-it's $(x)", tmux: "/home/li nus/.local/share/svall/current/bin/tmux")
         let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/a b/studio.sock"))
         let command = try XCTUnwrap(AttachCommand.build(route: route, attach: odd, tmux: "tmux", masterAnswers: { _ in true }))
 
@@ -69,7 +77,7 @@ final class AttachCommandTests: XCTestCase {
         try shell.run()
         shell.waitUntilExit()
         let words = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").map(String.init)
-        XCTAssertEqual(words, ["tmux", "-S", "/home/li nus/.svall/tmux.sock", "attach", "-t", "=v-it's $(x)"])
+        XCTAssertEqual(words, ["/home/li nus/.local/share/svall/current/bin/tmux", "-S", "/home/li nus/.svall/tmux.sock", "attach", "-t", "=v-it's $(x)"])
     }
 
     /// libghostty runs the command as `exec -l <command>` with TERM=xterm-ghostty, which ssh would hand the far

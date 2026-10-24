@@ -2,14 +2,15 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { entriesOf, manifestDigest, signManifest, sshVerify, verifyRelease, writeManifest, type Entry } from '../../../scripts/release-manifest.mjs';
 import { allowedSigners, installRelease } from '../../../scripts/install-release.mjs';
 import { companionAssets, describeVersion, packageLicence, phonePackages, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
 import { isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
+import { resolveTmux, servingTmux } from '../src/tmux/tmux.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(() => { delete process.env.SVALL_RELEASE_ROOT; cleanHomes(); });
+afterEach(() => { delete process.env.SVALL_RELEASE_ROOT; vi.unstubAllEnvs(); cleanHomes(); });
 
 const checkout = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -45,6 +46,38 @@ describe('release root on an installed release', () => {
     fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3' }));
     process.env.SVALL_RELEASE_ROOT = root;
     expect(releaseVersion()).toBe('1.2.3');
+  });
+
+  it('runs the tmux it carries, whatever PATH holds, and the one on PATH when it carries none', () => {
+    const root = makeHome();
+    process.env.SVALL_RELEASE_ROOT = root;
+    fs.mkdirSync(path.join(root, 'path'));
+    fs.writeFileSync(path.join(root, 'path', 'tmux'), '#!/bin/sh\n', { mode: 0o755 });
+    vi.stubEnv('PATH', path.join(root, 'path'));
+    expect(resolveTmux()).toBe(path.join(root, 'path', 'tmux'));
+    fs.mkdirSync(path.join(root, 'bin'));
+    fs.writeFileSync(path.join(root, 'bin', 'tmux'), '#!/bin/sh\n', { mode: 0o755 });
+    expect(resolveTmux()).toBe(path.join(root, 'bin', 'tmux'));
+  });
+
+  it('keeps the tmux an earlier daemon ran while a server of its version answers, and its own otherwise', async () => {
+    const root = makeHome();
+    process.env.SVALL_RELEASE_ROOT = root;
+    fs.mkdirSync(path.join(root, 'bin'));
+    // the release's tmux is 3.7c, and the socket file holds the version its server answers
+    const own = path.join(root, 'bin', 'tmux');
+    fs.writeFileSync(own, '#!/bin/sh\n[ "$1" = -V ] && { echo "tmux 3.7c"; exit; }\ncat "$2"\n', { mode: 0o755 });
+    const system = path.join(root, 'system-tmux');
+    fs.writeFileSync(system, '#!/bin/sh\necho "tmux 3.4"\n', { mode: 0o755 });
+    const sock = path.join(root, 'tmux.sock');
+    expect(await servingTmux(sock, system)).toBe(own);
+    fs.writeFileSync(sock, 'tmux 3.4\n');
+    expect(await servingTmux(sock, system)).toBe(system);
+    expect(await servingTmux(sock, undefined)).toBe(own);
+    fs.writeFileSync(sock, 'tmux 3.5\n');
+    expect(await servingTmux(sock, system)).toBe(own);
+    fs.writeFileSync(sock, 'tmux 3.7c\n');
+    expect(await servingTmux(sock, system)).toBe(own);
   });
 
   it('falls back to dev when release.json is missing or unreadable', () => {
@@ -440,5 +473,33 @@ describe('the controller a release builds', () => {
     expect(execFileSync('shasum', ['-a', '256', source], { encoding: 'utf8' }).split(' ')[0]).toBe(pins.rsync.sha256);
     const notice = fs.readFileSync(path.join(licenses, 'NOTICE'), 'utf8');
     expect(notice).toMatch(new RegExp(`^rsync ${pins.rsync.version.replace(/\./g, '\\.')} \\(bin/rsync\\)  GPL-3\\.0-or-later  licenses/rsync-LICENSE; source licenses/rsync-${pins.rsync.version.replace(/\./g, '\\.')}\\.tar\\.gz, built with \\./configure .*, then strip -S$`, 'm'));
+  }, 180_000);
+});
+
+const companionArch = process.arch === 'arm64' ? 'arm64' : 'x64';
+const tmuxCached = (): string | undefined => {
+  const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));
+  const node = path.join(checkout, 'vendor/node', `node-${pins.node.version}-linux-${companionArch}.tar.xz`);
+  const tmux = fs.existsSync(path.join(checkout, 'vendor/tmux')) && fs.readdirSync(path.join(checkout, 'vendor/tmux')).find((d) => d.endsWith(`-linux-${companionArch}`));
+  return why ?? (!fs.existsSync(node) ? `no cached ${path.relative(checkout, node)}`
+    : !tmux ? `no vendor/tmux/*-linux-${companionArch}: scripts/tmux-build.sh --linux ${companionArch}` : undefined);
+};
+
+const whyTmux = tmuxCached();
+describe('the companion a release builds', () => {
+  (whyTmux ? it.skip : it)(`carries the tmux its units start, pinned in its manifest, and names it and what is linked into it in its NOTICE${whyTmux ? ` (skipped: ${whyTmux})` : ''}`, () => {
+    const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));
+    const out = makeHome();
+    execFileSync(process.execPath, [path.join(checkout, 'scripts/build-companion.mjs'), '--out', out, '--arch', companionArch, '--version', '0.0.0-test',
+      '--node-shasums', path.join(checkout, 'vendor/node', `SHASUMS256-${pins.node.version}.txt`)], { stdio: 'pipe' });
+    const release = path.join(out, `linux-${companionArch}`, 'releases/0.0.0-test');
+    expect(fs.statSync(path.join(release, 'bin/tmux')).mode & 0o111).not.toBe(0);
+    const files = (JSON.parse(fs.readFileSync(path.join(release, 'release.json'), 'utf8')) as { files: Entry[] }).files;
+    expect(files.find((e) => e.path === 'bin/tmux')).toMatchObject({ type: 'file', mode: '755', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    const notice = fs.readFileSync(path.join(release, 'licenses/NOTICE'), 'utf8');
+    expect(notice).toMatch(/^tmux 3\.\S+ \(bin\/tmux\)  ISC  licenses\/tmux-LICENSE$/m);
+    expect(notice).toMatch(/^libevent \S+ \(linked into bin\/tmux\)  BSD-3-Clause  licenses\/libevent-LICENSE$/m);
+    expect(notice).toMatch(/^utf8proc \S+ \(linked into bin\/tmux\)  MIT  licenses\/utf8proc-LICENSE$/m);
+    for (const f of ['tmux-LICENSE', 'libevent-LICENSE', 'utf8proc-LICENSE']) expect(fs.existsSync(path.join(release, 'licenses', f)), f).toBe(true);
   }, 180_000);
 });

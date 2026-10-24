@@ -39,6 +39,13 @@ export const systemdDir = (): string => asset('systemd', 'packages/svalld/system
 /** The svall a companion installed under `svallBase` runs: the one in the release `current` points at. */
 export const svallExe = (svallBase: string): string => path.posix.join(svallBase, 'current', 'bin', 'svall');
 
+/** The tmux a Linux companion release carries in its bin/; undefined for one that carries none, and for a checkout. */
+export function releaseTmux(): string | undefined {
+  const dir = root();
+  const tmux = dir && path.join(dir, 'bin', 'tmux');
+  return tmux && fs.existsSync(tmux) ? tmux : undefined;
+}
+
 /** The askpass the first ssh of `svall host add` asks through when there is no terminal. */
 export const askpassPath = (): string => asset('bin/svall-askpass', 'scripts/release/svall-askpass');
 

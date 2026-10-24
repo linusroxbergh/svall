@@ -254,15 +254,41 @@ async function stateSchemaOf(master: SshMaster, svallBase: string, version: stri
   }
 }
 
+// $1 the svall base, $2 the release gone back to, $3 the one it runs, $4 the far home: each fleet's tmux server there
+// that a release carrying no tmux could not reach, as the machine's own tmux, which it would run, is another version
+const STRANDED_TMUX = `[ -x "$1/releases/$2/bin/tmux" ] && exit 0
+own="$1/releases/$3/bin/tmux"
+[ -x "$own" ] || exit 0
+theirs=$(PATH="$4/.local/bin:/usr/local/bin:/usr/bin:/bin" tmux -V 2>/dev/null)
+cd "$4" || exit 1
+for s in .svall/tmux.sock .svall-*/tmux.sock; do
+  [ -S "$s" ] || continue
+  v=$("$own" -S "$s" display -p 'tmux #{version}' 2>/dev/null) || continue
+  [ "$v" = "$theirs" ] || printf '%s\\t%s\\t%s\\n' "$4/$s" "$v" "\${theirs:-no tmux}"
+done
+exit 0`;
+
+/** The first fleet's tmux server in the far `home` that release `to` could not reach; undefined when it can reach every one. */
+async function strandedTmux(master: SshMaster, o: { svallBase: string; home: string; from: string; to: string }): Promise<string | undefined> {
+  const out = await remote(master, ['sh', '-c', shq(STRANDED_TMUX), 'svall-tmux-servers', shq(o.svallBase), shq(o.to), shq(o.from), shq(o.home)],
+    `the fleets' tmux servers in ${o.home}`, TAR_TIMEOUT);
+  const [sock, served, theirs] = out.split('\n')[0].split('\t');
+  return sock ? `${sock} is served by ${served}, and release ${o.to} carries no tmux and would run the machine's (${theirs}), which cannot reach it` : undefined;
+}
+
 /**
  * Why going back to `to`, or without one to the newest other release kept, would leave a fleet's svalld on the far machine
- * refusing to start: its state.json at a newer schema than that release reads. A release that does not say what it reads
- * is held to the oldest schema any release has read. Undefined when nothing there stands in the way.
+ * refusing to start, or unable to reach its tmux server: its state.json at a newer schema than that release reads, or
+ * a server that release's tmux cannot talk to. A release that does not say what it reads is held to the oldest schema
+ * any release has read. Undefined when nothing there stands in the way.
  */
 export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<string | undefined> {
   const states = await stateVersions(master, o.home);
   const to = o.to ?? await newestOther(master, o.svallBase, o.from);
-  if (!states.length || to === undefined) return undefined;
+  if (to === undefined) return undefined;
+  const stranded = await strandedTmux(master, { ...o, to });
+  if (stranded) return stranded;
+  if (!states.length) return undefined;
   const newest = states.reduce((a, b) => (b.version > a.version ? b : a));
   const reads = await stateSchemaOf(master, o.svallBase, to);
   if (reads !== undefined) {

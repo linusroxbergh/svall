@@ -62,7 +62,7 @@ runIf('desktop terminal attach', () => {
   it('creates a session holding only the character window and reports how to attach', async () => {
     const { tmux, hub, c, paths } = await boot();
     const r = await hub.attach(c.id);
-    expect(r).toEqual({ socket: paths.tmuxSock, session: `v-${c.id}` });
+    expect(r).toEqual({ socket: paths.tmuxSock, session: `v-${c.id}`, tmux: tmux.binary });
     const windows = (await tmux.run('list-windows', '-t', `=v-${c.id}`, '-F', '#{window_id}')).trim().split('\n');
     expect(windows).toEqual([c.tmux!.windowId]);
     expect(await tmux.run('show-hooks', '-t', `v-${c.id}`)).toContain(`set-option -t v-${c.id} destroy-unattached on`);

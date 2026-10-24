@@ -243,8 +243,8 @@ function runs(label, rel, releases) {
 
 // ---------------------------------------------------------------------------------------------- the provisioning
 
-const ADVICE = new Set(['tmux', 'claude', 'codex', 'opencode']);
-const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'service',
+const ADVICE = new Set(['claude', 'codex', 'opencode']);
+const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
   'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
 
 // with no --release the controller downloads the companion its manifest pins, checks its digest and caches it
@@ -263,11 +263,13 @@ function hostAdd(a) {
   save('host-add.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  // a fresh machine has no agents yet and Ubuntu's tmux 3.4: each is something to go and do
+  // a fresh machine has no agents yet: each is something to go and do
   for (const s of steps) check(`host add ${s.step}`, s.status === 'ok' || (s.status === 'warn' && ADVICE.has(s.step)), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   check('host add steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(ADD_STEPS), () => brief(steps.map((s) => s.step)));
   const at = (name) => steps.find((s) => s.step === name);
   check('host add linger', at('linger')?.detail?.startsWith(`turned on for ${USER}:`), () => brief(at('linger')));
+  // the machine has Ubuntu's tmux 3.4 on its PATH, and the units start the release's own
+  check('host add tmux', at('tmux')?.detail === "tmux 3.7c, Svall's own", () => brief(at('tmux')));
   check('host add service', at('service')?.status === 'ok' && ADDED.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
     () => brief(at('service')));
   check('host add release', at('release')?.detail === from(a), () => brief(at('release')));

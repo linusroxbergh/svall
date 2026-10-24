@@ -28,11 +28,11 @@ runs, and the daemon's log or setup's output names it; copy anything you still w
 `svall doctor` warns of one still there. A `config.json.bak` already in the way stops the split before anything is
 written, until you keep one of the two; the daemon's log and `svall doctor` both say so.
 
-### State schema 9 and protocol 25
+### State schema 9 and protocol 26
 
 - On its first start, the daemon migrates `state.json` to version 9, where a second terminal has a folder of its own.
   The file as it was stays beside it as `state.json.v8-<time>`, or `.v7-` from a release before OpenCode support.
-- The app, `svall` and the daemons of one release speak protocol 25 to each other. An app or `svall` from an older
+- The app, `svall` and the daemons of one release speak protocol 26 to each other. An app or `svall` from an older
   release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
   gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md). A fleet with no

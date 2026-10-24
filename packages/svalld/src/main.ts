@@ -33,11 +33,12 @@ import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
 import { workspaceRoot } from './resources/scan.js';
+import { readOrUndefined } from './settings-file.js';
 import { installHookScripts } from './setup.js';
 import { Store } from './store.js';
 import { TerminalHub } from './terminals.js';
 import { tmuxConfText, tmuxTooOld } from './tmux/conf.js';
-import { Tmux } from './tmux/tmux.js';
+import { servingTmux, Tmux } from './tmux/tmux.js';
 import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
@@ -188,7 +189,8 @@ async function start(opts: Options): Promise<Daemon> {
     catch (e) { log.error(`opencode plugin: ${(e as Error).message}`); }
   }
 
-  const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
+  // a server an earlier release started, such as one on Ubuntu's own tmux before an upgrade, keeps its tmux until it ends
+  const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf, await servingTmux(paths.tmuxSock, readOrUndefined(path.join(paths.home, 'tmux-binary'))));
   // the conf leaves out what this tmux would refuse, so the version is read before it is written
   const tmuxVersion = await tmux.version();
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config, { tmuxVersion }));

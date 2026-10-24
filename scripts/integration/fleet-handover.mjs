@@ -89,8 +89,8 @@ function install() {
   const add = sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false });
   const steps = lines(add.stdout).filter((e) => e.step && e.status !== 'start');
   for (const s of steps) {
-    // Ubuntu 24.04's tmux is 3.4, and there is no Codex on the machine: both are advice, not failures
-    const advice = s.status === 'warn' && (s.step === 'tmux' || s.step === 'codex');
+    // there is no Codex on the machine, which is advice, not a failure
+    const advice = s.status === 'warn' && s.step === 'codex';
     check(`host add ${s.step}`, s.status === 'ok' || advice, `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   }
   for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'claude', 'opencode', 'probe', 'registry']) {

@@ -70,7 +70,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   for (const event of ADD_STEPS) await receive(page, { type: 'host.step', op: 'add', event });
   await receive(page, { type: 'host.done', op: 'add', code: 1 });
 
-  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching the machine', 'What the machine needs', 'Agent logins', 'Trying it out']);
+  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching the machine', 'Svall on the machine', 'Agent logins', 'Trying it out']);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
   await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth login');
   await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');

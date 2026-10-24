@@ -108,7 +108,7 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
     <>
       <div className="host-note" data-testid="host-intro">
         <span>
-          The machine needs Ubuntu LTS with systemd, and an account reached over ssh whose home is the same path as yours
+          The machine needs Ubuntu LTS 22.04 or newer with systemd, and an account reached over ssh whose home is the same path as yours
           on this Mac. Add machine installs Svall on an x86-64 machine and lists anything left for you to do; add an arm64
           one with <code>svall host add … --release</code>, as Setting up a Linux machine in Svall&apos;s docs describes.
           Then Make it this fleet&apos;s gateway, and Handover can move the fleet there.

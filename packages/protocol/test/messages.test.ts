@@ -26,7 +26,7 @@ describe('messages', () => {
   });
   it('term.attach takes an id and returns how to attach', () => {
     expect(methods['term.attach'].params.parse({ id: 'c_a' })).toEqual({ id: 'c_a' });
-    expect(methods['term.attach'].result.parse({ socket: '/tmp/x/tmux.sock', session: 'v-c_a' }).session).toBe('v-c_a');
+    expect(methods['term.attach'].result.parse({ socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux' })).toEqual({ socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux' });
   });
   it('char.move takes an island and a cell', () => {
     expect(methods['char.move'].params.parse({ id: 'c', islandId: 'i', cell: { x: 1, y: 2 } })).toEqual({ id: 'c', islandId: 'i', cell: { x: 1, y: 2 } });
@@ -150,8 +150,12 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 25 with ownership, handover, the pairing link beside the phone address and the machine\'s cores in the load reading', () => {
-    expect(PROTOCOL_VERSION).toBe(25);
+  it('is 26 with the tmux that serves the socket in term.attach, which a terminal on another machine runs', () => {
+    expect(PROTOCOL_VERSION).toBe(26);
+    expect(methods['term.attach'].result.safeParse({ socket: '/s', session: 'v-c_a' }).success).toBe(false);
+  });
+
+  it('was 25 with ownership, handover, the pairing link beside the phone address and the machine\'s cores in the load reading', () => {
     expect(MobileStatus.parse({ serving: true, url: 'https://m/', pair: 'https://m/#p', port: 443, logins: [], phones: [] }).pair).toBe('https://m/#p');
     const u = { cpu: 1, mem: 2, procs: 3 };
     expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, chars: {} }).success).toBe(false);

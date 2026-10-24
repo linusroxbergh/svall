@@ -285,7 +285,8 @@ export const methods = {
   'term.input': { params: z.object({ id: z.string(), data: z.string().base64() }), result: z.object({}) },
   'term.resize': { params: Id.merge(TermSize), result: z.object({}) },
   'term.close': { params: Id, result: z.object({}) },
-  'term.attach': { params: Id.extend({ term: Term }), result: z.object({ socket: z.string(), session: z.string() }) },
+  // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there
+  'term.attach': { params: Id.extend({ term: Term }), result: z.object({ socket: z.string(), session: z.string(), tmux: z.string() }) },
   'system.info': { params: z.object({}), result: SystemInfo },
   'ownership.get': { params: z.object({}), result: OwnershipInfo },
   // token-only: the gateway's record as `svall fleet recover` relays it after a forced write, and the gateway that holds it now,
@@ -429,4 +430,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 25;
+export const PROTOCOL_VERSION = 26;

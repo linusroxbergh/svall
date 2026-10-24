@@ -38,12 +38,12 @@ enum AttachCommand {
         case .remote(let route):
             guard masterAnswers(route.controlSocket) else { return nil }
             // ssh joins the words after the destination into one line for the far login shell, which
-            // splits it again, so the socket and session are quoted a second time for that shell
-            let far = "-S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
+            // splits it again, so the tmux, socket and session are quoted a second time for that shell
+            let far = "\(attach.tmux.map { quote(quote($0)) } ?? "tmux") -S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
             // past sshd's MaxSessions on the master, ssh opens a login of its own, as the master did, without a prompt
             // ssh hands the far tmux its TERM, and Linux ships no xterm-ghostty terminfo. libghostty runs `exec -l <command>`,
             // which would take a bare TERM= for the program, so env sets it
-            return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) tmux \(far)"
+            return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) \(far)"
         }
     }
 }
@@ -150,7 +150,7 @@ final class SurfaceManager {
         if let machine { return open(id: id, rect: rect, machine: machine, opacity: opacity) }
         guard let attach else { return }
         let route = route()
-        // the page names the socket and session only; which binary runs is decided here
+        // a local attach runs this Mac's tmux, decided here; a remote one runs the far tmux the page names
         let binary = SvallHome.tmuxBinary
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else {
             // the helper is opening a route, or opening one again: the session is remembered and attached once it is online

@@ -3,6 +3,8 @@ import WebKit
 
 struct WebAttach: Decodable {
     let socket: String, session: String
+    /// The tmux that serves the socket, which a terminal on another machine runs there.
+    var tmux: String? = nil
 }
 
 /// A terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's

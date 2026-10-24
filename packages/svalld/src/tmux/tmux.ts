@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
 import { ControlClient } from './control.js';
 
@@ -15,7 +16,7 @@ const KEEP_WINDOW = '_keep';
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'dash']);
 
 export function resolveTmux(): string {
-  const own = helper('tmux');
+  const own = helper('tmux') ?? releaseTmux();
   if (own) return own;
   for (const dir of (process.env.PATH ?? '').split(':')) {
     if (!dir) continue;
@@ -23,6 +24,20 @@ export function resolveTmux(): string {
     try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch { /* next dir */ }
   }
   return 'tmux';
+}
+
+/**
+ * The tmux to run against `socket`: resolveTmux()'s, unless a server of another version already answers there and
+ * `recorded`, the tmux an earlier daemon ran, is that version, as a newer client cannot attach to an older server.
+ */
+export async function servingTmux(socket: string, recorded: string | undefined): Promise<string> {
+  const own = resolveTmux();
+  if (!recorded || recorded === own) return own;
+  const read = (binary: string, ...args: string[]): Promise<string | undefined> =>
+    exec(binary, args, CALL).then((r) => r.stdout.trim(), () => undefined);
+  const server = await read(own, '-S', socket, 'display', '-p', 'tmux #{version}');
+  if (!server || server === await read(own, '-V')) return own;
+  return server === await read(recorded, '-V') ? recorded : own;
 }
 
 // the server takes the environment of the command that starts it, and hands it to every pane. The
@@ -119,10 +134,9 @@ export function parseViewerScreen(out: string, lines: number): Buffer {
 }
 
 export class Tmux {
-  readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
 
-  constructor(readonly socket: string, private conf: string) {}
+  constructor(readonly socket: string, private conf: string, readonly binary = resolveTmux()) {}
 
   async run(...args: string[]): Promise<string> {
     return this.call(args);

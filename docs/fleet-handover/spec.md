@@ -60,16 +60,18 @@ source daemon's current machine.”
 The first published release supports:
 
 - macOS 15 or newer for the desktop app and local owner;
-- an Ubuntu LTS release (an even year's `.04`) on x86-64 or arm64 for the gateway and remote owner;
-  another Ubuntu release is a warning, any other system is refused, and 24.04 is the release tested;
+- an Ubuntu LTS release (an even year's `.04`), 22.04 or newer, on x86-64 or arm64 for the gateway and remote
+  owner; a later release other than an LTS is a warning, an older one or any other system is refused, and 24.04 is
+  the release tested;
 - Tailscale on both machines;
 - OpenSSH access from the Mac to the Linux account, including Tailscale SSH;
 - the same home path on both machines: the Linux account's home is the Mac's, such as
   `/Users/linus`, set with `useradd -m -d` or `usermod -d`. A symlink is not enough, because the
   working directory a process reports is the resolved path, and Git and the agents record that;
 - systemd user services on Linux;
-- tmux 3.x and Git on both machines; tmux 3.5 or newer is recommended, because Shift+Enter needs
-  its `extended-keys-format`, and Ubuntu 24.04 ships 3.4;
+- Git on both machines, and tmux 3.x on the Mac; tmux 3.5 or newer is recommended, because Shift+Enter
+  needs its `extended-keys-format`. Ubuntu 24.04 ships 3.4, so the Linux companion carries its own tmux
+  3.7c, built on Ubuntu 22.04, the oldest release it supports;
 - rsync 3.2.3 or newer on both machines. Ubuntu 22.04 and later ship it; macOS ships openrsync,
   which cannot protect remote arguments or report byte progress, so the desktop release bundles
   its own rsync, and a Mac without it has none a handover runs: only Linux falls back to the
@@ -287,18 +289,18 @@ below the Unix socket path limit. The connection helper, as it starts, ends the 
 socket there whose process is gone and removes the socket. Commands are spawned with argv arrays,
 never interpolated through a shell.
 
-`term.attach` continues to return only `{ socket, session }`. The Mac native layer already knows
-whether the active connection is remote and builds either:
+`term.attach` returns `{ socket, session, tmux }`, `tmux` being the binary that serves the socket. The Mac
+native layer already knows whether the active connection is remote and builds either, with its own tmux:
 
 ```text
 tmux -S <socket> attach -t <session>
 ```
 
-or:
+or, with the far machine's:
 
 ```text
 env TERM=xterm-256color ssh -S <control-socket> -o ControlMaster=no -o BatchMode=yes -tt -- <ssh-destination> \
-  tmux -S <socket> attach -t <session>
+  <tmux> -S <socket> attach -t <session>
 ```
 
 The remote command is built only while the helper's master answers on its control socket; until
@@ -362,14 +364,15 @@ rollback (after a reinstall under the same name, the newest other release) and r
 
 1. Open an interactive SSH connection so the user can verify a new host key and complete any SSH
    authentication.
-2. Read the remote home, OS and architecture; require Ubuntu (an LTS release passes, another warns)
+2. Read the remote home, OS and architecture; require Ubuntu 22.04 or newer (an LTS release passes, another warns)
    and a home path equal to the Mac's. A different home stops setup with the commands that create
    an account whose home matches.
-3. Check Tailscale, tmux, Git, rsync and systemd user services. A tmux older than 3.5 is a warning
-   naming the Shift+Enter limitation, not a blocker, and so is an rsync older than 3.2.3. Missing
+3. Check Tailscale, Git, rsync and systemd user services. An rsync older than 3.2.3 is a warning,
+   not a blocker. Missing
    system packages are shown with a copyable apt command. Svall never runs sudo: the step's
    action names the command for the user to run on the machine, and carries it as `run`.
-4. Upload and verify the matching companion release.
+4. Upload and verify the matching companion release. Once it is installed, check the tmux its units
+   start: a tmux older than 3.5 is a warning naming the Shift+Enter limitation, not a blocker.
 5. Install `svall-gateway.service` and an `svall-svalld@<fleet>.service` template as
    systemd user units. Units use absolute paths through `current`, a resolved PATH that holds
    `~/.opencode/bin`, `Restart=always` and logs under the Svall data directory; each fleet's unit
@@ -402,7 +405,8 @@ setup is idempotent. `svall host doctor trift`, `svall host upgrade trift` and
 `svall host upgrade trift --rollback [release]` puts the machine back on the release before, or a
 kept one it names, and probes it as an upgrade does. It refuses before anything changes while a
 fleet's `state.json` there is at a newer state schema than that release's `svall version --json`
-names, or, where it names none, newer than the oldest schema any release has read. `svall uninstall` run on a machine refuses
+names, or, where it names none, newer than the oldest schema any release has read; and while that release carries
+no tmux and a fleet's tmux server runs another version than the machine's own. `svall uninstall` run on a machine refuses
 while it holds a handover journal, runs a fleet for its gateway or keeps gateway records;
 `--force` passes all of it, and `--force-fleet <id>` only the gateway record of that fleet.
 `svall host remove` checks the fleets this controller knows of, then runs it with `--force-fleet`
