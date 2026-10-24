@@ -15,6 +15,12 @@
 .sb-collapse { right: 0; border-right: 0; border-radius: var(--r-md) 0 0 var(--r-md); }
 .sb-show { left: 0; border-left: 0; border-radius: 0 var(--r-md) var(--r-md) 0; }
 .sb-list { flex: 1; min-height: 0; overflow: hidden auto; margin-bottom: var(--utility-dock-h); padding: 0 var(--sp-xl) var(--sp-xl) var(--sp-xs); }
+/* a waiting update sits between the list and the dock */
+.sb-list:has(+ .sb-update) { margin-bottom: 0; }
+.sb-update { flex: none; display: flex; align-items: center; gap: var(--sp-sm); margin: 0 var(--sp-xl) calc(var(--utility-dock-h) + var(--sp-md)); padding: var(--sp-sm) var(--sp-md);
+  border-radius: var(--r-sm); background: var(--sand); color: var(--ink-sand); text-align: left; }
+.sb-update:hover { background: var(--sand-hi); }
+.sb-update svg { flex: none; width: 15px; height: 15px; }
 .sb-folder { margin-bottom: var(--sp-sm); }
 .sb-row { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; padding: var(--sp-sm) var(--sp-md); margin-bottom: var(--sp-2xs); border-radius: var(--r-sm); overflow: hidden; cursor: default;
   font-size: var(--text-md); color: var(--ink); }

@@ -60,7 +60,8 @@ export function UtilityDock() {
   const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error);
   const serving = useApp((s) => !!s.mobile?.serving);
   const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
-  const update = useApp((s) => !!s.update);
+  // an open sidebar names a waiting update itself
+  const update = useApp((s) => !!s.update && !s.sidebarOpen);
   const settingsLabel = update ? 'Settings, update available' : 'Settings';
   // the machine the fleet runs on, whenever that is not this Mac
   const owner = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));

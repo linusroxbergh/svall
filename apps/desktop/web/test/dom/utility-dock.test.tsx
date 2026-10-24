@@ -58,10 +58,12 @@ test('the settings button names the key the user bound, not the one it shipped w
   expect(screen.getByTestId('settings-open').title).toBe('Settings (⌘⇧O)');
 });
 
-test('the settings button carries a dot only while an update waits', () => {
+test('the settings button carries a dot only while an update waits and the sidebar is hidden', () => {
   render(<UtilityDock />);
   expect(screen.queryByTestId('settings-update')).toBeNull();
   act(() => store.getState().setUpdate('0.2.1'));
+  expect(screen.queryByTestId('settings-update')).toBeNull();
+  act(() => store.getState().toggleSidebar(false));
   expect(screen.getByTestId('settings-update')).toBeTruthy();
   expect(screen.getByTestId('settings-open').getAttribute('aria-label')).toBe('Settings, update available');
   act(() => store.getState().setUpdate(undefined));
