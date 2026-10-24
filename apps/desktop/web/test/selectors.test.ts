@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState, type ContextItem } from '@svall/protocol';
-import { boardIsland, boardViewed, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
+import { boardColumns, placesOf, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -119,17 +119,22 @@ describe('board', () => {
     expect(islandStatus(f, 'i_b')).toBe('done');
     expect(islandStatus(f, 'i_e')).toBeUndefined();
   });
-  it('views the selection; a selected island views its focused or first robot, an empty one nothing', () => {
+  it('fills each column in the sidebar order with the robots asked for, a robot in no known column in the first', () => {
     const f = fleet();
-    expect(boardViewed({ fleet: f, selectedId: 'c1', selectedIslandId: undefined })).toBe('c1');
-    expect(boardViewed({ fleet: f, focusedId: 'c0', selectedIslandId: 'i_e' })).toBeUndefined();
-    expect(boardViewed({ fleet: f, focusedId: 'c0', selectedIslandId: 'gone' })).toBe('c0');
-    expect(boardViewed({ fleet: f, focusedId: 'c1', selectedIslandId: 'i_b' })).toBe('c1');
-    expect(boardViewed({ fleet: f, focusedId: 'c2', selectedIslandId: 'i_b' })).toBe('c0');
-    expect(boardViewed({ fleet: f, selectedIslandId: 'i_a' })).toBe('c2');
-    expect(boardIsland({ fleet: f, selectedId: 'c1' })?.id).toBe('i_b');
-    expect(boardIsland({ fleet: f, selectedIslandId: 'i_e' })?.id).toBe('i_e');
-    expect(boardIsland({ fleet: emptyState() })).toBeUndefined();
+    f.robots.c0.column = 'review';
+    f.robots.c1.column = 'gone';
+    const ids = (cols: ReturnType<typeof boardColumns>) => cols.map((k) => [k.column.id, k.robots.map((c) => c.id)]);
+    expect(ids(boardColumns(f, () => true, new Map()))).toEqual([['todo', ['c2', 'c1']], ['doing', []], ['review', ['c0']], ['done', []]]);
+    expect(ids(boardColumns(f, (c) => c.islandId === 'i_b', new Map()))).toEqual([['todo', ['c1']], ['doing', []], ['review', ['c0']], ['done', []]]);
+    expect(placesOf(f)).toEqual(new Map([['c0', 'review'], ['c1', 'todo'], ['c2', 'todo']]));
+  });
+  it('puts the robots that arrived at the top of their column, the latest first', () => {
+    const f = fleet();
+    const first = (arrived: Map<string, number>) => boardColumns(f, () => true, arrived)[0].robots.map((c) => c.id);
+    f.robots.c0.column = 'todo';
+    expect(first(new Map())).toEqual(['c2', 'c0', 'c1']);
+    expect(first(new Map([['c1', 5]]))).toEqual(['c1', 'c2', 'c0']);
+    expect(first(new Map([['c1', 5], ['c0', 9]]))).toEqual(['c0', 'c1', 'c2']);
   });
 });
 

@@ -1,4 +1,4 @@
-import { byCell, byIslandOrder, starredOf, type AgentKind, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, columnOf, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
@@ -47,8 +47,6 @@ export const stripOrder = (f: FleetState): Robot[] => {
   if (!strip) strips.set(f, (strip = islandsSorted(f).flatMap((i) => robotsOf(f, i.id))));
   return strip;
 };
-
-const islandOf = (f: FleetState, id: string | undefined): Island | undefined => (id ? f.islands[f.robots[id]?.islandId ?? ''] : undefined);
 
 export const STARRED = 'sidebar.starred';
 
@@ -147,34 +145,34 @@ export function countsByStatus(f: FleetState): Record<DisplayStatus, number> {
   return out;
 }
 
-// the board always has a selection: the explicit one, else the remembered focus, else the first robot
+// the robot the keys start from: the explicit selection, else the remembered focus, else the first robot
 export const selectedOf = (s: { fleet: FleetState; selectedId?: string; focusedId?: string }): string | undefined => {
   if (s.selectedId && s.fleet.robots[s.selectedId]) return s.selectedId;
   if (s.focusedId && s.fleet.robots[s.focusedId]) return s.focusedId;
   return stripOrder(s.fleet)[0]?.id;
 };
 
-export type BoardSelection = { fleet: FleetState; selectedId?: string; focusedId?: string; selectedIslandId?: string };
+export type BoardColumn = { column: Column; robots: Robot[] };
 
-// the robot whose terminal the board shows: on a selected island its remembered focus or its first
-// robot, nothing when the island is empty; otherwise the board's selection
-export function boardViewed(s: BoardSelection): string | undefined {
-  const island = s.selectedIslandId ? s.fleet.islands[s.selectedIslandId] : undefined;
-  if (!island) return selectedOf(s);
-  const focused = s.focusedId ? s.fleet.robots[s.focusedId] : undefined;
-  return focused?.islandId === island.id ? focused.id : robotsOf(s.fleet, island.id)[0]?.id;
+// the board's columns left to right, each holding the robots `shown` keeps in the sidebar's order, except that one
+// with an arrival number goes to the top, the highest first
+export function boardColumns(f: FleetState, shown: (c: Robot) => boolean, arrived: ReadonlyMap<string, number>): BoardColumn[] {
+  const cols = f.columns.map((column) => ({ column, robots: [] as Robot[] }));
+  const byId = new Map(cols.map((k) => [k.column.id, k]));
+  for (const c of stripOrder(f)) if (shown(c)) byId.get(columnOf(f, c).id)!.robots.push(c);
+  for (const k of cols) k.robots.sort((a, b) => (arrived.get(b.id) ?? 0) - (arrived.get(a.id) ?? 0));
+  return cols;
 }
 
-// the island the board's tab bar shows: the selected one, else the viewed robot's
-export const boardIsland = (s: BoardSelection): Island | undefined =>
-  (s.selectedIslandId && s.fleet.islands[s.selectedIslandId]) || islandOf(s.fleet, boardViewed(s));
+// the column each robot sits in, by robot id
+export const placesOf = (f: FleetState): Map<string, string> => new Map(Object.values(f.robots).map((c) => [c.id, columnOf(f, c).id]));
 
 export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string | undefined): Panes => (id && s.ide[id]?.panes) || SINGLE;
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { namingRobot: boolean; missionPrompt: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; fleetPicker?: string; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
-  s.namingRobot || s.missionPrompt || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
+export const isVeiled = (s: { namingRobot: boolean; missionPrompt: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
+  s.namingRobot || s.missionPrompt || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.deletingColumn !== undefined || s.fleetPicker !== undefined
   || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk;
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work

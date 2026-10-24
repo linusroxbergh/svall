@@ -33,6 +33,7 @@ test('opens a folder git ignores, a shade back from the rest', async ({ page, sv
   const island = await svall.api.call('island.create', { name: svall.uniq('ignored') });
   await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
+  await page.locator('.kc').first().dblclick();
   await page.getByTestId('pane-left-files').click();
 
   const folder = page.getByTestId('tree-notes');
@@ -47,6 +48,9 @@ test('the tree folds away and is dragged wider, and comes back that way after a 
   const island = await svall.api.call('island.create', { name: svall.uniq('tree') });
   await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
+  // the half card leaves the tree little room to grow, so the card fills the board
+  await page.locator('.kc').first().dblclick();
+  await page.getByTestId('card-size').click();
   await page.getByTestId('pane-left-files').click();
   const tree = page.getByTestId('files-tree');
   const width = async () => (await tree.boundingBox())!.width;
@@ -67,6 +71,8 @@ test('the tree folds away and is dragged wider, and comes back that way after a 
   await page.getByTestId('files-tree-hide').click();
 
   await svall.open();
+  await page.locator('.kc').first().dblclick();
+  await page.getByTestId('card-size').click();
   await page.getByTestId('pane-left-files').click();
   await expect(page.getByTestId('files-tree-show')).toBeVisible();
   await expect(tree).toHaveCount(0);
@@ -80,6 +86,7 @@ test('Markdown preview shows unsaved edits and returns to the editable text', as
   const island = await svall.api.call('island.create', { name: svall.uniq('markdown') });
   await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
+  await page.locator('.kc').first().dblclick();
   await page.getByTestId('pane-left-files').click();
   await page.getByTestId('tree-README.md').click();
   const editor = page.getByTestId('editor');
@@ -106,6 +113,7 @@ test('Markdown preview shows the app\'s own images and never asks another origin
     const island = await svall.api.call('island.create', { name: svall.uniq('markdown-images') });
     await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
     await svall.open();
+    await page.locator('.kc').first().dblclick();
     await page.getByTestId('pane-left-files').click();
     await page.getByTestId('tree-README.md').click();
     const editor = page.getByTestId('editor');
@@ -129,6 +137,7 @@ test('Markdown preview follows disk changes and opens local files and sections',
   const island = await svall.api.call('island.create', { name: svall.uniq('markdown-links') });
   await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
   await svall.open();
+  await page.locator('.kc').first().dblclick();
   await page.getByTestId('pane-left-files').click();
   await page.getByTestId('tree-README.md').click();
   const editor = page.getByTestId('editor');
@@ -148,6 +157,7 @@ test('edits a file in the Files tab and sees the change in the Changes tab', asy
   const island = await svall.api.call('island.create', { name: svall.uniq('ide') });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'coder' });
   await svall.open();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
   await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
 
   // Files: the tree, a folder that opens, a file that opens in the editor
@@ -211,6 +221,7 @@ test('a robot in a worktree opens Changes against main', async ({ page, svall })
   const island = await svall.api.call('island.create', { name: svall.uniq('branched') });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: tree, name: 'brancher' });
   await svall.open();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
   await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
   await page.keyboard.press('Meta+4');
 
@@ -227,6 +238,7 @@ test('a dirty buffer meets a changed disk with a banner, and a dirty tab asks be
   const island = await svall.api.call('island.create', { name: svall.uniq('ide') });
   await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'coder' });
   await svall.open();
+  await page.locator('.kc').first().dblclick();
   await page.getByTestId('pane-left-files').click();
   await page.getByTestId('tree-src').click();
   await page.getByTestId('tree-src/hello.ts').click();
@@ -302,7 +314,7 @@ test('the map card carries the same Files and Changes tabs, and the map stays pu
   expect({ style: await world.getAttribute('style'), islands: await islands.count() }).toEqual(before);
   expect(await page.getByTestId('map').evaluate((m) => [m.scrollLeft, m.scrollTop])).toEqual([0, 0]);
 
-  // the board shows the robot where the card left it, the map brings it back in its card, and Cmd+1 is the terminal
+  // the card goes along to the board as it was, and back to the map, and Cmd+1 is the terminal
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('pane-left-changes')).toHaveAttribute('data-active', 'true');
   await page.keyboard.press('Meta+m');

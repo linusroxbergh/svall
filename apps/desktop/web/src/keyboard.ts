@@ -3,7 +3,7 @@ import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
-import { boardViewed, robotsOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
+import { robotsOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
 import { canFill, zoomBy } from './settings.js';
 import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
@@ -26,24 +26,24 @@ export function refocusSurface({ store, bridge }: Pick<Deps, 'store' | 'bridge'>
   }
 }
 
-// navigation moves the selection; the board's terminal and the map's open card follow it
+// navigation moves the selection; an open card follows it
 function goTo({ store }: Deps, id?: string, starred = false): void {
   if (!id) return;
   commitFocused();
   const st = store.getState();
-  if (st.view === 'board' || st.card) st.focus(id); else st.select(id, st.sideCardOpen);
+  if (st.card) st.focus(id); else st.select(id, st.sideCardOpen);
   st.setStarredRow(starred ? id : undefined);
 }
 
-// the robot the keys act on: the selection on the map, the viewed one on the board
-const currentOf = (s: AppState): string | undefined => (s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s));
+// the robot the keys act on: the selection, else the card's
+const currentOf = (s: AppState): string | undefined => s.selectedId ?? s.card ?? selectedOf(s);
 
 const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) =>
   neighbor(s.fleet, id, step, !s.sections[STARRED]?.shut, s.starredRow === id);
 
-// an island picked on the map selects no robot, so the walk starts at its first
+// a picked island selects no robot, so the walk starts at its first
 const islandFirst = (s: AppState): string | undefined => {
-  const i = s.view === 'map' && !s.selectedId && s.selectedIslandId ? s.fleet.islands[s.selectedIslandId] : undefined;
+  const i = !s.selectedId && s.selectedIslandId ? s.fleet.islands[s.selectedIslandId] : undefined;
   return i && !i.collapsed ? robotsOf(s.fleet, i.id)[0]?.id : undefined;
 };
 
@@ -60,7 +60,7 @@ export async function closeRobot(ctx: Deps, id: string): Promise<void> {
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingRobot(false); s.setMissionPrompt(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
+  s.setNamingRobot(false); s.setMissionPrompt(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setDeletingIsland(undefined); s.setDeletingColumn(undefined); s.setFleetPicker(undefined);
   // a dialog over the settings takes the keys from a shortcut row still waiting for one
   s.setCapturingKey(undefined);
 }
@@ -102,7 +102,7 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
         await closeRobot(ctx, s.closingRobot).catch((e: Error) => store.getState().showToast(e.message));
         return;
       }
-      if (s.view === 'map' && s.card) { store.getState().closeCard(); return; }
+      if (s.card) { store.getState().closeCard(); return; }
       if (!current) return;
       // the close key sits among the ones that walk the fleet, so a robot closed by key is confirmed first
       closeModals();
@@ -112,7 +112,7 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
     case 'prevRobot': walk(-1); return;
     case 'nextRobot': walk(1); return;
     case 'toggleView': commitFocused(); store.getState().setView(s.view === 'map' ? 'board' : 'map'); return;
-    case 'toggleCardSize': if (s.view === 'map') store.getState().toggleCardSize(); return;
+    case 'toggleCardSize': store.getState().toggleCardSize(); return;
     case 'toggleSettings':
       commitFocused();
       store.getState().toggleSettings();
@@ -183,7 +183,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     const a = map()[chord];
     if (a) dispatchKey(a, ctx).catch((e: Error) => console.warn(`${a.type}: ${e.message}`));
   };
-  // Esc: the terminal card first, then the side card; the board keeps its selection so the terminal stays put
+  // Esc: the terminal card first, then the selection
   const closeCard = () => {
     const st = ctx.store.getState();
     if (st.capturingKey) { st.setCapturingKey(undefined); return; }
@@ -193,9 +193,9 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     if (st.usageOpen) { st.toggleUsage(false); refocusSurface(ctx); return; }
     if (st.loadOpen) { st.toggleLoad(false); refocusSurface(ctx); return; }
     if (st.mobileOpen) { st.toggleMobile(false); refocusSurface(ctx); return; }
-    if (st.view === 'map' && st.card) { st.closeCard(); return; }
-    if (st.view === 'board') st.toggleSideCard(false);
-    else { st.select(undefined); st.selectIsland(undefined); }
+    if (st.card) { st.closeCard(); return; }
+    st.select(undefined);
+    st.selectIsland(undefined);
     refocusSurface(ctx);
   };
   const tag = (e: KeyboardEvent) => (e.target as { tagName?: string } | null)?.tagName ?? '';
@@ -208,7 +208,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
   const control = (e: KeyboardEvent): boolean => field(e) || (/^(BUTTON|A)$/.test(tag(e)) && keyFocused);
   // the editor owns its keys: Enter inserts a line, Escape closes its search panel
   const inEditor = (e: KeyboardEvent): boolean => Boolean((e.target as Element | null)?.closest?.('.cm-editor'));
-  // plain keys the page itself handles: Esc closes the card, Enter opens the selection (board: the surface takes the keys, map: the card)
+  // plain keys the page itself handles: Esc closes the card, Enter opens the selection's
   const onPlain = (e: KeyboardEvent): boolean => {
     if (inEditor(e)) return false;
     if (e.key === 'Escape') {
@@ -221,8 +221,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     // behind an overlay or a popup the selection is out of sight, so Enter is theirs
     if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen && !s.loadOpen && !s.settingsOpen) {
       // the key is spent here: a control still holding the focus must not activate on it as well
-      if (s.view === 'board') { e.preventDefault(); refocusSurface(ctx); return true; }
-      if (s.view === 'map' && s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }
+      if (s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }
     }
     return false;
   };

@@ -131,7 +131,7 @@ export const opensInside = (item: ContextItem): boolean =>
 // the page opens as a new tab beside the robot's terminal, with the robot in view
 export function openBeside(store: AppStore, browser: BrowserManager, id: string, url: string): void {
   const s = store.getState();
-  if (s.view === 'map') s.focus(id); else s.select(id);
+  s.focus(id);
   s.setPanes(id, showBrowser(panesOf(s, id)));
   browser.load(id, undefined, url);
 }

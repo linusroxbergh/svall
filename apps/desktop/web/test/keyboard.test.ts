@@ -104,10 +104,13 @@ describe('dispatchKey', () => {
     expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c2', focusedId: 'c2' });
     expect(c.calls).toEqual([{ method: 'robot.close', params: { id: 'c0' } }, { method: 'robot.close', params: { id: 'c1' } }]);
   });
-  it('Cmd+W on the board asks about the viewed robot; confirmed, the board selects the next', async () => {
+  it('Cmd+W on the board closes the card first, then asks about the selection; confirmed, the board selects the next', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
+    c.store.getState().toggleSideCard(true);
     c.store.getState().setView('board');
+    await dispatchKey({ type: 'closeRobot' }, c);
+    expect(c.store.getState()).toMatchObject({ card: undefined, closingRobot: undefined });
     await dispatchKey({ type: 'closeRobot' }, c);
     expect(c.store.getState().closingRobot).toBe('c0');
     await closeRobot(c, 'c0');
@@ -137,11 +140,11 @@ describe('dispatchKey', () => {
     c.store.getState().applyPatch([{ op: 'remove', path: '/robots/c0' }]);
     expect(c.store.getState().closingRobot).toBeUndefined();
   });
-  it('on the board the navigation chords move the selection and stay on the board', async () => {
+  it('on the board the navigation chords move the selection as on the map, and stay on the board', async () => {
     const c = ctx();
     c.store.getState().setView('board');
     await dispatchKey({ type: 'nextRobot' }, c);
-    expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c0', sideCardOpen: true });
+    expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c0', card: undefined });
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().selectedId).toBe('c2');
     await dispatchKey({ type: 'nextRobot' }, c);
@@ -192,15 +195,13 @@ describe('dispatchKey', () => {
     expect(c.store.getState().focusedId).toBe('c2');
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().focusedId).toBe('c0');
+    // the card stands over the board too, and the walk goes on there
     await dispatchKey({ type: 'toggleView' }, c);
-    expect(c.store.getState()).toMatchObject({ view: 'board', card: undefined });
+    expect(c.store.getState()).toMatchObject({ view: 'board', card: 'c0' });
+    await dispatchKey({ type: 'nextRobot' }, c);
+    expect(c.store.getState()).toMatchObject({ view: 'board', card: 'c1' });
     await dispatchKey({ type: 'toggleView' }, c);
-    expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c0', card: 'c0' });
-    // the board left the side card open, and it carries back to the map
-    await dispatchKey({ type: 'toggleSideCard' }, c);
-    expect(c.store.getState().sideCardOpen).toBe(false);
-    await dispatchKey({ type: 'toggleSideCard' }, c);
-    expect(c.store.getState().sideCardOpen).toBe(true);
+    expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1', card: 'c1' });
   });
   it('closing the side card hands the keys to the terminal', async () => {
     const c = ctx(true);
@@ -307,7 +308,7 @@ describe('dispatchKey', () => {
     const id = Object.keys(f.robots)[0];
     f.robots[id] = { ...f.robots[id], browser: { tabs: [{ id: 't_1', url: 'https://github.com/login', title: '' }], active: 't_1' } };
     c.store.getState().setFleet(f);
-    c.store.getState().select(id);
+    c.store.getState().focus(id);
     c.store.getState().setPanes('c1', { left: 'terminal', right: 'browser' });
     await dispatchKey({ type: 'fillLogin' }, c);
     expect(c.sent).toEqual([]);
@@ -352,7 +353,7 @@ describe('dispatchKey', () => {
   it('closing the side card refocuses the surface only while a terminal is up', async () => {
     const c = ctx(true);
     c.store.getState().setView('board');
-    c.store.getState().select('c1');
+    c.store.getState().focus('c1');
     c.store.getState().setPanes('c1', { left: 'files' });
     c.store.getState().toggleSideCard(true);
     c.sent.length = 0;
@@ -362,7 +363,7 @@ describe('dispatchKey', () => {
     c.store.getState().toggleSideCard(true);
     await dispatchKey({ type: 'toggleSideCard' }, c);
     expect(c.sent).toEqual([{ type: 'term.focus', id: 'c1' }]);
-    // the map's card shows the same panes, and holds to the same rule
+    // the card over the map holds to the same rule
     c.store.getState().setPanes('c1', { left: 'files' });
     c.store.getState().setView('map');
     c.store.getState().focus('c1');
@@ -424,7 +425,7 @@ describe('installKeyHandlers', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(c.store.getState().focusedId).toBe('c1');
   });
-  it('Enter on the board hands the keys to the surface, except in a field or on a control the keyboard focused', () => {
+  it('Enter on the board opens the selection in the card, except in a field or on a control the keyboard focused', () => {
     const c = ctx(true);
     const listeners: Record<string, (e: Event) => void> = {};
     const win = { addEventListener: (t: string, h: (e: Event) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
@@ -435,15 +436,14 @@ describe('installKeyHandlers', () => {
     listeners.keydown({ key: 'Enter', target: { tagName: 'INPUT' }, preventDefault() {} } as unknown as KeyboardEvent);
     listeners.focusin({ target: { tagName: 'BUTTON', matches: () => true } } as unknown as FocusEvent);
     listeners.keydown({ key: 'Enter', target: { tagName: 'BUTTON' }, preventDefault() {} } as unknown as KeyboardEvent);
-    expect(c.sent).toEqual([]);
+    expect(c.store.getState().card).toBeUndefined();
     // a button left focused by a mouse click is not :focus-visible, so the selection keeps the key
     listeners.focusin({ target: { tagName: 'BUTTON', matches: () => false } } as unknown as FocusEvent);
     listeners.keydown({ key: 'Enter', target: { tagName: 'BUTTON' }, preventDefault() {} } as unknown as KeyboardEvent);
-    expect(c.sent).toEqual([{ type: 'term.focus', id: 'c1' }]);
-    c.sent.length = 0;
+    expect(c.store.getState().card).toBe('c1');
+    c.store.getState().closeCard();
     listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
-    expect(c.store.getState().view).toBe('board');
-    expect(c.sent).toEqual([{ type: 'term.focus', id: 'c1' }]);
+    expect(c.store.getState()).toMatchObject({ view: 'board', card: 'c1' });
   });
   it('leaves Enter and Escape from inside the editor to the editor', () => {
     const c = ctx(true);
@@ -477,24 +477,18 @@ describe('installKeyHandlers', () => {
     listeners.keydown({ key: 'Enter', target: { tagName: 'BUTTON' }, preventDefault: kept } as unknown as KeyboardEvent);
     expect(kept).not.toHaveBeenCalled();
   });
-  it('on the board the navigation chords remember the robot as the focus', async () => {
-    const c = ctx();
-    c.store.getState().setView('board');
-    await dispatchKey({ type: 'nextRobot' }, c);
-    expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c0', focusedId: 'c0', card: undefined });
-  });
-  it('Escape on the board closes the side card and keeps the viewed robot', () => {
+  it('Escape on the board closes the card, then lets the selection go, as on the map', () => {
     const c = ctx(true);
     const listeners: Record<string, (e: KeyboardEvent) => void> = {};
     const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
     installKeyHandlers(c, win);
     c.store.getState().setView('board');
-    c.store.getState().focus('c0');
     c.store.getState().select('c1');
-    expect(c.store.getState().sideCardOpen).toBe(true);
+    c.store.getState().focus('c1');
     listeners.keydown({ key: 'Escape', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
-    expect(c.store.getState()).toMatchObject({ selectedId: 'c1', sideCardOpen: false });
-    expect(c.sent.at(-1)).toEqual({ type: 'term.focus', id: 'c1' });
+    expect(c.store.getState()).toMatchObject({ view: 'board', card: undefined, selectedId: 'c1', sideCardOpen: true });
+    listeners.keydown({ key: 'Escape', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
+    expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: undefined, sideCardOpen: false });
   });
   it('Escape in a side-card field blurs it before closing the card, so the edit is saved', () => {
     const c = ctx(true);
@@ -556,11 +550,12 @@ describe('dispatchKey on the map', () => {
     expect(c.calls).toEqual([]);
     expect(c.store.getState().closingRobot).toBe('c0');
   });
-  it('Cmd+M toggles the map and the board; the board returns to the map with its robot in the card', async () => {
+  it('Cmd+M toggles the map and the board, and the selection and the card go along', async () => {
     const c = ctx();
     c.store.getState().select('c1');
     await dispatchKey({ type: 'toggleView' }, c);
-    expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c1', sideCardOpen: true });
+    expect(c.store.getState()).toMatchObject({ view: 'board', selectedId: 'c1', sideCardOpen: true, card: undefined });
+    c.store.getState().focus('c1');
     c.store.getState().setPanes('c1', { left: 'files', right: 'browser' });
     await dispatchKey({ type: 'toggleView' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1', card: 'c1' });
@@ -657,7 +652,6 @@ describe('dispatchKey on the map', () => {
     const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
     installKeyHandlers(c, win);
     const enter = () => listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
-    const focused = () => c.sent.filter((m) => m.type === 'term.focus');
     c.store.getState().setView('board');
     c.store.getState().select('c1');
     c.store.getState().setMissionPrompt(true);
@@ -668,10 +662,10 @@ describe('dispatchKey on the map', () => {
     c.store.getState().toggleUsage(false);
     c.store.getState().toggleSettings(true);
     enter();
-    expect(focused()).toEqual([]);
+    expect(c.store.getState().card).toBeUndefined();
     c.store.getState().toggleSettings(false);
     enter();
-    expect(focused()).toEqual([{ type: 'term.focus', id: 'c1' }]);
+    expect(c.store.getState().card).toBe('c1');
   });
   it('Escape closes the settings before anything under them', () => {
     const c = ctx(true);

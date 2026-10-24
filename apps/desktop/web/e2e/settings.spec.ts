@@ -145,6 +145,9 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await svall.open();
   const chord = (key: string) => receive({ type: 'key', chord: key });
   const shown = async () => (await sent()).filter((m) => m.type === 'term.show' && m.id === c.id).at(-1) as { opacity?: number } | undefined;
+  // the full card wears the full opacity
+  await page.getByTestId(`kc-${c.id}`).dblclick();
+  await page.getByTestId('card-size').click();
   await expect.poll(shown).toBeTruthy();
 
   await chord('cmd+,');
@@ -207,6 +210,7 @@ test('a new island made with the first-run settings open puts them away and show
 
 test('the keyboard rows take a new chord, ask before a taken one, clear and put back', async ({ page, svall }) => {
   await svall.open();
+  await page.getByTestId('side-show').click();
   await page.getByTestId('settings-open').click();
   await expect(page.getByTestId('key-toggleSideCard')).toHaveCount(0);
   await page.getByTestId('settings-tab-keyboard').click();
@@ -218,7 +222,7 @@ test('the keyboard rows take a new chord, ask before a taken one, clear and put 
   await page.keyboard.press('Meta+y');
   await expect(side).toHaveText('⌘Y');
 
-  // the board's side card must not have flipped shut under the rebind
+  // the side card must not have flipped shut under the rebind
   await expect(page.getByTestId('side-collapse')).toBeVisible();
   await page.getByTestId('key-reset-toggleSideCard').click();
   await expect(side).toHaveText('⌘I');

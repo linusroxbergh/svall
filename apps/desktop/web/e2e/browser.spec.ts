@@ -4,6 +4,7 @@ test('the browser pane opens beside the terminal, tabs come from the address bar
   const island = await svall.api.call('island.create', { name: svall.uniq('web') });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'surfer' });
   await svall.open();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
   await expect(page.getByTestId('browser-area')).toHaveCount(0);
   // the pane opens under the key that asks for the address bar, and the address bar is where the keys land
   await page.keyboard.press('Meta+l');
@@ -50,9 +51,10 @@ test('the browser pane opens beside the terminal, tabs come from the address bar
   // the stored url names the active tab until the shell reports a page of its own
   await expect(page.getByTestId('browser-address')).toHaveValue(tabs[0].url);
 
-  // the panes are the page's own: a reload brings the robot back on one, and the browser opens beside it
+  // the panes are the page's own: after a reload the robot opens on one, and the browser opens beside it
   await page.reload();
-  await expect(page.getByTestId('board')).toBeVisible();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
   await expect(page.getByTestId('browser-area')).toHaveCount(0);
   await page.getByTestId('pane-split').click();
   await page.getByTestId('pane-right-browser').click();

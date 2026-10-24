@@ -25,6 +25,8 @@ export const theme = {
   docSaveMs: 800,                 // a doc is written this long after the last edit
   resourcesFreshMs: 3000,         // a listing read this recently serves the next ask
   card: { margin: 26, easeMs: 160 },
+  // a press on the board that travels dragPx is a drag; a robot that arrived in a column within arriveMs glows as it is drawn
+  board: { dragPx: 4, arriveMs: 1400 },
   // the little box that asks where a link should open, kept clear of the window's own edges
   linkAsk: { width: 200, height: 112, gap: 6, margin: 8 },
   // a right-click menu keeps this far inside the window

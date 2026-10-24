@@ -21,6 +21,9 @@ const alive = (f: FleetState, id: string | undefined): string | undefined => (id
 // an island's delete is asked only while the island is there and empty
 const deletable = (f: FleetState, id: string | undefined): string | undefined =>
   (id && f.islands[id] && !Object.values(f.robots).some((c) => c.islandId === id) ? id : undefined);
+// a column's delete is asked only while the column is there and is not the board's last
+const columnDeletable = (f: FleetState, id: string | undefined): string | undefined =>
+  (id && f.columns.length > 1 && f.columns.some((k) => k.id === id) ? id : undefined);
 const pruned = (s: App, fleet: FleetState) => {
   // a selected island that goes, from here or elsewhere, takes its card with it
   const islandGone = s.selectedIslandId !== undefined && !fleet.islands[s.selectedIslandId];
@@ -28,7 +31,7 @@ const pruned = (s: App, fleet: FleetState) => {
     focusedId: alive(fleet, s.focusedId), selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingRobot: alive(fleet, s.closingRobot),
     sleepingRobot: alive(fleet, s.sleepingRobot),
     selectedIslandId: islandGone ? undefined : s.selectedIslandId, sideCardOpen: s.sideCardOpen && !islandGone,
-    deletingIsland: deletable(fleet, s.deletingIsland), ide: pruneIde(s.ide, fleet, s.fleet),
+    deletingIsland: deletable(fleet, s.deletingIsland), deletingColumn: columnDeletable(fleet, s.deletingColumn), ide: pruneIde(s.ide, fleet, s.fleet),
   };
 };
 

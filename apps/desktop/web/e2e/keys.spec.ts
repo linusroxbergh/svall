@@ -16,7 +16,7 @@ test('drives the app with the Cmd chords', async ({ page, svall }) => {
   await expect.poll(async () => (await find())?.id).toBeTruthy();
   const created = (await find())!;
   expect(created.cwd).toBe('/private/tmp');
-  // the new robot is viewed on the board: no card, no view change
+  // the new robot opens in the card over the board, and the view stays
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(surface).toHaveAttribute('data-robot', created.id);
 
@@ -27,12 +27,12 @@ test('drives the app with the Cmd chords', async ({ page, svall }) => {
   await expect(page.getByTestId('browser-area')).toHaveCount(0);
   await expect(surface).toHaveAttribute('data-robot', created.id);
 
-  // the side card edits the viewed robot; Escape closes it and the terminal stays put
+  // the side card edits the selection; Escape closes the card and keeps the selection
   await expect(page.getByTestId('side-card')).toBeVisible();
   await expect(page.getByTestId('side-name')).toHaveValue('kb');
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('side-card')).toBeHidden();
-  await expect(surface).toHaveAttribute('data-robot', created.id);
+  await expect(page.getByTestId('terminal-card')).toHaveCount(0);
+  await expect(page.getByTestId('side-name')).toHaveValue('kb');
 
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('map')).toBeVisible();
@@ -102,20 +102,21 @@ test('a second Cmd+W deletes like Enter', async ({ page, svall }) => {
   await expect(token).toHaveCount(0);
 });
 
-test('Cmd+W on the board confirms with Enter and views the next robot', async ({ page, svall }) => {
+test('Cmd+W on the board closes the card, then confirms with Enter and selects the next robot', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('confirmb') });
   const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'ba' });
   const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'bb' });
   await svall.open();
-  await page.getByTestId(`sb-robot-${a.id}`).click();
-  const surface = page.getByTestId('surface');
-  await expect(surface).toHaveAttribute('data-robot', a.id);
+  await page.getByTestId(`kc-${a.id}`).dblclick();
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', a.id);
 
+  await page.keyboard.press('Meta+w');
+  await expect(page.getByTestId('terminal-card')).toHaveCount(0);
   await page.keyboard.press('Meta+w');
   await expect(page.getByTestId('confirm-close')).toContainText('ba');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId(`sb-robot-${a.id}`)).toHaveCount(0);
-  await expect(surface).toHaveAttribute('data-robot', b.id);
+  await expect(page.getByTestId(`kc-${a.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`kc-${b.id}`)).toHaveAttribute('data-selected', 'true');
 });
 
 test('Enter opens the selection after a button was pressed with the mouse', async ({ page, svall }) => {
