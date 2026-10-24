@@ -1,7 +1,7 @@
 import { styleText } from 'node:util';
 
-/** One thing a doctor checked, and what it found. */
-export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string };
+/** One thing a doctor checked, and what it found; `run`: the command that fixes it, for the user to run on that machine. */
+export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string };
 
 export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 

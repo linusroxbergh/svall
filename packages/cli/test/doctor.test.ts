@@ -14,7 +14,7 @@ import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, type DoctorDeps, type Report } from '../src/commands/doctor.js';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
@@ -418,7 +418,7 @@ describe('doctor on Linux', () => {
     const env = { CLAUDE_CONFIG_DIR: '/x/claude home', CODEX_HOME: '/x/codex' };
     const file = `/u/.config/systemd/user/${unit}`;
     const lacking = byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: '[Service]\n' } }).deps));
-    expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: `${file} lacks CLAUDE_CONFIG_DIR and CODEX_HOME, which this account sets: svall setup` });
+    expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: `${file} lacks CLAUDE_CONFIG_DIR and CODEX_HOME, which this account sets: svall setup`, run: 'svall setup' });
     const carried = `[Service]\n${unitEnv('CLAUDE_CONFIG_DIR', '/x/claude home')}\n${unitEnv('CODEX_HOME', '/x/codex')}\n`;
     expect(byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: carried } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
     expect(byName(await doctor(priv, linux({}, { files: { [file]: '[Service]\n' } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
@@ -473,7 +473,7 @@ describe('doctor on Linux', () => {
     });
     const c = byName(await doctor(priv, stopped.deps));
     expect(c.systemd.status).toBe('fail');
-    expect(c.linger).toMatchObject({ status: 'warn', detail: expect.stringContaining('run sudo loginctl enable-linger linus') });
+    expect(c.linger).toMatchObject({ status: 'warn', detail: expect.stringContaining('run sudo loginctl enable-linger linus'), run: 'sudo loginctl enable-linger linus' });
 
     const absent = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
     expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });
@@ -488,6 +488,7 @@ describe('doctor on Linux', () => {
       status: 'warn',
       detail: 'AppArmor keeps bwrap from making the user namespace Codex runs commands in (bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted), so a Codex character asks before each one: '
         + 'sudo apt install bubblewrap apparmor-profiles, sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
+      run: 'sudo apt install bubblewrap apparmor-profiles && sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/ && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict',
     });
     expect(byName(await doctor(priv, linux({ [sandbox]: '' }, { files: restrict, found: ['codex'] }).deps))['codex sandbox'].status).toBe('ok');
 
@@ -513,8 +514,10 @@ describe('doctor on Linux', () => {
 
   it('names the apt package when tmux or gh is missing', async () => {
     const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never, 'gh auth status': undefined as never }).deps));
-    expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not found on PATH: sudo apt install tmux' });
-    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not found on PATH: sudo apt install gh (pull request links stay unresolved)' });
+    expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not found on PATH: sudo apt install tmux', run: 'sudo apt install tmux' });
+    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not found on PATH: sudo apt install gh (pull request links stay unresolved)', run: 'sudo apt install gh' });
+    const out = byName(await doctor(priv, linux({ 'gh auth status': Object.assign(new Error('not logged in'), { code: 1 }) }).deps));
+    expect(out.gh).toMatchObject({ status: 'warn', run: 'gh auth login' });
   });
 
   it('asks for the agents on the PATH the fleet\'s unit runs with, where the daemon finds them', async () => {
@@ -571,8 +574,29 @@ describe('svall doctor on Linux', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
     await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
     const c = byName(JSON.parse(out.join('')));
-    expect(c.hooks).toMatchObject({ status: 'fail', detail: `not installed in ${claudeDir}/settings.json: svall setup` });
-    expect(c['codex hooks']).toMatchObject({ status: 'fail', detail: `not installed in ${codexDir}/hooks.json: svall setup` });
+    expect(c.hooks).toMatchObject({ status: 'fail', detail: `not installed in ${claudeDir}/settings.json: svall setup`, run: 'svall setup' });
+    expect(c['codex hooks']).toMatchObject({ status: 'fail', detail: `not installed in ${codexDir}/hooks.json: svall setup`, run: 'svall setup' });
+  });
+
+  it('asks each agent for its login with the agent homes the unit carries, and names them in the report', async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('CLAUDE_CONFIG_DIR', '');
+    const claudeDir = path.join(home, '.config', 'claude');
+    const local = path.join(home, '.local', 'bin');
+    fs.mkdirSync(local, { recursive: true });
+    // signed in only where the login shell keeps Claude's files, which the ssh command doctor runs in does not name
+    fs.writeFileSync(path.join(local, 'claude'), `#!/bin/sh\n[ "$1" = auth ] || { echo "2.1.300 (Claude Code)"; exit 0; }\n[ "$CLAUDE_CONFIG_DIR" = '${claudeDir}' ] && echo '{"loggedIn":true}' || { echo '{"loggedIn":false}'; exit 1; }\n`, { mode: 0o755 });
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport CLAUDE_CONFIG_DIR='${claudeDir}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
+    const report = JSON.parse(out.join('')) as Report;
+    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
+    expect(report.daemonEnv).toEqual({ CLAUDE_CONFIG_DIR: claudeDir });
   });
 
   it('checks the OpenCode plugin where the unit\'s XDG_CONFIG_HOME points, which only the login shell names', async () => {
@@ -651,7 +675,7 @@ describe('agent checks', () => {
 
   it('warns about an old codex and a missing login, never failing', async () => {
     const old = await agents({ commands: { 'codex --version': 'codex-cli 0.142.0-alpha.6\n', 'codex login status': loggedOut() } });
-    expect(old.find((c) => c.name === 'codex')).toEqual({ name: 'codex', status: 'warn', detail: 'codex-cli 0.142.0-alpha.6: Svall needs 0.156.0 or newer; update Codex; not signed in: codex login' });
+    expect(old.find((c) => c.name === 'codex')).toEqual({ name: 'codex', status: 'warn', detail: 'codex-cli 0.142.0-alpha.6: Svall needs 0.156.0 or newer; update Codex; not signed in: codex login', run: 'codex login' });
     const olderClaude = await agents({ commands: { 'claude --version': '2.1.250 (Claude Code)\n' } });
     expect(olderClaude.find((c) => c.name === 'claude')?.detail).toBe('2.1.250 (Claude Code): Svall needs 2.1.251 or newer; update Claude Code');
     const out = await agents({ commands: { 'codex --version': 'codex-cli 0.156.1\n', 'codex login status': loggedOut() } });
@@ -704,7 +728,7 @@ describe('codexCheck', () => {
 
   it('checks Codex hooks when codex is on PATH, even with no ~/.codex yet', async () => {
     const check = await codexCheck({ ...fake().deps, exists: () => false, found: ['claude', 'codex'] });
-    expect(check).toEqual({ name: 'codex hooks', status: 'fail', detail: `not installed in ${CODEX.hooks}: svall setup` });
+    expect(check).toEqual({ name: 'codex hooks', status: 'fail', detail: `not installed in ${CODEX.hooks}: svall setup`, run: 'svall setup' });
   });
 
   it('warns when the hooks hold a command setup no longer writes', async () => {
@@ -723,7 +747,7 @@ describe('codexCheck', () => {
     const base = { files: { [CODEX.dir]: '', [CODEX.hooks]: hooks }, found: ['claude', 'codex'] as AgentKind[] };
     const check = async (trust?: { trusted: number; untrusted: number }) => codexCheck(fake({ ...base, trust }).deps);
     expect((await check({ trusted: 5, untrusted: 0 })).detail).toBe(`installed in ${CODEX.hooks}; trusted`);
-    expect(await check({ trusted: 0, untrusted: 5 })).toEqual({ name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks' });
+    expect(await check({ trusted: 0, untrusted: 5 })).toEqual({ name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks', run: 'codex' });
     expect(await check(undefined)).toEqual({ name: 'codex hooks', status: 'ok', detail: `installed in ${CODEX.hooks}; couldn't ask Codex about trust, check /hooks in Codex` });
   });
 });

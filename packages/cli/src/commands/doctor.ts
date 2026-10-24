@@ -9,7 +9,7 @@ import type { z } from 'zod';
 import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
-import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
+import { BWRAP_COMMAND, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { gatewayPrefix } from '@svall/svalld/gateway/bin';
@@ -34,7 +34,8 @@ import { checkoutVersion } from '../version.js';
 import { unattended } from './fleet-recover.js';
 import { missing, preflight, realPreflightDeps, type PreflightDeps } from './preflight.js';
 
-export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] } };
+// daemonEnv: the agent homes setup hands a fleet's daemon from this account, which the agent checks ran with
+export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] }; daemonEnv?: Record<string, string> };
 
 export type DoctorDeps = PreflightDeps & {
   read(file: string): string | undefined;
@@ -75,8 +76,9 @@ async function gh(d: DoctorDeps): Promise<Check> {
     return { name: 'gh', status: 'ok', detail: 'logged in' };
   } catch (e) {
     const install = d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';
+    const run = missing(e) ? install : 'gh auth login';
     const why = missing(e) ? `not found on PATH: ${install}` : 'not logged in: gh auth login';
-    return { name: 'gh', status: 'warn', detail: `${why} (pull request links stay unresolved)` };
+    return { name: 'gh', status: 'warn', detail: `${why} (pull request links stay unresolved)`, run };
   }
 }
 
@@ -249,7 +251,7 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${file}` };
   const lacks = keys.filter((k) => !text.includes((linux ? unitEnv : plistEnv)(k, d.daemonEnv[k])));
   return lacks.length
-    ? { name: 'daemon env', status: 'warn', detail: `${file} lacks ${lacks.join(' and ')}, which this account sets: ${fix}` }
+    ? { name: 'daemon env', status: 'warn', detail: `${file} lacks ${lacks.join(' and ')}, which this account sets: ${fix}`, ...(linux && t.name === PRIVATE && { run: `${SHIM} setup` }) }
     : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this account` };
 }
 
@@ -279,7 +281,7 @@ async function linger(d: DoctorDeps): Promise<Check> {
     const l = await lingerState(asRun(d), d.user);
     return l.linger
       ? { name: 'linger', status: 'ok', detail: `on for ${l.user}: the fleet keeps running after you log out` }
-      : { name: 'linger', status: 'warn', detail: `off for ${l.user}: the fleet stops when you log out; run ${l.action}` };
+      : { name: 'linger', status: 'warn', detail: `off for ${l.user}: the fleet stops when you log out; run ${l.action}`, run: l.action };
   } catch (e) {
     return { name: 'linger', status: 'warn', detail: (e as Error).message };
   }
@@ -298,11 +300,11 @@ function hooks(d: DoctorDeps): Check {
     current = ok && claudeHooksCurrent(settings, d.hooksHome);
     disabled = settings?.disableAllHooks === true;
   } catch { /* unparseable counts as missing */ }
-  if (!ok) return { name: 'hooks', status: 'fail', detail: `not installed in ${d.settingsPath}: ${SHIM} setup` };
+  if (!ok) return { name: 'hooks', status: 'fail', detail: `not installed in ${d.settingsPath}: ${SHIM} setup`, run: `${SHIM} setup` };
   if (disabled) return { name: 'hooks', status: 'fail', detail: `${d.settingsPath} sets disableAllHooks, so no character gets a status; remove it` };
   return current
     ? { name: 'hooks', status: 'ok', detail: `installed in ${d.settingsPath}` }
-    : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup` };
+    : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup`, run: `${SHIM} setup` };
 }
 
 async function rsyncAt(d: DoctorDeps, exe: string): Promise<{ version: string } | { reason: string }> {
@@ -334,12 +336,12 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     written = codexInstalled(hooks, script);
     current = written && codexHooksCurrent(hooks, script);
   } catch { /* unparseable counts as missing */ }
-  if (!written) return { name: 'codex hooks', status: 'fail', detail: `not installed in ${d.codex.hooks}: ${SHIM} setup` };
-  if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run ${SHIM} setup, then trust them in Codex` };
+  if (!written) return { name: 'codex hooks', status: 'fail', detail: `not installed in ${d.codex.hooks}: ${SHIM} setup`, run: `${SHIM} setup` };
+  if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run ${SHIM} setup, then trust them in Codex`, run: `${SHIM} setup` };
   const trust = await d.codexTrust();
   if (!trust) return { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; couldn't ask Codex about trust, check /hooks in Codex` };
   return trust.untrusted
-    ? { name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks' }
+    ? { name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks', run: 'codex' }
     : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
 }
 
@@ -356,7 +358,7 @@ async function codexSandbox(d: DoctorDeps): Promise<Check> {
     // execFile's message is its own first line, then what the command wrote to stderr
     const said = err.message.trim().split('\n').slice(1).join('\n').trim();
     if (/bwrap:|namespace|operation not permitted/i.test(said)) {
-      return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex character asks before each one: ${BWRAP_PROFILE}` };
+      return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex character asks before each one: ${BWRAP_PROFILE}`, run: BWRAP_COMMAND };
     }
     const why = err.killed ? 'it did not finish in time' : said.split('\n').at(-1) || `exit ${String(err.code)}, nothing said`;
     return { name, status: 'warn', detail: `codex sandbox -- true failed (${why}): run codex sandbox -- true there to see why` };
@@ -367,10 +369,10 @@ export function opencodeCheck(d: Pick<DoctorDeps, 'opencode' | 'exists' | 'read'
   if (d.integrations && !d.integrations.includes('opencode')) return { name: 'opencode plugin', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('opencode') && !d.exists(d.opencode.dir)) return { name: 'opencode plugin', status: 'skip', detail: 'not installed' };
   const text = d.read(d.opencode.plugin);
-  if (text === undefined) return { name: 'opencode plugin', status: 'fail', detail: `not installed in ${d.opencode.plugin}: ${SHIM} setup` };
+  if (text === undefined) return { name: 'opencode plugin', status: 'fail', detail: `not installed in ${d.opencode.plugin}: ${SHIM} setup`, run: `${SHIM} setup` };
   return opencodePluginCurrent(text)
     ? { name: 'opencode plugin', status: 'ok', detail: `installed in ${d.opencode.plugin}` }
-    : { name: 'opencode plugin', status: 'warn', detail: `out of date in ${d.opencode.plugin}: run ${SHIM} setup` };
+    : { name: 'opencode plugin', status: 'warn', detail: `out of date in ${d.opencode.plugin}: run ${SHIM} setup`, run: `${SHIM} setup` };
 }
 
 function shims(d: DoctorDeps): Check {
@@ -466,12 +468,12 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
     let integrations: AgentKind[] | undefined;
     try { integrations = peekConfig(resolvePaths(profileHome(PRIVATE))).integrations; } catch { /* the private fleet's doctor reports it */ }
     const { launchAgents, shimDir } = userPaths();
-    const pre = realPreflightDeps(t.home, platform);
     // a login shell asked over ssh must leave host add's doctor its own time to answer
     const daemonEnv = platform === 'linux' ? await agentHomesEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : launchdEnv();
+    const pre = realPreflightDeps(t.home, platform, platform === 'linux' ? daemonEnv : {});
     // the hooks are checked where the daemon's agents read them, which an ssh command's env may not name
     const codex = codexPaths(daemonEnv);
-    const report = { version: checkoutVersion(), ...await doctor(t, {
+    const report: Report = { version: checkoutVersion(), ...(platform === 'linux' && { daemonEnv }), ...await doctor(t, {
       ...pre,
       read: readOrUndefined,
       connect: (home) => Client.connect(home),
