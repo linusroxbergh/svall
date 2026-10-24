@@ -147,7 +147,7 @@ export function HostSetup() {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      // a terminal there hangs up what runs in it, so only × closes it
+      // a terminal there hangs up what runs in it, so only Done or × closes it
       if (!app.store.getState().hostTerminal) app.store.getState().toggleHost(false);
     };
     window.addEventListener('keydown', key, true);

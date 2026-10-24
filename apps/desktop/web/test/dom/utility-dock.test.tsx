@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { call, freshStore, store } from './harness.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
 call.mockImplementation(() => new Promise(() => {}));
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -23,12 +23,20 @@ test('a press on the map closes the usage panel', async () => {
 });
 
 test('the × closes the open panel and hands the keys back to the terminal', async () => {
-  store.getState().toggleLoad(true);
-  render(<UtilityDock />);
-  await act(async () => {});
-  fireEvent.click(screen.getByTestId('corner-panel-close'));
-  expect(store.getState().loadOpen).toBe(false);
-  expect(store.getState().keepPageFocus).toBe(false);
+  bridge.present = true;
+  try {
+    act(() => { store.getState().setView('board'); store.getState().focus('c0'); });
+    store.getState().toggleLoad(true);
+    render(<UtilityDock />);
+    await act(async () => {});
+    sent.length = 0;
+    fireEvent.click(screen.getByTestId('corner-panel-close'));
+    const s = store.getState();
+    expect([s.usageOpen, s.mobileOpen, s.loadOpen]).toEqual([false, false, false]);
+    expect(sent).toContainEqual({ type: 'term.focus', id: 'c0' });
+  } finally {
+    bridge.present = false;
+  }
 });
 
 // the dialogs a panel's buttons open stand outside the dock

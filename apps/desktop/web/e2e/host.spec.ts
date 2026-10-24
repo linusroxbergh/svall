@@ -194,7 +194,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   const before = await focused();
   await receive(page, { type: 'term.focused', id: 'machine:studio' });
   expect(await focused()).toBe(before);
-  // a stray press beside the panel or Escape would hang up what runs there, so only × closes it
+  // a stray press beside the panel or Escape would hang up what runs there, so only Done or × closes it
   await panel.click({ position: { x: 4, y: 4 } });
   await page.keyboard.press('Escape');
   await expect(panel.getByTestId('host-terminal')).toBeVisible();
@@ -214,7 +214,11 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding. Port 1455 on this Mac is taken');
   await panel.getByTestId('host-terminal-again').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show')).toHaveLength(3);
-  await receive(page, { type: 'term.exited', id: 'machine:studio' });
+  // Done goes back to the checks, which look again, and the panel stays
+  await panel.getByTestId('host-terminal-done').click();
+  await expect.poll(async () => (await sent(page)).slice(-2)).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
+  await expect(panel.getByTestId('host-terminal')).toHaveCount(0);
+  await expect(panel.getByTestId('host-steps')).toBeVisible();
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
   // a plain terminal types nothing, and closing the panel closes it and checks the machine again
