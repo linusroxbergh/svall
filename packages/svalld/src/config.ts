@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, FleetConfig, FleetId, MODELS, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
+import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from './atomic.js';
 import { createDurable, writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
@@ -39,9 +39,12 @@ export const Config = z.preprocess(unreserved, FleetFile.omit({ mobile: true })
   }));
 export type Config = z.infer<typeof Config>;
 
-/** `model` for `agent`'s CLI, unless Settings lists it as another CLI's: one picked before the agent changed. */
-export const ownModel = (agent: AgentKind, model: string | undefined): string | undefined =>
-  (model && AgentKind.options.some((k) => k !== agent && MODELS[k].includes(model)) ? undefined : model);
+/** The model fleet.json picks for each CLI of the crew or the scribe; a single scribe.model is scribe.agent's CLI's, else claude's. */
+export function modelPicks(config: Pick<Config, 'home' | 'scribe'>, of: 'scribe' | 'home'): Partial<Record<AgentKind, string>> {
+  if (of === 'home') return config.home.model ?? {};
+  const { agent, model } = config.scribe;
+  return typeof model === 'string' ? { [agent ?? 'claude']: model } : model ?? {};
+}
 
 export class InvalidConfig extends Error {}
 

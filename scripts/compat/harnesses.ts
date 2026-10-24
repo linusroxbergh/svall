@@ -296,7 +296,7 @@ export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
     [['auth', 'status', '--help'], ['--json']],
   ],
   codex: [
-    [['--help'], ['resume', 'exec', 'app-server', 'login']],
+    [['--help'], ['resume', 'exec', 'app-server', 'login', '-m']],
     [['resume', '--help'], ['-c', '--config']],
     [['exec', '--help'], ['--json', '-m', '-c', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o']],
     [['login', '--help'], ['status']],

@@ -35,15 +35,15 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; platform?: NodeJS.Platform; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
-    const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; scribe?: { agent?: AgentKind; model?: string }; state?: FleetState; opening?: boolean; platform?: NodeJS.Platform; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
+    const { homeCwd, homeCommand, mainAgent, name, scribe, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
     const home = makeHome();
     const paths = resolvePaths(home);
     // the fleet an earlier run left on disk
     if (state) fs.writeFileSync(paths.state, JSON.stringify(state));
-    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}) }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}) });
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}) }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}), ...(scribe ? { scribe } : {}) });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
@@ -2689,23 +2689,57 @@ runIf('Fleet', () => {
     expect((await boot({ agentsFound: ['codex'], homeCommand: 'my-agent --flag' })).store.state.home.command).toBe('my-agent --flag');
   });
 
-  it("sets the crew's and the scribe's model in fleet.json, mirrors each into the fleet, and leaves one of another CLI behind an agent change", async () => {
+  it("keeps the crew's and the scribe's model for each CLI in fleet.json, mirrors the running CLI's into the fleet, and drops a pick for the default", async () => {
     const { fleet, store, home } = await boot({ agentsFound: ['claude', 'codex'] });
+    const saved = () => JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8'));
     expect(store.state.home.model).toBe('opus');
     expect(store.state.scribeModel).toBe('haiku');
-    fleet.setModel('home', 'sonnet');
-    fleet.setModel('scribe', 'opus');
+    fleet.setModel('home', 'claude', 'sonnet');
+    fleet.setModel('scribe', 'claude', 'opus');
     expect(store.state.home).toMatchObject({ command: 'claude --model sonnet', model: 'sonnet' });
     expect(store.state.scribeModel).toBe('opus');
-    const saved = JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8'));
-    expect(saved.home).toEqual({ model: 'sonnet' });
-    expect(saved.scribe).toEqual({ model: 'opus' });
+    expect(saved()).toMatchObject({ home: { model: { claude: 'sonnet' } }, scribe: { model: { claude: 'opus' } } });
     fleet.setMainAgent('codex');
     expect(store.state.home).toMatchObject({ command: 'codex', model: undefined });
     expect(store.state.scribeModel).toBe('gpt-6-luna');
-    fleet.setModel('home', 'gpt-6-astra');
+    fleet.setModel('home', 'codex', 'gpt-6-astra');
     expect(store.state.home).toMatchObject({ command: 'codex -m gpt-6-astra', model: 'gpt-6-astra' });
-    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8'))).toMatchObject({ mainAgent: 'codex', home: { model: 'gpt-6-astra' }, scribe: { model: 'opus' } });
+    fleet.setMainAgent('claude');
+    expect(store.state.home).toMatchObject({ command: 'claude --model sonnet', model: 'sonnet' });
+    expect(store.state.scribeModel).toBe('opus');
+    fleet.setModel('home', 'claude', undefined);
+    expect(store.state.home).toMatchObject({ command: 'claude --model opus', model: 'opus' });
+    expect(saved()).toMatchObject({ mainAgent: 'claude', home: { model: { codex: 'gpt-6-astra' } }, scribe: { model: { claude: 'opus' } } });
+    expect(saved().home.model).not.toHaveProperty('claude');
+  });
+
+  it("reads a single scribe.model as a model of scribe.agent's CLI, else of claude's", async () => {
+    const codex = await boot({ agentsFound: ['claude', 'codex'], scribe: { agent: 'codex', model: 'gpt-6-sol' } });
+    expect(codex.store.state).toMatchObject({ mainAgent: 'claude', scribeAgent: 'codex', scribeModel: 'gpt-6-sol' });
+    const claude = await boot({ agentsFound: ['claude', 'codex'], scribe: { model: 'claude-haiku-4-5' } });
+    expect(claude.store.state.scribeModel).toBe('claude-haiku-4-5');
+    claude.fleet.setMainAgent('codex');
+    expect(claude.store.state.scribeModel).toBe('gpt-6-luna');
+    claude.fleet.setModel('scribe', 'codex', 'gpt-6-sol');
+    claude.fleet.setMainAgent('claude');
+    expect(claude.store.state.scribeModel).toBe('claude-haiku-4-5');
+  });
+
+  it('runs each scribe pass on the CLI and model named at that moment', async () => {
+    const { fleet, home } = await boot({ agentsFound: ['claude', 'codex'] });
+    // stand-ins that record their arguments and answer the way each runner reads
+    const bin = path.join(home, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\necho "$@" > "${bin}/args"\ncat > /dev/null\necho '{"result":"ok"}'\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'codex'), `#!/bin/sh\necho "$@" > "${bin}/args"\ncat > /dev/null\nwhile [ "$1" != "-o" ]; do shift; done; printf ok > "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const pass = async () => { await fleet['scribe']['deps'].run('s', 'p'); return fs.readFileSync(path.join(bin, 'args'), 'utf8'); };
+    expect(await pass()).toMatch(/^-p --model haiku /);
+    fleet.setModel('scribe', 'claude', 'sonnet');
+    expect(await pass()).toMatch(/^-p --model sonnet /);
+    fleet.setMainAgent('codex');
+    expect(await pass()).toMatch(/^exec --json -m gpt-6-luna /);
   });
 
   it('places crew on home slots and refuses other cells', async () => {

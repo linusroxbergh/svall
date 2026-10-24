@@ -72,6 +72,8 @@ describe('crewCommand', () => {
     expect(AGENTS.codex.crewCommand(AGENTS.codex.crewModel)).toBe('codex');
     expect(AGENTS.codex.crewCommand('gpt-6-astra')).toBe('codex -m gpt-6-astra');
     expect(AGENTS.opencode.crewCommand('opencode/big-pickle')).toBe('opencode');
+    expect(AGENTS.claude.crewCommand('opus[1m]')).toBe("claude --model 'opus[1m]'");
+    expect(AGENTS.codex.crewCommand('x; rm -rf ~')).toBe("codex -m 'x; rm -rf ~'");
   });
 });
 

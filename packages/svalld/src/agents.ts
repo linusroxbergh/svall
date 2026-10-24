@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
+import { shq } from './text.js';
 
 export type Version = [number, number, number];
 
@@ -27,7 +28,9 @@ type AgentAdapter = {
   scribeModel?: string;
 };
 
-const withModel = (bin: string, flag: string) => (model?: string): string => (model ? `${bin} ${flag} ${model}` : bin);
+// the command is typed into a shell, so a model that is not a plain word, such as opus[1m], is quoted
+const withModel = (bin: string, flag: string) => (model?: string): string =>
+  (model ? `${bin} ${flag} ${/^[\w.:@/-]+$/.test(model) ? model : shq(model)}` : bin);
 
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {

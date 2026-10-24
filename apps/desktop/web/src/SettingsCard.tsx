@@ -104,7 +104,7 @@ function MainAgent() {
   );
 }
 
-// the models `agent`'s CLI takes, and the one set when it is none of them; a CLI whose models Settings does not list keeps its own
+// the models `agent`'s CLI takes, the one set when it is none of them, and the default, which drops the pick; none for OpenCode
 function ModelPick({ of, agent, model, label }: { of: 'scribe' | 'home'; agent: AgentKind; model: string | undefined; label: string }) {
   const models = MODELS[agent];
   if (!models.length) return null;
@@ -113,8 +113,8 @@ function ModelPick({ of, agent, model, label }: { of: 'scribe' | 'home'; agent: 
     <div className="row">
       <span>{label}</span>
       <b><select className="fld inline" aria-label={label} value={model ?? ''} data-testid={`set-${of}-model`}
-        onChange={(e) => setModel(deps(), of, e.target.value)}>
-        {!model && <option value="" disabled>{AGENT_LABEL[agent]}'s own</option>}
+        onChange={(e) => setModel(deps(), of, agent, e.target.value || undefined)}>
+        <option value="">{model ? 'default' : `${AGENT_LABEL[agent]}'s own`}</option>
         {options.map((m) => <option key={m} value={m}>{m}</option>)}
       </select></b>
     </div>

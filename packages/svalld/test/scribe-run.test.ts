@@ -84,7 +84,7 @@ describe('claudeRunner', () => {
 describe('perPass', () => {
   it('runs each pass on the runner picked at that moment', async () => {
     let name = 'claude';
-    const run = perPass(() => async () => `from ${name}`);
+    const run = perPass(() => { const picked = name; return async () => `from ${picked}`; });
     expect(await run('s', 'p')).toBe('from claude');
     name = 'codex';
     expect(await run('s', 'p')).toBe('from codex');

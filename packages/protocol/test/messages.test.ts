@@ -150,8 +150,13 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 26 with the tmux that serves the socket in term.attach, which a terminal on another machine runs', () => {
-    expect(PROTOCOL_VERSION).toBe(26);
+  it("is 27 with model.set, which picks the crew's or the scribe's model for one CLI", () => {
+    expect(PROTOCOL_VERSION).toBe(27);
+    expect(methods['model.set'].params.parse({ of: 'home', agent: 'codex' })).toEqual({ of: 'home', agent: 'codex' });
+    expect(methods['model.set'].params.safeParse({ of: 'home', model: 'opus' }).success).toBe(false);
+  });
+
+  it('was 26 with the tmux that serves the socket in term.attach, which a terminal on another machine runs', () => {
     expect(methods['term.attach'].result.safeParse({ socket: '/s', session: 'v-c_a' }).success).toBe(false);
   });
 

@@ -10,7 +10,7 @@ import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/trans
 import { characterKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
-import { initConfig, ownModel, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
+import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
@@ -314,7 +314,8 @@ export class Fleet extends EventEmitter<Events> {
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
   private ensureHome(): string | undefined {
-    const home = this.deps.config.home;
+    // the crew's model is the one syncAgents picks for the main agent's CLI
+    const { model: _picks, ...home } = this.deps.config.home;
     // a character is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
     try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false })) this.deps.log.info(l); }
@@ -383,8 +384,7 @@ export class Fleet extends EventEmitter<Events> {
 
   // fleet.json's model for `agent`'s CLI, else the CLI's default
   private model(of: 'scribe' | 'home', agent: AgentKind): string | undefined {
-    const { config } = this.deps;
-    return of === 'scribe' ? ownModel(agent, config.scribe.model) ?? AGENTS[agent].scribeModel : ownModel(agent, config.home.model) ?? AGENTS[agent].crewModel;
+    return modelPicks(this.deps.config, of)[agent] ?? (of === 'scribe' ? AGENTS[agent].scribeModel : AGENTS[agent].crewModel);
   }
 
   // fleet.json's home.command, else the main agent's on the crew's model
@@ -406,9 +406,11 @@ export class Fleet extends EventEmitter<Events> {
     });
   }
 
-  setModel(of: 'scribe' | 'home', model: string): void {
-    saveConfig(this.deps.paths, { [of]: { model } }, this.deps.log.info);
-    this.deps.config[of].model = model;
+  // `agent`'s pick, kept beside the other CLIs'; with no model, that CLI's default
+  setModel(of: 'scribe' | 'home', agent: AgentKind, model: string | undefined): void {
+    const picks = { ...modelPicks(this.deps.config, of), [agent]: model };
+    saveConfig(this.deps.paths, of === 'home' ? { home: { model: picks } } : { scribe: { model: picks } }, this.deps.log.info);
+    this.deps.config[of].model = picks;
     this.syncAgents();
   }
 
