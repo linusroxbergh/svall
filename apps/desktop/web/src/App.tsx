@@ -60,7 +60,12 @@ function BannerBody({ banner }: { banner: Banner }) {
   );
 }
 
+/** The Machines panel stands beside every screen, so a terminal in it lives through the fleet loading. */
 export function App() {
+  return <><Screen /><HostSetup /></>;
+}
+
+function Screen() {
   const loaded = useApp((s) => s.loaded);
   const status = useApp((s) => s.status);
   const configErrors = useApp((s) => s.configErrors);
@@ -104,12 +109,7 @@ export function App() {
   }, [toast]);
 
   if (!loaded && elsewhere) {
-    return (
-      <>
-        <div className="connect" data-testid="connect-screen">{away ? <div><BannerBody banner={away} /></div> : <Starting />}</div>
-        <HostSetup />
-      </>
-    );
+    return <div className="connect" data-testid="connect-screen">{away ? <div><BannerBody banner={away} /></div> : <Starting />}</div>;
   }
   if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {
@@ -166,7 +166,6 @@ export function App() {
       <ConfirmClose />
       <ConfirmSleep />
       <ConfirmDeleteIsland />
-      <HostSetup />
       <HandoverSheet />
       <ScribeAsk />
       <FleetPicker />

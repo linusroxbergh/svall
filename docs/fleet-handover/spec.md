@@ -385,10 +385,11 @@ rollback (after a reinstall under the same name, the newest other release) and r
    on the PATH and with the agent homes the fleet's unit carries; OpenCode's login is
    `opencode auth list` and its hooks are Svall's plugin. Each finding names the ssh and login or
    install command for the user to run there. The app opens a terminal on the machine for it, an
-   ssh of its own with `BatchMode=yes` and `ForwardAgent=no`, with the command typed at the prompt
-   and never run; `codex login` gets `127.0.0.1:1455` forwarded there for its browser callback. Once
-   the terminal closes, the app runs `svall host doctor` again. Credentials are never copied from
-   the Mac.
+   ssh of its own with `BatchMode=yes`, `ForwardAgent=no` and `ControlPath=none`, with the command
+   typed at the prompt and never run; `codex login` gets `127.0.0.1:1455` forwarded there for its
+   browser callback, and an ssh that ends before the prompt is up is shown as failed. Once the
+   terminal closes on a machine in the registry, the app runs `svall host doctor` again. Credentials
+   are never copied from the Mac.
 9. Run an end-to-end probe: gateway authority, API tunnel, temporary tmux window, home path and
    free space.
 10. For each existing local fleet the user enables for this machine, create the gateway's initial

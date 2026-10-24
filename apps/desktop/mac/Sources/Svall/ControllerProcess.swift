@@ -206,7 +206,7 @@ final class HostProcess {
     struct Step: Codable, Equatable {
         let step: String, status: String
         let detail: String?, action: String?
-        // the command `action` names, for the user to run on the machine
+        // a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
         var run: String? = nil
     }
 

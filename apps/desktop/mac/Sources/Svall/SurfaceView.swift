@@ -83,7 +83,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
         screenText().flatMap(Self.lastLine(of:))
     }
 
-    /// Puts `text` at the cursor as a paste, which a shell that brackets pastes takes without running it.
+    /// Puts `text` at the cursor as a paste, bracketed only once the far program asks for that, so a newline in it runs.
     func type(_ text: String) {
         guard let surface else { return }
         text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }

@@ -402,7 +402,9 @@ export function SettingsCard() {
   const handover = useApp((s) => !!s.shell?.handoverEnabled);
   const shell = app.bridge.present;
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => (box.current ? holdCutout(app.bridge, box.current) : undefined), []);
+  // the Machines panel covers it, and a terminal that panel shows must not give up the window's rect
+  const covered = useApp((s) => s.hostOpen);
+  useEffect(() => (box.current && !covered ? holdCutout(app.bridge, box.current) : undefined), [covered]);
   const [picked, pick] = useState<Pane>('machine');
   // banners need the shell, Machines waits on fleet.json's handover.enabled, and Updates stands only while one waits;
   // a pane that goes leaves the first in its place

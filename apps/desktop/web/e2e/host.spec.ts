@@ -85,7 +85,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
 
   // a machine not yet in the registry is reached at the destination the add was given, and nothing checks it again
   await page.getByTestId('host-terminal-claude').click();
-  expect((await sent(page)).at(-2)).toMatchObject({ type: 'term.show', id: 'machine:studio', machine: { ssh: 'linus@studio', type: 'claude auth login' } });
+  expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ id: 'machine:studio', machine: { ssh: 'linus@studio', type: 'claude auth login' } });
   await receive(page, { type: 'term.exited', id: 'machine:studio' });
   await expect(page.getByTestId('host-steps')).toBeVisible();
   expect((await sent(page)).filter((m) => m.type === 'host.start')).toHaveLength(1);
@@ -112,7 +112,7 @@ test('a check says ready and how many warnings, or what blocks; ready for handov
   await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
   const panel = page.getByTestId('host-setup');
   await expect(panel.getByTestId('host-machine')).toHaveText('studio');
-  expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
+  expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   // the shell turns each of the report's checks into a step
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'tmux', status: 'ok', detail: '3.5a' } });
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'release', status: 'ok', detail: '0.5.0, protocol 4' } });
@@ -184,6 +184,20 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await expect(panel.getByTestId('host-steps')).toHaveCount(0);
   const shown = (await sent(page)).filter((m) => m.type === 'term.show');
   expect(shown).toEqual([{ type: 'term.show', id: 'machine:studio', rect: expect.any(Object), machine: { ssh: 'linus@studio', type: 'claude auth login' } }]);
+  // the Settings window under the panel gives up no part of the terminal
+  const { rect } = shown[0] as Extract<ToShell, { type: 'term.show' }>;
+  const hole = async () => ((await sent(page)).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }>).rects
+    .some((r) => r.x < rect.x + rect.width && rect.x < r.x + r.width && r.y < rect.y + rect.height && rect.y < r.y + r.height);
+  await expect.poll(hole).toBe(false);
+  // a click into it leaves the fleet's focus where it was
+  const focused = () => page.evaluate(() => localStorage.getItem('svall.focused'));
+  const before = await focused();
+  await receive(page, { type: 'term.focused', id: 'machine:studio' });
+  expect(await focused()).toBe(before);
+  // a stray press beside the panel or Escape would hang up what runs there, so only Done or × closes it
+  await panel.click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press('Escape');
+  await expect(panel.getByTestId('host-terminal')).toBeVisible();
   // its shell exiting is the end of it: the machine's own checks look again
   await receive(page, { type: 'term.exited', id: 'machine:studio' });
   await expect(panel.getByTestId('host-terminal')).toHaveCount(0);
@@ -204,13 +218,14 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await expect.poll(async () => (await sent(page)).slice(-2)).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
-  // a plain terminal types nothing, and closing the panel closes it
+  // a plain terminal types nothing, and closing the panel closes it and checks the machine again
   await panel.getByTestId('machine-terminal').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio' } });
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).not.toHaveProperty('machine.type');
   await expect(panel.getByTestId('host-terminal-note')).toHaveText(/^A terminal on studio\./);
   await page.getByTestId('host-close').click();
-  expect((await sent(page)).at(-1)).toEqual({ type: 'term.close', id: 'machine:studio' });
+  await expect.poll(async () => (await sent(page)).filter((m) => m.type === 'host.start' || m.type === 'term.close').slice(-2))
+    .toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
 });
 
 test('a machine is only removed or forgotten once the page has asked', async ({ page, svall }) => {

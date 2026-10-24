@@ -89,7 +89,8 @@ never runs an agent's installer and never copies a login, so these are yours.
 In the app, each of them that is one command offers **Open terminal**: a terminal on the machine opens in the panel,
 over an ssh of its own that asks nothing and forwards no ssh agent, with the command typed at its prompt. Press Return
 to run it, or change it first; ⌘-click a link it prints to open it in your browser. When you exit or choose **Done**,
-the panel checks the machine again, once it is in this Mac's list. **Terminal** beside **Check** opens one with
+or close the panel with ×, the terminal hangs up and the panel checks the machine again, once it is in this Mac's
+list. **Terminal** beside **Check** opens one with
 nothing typed. From a terminal on the Mac, each action names the command and the machine to run it on:
 
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync

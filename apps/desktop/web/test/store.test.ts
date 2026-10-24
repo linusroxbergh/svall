@@ -759,6 +759,14 @@ describe('the machine that owns the fleet', () => {
     store.getState().toggleHost(false);
     expect(isVeiled(store.getState())).toBe(false);
   });
+  it('opens the panel on a terminal there, which closing the panel lets go of', () => {
+    const store = createAppStore();
+    store.getState().openHostTerminal('studio', 'codex login');
+    expect(store.getState()).toMatchObject({ hostOpen: true, hostMachine: 'studio', hostTerminal: { run: 'codex login' } });
+    store.getState().toggleHost(false);
+    store.getState().toggleHost(true, 'box');
+    expect(store.getState().hostTerminal).toBeUndefined();
+  });
 });
 
 describe('the handover sheet', () => {

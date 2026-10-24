@@ -3,15 +3,16 @@ import XCTest
 @testable import Svall
 
 final class MachineCommandTests: XCTestCase {
-    func testAMachineTerminalIsAnSshOfItsOwnThatAsksNothingAndForwardsNoAgent() {
+    /// A master the user's ssh config shares would keep a forward open after the terminal closes.
+    func testAMachineTerminalIsAnSshOfItsOwnThatAsksNothingForwardsNoAgentAndJoinsNoMaster() {
         XCTAssertEqual(MachineCommand.build(WebMachine(ssh: "linus@studio")),
-                       "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -- 'linus@studio'")
+                       "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -o ControlPath=none -o ConnectTimeout=10 -- 'linus@studio'")
     }
 
     /// Codex's login waits for the browser on localhost:1455 there, which only this Mac's own loopback may reach.
     func testALoginsPortIsForwardedFromThisMacsLoopbackOrTheSshQuits() {
         XCTAssertEqual(MachineCommand.build(WebMachine(ssh: "studio", forward: 1455)),
-                       "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -o ExitOnForwardFailure=yes -L 127.0.0.1:1455:localhost:1455 -- 'studio'")
+                       "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -o ControlPath=none -o ConnectTimeout=10 -o ExitOnForwardFailure=yes -L 127.0.0.1:1455:localhost:1455 -- 'studio'")
         XCTAssertNil(MachineCommand.build(WebMachine(ssh: "studio", forward: 22)))
         XCTAssertNil(MachineCommand.build(WebMachine(ssh: "studio", forward: 70000)))
     }
@@ -30,17 +31,39 @@ final class MachineCommandTests: XCTestCase {
         }
     }
 
-    func testThePromptCountsAsUpOnceTheScreenHasShownSomethingAndStoppedChanging() {
-        var screen = QuietScreen(quiet: 0.8)
+    func testThePromptIsUpOnceTheScreenHasShownSomethingPastLoginsBannerAndStoppedChanging() {
         let t0 = Date()
-        XCTAssertFalse(screen.settled("", at: t0))
-        // nothing yet but a blank screen, however long it stays so
-        XCTAssertFalse(screen.settled("", at: t0 + 5))
-        XCTAssertFalse(screen.settled("Welcome to Ubuntu", at: t0 + 5.1))
-        XCTAssertFalse(screen.settled("Welcome to Ubuntu", at: t0 + 5.5))
-        XCTAssertFalse(screen.settled("Welcome to Ubuntu\nlinus@studio:~$ ", at: t0 + 5.6))
-        XCTAssertFalse(screen.settled("Welcome to Ubuntu\nlinus@studio:~$ ", at: t0 + 6.3))
-        XCTAssertTrue(screen.settled("Welcome to Ubuntu\nlinus@studio:~$ ", at: t0 + 6.5))
+        var start = MachineStart(typing: "claude auth login", at: t0)
+        XCTAssertNil(start.saw("", at: t0))
+        // login(1)'s banner on this Mac is up at once, however long ssh takes to connect
+        XCTAssertNil(start.saw("Last login: Fri Oct 24 09:12:01 on ttys004", at: t0 + 0.1))
+        XCTAssertNil(start.saw("Last login: Fri Oct 24 09:12:01 on ttys004", at: t0 + 5))
+        XCTAssertFalse(start.up)
+        let prompt = "Last login: Fri Oct 24 09:12:01 on ttys004\nWelcome to Ubuntu\nlinus@studio:~$ "
+        XCTAssertNil(start.saw(prompt, at: t0 + 5.1))
+        XCTAssertNil(start.saw(prompt, at: t0 + 5.8))
+        XCTAssertEqual(start.saw(prompt, at: t0 + 6), "claude auth login")
+        XCTAssertTrue(start.up)
+        // typed once
+        XCTAssertNil(start.saw(prompt, at: t0 + 7))
+    }
+
+    func testTextThatCouldRunIsNeverTypedThoughThePromptComesUp() {
+        let t0 = Date()
+        var start = MachineStart(typing: "claude auth login\n", at: t0)
+        XCTAssertNil(start.saw("linus@studio:~$ ", at: t0))
+        XCTAssertNil(start.saw("linus@studio:~$ ", at: t0 + 1))
+        XCTAssertTrue(start.up)
+    }
+
+    /// A screen that never stops changing counts as up at the deadline, and then nothing is typed into it.
+    func testNothingIsTypedPastTheDeadline() {
+        let t0 = Date()
+        var start = MachineStart(typing: "codex login", at: t0)
+        XCTAssertNil(start.saw("Every 2.0s: date\n09:12:01", at: t0 + 29))
+        XCTAssertNil(start.saw("Every 2.0s: date\n09:12:03", at: t0 + 30))
+        XCTAssertTrue(start.up)
+        XCTAssertNil(start.saw("Every 2.0s: date\n09:12:03", at: t0 + 31))
     }
 
     func testAMachineTerminalRunsItsOwnSshAndThePageHearsWhenNoneOpens() {
@@ -51,7 +74,7 @@ final class MachineCommandTests: XCTestCase {
         manager.onFailed = { id, _ in failed.append(id) }
         manager.show(id: "machine:studio", rect: WebRect(x: 0, y: 0, width: 10, height: 10), attach: nil,
                      machine: WebMachine(ssh: "linus@studio", type: "claude auth login"), opacity: nil)
-        XCTAssertEqual(ran, ["env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -- 'linus@studio'"])
+        XCTAssertEqual(ran, ["env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -o ControlPath=none -o ConnectTimeout=10 -- 'linus@studio'"])
         // no view could be made here, which the page hears as a terminal that failed
         XCTAssertEqual(failed, ["machine:studio"])
         manager.show(id: "machine:x", rect: WebRect(x: 0, y: 0, width: 10, height: 10), attach: nil, machine: WebMachine(ssh: "-oProxyCommand=sh"), opacity: nil)

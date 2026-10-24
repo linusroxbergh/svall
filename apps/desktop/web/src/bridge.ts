@@ -22,7 +22,7 @@ export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'ena
 // enable names no fleet: the shell supplies the one this window runs
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
-// run: the command `action` names, for the user to run on the machine
+// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, the fleets here it is the gateway of, and its last check
 export type MachineRow = {

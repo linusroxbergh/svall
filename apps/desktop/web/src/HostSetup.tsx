@@ -17,6 +17,8 @@ export function startHost(op: HostOp, args: HostArgs): void {
 export function MachineActions({ name }: { name: string }) {
   const gateway = useApp((s) => s.shell?.gateway);
   const running = useApp((s) => !!s.host?.running);
+  // a terminal needs the destination the registry has for it, which the page may not have read yet
+  const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
   const store = () => app.store.getState();
   const run = (op: HostOp) => { store().toggleHost(true, name); startHost(op, { name }); };
   const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget }); };
@@ -24,7 +26,7 @@ export function MachineActions({ name }: { name: string }) {
     <span className="machine-acts">
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs for a handover, checked now" onClick={() => run('doctor')}>Check</button>
       <button className="btn set-open" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={() => run('upgrade')}>Upgrade</button>
-      <button className="btn set-open" data-testid="machine-terminal" disabled={running} title="A terminal on this machine, for what Svall leaves to you there"
+      <button className="btn set-open" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
         onClick={() => store().openHostTerminal(name)}>Terminal</button>
       {gateway !== name && (
         <button className="btn set-open" data-testid="machine-enable" disabled={running}
@@ -145,7 +147,8 @@ export function HostSetup() {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      app.store.getState().toggleHost(false);
+      // a terminal there hangs up what runs in it, so only Done or × closes it
+      if (!app.store.getState().hostTerminal) app.store.getState().toggleHost(false);
     };
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
@@ -158,22 +161,26 @@ export function HostSetup() {
   const gone = shown?.op === 'remove' && !running && shown.code === 0;
   // a machine an add has yet to put in the registry is added again, not acted on
   const adding = !machine || (!known && shown?.op === 'add');
-  const close = () => app.store.getState().toggleHost(false);
+  const term = terminal && machine && ssh;
   // the logins and fixes made there are what the machine's own checks look at again
   const ended = () => {
     app.store.getState().closeHostTerminal();
     if (known && machine && !running) startHost('doctor', { name: machine });
   };
+  const close = () => {
+    if (term) ended();
+    app.store.getState().toggleHost(false);
+  };
 
   return (
-    <div className="modal-back" data-testid="host-setup" onPointerDown={close}>
+    <div className="modal-back" data-testid="host-setup" onPointerDown={term ? undefined : close}>
       <div className="modal host panel" onPointerDown={(e) => e.stopPropagation()}>
         <div className="kicker">
           {machine ? <span data-testid="host-machine">{machine}</span> : 'Add a machine'}
           <span className="spacer" />
           <button ref={shut} className="side-x" data-testid="host-close" title="Close" aria-label="Close" onClick={close}>×</button>
         </div>
-        {terminal && machine && ssh ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} onEnd={ended} /> : (
+        {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} onEnd={ended} /> : (
           <>
             {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
             {confirm && (

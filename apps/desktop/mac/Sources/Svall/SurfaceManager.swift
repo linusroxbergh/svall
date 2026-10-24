@@ -48,8 +48,8 @@ enum AttachCommand {
     }
 }
 
-/// The shell command a terminal on another machine runs: an ssh of its own that asks nothing and forwards no agent,
-/// and that quits rather than open without the port forward a login's browser comes back on.
+/// The shell command a terminal on another machine runs: an ssh of its own that asks nothing, forwards no agent and
+/// joins no master, and that quits rather than open without the port forward a login's browser comes back on.
 enum MachineCommand {
     static func build(_ machine: WebMachine) -> String? {
         guard machine.ssh.allowed(by: sshDestinationPattern) else { return nil }
@@ -59,7 +59,7 @@ enum MachineCommand {
             forward = " -o ExitOnForwardFailure=yes -L 127.0.0.1:\(port):localhost:\(port)"
         }
         // Linux ships no xterm-ghostty terminfo, as for an attach on the owner's machine
-        return "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no\(forward) -- \(AttachCommand.quote(machine.ssh))"
+        return "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -o ControlPath=none -o ConnectTimeout=10\(forward) -- \(AttachCommand.quote(machine.ssh))"
     }
 
     /// Text that is typed and never run: one line, no control characters.
@@ -68,17 +68,31 @@ enum MachineCommand {
     }
 }
 
-/// Whether a terminal has drawn its prompt: it has shown something, then nothing new for `quiet` seconds.
-struct QuietScreen {
-    let quiet: TimeInterval
+/// A terminal on another machine coming up: up once it has shown something past login's banner and then nothing new
+/// for `quiet` seconds, when the text to type goes in once; past `deadline` it counts as up and nothing is typed.
+struct MachineStart {
+    private let text: String?
+    private let began: Date
+    private let quiet: TimeInterval, deadline: TimeInterval
     private var last: String?
     private var since: Date?
+    private(set) var up = false
 
-    init(quiet: TimeInterval) { self.quiet = quiet }
+    init(typing text: String?, at now: Date, quiet: TimeInterval = 0.8, deadline: TimeInterval = 30) {
+        self.text = text.flatMap { MachineCommand.typeable($0) ? $0 : nil }
+        began = now
+        self.quiet = quiet
+        self.deadline = deadline
+    }
 
-    mutating func settled(_ screen: String, at now: Date) -> Bool {
-        guard screen == last, let since else { last = screen; since = now; return false }
-        return !screen.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && now.timeIntervalSince(since) >= quiet
+    /// What to type now that the screen reads `screen`.
+    mutating func saw(_ screen: String, at now: Date) -> String? {
+        guard !up else { return nil }
+        if now.timeIntervalSince(began) >= deadline { up = true; return nil }
+        guard screen == last, let since else { last = screen; since = now; return nil }
+        guard SurfaceView.lastLine(of: screen) != nil, now.timeIntervalSince(since) >= quiet else { return nil }
+        up = true
+        return text
     }
 }
 
@@ -148,26 +162,28 @@ final class SurfaceManager {
         attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
     }
 
-    /// A terminal on another machine, with what the page asked for typed once its prompt is up.
+    /// A terminal on another machine, with what the page asked for typed once its prompt is up. An ssh that ends before
+    /// then failed, however long it took: login(1) passes on no exit status to tell.
     private func open(id: String, rect: WebRect, machine: WebMachine, opacity: Double?) {
         guard let command = MachineCommand.build(machine) else {
             return onFailed(id, "\(machine.ssh) is not an ssh destination a terminal opens to")
         }
-        guard let view = make(id: id, command: command, program: "ssh", rect: rect, opacity: opacity) else { return }
+        var start = MachineStart(typing: machine.type, at: Date())
+        guard let view = make(id: id, command: command, program: "ssh", rect: rect, opacity: opacity,
+                              failure: { _ in start.up ? nil : "ssh ended before the machine's prompt came up" }) else { return }
         machines.insert(id)
-        guard let text = machine.type, MachineCommand.typeable(text) else { return }
-        var screen = QuietScreen(quiet: 0.8)
-        let started = Date()
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self, weak view] timer in
-            guard let self, let view, self.overlay[id] === view, Date().timeIntervalSince(started) < 30 else { return timer.invalidate() }
-            guard screen.settled(view.screenText() ?? "", at: Date()) else { return }
-            timer.invalidate()
-            view.type(text)
+            guard let self, let view, self.overlay[id] === view else { return timer.invalidate() }
+            let text = start.saw(view.screenText() ?? "", at: Date())
+            if start.up { timer.invalidate() }
+            if let text { view.type(text) }
         }
     }
 
-    /// A surface running `command`, which tells the page when it ends.
-    private func make(id: String, command: String, program: String, rect: WebRect, opacity: Double?) -> SurfaceView? {
+    /// A surface running `command`, which tells the page when it ends; `failure` names an end that failed, by default
+    /// one within a second of starting.
+    private func make(id: String, command: String, program: String, rect: WebRect, opacity: Double?,
+                      failure: ((_ ms: UInt64) -> String?)? = nil) -> SurfaceView? {
         guard let view = makeView(command, overlay.frame(rect)) else {
             NSLog("ghostty_surface_new failed for %@", id)
             onFailed(id, "Ghostty could not open a terminal; see the app log")
@@ -178,9 +194,10 @@ final class SurfaceManager {
             self.close(id: id)
             if let failure { self.onFailed(id, failure) } else { self.onExited(id) }
         }
+        let failed: (_ ms: UInt64) -> String? = failure ?? { $0 < 1000 ? "\(program) quit as soon as it started" : nil }
         // a tmux that ends as it starts could not attach, and shown again it would only end again; its last line says why
         view.onChildExited = { [weak view] ms in
-            gone(ms < 1000 ? "\(program) quit as soon as it started" + (view?.lastLine().map { ": \($0)" } ?? "") : nil)
+            gone(failed(ms).map { $0 + (view?.lastLine().map { ": \($0)" } ?? "") })
         }
         view.onCloseRequested = { gone(nil) }
         view.onFocused = { [weak self] in self?.onFocused(id) }
