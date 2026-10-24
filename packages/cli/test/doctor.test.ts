@@ -423,6 +423,10 @@ describe('doctor on Linux', () => {
     expect(byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: carried } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
     expect(byName(await doctor(priv, linux({}, { files: { [file]: '[Service]\n' } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
     expect(byName(await doctor(adhoc, linux({}, { daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
+    // a named fleet's unit is the controller's to rewrite, so there is nothing to type on this machine
+    const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({}, { daemonEnv: env, files: { '/u/.config/systemd/user/svall-svalld@work.service': '[Service]\n' } }).deps));
+    expect(named['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host enable <this machine> --fleet work from the controller$/) });
+    expect(named['daemon env']).not.toHaveProperty('run');
   });
 
   it('names OpenCode\'s config and data homes beside Claude\'s and Codex\'s', async () => {
@@ -578,17 +582,20 @@ describe('svall doctor on Linux', () => {
     expect(c['codex hooks']).toMatchObject({ status: 'fail', detail: `not installed in ${codexDir}/hooks.json: svall setup`, run: 'svall setup' });
   });
 
-  it('asks each agent for its login with the agent homes the unit carries, and names them in the report', async () => {
+  it('asks each agent and gh for its login with the agent homes the unit carries, and names them in the report', async () => {
     const home = makeHome();
     vi.stubEnv('HOME', home);
     vi.stubEnv('CLAUDE_CONFIG_DIR', '');
+    vi.stubEnv('XDG_CONFIG_HOME', '');
     const claudeDir = path.join(home, '.config', 'claude');
+    const configDir = path.join(home, 'config');
     const local = path.join(home, '.local', 'bin');
     fs.mkdirSync(local, { recursive: true });
-    // signed in only where the login shell keeps Claude's files, which the ssh command doctor runs in does not name
-    fs.writeFileSync(path.join(local, 'claude'), `#!/bin/sh\n[ "$1" = auth ] || { echo "2.1.300 (Claude Code)"; exit 0; }\n[ "$CLAUDE_CONFIG_DIR" = '${claudeDir}' ] && echo '{"loggedIn":true}' || { echo '{"loggedIn":false}'; exit 1; }\n`, { mode: 0o755 });
+    // each answers only where the login shell keeps its files, which the ssh command doctor runs in does not name
+    fs.writeFileSync(path.join(local, 'claude'), `#!/bin/sh\n[ "$CLAUDE_CONFIG_DIR" = '${claudeDir}' ] || { echo '{"loggedIn":false}'; exit 1; }\n[ "$1" = auth ] && echo '{"loggedIn":true}' || echo "2.1.300 (Claude Code)"\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(local, 'gh'), `#!/bin/sh\n[ "$XDG_CONFIG_HOME" = '${configDir}' ]\n`, { mode: 0o755 });
     const bin = makeHome();
-    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport CLAUDE_CONFIG_DIR='${claudeDir}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport CLAUDE_CONFIG_DIR='${claudeDir}' XDG_CONFIG_HOME='${configDir}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
     vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
     vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
     const out: string[] = [];
@@ -596,7 +603,8 @@ describe('svall doctor on Linux', () => {
     await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
     const report = JSON.parse(out.join('')) as Report;
     expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
-    expect(report.daemonEnv).toEqual({ CLAUDE_CONFIG_DIR: claudeDir });
+    expect(byName(report).gh).toMatchObject({ status: 'ok', detail: 'logged in' });
+    expect(report.daemonEnv).toEqual({ CLAUDE_CONFIG_DIR: claudeDir, XDG_CONFIG_HOME: configDir });
   });
 
   it('checks the OpenCode plugin where the unit\'s XDG_CONFIG_HOME points, which only the login shell names', async () => {

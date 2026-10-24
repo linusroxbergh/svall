@@ -11,8 +11,8 @@ Where codes show up:
 - **`svall handover`** prints a blocker as `✗ <who>: <message> (<code>)` and a warning with `!`. With `--json`, each
   blocker or warning carries `code`, `message` and, when it is about one thing, `entity` (`character`, `root`,
   `session` or `git`, with its id).
-- **`svall host …`** prints one line per step, and `--json` one object per step with `step`, `status`, `detail` and
-  `action`.
+- **`svall host …`** prints one line per step, and `--json` one object per step with `step`, `status`, `detail`,
+  `action` and, when a command typed on the machine starts the fix, `run`.
 
 ## Before and after the commit
 

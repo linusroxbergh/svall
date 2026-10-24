@@ -72,7 +72,8 @@ const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
 
 async function gh(d: DoctorDeps): Promise<Check> {
   try {
-    await d.run('gh', ['auth', 'status']);
+    // on Linux, with the daemon's PATH and XDG_CONFIG_HOME, where its gh keeps the login
+    await d.run('gh', ['auth', 'status'], { path: d.agentPath });
     return { name: 'gh', status: 'ok', detail: 'logged in' };
   } catch (e) {
     const install = d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';

@@ -1,6 +1,6 @@
 import { styleText } from 'node:util';
 
-/** One thing a doctor checked, and what it found; `run`: the command that fixes it, for the user to run on that machine. */
+/** One thing a doctor checked, and what it found; `run`: a next command toward the fix, for the user to run on that machine. */
 export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string };
 
 export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };

@@ -206,10 +206,10 @@ export async function daemonRuns(release: string, connect: () => Promise<Daemon>
 }
 
 async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void> {
-  const pre = realPreflightDeps(t.home, 'linux');
-  const checks = await preflight(pre);
   // the agent homes the daemon is given, where its agents read their hooks: the login shell's, which an ssh command's env may not name
   const env = await agentHomesEnv(realRun);
+  const pre = realPreflightDeps(t.home, 'linux', env);
+  const checks = await preflight(pre);
   const settingsPath = path.join(claudePaths(env).dir, 'settings.json');
   // the agent CLIs the daemon's unit finds, which an ssh login's PATH may not reach
   const agents = findAgents(pre.agentPath ?? pre.pathEnv);

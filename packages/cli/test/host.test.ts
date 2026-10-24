@@ -257,7 +257,8 @@ describe('host add', () => {
 
   it('asks each agent with the agent homes the companion\'s units carry, as its doctor names them, where a login in the login shell lands', async () => {
     const homes = { CLAUDE_CONFIG_DIR: `${HOME}/agents/claude`, CODEX_HOME: `${HOME}/agents/codex home` };
-    healthy({ agents: false, doctor: JSON.stringify({ ...JSON.parse(DOCTOR), daemonEnv: homes }) });
+    // a name that is no plain variable never reaches env
+    healthy({ agents: false, doctor: JSON.stringify({ ...JSON.parse(DOCTOR), daemonEnv: { ...homes, '-S': '/x' } }) });
     const env = [UNIT_PATH, `CLAUDE_CONFIG_DIR=${homes.CLAUDE_CONFIG_DIR}`, `CODEX_HOME=${homes.CODEX_HOME}`];
     ssh.reply([...env, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
     ssh.reply([...env, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
@@ -267,7 +268,7 @@ describe('host add', () => {
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278 (Claude Code), logged in' });
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
-    expect(agentCalls.every((w) => w.slice(0, 4).join('\n') === ['env', ...env].join('\n'))).toBe(true);
+    expect(agentCalls.every((w) => w.slice(0, 4).join('\n') === ['env', ...env].join('\n') && !w.includes('-S=/x'))).toBe(true);
   });
 
   it('names an OpenCode whose auth list fails as not logged in', async () => {
@@ -342,6 +343,21 @@ describe('host add', () => {
       status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex sandbox check there says ${blocked}`, action: `ssh trift.test, then ${fix}`, run,
     });
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok' });
+  });
+
+  it('names both fixes a fresh Ubuntu leaves Codex, and the first one\'s command to type', async () => {
+    const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
+    const fix = 'sudo apt install bubblewrap apparmor-profiles, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+    const blocked = `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex character asks before each one: ${fix}`;
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'codex hooks', status: 'warn', detail: untrusted, run: 'codex' }, { name: 'codex sandbox', status: 'warn', detail: blocked, run: 'sudo apt install bubblewrap apparmor-profiles && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict' }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    // the doctor shown once that terminal ends lists the sandbox on its own, with its own command
+    expect(step('codex').at(-1)).toMatchObject({
+      status: 'warn', action: `ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks; and ${fix}`, run: 'codex',
+    });
   });
 
   it('names every Codex check that warns there, untrusted hooks and a blocked sandbox alike', async () => {

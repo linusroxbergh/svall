@@ -35,7 +35,7 @@ const PROVISION_TIMEOUT = 120_000;
 const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
-// run: the command `action` names, for the user to run on the machine
+// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
 export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string };
 // stopped: the step a run failed at, past which nothing ran
 export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
@@ -211,7 +211,7 @@ async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[
   }
 }
 
-// daemonEnv: the agent homes its units carry, which a doctor from before it said none of
+// daemonEnv: the agent homes the login shell there sets, which setup hands the daemon; a doctor from before it says none
 type RemoteDoctor = { checks: Check[]; daemonEnv?: Record<string, string> };
 type RemoteVersion = { release: string; protocol: number; machineId: string; signed?: boolean };
 
