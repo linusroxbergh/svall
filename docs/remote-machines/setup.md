@@ -20,26 +20,20 @@ brings, as Ubuntu 24.04 ships 3.4.
 
 The Mac's bundled rsync is the one a handover uses; `svall doctor` checks it.
 
-## The same home path
+## Home paths
 
-The Linux account's home must be the same path as your home on the Mac, such as `/Users/ada`. A fleet records full
-paths everywhere: each character's folder, its Git worktrees, its agent's transcript, its browser tabs' `file:` URLs.
-With the same home on both machines, every one of them means the same thing on either, and nothing is rewritten.
-
-A symbolic link from `/Users/ada` to `/home/ada` is not enough: a process reports its resolved folder, and Git and the
-agents record that. Make an account whose home really is that path, on the Linux machine:
-
-```sh
-sudo mkdir -p /Users
-sudo useradd -m -d /Users/ada -s /bin/bash ada      # a new account
-sudo usermod -d /Users/ada -m ada                   # or move an existing one you are not logged in as
-```
-
-The home path can be at most 65 bytes long, because the gateway's socket lives under it and a Unix socket path holds
-at most 107. `svall host add` checks both and stops with these commands when the home is wrong.
+The Linux account's home need not be your home on the Mac. A fleet records full paths everywhere: each character's
+folder, its Git worktrees, its agent's transcript, its browser tabs' `file:` URLs. A handover moves each path under the
+home it leaves to the same place under the home it lands in, so `/Users/ada/app` on the Mac is `/home/ada/app` on
+Linux, and `/Users/ada/app` again once the fleet comes back. Git worktrees are repaired to their new places, and an
+agent resumed in a moved folder is told where it moved from.
 
 A folder outside your home, such as `/Volumes/work/repo`, arrives at the same path on the other machine. The folder
-that holds it (`/Volumes/work`) must exist there first, owned by the account.
+that holds it (`/Volumes/work`) must exist there first, owned by the account. A folder in the other machine's home but
+not in yours, such as `/home/ada/x` on a Mac whose home is `/Users/ada`, cannot move: it would come back elsewhere.
+
+The home path can be at most 65 bytes long, because the gateway's socket lives under it and a Unix socket path holds
+at most 107. `svall host add` checks it.
 
 ## Turning it on
 

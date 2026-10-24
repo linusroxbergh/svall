@@ -30,7 +30,7 @@ CMD ["/sbin/init"]
 
 FROM machine
 
-# the one account on each machine, at the same home path; key logins only, and never locked
+# the one account on each machine, in /home/svall until a run moves it; key logins only, and never locked
 RUN useradd -m -s /bin/bash -u 1000 svall \
  && usermod -p '*' svall \
  && mkdir -p /var/lib/systemd/linger \

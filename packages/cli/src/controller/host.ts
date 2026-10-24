@@ -5,7 +5,6 @@ import { FleetConfig, FleetId, MachineId, MachineRecord, type AgentKind } from '
 import { AGENTS, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
-import { homeCommands } from '@svall/svalld/handover/inventory';
 import { unitPath } from '@svall/svalld/linux/setup';
 import { isFleetName, isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -396,17 +395,9 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       const { home, user } = await run.step('home', async () => {
         const remote = await homeProbe(master);
         if (!MachineRecord.shape.home.safeParse(remote.home).success) throw new StepError(`the remote $HOME is not an absolute path: ${JSON.stringify(remote.home)}`);
-        // a fleet's paths travel as they are, so the far account has to live where this Mac's does
-        const mine = d.registry.localMachine().home;
-        if (remote.home !== mine) {
-          throw new StepError(
-            `${remote.home} is ${remote.user}'s home there and ${mine} is this Mac's; a fleet moves only between accounts with the same home path`,
-            onThere(o.ssh, `make an account whose home is ${mine}: ${homeCommands(mine)}; then add the machine again at that account`),
-          );
-        }
         const tooLong = socketTooLong(gatewayPaths(remotePaths(remote.home, '').svallBase).socket, 'linux');
         if (tooLong) {
-          throw new StepError(tooLong.message, `use an account whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes, on this Mac and on ${o.ssh} alike`);
+          throw new StepError(tooLong.message, `use an account on ${o.ssh} whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes`);
         }
         return { value: remote, detail: `${remote.home} for ${remote.user}` };
       });
@@ -532,11 +523,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     let far: { home: string; user: string } | undefined;
     try {
       far = await homeProbe(master);
-      const [n, mine] = [entry.record.name, d.registry.localMachine().home];
-      const wrong = far.home !== entry.record.home ? `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}`
-        : far.home !== mine ? `${far.home} is ${far.user}'s home on ${n} and ${mine} is this Mac's; a fleet moves only between accounts with the same home path`
-          : undefined;
-      checks.push(wrong ? { name: 'home', status: 'fail', detail: `${wrong}; svall host remove ${n}, then svall host add again at an account whose home is ${mine}, and svall host enable ${n} --fleet <fleet> for each fleet it is the gateway of` }
+      const n = entry.record.name;
+      checks.push(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}; svall host remove ${n}, then svall host add again, and svall host enable ${n} --fleet <fleet> for each fleet it is the gateway of` }
         : { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` });
     } catch (err) { checks.push(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {

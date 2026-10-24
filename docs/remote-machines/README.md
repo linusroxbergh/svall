@@ -10,7 +10,7 @@ The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` co
 
 | Page | What it covers |
 | --- | --- |
-| [Setting up a Linux machine](setup.md) | Supported machines, the same home path, turning it on, adding the machine, making it the gateway, upgrading and removing it |
+| [Setting up a Linux machine](setup.md) | Supported machines, home paths, turning it on, adding the machine, making it the gateway, upgrading and removing it |
 | [Moving a fleet](handover.md) | Handing over from the app or `svall handover`, what moves and what stays, agents and their versions, what restarts, recovery and known limitations |
 | [Blockers, warnings and errors](errors.md) | Every code a handover or `svall host` reports, what it means and what to do |
 | [Upgrading and downgrading](migration.md) | What the upgrade changes in your fleet homes, and how to go back |

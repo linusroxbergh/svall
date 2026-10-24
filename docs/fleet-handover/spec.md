@@ -9,9 +9,10 @@ Version 1 deliberately supports one Mac and one Linux gateway per fleet. The dat
 ownership protocol use stable machine ids and can add more machines later, but remote-to-remote
 handover is not part of the first release.
 
-Version 1 requires both machines to use the same home path, so every path a fleet records means the
-same thing on either machine and nothing is rewritten. The stable phone gateway and remote port
-forwarding are designed under [Later versions](#later-versions) and come after version 1.
+The two machines' accounts may have different home paths: a path under the home a fleet leaves lands
+at the same place under the home it lands in, as [Paths between homes](#paths-between-homes) says.
+The stable phone gateway and remote port forwarding are designed under
+[Later versions](#later-versions) and come after version 1.
 
 ## Product contract
 
@@ -65,9 +66,8 @@ The first published release supports:
   the release tested;
 - Tailscale on both machines;
 - OpenSSH access from the Mac to the Linux account, including Tailscale SSH;
-- the same home path on both machines: the Linux account's home is the Mac's, such as
-  `/Users/linus`, set with `useradd -m -d` or `usermod -d`. A symlink is not enough, because the
-  working directory a process reports is the resolved path, and Git and the agents record that;
+- a Linux account whose home path is at most 65 bytes, since the gateway's socket lives under it;
+  it need not be the Mac's;
 - systemd user services on Linux;
 - Git on both machines, and tmux 3.x on the Mac; tmux 3.5 or newer is recommended, because Shift+Enter
   needs its `extended-keys-format`. Ubuntu 24.04 ships 3.4, so the Linux companion carries its own tmux
@@ -365,8 +365,7 @@ rollback (after a reinstall under the same name, the newest other release) and r
 1. Open an interactive SSH connection so the user can verify a new host key and complete any SSH
    authentication.
 2. Read the remote home, OS and architecture; require Ubuntu 22.04 or newer (an LTS release passes, another warns)
-   and a home path equal to the Mac's. A different home stops setup with the commands that create
-   an account whose home matches.
+   and a home path short enough for the gateway's socket.
 3. Check Tailscale, Git, rsync and systemd user services. An rsync older than 3.2.3 is a warning,
    not a blocker. Missing
    system packages are shown with a copyable apt command. Svall never runs sudo: the step's
@@ -438,12 +437,22 @@ again installs it.
 
 # Transfer model
 
-## Same paths
+## Paths between homes
 
-Paths are never rewritten. Both machines have the same home path, and a transfer root outside the
-home, such as `/Volumes/work/repo`, arrives at the same absolute path, so its parent must exist on
-the destination. State paths, context refs, `file:` browser URLs, worktree gitfiles, transcript
-paths and repo-doc keys therefore mean the same thing on either machine.
+A path under the source's home lands at the same place under the destination's: `/Users/ada/app`
+becomes `/home/ada/app`, and `/Users/ada/app` again on the way back. Any other path, such as
+`/Volumes/work/repo`, lands as it is, so its parent must exist on the destination. The manifest keeps
+every path as the source recorded it and names both homes; the destination and the controller's
+preflight read it through one prefix swap on whole path components. State paths, context refs,
+`file:` browser URLs, Git places and the fleet home's roots are swapped; symlink targets travel byte
+for byte. Git links are repaired as [Git repository graphs](#git-repository-graphs) says, each
+repository's docs folder is renamed for where its root lands, and session files land as
+[Agent sessions](#agent-sessions) says.
+
+A root in the destination's home but not in the source's is refused: it would land where a path of
+the source's home lands and come back elsewhere. That is the only path the swap cannot invert, so no
+two roots land on one path. Root ids hash the source path and are compared only within one
+transaction.
 
 Each transfer root is recorded and copied at its real path. A character cwd whose real path differs
 from the recorded one blocks, because Git and the agents record the resolved path. Preflight also
@@ -620,6 +629,15 @@ replaces it. Each OpenCode call runs with `--standalone` in the daemon's environ
 `XDG_DATA_HOME` finds the database the agents use. Undo snapshots, subagent child sessions and
 shell and tool-output files do not travel. The adapter's minimum is OpenCode 2.0.22.
 
+Between accounts with different homes, a Claude Code or Codex session's files land at the same place
+under the destination's config folder as under the source's, so a Claude transcript stays in the
+project folder named for the source's cwd, and `claude --resume <id>` from the swapped cwd goes on
+appending to it. Codex records its cwd in the rollout: on every revive Svall reads the last one, and
+when that folder is not on this machine it runs `codex resume -C <cwd> -c tui.resume_cwd=current <id>`
+once, after which the rollout names the new folder and the plain command works. A session
+interrupted by the handover is told on resume which folder it moved from and to, since its
+conversation keeps the old paths.
+
 Session files are copied byte for byte. An adapter therefore depends only on where its CLI keeps a
 session's files, or for OpenCode on its export and import, not on the record format, and has a
 minimum supported version but no maximum.
@@ -674,8 +692,8 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - the destination, or the source while it is the fleet's gateway, is a Linux machine whose account
   does not linger (`linger_off`), so the fleet or its gateway would stop at logout and stay down
   after a restart until a login;
-- the destination's home path differs from the source's, or a transfer root's parent is missing
-  there;
+- a transfer root lies in the destination's home but not in the source's, or its parent is
+  missing where it lands;
 - a character is marked **Keep on this machine**;
 - mission control's folder (`home.cwd`) is also another fleet's on the source machine;
 - a foreground shell process is still running;
@@ -1082,8 +1100,8 @@ honest remapped URL when its preferred local port is occupied.
   path. OpenCode has neither; the container run's mock follows 2.0.22's export and import.
 - Test source changes during rsync and bounded stabilization retry.
 - Test protocol/release/adapter mismatch before freeze.
-- Integration-test local-to-Linux and Linux-to-local with two disposable machines or containers,
-  mocked agents and real tmux/SSH/rsync.
+- Integration-test local-to-Linux and Linux-to-local with two disposable machines or containers
+  whose homes differ, mocked agents and real tmux/SSH/rsync.
 - Test fresh Ubuntu x86-64 and arm64 provisioning from the published Mac artifact.
 
 ## Manual acceptance
@@ -1112,7 +1130,6 @@ provisioning passes on both supported Linux architectures.
 
 - a stable phone URL and push subscription across owners, and remote port forwarding (see
   [Later versions](#later-versions));
-- machines whose home paths differ;
 - arbitrary process or memory migration;
 - unattended or phone-initiated handover;
 - remote-to-remote transfer or more than one gateway per fleet;

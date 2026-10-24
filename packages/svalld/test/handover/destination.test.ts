@@ -355,7 +355,7 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
     destination: { machineId: trift, home: dst, fleetHome: home, agentHomes },
   });
   const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
-  expect(built.blockers.filter((b) => b.code !== 'home_mismatch' || !o.relocate)).toEqual([]);
+  expect(built.blockers).toEqual([]);
   // the fleet leaves the Mac: this disk is trift's now, whose agents have their homes and nothing else yet
   if (!o.relocate) fs.renameSync(dst, src);
   for (const d of Object.values(agentHomes)) fs.mkdirSync(d, { recursive: true });
@@ -1033,7 +1033,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
       source: { machineId: mac, home: l.home, fleetHome: path.join(l.base, 'mac-svall') }, destination: { machineId: trift, home: to, fleetHome: home },
     }, discovery);
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
-    expect(built.blockers.filter((b) => b.code !== 'home_mismatch' || to === l.home)).toEqual([]);
+    expect(built.blockers).toEqual([]);
     const macTree = park(l, 'mac');
     const landed = await transfer(paths, built.manifest, (p) => parkedAt(l, macTree, p));
     const store = Store.load(paths.state, () => {});
@@ -3143,7 +3143,7 @@ describe("a moved fleet's repository docs, between accounts with different homes
     const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' } });
     const inventory = buildInventory(state, { fleet }, { source: { machineId: mac, home: macHome, fleetHome: macFleet }, destination: { machineId: trift, home: linux, fleetHome: home } });
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
-    expect(built.blockers.map((b) => b.code)).toEqual(['home_mismatch']);
+    expect(built.blockers).toEqual([]);
     const paths = resolvePaths(home);
     fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, gatewayMachineId: trift })));
     fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 4, ownerMachineId: mac }));

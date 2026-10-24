@@ -93,10 +93,11 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
 }
 
 /** Everything a healthy Ubuntu companion answers, in the order `host add` asks for it. */
-function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean; tmux?: { stdout?: string; stderr?: string; code?: number } } = {}): void {
+function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean; tmux?: { stdout?: string; stderr?: string; code?: number }; home?: string } = {}): void {
+  const home = o.home ?? HOME;
   ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
   ssh.reply(['cat', '/etc/os-release'], { stdout: o.osRelease ?? OS_RELEASE });
-  ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
+  ssh.reply(['svall-home'], { stdout: `${home}\nlinus\n` });
   ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
   ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.2.7  protocol version 31\n' });
   ssh.reply(['svall-space'], { stdout: DF });
@@ -112,12 +113,13 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ error: { code: 'not_found', message: 'the gateway holds no record for that fleet' } })}\n`, code: 1 });
   ssh.reply(['svall-tmux'], {});
   if (o.agents === false) return;
-  ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
-  ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
-  ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.156.1\n' });
-  ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
-  ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
-  ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone', '--format', 'json'], { stdout: '[{"id":"openai"}]\n' });
+  const PATH = UNIT_PATH.replaceAll(HOME, home);
+  ssh.reply([PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
+  ssh.reply([PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
+  ssh.reply([PATH, 'codex', '--version'], { stdout: 'codex-cli 0.156.1\n' });
+  ssh.reply([PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
+  ssh.reply([PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
+  ssh.reply([PATH, 'opencode', 'auth', 'list', '--standalone', '--format', 'json'], { stdout: '[{"id":"openai"}]\n' });
 }
 
 /** A daemon on the far side of the forward, so the end-to-end probe has something to answer it: from `release`, while it `accepts`. */
@@ -424,19 +426,16 @@ describe('host add', () => {
     });
   });
 
-  it('stops at a far home other than this Mac\'s, naming the commands that make an account whose home is this one', async () => {
-    ssh.reply(['svall-home'], { stdout: `${ELSEWHERE}\nlinus\n` });
-    healthy();
+  it('takes a far home other than this Mac\'s, and registers the machine at it', async () => {
+    healthy({ home: ELSEWHERE });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
-    expect(out.result).toBe('actions');
-    expect(step('home').at(-1)).toEqual({
-      step: 'home', status: 'fail',
-      detail: `${ELSEWHERE} is linus's home there and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path`,
-      action: `ssh trift.test, then make an account whose home is ${HOME}: sudo mkdir -p ${path.dirname(HOME)}, then sudo useradd -m -d ${HOME} <user> for a new account, or sudo usermod -d ${HOME} -m <user> for an existing one you are not logged in as; then add the machine again at that account`,
-    });
-    expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
-    expect(registry.get('trift')).toBeUndefined();
+    await d.close();
+    expect(step('home').at(-1)).toEqual({ step: 'home', status: 'ok', detail: `${ELSEWHERE} for linus` });
+    expect(out.result).toBe('ready');
+    expect(registry.get('trift')?.record).toMatchObject({ home: ELSEWHERE, svallBase: `${ELSEWHERE}/.local/share/svall` });
   });
 
   it('stops at a home too long for the gateway\'s socket on Linux, naming the listen EINVAL it would otherwise crash on', async () => {
@@ -450,7 +449,7 @@ describe('host add', () => {
     expect(step('home').at(-1)).toMatchObject({
       status: 'fail',
       detail: `the gateway's socket ${long}/.local/share/svall/gateway/authority.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
-      action: 'use an account whose home path is at most 65 bytes, on this Mac and on trift.test alike',
+      action: 'use an account on trift.test whose home path is at most 65 bytes',
     });
     expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
   });
@@ -929,21 +928,17 @@ describe('host doctor', () => {
     answer(ELSEWHERE);
     expect(await home()).toEqual({
       name: 'home', status: 'fail',
-      detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; svall host remove trift, then svall host add again at an account whose home is ${HOME}, and svall host enable trift --fleet <fleet> for each fleet it is the gateway of`,
+      detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; svall host remove trift, then svall host add again, and svall host enable trift --fleet <fleet> for each fleet it is the gateway of`,
     });
   });
 
-  it('fails the home of a machine an earlier build registered at a home other than this Mac\'s', async () => {
+  it('passes the home of a machine registered at a home other than this Mac\'s', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${ELSEWHERE}\nlinus\n` });
     const report = await doctorHost('trift', deps({ registry: registered(ELSEWHERE) }));
-    expect(report.checks.find((c) => c.name === 'home')).toEqual({
-      name: 'home', status: 'fail',
-      detail: `${ELSEWHERE} is linus's home on trift and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path; `
-        + `svall host remove trift, then svall host add again at an account whose home is ${HOME}, and svall host enable trift --fleet <fleet> for each fleet it is the gateway of`,
-    });
+    expect(report.checks.find((c) => c.name === 'home')).toEqual({ name: 'home', status: 'ok', detail: `${ELSEWHERE} for linus` });
   });
 
   it('reports a release the controller cannot hand over to as a failure', async () => {

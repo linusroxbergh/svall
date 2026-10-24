@@ -402,18 +402,10 @@ describe('source preflight', () => {
     expect(await codes({}, alone)).toEqual(['identity_mismatch']);
   });
 
-  it('blocks a destination whose home is not this machine\'s, at preflight and at freeze, naming the commands that make one that is', async () => {
+  it('takes a destination whose home is not this machine\'s at preflight', async () => {
     const b = boot();
-    const elsewhere = { home: '/home/linus' };
-    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines(elsewhere) });
-    expect(r.blockers).toEqual([{
-      code: 'home_mismatch',
-      message: `the destination's home is /home/linus and this machine's ${b.work}; a fleet moves only between accounts with the same home path. On the destination, sudo mkdir -p ${path.dirname(b.work)}, then sudo useradd -m -d ${b.work} <user> for a new account, or sudo usermod -d ${b.work} -m <user> for an existing one you are not logged in as; then svall host remove <name>, svall host add at that account, and svall host enable <name> --fleet <fleet>`,
-    }]);
-    b.gateway.begin();
-    const refused = await refusal(b.handover.freeze(b.freezeParams(b.machines(elsewhere))));
-    expect((refused.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['home_mismatch']);
-    expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ home: '/home/linus' }) });
+    expect(r.blockers).toEqual([]);
   });
 
   it('asks the gateway who owns the fleet, as Freeze will, and blocks with why it could not, ssh_interactive only for an ssh that would have to ask', async () => {

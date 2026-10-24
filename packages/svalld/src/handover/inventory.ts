@@ -3,7 +3,6 @@ import path from 'node:path';
 import { defaultHome, type AgentKind, type Blocker, type FleetConfig, type FleetState, type GitGraph, type HandoverEntity, type MachineId, type TransferRoot, type TransferSession, type Warning } from '@svall/protocol';
 import { peekConfig, readFleetConfig } from '../config.js';
 import { resolvePaths } from '../paths.js';
-import { shq } from '../text.js';
 import { fleetHomes } from '../uninstall.js';
 import type { GitDiscovery } from './git-graph.js';
 import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
@@ -222,14 +221,6 @@ function entryOf(p: string): InventoryRoot['entry'] {
 const characterOf = (v: PathValue): HandoverEntity | undefined =>
   (v.field.startsWith('FleetState.characters.') ? { kind: 'character', id: String(v.pointer[1]) } : undefined);
 
-// a home path as a shell reads it, quoted only when it has to be
-const word = (p: string): string => (/^[A-Za-z0-9_./-]+$/.test(p) ? p : shq(p));
-
-/** The commands that give an account the home path `home`, for a message asking for one. */
-export const homeCommands = (home: string): string =>
-  `sudo mkdir -p ${word(path.posix.dirname(home))}, then sudo useradd -m -d ${word(home)} <user> for a new account, `
-  + `or sudo usermod -d ${word(home)} -m <user> for an existing one you are not logged in as`;
-
 /**
  * Everything a handover carries from `source` to `destination`: each working root once, at its path here, which lands
  * where `relocate` moves it there, the transcript each agent recorded, and what stops the move. With the discovered Git
@@ -243,12 +234,6 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   const snapshot = exportSnapshot(state);
   const fleet = structuredClone(configs.fleet);
   const { excludes, blockers } = expandExcludes(fleet.handover);
-  if (destination.home !== home) {
-    blockers.push({
-      code: 'home_mismatch',
-      message: `the destination's home is ${destination.home} and this machine's ${home}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(home)}; then svall host remove <name>, svall host add at that account, and svall host enable <name> --fleet <fleet>`,
-    });
-  }
   blockers.push(...(git?.blockers ?? []));
 
   // a root travels at the path it was recorded by, so that path has to be the real one Git and the agents record

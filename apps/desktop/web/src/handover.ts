@@ -491,7 +491,7 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     case 'incompatible_adapter':
       return "Update the agent CLI on the machine the message names; for a file in a session, move it out of that session's folder.";
     case 'home_mismatch':
-      return `Both machines need the same home path: make an account on ${linux} whose home is this Mac's, then add the machine again at that account.`;
+      return `The account on ${ctx.destination} no longer has the home this handover was sent to: add the machine again as \`${svall} host doctor\` says, then start a new handover.`;
     case 'parent_missing':
       return `Create the folder it names on ${ctx.destination}, owned by your account, then try again.`;
     case 'worktree_unresolved':

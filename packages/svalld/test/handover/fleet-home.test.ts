@@ -139,7 +139,7 @@ describe('the entries of a fleet home', () => {
     expect(Object.keys(ENTRIES).filter((k) => !found.includes(k))).toEqual([]);
   });
 
-  it('carries each entry that travels as a root, and leaves every other entry behind', () => {
+  it.each([['an account with the same home', undefined], ['an account with another home', '/home/elsewhere']])('carries each entry that travels as a root, and leaves every other entry behind, to %s', (_, away) => {
     const home = fs.realpathSync(makeHome());
     const fleetHome = path.join(home, '.svall');
     const sample = (name: string) => path.join(fleetHome, name.replaceAll('*', 'x'));
@@ -155,7 +155,8 @@ describe('the entries of a fleet home', () => {
     const fleet = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', handover: { transferFleetEnv: true } });
     const mac = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
     const trift = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
-    const inv = buildInventory(state, { fleet }, { source: { machineId: mac, home, fleetHome }, destination: { machineId: trift, home, fleetHome } });
+    const there = away ?? home;
+    const inv = buildInventory(state, { fleet }, { source: { machineId: mac, home, fleetHome }, destination: { machineId: trift, home: there, fleetHome: path.join(there, '.svall') } });
 
     const carried = inv.roots.map((r) => r.path).filter((p) => p.startsWith(`${fleetHome}/`)).sort();
     expect(carried).toEqual(Object.entries(ENTRIES).filter(([, h]) => h === 'root').map(([n]) => sample(n)).sort());

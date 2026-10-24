@@ -1,7 +1,9 @@
 // Mocked Claude Code for the integration run: answers the CLI probes a handover makes, and in a terminal runs as an
 // agent that posts Svall's hook events (with its own pid) to $SVALL_HOME/hooks.sock and keeps a transcript where
 // Claude Code 2.1.x keeps one (<config>/projects/<slug of the real cwd>/<session>.jsonl). `--resume <id>` finds that
-// transcript under the real cwd's slug, as the real CLI does, and fails the way it does when it is not there.
+// transcript under the real cwd's slug, or else the newest of that id in another project folder, and appends to it, as
+// the real CLI does after its folder moved; it fails the way the real one does when there is none. As the real one,
+// its SessionStart names the cwd's slug either way.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -39,7 +41,13 @@ const resume = at('--resume') ?? at('-r');
 const sessionId = resume ?? crypto.randomUUID();
 const cwd = process.cwd();
 const slug = cwd.replace(/[^a-zA-Z0-9]/g, '-');
-const transcriptPath = path.join(configDir, 'projects', slug, `${sessionId}.jsonl`);
+const named = path.join(configDir, 'projects', slug, `${sessionId}.jsonl`);
+const elsewhere = () => {
+  const projects = path.join(configDir, 'projects');
+  const found = (fs.existsSync(projects) ? fs.readdirSync(projects) : []).map((d) => path.join(projects, d, `${sessionId}.jsonl`)).filter((p) => fs.existsSync(p));
+  return found.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+};
+const transcriptPath = resume && !fs.existsSync(named) ? elsewhere() ?? named : named;
 
 if (resume && !fs.existsSync(transcriptPath)) {
   process.stdout.write(`No conversation found with session ID: ${resume}\n`);
@@ -82,7 +90,7 @@ for (const sig of ['SIGHUP', 'SIGTERM']) process.on(sig, () => { void end(); });
 // Claude Code's prompt line, which svalld reads as clear before it types a prompt
 const PROMPT = '❯\u00a0';
 process.stdout.write(`fake claude ${VERSION} · session ${sessionId}${resume ? ' (resumed)' : ''} · ${cwd}\n${PROMPT}`);
-await post({ hook_event_name: 'SessionStart', source: resume ? 'resume' : 'startup' });
+await post({ hook_event_name: 'SessionStart', source: resume ? 'resume' : 'startup', transcript_path: named });
 
 let prompts = 0;
 const rl = readline.createInterface({ input: process.stdin });

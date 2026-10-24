@@ -122,8 +122,11 @@ adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A fo
 shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in
 until you choose Carry the folder whole (`--carry-unused`), move the terminal, or leave them out.
 
-Paths are never rewritten: both machines have the same home path, so every path in the fleet means the same thing on
-either. A repository's `origin` that names a path on the Mac travels as it is, and the checks warn about it.
+A path under the home the fleet leaves lands at the same place under the home it lands in, and any other path lands as
+it is ([home paths](setup.md#home-paths)). A repository's `origin` that names a path on the Mac travels as it is, and
+the checks warn about it. Between different homes the checks stop at a repository Git cannot move by itself: one whose
+`.git` file, `core.worktree`, `core.hooksPath`, `includeIf` or alternates name a path under the old home outside it,
+one whose submodules would be split across the home boundary, and one whose old place is still on the other machine.
 
 A folder the fleet left on a machine stays there as a replica of what was last carried. Moving back copies only what
 changed. If something on that replica changed while the machine did not own the fleet, the checks before the copy stop
@@ -473,6 +476,6 @@ it holds from the last handover; what was done on the Mac since is gone with it.
   a file that names no hardware binds it to its own, so two machines that held copies of it before then each bind
   theirs, and both pass as that machine. Move one aside so it mints its own id.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
-- **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a
+- **Version 1 covers one Mac and one Linux gateway per fleet**. It does not move a
   single character or island, forward ports, keep a phone URL across machines, or move from one Linux machine to
   another.
