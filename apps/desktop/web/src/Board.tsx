@@ -167,13 +167,15 @@ export function Board() {
   const now = Date.now();
   const crewed = all.length > 0;
 
-  // the first board this Mac draws with robots says where they all start, and offers the scribe
-  // unless one of the asks already does or the scribe places them already
+  // the first board this Mac draws with robots says where they all start, and offers the scribe; a board drawn
+  // while an ask is up or the scribe places robots counts as its showing, crewed or not
   useEffect(() => {
-    if (toastShown || !crewed) return;
+    if (toastShown) return;
     const s = app.store.getState();
+    const offered = s.fleet.scribeAsk || s.fleet.placingAsk || placingOn(s.fleet);
+    if (!offered && !crewed) return;
     s.setSettings({ boardToastShown: true });
-    if (s.fleet.scribeAsk || s.fleet.placingAsk || placingOn(s.fleet)) return;
+    if (offered) return;
     s.showToast(`Every robot starts in ${s.fleet.columns[0].name}.`, 'ok', { label: 'Let the scribe place them', run: () => setPlacing(deps(), true) }, true);
   }, [toastShown, crewed]);
 

@@ -395,6 +395,18 @@ test('a reflex Return keeps placing off, the map never asks, and the first-launc
   await expect(page.getByTestId('toast')).toHaveCount(0);
 });
 
+test('Keep off on an empty fleet counts as the first-launch toast, so the first robot after it brings none', async ({ page, svall }) => {
+  await askPlacing(svall);
+  await toastUnshown(page);
+  await svall.open();
+  await page.getByTestId('placing-ask-off').click();
+  await expect.poll(() => placingState(svall)).toEqual([undefined, true, true]);
+  const island = await svall.api.call('island.create', { name: svall.uniq('later') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'later' });
+  await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+});
+
 test('the Auto-place chip says who places robots and switches it, the scribe only while it runs', async ({ page, svall }) => {
   await svall.open();
   const chip = page.getByTestId('chip-placing');
