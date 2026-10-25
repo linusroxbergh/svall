@@ -90,7 +90,7 @@ describe('svall argument parsing', () => {
       const r = await run({ HOME: home, SVALL_HOME: fleet, SVALL_CONFIG_DIR: config }, '--host', 'trift', 'status');
       expect(r.code).toBe(1);
       expect(ssh.remoteCalls().filter((w) => w.includes('connection-info'))).toEqual([['/opt/svall/current/bin/svall', 'connection-info', '--json', '-p', 'work']]);
-      expect(r.stderr).toContain('--fleet work');
+      expect(r.stderr).toContain("`svall -p work host upgrade trift` makes it this fleet's worker");
     } finally {
       ssh.clean();
     }
