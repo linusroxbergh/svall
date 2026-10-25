@@ -4,7 +4,7 @@ import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './action
 import { app, deps } from './boot.js';
 import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
-import { machineName, unreachableOf } from './placement.js';
+import { destinationName, unreachableOf } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
 
@@ -25,7 +25,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const resting = useApp((s) => holdsTerminals(s.handover));
   const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
   // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
-  const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && machineName(s.fleet, m.to); });
+  const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to); });
   const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && unreachableOf(s.fleet, r); });
   const away = !!movingTo || !!unreachable;
   // read as the veil lifts, from the render that lifted it

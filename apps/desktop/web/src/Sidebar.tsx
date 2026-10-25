@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { starredOf, type Robot, type Island } from '@svall/protocol';
+import { starredOf, type FleetState, type Robot, type Island } from '@svall/protocol';
 import { moveRobotTo, newRobotOn, newIsland, reorderIsland, saveRobot, saveIsland, setStar, starRobotAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
@@ -9,7 +9,7 @@ import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
 import { boardIsland, boardViewed, robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
-const attentionIn = (robots: Robot[]): number => robots.filter(wantsUser).length;
+const attentionIn = (robots: Robot[], f: Pick<FleetState, 'machines'>): number => robots.filter((c) => wantsUser(c, f)).length;
 
 // a robot dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
 const ROBOT_DRAG = 'application/x-svall-robot';
@@ -96,7 +96,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
   const selected = useApp((s) => (s.view === 'board' ? boardIsland(s)?.id === i.id : s.selectedIslandId === i.id));
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === i.id);
   const open = !i.collapsed;
-  const attention = attentionIn(robots);
+  const attention = useApp((s) => attentionIn(robots, s.fleet));
   // on the board an island is a place to work, so it opens a robot; on the map it is a thing to read
   const select = () => {
     const s = app.store.getState();
@@ -150,10 +150,11 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
   const failed = useApp((s) => resumeErrorOf(s, c));
   const [dragging, setDragging] = useState(false);
   const status = useApp((s) => statusOf(c, s.fleet));
+  const attention = useApp((s) => wantsUser(c, s.fleet));
   return (
     <div
       className="sb-row sb-child" data-testid={`sb-robot-${c.id}`} data-status={status} data-unread={isUnread(c)}
-      data-attention={wantsUser(c)} data-selected={selected}
+      data-attention={attention} data-selected={selected}
       data-drop={`robot:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'robot', id: c.id })}
       draggable={!editing} data-dragging={dragging}
       onDragStart={(e) => { e.dataTransfer.setData(ROBOT_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
@@ -189,9 +190,10 @@ function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: Ret
   const fileHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after === undefined);
   const [dragging, setDragging] = useState(false);
   const status = useApp((s) => statusOf(c, s.fleet));
+  const attention = useApp((s) => wantsUser(c, s.fleet));
   return (
     <div className="sb-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
-      data-attention={wantsUser(c)} data-selected={selected} data-drop={`robot:${c.id}`} data-drop-hover={fileHover}
+      data-attention={attention} data-selected={selected} data-drop={`robot:${c.id}`} data-drop-hover={fileHover}
       data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
       draggable data-dragging={dragging} {...zone}
       onDragStart={(e) => { e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
@@ -238,7 +240,7 @@ function Starred() {
   const [hover, setHover] = useState<StarHover>();
   const robots = starredOf(fleet);
   if (robots.length === 0) return null;
-  const attention = attentionIn(robots);
+  const attention = attentionIn(robots, fleet);
   const fold = () => app.store.getState().setSection(STARRED, { shut: !shut });
   return (
     <div className="sb-folder" data-testid="sb-starred">

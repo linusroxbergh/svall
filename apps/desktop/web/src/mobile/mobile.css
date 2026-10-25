@@ -31,6 +31,8 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .conn[data-status='working'] { color: var(--working); }
 .conn[data-status='blocked'] { color: var(--blocked); }
 .conn[data-status='done'] { color: var(--done); }
+.conn[data-status='moving'] { color: var(--moving); }
+.conn[data-status='unknown'] { color: var(--unknown); }
 .conn[data-status='offline'], .conn[data-status='outdated'], .conn[data-status='refused'], .conn[data-status='unpaired'] { color: var(--blocked); }
 
 /* ---- fleet list */
@@ -92,6 +94,8 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .row[data-status='blocked'] .row-status { color: var(--blocked); }
 .row[data-status='done'] .row-status { color: var(--done); }
 .row[data-status='shell'] .row-status { color: var(--shell); }
+.row[data-status='moving'] .row-status { color: var(--moving); }
+.row[data-status='unknown'] .row-status { color: var(--unknown); }
 
 /* ---- one robot */
 

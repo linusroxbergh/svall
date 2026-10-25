@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { MachineId, MoveSheet as Sheet, Refusal } from '@svall/protocol';
+import { ApiError, INTERRUPT_ACTIONS, type MachineId, type MoveSheet as Sheet, type Refusal } from '@svall/protocol';
 import { chr, fleet } from '../fixtures.js';
 import { call, freshStore, sent, store } from './harness.js';
 
@@ -70,7 +70,7 @@ test('a robot on main says its changes move to a new branch, and one asking a qu
 
 test('a refusal is one sentence and one button, with the rest behind details; the interrupt it asks for is chosen from it', async () => {
   answers = [
-    { ok: false, refusal: { reason: 'ada is working', action: 'interrupt after this turn', details: ['svall-notes has no remote; push svall-notes to a remote first'] } },
+    { ok: false, refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: ['svall-notes has no remote; push svall-notes to a remote first'] } },
     { ok: true, sheet: sheet({ interrupts: true }) },
   ];
   await open(VAULT);
@@ -85,6 +85,16 @@ test('a refusal is one sentence and one button, with the rest behind details; th
   expect((screen.getByLabelText('Interrupt after this turn') as HTMLInputElement).checked).toBe(true);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: VAULT, interruptAfterMs: 0 });
+});
+
+test('a command running in its shell is ended by the move once the user says so, and the box says so', async () => {
+  answers = [{ ok: false, refusal: { reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] } }, { ok: true, sheet: sheet({ interrupts: true }) }];
+  await open(VAULT);
+  expect(screen.getByTestId('move-action').textContent).toBe('Move anyway and it ends');
+  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, interruptAfterMs: 0 });
+  expect((screen.getByLabelText('a command is running; move anyway and it ends') as HTMLInputElement).checked).toBe(true);
+  expect(screen.queryByLabelText('Interrupt after this turn')).toBeNull();
 });
 
 test('a refusal with a command to run opens a terminal there with it typed', async () => {
@@ -118,11 +128,26 @@ test('the way back asks about this Mac by the id the daemon gives itself', async
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: HOME });
 });
 
-test('a move the daemon refuses after the sheet closed says why in a toast', async () => {
+test('a move the daemon refuses after the sheet closed says why in a toast, whose Check again opens the sheet on it', async () => {
   call.mockImplementation((method: string) => (method === 'robot.moveTo'
-    ? Promise.reject(new Error('kanban moved on this Mac since the move; merge or rename it'))
+    ? Promise.reject(new ApiError('refused', 'linus-vault runs claude 1.2.3, this Mac 1.2.4; update claude on linus-vault'))
     : Promise.resolve(method === 'robot.moveCheck' ? { ok: true, sheet: sheet() } : {})));
   await open(VAULT);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
-  expect(store.getState().toast?.text).toBe('kanban moved on this Mac since the move; merge or rename it');
+  expect(screen.queryByTestId('move-sheet')).toBeNull();
+  const toast = store.getState().toast;
+  expect(toast?.text).toBe('linus-vault runs claude 1.2.3, this Mac 1.2.4; update claude on linus-vault');
+  expect(toast?.action?.label).toBe('Check again');
+  await act(async () => toast!.action!.run());
+  expect(store.getState().moveSheet).toEqual({ id: 'c0', to: VAULT });
+  expect(screen.getByTestId('move-sheet')).toBeTruthy();
+});
+
+test('a move that fails for any other reason says why, with nothing to check again', async () => {
+  call.mockImplementation((method: string) => (method === 'robot.moveTo'
+    ? Promise.reject(new Error('svalld connection closed'))
+    : Promise.resolve(method === 'robot.moveCheck' ? { ok: true, sheet: sheet() } : {})));
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  expect(store.getState().toast).toEqual({ text: 'svalld connection closed', tone: 'error' });
 });

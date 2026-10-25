@@ -79,6 +79,12 @@ describe('selectors', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { ...working, moving: { id: 'mv_0123456789', to: vault, phase: 'bundle' } }))).toBe('moving');
     expect(statusOf({ ...placed, moving: { id: 'mv_0123456789', to: vault, phase: 'activate' } }, f)).toBe('moving');
   });
+  it('asks nothing of the user for a robot last seen blocked on a worker out of reach', () => {
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const blocked = chr('x', 'i', { x: 0, y: 0 }, { machine: vault, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'blocked', lastActivityAt: 0 } });
+    expect(wantsUser(blocked, { machines: { [vault]: { name: 'linus-vault', reachable: false, since: 0 } } })).toBe(false);
+    expect(wantsUser(blocked, { machines: { [vault]: { name: 'linus-vault', reachable: true, since: 0 } } })).toBe(true);
+  });
   it('shows a robot with no window as idle, whatever turn or question its agent was left on', () => {
     for (const status of ['working', 'blocked'] as const) {
       expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status, lastActivityAt: 0 } }))).toBe('idle');
@@ -216,7 +222,7 @@ describe('a robot with two sessions', () => {
     expect(contextPctOf(c)).toBe(71);
     expect(contextPctOf(chr('c', 'i', at))).toBeUndefined();
     expect(isUnread(c)).toBe(true);
-    expect(wantsUser(c)).toBe(true);
+    expect(wantsUser(c, fleet())).toBe(true);
   });
   it('monitors in either session count', () => {
     expect(isMonitoring(chr('c', 'i', at, { agent: { ...agent('idle'), monitors: ['m1'] } }))).toBe(true);

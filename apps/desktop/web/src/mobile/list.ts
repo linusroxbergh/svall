@@ -21,7 +21,7 @@ export function sections(f: FleetState): Section[] {
   return out;
 }
 
-export const waiting = (f: FleetState): number => Object.values(f.robots).filter(wantsUser).length;
+export const waiting = (f: FleetState): number => Object.values(f.robots).filter((c) => wantsUser(c, f)).length;
 
 /** The line under a robot's name: its note flattened to one line, or nothing. */
 export const subtitle = (c: Robot): string => c.note.trim().replace(/\s*\n+\s*/g, ' · ');

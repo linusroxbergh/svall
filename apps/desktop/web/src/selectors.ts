@@ -130,7 +130,7 @@ export function robotsByPriority(f: FleetState): Robot[] {
 }
 
 // a robot wants the user when it is stuck, or when it has news nobody has read
-export const wantsUser = (c: Robot): boolean => isUnread(c) || statusOf(c) === 'blocked';
+export const wantsUser = (c: Robot, f: Pick<FleetState, 'machines'>): boolean => isUnread(c) || statusOf(c, f) === 'blocked';
 
 // the PR the work is on: the branch's own, the one svalld reads a state for, else the first among the links
 export const mainPr = (c: Robot): ContextItem | undefined =>

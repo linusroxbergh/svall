@@ -8,6 +8,9 @@ export type MovePhase = z.infer<typeof MovePhase>;
 export const Refusal = z.object({ reason: z.string(), action: z.string(), run: z.string().optional(), details: z.array(z.string()) });
 export type Refusal = z.infer<typeof Refusal>;
 
+/** The actions of the refusals a move clears by interrupting: an agent at work, and a command running in a shell. */
+export const INTERRUPT_ACTIONS = { agent: 'interrupt after this turn', command: 'move anyway and it ends' } as const;
+
 // stays holds the sheet's phrases for what is left on this Mac: ".env stays here", "node_modules is not carried"
 export const MoveSheet = z.object({
   sessionBytes: z.number(), branch: z.string(), commits: z.number(), changedFiles: z.number(), untrackedFiles: z.number(),

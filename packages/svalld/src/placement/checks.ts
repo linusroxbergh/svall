@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, Repo, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
+import { AgentKind, INTERRUPT_ACTIONS, Repo, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
 import { must } from '../handover/git-graph.js';
@@ -279,8 +279,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const mine = (await d.terminals()).filter((t) => t.robotId === c.id);
   const chosen = o.interruptAfterMs !== undefined;
   const question = mine.some((t) => t.class === 'agent-blocked');
-  if (!chosen && mine.some((t) => t.class === 'agent-working')) fail({ reason: `${c.name} is working`, action: 'interrupt after this turn' });
-  if (!chosen && mine.some((t) => t.class === 'foreground')) fail({ reason: 'a command is running', action: 'move anyway and it ends', details: ['wait for it'] });
+  if (!chosen && mine.some((t) => t.class === 'agent-working')) fail({ reason: `${c.name} is working`, action: INTERRUPT_ACTIONS.agent });
+  if (!chosen && mine.some((t) => t.class === 'foreground')) fail({ reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] });
 
   // a worker out of reach has failed a check, so no homes means a refusal
   if (failed.length || !homes) {

@@ -21,7 +21,7 @@ export function needOf(f: FleetState, phones: PhoneSession[]): Need {
       if (slotStatus(c, term) !== 'working') continue;
       if (a.shellsOnly) need.shells++; else need.working++;
     }
-    need.waiting += Number(wantsUser(c));
+    need.waiting += Number(wantsUser(c, f));
   }
   for (const p of phones) need.since = Math.max(need.since, p.since);
   return need;

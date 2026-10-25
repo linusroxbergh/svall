@@ -5,7 +5,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '../../src/api.js';
 import { setAppStore } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { DEFAULT_CWD } from '@svall/protocol';
+import { DEFAULT_CWD, type MachineId } from '@svall/protocol';
 import { figureOf, figureUrl } from '../../src/portraits.js';
 import { chr, fleet, isl } from '../fixtures.js';
 
@@ -51,6 +51,19 @@ test('starred robots lead the list in star order, and stay on their islands too'
   expect([...starred.querySelectorAll('.row-name')].map((el) => el.textContent)).toEqual(['c2', 'c0']);
   expect(document.querySelector('.fleet > section')).toBe(starred);
   expect(screen.getAllByText('c0')).toHaveLength(2);
+});
+
+test('a robot on a worker out of reach reads unknown, and its last question asks nothing', () => {
+  const f = fleet();
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  f.machines = { [vault]: { name: 'linus-vault', reachable: false, since: 0 } };
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { machine: vault, agent: { kind: 'claude', sessionId: 's', status: 'blocked', lastActivityAt: 0 } });
+  store.getState().setFleet(f);
+  const { container } = render(<Fleet onOpen={() => {}} />);
+  const row = [...container.querySelectorAll('.row')].find((r) => r.querySelector('.row-name')?.textContent === 'c0')!;
+  expect(row.getAttribute('data-status')).toBe('unknown');
+  expect(row.querySelector('.row-status')?.textContent).toBe('unknown');
+  expect(row.querySelector('.pip')).toBeNull();
 });
 
 test('no Starred section while nothing is starred', () => {

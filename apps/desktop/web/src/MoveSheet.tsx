@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { convertLine, moveSummary, type MachineId, type MoveSheet as What, type Refusal } from '@svall/protocol';
+import { ApiError, convertLine, INTERRUPT_ACTIONS, moveSummary, type MachineId, type MoveSheet as What, type Refusal } from '@svall/protocol';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
@@ -13,8 +13,10 @@ export function terminalOn(machine: string, run?: string): void {
   store().openHostTerminal(machine, run);
 }
 
-// check 7's refusals, which the sheet answers itself by choosing the interrupt
-const INTERRUPTS = new Set(['interrupt after this turn', 'move anyway and it ends']);
+type Interrupt = keyof typeof INTERRUPT_ACTIONS;
+// the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
+const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
+const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'a command is running; move anyway and it ends' };
 // as the handover sheet's interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
@@ -32,7 +34,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   // the way back names this Mac by the id its daemon gives itself
   const [machine, setMachine] = useState(to);
   const [carry, setCarry] = useState<string[]>([]);
-  const [interrupt, setInterrupt] = useState(false);
+  const [interrupt, setInterrupt] = useState<Interrupt>();
   const [asked, setAsked] = useState(0);
   const [answer, setAnswer] = useState<Answer>();
   const shut = useRef<HTMLButtonElement>(null);
@@ -59,11 +61,14 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const refusal = answer && 'ok' in answer && !answer.ok ? answer.refusal : undefined;
   const failed = answer && 'error' in answer ? answer.error : undefined;
   const again = () => setAsked((n) => n + 1);
+  // a refusal that comes after the sheet closed offers to open it again, where the refusal shows with its button
   const go = () => {
     if (!params) return;
-    app.api().call('robot.moveTo', params).catch((e: Error) => store().showToast(e.message));
+    app.api().call('robot.moveTo', params).catch((e: Error) => store().showToast(e.message, 'error',
+      e instanceof ApiError && e.code === 'refused' ? { label: 'Check again', run: () => store().setMoveSheet({ id, to }) } : undefined));
     close();
   };
+  const answerable = refusal && interruptOf(refusal.action);
   const pick = (f: string) => setCarry((was) => (was.includes(f) ? was.filter((x) => x !== f) : [...was, f]));
 
   return (
@@ -86,7 +91,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
             {sheet.credentialFiles.map((f) => (
               <label key={f} className="move-pick"><input type="checkbox" checked={carry.includes(f)} onChange={() => pick(f)} />copy {f} to {where}</label>
             ))}
-            {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(false)} />Interrupt after this turn</label>}
+            {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(undefined)} />{KEPT[interrupt]}</label>}
             <div className="acts"><button className="btn pri" data-testid="move-go" onClick={go}>Move</button></div>
           </>
         )}
@@ -105,8 +110,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               {refusal.run ? (
                 <button className="btn pri" data-testid="move-action" title={`Opens a terminal on ${where} with ${refusal.run} typed, for you to run`}
                   onClick={() => { close(); terminalOn(where, refusal.run); }}>Open terminal</button>
-              ) : INTERRUPTS.has(refusal.action) ? (
-                <button className="btn pri" data-testid="move-action" onClick={() => setInterrupt(true)}>{refusal.action[0].toUpperCase()}{refusal.action.slice(1)}</button>
+              ) : answerable ? (
+                <button className="btn pri" data-testid="move-action" onClick={() => setInterrupt(answerable)}>{refusal.action[0].toUpperCase()}{refusal.action.slice(1)}</button>
               ) : (
                 <button className="btn pri" data-testid="move-action" onClick={again}>Check again</button>
               )}

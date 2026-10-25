@@ -16,7 +16,8 @@ import { Settings } from './Settings.js';
 type RowProps = { c: Robot; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
 function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
-  const status = statusOf(c);
+  const status = useApp((s) => statusOf(c, s.fleet));
+  const asks = useApp((s) => wantsUser(c, s.fleet));
   const sub = subtitle(c);
   const [drag, setDrag] = useState<number>();
   const touch = useRef<{ x: number; y: number; from: number; swiping: boolean }>(undefined);
@@ -58,7 +59,7 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
         <button type="button" className="row-main" onClick={tap}>
           <span className="face figure"><img src={figureUrl(figureOf(c))} alt="" /></span>
           <span className="row-text">
-            <span className="row-name">{c.name}{wantsUser(c) && <i className="pip" />}</span>
+            <span className="row-name">{c.name}{asks && <i className="pip" />}</span>
             {sub && <span className="row-sub">{sub}</span>}
           </span>
         </button>
@@ -138,7 +139,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
               <i className="chev" />
               <span>{island.name}</span>
               {island.collapsed && robots.length > 0 && (
-                <small>{robots.length}{robots.some(wantsUser) && <i className="pip" />}</small>
+                <small>{robots.length}{robots.some((c) => wantsUser(c, fleet)) && <i className="pip" />}</small>
               )}
             </button>
             <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>
