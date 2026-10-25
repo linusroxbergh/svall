@@ -11,7 +11,7 @@ import type { Store } from '../store.js';
 import { shq } from '../text.js';
 import { Inventory, RobotSync, Snapshot } from '../worker/snapshot.js';
 import { SshMaster } from './ssh.js';
-import { LinkStream } from './stream.js';
+import { LinkStream, MAX_LINE } from './stream.js';
 
 /** How often the home pings a worker; a ping still unanswered at the next beat closes the link. */
 export const HEARTBEAT_MS = 15_000;
@@ -173,6 +173,9 @@ export class WorkerLink {
       case 'snapshot.ack':
         for (const w of this.waiting.filter((w) => w.version <= f.version)) w.done();
         this.waiting = this.waiting.filter((w) => w.version > f.version);
+        // a link that got this far is a good one; a failure before it keeps the backoff growing
+        this.retryMs = FIRST_RETRY_MS;
+        this.lastWhy = undefined;
         return;
       case 'pong':
         this.answered = true;
@@ -193,8 +196,6 @@ export class WorkerLink {
       return;
     }
     this.peer = hello.data;
-    this.retryMs = FIRST_RETRY_MS;
-    this.lastWhy = undefined;
     this.mark({ name: this.name, reachable: true, since: Date.now(), release: hello.data.release });
     this.o.log.info(`${this.name}: linked, release ${hello.data.release}`);
   }
@@ -214,7 +215,7 @@ export class WorkerLink {
         if (f.seq > this.acked) {
           if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
           else await this.o.onEvent(f.kind, f.data, this.machine);
-          this.o.store.flush();
+          if (!this.o.store.flush()) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
           this.acked = f.seq;
@@ -242,9 +243,10 @@ export class WorkerLink {
   }
 
   private lost(why: string, again = true): void {
+    if (this.stopped) return;
     const held = this.o.store.state.machines?.[this.machine];
     if (held?.reachable !== false) this.mark({ name: this.name, reachable: false, since: Date.now(), ...(held?.release !== undefined && { release: held.release }) });
-    if (this.stopped || !again) return;
+    if (!again) return;
     if (why !== this.lastWhy) this.o.log.error(`${this.name} is not reachable: ${why}; trying again`);
     this.lastWhy = why;
     this.retry = setTimeout(() => void this.attempt(), this.retryMs);
@@ -261,11 +263,15 @@ export class HomeLinks {
   private links = new Map<MachineId, WorkerLink>();
   private queued?: { promise: Promise<number>; fire(): void };
   private unsubscribe?: () => void;
+  private oversize = false;
 
   constructor(private o: Options) {}
 
   start(): void {
-    const pushSoon = () => { this.pushSnapshot().catch((e: Error) => this.o.log.error(`snapshot not pushed: ${e.message}`)); };
+    // send() says once itself that a snapshot is over the limit
+    const pushSoon = () => {
+      this.pushSnapshot().catch((e: Error) => { if (!(e instanceof ApiError && e.code === 'too_large')) this.o.log.error(`snapshot not pushed: ${e.message}`); });
+    };
     try {
       for (const entry of this.o.machines()) {
         if (tokenFor(this.o.paths, entry.id)) this.links.set(entry.id, new WorkerLink(entry, this.o, pushSoon));
@@ -290,10 +296,14 @@ export class HomeLinks {
 
   call<T>(machine: MachineId, method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {
     const link = this.links.get(machine);
-    return link ? link.call<T>(method, params, o) : Promise.reject(new ApiError('not_reachable', `${machine} is not reachable`));
+    if (link) return link.call<T>(method, params, o);
+    let name: string = machine;
+    try { name = this.o.machines().find((m) => m.id === machine)?.record.name ?? machine; } catch { /* the id names it */ }
+    return Promise.reject(new ApiError('not_reachable', `${name} is not reachable`));
   }
 
-  /** One snapshot for every call within 250 ms, to every synced worker; resolves with its version once each has taken it. */
+  /** One snapshot for every call within 250 ms, to every synced worker; resolves with its version once each has taken it,
+   *  and rejects too_large for one over the link's line limit. */
   pushSnapshot(): Promise<number> {
     if (this.queued) return this.queued.promise;
     let fire!: () => void;
@@ -311,6 +321,15 @@ export class HomeLinks {
 
   private async send(): Promise<number> {
     const snap = this.o.snapshot();
+    // a line over the limit would close every link it went out on
+    const bytes = Buffer.byteLength(JSON.stringify({ t: 'snapshot', version: snap.version, data: snap }));
+    if (bytes > MAX_LINE) {
+      const why = `the fleet's snapshot is ${bytes} bytes, over the link's limit of ${MAX_LINE}`;
+      if (!this.oversize) this.o.log.error(`${why}; no worker gets it`);
+      this.oversize = true;
+      throw new ApiError('too_large', why);
+    }
+    this.oversize = false;
     await Promise.all([...this.links.values()].map((l) => l.push(snap)));
     return snap.version;
   }

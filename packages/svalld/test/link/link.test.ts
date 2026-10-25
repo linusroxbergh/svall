@@ -7,9 +7,9 @@ import { Duplex, PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, emptyState, type FleetState, type LinkFrame, type Robot } from '@svall/protocol';
 import { HEARTBEAT_MS, HomeLinks, type Transport } from '../../src/link/home.js';
-import { LinkStream } from '../../src/link/stream.js';
+import { LinkStream, MAX_LINE } from '../../src/link/stream.js';
 import { HomeConnection } from '../../src/link/worker.js';
-import { silentLogger } from '../../src/log.js';
+import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { resolvePaths } from '../../src/paths.js';
 import { issueToken, tokenFor } from '../../src/placement/workers.js';
@@ -21,6 +21,9 @@ import { cleanHomes, makeHome } from '../helpers.js';
 const W = MachineId.parse(crypto.randomUUID());
 const H = MachineId.parse(crypto.randomUUID());
 const entry: MachineEntry = { id: W, record: { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false } };
+// in the registry, with no token of this fleet's
+const SPARE = MachineId.parse(crypto.randomUUID());
+const spare: MachineEntry = { id: SPARE, record: { ...entry.record, name: 'spare', ssh: 'spare' } };
 const agentHomes = { claude: '/Users/ada/.claude', codex: '/Users/ada/.codex', opencode: '/Users/ada/.config/opencode' };
 const via = { ssh: 'vault', controlSocket: '/tmp/svall-501/1-abc' };
 
@@ -57,7 +60,7 @@ const socketTo = (sock: string): Transport => async () => {
 };
 
 /** A home and a worker, each with a store of its own, and the worker's outbox; the home holds r_1 placed on the worker. */
-function world(o: { handlers?: Record<string, (p: unknown) => Promise<unknown>> } = {}) {
+function world(o: { handlers?: Record<string, (p: unknown) => Promise<unknown>>; log?: Logger } = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
@@ -76,7 +79,7 @@ function world(o: { handlers?: Record<string, (p: unknown) => Promise<unknown>> 
   let snapshots = 0;
   const links = (connect: Transport = socketTo(workerPaths.linkSock)) => {
     const l = new HomeLinks({
-      paths: homePaths, store: home, log: silentLogger, release: '1.2.3', machines: () => [entry], connect,
+      paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: () => [entry, spare], connect,
       onReport: (r, machine) => { seen.push(`report ${r.fields.cwd}`); reports.push(r.fields.cwd); applyReport(home, r, machine); },
       onEvent: async (kind) => { seen.push(`event ${kind}`); },
       onInventory: async (inv, machine) => { seen.push(`inventory ${machine === W ? 'from vault' : machine} last ${inv.last} acked ${inv.acked} robots ${inv.robots.map((r) => r.fields.cwd).join(',')}`); },
@@ -219,8 +222,13 @@ describe('the link', () => {
     w.worker.report(report('/w/live'));
     await until(() => expect(w.outbox.acked()).toBe(1));
 
+    let writes = 0;
+    const counting = w.home.subscribe(() => { writes++; });
     first.stop();
     await until(() => expect(w.worker.connected()).toBe(false));
+    // a home that stops leaves the fleet as it was
+    expect(writes).toBe(0);
+    counting();
     w.worker.report(report('/w/away-1'));
     w.worker.report(report('/w/away-2'));
     expect(Outbox.open(w.workerPaths).after(1).map((e) => (e.data as RobotSync).fields.cwd)).toEqual(['/w/away-1', '/w/away-2']);
@@ -288,7 +296,10 @@ describe('the link', () => {
     refuse = false;
     await w.worker.start();
     await vi.advanceTimersByTimeAsync(60_000);
-    await until(() => expect(w.home.state.machines?.[W]?.reachable).toBe(true), 1);
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true), 1);
+    const pushed = links.pushSnapshot();
+    await vi.advanceTimersByTimeAsync(250);
+    await pushed;
 
     sockets.at(-1)!.destroy();
     await until(() => expect(w.home.state.machines?.[W]?.reachable).toBe(false), 1);
@@ -298,6 +309,92 @@ describe('the link', () => {
     expect(tries.slice(before).map((t) => t - lostAt)).toEqual([1000]);
   });
 
+  it('keeps doubling the retry while each link fails after its hello, as one that cannot take a journaled entry does', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const w = world();
+    // an entry this home cannot read, as a worker on another release could journal
+    w.outbox.append('robot.sync', { robotId: 'r_1' });
+    await w.worker.start();
+    const tries: number[] = [];
+    const downs: number[] = [];
+    w.home.subscribe(() => {
+      const m = w.home.state.machines?.[W];
+      if (m && !m.reachable && m.since !== downs.at(-1)) downs.push(m.since);
+    });
+    const links = w.links(async (e) => { tries.push(Date.now()); return socketTo(w.workerPaths.linkSock)(e); });
+    links.start();
+    for (const gap of [1000, 2000, 4000, 8000]) {
+      await until(() => expect(downs).toHaveLength(tries.length), 1);
+      await vi.advanceTimersByTimeAsync(gap);
+      expect(tries.at(-1)! - downs.at(-1)!).toBe(gap);
+    }
+    expect(w.outbox.acked()).toBe(0);
+  });
+
+  it('acks no event whose change did not reach the disk, and takes it once it does', async () => {
+    const w = world();
+    // the home batches its writes, as the daemon's store does
+    w.home.batchWritesWhile(() => true);
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    // stands in for a full disk
+    fs.chmodSync(w.homePaths.home, 0o500);
+    try {
+      w.worker.report(report('/w/unwritten'));
+      await until(() => expect(w.worker.connected()).toBe(false));
+      expect(w.outbox.acked()).toBe(0);
+      expect(Outbox.open(w.workerPaths).after(0)).toHaveLength(1);
+    } finally {
+      fs.chmodSync(w.homePaths.home, 0o700);
+    }
+    await until(() => expect(w.outbox.acked()).toBe(1));
+    expect(Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.robots.r_1.cwd).toBe('/w/unwritten');
+  });
+
+  it('the worker acks no snapshot it could not write, and closes the link instead', async () => {
+    const w = world();
+    w.store.batchWritesWhile(() => true);
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(w.store.state.robots.r_1.name).toBe('named at home'));
+    // a push resolves with the link up once the worker acks it, and as the link drops otherwise
+    let acked = false;
+    // stands in for a full disk
+    fs.chmodSync(w.workerPaths.home, 0o500);
+    try {
+      w.home.update((d) => { d.robots.r_1.name = 'renamed'; });
+      void links.pushSnapshot().then(() => { acked = links.for(W)?.connected() ?? false; });
+      await until(() => expect(links.for(W)?.connected()).toBe(false));
+      expect(acked).toBe(false);
+    } finally {
+      fs.chmodSync(w.workerPaths.home, 0o700);
+    }
+    await until(() => expect(Store.load(path.join(w.workerPaths.home, 'state.json'), () => {}).state.robots.r_1.name).toBe('renamed'));
+  });
+
+  it('sends no snapshot over the line limit: the push fails, says so once, and the link stays up', async () => {
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(w.store.state.robots.r_1.name).toBe('named at home'));
+
+    w.home.update((d) => { d.robots.r_1.note = 'x'.repeat(MAX_LINE); });
+    await expect(links.pushSnapshot()).rejects.toMatchObject({ code: 'too_large' });
+    await expect(links.pushSnapshot()).rejects.toMatchObject({ code: 'too_large' });
+    expect(logged).toEqual([expect.stringMatching(new RegExp(`^the fleet's snapshot is \\d+ bytes, over the link's limit of ${MAX_LINE}; no worker gets it$`))]);
+    expect(links.for(W)?.connected()).toBe(true);
+    expect(w.store.state.robots.r_1.note).toBe('');
+
+    w.home.update((d) => { d.robots.r_1.note = 'short'; });
+    await links.pushSnapshot();
+    expect(w.store.state.robots.r_1.note).toBe('short');
+  });
+
   it('call() answers not_reachable with the machine name while the link is down', async () => {
     const w = world({ handlers: { echo: async (p) => ({ echoed: p }) } });
     const down = w.links(async () => { throw new Error('ssh: connect to host vault port 22: Connection refused'); });
@@ -305,6 +402,8 @@ describe('the link', () => {
     await expect(down.call(W, 'echo', { a: 1 })).rejects.toMatchObject({ code: 'not_reachable', message: 'vault is not reachable' });
     expect(() => down.for(W)!.via()).toThrow('vault is not reachable');
     await expect(w.worker.call('robot.update', {})).rejects.toMatchObject({ code: 'not_reachable', message: 'mac is not reachable' });
+    await expect(down.call(SPARE, 'echo', {})).rejects.toMatchObject({ code: 'not_reachable', message: 'spare is not reachable' });
+    await expect(down.call(H, 'echo', {})).rejects.toMatchObject({ code: 'not_reachable', message: `${H} is not reachable` });
     down.stop();
 
     await w.worker.start();

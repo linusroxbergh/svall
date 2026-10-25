@@ -121,17 +121,21 @@ export class Store {
     return () => { this.listeners.delete(fn); };
   }
 
-  /** Writes what has changed since the last write that went through; a write that fails is logged and tried again by
-   *  the next change or flush. */
-  flush(): void {
+  /** Writes what has changed since the last write that went through, and says whether all of it is on disk; a write
+   *  that fails is logged and tried again by the next change or flush. */
+  flush(): boolean {
     clearTimeout(this.writing);
     this.writing = undefined;
-    if (!this.dirty) return;
+    if (!this.dirty) return true;
     // a fleet home that is gone stays gone
     try {
       if (!fs.existsSync(path.dirname(this.file))) throw new Error(`${path.dirname(this.file)} is gone`);
       this.persist(this.current);
-    } catch (e) { this.log(`state.json not written: ${String(e)}`); }
+      return true;
+    } catch (e) {
+      this.log(`state.json not written: ${String(e)}`);
+      return false;
+    }
   }
 
   // on disk before any listener runs, so a viewer never sees a patch the next start would disagree with,

@@ -124,7 +124,7 @@ export class HomeConnection {
       case 'snapshot':
         try {
           mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me);
-          this.o.store.flush();
+          if (!this.o.store.flush()) throw new Error('state.json was not written');
         } catch (e) {
           this.o.log.error(`link: snapshot ${f.version} not taken, closing: ${(e as Error).message}`);
           stream.close();
