@@ -405,11 +405,12 @@ async function layToRest(
   const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
   const ended = new Set(terminated.map(keyOf));
   // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since; one whose
-  // window a rest that died closed has no track, and keeps the launch flags that rest recorded
-  const lay = (d: FleetState, t: TerminalRef, closed = false) => {
+  // window a rest that died closed has no track, and keeps the launch flags that rest recorded. One whose window this rest
+  // has just closed is laid even when an unfrozen fleet saw the close first and marked it dormant without its agent
+  const lay = (d: FleetState, t: TerminalRef, closed = false, closing = false) => {
     const c = d.robots[t.robotId];
     const slot = c && (t.term === 2 ? c.second : c);
-    if (!c || !slot?.tmux) return;
+    if (!c || !slot || (!slot.tmux && !closing)) return;
     const track = byKey.get(keyOf(t));
     const { agent, flags } = track ?? { agent: undefined, flags: stopped.get(keyOf(t))?.flags };
     if (agent) slot.agent = agent;
@@ -433,7 +434,7 @@ async function layToRest(
       const name = deps.store.state.robots[t.robotId]?.name ?? t.robotId;
       throw new Error(`${name}'s ${t.term === 2 ? 'second ' : ''}terminal is still open after tmux was asked to close its window ${c.window.windowId}`);
     }
-    deps.store.update((d) => lay(d, t, true));
+    deps.store.update((d) => lay(d, t, true, true));
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
   deps.store.update((d) => {
