@@ -49,7 +49,7 @@ test('a robot a handover could not resume says why and waits for its Revive, whi
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await nothingOpen(page);
-  await page.getByTestId(`sb-robot-${id}`).click();
+  await page.getByTestId(`sb-robot-${id}`).dblclick();
   await expect(page.getByTestId('resume-error')).toHaveText(FAILED);
   await expect(page.getByTestId('side-card').getByTestId('side-resume-error')).toContainText(FAILED);
   await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveAttribute('title', FAILED);
@@ -70,7 +70,7 @@ test('a robot a handover could not resume starts afresh from a summary of its se
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await nothingOpen(page);
-  await page.getByTestId(`sb-robot-${id}`).click();
+  await page.getByTestId(`sb-robot-${id}`).dblclick();
   await expect(page.getByTestId('resume-error')).toHaveText(FAILED);
 
   await page.getByTestId('fresh').click();
@@ -96,7 +96,7 @@ test('a robot a handover could not resume wakes on open like any dormant one whi
   const id = await failedResume(svall, FAILED);
   await fakeShell(page, svall.port, svall.token, false);
   await svall.open();
-  await page.getByTestId(`sb-robot-${id}`).click();
+  await page.getByTestId(`sb-robot-${id}`).dblclick();
   await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', id, { timeout: 10_000 });
   await expect(page.getByText(FAILED)).toHaveCount(0);
   await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveCount(0);
@@ -176,7 +176,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
 
   // the layout this Mac keeps for itself: bo, split with its files
-  await page.getByTestId(`tab-${b.id}`).click();
+  await page.getByTestId(`kc-${b.id}`).dblclick();
   await page.getByTestId('pane-split').click();
   await expect(page.getByTestId('pane-right')).toBeVisible();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'term.show' && m.id === b.id)).toBe(true);
@@ -262,7 +262,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await expect(page.getByTestId('owner-badge')).toHaveText('studio');
   await page.getByTestId('handover-close').click();
   await expect.poll(async () => (await sent(page)).slice(before).some((m) => m.type === 'term.show' && m.id === b.id), { timeout: 10_000 }).toBe(true);
-  await expect(page.getByTestId(`tab-${b.id}`)).toHaveAttribute('data-active', 'true');
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', b.id);
   await expect(page.getByTestId('pane-right')).toBeVisible();
   await expect(page.getByTestId('terminal-held')).toHaveCount(0);
 
@@ -281,6 +281,7 @@ test('a pull the page already reconnected for still gives the terminals back onc
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await nothingOpen(page);
+  await page.getByTestId(`kc-${a.id}`).dblclick();
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
   await page.getByTestId('handover-tab').click();
   await page.getByTestId('handover-to-local').click();
@@ -440,7 +441,7 @@ test('a launch after a finished move that once asked leaves an open terminal alo
   const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
-  await page.getByTestId(`tab-${a.id}`).click();
+  await page.getByTestId(`kc-${a.id}`).dblclick();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'term.show' && m.id === a.id)).toBe(true);
   await readBack(page, ...changed('begin', 'freeze'),
     { event: 'handover.blocked', data: { transactionId: 'tx1', phase: 'freeze', blockers: [{ code: 'agent_working', message: "ada's terminal is still working", entity: { kind: 'robot', id: a.id } }] } },

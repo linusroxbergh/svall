@@ -22,6 +22,7 @@ test('the load tab lists the robot, whose row deletes it, and Svall itself, and 
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
 
+  await page.getByTestId(`kc-${c.id}`).click();
   const card = page.getByTestId('side-card');
   await expect(card.getByTestId('side-cpu')).toHaveText(/^\d+\.\d{1,2} cores$/);
   await expect(card.getByTestId('side-ram')).toHaveText(/^\d+(\.\d)? (MB|GB)$/);

@@ -49,18 +49,18 @@ test('edits a robot from the side card', async ({ page, svall }) => {
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'edit-me' });
   await svall.open();
   await page.getByTestId(`sb-robot-${c.id}`).click();
-  // the board opens the side card with the robot it shows
+  // a pick opens the side card with the robot, and the edge folds it away and brings it back
   const card = page.getByTestId('side-card');
   await expect(card).toBeVisible();
-  await page.getByTestId('board-side').click();
+  await page.getByTestId('side-collapse').click();
   await expect(card).toBeHidden();
-  await page.getByTestId('board-side').click();
+  await page.getByTestId('side-show').click();
   await expect(card).toBeVisible();
 
   await card.getByTestId('side-name').fill('renamed');
   await card.getByTestId('side-name').press('Enter');
   await expect(page.getByTestId(`sb-robot-${c.id}`)).toContainText('renamed');
-  await expect(page.getByTestId(`tab-${c.id}`)).toContainText('renamed');
+  await expect(page.getByTestId(`kc-${c.id}`)).toContainText('renamed');
   await card.getByTestId('side-note').fill('what it does');
   await card.getByTestId('side-note').blur();
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].note).toBe('what it does');
@@ -83,8 +83,7 @@ test('edits a robot from the side card', async ({ page, svall }) => {
   await expect(card.getByTestId('side-context')).not.toContainText('r #7');
 
   await card.getByTestId('side-island').selectOption(other.id);
-  await expect(page.getByTestId(`sb-island-${other.id}`)).toHaveAttribute('data-selected', 'true');
-  await expect(page.getByTestId(`sb-folder-${other.id}`).getByTestId(`sb-robot-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId(`sb-folder-${other.id}`).getByTestId(`sb-robot-${c.id}`)).toHaveAttribute('data-selected', 'true');
 
   // the side card stays open across the views
   await page.keyboard.press('Meta+m');

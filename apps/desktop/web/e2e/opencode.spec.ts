@@ -5,8 +5,6 @@ import { expect, test } from './fixtures.js';
 test('an opencode robot takes its first prompt with --prompt and reports through Svall\'s plugin', async ({ page, svall }) => {
   await svall.open('board');
   const island = await svall.api.call('island.create', { name: svall.uniq('opencode') });
-  // a plain robot stays viewed, so opencode's `done` is not marked seen the instant it lands
-  await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'plain' });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: svall.home, command: 'opencode', run: 'fix the flaky test' });
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].agent?.status).toBe('done');
   expect((await svall.api.call('state.get', {})).robots[c.id].agent?.kind).toBe('opencode');

@@ -1,33 +1,252 @@
-import { FAKE_CLAUDE, expect, test } from './fixtures.js';
+import type { Page } from '@playwright/test';
+import { FAKE_CLAUDE, expect, test, type Svall } from './fixtures.js';
 import type { ToShell } from '../src/bridge.js';
 
-test('lists islands and robots in the sidebar, follows agent status, and shows the selected terminal', async ({ page, svall }) => {
+// a deleted default column comes back under a new id, so the specs find each by its name
+const columns = async (svall: Svall): Promise<Record<string, string>> =>
+  Object.fromEntries((await svall.api.call('state.get', {})).columns.map((k) => [k.name, k.id]));
+const names = async (svall: Svall) => (await svall.api.call('state.get', {})).columns.map((k) => k.name);
+const robotOf = async (svall: Svall, id: string) => (await svall.api.call('state.get', {})).robots[id];
+
+async function dragTo(page: Page, from: string, to: string): Promise<void> {
+  const a = (await page.getByTestId(from).boundingBox())!, b = (await page.getByTestId(to).boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2 + 20, a.y + a.height / 2 + 10, { steps: 3 });
+  await page.mouse.move(b.x + b.width / 2, b.y + 160, { steps: 8 });
+}
+
+test('draws the fleet in its columns, follows agent status, and a click selects as on the map', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('board') });
   const shell = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'plain' });
   const agent = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  const k = await columns(svall);
+  await svall.api.call('robot.place', { id: agent.id, columnId: k['In review'] });
   await svall.open();
-  await expect(page.getByTestId(`sb-island-${island.id}`).getByTestId('island-name')).toHaveText(island.name);
-  await expect(page.getByTestId(`sb-island-${island.id}`)).toHaveAttribute('data-selected', 'true');
-  await expect(page.getByTestId(`sb-robot-${shell.id}`)).toHaveAttribute('data-status', 'shell');
-  await expect(page.getByTestId(`sb-robot-${agent.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
-  // the first robot in strip order is viewed: its tab is active and its terminal is up
-  await expect(page.getByTestId(`tab-${shell.id}`)).toHaveAttribute('data-active', 'true');
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', shell.id);
+  await expect(page.locator('.kb-col-n')).toHaveText(['To do', 'In progress', 'In review', 'Done']);
+  await expect(page.getByTestId(`col-${k['To do']}`).getByTestId(`kc-${shell.id}`)).toBeVisible();
+  await expect(page.getByTestId(`col-${k['In review']}`).getByTestId(`kc-${agent.id}`)).toBeVisible();
+  await expect(page.getByTestId(`col-count-${k['In review']}`)).toHaveText('1');
+  await expect(page.getByTestId(`col-empty-${k.Done}`)).toHaveText('Drop a robot here');
+  // a robot moved by hand wears the hand
+  await expect(page.getByTestId(`kc-hand-${agent.id}`)).toBeVisible();
+  await expect(page.getByTestId(`kc-hand-${shell.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`kc-${shell.id}`)).toHaveAttribute('data-status', 'shell');
+  await expect(page.getByTestId(`kc-${agent.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
 
   await svall.api.call('robot.run', { id: agent.id, text: 'hello', enter: true });
-  await expect(page.getByTestId(`sb-robot-${agent.id}`)).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
-  await expect(page.getByTestId(`sb-robot-${agent.id}`)).toHaveAttribute('data-unread', 'true');
+  await expect(page.getByTestId(`kc-${agent.id}`)).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
+  await expect(page.getByTestId(`kc-${agent.id}`)).toHaveAttribute('data-unread', 'true');
   await expect(page.getByTestId(`sb-robot-${agent.id}`)).toHaveAttribute('data-attention', 'true');
-  // a folded island hides its robots and says how many of them want the user
-  await page.getByTestId(`sb-island-toggle-${island.id}`).click();
-  await expect(page.getByTestId(`sb-robot-${agent.id}`)).toHaveCount(0);
-  await expect(page.getByTestId(`sb-island-attention-${island.id}`)).toHaveText('1');
-  await page.getByTestId(`sb-island-toggle-${island.id}`).click();
-  await page.getByTestId(`sb-robot-${agent.id}`).click();
-  await expect(page.getByTestId(`sb-robot-${agent.id}`)).toHaveAttribute('data-selected', 'true');
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', agent.id);
-  await page.getByTestId(`tab-${shell.id}`).click();
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', shell.id);
+
+  await page.getByTestId(`kc-${shell.id}`).click();
+  await expect(page.getByTestId(`kc-${shell.id}`)).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId(`sb-robot-${shell.id}`)).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('side-card').getByTestId('side-name')).toHaveValue('plain');
+  await expect(page.getByTestId('terminal-card')).toHaveCount(0);
+  // a press on the bare ground lets it go
+  await page.getByTestId(`col-empty-${k.Done}`).click();
+  await expect(page.getByTestId(`kc-${shell.id}`)).toHaveAttribute('data-selected', 'false');
+});
+
+test('a drop places the robot in the column under it and tells its agent nothing', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('drop') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'mover', command: FAKE_CLAUDE });
+  const k = await columns(svall);
+  await svall.open();
+  await expect(page.getByTestId(`kc-${c.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+
+  await dragTo(page, `kc-${c.id}`, `col-${k.Done}`);
+  await expect(page.getByTestId('kc-lifted')).toBeVisible();
+  await expect(page.getByTestId(`col-${k.Done}`)).toHaveAttribute('data-target', 'true');
+  await expect(page.getByTestId(`col-${k.Done}`).getByTestId('kb-slot')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toHaveAttribute('data-arrived', 'true');
+  await expect.poll(() => robotOf(svall, c.id)).toMatchObject({ column: k.Done, columnSource: 'manual' });
+  // a prompt would have set the agent working and left it done and unread
+  await page.waitForTimeout(1000);
+  expect((await robotOf(svall, c.id)).agent).toMatchObject({ status: 'idle' });
+  await expect(page.getByTestId(`kc-${c.id}`)).toHaveAttribute('data-unread', 'false');
+
+  // a drag let go with Escape stays where it was
+  await dragTo(page, `kc-${c.id}`, `col-${k['To do']}`);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.getByTestId('kc-lifted')).toHaveCount(0);
+  await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toBeVisible();
+  expect((await robotOf(svall, c.id)).column).toBe(k.Done);
+});
+
+test('right-click Move to places the robot, and Let the scribe place it hands the hand move back', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('menu') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'menued' });
+  const k = await columns(svall);
+  await svall.open();
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await expect(page.getByTestId('menu-let the scribe place it')).toHaveAttribute('aria-disabled', 'true');
+  await page.getByTestId('menu-move to').hover();
+  const sub = page.getByTestId('context-submenu');
+  await expect(sub.getByRole('menuitem')).toHaveText(['To do✓', 'In progress', 'In review', 'Done']);
+  // its own column sends nothing, so the scribe keeps placing it
+  await sub.getByTestId('menu-to do').click();
+  await expect(page.getByTestId('context-menu')).toHaveCount(0);
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await expect(page.getByTestId('menu-let the scribe place it')).toHaveAttribute('aria-disabled', 'true');
+  expect((await robotOf(svall, c.id)).columnSource).toBeUndefined();
+  await page.getByTestId('menu-move to').hover();
+  await sub.getByTestId('menu-in progress').click();
+  await expect(page.getByTestId('context-menu')).toHaveCount(0);
+  await expect(page.getByTestId(`col-${k['In progress']}`).getByTestId(`kc-${c.id}`)).toBeVisible();
+  await expect.poll(() => robotOf(svall, c.id)).toMatchObject({ column: k['In progress'], columnSource: 'manual' });
+
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await page.getByTestId('menu-let the scribe place it').click();
+  await expect.poll(async () => (await robotOf(svall, c.id)).columnSource).toBeUndefined();
+  await expect(page.getByTestId(`kc-hand-${c.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`col-${k['In progress']}`).getByTestId(`kc-${c.id}`)).toBeVisible();
+});
+
+test('a column renames in place, a new one comes last with its name ready to type, and the menu moves it', async ({ page, svall }) => {
+  const k = await columns(svall);
+  await svall.open();
+  await page.getByTestId(`col-name-${k['In review']}`).dblclick();
+  await page.getByTestId('col-name-input').fill('Waiting on me');
+  await page.getByTestId('col-name-input').press('Enter');
+  await expect(page.getByTestId(`col-name-${k['In review']}`)).toHaveText('Waiting on me');
+  // Escape keeps the name it had
+  await page.getByTestId(`col-name-${k['In review']}`).dblclick();
+  await page.getByTestId('col-name-input').fill('Nope');
+  await page.getByTestId('col-name-input').press('Escape');
+  await expect(page.getByTestId(`col-name-${k['In review']}`)).toHaveText('Waiting on me');
+  expect(await names(svall)).toEqual(['To do', 'In progress', 'Waiting on me', 'Done']);
+
+  await page.getByTestId('board-add-column').click();
+  await expect(page.getByTestId('col-name-input')).toBeFocused();
+  await expect(page.getByTestId('col-name-input')).toHaveValue('New column');
+  await page.keyboard.type('Blocked on design');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => names(svall)).toEqual(['To do', 'In progress', 'Waiting on me', 'Done', 'Blocked on design']);
+  const blocked = (await columns(svall))['Blocked on design'];
+  await expect(page.getByTestId(`col-empty-${blocked}`)).toBeVisible();
+
+  await page.getByTestId(`col-menu-${blocked}`).click();
+  await expect(page.getByTestId('menu-move right')).toHaveAttribute('aria-disabled', 'true');
+  await page.getByTestId('menu-move left').click();
+  await expect.poll(() => names(svall)).toEqual(['To do', 'In progress', 'Waiting on me', 'Blocked on design', 'Done']);
+  await page.getByTestId(`col-menu-${k['To do']}`).click();
+  await page.getByTestId('menu-add column after').click();
+  await expect(page.getByTestId('col-name-input')).toBeFocused();
+  await page.keyboard.type('Next');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => names(svall)).toEqual(['To do', 'Next', 'In progress', 'Waiting on me', 'Blocked on design', 'Done']);
+});
+
+test('a column with robots asks where they go before it is deleted; an empty one goes at once and Undo brings it back', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('del') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'kept' });
+  const k = await columns(svall);
+  await svall.api.call('robot.place', { id: c.id, columnId: k['In review'] });
+  await svall.open();
+  await page.getByTestId(`col-menu-${k['In review']}`).click();
+  await page.getByTestId('menu-delete').click();
+  const dialog = page.getByTestId('confirm-delete-column');
+  await expect(dialog).toContainText('Its 1 robot moves to');
+  // its left neighbour unless another is picked
+  await expect(page.getByTestId('confirm-delete-column-to')).toHaveValue(k['In progress']);
+  await page.getByTestId('confirm-delete-column-to').selectOption({ label: 'Done' });
+  await page.getByTestId('confirm-delete-column-delete').click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => names(svall)).toEqual(['To do', 'In progress', 'Done']);
+  expect((await robotOf(svall, c.id)).column).toBe(k.Done);
+  await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toBeVisible();
+
+  await page.getByTestId(`col-menu-${k['In progress']}`).click();
+  await page.getByTestId('menu-delete').click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => names(svall)).toEqual(['To do', 'Done']);
+  await expect(page.getByTestId('toast')).toContainText('Deleted “In progress”');
+  await page.getByTestId('toast-action').click();
+  await expect.poll(() => names(svall)).toEqual(['To do', 'In progress', 'Done']);
+
+  // the board keeps its last column
+  const left = await columns(svall);
+  await svall.api.call('column.delete', { id: left['In progress'], moveTo: left['To do'] });
+  await svall.api.call('column.delete', { id: left.Done, moveTo: left['To do'] });
+  await page.getByTestId(`col-menu-${left['To do']}`).click();
+  await expect(page.getByTestId('menu-delete')).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('a collapsed column is a strip that keeps its count, takes a drop, opens on a click, and is remembered', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('fold') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'folded' });
+  const k = await columns(svall);
+  await svall.open();
+  await page.getByTestId(`col-menu-${k.Done}`).click();
+  await page.getByTestId('menu-collapse').click();
+  const strip = page.getByTestId(`col-strip-${k.Done}`);
+  await expect(strip).toContainText('0');
+  await expect(page.getByTestId(`col-${k.Done}`)).toHaveCount(0);
+
+  await dragTo(page, `kc-${c.id}`, `col-strip-${k.Done}`);
+  await expect(strip).toHaveAttribute('data-target', 'true');
+  await page.mouse.up();
+  await expect(strip).toContainText('1');
+  await expect.poll(async () => (await robotOf(svall, c.id)).column).toBe(k.Done);
+
+  await page.reload();
+  await expect(page.getByTestId(`col-strip-${k.Done}`)).toBeVisible();
+  await page.getByTestId(`col-strip-${k.Done}`).click();
+  await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toBeVisible();
+});
+
+test('the chips show one island, or the robots that want the user', async ({ page, svall }) => {
+  const a = await svall.api.call('island.create', { name: svall.uniq('alpha') });
+  const b = await svall.api.call('island.create', { name: svall.uniq('beta') });
+  const quiet = await svall.api.call('robot.create', { islandId: a.id, cwd: '/tmp', name: 'quiet' });
+  const asking = await svall.api.call('robot.create', { islandId: a.id, cwd: '/tmp', name: 'asking', command: FAKE_CLAUDE });
+  const other = await svall.api.call('robot.create', { islandId: b.id, cwd: '/tmp', name: 'other' });
+  await svall.open();
+  await expect(page.getByTestId(`kc-${asking.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await svall.api.call('robot.run', { id: asking.id, text: 'block', enter: true });
+  await expect(page.getByTestId(`kc-${asking.id}`)).toHaveAttribute('data-need', 'true', { timeout: 15_000 });
+  await expect(page.getByTestId('chip-all')).toHaveText('All islands 3');
+  await expect(page.getByTestId(`chip-${a.id}`)).toContainText('2');
+  await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 1');
+
+  await page.getByTestId(`chip-${b.id}`).click();
+  await expect(page.getByTestId(`chip-${b.id}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.kc')).toHaveCount(1);
+  await expect(page.getByTestId(`kc-${other.id}`)).toBeVisible();
+  await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 0');
+
+  await page.getByTestId(`chip-${a.id}`).click();
+  await page.getByTestId('chip-needs').click();
+  await expect(page.locator('.kc')).toHaveCount(1);
+  await expect(page.getByTestId(`kc-${asking.id}`)).toBeVisible();
+  await page.getByTestId('chip-needs').click();
+  await page.getByTestId('chip-all').click();
+  await expect(page.locator('.kc')).toHaveCount(3);
+  await expect(page.getByTestId(`kc-${quiet.id}`)).toBeVisible();
+});
+
+test('a double click opens the terminal in the card over the board, and the card goes along to the map', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('open'), position: { x: 0, y: 100 } });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'opened' });
+  await svall.open();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.keyboard.press('Meta+m');
+  await expect(page.getByTestId('map')).toBeVisible();
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
+  await page.keyboard.press('Meta+m');
+  await page.getByTestId('card-close').click();
+  await expect(page.getByTestId('terminal-card')).toHaveCount(0);
+  // Enter opens the selection, as on the map
+  await expect(page.getByTestId(`kc-${c.id}`)).toHaveAttribute('data-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
 });
 
 test('renames and deletes an island from the sidebar', async ({ page, svall }) => {
@@ -42,64 +261,38 @@ test('renames and deletes an island from the sidebar', async ({ page, svall }) =
   await input.press('Enter');
   await expect(page.getByTestId('island-name').filter({ hasText: name })).toBeVisible();
   expect(await page.getByTestId('island-name').count()).toBe(before + 1);
-  // the new island is selected and empty: no terminal, a delete button
-  await expect(page.getByTestId('board-empty')).toBeVisible();
-  await expect(page.getByTestId('island-delete')).toBeVisible();
-  await page.getByTestId('island-new').click();
-  await expect(page.getByTestId('board-empty')).toHaveCount(0);
+  // the new island is selected, and its card makes a robot on it
+  await expect(page.getByTestId('side-island-card')).toBeVisible();
+  await page.getByTestId('side-island-new').click();
   const state = await svall.api.call('state.get', {});
   const islandId = Object.values(state.islands).find((i) => i.name === name)!.id;
-  const c = Object.values(state.robots).find((x) => x.islandId === islandId)!;
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
-  await expect(page.getByTestId(`tab-${c.id}`)).toHaveAttribute('data-active', 'true');
-  await expect(page.getByTestId('island-delete')).toHaveCount(0);
+  await expect.poll(async () => Object.values((await svall.api.call('state.get', {})).robots).some((x) => x.islandId === islandId)).toBe(true);
+  const c = Object.values((await svall.api.call('state.get', {})).robots).find((x) => x.islandId === islandId)!;
+  await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
   await svall.api.call('robot.close', { id: c.id });
   await expect(page.getByTestId(`sb-robot-${c.id}`)).toHaveCount(0);
   await page.getByTestId(`sb-island-${islandId}`).click();
   // the island's docs go with it, so the first press only asks
-  await page.getByTestId('island-delete').click();
+  await page.getByTestId('side-island-delete').click();
   await expect(page.getByTestId('island-name').filter({ hasText: name })).toHaveCount(1);
   await page.getByTestId('confirm-delete-island-delete').click();
   await expect(page.getByTestId('island-name').filter({ hasText: name })).toHaveCount(0);
 });
 
-test('an island selected on the map lands on the board with its first robot', async ({ page, svall }) => {
-  const island = await svall.api.call('island.create', { name: svall.uniq('sel'), position: { x: 0, y: 100 } });
-  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'first' });
-  await svall.open('map');
-  await page.getByTestId(`island-label-${island.id}`).click();
-  await expect(page.getByTestId('side-island-card')).toBeVisible();
-  await page.keyboard.press('Meta+m');
-  await expect(page.getByTestId('board')).toBeVisible();
-  await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
-  await expect(page.getByTestId(`tab-${c.id}`)).toHaveAttribute('data-active', 'true');
-  // the side card follows the viewed robot
-  await expect(page.getByTestId('side-card').getByTestId('side-name')).toHaveValue('first');
-});
-
-test('the islands panel is on the map too, and folds away', async ({ page, svall }) => {
+test('the islands panel folds away and comes back from the edge, on the map and on the board', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('panel'), position: { x: 0, y: 100 } });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'panelist' });
   await svall.open('map');
   await expect(page.getByTestId('sidebar')).toBeVisible();
-  // on the map a row reads a robot rather than opening its terminal
+  // a row reads a robot rather than opening its terminal
   await page.getByTestId(`sb-robot-${c.id}`).click();
   await expect(page.getByTestId('side-card').getByTestId('side-name')).toHaveValue('panelist');
   await expect(page.getByTestId('terminal-card')).toHaveCount(0);
   await page.getByTestId('sidebar-hide').click();
   await expect(page.getByTestId('sidebar')).toHaveCount(0);
-  await page.getByTestId('sidebar-show').click();
-  await expect(page.getByTestId(`sb-island-${island.id}`)).toBeVisible();
-});
-
-test('the board brings the folded panel back from its own tab bar', async ({ page, svall }) => {
-  const island = await svall.api.call('island.create', { name: svall.uniq('back'), position: { x: 0, y: 140 } });
-  await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'boarder' });
-  await svall.open('board');
-  await page.getByTestId('sidebar-hide').click();
-  await expect(page.getByTestId('sidebar')).toHaveCount(0);
-  // the terminal is drawn over the window's left edge, so the board's control sits in the tab bar
-  await expect(page.getByTestId('tabs').getByTestId('sidebar-show')).toBeVisible();
+  await page.keyboard.press('Meta+m');
+  await expect(page.getByTestId('board')).toBeVisible();
   await page.getByTestId('sidebar-show').click();
   await expect(page.getByTestId(`sb-island-${island.id}`)).toBeVisible();
 });
@@ -109,7 +302,7 @@ test('shows the connect screen without a daemon address', async ({ page }) => {
   await expect(page.getByTestId('connect-screen')).toBeVisible();
 });
 
-test('a toast takes a hole in the terminal under it, on the board and over a full card', async ({ page, svall }) => {
+test('a toast takes a hole in the terminal under it, beside a half card and over a full one', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('toast') });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const { sent, receive } = await svall.nativeShell();
@@ -122,14 +315,14 @@ test('a toast takes a hole in the terminal under it, on the board and over a ful
     const c = await cutout(), b = await toast.boundingBox();
     return !!c && !!b && c.rects.length === 0 && c.passive.some((r) => Math.max(Math.abs(r.x - b.x), Math.abs(r.y - b.y), Math.abs(r.width - b.width), Math.abs(r.height - b.height)) < 1);
   };
-  // a path that is not there, dropped on the robot's row, is refused on a toast
+  // a path that is not there, dropped on the robot's card, is refused on a toast
   const refused = async () => {
     const row = (await page.getByTestId(`sb-robot-${c.id}`).boundingBox())!;
     await receive({ type: 'drag.drop', paths: ['/no/such/path'], x: row.x + row.width / 2, y: row.y + row.height / 2 });
     await expect(toast).toContainText('no such file');
   };
 
-  await page.getByTestId(`sb-robot-${c.id}`).click();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
   await expect.poll(async () => (await sent()).some((m) => m.type === 'term.show' && m.id === c.id)).toBe(true);
   await refused();
   await expect.poll(holed).toBe(true);
@@ -137,7 +330,6 @@ test('a toast takes a hole in the terminal under it, on the board and over a ful
   await expect.poll(async () => (await cutout())?.passive).toEqual([]);
 
   // the full card leaves no corner free, so the toast stands on its terminal
-  await page.getByTestId('board-map').click();
   await page.getByTestId('card-size').click();
   await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-size', 'full');
   await refused();

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
-import type { Cell } from '@svall/protocol';
+import { defaultColumns, type Cell } from '@svall/protocol';
 import { NodeClient } from './client.js';
 import { ROOT, readInfo, startDaemon, stopDaemon, type DaemonInfo } from './daemon.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
@@ -64,6 +64,13 @@ export const test = base.extend<{ svall: Svall }>({
     const state = await svall.api.call('state.get', {});
     for (const id of Object.keys(state.robots)) await svall.api.call('robot.close', { id });
     for (const [id, island] of Object.entries(state.islands)) if (island.kind !== 'home') await svall.api.call('island.delete', { id });
+    // and with the board's default columns in their order; one a spec deleted comes back under a new id
+    const want = defaultColumns().map((k) => k.name);
+    let cols = (await svall.api.call('state.get', {})).columns;
+    for (const name of want) if (!cols.some((k) => k.name === name)) cols = await svall.api.call('column.add', { name });
+    for (const k of cols.filter((x) => !want.includes(x.name))) cols = await svall.api.call('column.delete', { id: k.id, moveTo: cols.find((x) => x.id !== k.id)!.id });
+    const idOf = (name: string) => cols.find((k) => k.name === name)!.id;
+    for (let i = 1; i < want.length; i++) cols = await svall.api.call('column.reorder', { id: idOf(want[i]), targetId: idOf(want[i - 1]), after: true });
     // answers a new fleet's scribe question, which would otherwise cover the page
     await svall.api.call('scribe.set', { enabled: false });
     await use(svall);

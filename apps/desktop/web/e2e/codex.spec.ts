@@ -5,8 +5,6 @@ import { expect, test } from './fixtures.js';
 test('a codex robot starts off the shared app-server, takes its first prompt as an argument and reports through codex hooks', async ({ page, svall }) => {
   await svall.open('board');
   const island = await svall.api.call('island.create', { name: svall.uniq('codex') });
-  // a plain robot stays viewed, so codex's `done` is not marked seen the instant it lands
-  await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'plain' });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: svall.home, command: 'codex', run: 'fix the flaky test' });
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].agent?.status).toBe('done');
   expect((await svall.api.call('state.get', {})).robots[c.id].agent?.kind).toBe('codex');

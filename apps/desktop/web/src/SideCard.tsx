@@ -60,7 +60,6 @@ function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' 
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const fleet = useApp((s) => s.fleet);
-  const onBoard = useApp((s) => s.view === 'board');
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
@@ -157,7 +156,7 @@ export function SideCard({ id }: { id: string }) {
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />
       </div>
       <div className="acts">
-        {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
+        <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         <button className="btn dan" data-testid="side-close" title="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>

@@ -258,15 +258,16 @@ describe('terminal manager', () => {
     expect(sent.filter((m) => m.type === 'term.show' && m.id === 'c0')).toHaveLength(2);
   });
 
-  it('treats the board selection as in view', async () => {
+  it('treats the card as in view on the board too, and a selection alone as not', async () => {
     const { sent, calls, store, manager } = fakes();
     store.getState().setView('board');
-    store.getState().select('c1');
+    store.getState().focus('c1');
     await manager.show('c1', rect);
     expect(sent.at(-1)).toEqual({ type: 'term.focus', id: 'c1' });
     await flush();
     expect(calls).toContainEqual({ method: 'robot.seen', params: { id: 'c1' } });
-    store.getState().selectIsland('i_e');
+    store.getState().closeCard();
+    store.getState().select('c0');
     const p = manager.show('c0', rect);
     await p;
     expect(sent.at(-1)).toEqual({ type: 'term.hide', id: 'c0' });

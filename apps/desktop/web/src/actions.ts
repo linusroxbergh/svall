@@ -1,10 +1,10 @@
-import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, keptSession, type Cell, type Column, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
 import { ApiError, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
+import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -45,7 +45,8 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   return unfound;
 }
 
-export async function newRobotOn(d: ActionDeps, islandId: string): Promise<void> {
+// the new robot's id, or nothing when the fleet refused, the reason already on a toast
+export async function newRobotOn(d: ActionDeps, islandId: string): Promise<string | undefined> {
   closeSettings(d);
   const f = d.store.getState().fleet;
   const dir = islandCwd(f, islandId);
@@ -54,8 +55,10 @@ export async function newRobotOn(d: ActionDeps, islandId: string): Promise<void>
   try {
     const c = await createRobot(d.api, { islandId, cwd: dir, ...start }, f.defaultCwd);
     showCreated(d, c.id);
+    return c.id;
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
+    return undefined;
   }
 }
 
@@ -69,6 +72,81 @@ export function moveRobotTo(d: ActionDeps, id: string, target: DropTarget, after
     return;
   }
   d.api.call('robot.move', { id, islandId: target.id }).catch(toast(d));
+}
+
+// a hand move on the board: the robot stays in the column until it is let go, and its agent is told nothing
+export function placeRobot(d: ActionDeps, id: string, columnId: string): Promise<unknown> {
+  return d.api.call('robot.place', { id, columnId }).catch(toast(d));
+}
+
+export function releaseRobot(d: ActionDeps, id: string): void {
+  d.api.call('robot.release', { id }).catch(toast(d));
+}
+
+// the first of New column, New column 2, … that no column is called yet, in any case
+const freeColumnName = (cols: Column[]): string => {
+  const taken = new Set(cols.map((k) => k.name.toLowerCase()));
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? 'New column' : `New column ${n}`;
+    if (!taken.has(name.toLowerCase())) return name;
+  }
+};
+
+// the new column's id; without afterId it goes last
+export async function addColumn(d: ActionDeps, afterId?: string): Promise<string | undefined> {
+  const name = freeColumnName(d.store.getState().fleet.columns);
+  try {
+    const cols = await d.api.call('column.add', { name, ...(afterId ? { afterId } : {}) });
+    return cols.find((k) => k.name === name)?.id;
+  } catch (e) {
+    d.store.getState().showToast((e as Error).message);
+    return undefined;
+  }
+}
+
+export function renameColumn(d: ActionDeps, id: string, name: string): void {
+  d.api.call('column.rename', { id, name }).catch(toast(d));
+}
+
+export function reorderColumn(d: ActionDeps, id: string, targetId: string, after: boolean): void {
+  if (id !== targetId) d.api.call('column.reorder', { id, targetId, after }).catch(toast(d));
+}
+
+// one place left or right; the board's ends stay put
+export function stepColumn(d: ActionDeps, id: string, by: 1 | -1): void {
+  const cols = d.store.getState().fleet.columns;
+  const other = cols[cols.findIndex((k) => k.id === id) + by];
+  if (other) reorderColumn(d, id, other.id, by === 1);
+}
+
+export function deleteColumn(d: ActionDeps, id: string, moveTo: string): void {
+  d.api.call('column.delete', { id, moveTo }).catch(toast(d));
+}
+
+// an empty column goes at once, and the toast offers it back where it stood
+export async function deleteEmptyColumn(d: ActionDeps, id: string): Promise<void> {
+  const cols = d.store.getState().fleet.columns;
+  const at = cols.findIndex((k) => k.id === id);
+  if (at < 0 || cols.length < 2) return;
+  const { name } = cols[at];
+  const before = cols[at - 1]?.id;
+  try {
+    await d.api.call('column.delete', { id, moveTo: cols[at === 0 ? 1 : at - 1].id });
+  } catch (e) {
+    d.store.getState().showToast((e as Error).message);
+    return;
+  }
+  const undo = async () => {
+    try {
+      const back = await d.api.call('column.add', { name, ...(before ? { afterId: before } : {}) });
+      const made = back.find((k) => k.name === name);
+      // a column added without afterId goes last, so the first comes back by a reorder
+      if (!before && made && back[0].id !== made.id) await d.api.call('column.reorder', { id: made.id, targetId: back[0].id, after: false });
+    } catch (e) {
+      d.store.getState().showToast((e as Error).message);
+    }
+  };
+  d.store.getState().showToast(`Deleted “${name}”`, 'ok', { label: 'Undo', run: () => void undo() });
 }
 
 // asking for the state a robot already has sends nothing; robot.star would move a starred one first
@@ -143,7 +221,7 @@ const islandName = (cwd: string): string => (cwd === '~' ? 'island' : cwd.split(
 // which comes back with the robot, else a fresh island
 export async function newRobotTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
   const s = d.store.getState();
-  const current = s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s);
+  const current = s.selectedId ?? s.card ?? selectedOf(s);
   const islandSel = s.selectedIslandId;
   const base = islandSel ? robotsOf(s.fleet, islandSel)[0] : current ? s.fleet.robots[current] : undefined;
   const start = base ? startCwd(base) : s.fleet.defaultCwd;

@@ -94,8 +94,9 @@ describe('store', () => {
     expect(store.getState().sideCardOpen).toBe(false);
     store.getState().select('c0');
     expect(store.getState()).toMatchObject({ selectedId: 'c0', sideCardOpen: true });
+    // the card goes along to the board
     store.getState().setView('board');
-    expect(store.getState()).toMatchObject({ view: 'board', card: undefined, selectedId: 'c0', sideCardOpen: true });
+    expect(store.getState()).toMatchObject({ view: 'board', card: 'c1', selectedId: 'c0', sideCardOpen: true });
     store.getState().setView('map');
     store.getState().focus('c0');
     expect(store.getState()).toMatchObject({ view: 'map', card: 'c0', focusedId: 'c0' });
@@ -113,13 +114,13 @@ describe('store', () => {
     store.getState().setView('map');
     expect(store.getState().arrangeAsk).toBe(false);
   });
-  it('focus on the board selects and remembers, and stays on the board', () => {
+  it('focus on the board opens the card as on the map, selects and remembers, and stays on the board', () => {
     const storage = memStorage();
     const store = createAppStore(storage, 'board');
     store.getState().setFleet(fleet());
     store.getState().selectIsland('i_e');
     store.getState().focus('c1');
-    expect(store.getState()).toMatchObject({ view: 'board', card: undefined, focusedId: 'c1', selectedId: 'c1', selectedIslandId: undefined });
+    expect(store.getState()).toMatchObject({ view: 'board', card: 'c1', focusedId: 'c1', selectedId: 'c1', selectedIslandId: undefined });
     expect(storage.focus).toBe('c1');
     expect(storage.view).toBeUndefined();
   });
@@ -203,7 +204,7 @@ describe('store', () => {
     expect(s.getState().selectedIslandId).toBeUndefined();
     s.getState().focus('c0');
     s.getState().setView('board');
-    expect(s.getState().card).toBeUndefined();
+    expect(s.getState().card).toBe('c0');
     s.getState().showToast('nope');
     expect(s.getState().toast).toEqual({ text: 'nope', tone: 'error' });
     s.getState().showToast('on its way', 'ok');
@@ -392,6 +393,7 @@ describe('store', () => {
 
   it('the settings window stands apart from the side card, so toggling the card leaves it open', () => {
     const store = createAppStore(undefined, 'board');
+    store.getState().toggleSideCard(true);
     store.getState().toggleSettings(true);
     store.getState().toggleSideCard();
     expect(store.getState()).toMatchObject({ settingsOpen: true, sideCardOpen: false, sideCardCollapsed: true });
@@ -402,6 +404,7 @@ describe('store', () => {
   it('hides both side panels at once and brings back the ones that were open', () => {
     const store = createAppStore(undefined, 'board');
     const sides = () => ({ sidebarOpen: store.getState().sidebarOpen, sideCardOpen: store.getState().sideCardOpen });
+    store.getState().toggleSideCard(true);
     store.getState().toggleSides();
     expect(sides()).toEqual({ sidebarOpen: false, sideCardOpen: false });
     store.getState().toggleSides();
@@ -426,11 +429,13 @@ describe('store', () => {
     expect(store.getState().sideCardOpen).toBe(true);
   });
 
-  it('the board opens the side card, and a collapse survives the switch', () => {
+  it('the side card starts shut on either view, and a view switch leaves it as it was', () => {
     const store = createAppStore(undefined, 'board');
+    expect(store.getState().sideCardOpen).toBe(false);
+    store.getState().toggleSideCard(true);
+    store.getState().setView('map');
     expect(store.getState().sideCardOpen).toBe(true);
     store.getState().toggleSideCard();
-    store.getState().setView('map');
     store.getState().setView('board');
     expect(store.getState().sideCardOpen).toBe(false);
   });

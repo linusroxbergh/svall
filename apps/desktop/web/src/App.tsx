@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { Board } from './Board.js';
 import { revealFile, shim } from './bridge.js';
-import { ConfirmClose, ConfirmDeleteIsland, ConfirmSleep } from './Confirm.js';
+import { ConfirmClose, ConfirmDeleteColumn, ConfirmDeleteIsland, ConfirmSleep } from './Confirm.js';
 import { ContextMenu } from './ContextMenu.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
@@ -18,7 +18,6 @@ import { MissionPrompt } from './MissionPrompt.js';
 import { NewRobot } from './NewRobot.js';
 import { ScribeAsk } from './ScribeAsk.js';
 import { SettingsCard } from './SettingsCard.js';
-import { boardViewed } from './selectors.js';
 import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
 import { Starting } from './Starting.js';
@@ -72,8 +71,7 @@ function Screen() {
   const sideCardOpen = useApp((s) => s.sideCardOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
-  // the side card edits the board's viewed robot, and on the map the explicit selection
-  const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
+  const selectedId = useApp((s) => (s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
   const connection = useApp((s) => s.connection);
@@ -141,8 +139,7 @@ function Screen() {
       <div className="main" style={{ '--sb-w': `${sideWidths.sidebar}px`, '--side-w': `${sideWidths.card}px` } as React.CSSProperties}>
         {sidebarOpen && <Sidebar />}
         {sidebarOpen && <SideGrip side="sidebar" />}
-        {/* the board draws a native terminal over this edge, so it carries its own control in the tab bar */}
-        {!sidebarOpen && view === 'map' && (
+        {!sidebarOpen && (
           <button className="sb-show" data-testid="sidebar-show" title="Show the islands" aria-label="Show the islands"
             onClick={() => app.store.getState().toggleSidebar(true)}>›</button>
         )}
@@ -154,7 +151,7 @@ function Screen() {
         {sideCardOpen && !selectedId && !selectedIslandId && <FleetSummary />}
         <UtilityDock />
         {settingsOpen && <SettingsCard />}
-        {!sideCardOpen && view === 'map' && (
+        {!sideCardOpen && (
           <button className="side-show" data-testid="side-show" title={keyTip('Show the side card', 'toggleSideCard', bindings)}
             aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}>‹</button>
         )}
@@ -164,6 +161,7 @@ function Screen() {
       <ConfirmClose />
       <ConfirmSleep />
       <ConfirmDeleteIsland />
+      <ConfirmDeleteColumn />
       <HandoverSheet />
       <ScribeAsk />
       <FleetPicker />

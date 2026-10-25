@@ -108,6 +108,8 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
+  /* the sand glow of a robot arriving in a board column; theme.board.arriveMs matches it */
+  --dur-arrive: 1.4s;
   /* the periods of the looping animations */
   --pulse-fast: 1.2s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
 

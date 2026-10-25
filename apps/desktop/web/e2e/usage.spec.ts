@@ -47,6 +47,7 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const { sent, receive } = await svall.nativeShell();
   await svall.open();
+  await page.getByTestId(`kc-${c.id}`).dblclick();
   const mark = async () => (await sent()).length;
   const since = async (from: number) => (await sent()).slice(from).filter((m) => !('id' in m) || m.id === c.id).map((m) => m.type);
   const cutout = async () => {
