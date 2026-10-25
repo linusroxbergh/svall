@@ -9,26 +9,30 @@ import type { SessionFs } from '../handover/sessions/types.js';
 /** The user home and each agent's home on the Mac (`from`) and on the worker (`to`). */
 export type Homes = { user: Relocation; agent: Record<AgentKind, Relocation> };
 
-/**
- * Where a robot's worktree, folders and transcript lie on the worker: the worktree at the same place relative to the
- * clone as to the Mac's main checkout, a folder inside the worktree at the same place inside it, and any other path
- * and the transcript by their home.
- */
+/** Where a robot's worktree, folders and transcripts lie on the worker: inside the worktree at the same place relative to the clone, anywhere else by home. */
 export function destinationPaths(c: Robot, clone: string, homes: Homes): {
-  root: string; cwd: string; second?: string; transcriptPath?: string; panePath?: string; repo: Repo;
+  root: string; cwd: string; second?: string; transcriptPath?: string; secondTranscriptPath?: string; panePath?: string; repo?: Repo;
 } {
-  const { root: from, mainRoot } = c.repo ?? { root: c.cwd, mainRoot: c.cwd };
-  const [src, main, dest] = [clean(from), clean(mainRoot), clean(clone)];
+  const transcript = (a: Robot['agent']): string | undefined => a?.transcriptPath ? relocate(a.transcriptPath, homes.agent[a.kind]) : undefined;
+  const [t, t2] = [transcript(c.agent), transcript(c.second?.agent)];
+  const tail = {
+    ...(t && { transcriptPath: t }),
+    ...(t2 && { secondTranscriptPath: t2 }),
+  };
+  if (!c.repo) {
+    const user = (p: string): string => relocate(p, homes.user);
+    return { root: user(c.cwd), cwd: user(c.cwd), ...(c.second && { second: user(c.second.cwd) }), ...(c.panePath && { panePath: user(c.panePath) }), ...tail };
+  }
+  const [src, main, dest] = [clean(c.repo.root), clean(c.repo.mainRoot), clean(clone)];
   const root = holds(main, src) ? path.posix.join(dest, path.posix.relative(main, src)) : relocate(src, homes.user);
   const place = (p: string): string => (holds(src, clean(p)) ? path.posix.join(root, path.posix.relative(src, clean(p))) : relocate(p, homes.user));
-  const t = c.agent?.transcriptPath;
   return {
     root,
     cwd: place(c.cwd),
     ...(c.second && { second: place(c.second.cwd) }),
-    ...(t && c.agent && { transcriptPath: relocate(t, homes.agent[c.agent.kind]) }),
     ...(c.panePath && { panePath: place(c.panePath) }),
-    repo: { root, mainRoot: dest, branch: c.repo?.branch ?? '', isWorktree: c.repo?.isWorktree ?? false },
+    ...tail,
+    repo: { ...c.repo, root, mainRoot: dest },
   };
 }
 
