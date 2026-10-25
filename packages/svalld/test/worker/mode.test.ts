@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import type { Response } from '@svall/protocol';
 import { InvalidConfig } from '../../src/config.js';
@@ -52,7 +52,20 @@ runIf('svalld --worker', () => {
   const homes: string[] = [];
   afterEach(async () => {
     for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
+    vi.unstubAllEnvs();
     cleanHomes();
+  });
+
+  it('refuses to start while this machine\'s id cannot be read, rather than run as a new machine', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify(workerFile));
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const config = makeHome();
+    vi.stubEnv('SVALL_CONFIG_DIR', config);
+    fs.writeFileSync(path.join(config, 'machine.json'), '{');
+    await expect(startDaemon({ home, port: 0, worker: true, log: silentLogger })).rejects.toThrow(/invalid machine file .*machine\.json.*delete the file to mint a new machine id/);
+    expect(fs.readFileSync(path.join(config, 'machine.json'), 'utf8')).toBe('{');
   });
 
   it('a home with worker.json starts with scribe off, no mobile and no gateway, and still answers state.get', async () => {

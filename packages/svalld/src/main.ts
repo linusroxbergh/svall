@@ -15,14 +15,17 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { fleetAuthority } from './gateway/client.js';
 import { openJournal } from './handover/journal.js';
+import { bootId } from './handover/processes.js';
 import { HandoverService } from './handover/service.js';
 import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
 import type { Authority } from './handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
+import { HomeLinks, sshTransport } from './link/home.js';
+import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, copiedRemedy, machineIdentity, machineIdFailure, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, copiedRemedy, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
@@ -44,6 +47,8 @@ import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { workerOptions, workerStubs, type Off } from './worker/mode.js';
+import { Outbox } from './worker/outbox.js';
+import { applyReport } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
 
 export type Daemon = { port: number; token: string; store: Store; fleet: Fleet; stop(): Promise<void> };
@@ -158,6 +163,15 @@ function fleetMachineId(paths: Paths, gateway: MachineId | undefined, log: Logge
   return { id };
 }
 
+// the home knows a worker by this id, so one that cannot be read stops the worker rather than start it as another machine
+function workerMachineId(hardware?: HardwareReader): MachineId {
+  try {
+    return machineId(configDir(), hardware);
+  } catch (e) {
+    throw new Error(machineIdFailure(e), { cause: e });
+  }
+}
+
 async function start(opts: Options): Promise<Daemon> {
   const paths = resolvePaths(opts.home);
   fs.chmodSync(paths.home, 0o700);
@@ -165,7 +179,8 @@ async function start(opts: Options): Promise<Daemon> {
   const log = opts.log ?? createLogger();
   const config = loadConfig(paths, log.info);
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
-  const off = new Set<Off>(opts.worker ? workerOptions(paths).off : []);
+  const worker = opts.worker ? workerOptions(paths) : undefined;
+  const off = new Set<Off>(worker?.off ?? []);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
   if (off.has('scribe')) store.update((d) => { d.scribeOff = true; });
@@ -206,7 +221,7 @@ async function start(opts: Options): Promise<Daemon> {
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   // without a gateway no other machine can hold this fleet, so a record this one cannot read is repaired
   const gateway = off.has('gateway') ? undefined : config.gatewayMachineId;
-  const { id: me, copied } = fleetMachineId(paths, gateway, log, opts.hardware);
+  const { id: me, copied }: { id: MachineId; copied?: string } = worker ? { id: workerMachineId(opts.hardware) } : fleetMachineId(paths, gateway, log, opts.hardware);
   const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !gateway, copied });
   // a handover reads state.json back from disk, so a frozen, held or replica fleet writes each change at once
   store.batchWritesWhile(() => ownership.writable());
@@ -298,6 +313,26 @@ async function start(opts: Options): Promise<Daemon> {
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
     // and again while a device waits and tailscale has not answered
     if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
+    // the link starts once the fleet it carries is served, and stops before any of it
+    if (worker) {
+      const connection = new HomeConnection({
+        paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: runtimeVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: {},
+      });
+      await connection.start();
+      teardown.push(() => connection.stop());
+    } else {
+      // rises across restarts, so no worker holds a version newer than the home's next
+      let version = Date.now();
+      const links = new HomeLinks({
+        paths, store, log, release: runtimeVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
+        onReport: (r, machine) => { applyReport(store, r, machine); },
+        onEvent: (kind, _data, machine) => Promise.reject(new Error(`${machine} sent ${kind}, which this svalld does not take`)),
+        onInventory: async (inv, machine) => { for (const r of inv.robots) applyReport(store, r, machine); },
+        snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
+      });
+      links.start();
+      teardown.push(() => links.stop());
+    }
     log.info(`svalld started: home=${paths.home} port=${api.port}`);
     return {
       port: api.port, token, store, fleet,

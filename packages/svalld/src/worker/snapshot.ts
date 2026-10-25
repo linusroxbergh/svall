@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FleetState, WORKER_OWNED, type MachineId, type Robot } from '@svall/protocol';
+import { FleetState, Robot, WORKER_OWNED, type MachineId } from '@svall/protocol';
 import type { Store } from '../store.js';
 
 /** The fleet as the home holds it, and the home's Claude, Codex and OpenCode config folders that paths in it may name. */
@@ -13,7 +13,16 @@ export type Snapshot = z.infer<typeof Snapshot>;
 type Owned = (typeof WORKER_OWNED)[number];
 
 /** A worker's own fields of a robot placed there, stamped with the placement they were taken at. */
-export type RobotSync = { robotId: string; generation: number; fields: Pick<Robot, Owned> };
+export const RobotSync = z.object({
+  robotId: z.string(),
+  generation: z.number().int().nonnegative(),
+  fields: Robot.pick(Object.fromEntries(WORKER_OWNED.map((k) => [k, true])) as { [K in Owned]: true }),
+});
+export type RobotSync = z.infer<typeof RobotSync>;
+
+/** What a worker holds as the link opens: its robots, and how far the home has acknowledged its outbox. */
+export const Inventory = z.object({ robots: z.array(RobotSync), last: z.number().int().nonnegative(), acked: z.number().int().nonnegative() });
+export type Inventory = z.infer<typeof Inventory>;
 
 const generation = (r: Robot): number => r.placement?.generation ?? 0;
 

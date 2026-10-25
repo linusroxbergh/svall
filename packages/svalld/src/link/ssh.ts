@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { Duplex } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { running } from '../agent/reducer.js';
 import { runProcess, type RunResult } from './process.js';
@@ -236,6 +237,20 @@ export class SshMaster {
    */
   run(argv: string[], o: { timeoutMs?: number; signal?: AbortSignal; maxOutputBytes?: number; input?: string | Uint8Array } = {}): Promise<RunResult> {
     return runProcess('ssh', this.argv([], argv), { ...o, timeoutMs: o.timeoutMs ?? RUN_TIMEOUT });
+  }
+
+  /** Runs a command on the far machine with its stdin and stdout as one stream; ending the stream ends ssh. */
+  stream(argv: string[]): { stream: Duplex; exited: Promise<Pick<RunResult, 'code' | 'signal' | 'stderr'>> } {
+    const child = spawn('ssh', this.argv([], argv), { stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-4096); });
+    const stream = Duplex.from({ readable: child.stdout, writable: child.stdin });
+    stream.on('close', () => child.kill());
+    child.on('error', (err) => stream.destroy(err));
+    const exited = new Promise<Pick<RunResult, 'code' | 'signal' | 'stderr'>>((resolve) => {
+      child.on('close', (code, signal) => resolve({ code, signal, stderr }));
+    });
+    return { stream, exited };
   }
 
   /**

@@ -65,6 +65,8 @@ const ENTRIES: Record<string, Handling> = {
   cache: 'machine-local',
   journal: 'machine-local',
   'link.sock': 'machine-local',
+  // the tokens this home issued its workers
+  'workers.json': 'machine-local',
 };
 
 // what a write, a repair, a migration or an archive leaves beside an entry, named by the helper from the entry's own name

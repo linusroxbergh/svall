@@ -90,12 +90,14 @@ export function resolvePaths(home: string = svallHome()) {
     linkSock: path.join(home, 'link.sock'),
     // each robot move's journal, on either side of it
     moves: path.join(home, 'journal', 'moves'),
+    // the home's: the token it issued each worker of this fleet
+    workersFile: path.join(home, 'workers.json'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile, p.workersFile];
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

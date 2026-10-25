@@ -4,6 +4,7 @@ import { ErrorFrame } from './messages.js';
 /** One line of the stream between the home daemon and a worker daemon. */
 export const LinkFrame = z.discriminatedUnion('t', [
   z.looseObject({ t: z.literal('hello') }),
+  z.looseObject({ t: z.literal('inventory') }),
   z.object({ t: z.literal('call'), id: z.number(), method: z.string(), params: z.unknown() }),
   z.object({ t: z.literal('reply'), id: z.number(), result: z.unknown().optional(), error: ErrorFrame.optional() }),
   z.object({ t: z.literal('event'), seq: z.number(), kind: z.string(), data: z.unknown() }),
