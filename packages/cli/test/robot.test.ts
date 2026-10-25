@@ -192,12 +192,15 @@ describe('robot move to a machine', () => {
   };
   const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt after this turn'] };
 
-  function daemon(o: { check?: unknown; moveTo?: () => unknown } = {}) {
+  const HOME = '0f1e2d3c-4b5a-4697-8877-665544332211';
+  function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot> } = {}) {
     const calls: [string, unknown][] = [];
     const client = {
       call: async (method: string, params: unknown) => {
-        if (method === 'state.get') return state;
+        if (method === 'state.get') return { ...state, robots: o.robots ?? state.robots };
+        if (method === 'system.info') return { machineId: HOME };
         calls.push([method, params]);
+        if (method === 'robot.moveRetry') return {};
         if (method === 'robot.moveCheck') return o.check ?? { ok: true, sheet };
         return o.moveTo ? o.moveTo() : { moveId: 'mv_0123456789' };
       },
@@ -258,11 +261,28 @@ describe('robot move to a machine', () => {
     expect((await run(shell, ['c_1', '--machine', 'linus-vault'])).out.split('\n')[0]).toBe('session 4 MB · in no repository: it moves with its session only');
   });
 
-  it('takes one of --island and --machine, and names a machine the fleet does not have', async () => {
-    await expect(run(daemon(), ['c_1'])).rejects.toThrow('name one of --island and --machine');
+  it('svall robot move c_1 --machine local brings it back to this Mac by the home\'s id', async () => {
+    const d = daemon({ check: { ok: true, sheet: { ...sheet, sessionBytes: 0, commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [] } } });
+    expect((await run(d, ['c_1', '--machine', 'local'])).out).toBe('branch kanban-board · svall on this Mac: cloned already\nmv_0123456789\n');
+    expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: HOME }], ['robot.moveTo', { id: 'c_1', machine: HOME }]]);
+  });
+
+  it('retries the move a robot is in with --retry, and says so when it is in none', async () => {
+    const moving = { ...kanban, moving: { id: 'mv_abcdefghij', to: VAULT, phase: 'activate', error: 'claude exited' } } as Robot;
+    const d = daemon({ robots: { c_1: moving } });
+    expect((await run(d, ['kanban', '--retry'])).out).toBe('mv_abcdefghij\n');
+    expect(d.calls).toEqual([['robot.moveRetry', { moveId: 'mv_abcdefghij' }]]);
+    await expect(run(daemon(), ['c_1', '--retry'])).rejects.toThrow('kanban is in no move to retry');
+  });
+
+  it('takes one of --island, --machine and --retry, and names a machine the fleet does not have', async () => {
+    await expect(run(daemon(), ['c_1'])).rejects.toThrow('name one of --island, --machine and --retry');
     const cmd = robotCommands(daemon().connect, () => false);
     cmd.commands.find((c) => c.name() === 'move')!.exitOverride().configureOutput({ writeErr: () => {} });
-    for (const flags of [['--island', 'work', '--machine', 'linus-vault'], ['--island', 'work', '--carry', '.env'], ['--machine', 'linus-vault', '--cell', '1,1']]) {
+    for (const flags of [
+      ['--island', 'work', '--machine', 'linus-vault'], ['--island', 'work', '--carry', '.env'], ['--machine', 'linus-vault', '--cell', '1,1'],
+      ['--retry', '--island', 'work'], ['--retry', '--machine', 'linus-vault'], ['--retry', '--carry', '.env'], ['--retry', '--interrupt-after', '30s'],
+    ]) {
       await expect(cmd.parseAsync(['move', 'c_1', ...flags], { from: 'user' }), flags.join(' ')).rejects.toThrow(/cannot be used with/);
     }
     await expect(run(daemon(), ['c_1', '--machine', 'trift'])).rejects.toThrow('no machine "trift"');

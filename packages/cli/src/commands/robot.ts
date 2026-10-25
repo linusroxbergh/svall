@@ -4,6 +4,7 @@ import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
 import { AgentKind, ApiError, Refusal, keptSession, type AgentStatus, type MoveSheet } from '@svall/protocol';
 import type { Client } from '../client.js';
+import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
@@ -108,11 +109,22 @@ Handing work to a new robot:
 
   cmd.command('move <id>').description('move a robot to another island or cell, or to run on another machine; a refused move exits 2')
     .option('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
-    .addOption(new Option('--machine <name>', 'a machine under Machines; prints what travels, then moves it').conflicts(['island', 'cell']))
+    .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this Mac; prints what travels, then moves it').conflicts(['island', 'cell']))
     .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
     .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
-    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[] }) => {
-      if (!island === !to) throw new Error('name one of --island and --machine');
+    .addOption(new Option('--retry', 'run on the move the robot is in, from the step it stopped at').conflicts(['island', 'cell', 'machine', 'carry', 'interruptAfter']))
+    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; retry?: boolean }) => {
+      if (!island && !to && !retry) throw new Error('name one of --island, --machine and --retry');
+      if (retry) {
+        await withFleet(connect, async (c, state) => {
+          const robot = state.robots[robotId(state, id)];
+          if (!robot.moving) throw new Error(`${robot.name} is in no move to retry`);
+          const moveId = robot.moving.id;
+          await c.call('robot.moveRetry', { moveId });
+          printResult({ moveId }, json(), () => moveId);
+        });
+        return;
+      }
       if (island) {
         await withFleet(connect, async (c, state) => {
           const ch = await c.call('robot.move', { id: robotId(state, id), islandId: islandId(state, island), cell: point(cell, '--cell') });
@@ -123,11 +135,12 @@ Handing work to a new robot:
       const interruptAfterMs = interruptAfter === undefined ? undefined : parseDuration(interruptAfter);
       await withFleet(connect, async (c, state) => {
         const robot = state.robots[robotId(state, id)];
-        const machine = machineId(state, to!);
+        // this Mac is the home, whose id its own system.info answers
+        const machine = to === LOCAL ? (await c.call('system.info', {})).machineId : machineId(state, to!);
         const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }) };
         const checked = await c.call('robot.moveCheck', params);
         if (!checked.ok) { refuseMove(checked.refusal, json()); return; }
-        if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), state.machines![machine].name)}\n`);
+        if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), to === LOCAL ? 'this Mac' : state.machines![machine].name)}\n`);
         let moveId: string;
         try {
           ({ moveId } = await c.call('robot.moveTo', params));
