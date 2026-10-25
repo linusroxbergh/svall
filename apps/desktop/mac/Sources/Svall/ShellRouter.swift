@@ -165,7 +165,6 @@ final class ShellRouter {
         // the page that asked for the hold is gone, and the one loading asks again
         awake.release()
         listening = false
-        pendingNotify = []
         quitFlow.pageGone()
     }
 
