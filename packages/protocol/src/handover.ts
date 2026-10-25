@@ -1,13 +1,11 @@
 import { z } from 'zod';
 import { isProfileName } from './names.js';
-import { MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
+import { FleetId, MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 import { AgentKind, DEFAULT_CWD, FleetState, Home } from './state.js';
 
 // names such as `trift` and `local` route and present; only these ids decide ownership, so renaming
 // a host leaves every record alone
-export { MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
-export const FleetId = z.guid().brand<'FleetId'>();
-export type FleetId = z.infer<typeof FleetId>;
+export { FleetId, MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 
 /**
  * A handover in flight: at most one per fleet, and the gateway is the only writer. The freeze and the

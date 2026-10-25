@@ -60,6 +60,11 @@ const ENTRIES: Record<string, Handling> = {
   'opencode-config-replaced': 'machine-local',
   // the ZDOTDIR a robot's zsh starts from, written again for each window
   zsh: 'machine-local',
+  // a worker's home, snapshot and link socket, and the outbox and move journals of robot placement
+  'worker.json': 'machine-local',
+  cache: 'machine-local',
+  journal: 'machine-local',
+  'link.sock': 'machine-local',
 };
 
 // what a write, a repair, a migration or an archive leaves beside an entry, named by the helper from the entry's own name

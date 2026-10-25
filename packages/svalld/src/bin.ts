@@ -9,6 +9,7 @@ const home = svallHome();
 fs.mkdirSync(home, { recursive: true });
 const paths = resolvePaths(home);
 const log = createLogger(paths.log);
+const worker = process.argv.includes('--worker') || undefined;
 
 process.on('uncaughtException', (e) => log.error(`uncaught: ${e.stack ?? String(e)}`));
 process.on('unhandledRejection', (e) => log.error(`unhandled: ${String(e)}`));
@@ -20,7 +21,7 @@ const report = (line: string, detail = line) => {
 };
 
 // changes whenever a config file or state.json is written, the files a start can be refused for
-const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state].map((file) => {
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile].map((file) => {
   try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
 }).join(' ');
 
@@ -30,7 +31,7 @@ async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
     try {
-      return await startDaemon({ home, log });
+      return await startDaemon({ home, log, worker });
     } catch (e) {
       // no file here can fix that; the other build's setup restarts the agent onto its own program
       if (e instanceof OtherBuildHome) {

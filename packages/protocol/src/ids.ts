@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const MachineId = z.guid().brand<'MachineId'>();
 export type MachineId = z.infer<typeof MachineId>;
+export const FleetId = z.guid().brand<'FleetId'>();
+export type FleetId = z.infer<typeof FleetId>;
 
 /** A sha256 digest as lowercase hex: what names a transfer manifest on the wire. */
 export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 hex digest');

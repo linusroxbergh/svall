@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
+import { FleetId, MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 
 export const MoveId = z.string().regex(/^mv_[0-9a-z]{10}$/);
 export const MovePhase = z.enum(['rest', 'bundle', 'prepare', 'commit', 'activate', 'release', 'done', 'aborted']);
@@ -22,3 +22,7 @@ export type MachineLink = z.infer<typeof MachineLink>;
 
 /** The robot fields only the machine running the robot writes. */
 export const WORKER_OWNED = ['tmux', 'agent', 'unread', 'revive', 'resumeError', 'panePath', 'cwd', 'repo', 'second', 'shell', 'hint', 'codexDaemon'] as const;
+
+/** A worker's fleet home: the home it serves, and the token that home proves itself with. */
+export const WorkerFile = z.object({ homeMachineId: MachineId, fleetId: FleetId, token: z.string().min(32), homeName: z.string() });
+export type WorkerFile = z.infer<typeof WorkerFile>;

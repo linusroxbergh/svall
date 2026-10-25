@@ -1,0 +1,108 @@
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { MachineId, emptyState, type FleetState, type Robot } from '@svall/protocol';
+import { Store } from '../../src/store.js';
+import { applyReport, mergeSnapshot, ownedReport, type RobotSync, type Snapshot } from '../../src/worker/snapshot.js';
+import { cleanHomes, makeHome } from '../helpers.js';
+
+const me = MachineId.parse(crypto.randomUUID());
+const other = MachineId.parse(crypto.randomUUID());
+const agentHomes = { claude: '/Users/ada/.claude', codex: '/Users/ada/.codex', opencode: '/Users/ada/.config/opencode' };
+
+const island = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
+const robot = (id: string, o: Partial<Robot> = {}): Robot => ({
+  id, islandId: 'i_1', cell: { x: 0, y: 0 }, name: id, note: '', portrait: 'owl', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, ...o,
+});
+const fleet = (robots: Robot[], o: Partial<FleetState> = {}): FleetState =>
+  ({ ...emptyState(), islands: { i_1: island }, robots: Object.fromEntries(robots.map((r) => [r.id, r])), ...o });
+const snapshot = (state: FleetState): Snapshot => ({ version: 1, state, agentHomes });
+
+function storeWith(state: FleetState): { store: Store; file: string } {
+  const file = path.join(makeHome(), 'state.json');
+  const store = Store.load(file, () => {});
+  store.update((d) => { Object.assign(d, structuredClone(state)); });
+  return { store, file };
+}
+
+afterEach(cleanHomes);
+
+describe('mergeSnapshot', () => {
+  it('a snapshot replaces home-owned fields and keeps the worker-owned ones of robots placed here', () => {
+    const here = robot('r_here', {
+      machine: me, placement: { generation: 2 }, name: 'old', note: 'old note',
+      cwd: '/home/ada/app/packages/cli', panePath: '/home/ada/app', tmux: { windowId: '@1', paneId: '%1' }, unread: true, shell: { lastOutputAt: 5 }, hint: 'codex-silent',
+      agent: { kind: 'claude', sessionId: 's1', status: 'working', lastActivityAt: 1, brief: 'delivered here' },
+    });
+    const { store, file } = storeWith(fleet([here, robot('r_home', { name: 'old' })], { scribeOff: true, dormantAfterHours: 3 }));
+    let updates = 0;
+    store.subscribe(() => { updates++; });
+
+    mergeSnapshot(store, snapshot(fleet([
+      robot('r_here', {
+        machine: me, placement: { generation: 2 }, name: 'new', note: 'new note', cwd: '/Users/ada/app', unread: false,
+        revive: { command: 'claude --resume s0' }, agent: { kind: 'claude', sessionId: 's0', status: 'idle', lastActivityAt: 0, brief: 'the home has none' },
+      }),
+      robot('r_home', { name: 'new', tmux: { windowId: '@9', paneId: '%9' } }),
+    ], { islands: { i_1: { ...island, name: 'b' } }, defaultCwd: '/srv', worktreesOff: true, mainAgent: 'codex' })), me);
+
+    const after = store.state;
+    expect(updates).toBe(1);
+    expect(after.robots.r_here).toEqual({ ...here, name: 'new', note: 'new note' });
+    expect(after.robots.r_home).toMatchObject({ name: 'new', tmux: { windowId: '@9', paneId: '%9' } });
+    expect(after).toMatchObject({ islands: { i_1: { name: 'b' } }, defaultCwd: '/srv', worktreesOff: true, mainAgent: 'codex', scribeOff: true });
+    expect(after).not.toHaveProperty('dormantAfterHours');
+    expect(Store.load(file, () => {}).state.robots.r_here).toEqual(after.robots.r_here);
+  });
+
+  it('a robot placed here that the snapshot lacks stays until the home says forget', () => {
+    const here = robot('r_here', { machine: me, placement: { generation: 1 }, tmux: { windowId: '@1', paneId: '%1' } });
+    const { store } = storeWith(fleet([here, robot('r_home'), robot('r_there', { machine: other, placement: { generation: 1 } })]));
+
+    mergeSnapshot(store, snapshot(fleet([robot('r_new')])), me);
+
+    expect(Object.keys(store.state.robots).sort()).toEqual(['r_here', 'r_new']);
+    expect(store.state.robots.r_here).toEqual(here);
+  });
+
+  it('takes the whole record from the snapshot for a robot that left this machine or came back at a new placement', () => {
+    const { store } = storeWith(fleet([
+      robot('r_left', { machine: me, placement: { generation: 1 }, cwd: '/home/ada/app' }),
+      robot('r_back', { machine: me, placement: { generation: 1 }, cwd: '/home/ada/old', tmux: { windowId: '@1', paneId: '%1' } }),
+    ]));
+
+    mergeSnapshot(store, snapshot(fleet([
+      robot('r_left', { placement: { generation: 2 }, cwd: '/Users/ada/app' }),
+      robot('r_back', { machine: me, placement: { generation: 3 }, cwd: '/home/ada/new' }),
+    ])), me);
+
+    expect(store.state.robots.r_left).toEqual(robot('r_left', { placement: { generation: 2 }, cwd: '/Users/ada/app' }));
+    expect(store.state.robots.r_back).toEqual(robot('r_back', { machine: me, placement: { generation: 3 }, cwd: '/home/ada/new' }));
+  });
+});
+
+describe('applyReport', () => {
+  it('applyReport writes the fields only at the matching generation and answers stale otherwise', () => {
+    const { store: home } = storeWith(fleet([
+      robot('r_1', { machine: me, placement: { generation: 2 }, name: 'kept', cwd: '/Users/ada/app', tmux: { windowId: '@7', paneId: '%7' } }),
+      robot('r_2'),
+    ]));
+    const there = robot('r_1', {
+      machine: me, placement: { generation: 2 }, name: 'the worker copy', cwd: '/home/ada/app', unread: true,
+      agent: { kind: 'codex', sessionId: 's1', status: 'blocked', lastActivityAt: 1 }, second: { cwd: '/home/ada', unread: false },
+    });
+    const report = ownedReport(there);
+    expect(report).toMatchObject({ robotId: 'r_1', generation: 2 });
+    expect(report.fields).not.toHaveProperty('name');
+
+    expect(applyReport(home, { ...report, generation: 1, fields: { ...report.fields, cwd: '/stale' } }, me)).toBe('stale');
+    expect(applyReport(home, report, other)).toBe('stale');
+    expect(applyReport(home, { ...report, robotId: 'r_2' }, me)).toBe('stale');
+    expect(home.state.robots.r_1.cwd).toBe('/Users/ada/app');
+
+    // a field the report leaves out, as tmux once the window is gone, is cleared on the home; one no worker owns is not taken
+    expect(applyReport(home, { ...report, fields: { ...report.fields, name: 'taken over' } as RobotSync['fields'] }, me)).toBe('applied');
+    expect(home.state.robots.r_1).toEqual({ ...there, name: 'kept' });
+    expect(applyReport(home, { ...report, robotId: 'r_gone' }, me)).toBe('unknown');
+  });
+});

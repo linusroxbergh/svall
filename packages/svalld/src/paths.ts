@@ -81,12 +81,21 @@ export function resolvePaths(home: string = svallHome()) {
     opencodeConfig: path.join(home, 'opencode-config'),
     opencodeReplaced: path.join(home, 'opencode-config-replaced'),
     zdotdir: path.join(home, 'zsh'),
+    // a worker's: the home it serves, that home's last snapshot, the outbox and the seq the home last acknowledged, the link's socket
+    workerFile: path.join(home, 'worker.json'),
+    cache: path.join(home, 'cache'),
+    snapshotFile: path.join(home, 'cache', 'snapshot.json'),
+    outbox: path.join(home, 'journal', 'outbox.ndjson'),
+    acked: path.join(home, 'journal', 'acked'),
+    linkSock: path.join(home, 'link.sock'),
+    // each robot move's journal, on either side of it
+    moves: path.join(home, 'journal', 'moves'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile];
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {
