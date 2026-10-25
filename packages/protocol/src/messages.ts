@@ -103,6 +103,10 @@ export const COMPLETE_TIMEOUT_MS = 2 * 60_000;
 const ADOPT_TIMEOUT_MS = 2 * 60_000;
 // how long a move may take to rest, carry and commit a robot, past the interrupt it was asked to wait for
 const MOVE_TIMEOUT_MS = 15 * 60_000;
+// a check asks the worker its agents and probes its clone (an ls-remote of up to 20 s), and builds the bundle to size it
+const MOVE_CHECK_TIMEOUT_MS = 3 * 60_000;
+// a retry waits for the worker to take the snapshot (60 s), to start the robot (two minutes) and for the release
+const MOVE_RETRY_TIMEOUT_MS = 5 * 60_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -119,6 +123,8 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'handover.complete') return COMPLETE_TIMEOUT_MS;
   if (method === 'ownership.adopt') return ADOPT_TIMEOUT_MS;
   if (method === 'robot.moveTo') return MOVE_TIMEOUT_MS + ((params as { interruptAfterMs?: number }).interruptAfterMs ?? 0);
+  if (method === 'robot.moveCheck') return MOVE_CHECK_TIMEOUT_MS;
+  if (method === 'robot.moveRetry') return MOVE_RETRY_TIMEOUT_MS;
   return 0;
 };
 

@@ -80,7 +80,7 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     git: handoverGit,
     release: '0.17.0',
     homedir: t.mac,
-    config: o.gateway ? { gatewayMachineId: W } : {},
+    gateway: () => (o.gateway ? W : undefined),
     agents: async () => o.local ?? [{ kind: 'claude', version: CLAUDE, home: `${t.mac}/.claude`, loggedIn: true, hooks: true }],
     terminals: async () => o.terminals ?? [],
     links: {
@@ -214,6 +214,15 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(await refusal(depsOf(t, [shellIn(t)], { gateway: true })))
       .toEqual({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first', details: [] });
     await sheet(depsOf(t, [shellIn(t)]));
+  });
+
+  it('refuses once fleet.json names a gateway, though none was named when the daemon started', async () => {
+    const t = machines();
+    let named: MachineId | undefined;
+    const d = { ...depsOf(t, [shellIn(t)]), gateway: () => named };
+    await sheet(d);
+    named = W;
+    expect(await refusal(d)).toEqual({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first', details: [] });
   });
 
   it('refuses mission control, and not a robot on an island', async () => {

@@ -236,4 +236,12 @@ describe('term.attach for a robot on another machine', () => {
       await w.stop();
     }
   });
+
+  it('answers not_reachable for a machine whose link went while the worker answered', async () => {
+    const store = Store.load(resolvePaths(makeHome()).state, () => {});
+    store.update((d) => { d.machines = { [W]: { name: 'w1', reachable: true, since: 0 } }; });
+    const remote = { router: { placedAt: () => W, forward: async () => ({ socket: '/s', session: 'v-c_1', tmux: '/t' }) }, links: { for: () => undefined } };
+    const terminals = new TerminalHub({ on() {} } as unknown as Fleet, {} as Tmux, store, silentLogger, remote as unknown as ConstructorParameters<typeof TerminalHub>[4]);
+    await expect(terminals.attach('c_1')).rejects.toMatchObject({ code: 'not_reachable', message: 'w1 is not reachable' });
+  });
 });

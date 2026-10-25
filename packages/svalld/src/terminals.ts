@@ -1,4 +1,4 @@
-import type { Event, Result } from '@svall/protocol';
+import { ApiError, type Event, type Result } from '@svall/protocol';
 import type { Fleet } from './fleet.js';
 import type { HomeLinks } from './link/home.js';
 import type { Logger } from './log.js';
@@ -101,7 +101,9 @@ export class TerminalHub {
     if (remote && at) {
       // the robot's tmux is on its machine, which a terminal reaches over the ssh master the link to it runs on
       const far = await remote.router.forward(id, 'term.attach', { id, term })!;
-      return { ...far, via: remote.links.for(at)!.via() };
+      const link = remote.links.for(at);
+      if (!link) throw new ApiError('not_reachable', `${this.store.state.machines?.[at]?.name ?? at} is not reachable`);
+      return { ...far, via: link.via() };
     }
     const { windowId } = this.fleet.terminal(id, term).tmux;
     const session = viewerSession(id, term);

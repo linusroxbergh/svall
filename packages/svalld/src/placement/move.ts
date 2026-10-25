@@ -8,7 +8,6 @@ import {
   ApiError, MachineId, MoveId, MovePhase, ObjectName, Robot, TransferSession, WORKER_OWNED,
   type FleetId, type LeftBehind, type MoveSheet, type Refusal, type SystemInfo,
 } from '@svall/protocol';
-import type { Config } from '../config.js';
 import { Invalid, NotFound } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { DurableJson } from '../handover/durable.js';
@@ -328,7 +327,7 @@ export type PlacementDeps = {
   paths: Pick<Paths, 'moves'>;
   git: GitRunner;
   agents: AgentProber;
-  config: Pick<Config, 'gatewayMachineId'>;
+  gateway: CheckDeps['gateway'];
   release: string;
   homedir: string;
   tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes'>;
@@ -498,8 +497,8 @@ export class Placement {
   }
 
   private checkDeps(): CheckDeps {
-    const { store, me, links, git, agents, config, release, homedir } = this.d;
-    return { store, me, links, git, agents, config, release, homedir, terminals: () => this.terminals() };
+    const { store, me, links, git, agents, gateway, release, homedir } = this.d;
+    return { store, me, links, git, agents, gateway, release, homedir, terminals: () => this.terminals() };
   }
 
   private async terminals() {

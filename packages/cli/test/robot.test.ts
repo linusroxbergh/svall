@@ -193,12 +193,12 @@ describe('robot move to a machine', () => {
   const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt after this turn'] };
 
   const HOME = '0f1e2d3c-4b5a-4697-8877-665544332211';
-  function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot> } = {}) {
+  function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot>; answers?: string } = {}) {
     const calls: [string, unknown][] = [];
     const client = {
       call: async (method: string, params: unknown) => {
         if (method === 'state.get') return { ...state, robots: o.robots ?? state.robots };
-        if (method === 'system.info') return { machineId: HOME };
+        if (method === 'system.info') return { machineId: o.answers ?? HOME };
         calls.push([method, params]);
         if (method === 'robot.moveRetry') return {};
         if (method === 'robot.moveCheck') return o.check ?? { ok: true, sheet };
@@ -265,6 +265,12 @@ describe('robot move to a machine', () => {
     const d = daemon({ check: { ok: true, sheet: { ...sheet, sessionBytes: 0, commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [] } } });
     expect((await run(d, ['c_1', '--machine', 'local'])).out).toBe('branch kanban-board · svall on this Mac: cloned already\nmv_0123456789\n');
     expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: HOME }], ['robot.moveTo', { id: 'c_1', machine: HOME }]]);
+
+    // a terminal on a worker reaches that worker's daemon, whose own id local would name
+    const far = daemon({ answers: VAULT });
+    expect(await run(far, ['c_1', '--machine', 'local'])).toEqual({ out: '', err: 'refused: this terminal is on linus-vault\n  → run this on the Mac\n' });
+    expect(far.calls).toEqual([]);
+    expect(process.exitCode).toBe(2);
   });
 
   it('retries the move a robot is in with --retry, and says so when it is in none', async () => {

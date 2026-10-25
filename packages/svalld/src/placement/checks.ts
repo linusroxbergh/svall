@@ -4,7 +4,6 @@ import path from 'node:path';
 import { z } from 'zod';
 import { AgentKind, Repo, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
-import type { Config } from '../config.js';
 import { NotFound } from '../errors.js';
 import { must } from '../handover/git-graph.js';
 import { clean, holds } from '../handover/portable-path.js';
@@ -55,7 +54,8 @@ export type CheckDeps = {
   links: { for(machine: MachineId): Pick<WorkerLink, 'connected' | 'hello'> | undefined; call: HomeLinks['call'] };
   git: GitRunner;
   agents: AgentProber;
-  config: Pick<Config, 'gatewayMachineId'>;
+  /** The gateway fleet.json names now, which `svall host enable` can change while the daemon runs. */
+  gateway: () => MachineId | undefined;
   release: string;
   homedir: string;
   /** This Mac's terminals that still hold a process, as rest reads them. */
@@ -176,7 +176,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  if (d.config.gatewayMachineId) fail({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first' });
+  if (d.gateway()) fail({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first' });
   if (s.islands[c.islandId]?.kind === 'home') fail({ reason: 'mission control stays on this Mac', action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
   if ([c.agent?.kind, c.second?.agent?.kind].includes('opencode')) fail({ reason: 'OpenCode robots cannot move yet', action: 'wait for a later release' });

@@ -375,8 +375,12 @@ describe('svall handover', () => {
       id: 'c_ada', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [], shell: { lastOutputAt: 0 }, unread: false,
       machine: VAULT, placement: { generation: 1 },
     };
-    fs.writeFileSync(path.join(h.home, 'state.json'), JSON.stringify({ ...emptyState(), robots: { c_ada: ada }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } }));
-    const refused = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error: 'ada runs on linus-vault; move every robot back first', safe: [], stop: 'invalid' } };
+    // bo is on its way there, before the commit that names its machine
+    const bo = { ...ada, id: 'c_bo', name: 'bo', cell: { x: 1, y: 0 }, machine: undefined, placement: undefined, moving: { id: 'mv_0123456789', to: VAULT, phase: 'bundle' } };
+    const file = path.join(h.home, 'state.json');
+    fs.writeFileSync(file, JSON.stringify({ ...emptyState(), robots: { c_ada: ada, c_bo: bo }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } }));
+    const error = 'ada runs on linus-vault, bo is moving to linus-vault; move every robot back first';
+    const refused = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error, safe: [], stop: 'invalid' } };
 
     expect(await runHandover(start('linus-vault'), h.ctx)).toEqual({ code: 1 });
     expect(await runHandover(check('linus-vault'), h.ctx)).toEqual({ code: 1 });
@@ -387,6 +391,13 @@ describe('svall handover', () => {
     // what is already open still finishes
     expect(await runHandover({ kind: 'resume' }, h.ctx)).toEqual({ code: 0 });
     expect(h.tx.calls).toEqual([{ kind: 'resume' }]);
+
+    // a state that cannot be read says what to do
+    fs.writeFileSync(file, '{ torn');
+    const torn = harness({ json: true });
+    fs.copyFileSync(file, path.join(torn.home, 'state.json'));
+    expect(await runHandover(start(), torn.ctx)).toEqual({ code: 1 });
+    expect((torn.events()[0] as { data: { error: string } }).data.error).toMatch(/state\.json cannot be read \(.+\); start this fleet's daemon first, which reads it or sets it aside$/);
   });
 
   it('prints each blocker before Begin with what it names, and the warnings, and exits 1 without asking when no one can answer', async () => {

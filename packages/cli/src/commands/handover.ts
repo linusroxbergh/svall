@@ -79,18 +79,20 @@ function gatewayOf(fleetHome: string): MachineId | undefined {
   }
 }
 
-/** Why a handover may not start: robots placed on a worker run there, which it would not carry; a state it cannot read says so. */
+/** Why a handover may not start: robots placed on a worker, or on their way to one, which it would not carry; a state it cannot read says so. */
 function placedRobots(fleetHome: string): string | undefined {
   const file = resolvePaths(fleetHome).state;
   try {
     if (!fs.existsSync(file)) return undefined;
     const { state } = migrateState(JSON.parse(fs.readFileSync(file, 'utf8')));
-    const placed = Object.values(state.robots).filter((r) => r.machine);
-    if (!placed.length) return undefined;
-    const on = [...new Set(placed.map((r) => state.machines?.[r.machine!]?.name ?? r.machine))].join(', ');
-    return `${placed.map((r) => r.name).join(', ')} ${placed.length === 1 ? 'runs' : 'run'} on ${on}; move every robot back first`;
+    const on = (m: MachineId): string => state.machines?.[m]?.name ?? m;
+    const away = Object.values(state.robots).flatMap((r) => {
+      if (r.machine) return [`${r.name} runs on ${on(r.machine)}`];
+      return r.moving ? [`${r.name} is moving to ${on(r.moving.to)}`] : [];
+    });
+    return away.length ? `${away.join(', ')}; move every robot back first` : undefined;
   } catch (e) {
-    return `${file} cannot be read: ${messageOf(e)}`;
+    return `${file} cannot be read (${messageOf(e)}); start this fleet's daemon first, which reads it or sets it aside`;
   }
 }
 

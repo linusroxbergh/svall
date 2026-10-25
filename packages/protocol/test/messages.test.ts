@@ -14,7 +14,10 @@ describe('serverWait', () => {
     // a move answers once it has run past its commit; an interrupt chosen for later extends its rest
     expect(serverWait('robot.moveTo', { id: 'c', machine: UUID_A })).toBe(15 * 60_000);
     expect(serverWait('robot.moveTo', { id: 'c', machine: UUID_A, interruptAfterMs: 60_000 })).toBe(16 * 60_000);
-    expect(serverWait('robot.moveCheck', { id: 'c', machine: UUID_A })).toBe(0);
+    // a check asks the worker its agents and its clone, whose ls-remote alone may take 20 s
+    expect(serverWait('robot.moveCheck', { id: 'c', machine: UUID_A })).toBe(3 * 60_000);
+    // a retry waits out the worker's taking the snapshot, the robot's start there and the release
+    expect(serverWait('robot.moveRetry', { moveId: 'mv_0123456789' })).toBe(5 * 60_000);
   });
 });
 

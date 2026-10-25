@@ -135,8 +135,10 @@ Handing work to a new robot:
       const interruptAfterMs = interruptAfter === undefined ? undefined : parseDuration(interruptAfter);
       await withFleet(connect, async (c, state) => {
         const robot = state.robots[robotId(state, id)];
-        // this Mac is the home, whose id its own system.info answers
+        // this Mac is the home, whose id its own system.info answers; a worker's daemon answers its own, which the fleet lists
         const machine = to === LOCAL ? (await c.call('system.info', {})).machineId : machineId(state, to!);
+        const worker = to === LOCAL && state.machines?.[machine];
+        if (worker) { refuseMove({ reason: `this terminal is on ${worker.name}`, action: 'run this on the Mac', details: [] }, json()); return; }
         const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }) };
         const checked = await c.call('robot.moveCheck', params);
         if (!checked.ok) { refuseMove(checked.refusal, json()); return; }

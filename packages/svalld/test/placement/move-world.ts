@@ -273,7 +273,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
     mac1.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const placement = new Placement({
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, fleetId: config.id, paths: homePaths,
-      git: mortalGit(handoverGit, life), agents: async () => [macProbe], config: {}, release: RELEASE, homedir: mac,
+      git: mortalGit(handoverGit, life), agents: async () => [macProbe], gateway: () => undefined, release: RELEASE, homedir: mac,
       tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, log: silentLogger,
       moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000,
     });

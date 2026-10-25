@@ -258,14 +258,16 @@ async function start(opts: Options): Promise<Daemon> {
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals }), prepare.handlers);
   }
-  const placement = links && new Placement({
-    store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, config, release: runtimeVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
-  });
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
+  const gatewayNow = (): MachineId | undefined => {
+    try { return namedGateway(paths); } catch { return config.gatewayMachineId; }
+  };
+  const placement = links && new Placement({
+    store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, gateway: gatewayNow, release: runtimeVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
+  });
   const authority = (): Authority | undefined => {
     if (off.has('gateway')) return undefined;
-    let named: MachineId | undefined;
-    try { named = namedGateway(paths); } catch { named = config.gatewayMachineId; }
+    const named = gatewayNow();
     return named ? opts.authority ?? { get: (id) => fleetAuthority({ gatewayMachineId: named, machineId: me }).get(id) } : undefined;
   };
   const handover = new HandoverService({
