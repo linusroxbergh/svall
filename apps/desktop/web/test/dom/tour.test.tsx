@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { freshStore } from './harness.js';
+import { freshStore, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
-const { readStep } = await import('../../src/Tour.js');
+const { readStep, Tour } = await import('../../src/Tour.js');
 
 beforeEach(() => { localStorage.clear(); window.__svallHome = '/u/.svall'; freshStore(); });
 afterEach(() => { vi.restoreAllMocks(); delete window.__svallHome; });
@@ -28,4 +29,13 @@ test('a step kept from last time is where the tour goes on, and done is done', (
 test('a store switched off offers no tour rather than throwing', () => {
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('site data switched off'); });
   expect(readStep()).toBeGreaterThan(0);
+});
+
+test('the tour selects its first robot once, so a robot shown after a sheet closes stays selected', () => {
+  render(<Tour />);
+  expect(store.getState().selectedId).toBe('c1');
+  act(() => store.getState().setNamingRobot(true));
+  act(() => store.getState().focus('c2'));
+  act(() => store.getState().setNamingRobot(false));
+  expect(store.getState().selectedId).toBe('c2');
 });

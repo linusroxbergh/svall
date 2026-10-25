@@ -110,6 +110,11 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
       o.bridge.send({ type: 'notify.post', ...answerFailed(c.name, key, o.store.getState().settings.notifications.sound) });
     }
   };
+  // a banner that launched the app reaches the page before the fleet does, and is acted on once the first snapshot is in
+  const whenLoaded = (run: () => void) => {
+    if (o.store.getState().loaded) { run(); return; }
+    const off = o.store.subscribe((s) => { if (s.loaded) { off(); run(); } });
+  };
   // on, but macOS has not been asked under this app id: ask once, as every answer comes back as notify.permission
   let permissionAsked = false;
   const offShell = o.bridge.onMessage((m) => {
@@ -121,10 +126,10 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
       }
     } else if (m.type === 'notify.open') {
       const id = robotOfKey(m.key);
-      if (o.store.getState().fleet.robots[id]) o.store.getState().focus(id);
+      whenLoaded(() => { if (o.store.getState().fleet.robots[id]) o.store.getState().focus(id); });
     } else if (m.type === 'notify.action') {
       // one that names no question would have svalld approve whatever is pending
-      if (m.promptId) void answer(m.key, m.action, m.promptId);
+      if (m.promptId) whenLoaded(() => void answer(m.key, m.action, m.promptId));
     }
   });
   return () => { offStore(); offShell(); };

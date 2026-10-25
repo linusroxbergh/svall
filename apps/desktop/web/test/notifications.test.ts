@@ -213,6 +213,22 @@ describe('followNotifications', () => {
     expect(posts()).toHaveLength(2);
   });
 
+  // the shell hands over the banner that launched the app before the fleet has arrived
+  it('acts on a banner clicked before the fleet arrived once it has, and drops one for a robot it lacks', async () => {
+    const api = answering(() => Promise.resolve({}));
+    const store = createAppStore();
+    const bridge = fakeBridge();
+    followNotifications({ store, bridge, api: () => api });
+    store.getState().setStatus('online');
+    bridge.emit({ type: 'notify.open', key: 'c1-2' });
+    bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q1' });
+    bridge.emit({ type: 'notify.action', key: 'gone', action: 'deny', promptId: 'q2' });
+    store.getState().setFleet(working);
+    expect(store.getState().focusedId).toBe('c1');
+    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('robot.answer', { id: 'c1', answer: 'approve', promptId: 'q1' }));
+    expect(api.call).toHaveBeenCalledTimes(1);
+  });
+
   it('says so when the answer did not reach the daemon', async () => {
     const failed = { type: 'notify.post', key: 'c1', title: "c1: answer didn't send", body: '', sound: true, actions: false };
     const refused = setup({ api: answering(() => Promise.reject(new Error('refused'))) });

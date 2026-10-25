@@ -67,9 +67,11 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // svalld refused: the user decides when to try again. svalld away, a daemon the fleet has left or one frozen
-      // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again
-      if (e instanceof ApiError && !RETRIED.has(e.code)) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
+      // svalld refused, or left it unanswered on a link still online: the user decides when to try again. svalld away, a daemon
+      // the fleet has left or one frozen for a handover: retried once the connection is back, which for a moved fleet is its
+      // new owner, or the fleet runs again. A closed socket reports offline before its calls fail
+      if (e instanceof ApiError ? !RETRIED.has(e.code) : state().status === 'online') state().termFailed(id, (e as Error).message);
+      else retry.set(id, { rect, opacity });
       throw e;
     }
     // the freeze began while the attach was on its way, and rests the window it names
