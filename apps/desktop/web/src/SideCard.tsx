@@ -1,4 +1,4 @@
-import type { Robot, ContextItem, Params } from '@svall/protocol';
+import type { Robot, ContextItem, MachineId, Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { saveRobot, saveRobotContext, setStar } from './actions.js';
@@ -11,6 +11,8 @@ import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
+import { terminalOn } from './MoveSheet.js';
+import { isPlaced, machineName } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -70,7 +72,12 @@ export function SideCard({ id }: { id: string }) {
   const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id]));
   if (!c) return null;
 
-  const status = statusOf(c);
+  const status = statusOf(c, fleet);
+  // a robot on a worker: its folder buttons act there or step aside, and it moves back here
+  const placed = isPlaced(c) ? machineName(fleet, c.machine) : undefined;
+  const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
+  const movable = fleet.islands[c.islandId]?.kind !== 'home' && !c.moving;
+  const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => m.reachable);
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
   const starred = c.star !== undefined;
@@ -81,6 +88,7 @@ export function SideCard({ id }: { id: string }) {
     <aside className="side" data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
         <i className="sdot" data-status={status} />{status}{isUnread(c) ? ' · unread' : ''}
+        {placed && <span className="badge" data-testid="side-machine">{placed}</span>}
       </div>
       <div className="side-head">
         <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
@@ -121,8 +129,8 @@ export function SideCard({ id }: { id: string }) {
             </div>
             <div className="row"><span>model</span><b className="mono">{c.agent?.model ?? 'no agent'}</b></div>
             <div className="row"><span>cwd</span><b className="mono">
-              <button className="copy clip-head" title={`Copy ${c.cwd}`} data-testid="side-cwd"
-                onClick={() => { copyText(app.bridge, c.cwd); app.store.getState().showToast('Copied', 'ok'); }}><bdi>{c.cwd}</bdi></button>
+              <button className="copy clip-head" title={`Copy ${cwd}`} data-testid="side-cwd"
+                onClick={() => { copyText(app.bridge, cwd); app.store.getState().showToast('Copied', 'ok'); }}><bdi>{c.cwd}</bdi></button>
             </b></div>
             {pct !== undefined && (
               <div className="row"><span>context</span>
@@ -133,7 +141,7 @@ export function SideCard({ id }: { id: string }) {
               </div>
             )}
             <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
-            {load && (
+            {load && !placed && (
               <>
                 <div className="row"><span>cpu</span><b className="tnum" data-testid="side-cpu">{coresText(load.cpu)} cores</b></div>
                 <div className="row"><span>ram</span><b className="tnum" data-testid="side-ram">{memText(load.mem)}</b></div>
@@ -145,12 +153,22 @@ export function SideCard({ id }: { id: string }) {
         </Section>
       </div>
       <div className="opens">
-        <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}
-          onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
-        <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />
+        {placed ? (
+          <button className="btn" data-testid="side-finder" title={`A terminal on ${placed} in ${c.cwd}`}
+            onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
+        ) : (
+          <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}
+            onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
+        )}
+        {!placed && <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />}
       </div>
       <div className="acts">
         {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
+        {movable && (placed
+          ? <button className="btn" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
+          : workers.map(([m, w]) => (
+            <button key={m} className="btn" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>Move to {w.name}</button>
+          )))}
         <button className="btn dan" data-testid="side-close" title="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>

@@ -20,15 +20,11 @@ const fakeShell = (page: import('@playwright/test').Page, port: number, token: s
 const handoverOn = (page: import('@playwright/test').Page) =>
   receive(page, { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true });
 
-test('the machines panel waits for the fleet to ask for handover, then reports every step', async ({ page, svall }) => {
+test('the machines panel stands without the fleet asking for handover, and reports every step', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
   await expect(page.getByTestId('settings')).toBeVisible();
-  // fleet.json has not asked for handover: the controls are not there, and the CLI is where setup lives
-  await expect(page.getByTestId('settings-tab-machines')).toHaveCount(0);
-
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
   // the pane reads the registry as it opens
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);

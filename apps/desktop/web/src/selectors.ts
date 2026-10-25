@@ -1,7 +1,8 @@
 import { byCell, byIslandOrder, starredOf, type AgentKind, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
+import { unreachableOf } from './placement.js';
 
-export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
+export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell' | 'moving' | 'unknown';
 
 // a stable identity, so a selector defaulting to "no CLIs found" does not retrigger on every render
 export const NO_AGENTS: AgentKind[] = [];
@@ -102,7 +103,10 @@ export const slotStatus = (c: Robot, term: 1 | 2): DisplayStatus => {
 // what the robot shows when its sessions differ: the one that needs the user soonest
 const URGENCY: DisplayStatus[] = ['blocked', 'working', 'done', 'idle', 'shell'];
 
-export const statusOf = (c: Robot): DisplayStatus => {
+// a robot between machines is moving; given the fleet's machines, one on a worker out of reach is unknown
+export const statusOf = (c: Robot, f?: Pick<FleetState, 'machines'>): DisplayStatus => {
+  if (c.moving) return 'moving';
+  if (f && unreachableOf(f, c)) return 'unknown';
   const all = c.second ? [slotStatus(c, 1), slotStatus(c, 2)] : [slotStatus(c, 1)];
   return URGENCY.find((s) => all.includes(s)) ?? 'shell';
 };
@@ -114,15 +118,15 @@ export { contextPctOf } from '@svall/protocol';
 export const DISPLAY_STATUSES: DisplayStatus[] = ['working', 'idle', 'blocked', 'done', 'shell'];
 
 // what needs the user first: blocked, then finished and unread, then the rest by how alive they are
-const PRIORITY: DisplayStatus[] = ['blocked', 'done', 'working', 'idle', 'shell'];
-const priorityOf = (c: Robot): number => {
-  const s = statusOf(c);
+const PRIORITY: DisplayStatus[] = ['blocked', 'done', 'working', 'moving', 'idle', 'unknown', 'shell'];
+const priorityOf = (c: Robot, f: FleetState): number => {
+  const s = statusOf(c, f);
   return s === 'done' && !isUnread(c) ? PRIORITY.indexOf('idle') + 0.5 : PRIORITY.indexOf(s);
 };
 
 export function robotsByPriority(f: FleetState): Robot[] {
   const order = stripOrder(f);
-  return order.map((c, i) => ({ c, i })).sort((a, b) => priorityOf(a.c) - priorityOf(b.c) || a.i - b.i).map((x) => x.c);
+  return order.map((c, i) => ({ c, i })).sort((a, b) => priorityOf(a.c, f) - priorityOf(b.c, f) || a.i - b.i).map((x) => x.c);
 }
 
 // a robot wants the user when it is stuck, or when it has news nobody has read
@@ -137,13 +141,13 @@ export const subagentCount = (c: Robot): number => (c.agent?.subagents?.length ?
 
 // the island wears the status of its most pressing robot
 export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {
-  const first = robotsOf(f, islandId).reduce<Robot | undefined>((top, c) => (top && priorityOf(top) <= priorityOf(c) ? top : c), undefined);
-  return first ? statusOf(first) : undefined;
+  const first = robotsOf(f, islandId).reduce<Robot | undefined>((top, c) => (top && priorityOf(top, f) <= priorityOf(c, f) ? top : c), undefined);
+  return first ? statusOf(first, f) : undefined;
 }
 
 export function countsByStatus(f: FleetState): Record<DisplayStatus, number> {
-  const out = { working: 0, idle: 0, blocked: 0, done: 0, shell: 0 };
-  for (const c of Object.values(f.robots)) out[statusOf(c)] += 1;
+  const out = { working: 0, idle: 0, blocked: 0, done: 0, shell: 0, moving: 0, unknown: 0 };
+  for (const c of Object.values(f.robots)) out[statusOf(c, f)] += 1;
   return out;
 }
 
@@ -173,9 +177,9 @@ export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { namingRobot: boolean; missionPrompt: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; fleetPicker?: string; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
+export const isVeiled = (s: { namingRobot: boolean; missionPrompt: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
   s.namingRobot || s.missionPrompt || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
-  || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk;
+  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk;
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

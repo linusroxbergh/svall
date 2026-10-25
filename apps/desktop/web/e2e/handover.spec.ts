@@ -10,6 +10,8 @@ import type { HandoverEvent } from '../src/handover.js';
 /** A stand-in for the native shell that names the gateway. */
 const fakeShell = (page: Page, port: number, token: string, handoverEnabled = true, gateway: string | null = 'studio', profile?: string) =>
   nativeShell(page, { port, token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, ...(gateway && { gateway }), ...(profile && { profile }) } });
+// the dock has no Handover entry; a banner's click is the way to the sheet
+const openSheet = (page: Page) => receive(page, { type: 'notify.open', key: 'handover' });
 const say = async (page: Page, ...events: HandoverEvent[]) => { for (const event of events) await receive(page, { type: 'handover.event', event }); };
 const changed = (...phases: HandoverPhase[]): HandoverEvent[] => phases.map((phase) => ({ event: 'handover.changed', data: { transactionId: 'tx1', phase } }));
 const robot = (id: string, phase: HandoverPhase, more: { done?: number; total?: number; error?: string; notice?: string } = {}): HandoverEvent =>
@@ -102,53 +104,22 @@ test('a robot a handover could not resume wakes on open like any dormant one whi
   await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveCount(0);
 });
 
-test('the Handover control waits for the fleet to ask for handover', async ({ page, svall }) => {
+test('a fleet that does not ask for handover never looks one up', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token, false);
   await svall.open();
-  await expect(page.getByTestId('handover-tab')).toHaveCount(0);
+  await expect(page.getByTestId('load-tab')).toBeVisible();
   expect((await sent(page)).some((m) => m.type === 'handover.attach')).toBe(false);
 });
 
-test("the dock shows the machine's name and Handover whole beside the utilities of a fleet on another machine", async ({ page, svall }) => {
+test("the dock shows the machine's name whole beside the utilities of a fleet on another machine, and no Handover entry", async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
-  for (const id of ['owner-badge', 'handover-tab']) {
-    const box = page.getByTestId(id);
-    await expect(box).toBeVisible();
-    expect(await box.evaluate((e) => e.scrollWidth <= e.clientWidth), id).toBe(true);
-  }
+  const owner = page.getByTestId('owner-badge');
+  await expect(owner).toBeVisible();
+  expect(await owner.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
   await expect(page.getByTestId('load-tab')).toBeVisible();
-  // the collapsed rail stacks them as one chip
-  await page.getByTestId('sidebar-hide').click();
-  await expect(page.getByTestId('utility-dock')).toHaveAttribute('data-collapsed', 'true');
-  const owner = (await page.getByTestId('owner-badge').boundingBox())!;
-  const tab = (await page.getByTestId('handover-tab').boundingBox())!;
-  expect([tab.x, tab.width, tab.height]).toEqual([owner.x, owner.width, owner.height]);
-  expect(tab.y).toBeCloseTo(owner.y + owner.height, 0);
-});
-
-test('Handover is a utility tab: its label shows whole where the dock has room for it, and its glyph alone where not', async ({ page, svall }) => {
-  await fakeShell(page, svall.port, svall.token);
-  await svall.open();
-  const tab = page.getByTestId('handover-tab');
-  const label = tab.locator('.use-tab-label');
-  await expect(tab.locator('.use-glyph')).toBeVisible();
-  await expect(label).toBeHidden();
-  const grip = (await page.getByTestId('side-drag-sidebar').boundingBox())!;
-  const y = grip.y + grip.height / 4;
-  await page.mouse.move(grip.x + grip.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(grip.x + 120, y, { steps: 4 });
-  await page.mouse.up();
-  await expect(label).toBeVisible();
-  const box = (await tab.boundingBox())!;
-  const glyph = (await tab.locator('.use-glyph').boundingBox())!;
-  expect(Math.abs(glyph.x + glyph.width / 2 - (box.x + box.width / 2))).toBeLessThanOrEqual(0.5);
-  expect(glyph.y + glyph.height).toBeLessThan((await label.boundingBox())!.y);
-  for (const id of ['handover-tab', 'load-tab', 'settings-open']) {
-    expect(await page.getByTestId(id).locator('.use-tab-label').evaluate((e) => e.scrollWidth <= e.clientWidth), id).toBe(true);
-  }
+  await expect(page.getByTestId('handover-tab')).toHaveCount(0);
 });
 
 test('with no gateway the sheet offers to add a machine, which opens the panel in its place', async ({ page, svall }) => {
@@ -156,7 +127,7 @@ test('with no gateway the sheet offers to add a machine, which opens the panel i
   await svall.open();
   await nothingOpen(page);
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await expect(page.getByTestId('handover-to-gateway')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-local')).toHaveCount(0);
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
@@ -182,7 +153,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'term.show' && m.id === b.id)).toBe(true);
 
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   // before anything starts, what a handover moves, with a gateway to move to
   await expect(page.getByTestId('handover-intro')).toContainText('nothing moves until you choose Move again');
   await expect(page.getByTestId('handover-no-gateway')).toHaveCount(0);
@@ -270,7 +241,7 @@ test('the sheet carries a move to the gateway through all six sections, then the
   const state = await svall.api.call('state.get', {});
   execFileSync('tmux', ['-S', path.join(svall.home, 'tmux.sock'), 'kill-window', '-t', state.robots[b.id].tmux!.windowId]);
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[b.id].tmux, { timeout: 10_000 }).toBeUndefined();
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await page.getByTestId(`handover-retry-${b.id}`).click();
   await expect(page.getByTestId(`handover-row-resume-${b.id}`)).toContainText('resumed', { timeout: 10_000 });
 });
@@ -282,7 +253,7 @@ test('a pull the page already reconnected for still gives the terminals back onc
   await svall.open();
   await nothingOpen(page);
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await page.getByTestId('handover-to-local').click();
   await say(page, ...changed('begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate'), robot(a.id, 'activate'), ...changed('complete'),
     { event: 'handover.result', data: { status: 'complete', transactionId: 'tx1', generation: 2, robots: [{ id: a.id, ok: true }] } });
@@ -304,7 +275,7 @@ test('a decision waits for its answer, which goes as one choose, while the sheet
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await nothingOpen(page);
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await page.getByTestId('handover-to-gateway').click();
 
   await say(page, ...changed('begin', 'freeze'), robot(a.id, 'freeze'), robot(b.id, 'freeze'));
@@ -321,15 +292,14 @@ test('a decision waits for its answer, which goes as one choose, while the sheet
   await expect(page.getByTestId('handover-blocker-agent_unsettled')).toContainText('ada');
   await expect(page.getByTestId('handover-blocker-agent_unsettled')).toContainText('a hook of your own');
   await expect(page.getByTestId('handover-blocker-shell_busy')).toContainText('npm test');
-  // closing leaves the decision waiting, and the Handover control, marked waiting, opens it again
+  // closing leaves the decision waiting, and the banner opens it again
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
-  await expect(page.getByTestId('handover-tab')).toHaveAttribute('data-state', 'waiting');
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await expect(page.getByTestId('handover-section-rest')).toHaveAttribute('data-state', 'waiting');
   await page.mouse.click(5, 5);
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await expect(page.getByTestId('handover-blocker-shell_busy')).toBeVisible();
 
   await page.getByTestId('handover-blocker-shell_busy').getByTestId('handover-choice-terminate').click();
@@ -389,7 +359,7 @@ test('a handover the checks find already open is looked up, and the sheet offers
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await nothingOpen(page);
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await page.getByTestId('handover-to-gateway').click();
   const open: HandoverEvent = { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
     { code: 'transaction_open', message: `this fleet is already in handover ${TX} (preparing); resume or abort it first` },
@@ -416,7 +386,7 @@ test('a helper that dies part way is looked up, and the sheet offers Resume and 
   await svall.open();
   await nothingOpen(page);
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await page.getByTestId('handover-to-gateway').click();
   const checks: HandoverEvent = { event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } };
   await say(page, checks, { event: 'handover.result', data: { status: 'ready' } });
@@ -447,7 +417,6 @@ test('a launch after a finished move that once asked leaves an open terminal alo
     ...changed('transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete'),
     { event: 'handover.result', data: { status: 'complete', transactionId: 'tx1', generation: 2, robots: [{ id: a.id, ok: true }] } },
     { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } });
-  await expect(page.getByTestId('handover-tab')).toBeVisible();
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
   await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', a.id);
   expect((await sent(page)).some((m) => m.type === 'term.close')).toBe(false);
@@ -457,7 +426,6 @@ test('a journal the gateway has moved on from offers Forget, and a standing with
   await fakeShell(page, svall.port, svall.token, true, 'studio', 'work');
   await svall.open();
   await readBack(page, { event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', transactionId: TX, safe: [], reason: `the gateway cannot say whether ${TX} committed (ssh: connect to host studio port 22: Operation timed out); nothing is safe until it answers` } });
-  await expect(page.getByTestId('handover-tab')).toBeVisible();
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
 
   await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: {
@@ -485,7 +453,7 @@ test('preflight blockers name what they are about, and a new start carries the c
   await nothingOpen(page);
   // the fleet runs on the gateway: this is a pull
   await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
-  await page.getByTestId('handover-tab').click();
+  await openSheet(page);
   await expect(page.getByTestId('handover-to-gateway')).toHaveCount(0);
   await page.getByTestId('handover-to-local').click();
   expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', check: true });

@@ -149,7 +149,7 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
   const hoverAfter = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after);
   const failed = useApp((s) => resumeErrorOf(s, c));
   const [dragging, setDragging] = useState(false);
-  const status = statusOf(c);
+  const status = useApp((s) => statusOf(c, s.fleet));
   return (
     <div
       className="sb-row sb-child" data-testid={`sb-robot-${c.id}`} data-status={status} data-unread={isUnread(c)}
@@ -188,7 +188,7 @@ function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: Ret
   // a Finder file over this robot; a reorder over its tree row carries `after` and leaves this row be
   const fileHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after === undefined);
   const [dragging, setDragging] = useState(false);
-  const status = statusOf(c);
+  const status = useApp((s) => statusOf(c, s.fleet));
   return (
     <div className="sb-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={wantsUser(c)} data-selected={selected} data-drop={`robot:${c.id}`} data-drop-hover={fileHover}

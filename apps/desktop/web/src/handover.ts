@@ -324,15 +324,6 @@ export function blockersIn(run: HandoverRun, id: SectionId): Blocker[] {
   return run.result?.status === 'blocked' && here(run.result.phase) ? run.result.blockers : [];
 }
 
-/** What the corner's Handover control says about the run: waiting on the user, under way, or stopped part way. */
-export function badgeOf(run: HandoverRun | undefined): 'waiting' | 'live' | 'stopped' | undefined {
-  if (!run) return undefined;
-  if (decisionPending(run)) return 'waiting';
-  if (live(run) && (run.phase || run.preflight)) return 'live';
-  const a = actionsOf(run);
-  return a.resume || a.abort || a.forget ? 'stopped' : undefined;
-}
-
 export type Actions = {
   // live, before the commit: Abort is a cancel sent to the helper
   cancel: boolean;

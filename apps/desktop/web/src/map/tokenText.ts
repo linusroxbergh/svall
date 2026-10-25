@@ -30,9 +30,9 @@ export const hintText = (c: Robot): string | undefined =>
 
 export const hintLabel = (c: Robot): string => (c.codexDaemon ? '--no-daemon' : '/hooks');
 
-// working, blocked and done spell the status out; idle and a bare shell read from the ring
+// idle and a bare shell read from the ring; every other status is spelled out
 export function statusWord(status: DisplayStatus): string | undefined {
-  return status === 'working' || status === 'blocked' || status === 'done' ? status : undefined;
+  return status === 'idle' || status === 'shell' ? undefined : status;
 }
 
 export function ago(at: number, now = Date.now()): string {

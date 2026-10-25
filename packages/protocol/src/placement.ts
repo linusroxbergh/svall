@@ -16,6 +16,34 @@ export const MoveSheet = z.object({
 });
 export type MoveSheet = z.infer<typeof MoveSheet>;
 
+// in thousands, as the sheet counts them, to the whole unit
+function size(n: number): string {
+  const kb = Math.round(n / 1000);
+  return kb < 1000 ? `${Math.max(1, kb)} KB` : `${Math.round(n / 1_000_000)} MB`;
+}
+const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
+const base = (p: string): string => p.replace(/\/+$/, '').split('/').pop() ?? p;
+
+/** What a move carries, as one line: "session 4 MB · branch kanban: 2 commits not on origin, 3 changed files · …"; `repo` names the repository. */
+export function moveSummary(s: MoveSheet, repo: string | undefined, machine: string): string {
+  const changed = s.changedFiles + s.untrackedFiles;
+  const carried = [...(s.commits ? [`${count(s.commits, 'commit')} not on origin`] : []), ...(changed ? [count(changed, 'changed file')] : [])];
+  return [
+    ...(s.sessionBytes ? [`session ${size(s.sessionBytes)}`] : []),
+    s.notInRepo ? 'in no repository: it moves with its session only' : `branch ${s.branch}${carried.length ? `: ${carried.join(', ')}` : ''}`,
+    ...(repo && !s.notInRepo ? [`${repo} on ${machine}: ${s.clone === 'clone' ? 'will clone (first time)' : 'cloned already'}`] : []),
+    ...s.stays,
+  ].join(' · ');
+}
+
+/** What becomes of a main checkout the move converts into a worktree. */
+export function convertLine(c: NonNullable<MoveSheet['converts']>): string {
+  const main = base(c.main);
+  return c.changed
+    ? `your ${count(c.changed, 'changed file')} in ${main}'s main checkout ${c.changed === 1 ? 'moves' : 'move'} to a new branch ${c.branch}`
+    : `it leaves ${main}'s main checkout for a new branch ${c.branch}`;
+}
+
 export const Placement = z.object({ generation: z.number().int().nonnegative() });
 export type Placement = z.infer<typeof Placement>;
 

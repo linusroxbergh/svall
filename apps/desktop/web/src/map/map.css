@@ -72,7 +72,8 @@
 /* cards keep their screen size whatever the map zoom, so they rasterise crisp */
 .map-world .tok,.home .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
 /* on the card's paper a status prints in its ink; the chrome around the map keeps the lit tokens */
-.tok{--working:var(--working-ink);--blocked:var(--blocked-ink);--done:var(--done-ink);--ink-on-blocked:var(--cream)}
+.tok{--working:var(--working-ink);--blocked:var(--blocked-ink);--done:var(--done-ink);--ink-on-blocked:var(--cream);
+  --moving:var(--moving-ink);--unknown:var(--unknown-ink);--ink-on-moving:var(--cream);--ink-on-unknown:var(--cream)}
 .tok:hover,.tok[data-selected="true"]{z-index:30}
 /* the card sits pressed into the ground: a soft darker patch behind it, left in place when the card lifts */
 .tok::before{content:'';position:absolute;z-index:-1;pointer-events:none;
@@ -166,6 +167,10 @@
 .tok[data-status=blocked] .edge{--st:var(--blocked)}
 .tok[data-status=done]    .edge{--st:var(--done)}
 .tok[data-status=shell]   .edge{--st:var(--shell-dim)}
+.tok[data-status=moving]  .edge{--st:var(--moving)}
+.tok[data-status=unknown] .edge{--st:var(--unknown)}
+/* a robot between machines greys until it lands */
+.tok[data-status=moving] .card{filter:grayscale(1);opacity:.7}
 .tok .edge i{position:absolute;inset:0 auto 0 0;background:var(--st);box-shadow:1px 0 0 color-mix(in srgb, var(--cream) 70%, transparent)}
 .tok .nm{flex:none;height:calc(var(--tok)*.7);padding-top:calc(var(--tok)*.14)}
 .tok .stage{position:relative;flex:1;min-height:0}
@@ -199,6 +204,11 @@
   border-radius:calc(var(--tok)*.27);color:var(--ink-land);
   font-size:calc(var(--tok)*.32);font-weight:var(--w-bold);line-height:1;font-variant-numeric:tabular-nums}
 .tok .mark.subs svg{flex:none;width:calc(var(--tok)*.32);height:calc(var(--tok)*.32)}
+/* the worker a placed robot runs on, a capsule hung under the card's foot */
+.tok .corner .mach{position:absolute;bottom:calc(var(--tok)*-.2);left:50%;transform:translateX(-50%);box-sizing:border-box;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 calc(var(--tok)*.13);border-radius:var(--r-pill);
+  font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);line-height:calc(var(--tok)*.36);
+  background:var(--surface-2);color:var(--ink);box-shadow:0 2px 4px var(--shade-3)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);

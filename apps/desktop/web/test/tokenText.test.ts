@@ -45,6 +45,8 @@ describe('statusWord', () => {
     expect(statusWord('working')).toBe('working');
     expect(statusWord('blocked')).toBe('blocked');
     expect(statusWord('done')).toBe('done');
+    expect(statusWord('moving')).toBe('moving');
+    expect(statusWord('unknown')).toBe('unknown');
     expect(statusWord('idle')).toBeUndefined();
     expect(statusWord('shell')).toBeUndefined();
   });

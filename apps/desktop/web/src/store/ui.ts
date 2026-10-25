@@ -1,4 +1,4 @@
-import type { MobileStatus, PhoneSession } from '@svall/protocol';
+import type { MachineId, MobileStatus, PhoneSession } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
@@ -20,6 +20,7 @@ export type LinkAsk = { url: string; robotId: string; x: number; y: number; surf
 // a right-click's menu, by the pointer that asked for it; an entry without run shows greyed out
 export type MenuEntry = { title: string; run?: () => void; danger?: boolean };
 export type PageMenu = { x: number; y: number; items: MenuEntry[] };
+export type MoveAsk = { id: string; to?: MachineId };
 
 export type UiState = {
   view: View;
@@ -35,6 +36,8 @@ export type UiState = {
   closingRobot?: string;
   // a working robot's sleep waits on the user's answer
   sleepingRobot?: string;
+  // the robot the move sheet is about, and the worker it goes to: none is this Mac
+  moveSheet?: MoveAsk;
   deletingIsland?: string;
   // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it
   fleetPicker?: 'bare' | 'menu';
@@ -93,6 +96,7 @@ export type UiActions = {
   setMissionPrompt(open: boolean): void;
   setClosingRobot(id?: string): void;
   setSleepingRobot(id?: string): void;
+  setMoveSheet(ask?: MoveAsk): void;
   setDeletingIsland(id?: string): void;
   setFleetPicker(mode?: 'bare' | 'menu'): void;
   termOpened(id: string, rect: Rect): void;
@@ -164,6 +168,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     missionPrompt: false,
     closingRobot: undefined,
     sleepingRobot: undefined,
+    moveSheet: undefined,
     deletingIsland: undefined,
     card: undefined,
     cardSize: 'half',
@@ -221,6 +226,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setMissionPrompt: (open) => set({ missionPrompt: open }),
     setClosingRobot: (id) => set({ closingRobot: id }),
     setSleepingRobot: (id) => set({ sleepingRobot: id }),
+    setMoveSheet: (ask) => set({ moveSheet: ask }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
     toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),

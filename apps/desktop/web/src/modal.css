@@ -14,6 +14,8 @@
 .sdot[data-status="blocked"] { background: var(--blocked); color: var(--blocked); }
 .sdot[data-status="done"] { background: var(--done); color: var(--done); }
 .sdot[data-status="shell"] { background: var(--shell); color: var(--shell); }
+.sdot[data-status="moving"] { background: var(--moving); color: var(--moving); }
+.sdot[data-status="unknown"] { background: var(--unknown); color: var(--unknown); }
 
 .modal-back { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; background: var(--shade-1); backdrop-filter: blur(2px); }
 .modal { background: var(--surface-2); backdrop-filter: none; width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
@@ -29,6 +31,8 @@
 .modal-note { color: var(--ink-3); font-size: var(--text-md); }
 .modal .acts { display: flex; gap: var(--sp-md); }
 .modal .acts .btn { flex: 1; }
+/* a choice the move sheet asks about again as it changes */
+.move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); }
 .fleet-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); }
 .fleet-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-md) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }
 .fleet-row:hover:not(:disabled), .fleet-row:focus-visible { background: var(--fill-2); }

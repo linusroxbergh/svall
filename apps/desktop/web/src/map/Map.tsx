@@ -5,6 +5,7 @@ import { app, deps } from '../boot.js';
 import { followLink } from '../LinkAsk.js';
 import { useApp } from '../hooks.js';
 import { robotMenu, islandMenu } from '../menus.js';
+import { machineName } from '../placement.js';
 import { ResourcesLayer } from '../resources/Shelf.js';
 import { robotsOf, homeIsland, mapIslandsSorted, resumeErrorOf, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
@@ -123,8 +124,9 @@ export function Map() {
           const base = preview?.kind === 'island' && preview === pendingIsland ? pendingIsland.from : i.position;
           const world = dragging ? drag.cell : worldCell(base, c.cell);
           return (
-            <Token key={c.id} c={c} status={statusOf(c)} world={world} links={links} selected={c.id === selectedId} dragging={dragging}
+            <Token key={c.id} c={c} status={statusOf(c, fleet)} world={world} links={links} selected={c.id === selectedId} dragging={dragging}
               offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland} failed={resumeErrorOf({ shell }, c)}
+              machine={c.machine && machineName(fleet, c.machine)}
               hover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
@@ -133,7 +135,7 @@ export function Map() {
           );
         }))}
         {drag?.kind === 'figure' && !overHome && fleet.robots[drag.id]?.islandId === HOME_ISLAND && (
-          <Token key={drag.id} c={fleet.robots[drag.id]} status={statusOf(fleet.robots[drag.id])} world={drag.cell} links={links} selected={drag.id === selectedId} dragging
+          <Token key={drag.id} c={fleet.robots[drag.id]} status={statusOf(fleet.robots[drag.id], fleet)} world={drag.cell} links={links} selected={drag.id === selectedId} dragging
             failed={resumeErrorOf({ shell }, fleet.robots[drag.id])}
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
             onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => robotMenu(e, drag.id)} />
@@ -142,7 +144,7 @@ export function Map() {
       <div className="map-overlay">
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
-            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf} links={links}
+            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={(c) => statusOf(c, fleet)} links={links}
             failed={(c) => resumeErrorOf({ shell }, c)}
             shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed), theme.home.max).homeShift}
             scale={place.homeScale} cards={k} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}

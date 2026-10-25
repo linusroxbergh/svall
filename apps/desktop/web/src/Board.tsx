@@ -30,8 +30,8 @@ export function Board() {
         )}
         {island && <span className="tabs-isl">{island.name}</span>}
         {tabs.map((t) => (
-          <button key={t.id} className="tab" data-testid={`tab-${t.id}`} data-status={statusOf(t)} data-active={t.id === viewed} onClick={() => view(t.id)}>
-            <i className="sdot" data-status={statusOf(t)} />{t.name}
+          <button key={t.id} className="tab" data-testid={`tab-${t.id}`} data-status={statusOf(t, fleet)} data-active={t.id === viewed} onClick={() => view(t.id)}>
+            <i className="sdot" data-status={statusOf(t, fleet)} />{t.name}
           </button>
         ))}
         {island && <button className="tab tab-new" data-testid="island-new" title="New robot here" onClick={() => newRobotOn(deps(), island.id)}>+</button>}

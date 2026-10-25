@@ -134,7 +134,6 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
 /** One machine and what is done to it, or a new one being added: the steps `svall host …` reports, as they arrive. */
 export function HostSetup() {
   const open = useApp((s) => s.hostOpen);
-  const enabled = useApp((s) => !!s.shell?.handoverEnabled);
   const run = useApp((s) => s.host);
   const confirm = useApp((s) => s.hostConfirm);
   const machine = useApp((s) => s.hostMachine);
@@ -169,7 +168,7 @@ export function HostSetup() {
     }
   }, [forHandover, run, gateway]);
 
-  if (!open || !enabled) return null;
+  if (!open) return null;
   const running = run?.running ?? false;
   // a run another machine's panel started stays in sight while it runs, so it can be stopped
   const shown = run && (running || run.args.name === machine) ? run : undefined;

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, Refusal, keptSession, type AgentStatus, type MoveSheet } from '@svall/protocol';
+import { AgentKind, ApiError, Refusal, convertLine, keptSession, moveSummary, type AgentStatus, type MoveSheet } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
@@ -26,27 +26,11 @@ export function termOf(v: string | undefined): 2 | undefined {
   throw new Error(`bad --term "${v}", expected 1 or 2`);
 }
 
-// in thousands, as the sheet counts them, to the whole unit
-function size(n: number): string {
-  const kb = Math.round(n / 1000);
-  return kb < 1000 ? `${Math.max(1, kb)} KB` : `${Math.round(n / 1_000_000)} MB`;
-}
-const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
-
-/** What a move carries, as one line: "session 4 MB · branch kanban: 2 commits not on origin, 3 changed files · …". */
+/** What a move carries, as one line, with what it does to a main checkout and to a question or a turn under way. */
 function sheetLine(s: MoveSheet, repo: string | undefined, machine: string): string {
-  const changed = s.changedFiles + s.untrackedFiles;
-  const carried = [...(s.commits ? [`${count(s.commits, 'commit')} not on origin`] : []), ...(changed ? [count(changed, 'changed file')] : [])];
-  const c = s.converts;
-  const main = c && path.basename(c.main);
   return [
-    ...(s.sessionBytes ? [`session ${size(s.sessionBytes)}`] : []),
-    s.notInRepo ? 'in no repository: it moves with its session only' : `branch ${s.branch}${carried.length ? `: ${carried.join(', ')}` : ''}`,
-    ...(repo && !s.notInRepo ? [`${repo} on ${machine}: ${s.clone === 'clone' ? 'will clone (first time)' : 'cloned already'}`] : []),
-    ...s.stays,
-    ...(c ? [c.changed
-      ? `your ${count(c.changed, 'changed file')} in ${main}'s main checkout ${c.changed === 1 ? 'moves' : 'move'} to a new branch ${c.branch}`
-      : `it leaves ${main}'s main checkout for a new branch ${c.branch}`] : []),
+    moveSummary(s, repo, machine),
+    ...(s.converts ? [convertLine(s.converts)] : []),
     ...(s.question ? ['its open question is dropped; it asks again'] : []),
     ...(s.interrupts ? ['what still runs is interrupted'] : []),
   ].join(' · ');

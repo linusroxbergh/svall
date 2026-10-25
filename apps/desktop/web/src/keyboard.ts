@@ -60,7 +60,7 @@ export async function closeRobot(ctx: Deps, id: string): Promise<void> {
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingRobot(false); s.setMissionPrompt(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
+  s.setNamingRobot(false); s.setMissionPrompt(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setMoveSheet(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
   // a dialog over the settings takes the keys from a shortcut row still waiting for one
   s.setCapturingKey(undefined);
 }

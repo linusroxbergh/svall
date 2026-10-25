@@ -15,6 +15,7 @@ import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
+import { MoveSheet } from './MoveSheet.js';
 import { NewRobot } from './NewRobot.js';
 import { ScribeAsk } from './ScribeAsk.js';
 import { SettingsCard } from './SettingsCard.js';
@@ -164,6 +165,7 @@ function Screen() {
       <ConfirmClose />
       <ConfirmSleep />
       <ConfirmDeleteIsland />
+      <MoveSheet />
       <HandoverSheet />
       <ScribeAsk />
       <FleetPicker />

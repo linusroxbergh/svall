@@ -1,4 +1,5 @@
 import type { Robot } from '@svall/protocol';
+import { useApp } from '../hooks.js';
 import { contextPctOf, isUnread, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { ago, linkText } from './tokenText.js';
@@ -9,7 +10,7 @@ const accent = (status: string): string => `var(--${status})`;
 type Props = { c: Robot; x: number; y: number; flip: boolean };
 
 export function HoverCard({ c, x, y, flip }: Props) {
-  const status = statusOf(c);
+  const status = useApp((s) => statusOf(c, s.fleet));
   const pct = contextPctOf(c);
   const at = c.agent?.lastActivityAt ?? c.shell.lastOutputAt;
   return (

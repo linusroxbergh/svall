@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId, Robot } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
 import { bridge, call, freshStore, store } from './harness.js';
 
@@ -135,4 +136,41 @@ test('a terminal rested for a handover says the step it is at, and opens the she
   expect(screen.getByTestId('terminal-held').textContent).toBe('Resting for the handover: Transferring files and sessions…');
   act(() => screen.getByTestId('terminal-held').click());
   expect(store.getState().handoverOpen).toBe(true);
+});
+
+const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+const placed = (reachable: boolean, more: Partial<Robot> = {}) => {
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable, since: 0 } };
+  Object.assign(f.robots.c1, { machine: VAULT, ...more });
+  act(() => store.getState().setFleet(f));
+};
+
+test('a robot on a worker out of reach says so in place of its terminal, and attaches or wakes nothing', () => {
+  placed(false);
+  render(<TerminalArea id="c1" />);
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
+  expect(screen.queryByTestId('surface')).toBeNull();
+  expect(call).not.toHaveBeenCalled();
+});
+
+test('a moving robot says where it goes, and Retry runs on a move whose activate failed', async () => {
+  placed(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'prepare' } });
+  render(<TerminalArea id="c1" />);
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(screen.getByTestId('terminal-moving').textContent).toBe('moving to linus-vault…');
+  expect(screen.queryByTestId('move-retry')).toBeNull();
+  expect(call).not.toHaveBeenCalled();
+
+  placed(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'activate', error: 'claude exited back to its shell' } });
+  expect(screen.getByTestId('move-error').textContent).toBe('claude exited back to its shell');
+  await act(async () => screen.getByTestId('move-retry').click());
+  expect(call).toHaveBeenCalledWith('robot.moveRetry', { moveId: 'mv_0123456789' });
+});
+
+test('a robot on its way back says it is moving to this Mac', () => {
+  placed(true, { moving: { id: 'mv_0123456789', to: '9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a' as MachineId, phase: 'rest' } });
+  render(<TerminalArea id="c1" />);
+  expect(screen.getByTestId('terminal-moving').textContent).toBe('moving to this Mac…');
 });

@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
-import { badgeOf } from './handover.js';
 import { useApp } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
@@ -38,15 +37,6 @@ const Gear = () => (
   </svg>
 );
 
-// the fleet goes from the machine it is on to another
-const Move = () => (
-  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect x="2.5" y="3" width="9" height="7" rx="1.5" />
-    <rect x="12.5" y="14" width="9" height="7" rx="1.5" />
-    <path d="M14.5 6.5h2.5a2.5 2.5 0 0 1 2.5 2.5v2M17.5 9.5l2 2 2-2" />
-  </svg>
-);
-
 /** The fleet utilities share the fixed foot of the island sidebar. */
 export function UtilityDock() {
   const usageOpen = useApp((s) => s.usageOpen);
@@ -66,9 +56,6 @@ export function UtilityDock() {
   // the machine the fleet runs on, whenever that is not this Mac
   const owner = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
   const where = useApp((s) => s.connection?.state);
-  const handover = useApp((s) => !!s.shell?.handoverEnabled);
-  const handoverOpen = useApp((s) => s.handoverOpen);
-  const moving = useApp((s) => badgeOf(s.handover));
   const box = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -113,10 +100,6 @@ export function UtilityDock() {
         {owner && (
           <span className="use-owner" data-testid="owner-badge" data-state={where}
             title={`This fleet runs on ${owner}`}>{owner}</span>
-        )}
-        {handover && (
-          <button className="use-tab use-handover" data-testid="handover-tab" data-state={moving} aria-expanded={handoverOpen}
-            title="Move this fleet to another machine" aria-label="Handover" onClick={() => app.store.getState().toggleHandover()}><Move /><span className="use-tab-label">Handover</span></button>
         )}
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
