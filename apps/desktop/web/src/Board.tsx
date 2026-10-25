@@ -174,7 +174,7 @@ export function Board() {
     const s = app.store.getState();
     s.setSettings({ boardToastShown: true });
     if (s.fleet.scribeAsk || s.fleet.placingAsk || placingOn(s.fleet)) return;
-    s.showToast(`Every robot starts in ${s.fleet.columns[0].name}.`, 'ok', { label: 'Let the scribe place them', run: () => setPlacing(deps(), true) });
+    s.showToast(`Every robot starts in ${s.fleet.columns[0].name}.`, 'ok', { label: 'Let the scribe place them', run: () => setPlacing(deps(), true) }, true);
   }, [toastShown, crewed]);
 
   const drop = (id: string, column: string) => {

@@ -435,6 +435,7 @@ test('the first board with robots on this Mac says where they start, once, and o
   await svall.open();
   const toast = page.getByTestId('toast');
   await expect(toast).toContainText('Every robot starts in To do.');
+  await expect(toast.getByTestId('toast-dismiss')).toHaveText('Dismiss');
   await toast.getByTestId('toast-action').click();
   await expect.poll(() => placingState(svall)).toEqual([undefined, undefined, undefined]);
   await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe ▾');

@@ -12,8 +12,9 @@ export type CardSize = 'half' | 'full';
 export type Terminal = { id: string; rect: Rect };
 // one native browser view the shell holds for a tab, and what it last reported about the page
 export type Webview = { tab: string; rect: Rect; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string };
-// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back
-export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void } };
+// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back,
+// and dismiss puts a Dismiss beside it
+export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void }; dismiss?: boolean };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
 // a right-click's menu, by the pointer that asked for it; an entry with items opens them beside it, one with neither
@@ -114,7 +115,7 @@ export type UiActions = {
   addressFocused(): void;
   askArrange(): void;
   arranged(): void;
-  showToast(message: string, tone?: Toast['tone'], action?: Toast['action']): void;
+  showToast(message: string, tone?: Toast['tone'], action?: Toast['action'], dismiss?: boolean): void;
   runToastAction(): void;
   clearToast(): void;
   askLink(ask: LinkAsk): void;
@@ -240,7 +241,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     addressFocused: () => set({ addressFocus: false }),
     askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
-    showToast: (message, tone = 'error', action) => set({ toast: { text: message, tone, ...(action && { action }) } }),
+    showToast: (message, tone = 'error', action, dismiss) => set({ toast: { text: message, tone, ...(action && { action }), ...(dismiss && { dismiss }) } }),
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },
     clearToast: () => set({ toast: undefined }),
     askLink: (linkAsk) => set({ linkAsk }),

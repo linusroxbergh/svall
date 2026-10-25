@@ -38,6 +38,9 @@
 .toast[data-corner^="bottom"] { bottom: var(--map-inset); }
 .toast:has(.toast-act) { pointer-events: auto; }
 .toast-act { margin-left: var(--sp-xl); padding: 0; background: none; border: 0; font: inherit; font-weight: var(--w-semibold); color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* a toast with two buttons keeps them on its one line */
+.toast:has(.toast-dismiss) { max-width: none; white-space: nowrap; }
+.toast-dismiss { font-weight: var(--w-medium); text-decoration: none; color: color-mix(in srgb, currentColor 65%, transparent); }
 .terminal-card { position: absolute; z-index: var(--z-card); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; opacity: .94;
   transition: left var(--dur) var(--ease), top var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease); }
 /* the link prompt sits where the pointer left it, over everything the map and the board draw */

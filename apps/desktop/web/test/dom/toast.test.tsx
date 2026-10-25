@@ -26,6 +26,16 @@ test('a toast with nothing to press shows through the terminal and leaves the pr
   expect(last()).toEqual({ type: 'shell.cutout', rects: [], passive: [] });
 });
 
+test('Dismiss takes the presses in its hole and clears the toast without running its action', () => {
+  const run = vi.fn();
+  const { getByTestId, queryByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('every robot starts in To do', 'ok', { label: 'Let the scribe place them', run }, true));
+  expect(last()).toEqual({ type: 'shell.cutout', rects: [hole], passive: [] });
+  act(() => getByTestId('toast-dismiss').click());
+  expect(queryByTestId('toast')).toBeNull();
+  expect(run).not.toHaveBeenCalled();
+});
+
 test('a toast with an action takes the presses in its hole, and gives them back once it has none', () => {
   render(<Toast />);
   act(() => store.getState().showToast('started, prompt not sent', 'error', { label: 'Send it', run() {} }));
