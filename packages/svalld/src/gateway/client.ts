@@ -6,6 +6,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { MachineRecord, OwnerRecord, type FleetId, type MachineId } from '@svall/protocol';
 import { Registry, registryFile } from '../machine.js';
+import { SSH_APPROVAL, SSH_AUTH, SSH_HOST_KEY } from '../link/ssh.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
 import { AuthorityFailure, gatewayPaths, type OwnerOp, type OwnerParamsOf } from './authority.js';
@@ -153,11 +154,7 @@ const realSsh: SshRun = (argv) => new Promise((resolve, reject) => {
 // the far svall names its machine before the authority answers, so a route that now leads elsewhere is refused
 const OWNER_GET = '"$1" version --json; exec "$1" gateway owner get --fleet "$2"';
 
-// what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
-export const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
-export const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
-// what Tailscale SSH in check mode prints while it waits for a check in the browser, until the timeout kills ssh
-export const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
+export { SSH_APPROVAL, SSH_AUTH, SSH_HOST_KEY };
 
 /** What ssh would have had to ask about before it could go on, from what it printed. */
 function prompted(r: { code: number; stderr: string }): 'auth' | 'host_key' | 'approval' | undefined {

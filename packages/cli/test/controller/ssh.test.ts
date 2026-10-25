@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shq } from '@svall/svalld/text';
-import { redact, runProcess } from '../../src/controller/process.js';
-import { classifyExit, classifySsh, SshError, SshMaster, sweepMasters } from '../../src/controller/ssh.js';
+import { redact, runProcess } from '@svall/svalld/link/process';
+import { classifyExit, classifySsh, SshError, SshMaster, sweepMasters } from '@svall/svalld/link/ssh';
 import { waitFor } from '../../../svalld/test/helpers.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 

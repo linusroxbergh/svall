@@ -14,6 +14,8 @@
     "./test-helpers": "./test/helpers.ts",
     "./config": "./src/config.ts",
     "./machine": "./src/machine.ts",
+    "./link/ssh": "./src/link/ssh.ts",
+    "./link/process": "./src/link/process.ts",
     "./handover/portable-path": "./src/handover/portable-path.ts",
     "./handover/inventory": "./src/handover/inventory.ts",
     "./handover/divergence": "./src/handover/divergence.ts",

@@ -9,7 +9,7 @@ const read = (rel: string): string => fs.readFileSync(new URL(rel, import.meta.u
 const CATALOGUE = read('../../../docs/remote-machines/errors.md');
 // the helper's events, outcomes and verdicts, which the app reads too
 const EVENTS = read('../../protocol/src/handover-events.ts');
-const SSH = read('../src/controller/ssh.ts');
+const SSH = read('../../svalld/src/link/ssh.ts');
 const HOST = read('../src/controller/host.ts');
 const DOCTOR = read('../src/commands/doctor.ts');
 const PREFLIGHT = read('../src/commands/preflight.ts');
