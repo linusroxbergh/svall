@@ -5,6 +5,13 @@ struct WebAttach: Decodable {
     let socket: String, session: String
     /// The tmux that serves the socket, which a terminal on another machine runs there.
     var tmux: String? = nil
+    /// For a robot placed on another machine, the route that reaches it instead of the window's.
+    var via: WebVia? = nil
+}
+
+/// The worker's ssh destination and the master the home daemon's link to it runs on.
+struct WebVia: Decodable {
+    let ssh: String, controlSocket: String
 }
 
 /// A terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's

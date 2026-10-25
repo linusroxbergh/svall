@@ -2,7 +2,8 @@ import type { AgentKind, ContextItem, HandoverChoices } from '@svall/protocol';
 import type { HandoverEvent } from './handover.js';
 
 export type Rect = { x: number; y: number; width: number; height: number };
-export type Attach = { socket: string; session: string; tmux: string };
+// via: for a robot placed on another machine, the ssh destination and master socket that reach it
+export type Attach = { socket: string; session: string; tmux: string; via?: { ssh: string; controlSocket: string } };
 // a terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's
 // loopback that reaches the same port there
 export type MachineTerm = { ssh: string; type?: string; forward?: number };

@@ -13,7 +13,7 @@ export type TerminalManager = {
 
 type Opts = { reshowDelayMs?: number };
 
-const RETRIED = new Set(['not_owner', 'frozen']);
+const RETRIED = new Set(['not_owner', 'frozen', 'not_reachable']);
 
 // the map shows the robot in the card; the board shows the one it has selected
 export const viewedId = (s: BoardSelection & { view: View; card?: string }): string | undefined =>
@@ -25,7 +25,7 @@ const target = (key: string): { id: string; term?: 2 } => { const id = robotOfKe
 
 export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore, opts: Opts = {}): TerminalManager {
   const attaching = new Map<string, Promise<Attach>>();
-  // an attach that failed while svalld was away; retried when it is back
+  // an attach that failed while svalld, or the robot's machine, was away; retried when it is back
   const retry = new Map<string, { rect: Rect; opacity?: number }>();
   const reshowDelayMs = opts.reshowDelayMs ?? 500;
   const state = () => store.getState();
@@ -69,7 +69,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
       // svalld refused: the user decides when to try again. svalld away, a daemon the fleet has left or one frozen
-      // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again
+      // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again;
+      // the robot's machine away: once its link is back
       if (e instanceof ApiError && !RETRIED.has(e.code)) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
       throw e;
     }
@@ -103,8 +104,14 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       retry.clear();
       for (const id of Object.keys(s.terminals)) close(id);
     }
-    if ((s.status === 'online' && prev.status !== 'online') || (!holdsTerminals(s.handover) && holdsTerminals(prev.handover))) {
+    const online = (s.status === 'online' && prev.status !== 'online') || (!holdsTerminals(s.handover) && holdsTerminals(prev.handover));
+    const machineBack = (id: string) => {
+      const m = s.fleet.robots[target(id).id]?.machine;
+      return m !== undefined && !!s.fleet.machines?.[m]?.reachable && !prev.fleet.machines?.[m]?.reachable;
+    };
+    if (online || s.fleet !== prev.fleet) {
       for (const [id, r] of retry) {
+        if (!online && !machineBack(id)) continue;
         retry.delete(id);
         if (wanted.has(id) && inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity, wanted.get(id)).catch(() => {});
       }

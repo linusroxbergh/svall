@@ -25,6 +25,12 @@ final class AttachCommandTests: XCTestCase {
         XCTAssertEqual(command, "env TERM=xterm-256color ssh -S '/tmp/svall/studio.sock' -o ControlMaster=no -o BatchMode=yes -tt -- 'linus@studio' ''\\''/home/linus/.local/share/svall/releases/v1/bin/tmux'\\''' -S ''\\''/tmp/svall/fleet.sock'\\''' attach -t ''\\''=robot-1'\\'''")
     }
 
+    /// A robot placed on another machine is reached over the master the daemon's link to it runs on, whatever the window's route.
+    func testViaBuildsAnSshAttachWithTheFarTmuxAndQuotesTheHome() {
+        let cmd = AttachCommand.build(route: .local, attach: WebAttach(socket: "/home/ada lovelace/.svall/tmux.sock", session: "v-c_1", tmux: "/home/ada lovelace/.local/share/svall/current/bin/tmux", via: WebVia(ssh: "100.117.42.24", controlSocket: "/tmp/svall-501/123-abc")), tmux: "/opt/homebrew/bin/tmux", masterAnswers: { _ in true })
+        XCTAssertTrue(cmd!.hasPrefix("env TERM=xterm-256color ssh -S '/tmp/svall-501/123-abc'")); XCTAssertTrue(cmd!.contains("'/home/ada lovelace/.svall/tmux.sock'"))
+    }
+
     /// With the helper's master gone, ssh would dial the destination itself, where no check covers which machine answers.
     func testNoCommandIsBuiltWhileTheMasterDoesNotAnswer() {
         let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
