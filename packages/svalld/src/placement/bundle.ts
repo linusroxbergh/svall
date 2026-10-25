@@ -1,0 +1,195 @@
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { z } from 'zod';
+import { ObjectName, Sha256 } from '@svall/protocol';
+import { must } from '../handover/git-graph.js';
+import { byCodeUnit, canonicalDigest, hashStream, sha256Hex } from '../handover/hash.js';
+import type { GitRunner } from '../links/git.js';
+
+const exec = promisify(execFile);
+
+export const CREDENTIAL_PATTERNS = ['.env*', '*.pem', 'id_rsa*', '*.tfvars', '*.key', '.netrc'];
+const CREDENTIAL = CREDENTIAL_PATTERNS.map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
+
+/** Whether a file's name, wherever it lies, matches a credential pattern. */
+export const isCredential = (p: string): boolean => CREDENTIAL.some((re) => re.test(path.posix.basename(p)));
+
+export const BUNDLE_MAX = 100 * 1024 * 1024;
+
+export const BundleManifest = z.object({
+  base: ObjectName,
+  branch: z.string(),
+  staged: Sha256,
+  unstaged: Sha256,
+  untracked: z.array(z.object({ path: z.string(), mode: z.number().int(), size: z.number().int().nonnegative(), sha256: Sha256 })),
+  commits: z.object({ count: z.number().int().positive(), prerequisites: z.array(ObjectName) }).optional(),
+  credentialFiles: z.array(z.string()),
+  bytes: z.number().int().nonnegative(),
+  fingerprint: Sha256,
+});
+export type BundleManifest = z.infer<typeof BundleManifest>;
+
+const [STAGED, UNSTAGED, UNTRACKED, COMMITS, MANIFEST] = ['staged.patch', 'unstaged.patch', 'untracked.tar', 'commits.bundle', 'manifest.json'];
+const CARRIED = [STAGED, UNSTAGED, UNTRACKED, COMMITS];
+
+// a patch git applies whatever prefixes, colors or external diff tools this machine's config names
+const PATCH = ['--binary', '--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', '--submodule=short', '--ignore-submodules=dirty'];
+// tracked changes by modes and object names, never patch text, which another machine's git and zlib may write otherwise
+const RAW = ['--raw', '-z', '--no-renames', '--no-abbrev', '--ignore-submodules=dirty'];
+
+const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
+
+// a file's content, or a link's target, by sha256
+const contentSha = async (file: string, st: fs.Stats): Promise<string> =>
+  (st.isSymbolicLink() ? sha256Hex(fs.readlinkSync(file, { encoding: 'buffer' })) : fileSha(file));
+
+const bytesIn = (dir: string): number =>
+  CARRIED.reduce((n, f) => n + (fs.statSync(path.join(dir, f), { throwIfNoEntry: false })?.size ?? 0), 0);
+
+function refuseOver(root: string, bytes: number): void {
+  if (bytes > BUNDLE_MAX) throw new Error(`${root}: its changes and commits come to ${(bytes / 2 ** 20).toFixed(1)} MB, over the ${BUNDLE_MAX / 2 ** 20} MB a move carries`);
+}
+
+/** The untracked files git does not ignore, less nested repositories and worktrees, which git lists as folders. */
+export async function untrackedFiles(root: string, git: GitRunner): Promise<string[]> {
+  return (await must(git, ['ls-files', '--others', '--exclude-standard', '-z'], root)).split('\0').filter((p) => p && !p.endsWith('/'));
+}
+
+// untracked files named like credentials, ignored ones too, but none inside a folder git ignores whole
+async function credentialsIn(root: string, git: GitRunner, listed: readonly string[]): Promise<string[]> {
+  const ignored = (await must(git, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], root)).split('\0');
+  return [...listed, ...ignored].filter((p) => p && !p.endsWith('/') && isCredential(p)).sort(byCodeUnit);
+}
+
+// the index and working tree against HEAD, and the untracked files but credentials, all by content
+async function digest(root: string, git: GitRunner, untracked: readonly { path: string; sha256: string }[]): Promise<string> {
+  const index = await must(git, ['diff', '--cached', ...RAW], root);
+  const fields = (await must(git, ['diff', ...RAW], root)).split('\0');
+  const worktree: (string | null)[][] = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const file = path.join(root, fields[i + 1]);
+    const st = fs.lstatSync(file, { throwIfNoEntry: false });
+    worktree.push([fields[i], fields[i + 1], st && !st.isDirectory() ? await contentSha(file, st) : null]);
+  }
+  const files = untracked.filter((u) => !isCredential(u.path)).map((u) => [u.path, u.sha256]).sort(([a], [b]) => byCodeUnit(a, b));
+  return canonicalDigest({ index: sha256Hex(index), worktree, untracked: files });
+}
+
+/** What a worktree holds beyond its HEAD, the same on any machine holding the same index, working tree and untracked files but credentials. */
+export async function fingerprintOf(root: string, git: GitRunner): Promise<string> {
+  const untracked: { path: string; sha256: string }[] = [];
+  for (const p of (await untrackedFiles(root, git)).filter((f) => !isCredential(f))) {
+    const file = path.join(root, p);
+    untracked.push({ path: p, sha256: await contentSha(file, fs.lstatSync(file)) });
+  }
+  return digest(root, git, untracked);
+}
+
+// the branch's commits past every sha the worker holds of its history, else past the merge base with origin's default branch, else all
+async function bundleCommits(root: string, git: GitRunner, ref: string, base: string, have: readonly string[], file: string): Promise<BundleManifest['commits']> {
+  const known = new Set<string>();
+  for (const h of new Set(have)) {
+    if (ObjectName.safeParse(h).success && (await git(['merge-base', '--is-ancestor', h, base], root)).code === 0) known.add(h);
+  }
+  if (!known.size) {
+    const r = await git(['merge-base', base, 'refs/remotes/origin/HEAD'], root);
+    if (r.code === 0) known.add(r.stdout.trim());
+  }
+  const not = [...known].map((h) => `^${h}`);
+  const listed = (await must(git, ['rev-list', '--boundary', base, ...not, '--'], root)).split('\n').filter(Boolean);
+  const count = listed.filter((l) => !l.startsWith('-')).length;
+  if (!count) return undefined;
+  await must(git, ['bundle', 'create', file, ref, ...not], root);
+  return { count, prerequisites: listed.filter((l) => l.startsWith('-')).map((l) => l.slice(1)) };
+}
+
+// ustar, which bsdtar and GNU tar both write and read with modes and links; ./ keeps a name from reading as an option,
+// and COPYFILE_DISABLE keeps macOS tar from adding ._ entries
+async function packTar(root: string, paths: readonly string[], file: string): Promise<void> {
+  const list = `${file}.list`;
+  fs.writeFileSync(list, paths.map((p) => `./${p}\0`).join(''));
+  try {
+    await exec('tar', ['-c', '-f', file, '--format=ustar', '--null', '--no-recursion', '-T', list], { cwd: root, env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  } finally {
+    fs.rmSync(list, { force: true });
+  }
+}
+
+/**
+ * Writes into `into` what a move carries of the worktree at `root` beyond the commits the worker holds, `have`: both
+ * patches, the untracked files git does not ignore, credential files ignored or not only when `carry` names them, the
+ * commits, and the manifest.
+ */
+export async function buildBundle(root: string, o: { git: GitRunner; into: string; have: string[]; carry: string[] }): Promise<BundleManifest> {
+  const { git, into } = o;
+  const at = (f: string): string => path.join(into, f);
+  const base = (await must(git, ['rev-parse', '--verify', 'HEAD^{commit}'], root)).trim();
+  const ref = (await must(git, ['symbolic-ref', 'HEAD'], root)).trim();
+  fs.mkdirSync(into, { recursive: true });
+  for (const f of [...CARRIED, MANIFEST]) fs.rmSync(at(f), { force: true });
+  await must(git, ['diff', ...PATCH, '--cached', `--output=${at(STAGED)}`], root);
+  await must(git, ['diff', ...PATCH, `--output=${at(UNSTAGED)}`], root);
+  const listed = await untrackedFiles(root, git);
+  const credentialFiles = await credentialsIn(root, git, listed);
+  const ticked = new Set(o.carry);
+  const paths = [...listed.filter((p) => !isCredential(p)), ...credentialFiles.filter((p) => ticked.has(p))].sort(byCodeUnit);
+  const stats = paths.map((p) => fs.lstatSync(path.join(root, p)));
+  const commits = await bundleCommits(root, git, ref, base, o.have, at(COMMITS));
+  // refused before any file is hashed or packed, then once more with the tar's own headers counted
+  refuseOver(root, bytesIn(into) + stats.reduce((n, s) => n + s.size, 0));
+  const untracked: BundleManifest['untracked'] = [];
+  for (const [i, p] of paths.entries()) {
+    untracked.push({ path: p, mode: stats[i].mode, size: stats[i].size, sha256: await contentSha(path.join(root, p), stats[i]) });
+  }
+  if (paths.length) await packTar(root, paths, at(UNTRACKED));
+  const bytes = bytesIn(into);
+  refuseOver(root, bytes);
+  const manifest: BundleManifest = {
+    base, branch: ref.replace(/^refs\/heads\//, ''), staged: await fileSha(at(STAGED)), unstaged: await fileSha(at(UNSTAGED)),
+    untracked, commits, credentialFiles, bytes, fingerprint: await digest(root, git, untracked),
+  };
+  fs.writeFileSync(at(MANIFEST), JSON.stringify(manifest));
+  return manifest;
+}
+
+/** Throws unless `dir` holds the patches the manifest names and the bytes it counts. */
+export async function verifyBundle(dir: string, manifest: BundleManifest): Promise<void> {
+  for (const [f, want] of [[STAGED, manifest.staged], [UNSTAGED, manifest.unstaged]]) {
+    if (await fileSha(path.join(dir, f)) !== want) throw new Error(`${path.join(dir, f)} is not the patch the move's manifest names`);
+  }
+  const bytes = bytesIn(dir);
+  if (bytes !== manifest.bytes) throw new Error(`${dir} holds ${bytes} bytes, not the ${manifest.bytes} the move's manifest counts`);
+}
+
+/** Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless that is what left. */
+export async function applyBundle(root: string, dir: string, manifest: BundleManifest, git: GitRunner): Promise<void> {
+  const at = (f: string): string => path.join(dir, f);
+  if (manifest.commits) await must(git, ['bundle', 'unbundle', at(COMMITS)], root);
+  await must(git, ['checkout', '-q', '-B', manifest.branch, manifest.base], root);
+  if (fs.statSync(at(STAGED)).size) await must(git, ['apply', '--index', '--whitespace=nowarn', at(STAGED)], root);
+  // a new file in the unstaged patch was added with intent to add, which -N restores
+  if (fs.statSync(at(UNSTAGED)).size) await must(git, ['apply', '--intent-to-add', '--whitespace=nowarn', at(UNSTAGED)], root);
+  if (manifest.untracked.length) await exec('tar', ['-x', '-p', '--no-same-owner', '-f', at(UNTRACKED), '-C', root]);
+  for (const u of manifest.untracked) {
+    const file = path.join(root, u.path);
+    const st = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!st || await contentSha(file, st) !== u.sha256) throw new Error(`${file} did not unpack as it left`);
+  }
+  // the untracked files by the manifest's list, which this machine's ignore rules may read otherwise
+  if (await digest(root, git, manifest.untracked) !== manifest.fingerprint) throw new Error(`${root} does not hold what the move carried`);
+}
+
+/** The credential files the bundle carries as tracked changes or in its commits, which no tick can leave behind. */
+export async function trackedCredentials(root: string, git: GitRunner, manifest: BundleManifest): Promise<string[]> {
+  const names = async (args: string[]): Promise<string[]> => (await must(git, args, root)).split('\0');
+  const touched = [
+    ...await names(['diff', '--cached', '--name-only', '-z', '--no-renames']),
+    ...await names(['diff', '--name-only', '-z', '--no-renames']),
+    ...(manifest.commits
+      ? await names(['log', '--no-show-signature', '--format=', '--name-only', '-z', '--no-renames', manifest.base, ...manifest.commits.prerequisites.map((p) => `^${p}`), '--'])
+      : []),
+  ];
+  return [...new Set(touched)].filter((p) => p && isCredential(p)).sort(byCodeUnit);
+}
