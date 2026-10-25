@@ -29,6 +29,8 @@ osascript -e 'tell application "Finder" to get name of startup disk' >/dev/null 
 if [ -z "$ADHOC" ]; then
   [ -z "$(git status --porcelain)" ] || fail "the tree has changes"
   [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || fail "release from main"
+  git fetch -q origin main || fail "could not fetch main from origin"
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail "main is not at origin/main; pull, or push what origin lacks"
   git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged already; bump CFBundleShortVersionString"
   # ls-remote exits 2 when origin has no such tag, and 128 when origin cannot be reached
   TAGGED=0
