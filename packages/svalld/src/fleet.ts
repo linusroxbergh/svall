@@ -7,7 +7,7 @@ import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
 import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
-import { robotKeyEnv, rendererEnv } from './claude.js';
+import { ROBOT_KEYS, robotKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
 import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
@@ -518,7 +518,7 @@ export class Fleet extends EventEmitter<Events> {
   private async openRobot(
     id: string, cwd: string, panePath: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }, prompt: string | undefined,
   ): Promise<void> {
-    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id));
+    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id), this.robotKeys());
     try {
       this.deps.store.update((d) => {
         // a name asked for twice, as a button pressed twice does, gets a number
@@ -546,7 +546,13 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private robotEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { ...robotKeyEnv(this.deps.paths.env), ...rendererEnv(userPaths().claudeSettings), SVALL_ROBOT_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
+    return { ...rendererEnv(userPaths().claudeSettings), SVALL_ROBOT_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
+  }
+
+  // every key, so one gone from .env is unset rather than kept from an earlier window
+  private robotKeys(): Record<string, string | undefined> {
+    const keys = robotKeyEnv(this.deps.paths.env);
+    return Object.fromEntries(ROBOT_KEYS.map((k) => [k, keys[k]]));
   }
 
   private codexEnv(): Record<string, string> {
@@ -880,7 +886,7 @@ export class Fleet extends EventEmitter<Events> {
       return { ...this.robot(id), ...(delivery && { delivery }) };
     }
     const cwd = this.reviveCwd(c);
-    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id));
+    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id), this.robotKeys());
     if (!this.deps.store.state.robots[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no robot ${id}`);
@@ -990,7 +996,7 @@ export class Fleet extends EventEmitter<Events> {
     const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
     const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
-    const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }));
+    const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }), this.robotKeys());
     if (!this.deps.store.state.robots[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no robot ${id}`);
