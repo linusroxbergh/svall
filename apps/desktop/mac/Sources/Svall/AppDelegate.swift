@@ -271,9 +271,4 @@ extension NSAlert {
 extension NSApplication {
     // the app's own quits (an update, an uninstall, the picker handing over) skip the question the user's get
     static var quietQuit = false
-
-    func terminateQuietly() {
-        Self.quietQuit = true
-        terminate(nil)
-    }
 }

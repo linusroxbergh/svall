@@ -168,7 +168,7 @@ final class ShellRouter {
         quitFlow.pageGone()
     }
 
-    /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
+    /// Quits, unless a quit already waits.
     func quit(quietly: Bool = false) {
         quitFlow.quit(quietly: quietly)
     }

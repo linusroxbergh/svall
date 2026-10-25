@@ -34,7 +34,7 @@ final class QuitFlow {
          handoverRunning: @escaping () -> Bool = { false },
          confirm: @escaping (_ message: String, _ detail: String) -> Bool = QuitFlow.alert,
          kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill, holdStarts: @escaping () -> Void = FleetDaemon.holdStarts,
-         terminate: @escaping (_ quietly: Bool) -> Void = { $0 ? NSApp.terminateQuietly() : NSApp.terminate(nil) }) {
+         terminate: @escaping (_ quietly: Bool) -> Void = { NSApplication.quietQuit = $0; NSApp.terminate(nil) }) {
         self.send = send
         self.isListening = isListening
         self.hideWindow = hideWindow
@@ -49,9 +49,9 @@ final class QuitFlow {
     }
 
     /// Whether a quit waits on the page, the user or the fleet.
-    var pending: Bool { quitAnswer != nil }
+    var pending: Bool { quitAnswer != nil || confirming }
 
-    /// Quits, quietly for the app's own quits, unless a quit already waits.
+    /// Quits, quietly for the app's own quits, unless a quit already waits: AppKit takes a second terminate as a yes to the first.
     func quit(quietly: Bool) {
         if !pending { terminate(quietly) }
     }
@@ -62,7 +62,10 @@ final class QuitFlow {
         guard quitAnswer == nil else { return .terminateNow }
         // a page that is not up has nothing to save and no daemon to ask
         guard isListening() else {
-            guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
+            confirming = confirm
+            let ok = !confirm || confirmQuit(unsaved: [], working: 0)
+            confirming = false
+            guard ok else { return .terminateCancel }
             if handoverOpen() { return .terminateNow }
             quitAnswer = answer
             fleetStopped(ok: false)
