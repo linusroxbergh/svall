@@ -1,6 +1,6 @@
 import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../handover/git-extensions.js';
@@ -116,15 +116,7 @@ export const handlers: Handlers = {
   'term.resize': async (p, { terminals, viewer }) => { await terminals.resize(p.id, p.cols, p.rows, viewer); return {}; },
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
-  'system.info': async (_p, { ownership, handover }) => {
-    const git = await gitVersion();
-    const linger = await handover.linger();
-    return {
-      machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
-      transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
-      heapLimit: v8.getHeapStatistics().heap_size_limit, ...(linger && { linger }),
-    };
-  },
+  'system.info': (_p, ctx) => systemInfo(ctx),
   'ownership.get': (_p, { handover }) => handover.ownershipInfo(),
   'ownership.adopt': (p, { handover }) => handover.relay(p),
   'handover.preflight': (p, { handover }) => handover.preflight(p),
@@ -138,6 +130,17 @@ export const handlers: Handlers = {
   'handover.status': (_p, { handover }) => handover.status(),
   'handover.reaches': (p, { handover }) => handover.reaches(p),
 };
+
+/** What this machine is and runs, as system.info answers here and a worker answers its home. */
+export async function systemInfo({ ownership, handover }: Pick<Ctx, 'ownership' | 'handover'>): Promise<SystemInfo> {
+  const git = await gitVersion();
+  const linger = await handover.linger();
+  return {
+    machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
+    transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
+    heapLimit: v8.getHeapStatistics().heap_size_limit, ...(linger && { linger }),
+  };
+}
 
 // a worker answers a read of the fleet, or of a robot placed on it, from its mirror; any other call is its home's
 function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {

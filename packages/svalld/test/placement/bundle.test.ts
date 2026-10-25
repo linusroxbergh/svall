@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -174,6 +175,28 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(fs.existsSync(path.join(dst, 'node_modules'))).toBe(false);
 
     expect(await trackedCredentials(src, handoverGit, manifest)).toEqual(['.env.example', 'id_rsa.pub']);
+  });
+
+  it('refuses an untracked path or link target ustar cannot hold, which bsdtar would leave out, before packing', async () => {
+    const { at, g } = scratch();
+    const src = at('src');
+    g(at(''), 'init', '-q', src);
+    put(src, 'a.txt', 'a\n');
+    g(src, 'add', '.');
+    g(src, 'commit', '-qm', 'base');
+    // 155 bytes of folders before the last slash and 100 after is the most ustar holds
+    put(src, `${'d'.repeat(153)}/${'f'.repeat(100)}`, 'fits\n');
+    fs.symlinkSync('t'.repeat(100), path.join(src, 'fits'));
+    put(src, `${'d'.repeat(154)}/${'f'.repeat(100)}`, 'too long\n');
+    await expect(buildBundle(src, { git: handoverGit, into: at('bundle'), have: [], carry: [] })).rejects.toThrow(`${'d'.repeat(154)}/${'f'.repeat(100)} has a path too long`);
+    expect(fs.existsSync(path.join(at('bundle'), 'untracked.tar'))).toBe(false);
+    fs.rmSync(path.join(src, 'd'.repeat(154)), { recursive: true });
+    fs.symlinkSync('t'.repeat(101), path.join(src, 'far'));
+    await expect(buildBundle(src, { git: handoverGit, into: at('bundle'), have: [], carry: [] })).rejects.toThrow('far links to a target too long');
+    fs.rmSync(path.join(src, 'far'));
+    const manifest = await buildBundle(src, { git: handoverGit, into: at('bundle'), have: [], carry: [] });
+    expect(manifest.untracked.map((u) => u.path)).toEqual([`${'d'.repeat(153)}/${'f'.repeat(100)}`, 'fits']);
+    expect(execFileSync('tar', ['-tf', path.join(at('bundle'), 'untracked.tar')], { encoding: 'utf8' }).trim().split('\n')).toHaveLength(2);
   });
 
   it('refuses past BUNDLE_MAX with the size', async () => {

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { MachineId, OwnerRecord } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
+import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
@@ -268,6 +269,8 @@ async function start(opts: Options): Promise<Daemon> {
       codexTrust: (codexHome) => recordedTrust(codexHome, resolvePaths(profileHome(PRIVATE)).hookScript),
     },
   });
+  // what a worker's agent CLIs are, which the home reads before it moves a robot there
+  if (connection) calls['system.info'] = () => systemInfo({ ownership, handover });
   const journal = handover.journalState();
   await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !gateway });
   // a machine that shares another's id takes no record from the gateway: one naming that id may mean the other machine

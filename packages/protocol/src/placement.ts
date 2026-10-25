@@ -8,6 +8,14 @@ export type MovePhase = z.infer<typeof MovePhase>;
 export const Refusal = z.object({ reason: z.string(), action: z.string(), run: z.string().optional(), details: z.array(z.string()) });
 export type Refusal = z.infer<typeof Refusal>;
 
+// stays holds the sheet's phrases for what is left on this Mac: ".env stays here", "node_modules is not carried"
+export const MoveSheet = z.object({
+  sessionBytes: z.number(), branch: z.string(), commits: z.number(), changedFiles: z.number(), untrackedFiles: z.number(),
+  clone: z.enum(['warm', 'clone']), credentialFiles: z.array(z.string()), stays: z.array(z.string()), interrupts: z.boolean(), question: z.boolean(),
+  converts: z.object({ main: z.string(), branch: z.string(), changed: z.number() }).optional(), notInRepo: z.boolean(),
+});
+export type MoveSheet = z.infer<typeof MoveSheet>;
+
 export const Placement = z.object({ generation: z.number().int().nonnegative() });
 export type Placement = z.infer<typeof Placement>;
 

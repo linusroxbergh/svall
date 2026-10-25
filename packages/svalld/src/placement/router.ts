@@ -9,6 +9,7 @@ import { handoverGit } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
+import { probeRepo, RepoProbeParams } from './checks.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
 const callMs = (method: MethodName, params: unknown): number => 30_000 + serverWait(method, params);
@@ -129,5 +130,10 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
     'robot.seen': on('robot.seen', async (p) => fleet.markSeen(p.id, p.term)),
     'robot.close': forget,
     'robot.forget': forget,
+    'repo.probe': async (raw) => {
+      const p = RepoProbeParams.safeParse(raw);
+      if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+      return probeRepo(p.data, handoverGit);
+    },
   };
 }

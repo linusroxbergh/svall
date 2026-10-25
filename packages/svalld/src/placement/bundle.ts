@@ -18,6 +18,8 @@ export const isCredential = (p: string): boolean => CREDENTIAL.some((re) => re.t
 
 export const BUNDLE_MAX = 100 * 1024 * 1024;
 
+export class BundleTooLarge extends Error {}
+
 export const BundleManifest = z.object({
   base: ObjectName,
   branch: z.string(),
@@ -50,7 +52,21 @@ const bytesIn = (dir: string): number =>
   CARRIED.reduce((n, f) => n + (fs.statSync(path.join(dir, f), { throwIfNoEntry: false })?.size ?? 0), 0);
 
 function refuseOver(root: string, bytes: number): void {
-  if (bytes > BUNDLE_MAX) throw new Error(`${root}: its changes and commits come to ${(bytes / 2 ** 20).toFixed(1)} MB, over the ${BUNDLE_MAX / 2 ** 20} MB a move carries`);
+  if (bytes > BUNDLE_MAX) throw new BundleTooLarge(`${root}: its changes and commits come to ${(bytes / 2 ** 20).toFixed(1)} MB, over the ${BUNDLE_MAX / 2 ** 20} MB a move carries`);
+}
+
+// ustar holds a name of 100 bytes, or one a slash splits into 155 and 100, and a link target of 100; bsdtar leaves any
+// other out with a warning and exit 0
+function refuseUnpackable(root: string, paths: readonly string[], stats: readonly fs.Stats[]): void {
+  for (const [i, p] of paths.entries()) {
+    const name = Buffer.from(`./${p}`);
+    if (name.length > 100 && !name.some((b, at) => b === 0x2f && at <= 155 && name.length - at - 1 <= 100)) {
+      throw new Error(`${p} has a path too long for a move to carry; rename or ignore it first`);
+    }
+    if (stats[i].isSymbolicLink() && fs.readlinkSync(path.join(root, p), { encoding: 'buffer' }).length > 100) {
+      throw new Error(`${p} links to a target too long for a move to carry; point it closer or ignore it first`);
+    }
+  }
 }
 
 /** The untracked files git does not ignore, less nested repositories and worktrees, which git lists as folders. */
@@ -136,6 +152,7 @@ export async function buildBundle(root: string, o: { git: GitRunner; into: strin
   const ticked = new Set(o.carry);
   const paths = [...listed.filter((p) => !isCredential(p)), ...credentialFiles.filter((p) => ticked.has(p))].sort(byCodeUnit);
   const stats = paths.map((p) => fs.lstatSync(path.join(root, p)));
+  refuseUnpackable(root, paths, stats);
   const commits = await bundleCommits(root, git, ref, base, o.have, at(COMMITS));
   // refused before any file is hashed or packed, then once more with the tar's own headers counted
   refuseOver(root, bytesIn(into) + stats.reduce((n, s) => n + s.size, 0));

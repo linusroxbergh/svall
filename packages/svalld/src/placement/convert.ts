@@ -5,7 +5,7 @@ import { must } from '../handover/git-graph.js';
 import type { GitRunner } from '../links/git.js';
 import { applyBundle, buildBundle, fingerprintOf, isCredential, untrackedFiles } from './bundle.js';
 
-const WORKTREES = '.claude/worktrees';
+export const WORKTREES = '.claude/worktrees';
 
 const slugOf = (s: string): string => (s.toLowerCase().match(/[a-z0-9]+/g) ?? []).join('-');
 
@@ -23,7 +23,7 @@ export async function worktreeSlug(name: string, branch: string, o: { main: stri
 // what a reset of main would drop uncarried: an operation under way, or edits git is told not to look at
 const UNDER_WAY: Record<string, string> = { MERGE_HEAD: 'merge', CHERRY_PICK_HEAD: 'cherry-pick', REVERT_HEAD: 'revert', 'rebase-merge': 'rebase', 'rebase-apply': 'rebase' };
 
-async function refuseUncarried(main: string, git: GitRunner): Promise<void> {
+export async function refuseUncarried(main: string, git: GitRunner): Promise<void> {
   const gitDir = (await must(git, ['rev-parse', '--absolute-git-dir'], main)).trim();
   const under = Object.keys(UNDER_WAY).find((f) => fs.existsSync(path.join(gitDir, f)));
   if (under) throw new Error(`${main} is in the middle of a ${UNDER_WAY[under]}; finish or abort it first`);
