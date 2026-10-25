@@ -1,0 +1,534 @@
+// The robot placement integration run, driven from the host through docker:
+//
+//   node scripts/integration/robot-placement.mjs [--archive <companion.tar.gz>] [--image <tag>] [--out <dir>]
+//                                                [--steps all|<n>,...] [--scenarios all|none|kill|drop|<fault>@<phase>,...]
+//                                                [--keep] [--prefix <name>]
+//
+// Two Ubuntu 24.04 containers on one network: `svall-local` is the home, set up from the companion release built from
+// this checkout, and `svall-remote` is made its worker by `svall host add`. Their accounts have different homes, as a
+// Mac's and a Linux machine's do. The fleet has three Claude robots: `agent` in a dirty linked worktree, `kanban` on
+// the main checkout and `faults` in a worktree of its own; the repository's remote is a bare one on remote that both
+// machines reach over ssh. The run moves `agent` and `kanban`, restarts the worker, stops the home while the worker's
+// agent works, moves `faults` back and forth with the home's daemon killed or the link dropped at each phase, and
+// returns `agent` through a dirty Mac worktree. With no `--archive` it builds the companion for the docker host's
+// architecture from this checkout, and with no `--image` the machine image from the Dockerfile here. `--steps` picks
+// steps by number (the fixture always runs); `--prefix` replaces `svall` in the machines' names and the network's.
+// Every check that fails is printed; the run exits 1 on the first step that has one.
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { brief, flags, harness, lines, machines, same } from './harness.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, '../..');
+const o = flags(process.argv.slice(2));
+const UNIT = 'svall-svalld@private.service';
+const PHASES = ['rest', 'bundle', 'prepare', 'commit', 'activate', 'release'];
+// pre-commit phases abort back to the source; from the commit on the move runs on onto the destination
+const PRE = new Set(['rest', 'bundle', 'prepare']);
+
+if (o.archive && !fs.existsSync(o.archive)) throw new Error(`no archive ${o.archive}`);
+const image = o.image ?? 'svall-it:latest';
+const companions = o.archive ? undefined : fs.mkdtempSync(path.join(os.tmpdir(), 'robot-placement-companion-'));
+const archive = built();
+const out = o.out ? path.resolve(o.out) : fs.mkdtempSync(path.join(os.tmpdir(), 'robot-placement-'));
+const { say, docker, check, step, booted } = harness(out);
+const { L, R, NET, HOMES, sh } = machines(o.prefix ?? 'svall', docker);
+
+// ---------------------------------------------------------------------------------------------- machines
+
+/** The companion archive and the machine image the run takes, each built when the command line names none. */
+function built() {
+  const run = (cmd, args) => {
+    const r = spawnSync(cmd, args, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 64 * 1024 * 1024 });
+    if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} exited ${r.status ?? r.error?.message}`);
+    return r.stdout;
+  };
+  if (!o.image) run('docker', ['build', '-q', '-t', image, HERE]);
+  if (o.archive) return path.resolve(o.archive);
+  // the machines run on the docker host's own architecture: under user-mode emulation every process reads as qemu
+  const platform = run('docker', ['info', '--format', '{{.Architecture}}']).trim();
+  const arch = { aarch64: 'arm64', arm64: 'arm64', x86_64: 'x64', amd64: 'x64' }[platform];
+  if (!arch) throw new Error(`no companion is built for ${platform}`);
+  if (!fs.existsSync(path.join(REPO, 'apps/desktop/web/dist-mobile'))) run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile']);
+  run(process.execPath, [path.join(REPO, 'scripts/build-companion.mjs'), '--out', companions, '--arch', arch]);
+  return path.join(companions, fs.readdirSync(companions).find((f) => f.endsWith(`-linux-${arch}.tar.gz`)));
+}
+
+function up() {
+  for (const m of [L, R]) docker(['rm', '-f', m]);
+  docker(['network', 'rm', NET]);
+  if (docker(['network', 'create', NET]).code !== 0) throw new Error('docker network create failed');
+  for (const m of [L, R]) {
+    // the image's account lives in /home/svall; local's moves to its own home before systemd starts
+    const home = HOMES[m] === '/home/svall' ? [] : ['bash', '-c', `mkdir -p ${path.posix.dirname(HOMES[m])} && usermod -d ${HOMES[m]} -m svall && exec /sbin/init`];
+    const r = docker(['run', '-d', '--name', m, '--hostname', m, '--network', NET, '--privileged', '--cgroupns=private',
+      '--tmpfs', '/run', '--tmpfs', '/run/lock', image, ...home]);
+    if (r.code !== 0) throw new Error(`${m} did not start: ${r.stderr}`);
+  }
+  for (const m of [L, R]) {
+    booted(m);
+    sh(m, 'mkdir -p /opt/it', { root: true });
+    for (const f of [archive, path.join(HERE, 'claude.mjs'), path.join(HERE, 'opencode.mjs'), path.join(HERE, 'machine.mjs')]) {
+      if (docker(['cp', f, `${m}:/opt/it/`]).code !== 0) throw new Error(`docker cp ${f} to ${m} failed`);
+    }
+    // the harness's own node, from the release under test: the mocked agent and the in-machine checks run on it
+    sh(m, 'cd /opt/it && tar -xzf svall-companion-*.tar.gz --wildcards "releases/*/node" && mv releases/*/node node && rm -rf releases && chmod -R a+rX /opt/it', { root: true });
+    // a wrapper that execs node on the mock, so ps shows `node …/claude.mjs` as the rest classifier reads a Claude
+    sh(m, 'mkdir -p ~/.local/bin && printf \'#!/bin/sh\\nexec /opt/it/node/bin/node /opt/it/claude.mjs "$@"\\n\' > ~/.local/bin/claude && chmod 755 ~/.local/bin/claude');
+    sh(m, 'printf \'#!/bin/bash\\nexec -a opencode /opt/it/node/bin/node /opt/it/opencode.mjs "$@"\\n\' > ~/.local/bin/opencode && chmod 755 ~/.local/bin/opencode');
+  }
+  sh(L, 'mkdir -m 700 -p ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519');
+  // remote logs in to itself too, as its clone fetches from the bare repository it holds
+  sh(R, 'mkdir -m 700 -p ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519 && cp ~/.ssh/id_ed25519.pub ~/.ssh/authorized_keys');
+  sh(R, 'cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys', { input: sh(L, 'cat ~/.ssh/id_ed25519.pub').stdout });
+  for (const m of [L, R]) {
+    sh(m, `ssh-keyscan -t ed25519 ${R} 2>/dev/null > ~/.ssh/known_hosts && test -s ~/.ssh/known_hosts`);
+    sh(m, `ssh -o BatchMode=yes svall@${R} true`);
+  }
+  if (docker(['exec', '-d', R, '/opt/it/node/bin/node', '/opt/it/machine.mjs', 'link', '7070']).code !== 0) throw new Error('the link agent did not start');
+}
+
+function install() {
+  const setup = sh(L, 'rm -rf /tmp/it-release && mkdir /tmp/it-release && tar -xzf /opt/it/svall-companion-*.tar.gz -C /tmp/it-release'
+    + ' && /tmp/it-release/releases/*/bin/svall setup --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json');
+  const done = JSON.parse(setup.stdout).done.join('\n');
+  check('setup', new RegExp(`enable --now ${UNIT.replace('.', '\\.')}`).test(done), `setup did not start the daemon unit: ${done}`);
+  sh(L, `systemctl --user is-active ${UNIT}`);
+
+  const add = sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false });
+  const steps = lines(add.stdout).filter((e) => e.step && e.status !== 'start');
+  for (const s of steps) {
+    // there is no Codex on the machine, which is advice, not a failure
+    const advice = s.status === 'warn' && /codex/i.test(`${s.step} ${s.detail ?? ''}`);
+    check(`host add ${s.step}`, s.status === 'ok' || s.status === 'skip' || advice, `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+  }
+  for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'enrol', 'probe', 'registry']) {
+    check(`host add ${want}`, steps.some((s) => s.step === want), 'step missing');
+  }
+  check('host add exit', add.code === 0, () => `exit ${add.code}: ${add.stdout.trim().split('\n').at(-1)}`);
+  const ids = {
+    fleet: JSON.parse(sh(L, 'cat ~/.svall/fleet.json').stdout).id,
+    local: JSON.parse(sh(L, 'svall version --json').stdout).machineId,
+    remote: JSON.parse(sh(R, 'svall version --json').stdout).machineId,
+  };
+  const worker = JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout);
+  check('worker.json', worker.homeMachineId === ids.local && worker.fleetId === ids.fleet, () => brief({ ...worker, token: undefined }));
+  check('worker unit', /--worker/.test(sh(R, `systemctl --user cat ${UNIT}`).stdout), 'the fleet unit on remote does not run svalld --worker');
+  linked(ids);
+  return ids;
+}
+
+const linksOf = () => JSON.parse(sh(L, '/opt/it/node/bin/node /opt/it/machine.mjs machines', { ok: false }).stdout || '{}');
+
+/** Waits until the home's link to remote is up, and came up after `since` when given, as its state's machines say. */
+function linked(ids, since = 0, seconds = 120) {
+  for (let i = 0; i < seconds * 2; i++) {
+    const m = linksOf()[ids.remote];
+    if (m?.reachable && m.since > since) return;
+    sh(L, 'sleep 0.5');
+  }
+  throw new Error(`the home did not link remote within ${seconds} s`);
+}
+
+// a repository whose remote is a bare one on remote; a linked worktree with staged, unstaged, untracked and credential
+// changes, a stash, main with changes of its own, and a worktree for the fault matrix with a commit not on origin
+const GIT_FIXTURE = String.raw`set -eu
+git config --global user.name Integration
+git config --global user.email integration@example.invalid
+git config --global init.defaultBranch main
+mkdir -p ~/src && cd ~/src && git init -q app && cd app
+printf 'one\n' > a.txt && printf 'two\n' > b.txt && mkdir lib && printf 'three\n' > lib/c.txt
+printf 'node_modules/\n' > .gitignore
+git add -A && git commit -qm 'first commit'
+git remote add origin svall@REMOTE:git/app.git && git push -q -u origin main && git remote set-head origin main
+printf 'stashed\n' >> a.txt && git stash push -q -m 'fixture stash'
+git worktree add -q -b feature ../app-wt
+git worktree add -q -b faults ../app-faults
+printf 'staged\n' >> a.txt && git add a.txt
+printf 'unstaged\n' >> b.txt
+printf 'untracked\n' > untracked.txt
+mkdir -p node_modules/pkg && printf 'module.exports = 1;\n' > node_modules/pkg/index.js
+cd ../app-wt
+printf 'wt staged\n' >> lib/c.txt && git add lib/c.txt
+printf 'wt unstaged\n' >> a.txt
+printf 'wt untracked\n' > wt-untracked.txt
+printf 'SECRET=integration\n' > .env
+cd ../app-faults
+printf 'fault\n' > f.txt && git add f.txt && git commit -qm 'a commit not on origin'
+printf 'fault untracked\n' > f-untracked.txt
+`;
+
+function fixture(ids) {
+  sh(R, 'git init -q --bare --initial-branch=main ~/git/app.git');
+  sh(L, GIT_FIXTURE.replace('REMOTE', R));
+  const island = JSON.parse(sh(L, 'svall --json island create integration').stdout).id;
+  const fx = { island };
+  for (const [key, dir] of [['agent', 'src/app-wt'], ['kanban', 'src/app'], ['faults', 'src/app-faults']]) {
+    fx[key] = JSON.parse(sh(L, `svall --json robot new --island ${island} --cwd ~/${dir} --name ${key} --claude`).stdout).id;
+  }
+  for (const key of ['agent', 'kanban', 'faults']) sh(L, `svall robot wait ${fx[key]} --until idle --timeout 60`);
+  for (const key of ['agent', 'kanban', 'faults']) turn(ids, fx, key, 'first turn on local');
+  return fx;
+}
+
+// ---------------------------------------------------------------------------------------------- snapshots
+
+// `light` leaves out the repos, their files and the sessions
+function snap(machine, light = false) {
+  return JSON.parse(sh(machine, `/opt/it/node/bin/node /opt/it/machine.mjs snap${light ? ' --light' : ''}`).stdout);
+}
+
+const robotIn = (s, id) => s.robots.find?.((c) => c.id === id);
+const agentsOf = (s, id) => s.agents.filter((p) => p.robotId === id);
+const transcriptOf = (s, sessionId) => Object.entries(s.sessions).find(([k]) => k.endsWith(`/${sessionId}.jsonl`))?.[1];
+
+/** One prompt to a robot through the home's `svall`, which reaches whichever machine runs it, and the two records its session gains there. */
+function turn(ids, fx, key, text) {
+  const id = fx[key];
+  const where = (s) => (robotIn(s, id)?.machine === ids.remote ? R : L);
+  const home = snap(L);
+  const m = where(home);
+  const before = snap(m);
+  const sessionId = robotIn(home, id)?.agent?.sessionId;
+  sh(L, `svall robot run ${id} '${text}' && svall robot wait ${id} --until done,idle --timeout 60`);
+  const after = snap(m);
+  const [b, a] = [transcriptOf(before, sessionId)?.lines ?? 0, transcriptOf(after, sessionId)?.lines];
+  check(`${key} turn`, a === b + 2, () => `${key}'s session ${sessionId} on ${m}: ${b} -> ${a} records`);
+  return { machine: m, lines: a };
+}
+
+/** Polls a machine until `fn(snap)` holds, and answers that snapshot; the last one when it never does. */
+function until(machine, fn, seconds = 120, light = true) {
+  let s;
+  for (let i = 0; i < seconds * 2; i++) {
+    s = snap(machine, light);
+    if (fn(s)) return s;
+    sh(machine, 'sleep 0.5');
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------------------------- assertions
+
+// a repo's state as both machines' git shows it, its untracked credential files left out, which never travel
+const credential = /(^|\/)(\.env[^/]*|[^/]*\.pem|id_rsa[^/]*|[^/]*\.tfvars|[^/]*\.key|\.netrc)$/;
+const statusOf = (g) => g?.status.split('\n').filter((l) => l && !l.startsWith('# ') && !(l.startsWith('? ') && credential.test(l.slice(2))));
+// a checkout writes files by its daemon's umask, so a file's mode is compared by its executable bits, as git keeps it
+const treeOf = (t) => t && Object.fromEntries(Object.entries(t).filter(([k]) => !credential.test(k) && !/^node_modules(\/|$)/.test(k))
+  .map(([k, v]) => [k, v.t === 'd' ? { t: 'd' } : v.t === 'f' ? { ...v, mode: (parseInt(v.mode, 8) & 0o111).toString(8) } : v]));
+// a main checkout with nothing staged, changed or untracked but the worktrees inside it
+const cleanMain = (g) => statusOf(g)?.every((l) => /^\? \.claude\/worktrees\//.test(l));
+
+/** The worktree `rel` holds on `s` what it holds on `base`: branch, head, index, status and files, credentials aside. */
+function sameWork(label, s, base, rel) {
+  const [a, b] = [s.git[rel], base.git[rel]];
+  check(`${label} branch`, a && a.branch === b.branch && a.head === b.head, () => `${a?.branch} ${a?.head} vs ${b.branch} ${b.head}`);
+  check(`${label} index`, a?.index === b.index, () => `${brief(a?.index)} vs ${brief(b.index)}`);
+  check(`${label} status`, same(statusOf(a), statusOf(b)), () => `${brief(statusOf(a))} vs ${brief(statusOf(b))}`);
+  check(`${label} files`, same(treeOf(s.trees[rel]), treeOf(base.trees[rel])), () => treeDiff(treeOf(s.trees[rel]), treeOf(base.trees[rel])));
+  check(`${label} fsck`, a?.fsck === '', () => a?.fsck);
+}
+
+function treeDiff(a = {}, b = {}) {
+  const keys = [...new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])];
+  return keys.filter((k) => !same(a?.[k], b?.[k])).slice(0, 8).map((k) => `${k}: ${brief(a?.[k])} vs ${brief(b?.[k])}`).join('; ');
+}
+
+/**
+ * The robot runs on `machine` alone: the home's record and the worker's say so, one agent process on its session, and
+ * no window or agent elsewhere. Unless `resumed`, the process may be the one the robot had all along.
+ */
+function runsOn(label, ids, l, w, id, machine, sessionId, resumed = true) {
+  const [here, there] = machine === 'remote' ? [w, l] : [l, w];
+  const c = robotIn(l, id);
+  check(`${label} home record`, (c?.machine ?? 'local') === (machine === 'remote' ? ids.remote : 'local') && !c.moving, () => brief(c));
+  const wc = robotIn(w, id);
+  check(`${label} worker record`, machine === 'remote' ? wc?.machine === ids.remote : wc?.machine !== ids.remote, () => brief(wc));
+  const procs = agentsOf(here, id);
+  check(`${label} one agent`, procs.length === 1 && agentsOf(there, id).length === 0, () => `here ${brief(procs)}, there ${brief(agentsOf(there, id))}`);
+  const p = procs[0];
+  const resumes = p?.args.at(-2) === '--resume';
+  // a killed daemon loses the state it had not written yet, the agent's pid among it, until the agent's next hook
+  check(`${label} session`, p && (c?.agent?.pid ?? p.pid) === p.pid && (resumes ? p.args.at(-1) === sessionId : !resumed), () => `${brief(p?.args)} pid ${p?.pid}, the home holds ${c?.agent?.pid}`);
+  check(`${label} window`, here.windows.some((x) => x.name === id) && !there.windows.some((x) => x.name === id), () => `${brief(here.windows)} / ${brief(there.windows)}`);
+  check(`${label} agent up`, ['idle', 'done'].includes(c?.agent?.status) && (!sessionId || c.agent.sessionId === sessionId), () => brief(c?.agent));
+}
+
+function move(id, to) {
+  const r = sh(L, `svall robot move ${id} --machine ${to} --json </dev/null`, { ok: false });
+  let res;
+  try { res = JSON.parse(r.stdout); } catch { res = null; }
+  return { code: r.code, res, stderr: r.stderr };
+}
+
+// ---------------------------------------------------------------------------------------------- steps
+
+function moveDirty(ids, fx) {
+  const id = fx.agent;
+  const base = snap(L);
+  const sessionId = robotIn(base, id).agent.sessionId;
+  const m = move(id, 'remote');
+  check('moved', m.code === 0 && m.res?.ok && m.res.moveId, () => `exit ${m.code}: ${m.stderr.trim()} ${brief(m.res)}`);
+  check('sheet', m.res?.sheet?.stays?.includes('.env stays here') && m.res.sheet.clone === 'clone' && m.res.sheet.changedFiles === 2 && m.res.sheet.untrackedFiles === 1,
+    () => brief(m.res?.sheet));
+  const [l, w] = [snap(L), snap(R)];
+  const c = robotIn(l, id);
+  check('placed', c?.machine === ids.remote && c.placement?.generation === 1 && c.cwd === `${HOMES[R]}/src/app-wt`, () => brief(c));
+  check('left', c?.left?.machine === ids.local && c.left.path === `${HOMES[L]}/src/app-wt` && c.left.branch === 'feature' && c.left.moveId === m.res?.moveId, () => brief(c?.left));
+  const listed = JSON.parse(sh(L, 'svall --json robot list').stdout).find((r) => r.id === id);
+  check('robot list', listed?.machine === ids.remote, () => brief(listed));
+  check('journals', l.moves[m.res?.moveId]?.phase === 'done' && w.moves[m.res?.moveId]?.phase === 'done', () => brief([l.moves, w.moves]));
+  check('mac worktree locked', l.locks['src/app-wt'] === `moved to remote ${m.res?.moveId}`, () => brief(l.locks));
+  check('mac worktree kept', same(l.git['src/app-wt'].status, base.git['src/app-wt'].status) && same(l.trees['src/app-wt'], base.trees['src/app-wt']),
+    () => treeDiff(l.trees['src/app-wt'], base.trees['src/app-wt']));
+  check('stash stays', l.git['src/app'].stash === base.git['src/app'].stash && w.git['src/app'].stash === '', () => `${l.git['src/app'].stash} / ${w.git['src/app'].stash}`);
+  sameWork('worker worktree', w, base, 'src/app-wt');
+  check('no .env on worker', !Object.hasOwn(w.trees['src/app-wt'] ?? {}, '.env') && Object.hasOwn(l.trees['src/app-wt'], '.env'), () => brief(Object.keys(w.trees['src/app-wt'] ?? {})));
+  runsOn('worker', ids, l, w, id, 'remote', sessionId);
+  check('agent folder', agentsOf(w, id)[0]?.cwd === `${HOMES[R]}/src/app-wt`, () => brief(agentsOf(w, id)));
+  // the agent on the worker posts its hooks there, and the home's state shows them
+  const t = turn(ids, fx, 'agent', 'a turn on remote');
+  const a = robotIn(snap(L), id)?.agent;
+  check('hook reached home', a?.prompt === 'a turn on remote' && ['done', 'idle'].includes(a.status) && a.contextPct === t.lines, () => `${brief(a)}, ${t.lines} records`);
+  const read = sh(L, `svall robot read ${id} --transcript --lines 1`).stdout;
+  check('transcript read', read.includes('did: a turn on remote'), () => read.slice(-300));
+}
+
+function moveMain(ids, fx) {
+  const id = fx.kanban;
+  const wt = 'src/app/.claude/worktrees/kanban';
+  const base = snap(L);
+  const sessionId = robotIn(base, id).agent.sessionId;
+  const m = move(id, 'remote');
+  check('moved', m.code === 0 && m.res?.ok, () => `exit ${m.code}: ${m.stderr.trim()} ${brief(m.res)}`);
+  check('sheet', same(m.res?.sheet?.converts, { main: `${HOMES[L]}/src/app`, branch: 'kanban', changed: 3 }) && m.res.sheet.stays.includes('node_modules is not carried'),
+    () => brief(m.res?.sheet));
+  const [l, w] = [snap(L), snap(R)];
+  // main's changes are the new worktree's, staged and unstaged apart, and main is clean on its branch with its stash
+  check('mac worktree', l.git[wt]?.branch === 'refs/heads/kanban' && l.git[wt].head === base.git['src/app'].head && l.git[wt].index === base.git['src/app'].index
+    && same(statusOf(l.git[wt]), statusOf(base.git['src/app'])), () => `${brief(l.git[wt])} vs ${brief(base.git['src/app'])}`);
+  check('mac worktree locked', l.locks[wt] === `moved to remote ${m.res?.moveId}`, () => brief(l.locks));
+  check('mac main clean', cleanMain(l.git['src/app']) && l.git['src/app'].branch === 'refs/heads/main' && l.git['src/app'].head === base.git['src/app'].head,
+    () => brief(l.git['src/app']));
+  check('stash unchanged', l.git['src/app'].stash === base.git['src/app'].stash, () => `${l.git['src/app'].stash} vs ${base.git['src/app'].stash}`);
+  check('ignored stay', Object.hasOwn(l.trees['src/app'], 'node_modules/pkg/index.js'), () => brief(Object.keys(l.trees['src/app'])));
+  sameWork('worker worktree', w, l, wt);
+  check('worker main clean', cleanMain(w.git['src/app']) && w.git['src/app'].branch === 'refs/heads/main', () => brief(w.git['src/app']));
+  const c = robotIn(l, id);
+  check('placed', c?.machine === ids.remote && c.branch === 'kanban' && c.cwd === `${HOMES[R]}/${wt}`, () => brief(c));
+  runsOn('worker', ids, l, w, id, 'remote', sessionId);
+  check('agent folder', agentsOf(w, id)[0]?.cwd === `${HOMES[R]}/${wt}`, () => brief(agentsOf(w, id)));
+  turn(ids, fx, 'kanban', 'a turn on remote');
+}
+
+function workerRestart(ids, fx) {
+  const placed = [fx.agent, fx.kanban];
+  const before = snap(R);
+  const since = linksOf()[ids.remote]?.since;
+  sh(R, `systemctl --user restart ${UNIT}`);
+  linked(ids, since);
+  // a restart leaves the fleet's tmux, so each robot keeps its agent
+  const kept = snap(R);
+  for (const id of placed) check(`${id} kept`, same(agentsOf(kept, id).map((p) => p.pid), agentsOf(before, id).map((p) => p.pid)) && agentsOf(kept, id).length === 1, () => brief(agentsOf(kept, id)));
+  // a reboot ends tmux and every agent in it: the robots come back dormant, and the home revives them there
+  const since2 = linksOf()[ids.remote]?.since;
+  sh(R, `systemctl --user stop ${UNIT} && ~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock kill-server; sleep 1; systemctl --user start ${UNIT}`);
+  linked(ids, since2);
+  const l = until(L, (s) => placed.every((id) => !robotIn(s, id)?.tmux && robotIn(s, id)?.revive?.command?.includes('--resume')), 60);
+  for (const id of placed) check(`${id} dormant`, !robotIn(l, id)?.tmux && robotIn(l, id)?.revive?.command?.includes(`--resume ${robotIn(before, id)?.agent?.sessionId}`), () => brief(robotIn(l, id)));
+  check('no agents', placed.every((id) => agentsOf(snap(R), id).length === 0), 'an agent survived the reboot');
+  for (const id of placed) sh(L, `svall robot revive ${id} && svall robot wait ${id} --until idle,done --timeout 60`);
+  const [l2, w2] = [snap(L), snap(R)];
+  for (const id of placed) runsOn(`${id} revived`, ids, l2, w2, id, 'remote', robotIn(before, id)?.agent?.sessionId);
+  turn(ids, fx, 'agent', 'a turn after the reboot');
+}
+
+function homeDown(ids, fx) {
+  const id = fx.agent;
+  const pane = robotIn(snap(R), id)?.tmux?.paneId;
+  const was = robotIn(snap(L), id)?.agent;
+  sh(L, `systemctl --user stop ${UNIT}`);
+  // two turns typed into the agent's pane on the worker, as someone at that machine would
+  const texts = ['first turn while the home is down', 'second turn while the home is down'];
+  for (const text of texts) {
+    sh(R, `T=~/.local/share/svall/current/bin/tmux; $T -S ~/.svall/tmux.sock send-keys -t '${pane}' -l '${text}' && $T -S ~/.svall/tmux.sock send-keys -t '${pane}' Enter`);
+    const s = until(R, (x) => robotIn(x, id)?.agent?.prompt === text && robotIn(x, id).agent.status === 'done', 60);
+    check(`worker took "${text}"`, robotIn(s, id)?.agent?.prompt === text, () => brief(robotIn(s, id)?.agent));
+  }
+  const down = snap(R);
+  const wa = robotIn(down, id)?.agent;
+  const queued = down.outbox.entries.filter((e) => e.robotId === id && e.agent);
+  check('outbox holds the turns', down.outbox.last > down.outbox.acked && queued.some((e) => e.agent.prompt === texts[1]), () => brief(down.outbox));
+  // the home comes back, watched from its first answer: each change its replay makes to the robot's agent, in order
+  sh(L, 'rm -f /tmp/it-watch.ndjson');
+  if (docker(['exec', '-d', '-u', 'svall', '-e', `HOME=${HOMES[L]}`, L, '/opt/it/node/bin/node', '/opt/it/machine.mjs', 'watch', id, '--out', '/tmp/it-watch.ndjson', '--for', '120']).code !== 0) throw new Error('the watcher did not start');
+  sh(L, `sleep 0.5 && systemctl --user start ${UNIT}`);
+  const up = until(R, (x) => x.outbox.acked === down.outbox.last, 120);
+  check('outbox replayed', up.outbox.acked === down.outbox.last && up.outbox.entries.length === 0, () => brief(up.outbox));
+  const l = until(L, (x) => robotIn(x, id)?.agent?.prompt === texts[1], 30);
+  sh(L, 'pkill -f "^/opt/it/node/bin/node /opt/it/machine.mjs watch" || true');
+  const seen = lines(sh(L, 'cat /tmp/it-watch.ndjson').stdout);
+  fs.writeFileSync(path.join(out, 'home-down.watch.ndjson'), seen.map((x) => JSON.stringify(x)).join('\n'));
+  const collapse = (xs) => xs.map((x) => JSON.stringify(x)).filter((x, i, a) => i === 0 || x !== a[i - 1]);
+  const agentLine = (a) => ({ status: a?.status, contextPct: a?.contextPct ?? null, prompt: a?.prompt ?? null });
+  const want = collapse([agentLine(was), ...queued.map((e) => agentLine(e.agent))]);
+  const got = collapse(seen.filter((x) => x.agent).map((x) => agentLine(x.agent)));
+  check('watched from the start', got[0] === want[0], () => `first seen ${got[0]}, the home had ${want[0]}`);
+  check('in order, once', same(got, want), () => `seen ${got.join(' ')}\n      outbox ${want.join(' ')}`);
+  const a = robotIn(l, id)?.agent;
+  check('home state', a?.status === wa.status && a.contextPct === wa.contextPct && a.prompt === texts[1], () => `${brief(a)} vs worker ${brief(wa)}`);
+}
+
+function returnDirty(ids, fx) {
+  const id = fx.agent;
+  const w0 = snap(R);
+  const sessionId = robotIn(w0, id)?.agent?.sessionId;
+  sh(L, 'printf "edited on the Mac\\n" >> ~/src/app-wt/b.txt');
+  const refused = sh(L, `svall robot move ${id} --machine local </dev/null`, { ok: false });
+  check('refused', refused.code === 2 && refused.stderr === `refused: changes on this Mac in ${HOMES[L]}/src/app-wt since the move\n  → stash or commit them\n`,
+    () => `exit ${refused.code}: ${JSON.stringify(refused.stderr)}`);
+  check('still on worker', robotIn(snap(L), id)?.machine === ids.remote && agentsOf(snap(R), id).length === 1, 'the refused return moved it');
+  // the edit is undone; what the robot left there before it moved stays as it was
+  sh(L, 'cd ~/src/app-wt && git checkout -- b.txt');
+  const m = move(id, 'local');
+  check('returned', m.code === 0 && m.res?.ok, () => `exit ${m.code}: ${m.stderr.trim()} ${brief(m.res)}`);
+  const [l, w] = [snap(L), snap(R)];
+  check('branch sha', l.git['src/app-wt'].head === w.git['src/app-wt'].head && l.git['src/app-wt'].branch === 'refs/heads/feature', () => `${l.git['src/app-wt'].head} vs ${w.git['src/app-wt'].head}`);
+  sameWork('mac worktree', l, w0, 'src/app-wt');
+  check('.env kept', Object.hasOwn(l.trees['src/app-wt'], '.env'), '.env is gone from the Mac');
+  check('mac unlocked', l.locks['src/app-wt'] === null, () => brief(l.locks));
+  check('worker locked', /^moved to .+ mv_[0-9a-z]{10}$/.test(w.locks['src/app-wt'] ?? '') && w.locks['src/app-wt'].endsWith(m.res?.moveId), () => brief(w.locks));
+  const c = robotIn(l, id);
+  check('home record', !c?.machine && c?.left?.machine === ids.remote && c.left.path === `${HOMES[R]}/src/app-wt` && c.cwd === `${HOMES[L]}/src/app-wt`, () => brief(c));
+  check('journals', l.moves[m.res?.moveId]?.phase === 'done' && w.moves[m.res?.moveId]?.phase === 'done', () => brief([l.moves[m.res?.moveId], w.moves[m.res?.moveId]]));
+  runsOn('mac', ids, l, w, id, 'local', sessionId);
+  check('session back', transcriptOf(l, sessionId)?.sha === transcriptOf(w0, sessionId)?.sha, () => `${brief(transcriptOf(l, sessionId))} vs ${brief(transcriptOf(w0, sessionId))}`);
+  turn(ids, fx, 'agent', 'a turn back on the Mac');
+}
+
+// ---------------------------------------------------------------------------------------------- the fault matrix
+
+// a drop lands only where the move needs the link: on the way back the prepare is this Mac's own, and the move runs on
+const settlesDone = (fault, at, dir) => !PRE.has(at) || (fault === 'drop' && dir === 'back' && at === 'prepare');
+
+let n = 0;
+/** One move of `faults` from the home's driver, out to remote or back, with a fault at a phase. */
+function drive(dir, fault, at) {
+  const label = `${String(++n).padStart(2, '0')}-${fault ?? 'clean'}${at ? `-${at}` : ''}-${dir}`;
+  const f = fault ? ` --fault ${fault} --at ${at}` : '';
+  const r = sh(L, `IT_LINK=${R}:7070 /opt/it/node/bin/node /opt/it/machine.mjs drive ${dir === 'out' ? 'move' : 'return'} ${ctx.fx.faults} --machine remote${f}`);
+  const summary = JSON.parse(r.stdout.trim().split('\n').at(-1));
+  fs.writeFileSync(path.join(out, `${label}.summary.json`), `${JSON.stringify(summary, null, 2)}\n`);
+  return { label, summary };
+}
+
+const ctx = { fx: undefined, at: 'local' };
+
+/** Waits for the move to end: after the restart a kill brings, once a dropped link is back, or, when it stalls, after `--retry` or a restart. */
+function settle(ids, moveId, fault) {
+  const ended = (s) => ['done', 'aborted'].includes(s.moves[moveId]?.phase);
+  let how = { kill: 'after the restart', drop: 'once the link was back' }[fault] ?? 'on its own';
+  let s = until(L, (x) => ended(x) && x.machines[ids.remote]?.reachable, 150);
+  if (!ended(s)) {
+    const c = robotIn(snap(L), ctx.fx.faults);
+    if (c?.moving?.error) {
+      how = 'after --retry';
+      sh(L, `svall robot move ${ctx.fx.faults} --retry </dev/null`, { ok: false });
+    } else {
+      how = 'after a restart';
+      sh(L, `systemctl --user restart ${UNIT}`);
+    }
+    s = until(L, (x) => ended(x) && x.machines[ids.remote]?.reachable, 150);
+  }
+  return { s, how };
+}
+
+function reposition(ids, to) {
+  const d = drive(to === 'remote' ? 'out' : 'back');
+  check('reposition', d.summary.exit === 0, () => brief(d.summary));
+  ctx.at = to;
+  settle(ids, d.summary.moveId);
+}
+
+function scenario(ids, fault, at, dir) {
+  const id = ctx.fx.faults;
+  const want = settlesDone(fault, at, dir) ? 'done' : 'aborted';
+  const [src, dst] = dir === 'out' ? ['local', 'remote'] : ['remote', 'local'];
+  const sessionId = robotIn(snap(L), id)?.agent?.sessionId;
+  const d = drive(dir, fault, at);
+  const { summary } = d;
+  check('fault landed', summary.trigger?.phase === at, () => `wanted ${at}: ${brief({ trigger: summary.trigger, phases: summary.phases, exit: summary.exit, stderr: summary.stderr })}`);
+  const { s, how } = settle(ids, summary.moveId, fault);
+  const phase = s.moves[summary.moveId]?.phase;
+  const w = snap(R);
+  const where = phase === 'done' ? dst : src;
+  ctx.at = where;
+  check('journal ended', phase === want, () => `${phase}, wanted ${want}: ${brief(s.moves[summary.moveId])}`);
+  check('worker journal', !w.moves[summary.moveId] || w.moves[summary.moveId].phase === phase, () => brief(w.moves[summary.moveId]));
+  runsOn('after', ids, snap(L), w, id, where, sessionId, phase === 'done');
+  say(`   ${fault} at ${at}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}: landed at ${summary.trigger?.phase ?? 'none'} in ${summary.trigger?.ms ?? '-'} ms; ${phase} ${how}, runs on ${where}`);
+}
+
+const ORDER = PHASES.flatMap((at) => [['kill', at, 'out'], ['drop', at, 'out'], ['kill', at, 'back'], ['drop', at, 'back']]);
+
+function chosen(spec = 'all') {
+  if (spec === 'none') return [];
+  if (spec === 'all') return ORDER;
+  const want = spec.split(',');
+  const known = new Set(['kill', 'drop', ...ORDER.map(([f, at]) => `${f}@${at}`)]);
+  const odd = want.filter((w) => !known.has(w));
+  if (odd.length) throw new Error(`unknown scenario ${odd.join(', ')}: use all, none, kill, drop or <kill|drop>@<${PHASES.join('|')}>`);
+  return ORDER.filter(([f, at]) => want.includes(f) || want.includes(`${f}@${at}`));
+}
+
+function faults(ids, list) {
+  for (const [fault, at, dir] of list) {
+    const from = dir === 'out' ? 'local' : 'remote';
+    if (ctx.at !== from) step(`reposition -> ${from}`, () => reposition(ids, from));
+    step(`${fault} at ${at}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'} (${PRE.has(at) ? 'pre' : 'post'}-commit)`, () => scenario(ids, fault, at, dir));
+  }
+}
+
+// ---------------------------------------------------------------------------------------------- the run
+
+const STEPS = { 1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree' };
+const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 6, not ${o.steps}`);
+// the home's stop and the return work with the robot the first move placed
+if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
+
+let code = 0;
+try {
+  const scenarios = chosen(o.scenarios);
+  say(`logs in ${out}`);
+  step('two machines', up);
+  const ids = step('install on local, host add remote', install);
+  say(`   fleet ${ids.fleet}; local ${ids.local}; remote ${ids.remote}`);
+  const fx = step('fixture', () => fixture(ids));
+  ctx.fx = fx;
+  say(`   robots: agent ${fx.agent}, kanban ${fx.kanban}, faults ${fx.faults}`);
+  if (steps.includes(1)) step(`1. ${STEPS[1]}`, () => moveDirty(ids, fx));
+  if (steps.includes(2)) step(`2. ${STEPS[2]}`, () => moveMain(ids, fx));
+  if (steps.includes(3)) step(`3. ${STEPS[3]}`, () => workerRestart(ids, fx));
+  if (steps.includes(4)) step(`4. ${STEPS[4]}`, () => homeDown(ids, fx));
+  if (steps.includes(5)) faults(ids, scenarios);
+  if (steps.includes(6)) step(`6. ${STEPS[6]}`, () => returnDirty(ids, fx));
+  say('ALL PASS');
+} catch (e) {
+  say(`FAILED: ${e.message}`);
+  code = 1;
+} finally {
+  for (const m of [L, R]) {
+    const logs = sh(m, 'tail -n 600 ~/.svall/svalld.log ~/.local/share/svall/log/*.log 2>/dev/null', { ok: false }).stdout;
+    fs.writeFileSync(path.join(out, `${m}.daemon.log`), logs);
+  }
+  if (!o.keep) {
+    for (const m of [L, R]) docker(['rm', '-f', m]);
+    docker(['network', 'rm', NET]);
+  }
+  if (companions) fs.rmSync(companions, { recursive: true, force: true });
+}
+process.exitCode = code;
