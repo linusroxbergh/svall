@@ -1,7 +1,7 @@
 import { frontmatter, withDescription } from '@svall/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { app } from '../boot.js';
-import { change, editBuffer, focusBuffer, getBuffer, select, subscribeBuffer } from '../ide/buffers.js';
+import { changes, editBuffer, focusBuffer, getBuffer, select, subscribeBuffer } from '../ide/buffers.js';
 import { bodyStart } from './docEditor.js';
 
 /** A doc's description, the line its agent decides by, written into the frontmatter as it is typed; an agent profile's is the line its picker shows. */
@@ -13,7 +13,7 @@ export function DocHeader({ id, path, focus, profile = false }: { id: string; pa
   const set = (value: string) => {
     const was = getBuffer(id, path)?.state.doc.toString();
     if (was === undefined) return;
-    const dirty = editBuffer(id, path, { changes: change(was, withDescription(was, value)) });
+    const dirty = editBuffer(id, path, { changes: changes(was, withDescription(was, value)) });
     app.store.getState().markFile(id, path, { dirty });
   };
   const toBody = () => {

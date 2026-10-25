@@ -14,10 +14,20 @@ test('a refreshed diff changes its view in place, so a stretch the user unfolded
   const editor = container.querySelector<HTMLElement>('.cm-editor')!;
   fireEvent.click(container.querySelector('.cm-collapsedLines')!);
   expect(container.querySelector('.cm-collapsedLines')).toBeNull();
-  rerender(<Diff path="notes" before={lines('a')} after={lines('b', 'END')} />);
+  // the refresh changes the first line only, outside the stretch that was unfolded
+  rerender(<Diff path="notes" before={lines('A')} after={lines('c')} />);
   expect(container.querySelector('.cm-editor')).toBe(editor);
   expect(container.querySelector('.cm-collapsedLines')).toBeNull();
   const state = EditorView.findFromDOM(editor)!.state;
-  expect(state.doc.toString()).toBe(lines('b', 'END'));
-  expect(getOriginalDoc(state).toString()).toBe(lines('a'));
+  expect(state.doc.toString()).toBe(lines('c'));
+  expect(getOriginalDoc(state).toString()).toBe(lines('A'));
+});
+
+test('sides that arrive while the language still loads are the ones shown', async () => {
+  const { container, rerender } = render(<Diff path="notes.ts" before={lines('a')} after={lines('b')} />);
+  rerender(<Diff path="notes.ts" before={lines('A')} after={lines('c')} />);
+  await waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull());
+  const state = EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!.state;
+  expect(state.doc.toString()).toBe(lines('c'));
+  expect(getOriginalDoc(state).toString()).toBe(lines('A'));
 });

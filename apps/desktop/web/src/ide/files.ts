@@ -41,9 +41,11 @@ export function placeCursor(id: string, path: string, find: string): void {
 export function saveFile(d: FilesDeps, id: string, path: string, over = false): Promise<void> {
   const k = key(id, path);
   const prev = saves.get(k);
-  const p = prev ? prev.then(() => write(d, id, path, over)) : write(d, id, path, over);
+  const run = () => write(d, id, path, over);
+  const p = prev ? prev.then(run, run) : run();
   saves.set(k, p);
-  void p.then(() => { if (saves.get(k) === p) saves.delete(k); });
+  const settled = () => { if (saves.get(k) === p) saves.delete(k); };
+  void p.then(settled, settled);
   return p;
 }
 
@@ -100,7 +102,7 @@ export async function checkDisk(d: FilesDeps, id: string): Promise<void> {
     checks.set(b, n);
     let disk: { text: string; mtimeMs: number; root: string };
     try { disk = await d.api.call('fs.read', { id, path }); } catch { return; }
-    // a tab opened again meanwhile holds another buffer, and a later check read a newer disk
+    // a tab opened again meanwhile holds another buffer; a check started since answers instead
     if (getBuffer(id, path) !== b || checks.get(b) !== n) return;
     // the robot may have moved to another checkout, where the same mtime is still another file;
     // back where the buffer was read, a conflict flagged while it was away no longer stands

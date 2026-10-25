@@ -3,7 +3,7 @@ import { ChangeSet, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useEffect, useRef } from 'react';
 import { basename } from '../paths.js';
-import { change } from './buffers.js';
+import { changes } from './buffers.js';
 import { languageFor, readOnlyExtensions } from './codemirror.js';
 
 type Props = { path: string; before?: string; after?: string; binary?: true };
@@ -38,8 +38,8 @@ export function Diff({ path, before, after, binary }: Props) {
     if (!v) return;
     const original = getOriginalDoc(v.state).toString();
     v.dispatch({
-      changes: change(v.state.doc.toString(), after ?? ''),
-      effects: originalDocChangeEffect(v.state, ChangeSet.of(change(original, before ?? ''), original.length)),
+      changes: changes(v.state.doc.toString(), after ?? ''),
+      effects: originalDocChangeEffect(v.state, ChangeSet.of(changes(original, before ?? ''), original.length)),
     });
   }, [before, after]);
 
