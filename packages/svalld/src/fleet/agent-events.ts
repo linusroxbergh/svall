@@ -106,12 +106,14 @@ export class AgentEvents {
     const server = this.check(pid, seen?.server);
     if (this.servers.size > 100) this.servers.clear();
     this.servers.set(pid, { server, at: Date.now() });
+    // a ps read that failed is no verdict: the pid's next event asks again
+    server.catch(() => { if (this.servers.get(pid)?.server === server) this.servers.delete(pid); });
     return server;
   }
 
   private async check(pid: number, before?: Promise<boolean>): Promise<boolean> {
     const server = underCodexServer(pid, await this.processes(pid));
-    if (server && !(await before)) this.deps.log.info(`hooks from Codex's shared server (pid ${pid}) ignored: they name no terminal of their own`);
+    if (server && !(await before?.catch(() => false))) this.deps.log.info(`hooks from Codex's shared server (pid ${pid}) ignored: they name no terminal of their own`);
     return server;
   }
 

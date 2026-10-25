@@ -44,7 +44,10 @@ export function brand(file: string, text: string, fleet?: string, startUrl?: str
 
 export function serveBundle(req: IncomingMessage, res: ServerResponse, dir: string, fleetName?: string, startUrl?: string): void {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
-  const file = resolveFile(dir, new URL(req.url ?? '/', 'http://svalld').pathname);
+  // a target starting with // names a host, and one such as //[ is no URL
+  const url = URL.parse(req.url ?? '/', 'http://svalld');
+  if (!url) { res.writeHead(400).end(); return; }
+  const file = resolveFile(dir, url.pathname);
   if (!file) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(fs.existsSync(path.join(dir, 'index.html')) ? 'Not found' : NOT_BUILT); return; }
   // only Vite's assets/ carries a content hash, so only it can be pinned; everything else revalidates
   const hashed = path.relative(dir, file).startsWith(`assets${path.sep}`);
