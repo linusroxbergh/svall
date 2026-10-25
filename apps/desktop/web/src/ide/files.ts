@@ -1,12 +1,15 @@
 import type { Api } from '../api.js';
 import { basename } from '../paths.js';
 import type { AppStore } from '../store/index.js';
-import { dropBuffer, getBuffer, isDirty, loadBuffer, markSaved, replaceText, select } from './buffers.js';
+import { dropBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
 import { editorExtensions, languageFor } from './codemirror.js';
 
 type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
 const saveListeners = new Set<(d: FilesDeps, id: string, path: string) => void>();
+const saves = new Map<string, Promise<void>>();
+// the latest disk check started for each buffer
+const checks = new WeakMap<Buffer, number>();
 
 /** Runs after every successful write, whichever call made it — autosave, Cmd-S, or Overwrite. */
 export function onSaved(listener: (d: FilesDeps, id: string, path: string) => void): void {
@@ -33,14 +36,26 @@ export function placeCursor(id: string, path: string, find: string): void {
   if (at >= 0) select(id, path, at);
 }
 
-/** Writes the buffer if the disk still has the mtime it was read at, or `over`, the newer one Overwrite writes over. */
-export async function saveFile(d: FilesDeps, id: string, path: string, over?: number): Promise<void> {
+/** Writes the buffer if the disk still has the mtime it was read at, or with `over`, the newer one Overwrite writes over.
+ *  A save made while another is out goes after it, with the mtime that one left. */
+export function saveFile(d: FilesDeps, id: string, path: string, over = false): Promise<void> {
+  const k = key(id, path);
+  const prev = saves.get(k);
+  const run = () => write(d, id, path, over);
+  const p = prev ? prev.then(run, run) : run();
+  saves.set(k, p);
+  const settled = () => { if (saves.get(k) === p) saves.delete(k); };
+  void p.then(settled, settled);
+  return p;
+}
+
+async function write(d: FilesDeps, id: string, path: string, over: boolean): Promise<void> {
   const b = getBuffer(id, path);
   if (!b) return;
   // the text that goes out is the text that counts as saved; typing goes on meanwhile
   const doc = b.state.doc;
   try {
-    const r = await d.api.call('fs.write', { id, path, text: doc.toString(), mtimeMs: over ?? b.mtimeMs, root: b.root });
+    const r = await d.api.call('fs.write', { id, path, text: doc.toString(), mtimeMs: over ? (b.diskMtimeMs ?? b.mtimeMs) : b.mtimeMs, root: b.root });
     // the tab may have closed meanwhile, and took its flags with it
     if (getBuffer(id, path) !== b) return;
     if (r.conflict) { b.diskMtimeMs = r.mtimeMs; d.store.getState().markFile(id, path, { conflict: true }); return; }
@@ -67,10 +82,8 @@ export async function reloadFile(d: FilesDeps, id: string, path: string): Promis
 }
 
 /** Saves the buffer over whatever the disk has now. */
-export async function overwriteFile(d: FilesDeps, id: string, path: string): Promise<void> {
-  const b = getBuffer(id, path);
-  if (!b) return;
-  await saveFile(d, id, path, b.diskMtimeMs ?? b.mtimeMs);
+export function overwriteFile(d: FilesDeps, id: string, path: string): Promise<void> {
+  return saveFile(d, id, path, true);
 }
 
 /** Closes the tab and forgets the buffer, edits and all. */
@@ -85,8 +98,12 @@ export async function checkDisk(d: FilesDeps, id: string): Promise<void> {
   await Promise.all(open.map(async (path) => {
     const b = getBuffer(id, path);
     if (!b) return;
+    const n = (checks.get(b) ?? 0) + 1;
+    checks.set(b, n);
     let disk: { text: string; mtimeMs: number; root: string };
     try { disk = await d.api.call('fs.read', { id, path }); } catch { return; }
+    // a tab opened again meanwhile holds another buffer; a check started since answers instead
+    if (getBuffer(id, path) !== b || checks.get(b) !== n) return;
     // the robot may have moved to another checkout, where the same mtime is still another file;
     // back where the buffer was read, a conflict flagged while it was away no longer stands
     if (disk.mtimeMs === b.mtimeMs && disk.root === b.root) {

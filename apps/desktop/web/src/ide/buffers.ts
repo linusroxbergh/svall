@@ -1,3 +1,4 @@
+import { diff } from '@codemirror/merge';
 import { EditorState, Text, type Extension, type TransactionSpec } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 
@@ -75,11 +76,18 @@ export function focusBuffer(id: string, path: string): boolean {
   return view !== undefined;
 }
 
+/** The changes that turn the editor's text `a` into `b`, spanning only what differs, so a cursor or scroll position outside them stays put. */
+export function changes(a: string, b: string): { from: number; to: number; insert: string }[] {
+  // the editor holds LF only, so text read from a CRLF file is compared as the editor would hold it
+  const to = b.replace(/\r\n?/g, '\n');
+  return diff(a, to, { scanLimit: 500 }).map((c) => ({ from: c.fromA, to: c.toA, insert: to.slice(c.fromB, c.toB) }));
+}
+
 /** Puts the disk's text in the buffer as one change, so undo can bring the edits back. */
 export function replaceText(id: string, path: string, text: string, mtimeMs: number): void {
   const b = buffers.get(key(id, path));
   if (!b) return;
-  const spec = { changes: { from: 0, to: b.state.doc.length, insert: text } };
+  const spec = { changes: changes(b.state.doc.toString(), text) };
   const view = views.get(key(id, path));
   if (view) { view.dispatch(spec); b.state = view.state; }
   else { b.state = b.state.update(spec).state; notify(key(id, path), b.state.doc.toString()); }

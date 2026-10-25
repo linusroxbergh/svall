@@ -233,6 +233,37 @@ test('a robot in a worktree opens Changes against main', async ({ page, svall })
   await expect(page.getByTestId('change-row')).toHaveCount(0);
 });
 
+test('following a file an agent writes keeps the cursor and the scroll', async ({ page, svall }) => {
+  const dir = repo();
+  const lines = Array.from({ length: 300 }, (_, i) => `export const line${i} = ${i};`).join('\n') + '\n';
+  fs.writeFileSync(path.join(dir, 'src/big.ts'), lines);
+  const island = await svall.api.call('island.create', { name: svall.uniq('ide') });
+  await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'coder' });
+  await svall.open();
+  await page.locator('.kc').first().dblclick();
+  await page.getByTestId('pane-left-files').click();
+  await page.getByTestId('tree-src').click();
+  await page.getByTestId('tree-src/big.ts').click();
+  const editor = page.getByTestId('editor');
+  await expect(editor.locator('.cm-content')).toContainText('line0 = 0');
+  // the search panel puts the cursor on line 150, far down the file
+  await editor.locator('.cm-content').click();
+  await page.keyboard.press('Meta+f');
+  await page.keyboard.type('line150 =');
+  await page.keyboard.press('Enter');
+  await editor.locator('.cm-panel.cm-search button[name="close"]').click();
+  await expect(editor.locator('.cm-activeLine')).toContainText('line150 =');
+  const scroller = editor.locator('.cm-scroller');
+  const top = await scroller.evaluate((el) => el.scrollTop);
+  expect(top).toBeGreaterThan(1000);
+  // the agent writes at both ends of the file
+  fs.writeFileSync(path.join(dir, 'src/big.ts'), '// header\n' + lines + '// footer\n');
+  await expect.poll(() => scroller.evaluate((el) => el.scrollHeight), { timeout: 10_000 }).toBeGreaterThan(await scroller.evaluate((el) => el.scrollHeight));
+  await expect(editor.locator('.cm-activeLine')).toContainText('line150 =');
+  expect(Math.abs(await scroller.evaluate((el) => el.scrollTop) - top)).toBeLessThan(60);
+  await expect(page.getByTestId('file-tab-src/big.ts')).toHaveAttribute('data-dirty', 'false');
+});
+
 test('a dirty buffer meets a changed disk with a banner, and a dirty tab asks before closing', async ({ page, svall }) => {
   const dir = repo();
   const island = await svall.api.call('island.create', { name: svall.uniq('ide') });

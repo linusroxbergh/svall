@@ -30,6 +30,17 @@ function fakeApi(disk: Disk, at = { root: '/r' }) {
   return { api, calls, writes };
 }
 
+// holds every fs.read answer until the test lets it go, so answers can come late or out of order
+function slowReads(api: Pick<Api, 'call'>) {
+  const held: (() => void)[] = [];
+  const call = api.call as (method: string, p: unknown) => Promise<unknown>;
+  const slow = { call: (method: string, p: unknown) => {
+    const r = call(method, p);
+    return method === 'fs.read' ? new Promise((go) => held.push(() => go(r))) : r;
+  } } as unknown as Pick<Api, 'call'>;
+  return { api: slow, held };
+}
+
 const edit = (id: string, path: string, insert: string) => {
   const b = getBuffer(id, path)!;
   setState(id, path, b.state.update({ changes: { from: b.state.doc.length, insert } }).state);
@@ -255,6 +266,67 @@ describe('files', () => {
     await saveFile(d, 'c1', 'a.ts');
     expect(writes.at(-1)).toEqual({ path: 'a.ts', root: '/proj-a' });
     expect(disk['a.ts'].text).toBe('a\nmine\n');
+  });
+
+  it('leaves a tab opened again during a disk check to its own text and edits', async () => {
+    const disk: Disk = { 'a.ts': { text: 'one\n', mtimeMs: 1 } };
+    const { api } = fakeApi(disk);
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const d = { api, store };
+    const slow = slowReads(api);
+    await openFile(d, 'c1', 'a.ts');
+    disk['a.ts'] = { text: 'two\n', mtimeMs: 2 };
+    const checking = checkDisk({ api: slow.api, store }, 'c1');
+    closeFile(d, 'c1', 'a.ts');
+    await openFile(d, 'c1', 'a.ts');
+    edit('c1', 'a.ts', 'mine\n');
+    store.getState().markFile('c1', 'a.ts', { dirty: true });
+    slow.held[0]();
+    await checking;
+    expect(getBuffer('c1', 'a.ts')!.state.doc.toString()).toBe('two\nmine\n');
+    expect(isDirty(getBuffer('c1', 'a.ts')!)).toBe(true);
+    expect(store.getState().ide.c1.dirty).toEqual(['a.ts']);
+  });
+
+  it('keeps the newest disk text when an earlier check answers last', async () => {
+    const disk: Disk = { 'a.ts': { text: 'one\n', mtimeMs: 1 } };
+    const { api } = fakeApi(disk);
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const slow = slowReads(api);
+    const d = { api: slow.api, store };
+    await openFile({ api, store }, 'c1', 'a.ts');
+    disk['a.ts'] = { text: 'two\n', mtimeMs: 2 };
+    const earlier = checkDisk(d, 'c1');
+    disk['a.ts'] = { text: 'three\n', mtimeMs: 3 };
+    const later = checkDisk(d, 'c1');
+    slow.held[1]();
+    await later;
+    slow.held[0]();
+    await earlier;
+    expect(getBuffer('c1', 'a.ts')!.state.doc.toString()).toBe('three\n');
+    expect(getBuffer('c1', 'a.ts')!.mtimeMs).toBe(3);
+  });
+
+  it('sends a save made before the last one is answered after it, so pressing Cmd-S or Overwrite twice makes no conflict', async () => {
+    const disk: Disk = { 'a.ts': { text: 'one\n', mtimeMs: 1 } };
+    const { api } = fakeApi(disk);
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const d = { api, store };
+    await openFile(d, 'c1', 'a.ts');
+    edit('c1', 'a.ts', 'two\n');
+    await Promise.all([saveFile(d, 'c1', 'a.ts'), saveFile(d, 'c1', 'a.ts')]);
+    expect(disk['a.ts'].text).toBe('one\ntwo\n');
+    expect(store.getState().ide.c1?.conflict ?? []).toEqual([]);
+    edit('c1', 'a.ts', 'mine\n');
+    disk['a.ts'] = { text: 'theirs\n', mtimeMs: 9 };
+    await saveFile(d, 'c1', 'a.ts');
+    expect(store.getState().ide.c1.conflict).toEqual(['a.ts']);
+    await Promise.all([overwriteFile(d, 'c1', 'a.ts'), overwriteFile(d, 'c1', 'a.ts')]);
+    expect(disk['a.ts'].text).toBe('one\ntwo\nmine\n');
+    expect(store.getState().ide.c1).toMatchObject({ conflict: [], dirty: [] });
   });
 
   it('says so when Reload finds the file gone', async () => {

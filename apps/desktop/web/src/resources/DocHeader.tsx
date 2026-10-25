@@ -1,17 +1,8 @@
 import { frontmatter, withDescription } from '@svall/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { app } from '../boot.js';
-import { editBuffer, focusBuffer, getBuffer, select, subscribeBuffer } from '../ide/buffers.js';
+import { changes, editBuffer, focusBuffer, getBuffer, select, subscribeBuffer } from '../ide/buffers.js';
 import { bodyStart } from './docEditor.js';
-
-// the one change that turns a into b, so the edit stays in the frontmatter and leaves the body's cursor be
-function change(a: string, b: string): { from: number; to: number; insert: string } {
-  let from = 0;
-  while (from < a.length && from < b.length && a[from] === b[from]) from++;
-  let end = 0;
-  while (end < a.length - from && end < b.length - from && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
-  return { from, to: a.length - end, insert: b.slice(from, b.length - end) };
-}
 
 /** A doc's description, the line its agent decides by, written into the frontmatter as it is typed; an agent profile's is the line its picker shows. */
 export function DocHeader({ id, path, focus, profile = false }: { id: string; path: string; focus: boolean; profile?: boolean }) {
@@ -22,7 +13,7 @@ export function DocHeader({ id, path, focus, profile = false }: { id: string; pa
   const set = (value: string) => {
     const was = getBuffer(id, path)?.state.doc.toString();
     if (was === undefined) return;
-    const dirty = editBuffer(id, path, { changes: change(was, withDescription(was, value)) });
+    const dirty = editBuffer(id, path, { changes: changes(was, withDescription(was, value)) });
     app.store.getState().markFile(id, path, { dirty });
   };
   const toBody = () => {
