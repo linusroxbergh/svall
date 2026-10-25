@@ -39,6 +39,7 @@ import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PrepareService } from './placement/prepare.js';
 import { Router, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
+import { releaseVersion } from './release.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
@@ -241,7 +242,7 @@ async function start(opts: Options): Promise<Daemon> {
   let version = Date.now();
   const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log);
   const links = worker ? undefined : new HomeLinks({
-    paths, store, log, release: runtimeVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
+    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },
     onEvent: async (kind, data, machine) => {
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`${machine} sent ${kind}, which this svalld does not take`);
@@ -255,7 +256,7 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
   const connection = worker && new HomeConnection({
-    paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: runtimeVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+    paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
   const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
@@ -278,7 +279,7 @@ async function start(opts: Options): Promise<Daemon> {
     try { return namedGateway(paths); } catch { return config.gatewayMachineId; }
   };
   const placement = links && new Placement({
-    store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, gateway: gatewayNow, release: runtimeVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
+    store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, gateway: gatewayNow, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
   });
   const authority = (): Authority | undefined => {
     if (off.has('gateway')) return undefined;

@@ -55,7 +55,7 @@ function machines() {
 type Machines = ReturnType<typeof machines>;
 
 type Opts = {
-  gateway?: boolean; reachable?: boolean; release?: string; local?: AgentProbe[]; far?: AgentAdapter[];
+  gateway?: boolean; reachable?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
   probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>;
 };
 
@@ -78,7 +78,7 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     store: { state },
     me: H,
     git: handoverGit,
-    release: '0.17.0',
+    release: o.mine ?? '0.17.0',
     homedir: t.mac,
     gateway: () => (o.gateway ? W : undefined),
     agents: async () => o.local ?? [{ kind: 'claude', version: CLAUDE, home: `${t.mac}/.claude`, loggedIn: true, hooks: true }],
@@ -258,6 +258,14 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(await refusal(depsOf(t, [shellIn(t)], { release: '0.18.0' })))
       .toEqual({ reason: 'linus-vault runs 0.18.0, this Mac 0.17.0', action: 'update svall on this Mac', details: [] });
     await sheet(depsOf(t, [shellIn(t)]));
+  });
+
+  it('check 1 compares the release svall version names on each machine: two builds of one release pass, as do two dev builds, and a dev Mac refuses a release', async () => {
+    const t = machines();
+    await sheet(depsOf(t, [shellIn(t)], { mine: 'v0.17.1', release: 'v0.17.1' }));
+    await sheet(depsOf(t, [shellIn(t)], { mine: 'dev', release: 'dev' }));
+    expect(await refusal(depsOf(t, [shellIn(t)], { mine: 'dev', release: 'v0.17.1' })))
+      .toEqual({ reason: 'linus-vault runs v0.17.1, this Mac dev', action: 'upgrade it under Machines', details: [] });
   });
 
   it('check 2: refuses an agent missing, older or logged out there, and passes one the same or newer', async () => {

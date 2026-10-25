@@ -1,10 +1,12 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import type { Response } from '@svall/protocol';
+import type { LinkFrame, Response } from '@svall/protocol';
 import { InvalidConfig } from '../../src/config.js';
+import { LinkStream } from '../../src/link/stream.js';
 import { silentLogger } from '../../src/log.js';
 import { startDaemon } from '../../src/main.js';
 import { resolvePaths } from '../../src/paths.js';
@@ -91,6 +93,27 @@ runIf('svalld --worker', () => {
       expect(asked).toBe(0);
     } finally {
       api.close();
+      await d.stop();
+    }
+  });
+
+  it('greets its home with the release svall version names, the version in release.json', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const release = makeHome();
+    fs.writeFileSync(path.join(release, 'release.json'), JSON.stringify({ version: 'v9.8.7' }));
+    vi.stubEnv('SVALL_RELEASE_ROOT', release);
+    const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger });
+    const frames: LinkFrame[] = [];
+    const stream = new LinkStream(net.connect(paths.linkSock), { onFrame: (f) => frames.push(f), onClose: () => {} });
+    try {
+      stream.send({ t: 'hello', token: workerFile.token, release: 'v9.8.7' });
+      await vi.waitFor(() => expect(frames.find((f) => f.t === 'hello')).toMatchObject({ release: 'v9.8.7' }));
+    } finally {
+      stream.close();
       await d.stop();
     }
   });
