@@ -136,6 +136,16 @@ test("a card's menu renames it in place and opens its terminal", async ({ page, 
   await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
   await page.getByTestId('menu-rename').click();
   await expect(field).toBeFocused();
+  // the field keeps a double click and a press-drag to itself
+  await field.dblclick();
+  await expect(page.getByTestId('terminal-card')).toHaveCount(0);
+  const r = (await field.boundingBox())!;
+  await page.mouse.move(r.x + 10, r.y + r.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(r.x + 50, r.y + r.height / 2 + 30, { steps: 5 });
+  await expect(page.getByTestId('kc-lifted')).toHaveCount(0);
+  await page.mouse.up();
+  await expect(field).toBeFocused();
   await field.fill('after');
   await field.press('Enter');
   await expect(field).toHaveCount(0);
@@ -148,6 +158,13 @@ test("a card's menu renames it in place and opens its terminal", async ({ page, 
   await field.press('Escape');
   await expect(field).toHaveCount(0);
   expect((await robotOf(svall, c.id)).name).toBe('after');
+  // a click away saves it
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await page.getByTestId('menu-rename').click();
+  await field.fill('away');
+  await page.locator('.kb-bar').click({ position: { x: 4, y: 4 } });
+  await expect(field).toHaveCount(0);
+  await expect.poll(async () => (await robotOf(svall, c.id)).name).toBe('away');
 
   await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
   await page.getByTestId('menu-open terminal').click();
@@ -168,6 +185,24 @@ test('a card selected out of sight comes into its column', async ({ page, svall 
   await page.getByTestId(`sb-robot-${ids.at(-1)}`).click();
   await expect(last).toHaveAttribute('data-selected', 'true');
   await expect.poll(inColumn).toBe(true);
+});
+
+test('a double click on a card showing only its top under the fade opens that card', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('peek') });
+  const ids: string[] = [];
+  for (let i = 0; i < 12; i++) ids.push((await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: `peek ${i}` })).id);
+  await svall.open();
+  const peek = page.getByTestId(`kc-${ids[6]}`);
+  await peek.evaluate((el) => {
+    const body = el.closest('.kb-col-body')!;
+    body.scrollTop += el.getBoundingClientRect().top - (body.getBoundingClientRect().bottom - 30);
+  });
+  const r = (await peek.boundingBox())!;
+  const bottom = await peek.evaluate((el) => el.closest('.kb-col-body')!.getBoundingClientRect().bottom);
+  expect(r.y).toBeLessThan(bottom);
+  expect(r.y + r.height).toBeGreaterThan(bottom);
+  await page.mouse.dblclick(r.x + r.width / 2, r.y + 15);
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', ids[6]);
 });
 
 test('the island chips fade at the right while more of them lie past it', async ({ page, svall }) => {

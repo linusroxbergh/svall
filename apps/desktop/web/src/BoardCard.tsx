@@ -43,8 +43,8 @@ export const BoardCard = memoByValue(function BoardCard({ c, selected, arrived, 
   const pr = inReview(c) ? mainPr(c) : undefined;
   const unread = isUnread(c);
   const ref = useRef<HTMLElement>(null);
-  // a card the keys or the sidebar select comes into its column's view
-  useEffect(() => { if (selected) ref.current?.scrollIntoView({ block: 'nearest' }); }, [selected]);
+  // a card the keys or the sidebar select comes into its column's view; one under the pointer stays put, so a double click lands twice
+  useEffect(() => { if (selected && !ref.current?.matches(':hover')) ref.current?.scrollIntoView({ block: 'nearest' }); }, [selected]);
   return (
     <article ref={ref} className="kc" aria-label={c.name} data-testid={lifted ? 'kc-lifted' : `kc-${c.id}`} data-status={status}
       data-selected={selected} data-need={status === 'blocked'} data-unread={unread} data-arrived={arrived}
