@@ -29,11 +29,13 @@ export type Settings = {
   // off until the user turns it on, since macOS asks too
   notifications: NotifySettings;
   keepAwake: KeepAwake;
+  // the board's first-launch toast, saying where every robot starts, has had its one showing
+  boardToastShown: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {},
-  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] }, keepAwake: 'needs',
+  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] }, keepAwake: 'needs', boardToastShown: false,
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
 
@@ -110,6 +112,7 @@ export function readSettings(v: unknown): Settings {
     bindings: readBindings(o.bindings),
     notifications: readNotify(o.notifications),
     keepAwake: KEEP_AWAKE.find((k) => k === o.keepAwake) ?? DEFAULT_SETTINGS.keepAwake,
+    boardToastShown: o.boardToastShown === true,
   };
 }
 

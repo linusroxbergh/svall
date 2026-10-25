@@ -49,6 +49,8 @@
 .ctx-item { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); cursor: default; }
 .ctx-mark { margin-left: auto; color: var(--ink-3); }
 .ctx-check { color: var(--sel); }
+.ctx-note { font-size: var(--text-xs); }
+.ctx-note + .ctx-check { margin-left: 0; }
 .ctx-item[data-active="true"] { background: var(--fill-2); }
 .ctx-item[data-danger] { color: var(--danger); }
 .ctx-item[aria-disabled="true"] { opacity: var(--disabled); }

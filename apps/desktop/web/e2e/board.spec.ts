@@ -1,12 +1,32 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { FAKE_CLAUDE, expect, test, type Svall } from './fixtures.js';
 import type { ToShell } from '../src/bridge.js';
+import { DEFAULT_SETTINGS } from '../src/settings.js';
+import { SETTINGS_KEY } from '../src/store/index.js';
 
 // a deleted default column comes back under a new id, so the specs find each by its name
 const columns = async (svall: Svall): Promise<Record<string, string>> =>
   Object.fromEntries((await svall.api.call('state.get', {})).columns.map((k) => [k.name, k.id]));
 const names = async (svall: Svall) => (await svall.api.call('state.get', {})).columns.map((k) => k.name);
 const robotOf = async (svall: Svall, id: string) => (await svall.api.call('state.get', {})).robots[id];
+
+// placing waits on the user's answer, as on a new or lifted fleet
+async function askPlacing(svall: Svall): Promise<void> {
+  await svall.stopDaemon();
+  const file = path.join(svall.home, 'state.json');
+  const { placingOff: _off, ...state } = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...state, placingAsk: true }));
+  await svall.startDaemon();
+}
+
+// this Mac has not had the board's one-time toast yet
+const toastUnshown = (page: Page) => page.addInitScript(({ key, value }) => {
+  if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
+}, { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1 }) });
+
+const placingState = async (svall: Svall) => { const s = await svall.api.call('state.get', {}); return [s.placingAsk, s.placingOff, s.scribeOff]; };
 
 async function dragTo(page: Page, from: string, to: string): Promise<void> {
   const a = (await page.getByTestId(from).boundingBox())!, b = (await page.getByTestId(to).boundingBox())!;
@@ -335,4 +355,90 @@ test('a toast takes a hole in the terminal under it, beside a half card and over
   await refused();
   await expect(toast).toHaveAttribute('data-corner', 'bottom-left');
   await expect.poll(holed).toBe(true);
+});
+
+test('the board asks once whether the scribe places robots, and Turn on brings the scribe with it', async ({ page, svall }) => {
+  await askPlacing(svall);
+  await svall.open();
+  const ask = page.getByTestId('placing-ask');
+  await expect(ask).toBeVisible();
+  await expect(ask).toContainText('Let the scribe place robots on the board?');
+  await expect(ask).toContainText('Turning this on turns the scribe on too.');
+  await expect(ask.getByTestId('placing-ask-off')).toBeFocused();
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: off ▾');
+  await ask.getByTestId('placing-ask-on').click();
+  await expect(ask).toHaveCount(0);
+  await expect.poll(() => placingState(svall)).toEqual([undefined, undefined, undefined]);
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe ▾');
+  await expect(page.getByTestId('chip-placing')).toHaveAttribute('data-on', 'true');
+  await page.reload();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('placing-ask')).toHaveCount(0);
+});
+
+test('a reflex Return keeps placing off, the map never asks, and the first-launch toast stays away behind the ask', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('ask') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'waiting' });
+  await askPlacing(svall);
+  await toastUnshown(page);
+  await svall.open('map');
+  await expect(page.getByTestId('placing-ask')).toHaveCount(0);
+  await page.keyboard.press('Meta+m');
+  const ask = page.getByTestId('placing-ask');
+  await expect(ask).toBeVisible();
+  await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(ask).toHaveCount(0);
+  await expect.poll(() => placingState(svall)).toEqual([undefined, true, true]);
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: off ▾');
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+});
+
+test('the Auto-place chip says who places robots and switches it, the scribe only while it runs', async ({ page, svall }) => {
+  await svall.open();
+  const chip = page.getByTestId('chip-placing');
+  await expect(chip).toHaveText('Auto-place: off ▾');
+  await expect(chip).toHaveAttribute('data-on', 'false');
+  await chip.click();
+  const menu = page.getByTestId('context-menu');
+  await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only✓', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByRole('separator')).toHaveCount(1);
+  await expect(menu.getByTestId('menu-scribe')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+
+  await svall.api.call('scribe.set', { enabled: true });
+  await chip.click();
+  await menu.getByTestId('menu-scribe').click();
+  await expect(menu).toHaveCount(0);
+  await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBeUndefined();
+  await expect(chip).toHaveText('Auto-place: scribe ▾');
+  await expect(chip).toHaveAttribute('data-on', 'true');
+
+  await chip.click();
+  await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only', 'Scribe✓', 'Scribe settings…']);
+  await menu.getByTestId('menu-off').click();
+  await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBe(true);
+  await expect(chip).toHaveText('Auto-place: off ▾');
+
+  await chip.click();
+  await menu.getByTestId('menu-scribe settings…').click();
+  await expect(page.getByTestId('settings-tab-fleet')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('set-placing')).toHaveAttribute('aria-checked', 'false');
+});
+
+test('the first board with robots on this Mac says where they start, once, and offers the scribe', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('first') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'early' });
+  await toastUnshown(page);
+  await svall.open();
+  const toast = page.getByTestId('toast');
+  await expect(toast).toContainText('Every robot starts in To do.');
+  await toast.getByTestId('toast-action').click();
+  await expect.poll(() => placingState(svall)).toEqual([undefined, undefined, undefined]);
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe ▾');
+  await page.reload();
+  await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId('toast')).toHaveCount(0);
 });

@@ -11,7 +11,8 @@
 .kb-gap { flex: 1; }
 .kb-chip { flex: none; display: inline-flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: var(--w-medium); color: var(--ink-2); background: var(--fill-1); border: 1px solid var(--line-soft); white-space: nowrap; }
 .kb-chip:hover { background: var(--fill-2); color: var(--ink); }
-.kb-chip[aria-pressed="true"] { background: var(--sand-fill); color: var(--sand-hi); border-color: color-mix(in srgb, var(--sand) 30%, transparent); }
+.kb-chip:is([aria-pressed="true"], [data-on="true"]) { background: var(--sand-fill); color: var(--sand-hi); border-color: color-mix(in srgb, var(--sand) 30%, transparent); }
+.kb-chip svg { flex: none; width: 12px; height: 12px; }
 .kb-n { color: var(--ink-3); }
 .kb-chip[aria-pressed="true"] .kb-n { color: inherit; opacity: .7; }
 .kb-red { flex: none; min-width: 9px; padding: 0 var(--sp-sm); border-radius: var(--r-pill); background: var(--blocked); color: var(--surface-0); font-size: var(--text-2xs); font-weight: var(--w-bold); line-height: 1.5; text-align: center; }

@@ -16,7 +16,7 @@ import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
 import { NewRobot } from './NewRobot.js';
-import { ScribeAsk } from './ScribeAsk.js';
+import { PlacingAsk, ScribeAsk } from './ScribeAsk.js';
 import { SettingsCard } from './SettingsCard.js';
 import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
@@ -164,6 +164,7 @@ function Screen() {
       <ConfirmDeleteColumn />
       <HandoverSheet />
       <ScribeAsk />
+      <PlacingAsk />
       <FleetPicker />
       <LinkAsk />
       <ContextMenu />

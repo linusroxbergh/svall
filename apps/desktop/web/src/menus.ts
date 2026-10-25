@@ -1,5 +1,5 @@
-import { columnOf } from '@svall/protocol';
-import { deleteEmptyColumn, placeRobot, releaseRobot, setStar, stepColumn } from './actions.js';
+import { columnOf, placingOn } from '@svall/protocol';
+import { deleteEmptyColumn, placeRobot, releaseRobot, setPlacing, setStar, stepColumn } from './actions.js';
 import { app, deps } from './boot.js';
 import type { MenuEntry } from './store/ui.js';
 
@@ -56,4 +56,16 @@ export const columnMenu = (e: Press, id: string, o: { rename(): void; collapse()
     { title: 'Add column after', run: o.addAfter },
     { title: 'Delete', danger: true, run: f.columns.length > 1 ? remove : undefined },
   ]);
+};
+
+// the board's Auto-place chip: who places robots, with the scribe to pick only while it runs
+export const placingMenu = (x: number, y: number): void => {
+  const f = app.store.getState().fleet;
+  const on = placingOn(f);
+  const scribe = !f.scribeOff && !f.scribeAsk;
+  app.store.getState().openMenu({ x, y, bare: true, items: [
+    { title: 'Off', note: 'by hand only', checked: !on, run: () => setPlacing(deps(), false) },
+    { title: 'Scribe', checked: on, run: scribe ? () => setPlacing(deps(), true) : undefined },
+    { title: 'Scribe settings…', sep: true, run: () => app.store.getState().toggleSettings(true, 'fleet') },
+  ] });
 };

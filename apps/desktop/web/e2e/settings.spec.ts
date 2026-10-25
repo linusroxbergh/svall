@@ -117,6 +117,28 @@ test('the scribe switches on and off for the whole fleet', async ({ page, svall 
   await expect.poll(async () => (await svall.api.call('state.get', {})).scribeOff).toBe(true);
 });
 
+test('board placing sits under the scribe, and needs it', async ({ page, svall }) => {
+  await svall.open();
+  await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-fleet').click();
+  const row = page.getByTestId('set-placing-row');
+  await expect(page.locator('.row:has([data-testid="set-scribe"]) + .row')).toHaveAttribute('data-testid', 'set-placing-row');
+  await expect(row).toHaveAttribute('data-dim', 'true');
+  await expect(row.locator('b')).toHaveText('needs the scribe');
+  await expect(page.getByTestId('set-placing')).toHaveCount(0);
+
+  await page.getByTestId('set-scribe').click();
+  await expect(row).toHaveAttribute('data-dim', 'false');
+  const placing = page.getByTestId('set-placing');
+  await expect(placing).toHaveAttribute('aria-checked', 'false');
+  await placing.click();
+  await expect(placing).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBeUndefined();
+  await placing.click();
+  await expect(placing).toHaveAttribute('aria-checked', 'false');
+  await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBe(true);
+});
+
 test('a new fleet asks once before the scribe runs, and the settings show its last failure', async ({ page, svall }) => {
   await svall.stopDaemon();
   const file = path.join(svall.home, 'state.json');

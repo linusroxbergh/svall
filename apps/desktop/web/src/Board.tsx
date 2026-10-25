@@ -1,6 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Column, FleetState, Robot } from '@svall/protocol';
-import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorderColumn } from './actions.js';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { placingOn, type Column, type FleetState, type Robot } from '@svall/protocol';
+import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorderColumn, setPlacing } from './actions.js';
 import { app, deps } from './boot.js';
 import { BoardCard } from './BoardCard.js';
 import { stop, useApp } from './hooks.js';
@@ -9,7 +9,7 @@ import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
 import { TerminalCard } from './map/TerminalCard.js';
-import { boardRobotMenu, columnMenu } from './menus.js';
+import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
 import { boardColumns, islandsSorted, placesOf, robotsOf, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
@@ -96,6 +96,14 @@ function GripGlyph() {
   );
 }
 
+function PlaceGlyph() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1.5 4h7.5M7 1.8 9.5 4 7 6.2M10.5 8H3M5 5.8 2.5 8 5 10.2" />
+    </svg>
+  );
+}
+
 // Return or a click away saves a changed name, Escape keeps the old one
 function ColumnName({ column, onDone }: { column: Column; onDone(): void }) {
   return (
@@ -135,6 +143,8 @@ export function Board() {
   const sections = useApp((s) => s.sections);
   const dropHover = useApp((s) => s.dropHover);
   const bindings = useApp((s) => s.settings.bindings);
+  const placing = useApp((s) => placingOn(s.fleet));
+  const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ needsYou: false });
   const [renaming, setRenaming] = useState<string>();
   const [pending, setPending] = useState<{ id: string; column: string }>();
@@ -155,6 +165,17 @@ export function Board() {
   const all = Object.values(fleet.robots);
   const needs = all.filter((c) => inIsland(c) && wantsUser(c)).length;
   const now = Date.now();
+  const crewed = all.length > 0;
+
+  // the first board this Mac draws with robots says where they all start, and offers the scribe
+  // unless one of the asks already does or the scribe places them already
+  useEffect(() => {
+    if (toastShown || !crewed) return;
+    const s = app.store.getState();
+    s.setSettings({ boardToastShown: true });
+    if (s.fleet.scribeAsk || s.fleet.placingAsk || placingOn(s.fleet)) return;
+    s.showToast(`Every robot starts in ${s.fleet.columns[0].name}.`, 'ok', { label: 'Let the scribe place them', run: () => setPlacing(deps(), true) });
+  }, [toastShown, crewed]);
 
   const drop = (id: string, column: string) => {
     setPending({ id, column });
@@ -289,6 +310,10 @@ export function Board() {
             () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id }))))}
         </div>
         <span className="kb-gap" />
+        <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} aria-haspopup="menu"
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
+          <PlaceGlyph />Auto-place: {placing ? 'scribe' : 'off'} ▾
+        </button>
         <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'kb-red tnum' : 'kb-n tnum'}>{needs}</span>
         </button>

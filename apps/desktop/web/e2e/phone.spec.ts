@@ -12,7 +12,7 @@ const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
 async function fakeDaemon() {
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await new Promise((r) => wss.once('listening', r));
-  const state = { ...emptyState(), scribeAsk: undefined };
+  const state = { ...emptyState(), scribeAsk: undefined, placingAsk: undefined };
   const fake = {
     port: (wss.address() as { port: number }).port,
     status: SERVING,

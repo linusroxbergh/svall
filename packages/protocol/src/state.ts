@@ -250,6 +250,9 @@ export const starredOf = (f: FleetState): Robot[] =>
 export const columnOf = (f: Pick<FleetState, 'columns'>, c: Pick<Robot, 'column'>): Column =>
   f.columns.find((k) => k.id === c.column) ?? f.columns[0];
 
+// placing rides the scribe's passes and, like the scribe, waits on the user's first answer
+export const placingOn = (f: Pick<FleetState, 'placingOff' | 'placingAsk'>): boolean => !f.placingOff && !f.placingAsk;
+
 export const DORMANT_AFTER_HOURS = 12;
 
 export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, robots: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true, columns: defaultColumns(), placingAsk: true });

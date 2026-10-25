@@ -372,6 +372,13 @@ export const setScribe = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('scribe.set', { enabled }).catch(toast(d));
 };
 
+// placing rides the scribe's passes, so turning it on turns on a scribe that is off
+export const setPlacing = (d: ActionDeps, enabled: boolean): void => {
+  const f = d.store.getState().fleet;
+  if (enabled && (f.scribeOff || f.scribeAsk)) setScribe(d, true);
+  d.api.call('placing.set', { enabled }).catch(toast(d));
+};
+
 export const setWorktrees = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('worktrees.set', { enabled }).catch(toast(d));
 };
