@@ -104,7 +104,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
   return logins.includes(login) ? login : undefined;
 }
 
-/** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be taken. */
+/** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be, for the methods a worker may send. */
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown): Promise<unknown> }> {
   const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership, router } = opts;
   const logins = opts.logins ?? (() => []);

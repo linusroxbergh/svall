@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import { promisify } from 'node:util';
-import type { Agent, AgentKind, TerminalSlot } from '@svall/protocol';
+import type { Agent, AgentKind, Robot, TerminalSlot } from '@svall/protocol';
 import { interruptedAt } from '../agent/claude-transcript.js';
 import { readComposer } from '../agent/composer.js';
 import { applyHook, type Slot } from '../agent/reducer.js';
@@ -56,6 +56,8 @@ type Deps = {
   ending: Map<string, Promise<void>>;
   track: (work: Promise<unknown>, what: string) => void;
   processes: () => Promise<Proc[]>;
+  // a robot placed on another machine has its windows and processes there
+  runsHere: (c: Robot) => boolean;
 };
 
 /** The fleet's poll: robots matched to tmux's windows, agents that ended without a word let go, a slice of the
@@ -135,7 +137,7 @@ export class Poll {
     const byName = new Map(live.map((w) => [w.name, w]));
     const atShell = (key: string, agent?: Agent) => (agent?.pid && isShellCommand(byName.get(key)?.command ?? '', this.deps.config.shell) ? [agent.pid] : []);
     // an agent ctrl+z stopped leaves its shell in front until `fg` brings it back
-    const suspended = await stoppedPids(Object.values(this.deps.store.state.robots)
+    const suspended = await stoppedPids(Object.values(this.deps.store.state.robots).filter(this.deps.runsHere)
       .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
     if (this.stopped || !this.deps.writable()) return;
     const cwdChanged: string[] = [];
@@ -171,7 +173,7 @@ export class Poll {
       }
     };
     this.deps.store.update((d) => {
-      for (const c of Object.values(d.robots)) {
+      for (const c of Object.values(d.robots).filter(this.deps.runsHere)) {
         const cwd = c.cwd;
         const w = syncWindow(c, byName, before, { carried: this.deps.carried, settle: settleAgent, atShell: (key) => this.atShell(key) });
         if (c.cwd !== cwd) cwdChanged.push(c.id);
@@ -208,7 +210,7 @@ export class Poll {
     await this.dialogsGone();
     this.ticks++;
     // the fleet's links are looked at a slice per tick, so the whole crew never spawns git and gh in the same breath
-    const awake = Object.values(this.deps.store.state.robots).filter((c) => c.tmux).map((c) => c.id);
+    const awake = Object.values(this.deps.store.state.robots).filter((c) => c.tmux && this.deps.runsHere(c)).map((c) => c.id);
     for (const id of cwdChanged) this.pendingLinks.add(id);
     if (!this.sweeping) {
       const toRefresh = [...new Set([...this.pendingLinks, ...slice(awake, this.ticks)])];
@@ -225,7 +227,7 @@ export class Poll {
   // Claude Code fires no hook when its dialog about a tool is answered until the tool ends, which a long command runs on
   // for minutes; the prompt line back in view and empty says the dialog is gone. A field of the dialog's own reads as a draft
   private async dialogsGone(): Promise<void> {
-    const asking = Object.values(this.deps.store.state.robots).flatMap((c) => [c, c.second].flatMap((t, i) => {
+    const asking = Object.values(this.deps.store.state.robots).filter(this.deps.runsHere).flatMap((c) => [c, c.second].flatMap((t, i) => {
       const a = t?.agent;
       return t?.tmux && a?.kind === 'claude' && a.status === 'blocked' && a.askedTool && !a.asking ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId }] : [];
     }));

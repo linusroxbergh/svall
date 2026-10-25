@@ -76,7 +76,8 @@ export function syncWindow(c: Robot, byName: ReadonlyMap<string, LiveWindow>, be
   return w;
 }
 
-export function reconcile(state: FleetState, live: LiveWindow[], now: number, before = snapshot(state), carried: Carried = () => false) {
+/** `runsHere` names the robots whose windows this machine holds; one placed elsewhere is left as its machine reports it. */
+export function reconcile(state: FleetState, live: LiveWindow[], now: number, before = snapshot(state), carried: Carried = () => false, runsHere: (c: Robot) => boolean = () => true) {
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.robots));
   const secondNames = new Set(Object.keys(state.robots).map(secondName));
@@ -101,7 +102,7 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
   const unplaced: string[] = [];
 
   const mutate = (draft: FleetState) => {
-    for (const c of Object.values(draft.robots)) syncWindow(c, byName, before, { carried, adoptCarried: true });
+    for (const c of Object.values(draft.robots)) if (runsHere(c)) syncWindow(c, byName, before, { carried, adoptCarried: true });
     // a robot whose island is gone joins the recovered island, keeping all it carries
     const orphans = Object.values(draft.robots).filter((c) => !draft.islands[c.islandId]).map((c) => c.id);
     if ((adopted.length || orphans.length) && !draft.islands[RECOVERED_ISLAND]) {

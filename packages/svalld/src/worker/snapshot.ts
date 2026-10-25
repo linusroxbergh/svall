@@ -1,3 +1,4 @@
+import jsonpatch from 'fast-json-patch';
 import { z } from 'zod';
 import { FleetState, Robot, WORKER_OWNED, type MachineId } from '@svall/protocol';
 import type { Store } from '../store.js';
@@ -67,4 +68,21 @@ export function applyReport(store: Store, r: RobotSync, machine: MachineId): 'ap
   if (held.machine !== machine || generation(held) !== r.generation) return 'stale';
   store.update((d) => { d.robots[r.robotId] = withOwned(d.robots[r.robotId], structuredClone(r.fields)); });
   return 'applied';
+}
+
+/** Reports the worker-owned fields of each robot running here whenever a change to the store leaves them other than last reported. */
+export function watchOwned(store: Store, runsHere: (c: Robot) => boolean, report: (r: RobotSync) => void): () => void {
+  const sent = new Map<string, string>();
+  return store.subscribe((ops) => {
+    const touched = new Set(ops.filter((o) => o.path.startsWith('/robots/')).map((o) => jsonpatch.unescapePathComponent(o.path.split('/')[2])));
+    for (const id of touched) {
+      const c = Object.hasOwn(store.state.robots, id) ? store.state.robots[id] : undefined;
+      if (!c || !runsHere(c)) { sent.delete(id); continue; }
+      const r = ownedReport(c);
+      const key = JSON.stringify(r);
+      if (sent.get(id) === key) continue;
+      sent.set(id, key);
+      report(r);
+    }
+  });
 }

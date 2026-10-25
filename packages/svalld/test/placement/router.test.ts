@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { dispatch } from '../../src/api/methods.js';
+import { markDormant } from '../../src/dormancy.js';
 import { cleanHomes } from '../helpers.js';
 import { W, placed, robot, until, world } from './world.js';
 
@@ -58,5 +59,33 @@ describe('routing calls for placed robots', () => {
     expect(await dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', note: 'reviewing' } }, w.worker.ctx)).toMatchObject({ id: 1, result: { id: 'c_1', note: 'reviewing' } });
     expect(w.home.store.state.robots.c_1.note).toBe('reviewing');
     await until(() => { if (w.worker.store.state.robots.c_1.note !== 'reviewing') throw new Error('no snapshot yet'); });
+  });
+
+  it('robot.seen for a placed robot is taken where it runs, and the unread it clears comes back home', async () => {
+    const unread = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, unread: true });
+    const w = open({ home: { robots: { c_1: unread } }, worker: { robots: { c_1: unread } } });
+    await w.link();
+    expect(() => w.home.fleet.markSeen('c_1')).toThrow('c_1 runs on w1');
+    expect(await dispatch({ id: 1, method: 'robot.seen', params: { id: 'c_1' } }, w.home.ctx)).toMatchObject({ id: 1, result: { id: 'c_1', unread: false } });
+    expect(w.worker.store.state.robots.c_1.unread).toBe(false);
+    await until(() => { if (w.home.store.state.robots.c_1.unread) throw new Error('not reported yet'); });
+  });
+
+  it('a change the worker makes to a robot placed there with no hook behind it reaches the home', async () => {
+    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    await w.link();
+    // as the worker's poll leaves a robot whose window died without a word
+    w.worker.store.update((d) => { markDormant(d.robots.c_1); });
+    await until(() => { if (w.home.store.state.robots.c_1.tmux) throw new Error('not reported yet'); });
+    expect(w.home.store.state.robots.c_1.revive).toEqual({ command: '' });
+  });
+
+  it('the home takes from a worker only calls about its robots, islands and tabs, and the worker only the params it can read', async () => {
+    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    await w.link();
+    for (const method of ['handover.abort', 'ownership.adopt', 'fleets.create', 'fleet.stop', 'mobile.set', 'fs.write']) {
+      await expect(w.worker.connection.call(method, {})).rejects.toMatchObject({ code: 'unauthorized', message: `${method} is not taken from a worker` });
+    }
+    await expect(w.home.links.call(W, 'robot.run', { id: 'c_1' })).rejects.toMatchObject({ code: 'invalid_params' });
   });
 });

@@ -244,9 +244,8 @@ async function start(opts: Options): Promise<Daemon> {
     paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: runtimeVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
   });
   const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
-  const report = connection && ((r: RobotSync) => connection.report(r));
-  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, report });
-  if (report) Object.assign(calls, workerCalls({ fleet, store, me, report, log }));
+  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, ...(connection && { report: (r: RobotSync) => connection.report(r) }) });
+  if (connection) Object.assign(calls, workerCalls({ fleet, store, me, log }));
   const terminals = new TerminalHub(fleet, tmux, store, log);
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const authority = (): Authority | undefined => {

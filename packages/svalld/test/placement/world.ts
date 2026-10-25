@@ -96,7 +96,7 @@ export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetSta
     store: workerStore, tmux: { ...o.tmux } as Tmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [],
   });
-  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, report: (r) => connection.report(r), log: silentLogger }));
+  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }));
   const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter);
 
   stops.push(() => connection.stop(), () => links.stop());

@@ -51,7 +51,8 @@ export const handlers: Handlers = {
   'robot.sleep': async (p, { fleet }) => { await fleet.sleepRobot(p.id); return {}; },
   'robot.revive': (p, { fleet }) => fleet.reviveRobot(p.id),
   'robot.fresh': (p, { fleet }) => fleet.startFresh(p.id, p.term),
-  'robot.seen': (p, { fleet }) => fleet.markSeen(p.id, p.term),
+  // `unread` is the machine's the robot runs on
+  'robot.seen': (p, { fleet, router }) => router?.forward(p.id, 'robot.seen', p) ?? fleet.markSeen(p.id, p.term),
   'robot.second': (p, { fleet }) => fleet.openSecond(p.id),
   'robot.run': async (p, { fleet }) => ({ delivery: await fleet.run(p.id, p.text, p.enter, p.term) }),
   // a placed robot's transcript is on the machine it runs on
@@ -163,8 +164,12 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   }
 }
 
-/** The result of a call, or its error thrown as the client would read it. */
+// what a worker sends on from a CLI in one of its panes: never a handover, a record, the fleets beside this one or the phone link
+const FROM_WORKER = new Set(['state', 'island', 'robot', 'browser', 'scribe']);
+
+/** The result of a call a worker sends on, or its error thrown as the client would read it. */
 export async function answer(method: string, params: unknown, ctx: Ctx): Promise<unknown> {
+  if (!FROM_WORKER.has(method.split('.')[0])) throw new ApiError('unauthorized', `${method} is not taken from a worker`);
   const res = await dispatch({ id: 0, method, params }, ctx);
   if ('error' in res) throw new ApiError(res.error.code, res.error.message, res.error.data);
   return res.result;

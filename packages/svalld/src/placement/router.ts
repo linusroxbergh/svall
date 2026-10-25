@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type Result } from '@svall/protocol';
+import { ApiError, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
@@ -8,7 +8,7 @@ import type { HomeConnection } from '../link/worker.js';
 import { handoverGit } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
-import { applyReport, ownedReport, type Inventory, type RobotSync } from '../worker/snapshot.js';
+import { applyReport, type Inventory } from '../worker/snapshot.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
 const callMs = (method: MethodName, params: unknown): number => 30_000 + serverWait(method, params);
@@ -32,12 +32,16 @@ export class Router {
     return this.o.home !== undefined;
   }
 
-  /** The machine a robot runs on, when that is another one; a robot that names none runs on the home. */
+  /** Whether a robot runs on this machine; one that names none runs on the home. */
+  runsHere(c: Pick<Robot, 'machine'>): boolean {
+    return (c.machine ?? this.o.home?.id ?? this.o.me) === this.o.me;
+  }
+
+  /** The machine a robot runs on, when that is another one. */
   placedAt(robotId: string): MachineId | undefined {
     const { robots } = this.o.store.state;
-    if (!Object.hasOwn(robots, robotId)) return undefined;
-    const at = robots[robotId].machine ?? this.o.home?.id ?? this.o.me;
-    return at === this.o.me ? undefined : at;
+    if (!Object.hasOwn(robots, robotId) || this.runsHere(robots[robotId])) return undefined;
+    return robots[robotId].machine ?? this.o.home?.id;
   }
 
   /** The answer of the machine a robot runs on to a call about it; undefined for a robot here. */
@@ -94,16 +98,13 @@ export class Router {
 
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
 
-/** What a worker answers the home's calls about its robots with: each runs here, and the fields it changed go home. */
-export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; report(r: RobotSync): void; log: Logger }): Handlers {
+/** What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change does. */
+export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger }): Handlers {
   const { fleet, store, me } = o;
-  const report = (id: string) => {
-    const c = store.state.robots[id];
-    if (c?.machine === me) o.report(ownedReport(c));
-  };
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
-    const p = methods[method].params.parse(raw) as ParsedParams<M>;
-    try { return await run(p); } finally { report((p as { id: string }).id); }
+    const p = methods[method].params.safeParse(raw);
+    if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+    return run(p.data as ParsedParams<M>);
   };
   // the robot's windows and what it started end, and its worktree stays, locked, for the session it may yet resume
   const forget = async (raw: unknown) => {
@@ -125,6 +126,7 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; repo
     'robot.fresh': on('robot.fresh', (p) => fleet.startFresh(p.id, p.term)),
     'robot.second': on('robot.second', (p) => fleet.openSecond(p.id)),
     'robot.sleep': on('robot.sleep', async (p) => { await fleet.sleepRobot(p.id); return {}; }),
+    'robot.seen': on('robot.seen', async (p) => fleet.markSeen(p.id, p.term)),
     'robot.close': forget,
     'robot.forget': forget,
   };
