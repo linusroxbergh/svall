@@ -219,6 +219,13 @@ describe('recordedCwd', () => {
     expect(recordedCwd('claude', write([{ type: 'user', cwd: '/Users/ada/app' }, { type: 'user', cwd: '/Users/ada/app/sub' }], big))).toBe('/Users/ada/app/sub');
   });
 
+  it('reads no further back than 8 MB, however long the transcript', () => {
+    const big = (mb: number) => `${JSON.stringify({ type: 'assistant', message: { content: 'x'.repeat(mb * 1024 * 1024) } })}\n`;
+    expect(recordedCwd('codex', write([{ type: 'turn_context', payload: { cwd: '/Users/ada/app' } }], big(7)))).toBe('/Users/ada/app');
+    expect(recordedCwd('codex', write([{ type: 'turn_context', payload: { cwd: '/Users/ada/app' } }], big(9)))).toBeUndefined();
+    expect(recordedCwd('claude', write([{ type: 'summary' }], big(1)))).toBeUndefined();
+  });
+
   it('finds none in a transcript that records none, one that is gone, or an OpenCode log', () => {
     expect(recordedCwd('claude', write([{ type: 'summary' }]))).toBeUndefined();
     expect(recordedCwd('codex', '/nope')).toBeUndefined();
