@@ -217,7 +217,7 @@ function until(machine, fn, seconds = 120, light = true) {
 const credential = /(^|\/)(\.env[^/]*|[^/]*\.pem|id_rsa[^/]*|[^/]*\.tfvars|[^/]*\.key|\.netrc)$/;
 const statusOf = (g) => g?.status.split('\n').filter((l) => l && !l.startsWith('# ') && !(l.startsWith('? ') && credential.test(l.slice(2))));
 // a checkout writes files by its daemon's umask, so a file's mode is compared by its executable bits, as git keeps it
-const treeOf = (t) => t && Object.fromEntries(Object.entries(t).filter(([k]) => !credential.test(k) && !/^node_modules(\/|$)/.test(k))
+const treeOf = (t) => t && Object.fromEntries(Object.entries(t).filter(([k]) => !credential.test(k))
   .map(([k, v]) => [k, v.t === 'd' ? { t: 'd' } : v.t === 'f' ? { ...v, mode: (parseInt(v.mode, 8) & 0o111).toString(8) } : v]));
 // a main checkout with nothing staged, changed or untracked but the worktrees inside it
 const cleanMain = (g) => statusOf(g)?.every((l) => /^\? \.claude\/worktrees\//.test(l));
@@ -239,9 +239,10 @@ function treeDiff(a = {}, b = {}) {
 
 /**
  * The robot runs on `machine` alone: the home's record and the worker's say so, one agent process on its session, and
- * no window or agent elsewhere. Unless `resumed`, the process may be the one the robot had all along.
+ * no window or agent elsewhere. Its process resumes the session, or is `pid`, the one it ran before a move that never
+ * stopped it.
  */
-function runsOn(label, ids, l, w, id, machine, sessionId, resumed = true) {
+function runsOn(label, ids, l, w, id, machine, sessionId, pid) {
   const [here, there] = machine === 'remote' ? [w, l] : [l, w];
   const c = robotIn(l, id);
   check(`${label} home record`, (c?.machine ?? 'local') === (machine === 'remote' ? ids.remote : 'local') && !c.moving, () => brief(c));
@@ -252,10 +253,14 @@ function runsOn(label, ids, l, w, id, machine, sessionId, resumed = true) {
   const p = procs[0];
   const resumes = p?.args.at(-2) === '--resume';
   // a killed daemon loses the state it had not written yet, the agent's pid among it, until the agent's next hook
-  check(`${label} session`, p && (c?.agent?.pid ?? p.pid) === p.pid && (resumes ? p.args.at(-1) === sessionId : !resumed), () => `${brief(p?.args)} pid ${p?.pid}, the home holds ${c?.agent?.pid}`);
+  check(`${label} session`, p && (c?.agent?.pid ?? p.pid) === p.pid && (resumes ? p.args.at(-1) === sessionId : p.pid === pid), () => `${brief(p?.args)} pid ${p?.pid}, the home holds ${c?.agent?.pid}`);
   check(`${label} window`, here.windows.some((x) => x.name === id) && !there.windows.some((x) => x.name === id), () => `${brief(here.windows)} / ${brief(there.windows)}`);
   check(`${label} agent up`, ['idle', 'done'].includes(c?.agent?.status) && (!sessionId || c.agent.sessionId === sessionId), () => brief(c?.agent));
 }
+
+// the bare repository both machines fetch from, which a move never pushes to
+const originRefs = () => sh(R, 'git -C ~/git/app.git for-each-ref').stdout;
+const originUntouched = () => check('origin untouched', originRefs() === ctx.origin, () => `${originRefs()} vs ${ctx.origin}`);
 
 function move(id, to) {
   const r = sh(L, `svall robot move ${id} --machine ${to} --json </dev/null`, { ok: false });
@@ -295,6 +300,7 @@ function moveDirty(ids, fx) {
   check('hook reached home', a?.prompt === 'a turn on remote' && ['done', 'idle'].includes(a.status) && a.contextPct === t.lines, () => `${brief(a)}, ${t.lines} records`);
   const read = sh(L, `svall robot read ${id} --transcript --lines 1`).stdout;
   check('transcript read', read.includes('did: a turn on remote'), () => read.slice(-300));
+  originUntouched();
 }
 
 function moveMain(ids, fx) {
@@ -315,6 +321,7 @@ function moveMain(ids, fx) {
     () => brief(l.git['src/app']));
   check('stash unchanged', l.git['src/app'].stash === base.git['src/app'].stash, () => `${l.git['src/app'].stash} vs ${base.git['src/app'].stash}`);
   check('ignored stay', Object.hasOwn(l.trees['src/app'], 'node_modules/pkg/index.js'), () => brief(Object.keys(l.trees['src/app'])));
+  check('ignored never travel', [l, w].every((x) => !Object.keys(x.trees[wt] ?? {}).some((k) => k.startsWith('node_modules'))), () => brief([Object.keys(l.trees[wt] ?? {}), Object.keys(w.trees[wt] ?? {})]));
   sameWork('worker worktree', w, l, wt);
   check('worker main clean', cleanMain(w.git['src/app']) && w.git['src/app'].branch === 'refs/heads/main', () => brief(w.git['src/app']));
   const c = robotIn(l, id);
@@ -322,6 +329,7 @@ function moveMain(ids, fx) {
   runsOn('worker', ids, l, w, id, 'remote', sessionId);
   check('agent folder', agentsOf(w, id)[0]?.cwd === `${HOMES[R]}/${wt}`, () => brief(agentsOf(w, id)));
   turn(ids, fx, 'kanban', 'a turn on remote');
+  originUntouched();
 }
 
 function workerRestart(ids, fx) {
@@ -384,6 +392,21 @@ function homeDown(ids, fx) {
 
 function returnDirty(ids, fx) {
   const id = fx.agent;
+  const head = snap(L).git['src/app-wt'].head;
+  // the robot's work on the worker: a commit, then staged, unstaged, intent-to-add and untracked edits
+  sh(R, String.raw`set -eu
+cd ~/src/app-wt
+printf 'worker commit
+' > w.txt && git add w.txt && git -c user.name=Integration -c user.email=integration@example.invalid commit -qm 'a commit on the worker' -- w.txt
+printf 'worker staged
+' >> lib/c.txt && git add lib/c.txt
+printf 'worker unstaged
+' >> a.txt
+printf 'meant
+' > w-meant.txt && git add -N w-meant.txt
+printf 'worker untracked
+' > w-untracked.txt
+`);
   const w0 = snap(R);
   const sessionId = robotIn(w0, id)?.agent?.sessionId;
   sh(L, 'printf "edited on the Mac\\n" >> ~/src/app-wt/b.txt');
@@ -396,7 +419,8 @@ function returnDirty(ids, fx) {
   const m = move(id, 'local');
   check('returned', m.code === 0 && m.res?.ok, () => `exit ${m.code}: ${m.stderr.trim()} ${brief(m.res)}`);
   const [l, w] = [snap(L), snap(R)];
-  check('branch sha', l.git['src/app-wt'].head === w.git['src/app-wt'].head && l.git['src/app-wt'].branch === 'refs/heads/feature', () => `${l.git['src/app-wt'].head} vs ${w.git['src/app-wt'].head}`);
+  check('branch sha', l.git['src/app-wt'].head === w0.git['src/app-wt'].head && l.git['src/app-wt'].head !== head && l.git['src/app-wt'].branch === 'refs/heads/feature',
+    () => `${l.git['src/app-wt'].head} vs the worker's ${w0.git['src/app-wt'].head}, before the move ${head}`);
   sameWork('mac worktree', l, w0, 'src/app-wt');
   check('.env kept', Object.hasOwn(l.trees['src/app-wt'], '.env'), '.env is gone from the Mac');
   check('mac unlocked', l.locks['src/app-wt'] === null, () => brief(l.locks));
@@ -407,6 +431,7 @@ function returnDirty(ids, fx) {
   runsOn('mac', ids, l, w, id, 'local', sessionId);
   check('session back', transcriptOf(l, sessionId)?.sha === transcriptOf(w0, sessionId)?.sha, () => `${brief(transcriptOf(l, sessionId))} vs ${brief(transcriptOf(w0, sessionId))}`);
   turn(ids, fx, 'agent', 'a turn back on the Mac');
+  originUntouched();
 }
 
 // ---------------------------------------------------------------------------------------------- the fault matrix
@@ -425,7 +450,7 @@ function drive(dir, fault, at) {
   return { label, summary };
 }
 
-const ctx = { fx: undefined, at: 'local' };
+const ctx = { fx: undefined, at: 'local', origin: undefined };
 
 /** Waits for the move to end: after the restart a kill brings, once a dropped link is back, or, when it stalls, after `--retry` or a restart. */
 function settle(ids, moveId, fault) {
@@ -447,28 +472,40 @@ function settle(ids, moveId, fault) {
 }
 
 function reposition(ids, to) {
+  const sessionId = robotIn(snap(L, true), ctx.fx.faults)?.agent?.sessionId;
   const d = drive(to === 'remote' ? 'out' : 'back');
-  check('reposition', d.summary.exit === 0, () => brief(d.summary));
+  check('moved', d.summary.exit === 0, () => brief(d.summary));
+  const { s } = settle(ids, d.summary.moveId);
+  check('done', s.moves[d.summary.moveId]?.phase === 'done', () => brief(s.moves[d.summary.moveId]));
+  runsOn('moved', ids, s, snap(R, true), ctx.fx.faults, to, sessionId);
   ctx.at = to;
-  settle(ids, d.summary.moveId);
 }
 
 function scenario(ids, fault, at, dir) {
   const id = ctx.fx.faults;
   const want = settlesDone(fault, at, dir) ? 'done' : 'aborted';
   const [src, dst] = dir === 'out' ? ['local', 'remote'] : ['remote', 'local'];
-  const sessionId = robotIn(snap(L), id)?.agent?.sessionId;
+  const before = { local: snap(L), remote: snap(R) };
+  const sessionId = robotIn(before.local, id)?.agent?.sessionId;
+  const pid = agentsOf(before[src], id)[0]?.pid;
   const d = drive(dir, fault, at);
   const { summary } = d;
   check('fault landed', summary.trigger?.phase === at, () => `wanted ${at}: ${brief({ trigger: summary.trigger, phases: summary.phases, exit: summary.exit, stderr: summary.stderr })}`);
   const { s, how } = settle(ids, summary.moveId, fault);
   const phase = s.moves[summary.moveId]?.phase;
-  const w = snap(R);
+  const after = { local: snap(L), remote: snap(R) };
   const where = phase === 'done' ? dst : src;
   ctx.at = where;
   check('journal ended', phase === want, () => `${phase}, wanted ${want}: ${brief(s.moves[summary.moveId])}`);
-  check('worker journal', !w.moves[summary.moveId] || w.moves[summary.moveId].phase === phase, () => brief(w.moves[summary.moveId]));
-  runsOn('after', ids, snap(L), w, id, where, sessionId, phase === 'done');
+  check('worker journal', !after.remote.moves[summary.moveId] || after.remote.moves[summary.moveId].phase === phase, () => brief(after.remote.moves[summary.moveId]));
+  runsOn('after', ids, after.local, after.remote, id, where, sessionId, phase === 'aborted' ? pid : undefined);
+  if (phase === 'aborted') {
+    // the robot's worktree is its own again as it was, and the destination keeps no worktree the move made
+    check('source unlocked', after[src].locks['src/app-faults'] === null, () => brief(after[src].locks));
+    sameWork('source worktree', after[src], before[src], 'src/app-faults');
+    check('no stray worktree', same(after[dst].locks, before[dst].locks), () => `${brief(after[dst].locks)} vs ${brief(before[dst].locks)}`);
+  }
+  originUntouched();
   say(`   ${fault} at ${at}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}: landed at ${summary.trigger?.phase ?? 'none'} in ${summary.trigger?.ms ?? '-'} ms; ${phase} ${how}, runs on ${where}`);
 }
 
@@ -509,6 +546,7 @@ try {
   say(`   fleet ${ids.fleet}; local ${ids.local}; remote ${ids.remote}`);
   const fx = step('fixture', () => fixture(ids));
   ctx.fx = fx;
+  ctx.origin = originRefs();
   say(`   robots: agent ${fx.agent}, kanban ${fx.kanban}, faults ${fx.faults}`);
   if (steps.includes(1)) step(`1. ${STEPS[1]}`, () => moveDirty(ids, fx));
   if (steps.includes(2)) step(`2. ${STEPS[2]}`, () => moveMain(ids, fx));
