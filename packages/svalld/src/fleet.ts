@@ -7,7 +7,7 @@ import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
 import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
-import { ROBOT_KEYS, robotKeyEnv, rendererEnv } from './claude.js';
+import { robotKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
 import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
@@ -549,10 +549,8 @@ export class Fleet extends EventEmitter<Events> {
     return { ...rendererEnv(userPaths().claudeSettings), SVALL_ROBOT_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
   }
 
-  // every key, so one gone from .env is unset rather than kept from an earlier window
-  private robotKeys(): Record<string, string | undefined> {
-    const keys = robotKeyEnv(this.deps.paths.env);
-    return Object.fromEntries(ROBOT_KEYS.map((k) => [k, keys[k]]));
+  private robotKeys(): Record<string, string> {
+    return robotKeyEnv(this.deps.paths.env);
   }
 
   private codexEnv(): Record<string, string> {

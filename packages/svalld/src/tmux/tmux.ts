@@ -227,19 +227,22 @@ export class Tmux {
     return new ControlClient({ binary: this.binary, socket: this.socket, conf: this.conf, session: SESSION });
   }
 
-  // `secret` reaches the session's environment on stdin, as ps shows every argument; one undefined is unset there,
-  // leaving the server's own
-  async newWindow(name: string, cwd: string, env: Record<string, string>, secret: Record<string, string | undefined> = {}): Promise<{ windowId: string; paneId: string }> {
+  // `secret` goes through the session's environment, set on stdin as ps shows every argument, and unset once the
+  // window's shell holds it
+  async newWindow(name: string, cwd: string, env: Record<string, string>, secret: Record<string, string> = {}): Promise<{ windowId: string; paneId: string }> {
     const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
     // tmux expands -c as a format, and reads an argument ending in ; as the end of the command
     const dir = cwd.replaceAll('#', '##').replace(/;$/, '\\;');
-    const set = Object.entries(secret)
-      .map(([k, v]) => `set-environment -t ${SESSION} ${v === undefined ? `-u ${k}` : `${k} '${v.replaceAll("'", "'\\''")}'`}\n`).join('');
+    const set = Object.entries(secret).map(([k, v]) => `set-environment -t ${SESSION} ${k} '${v.replaceAll("'", "'\\''")}'\n`).join('');
+    const unset = Object.keys(secret).flatMap((k) => [';', 'set-environment', '-t', SESSION, '-u', k]);
     const out = await this.call([
       ...(set ? ['source-file', '-', ';'] : []),
       'new-window', '-d', '-P', '-F', '#{window_id} #{pane_id}', '-a', '-t', `${SESSION}:`,
       '-n', name, '-c', dir, ...envArgs,
-    ], undefined, set);
+      ...unset,
+    ], undefined, set)
+      // a new-window that failed ends the sequence before the unset
+      .catch(async (e) => { if (set) await this.run(...unset.slice(1)).catch(() => {}); throw e; });
     const [windowId, paneId] = out.trim().split(' ');
     if (!windowId || !paneId) throw new Error(`tmux new-window returned ${JSON.stringify(out)}`);
     return { windowId, paneId };

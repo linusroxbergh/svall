@@ -93,8 +93,8 @@ runIf('Fleet', () => {
     fleet.deleteIsland(island.id);
   });
 
-  it('loads fleet API keys into new and second robot shells, off every tmux command line', async () => {
-    const { fleet, tmux, home } = await boot();
+  it('loads fleet API keys into new, revived and second robot shells, off every tmux command line', async () => {
+    const { fleet, store, tmux, home } = await boot();
     const call = vi.spyOn(tmux as unknown as { call: (args: string[]) => Promise<string> }, 'call');
     fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-first\nOTHER_SECRET=hidden\n');
     const island = fleet.createIsland({ name: 'keys' });
@@ -103,11 +103,18 @@ runIf('Fleet', () => {
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('key:sk-first other:none'));
 
     fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-second\n');
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.robots[c.id].tmux === undefined);
+    const revived = await fleet.reviveRobot(c.id);
+    await tmux.sendLine(revived.tmux!.paneId, 'echo key:$ANTHROPIC_API_KEY', true);
+    await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('key:sk-second'));
+
+    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-third\n');
     await fleet.openSecond(c.id);
     const second = fleet.robot(c.id).second!.tmux!.paneId;
     await tmux.sendLine(second, 'echo key:$ANTHROPIC_API_KEY', true);
-    await waitFor(async () => (await tmux.capture(second, 20)).toString().includes('key:sk-second'));
-    expect(call.mock.calls.flatMap(([args]) => args).join(' ')).not.toContain('sk-');
+    await waitFor(async () => (await tmux.capture(second, 20)).toString().includes('key:sk-third'));
+    expect(call.mock.calls.flatMap(([args]) => args).join(' ')).not.toMatch(/sk-(first|second|third)/);
     await fleet.closeRobot(c.id);
   });
 

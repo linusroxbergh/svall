@@ -133,14 +133,15 @@ runIf('Tmux', () => {
     expect(await t.listWindows()).toEqual([]);
   });
 
-  it('hands a window its secrets on stdin, never as an argument, and unsets one it is no longer given', async () => {
+  it('hands a window its secrets on stdin, never as an argument, and keeps none in the session for the next', async () => {
     const t = await boot();
     const call = vi.spyOn(t as unknown as { call: (args: string[]) => Promise<string> }, 'call');
-    const secret = `sk-'it's' $HOME #{pane_id} ~;`;
-    const w = await t.newWindow('c_secret', '/tmp', { SVALL_ROBOT_ID: 'c_secret' }, { SVALL_T_KEY: secret, SVALL_T_GONE: undefined });
-    await t.sendLine(w.paneId, 'echo "[$SVALL_T_KEY|${SVALL_T_GONE-unset}|$SVALL_ROBOT_ID]"', true);
-    await waitFor(async () => (await t.capture(w.paneId, 50)).toString().includes(`[${secret}|unset|c_secret]`));
-    const w2 = await t.newWindow('c_secret2', '/tmp', {}, { SVALL_T_KEY: undefined });
+    const secret = `sk-'it's' $HOME #{pane_id} ~; "q" back\\slash`;
+    const w = await t.newWindow('c_secret', '/tmp', { SVALL_ROBOT_ID: 'c_secret' }, { SVALL_T_KEY: secret });
+    await expect(t.run('show-environment', '-t', 'fleet', 'SVALL_T_KEY')).rejects.toThrow(/unknown variable/);
+    await t.sendLine(w.paneId, 'echo "[$SVALL_T_KEY|$SVALL_ROBOT_ID]"', true);
+    await waitFor(async () => (await t.capture(w.paneId, 50)).toString().includes(`[${secret}|c_secret]`));
+    const w2 = await t.newWindow('c_secret2', '/tmp', {});
     await t.sendLine(w2.paneId, 'echo "[${SVALL_T_KEY-unset}]"', true);
     await waitFor(async () => (await t.capture(w2.paneId, 50)).toString().includes('[unset]'));
     expect(call.mock.calls.flatMap(([args]) => args).join(' ')).not.toContain('sk-');
