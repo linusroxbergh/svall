@@ -124,7 +124,7 @@ async function bundleCommits(root: string, git: GitRunner, ref: string, base: st
 
 // ustar, which bsdtar and GNU tar both write and read with modes and links; ./ keeps a name from reading as an option,
 // and COPYFILE_DISABLE keeps macOS tar from adding ._ entries
-async function packTar(root: string, paths: readonly string[], file: string): Promise<void> {
+export async function packTar(root: string, paths: readonly string[], file: string): Promise<void> {
   const list = `${file}.list`;
   fs.writeFileSync(list, paths.map((p) => `./${p}\0`).join(''));
   try {

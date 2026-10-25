@@ -402,6 +402,18 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.moving).toBeUndefined();
     expect(w.mac1.windows.size).toBe(1);
   });
+
+  it('a move sends the worker the home\'s agent configuration before its bundle, and goes on when that fails', async () => {
+    let pushes = 0;
+    const w = open({ mirror: { push: async () => { pushes++; throw new Error('no space left on device'); } } });
+    const home = await w.start();
+    await until(() => { expect(pushes).toBe(1); });
+    let atBundle = 0;
+    at('move.bundle', 'before', () => { atBundle = pushes; });
+    await home.placement.start('c_1', W);
+    expect(atBundle).toBe(2);
+    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
 });
 
 // the home's side of a move out, each step a crash can fall on

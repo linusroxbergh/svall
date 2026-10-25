@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { once } from 'node:events';
 import net from 'node:net';
+import path from 'node:path';
 import { vi } from 'vitest';
 import { MachineId, emptyState, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { answer, type Ctx } from '../../src/api/methods.js';
@@ -12,6 +13,7 @@ import { silentLogger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
+import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
 import { Router, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
@@ -61,9 +63,10 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
 /**
  * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
- * link.sock; `far` stands in for what the worker answers the home with, and `connect` for reaching it.
+ * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it, and `docs` syncs
+ * the fleet's docs as main.ts does, each watcher quiet for 100 ms.
  */
-export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux> }) {
+export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true }) {
   const config = Config.parse({});
   const stops: (() => unknown)[] = [];
 
@@ -73,13 +76,18 @@ export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetSta
   const homeStore = storeWith(homePaths, o.home ?? {});
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
+  const homeDocs = o.docs && new HomeDocs(homePaths.docs, silentLogger, 100);
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
     onReport: (r, machine) => { applyReport(homeStore, r, machine); },
-    onEvent: (kind) => Promise.reject(new Error(`no ${kind}`)),
+    onEvent: async (kind, data, machine) => {
+      if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`no ${kind}`);
+      homeDocs.apply(kind, data, machine);
+    },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
     onCall: (method, params) => answer(method, params, homeCtx),
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes }),
+    ...(homeDocs && { docs: homeDocs }),
   });
   const homeRouter = new Router({ store: homeStore, me: H, log: silentLogger, links });
   const homeFleet = new Fleet({ store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter });
@@ -99,15 +107,19 @@ export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetSta
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [],
   });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
-  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }));
+  const workerDocs = o.docs && new WorkerDocs({
+    dir: path.join(workerPaths.cache, 'docs'), file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
+  });
+  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), workerDocs?.handlers);
   const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter);
 
-  stops.push(() => connection.stop(), () => links.stop());
+  stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop());
   return {
-    home: { paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx },
-    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx },
+    home: { paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs },
+    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs },
     /** Both ends up, and the worker synced. */
     async link(): Promise<void> {
+      workerDocs?.start();
       await connection.start();
       links.start();
       await until(() => { if (!links.for(W)?.synced) throw new Error('w1 is not synced yet'); });

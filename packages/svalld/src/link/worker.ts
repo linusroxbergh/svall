@@ -84,8 +84,14 @@ export class HomeConnection {
   }
 
   report(r: RobotSync): void {
-    const seq = this.o.outbox.append('robot.sync', r);
-    if (this.link?.live) this.link.stream.send({ t: 'event', seq, kind: 'robot.sync', data: r });
+    this.journal('robot.sync', r);
+  }
+
+  /** Puts an event in the outbox and sends it while the home is linked; returns its seq. */
+  journal(kind: string, data: unknown): number {
+    const seq = this.o.outbox.append(kind, data);
+    if (this.link?.live) this.link.stream.send({ t: 'event', seq, kind, data });
+    return seq;
   }
 
   private unreachable(): ApiError {

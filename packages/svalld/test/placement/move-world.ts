@@ -17,6 +17,7 @@ import { silentLogger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
+import type { Mirror } from '../../src/placement/mirror.js';
 import { MoveFiles, Placement } from '../../src/placement/move.js';
 import { PrepareService } from '../../src/placement/prepare.js';
 import { Router, workerCalls } from '../../src/placement/router.js';
@@ -135,9 +136,10 @@ const put = (file: string, data: string): void => {
 /**
  * A Mac under `base/Users/ada` holding robot c_1 in worktree kanban of code/app, with commits past origin, a staged, an
  * unstaged and an untracked change and a .env, and its Claude session; and worker w1, whose user home is this test's
- * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock.
+ * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
+ * agent configuration.
  */
-export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean } = {}) {
+export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'> } = {}) {
   const base = fs.realpathSync(makeHome());
   fs.writeFileSync(path.join(base, 'gitconfig'), '');
   const g = (cwd: string, ...args: string[]): string => git(base, cwd, ...args);
@@ -206,6 +208,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   }
 
   const config = Config.parse({});
+  const { mirror } = o;
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
@@ -266,6 +269,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
       },
       onCall: (method, params) => answer(method, params, ctx!),
       snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: macClaude, codex: path.join(mac, '.codex'), opencode: path.join(mac, '.config/opencode') } }),
+      ...(mirror && { mirror }),
     });
     const router = new Router({ store, me: H, log: silentLogger, links });
     const fleet = new Fleet({ store, tmux: mortal(mac1.tmux, life) as unknown as Tmux, paths: homePaths, config, log: silentLogger, ownership, remote: router });

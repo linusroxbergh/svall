@@ -67,6 +67,8 @@ const ENTRIES: Record<string, Handling> = {
   'link.sock': 'machine-local',
   // the tokens this home issued its workers
   'workers.json': 'machine-local',
+  // a worker's own agent settings over the ones its home mirrors to it
+  'mirror-overrides': 'machine-local',
 };
 
 // what a write, a repair, a migration or an archive leaves beside an entry, named by the helper from the entry's own name

@@ -5,6 +5,8 @@ import { ApiError, MachineId, type LinkFrame, type MachineLink } from '@svall/pr
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
+import type { HomeDocs } from '../placement/docs-sync.js';
+import type { Mirror } from '../placement/mirror.js';
 import { tokenFor } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
@@ -42,6 +44,10 @@ type Options = {
   /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
   onCall?(method: string, params: unknown): Promise<unknown>;
   snapshot: () => Snapshot;
+  /** The home's agent configuration, which a worker takes once linked and before a move. */
+  mirror?: Pick<Mirror, 'push'>;
+  /** The fleet's docs, which a worker takes once linked and after they change. */
+  docs?: Pick<HomeDocs, 'push' | 'watch'>;
 };
 
 /** The far `svall worker link` over this machine's ssh master to the worker. */
@@ -81,6 +87,9 @@ export class WorkerLink {
   private retryMs = FIRST_RETRY_MS;
   private lastWhy?: string;
   private stopped = false;
+  // a docs push runs, and another is due after it
+  private sendingDocs = false;
+  private docsAgain = false;
 
   constructor(private entry: MachineEntry, private o: Options, private pushSoon: () => void) {
     this.machine = entry.id;
@@ -121,10 +130,11 @@ export class WorkerLink {
     });
   }
 
-  /** Streams `file` as blob `id`, which the worker has said it takes. */
-  sendBlob(id: string, file: string): Promise<void> {
+  /** Streams `file`, or the bytes given, as blob `id`, which the worker has said it takes. */
+  sendBlob(id: string, file: string | Buffer): Promise<void> {
     if (!this.stream || !this.peer) return Promise.reject(this.unreachable());
-    return this.stream.sendBlob(id, fs.createReadStream(file), fs.statSync(file).size).catch((e: unknown) => {
+    const sent = Buffer.isBuffer(file) ? this.stream.sendBlob(id, file, file.length) : this.stream.sendBlob(id, fs.createReadStream(file), fs.statSync(file).size);
+    return sent.catch((e: unknown) => {
       throw e instanceof ApiError && e.code === 'not_reachable' ? this.unreachable() : e;
     });
   }
@@ -140,6 +150,24 @@ export class WorkerLink {
     if (!this.synced || !this.stream) return Promise.resolve();
     this.stream.send({ t: 'snapshot', version: snap.version, data: snap });
     return new Promise((done) => this.waiting.push({ version: snap.version, done }));
+  }
+
+  /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
+  pushMirror(): Promise<void> {
+    if (!this.o.mirror || !this.connected()) return Promise.resolve();
+    return this.o.mirror.push(this).catch((e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
+  }
+
+  /** Sends the fleet's docs to a synced worker, and once more after if they change meanwhile. */
+  pushDocs(): void {
+    const { docs } = this.o;
+    if (!docs || !this.synced) return;
+    if (this.sendingDocs) { this.docsAgain = true; return; }
+    this.sendingDocs = true;
+    void docs.push(this, this.acked).catch((e: Error) => this.o.log.error(`${this.name}: the docs were not sent: ${e.message}`)).finally(() => {
+      this.sendingDocs = false;
+      if (this.docsAgain) { this.docsAgain = false; this.pushDocs(); }
+    });
   }
 
   /** Resolves once the worker has taken a snapshot of `version` or later, over this stream or one after it. */
@@ -256,6 +284,8 @@ export class WorkerLink {
         if (stream !== this.stream) return;
         this.synced = true;
         this.pushSoon();
+        void this.pushMirror();
+        this.pushDocs();
       }
     } catch (e) {
       this.o.log.error(`${this.name}: ${f.t === 'event' ? `event ${f.seq} (${f.kind})` : 'the inventory'} not taken, closing the link: ${(e as Error).message}`);
@@ -292,6 +322,7 @@ export class HomeLinks {
   private links = new Map<MachineId, WorkerLink>();
   private queued?: { promise: Promise<number>; fire(): void };
   private unsubscribe?: () => void;
+  private unwatchDocs?: () => void;
   private oversize = false;
   // set while the links run
   private pushSoon?: () => void;
@@ -307,6 +338,8 @@ export class HomeLinks {
     this.refresh();
     // every change while a worker is synced reaches it
     this.unsubscribe = this.o.store.subscribe(() => { if ([...this.links.values()].some((l) => l.synced)) pushSoon(); });
+    // and every change to the docs, but to the worker whose note it was
+    this.unwatchDocs = this.o.docs?.watch((except) => { for (const l of this.links.values()) if (l.machine !== except) l.pushDocs(); });
   }
 
   /** Links each machine in the registry that holds a token of this fleet's and is not linked yet. */
@@ -328,12 +361,18 @@ export class HomeLinks {
   stop(): void {
     this.pushSoon = undefined;
     this.unsubscribe?.();
+    this.unwatchDocs?.();
     for (const link of this.links.values()) link.stop();
     this.queued?.fire();
   }
 
   for(machine: MachineId): WorkerLink | undefined {
     return this.links.get(machine);
+  }
+
+  /** Sends `machine` the home's agent configuration, as before a move; resolves whether or not it went. */
+  pushMirror(machine: MachineId): Promise<void> {
+    return this.links.get(machine)?.pushMirror() ?? Promise.resolve();
   }
 
   call<T>(machine: MachineId, method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {

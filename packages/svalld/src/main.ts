@@ -34,6 +34,8 @@ import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
 import { Placement } from './placement/move.js';
+import { HomeDocs, WorkerDocs } from './placement/docs-sync.js';
+import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PrepareService } from './placement/prepare.js';
 import { Router, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
@@ -185,6 +187,8 @@ async function start(opts: Options): Promise<Daemon> {
   const config = loadConfig(paths, log.info);
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   const worker = opts.worker ? workerOptions(paths) : undefined;
+  // a worker's docs are its home's, as the home last sent them
+  if (worker) paths.docs = path.join(paths.cache, 'docs');
   const off = new Set<Off>(worker?.off ?? []);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
@@ -235,28 +239,39 @@ async function start(opts: Options): Promise<Daemon> {
   let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
+  const homeDocs = new HomeDocs(paths.docs, log);
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: runtimeVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },
-    onEvent: (kind, _data, machine) => Promise.reject(new Error(`${machine} sent ${kind}, which this svalld does not take`)),
+    onEvent: async (kind, data, machine) => {
+      if (kind !== 'docs.write' && kind !== 'docs.delete') throw new Error(`${machine} sent ${kind}, which this svalld does not take`);
+      homeDocs.apply(kind, data, machine);
+    },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
+    mirror: new Mirror({ claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, log }),
+    docs: homeDocs,
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
   const connection = worker && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: runtimeVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
   });
+  const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
   const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
   const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, ...(connection && { report: (r: RobotSync) => connection.report(r) }) });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
   // what each machine's agent CLIs are: a handover and a move read them
   const agents = agentProber(realProbeDeps(paths.env));
-  if (connection && worker) {
+  if (connection && worker && workerDocs) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals }), prepare.handlers);
+    const mirror = mirrorCalls({
+      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
+      stage: paths.cache, connection, log,
+    });
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals }), prepare.handlers, mirror, workerDocs.handlers);
   }
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const gatewayNow = (): MachineId | undefined => {
@@ -355,6 +370,10 @@ async function start(opts: Options): Promise<Daemon> {
     if (connection) {
       await connection.start();
       teardown.push(() => connection.stop());
+    }
+    if (workerDocs) {
+      workerDocs.start();
+      teardown.push(() => workerDocs.stop());
     }
     if (links && placement) {
       links.start();

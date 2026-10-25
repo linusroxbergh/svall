@@ -321,7 +321,7 @@ export type StartOptions = { interruptAfterMs?: number; carry?: string[] };
 export type PlacementDeps = {
   store: Store;
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
-  links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot'>;
+  links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot' | 'pushMirror'>;
   me: MachineId;
   fleetId: FleetId;
   paths: Pick<Paths, 'moves'>;
@@ -523,6 +523,8 @@ export class Placement {
         j = this.enter(await restRobot(this.restDeps(), j, (x) => this.save(x), this.d.fleetId, choices), 'bundle');
       }
       if (j.phase === 'bundle') {
+        // the agent there is the one the user talks to here; a mirror that does not go is logged, and the move goes on
+        await this.d.links.pushMirror(j.to);
         await this.convert(j);
         const c = this.robot(j.robotId);
         const packed = await packMove(c, j, this.files.stage(j.id), this.d.git);
