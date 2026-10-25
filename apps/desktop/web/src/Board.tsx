@@ -1,16 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { placingOn, type Column, type FleetState, type Robot } from '@svall/protocol';
-import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorderColumn, setPlacing } from './actions.js';
+import { placingOn, type FleetState, type Robot } from '@svall/protocol';
+import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorderColumn, saveRobot, setPlacing } from './actions.js';
 import { app, deps } from './boot.js';
-import { BoardCard } from './BoardCard.js';
-import { stop, useApp } from './hooks.js';
+import { BoardCard, NameInput } from './BoardCard.js';
+import { useApp } from './hooks.js';
 import { keyTip } from './keys.js';
 import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
 import { TerminalCard } from './map/TerminalCard.js';
 import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
-import { boardColumns, islandsSorted, placesOf, robotsOf, wantsUser, type BoardColumn } from './selectors.js';
+import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
 
@@ -104,32 +104,27 @@ function PlaceGlyph() {
   );
 }
 
-// Return or a click away saves a changed name, Escape keeps the old one
-function ColumnName({ column, onDone }: { column: Column; onDone(): void }) {
-  return (
-    <input className="kb-ren" autoFocus defaultValue={column.name} aria-label={`Rename ${column.name}`} data-testid="col-name-input"
-      onFocus={(e) => e.currentTarget.select()} onClick={stop} onDoubleClick={stop} onPointerDown={stop}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.stopPropagation(); onDone(); } }}
-      onBlur={(e) => {
-        const name = e.currentTarget.value.trim();
-        if (name && name !== column.name) renameColumn(deps(), column.id, name);
-        onDone();
-      }} />
-  );
-}
-
-/** A column's robots scroll under a fade that shows only while more of them lie below. */
-function Body({ children, onScroll }: { children: React.ReactNode; onScroll(): void }) {
-  const ref = useRef<HTMLDivElement>(null);
+// whether more of an element's content lies below it, or past its right edge, and the read its scroll calls
+function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void] {
   const [more, setMore] = useState(false);
-  const read = () => { const el = ref.current; if (el) setMore(el.scrollTop + el.clientHeight < el.scrollHeight - 1); };
-  // a robot coming or going redraws the column; the window changing size does not
+  const read = () => {
+    const el = ref.current;
+    if (el) setMore(axis === 'y' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  };
+  // a robot or an island coming or going redraws it; the window changing size does not
   useLayoutEffect(read);
   useLayoutEffect(() => {
     const ro = new ResizeObserver(read);
     if (ref.current) ro.observe(ref.current);
     return () => ro.disconnect();
   }, []);
+  return [more, read];
+}
+
+/** A column's robots scroll under a fade that shows only while more of them lie below. */
+function Body({ children, onScroll }: { children: React.ReactNode; onScroll(): void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, read] = useMore(ref, 'y');
   return <div ref={ref} className="kb-col-body" data-more={more} onScroll={() => { read(); onScroll(); }}>{children}</div>;
 }
 
@@ -143,10 +138,11 @@ export function Board() {
   const sections = useApp((s) => s.sections);
   const dropHover = useApp((s) => s.dropHover);
   const bindings = useApp((s) => s.settings.bindings);
-  const placing = useApp((s) => placingOn(s.fleet));
+  const placing = useApp((s) => scribePlaces(s.fleet));
   const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ needsYou: false });
   const [renaming, setRenaming] = useState<string>();
+  const [renamingRobot, setRenamingRobot] = useState<string>();
   const [pending, setPending] = useState<{ id: string; column: string }>();
   const [lift, setLift] = useState<Lift>();
   // the cards keep the handlers of the render that drew them, so theirs read the drag here
@@ -154,6 +150,9 @@ export function Board() {
   lifting.current = Boolean(lift);
   const [shift, setShift] = useState<Shift>();
   const size = useSize(ground);
+  // the island chips scroll sideways under a fade while more of them lie past the right edge
+  const chips = useRef<HTMLDivElement>(null);
+  const [moreChips, readChips] = useMore(chips, 'x');
   const hov = useHover();
   const hoverRect = useRef<DOMRect>(undefined);
 
@@ -262,7 +261,7 @@ export function Board() {
         <header className="kb-col-h" onContextMenu={(e) => menu(e, id)}>
           <span className="kb-grip" data-testid={`col-grip-${id}`} title="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
           {renaming === id
-            ? <ColumnName column={column} onDone={() => setRenaming(undefined)} />
+            ? <NameInput name={column.name} className="kb-ren" testid="col-name-input" onSave={(name) => renameColumn(deps(), id, name)} onDone={() => setRenaming(undefined)} />
             : <span className="kb-col-n" data-testid={`col-name-${id}`} onDoubleClick={() => setRenaming(id)}>{column.name}</span>}
           <span className="kb-col-ct tnum" data-testid={`col-count-${id}`}>{robots.length}</span>
           {attention > 0 && <span className="kb-red tnum" title={`${attention} want you`}>{attention}</span>}
@@ -276,16 +275,18 @@ export function Board() {
           {robots.map((c) => (
             <BoardCard key={c.id} c={c} selected={c.id === selectedId} arrived={now - (arrived.get(c.id) ?? -Infinity) < theme.board.arriveMs}
               dragging={lift?.id === c.id} fileHover={dropHover?.kind === 'robot' && dropHover.id === c.id}
+              renaming={renamingRobot === c.id} onRename={(name) => saveRobot(deps(), c.id, { name })} onRenamed={() => setRenamingRobot(undefined)}
               on={{
                 onPointerDown: (e) => liftCard(e, c, id),
                 onClick: () => pick(c.id),
                 onDoubleClick: () => app.store.getState().focus(c.id),
-                onContextMenu: (e) => boardRobotMenu(e, c.id),
+                // the rename field keeps the text menu
+                onContextMenu: (e) => { if (!(e.target as Element).closest('input')) boardRobotMenu(e, c.id, () => setRenamingRobot(c.id)); },
                 onPointerEnter: (e) => { if (lifting.current || app.store.getState().card) return; hoverRect.current = e.currentTarget.getBoundingClientRect(); hov.start(c.id); },
                 onPointerLeave: hov.end,
               }} />
           ))}
-          {robots.length === 0 && !target && <div className="kb-empty" data-testid={`col-empty-${id}`}>Drop a robot here</div>}
+          {robots.length === 0 && !target && <div className="kb-empty" data-testid={`col-empty-${id}`}><b>Nothing here yet</b>Drop a robot, or + for a new one</div>}
         </Body>
       </section>
     );
@@ -306,7 +307,7 @@ export function Board() {
           <button type="button" aria-pressed="true">Board</button>
         </div>
         <span className="kb-sep" />
-        <div className="kb-chips" role="group" aria-label="Islands">
+        <div ref={chips} className="kb-chips" role="group" aria-label="Islands" data-testid="island-chips" data-more={moreChips} onScroll={readChips}>
           {chip('all', !island, 'All islands', all.length, () => setFilter((f) => ({ ...f, island: undefined })))}
           {islandsSorted(fleet).map((i) => chip(i.id, island === i.id, i.name, robotsOf(fleet, i.id).length,
             () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id }))))}

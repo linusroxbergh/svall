@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState, type ContextItem } from '@svall/protocol';
-import { boardColumns, placesOf, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, placingAsking, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
+import { boardColumns, placesOf, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, placingAsking, resumeErrorOf, scribePlaces, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -99,6 +99,16 @@ describe('placingAsking', () => {
     expect(placingAsking({ view: 'board', fleet: { ...asking, scribeAsk: true } })).toBe(false);
     expect(placingAsking({ view: 'board', fleet: asking, fleetPicker: 'bare' })).toBe(false);
     expect(placingAsking({ view: 'board', fleet: fleet() })).toBe(false);
+  });
+});
+
+describe('scribePlaces', () => {
+  it('places robots only while placing is on and the scribe runs', () => {
+    expect(scribePlaces(fleet())).toBe(true);
+    expect(scribePlaces({ ...fleet(), placingOff: true })).toBe(false);
+    expect(scribePlaces({ ...fleet(), placingAsk: true })).toBe(false);
+    expect(scribePlaces({ ...fleet(), scribeOff: true })).toBe(false);
+    expect(scribePlaces({ ...fleet(), scribeAsk: true })).toBe(false);
   });
 });
 

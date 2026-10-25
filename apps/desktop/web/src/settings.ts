@@ -10,7 +10,7 @@ const KEEP_AWAKE = ['off', 'working', 'needs'] as const;
 export type KeepAwake = (typeof KEEP_AWAKE)[number];
 
 export type Settings = {
-  // the half card floats over the map; the full card and the board fill the view
+  // the half card floats over the map or the board; the full card fills the view
   cardOpacity: number;
   fullOpacity: number;
   zoom: number;

@@ -9,7 +9,7 @@ import { ResourcesButton } from './ResourcesButton.js';
 import { Section } from './Section.js';
 import { robotsOf } from './selectors.js';
 
-export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
+function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
   return <button className="btn dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
 }
 

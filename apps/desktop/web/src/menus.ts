@@ -1,6 +1,7 @@
-import { columnOf, placingOn } from '@svall/protocol';
+import { columnOf } from '@svall/protocol';
 import { deleteEmptyColumn, placeRobot, releaseRobot, setPlacing, setStar, stepColumn } from './actions.js';
 import { app, deps } from './boot.js';
+import { scribePlaces } from './selectors.js';
 import type { MenuEntry } from './store/ui.js';
 
 type Press = Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>;
@@ -24,13 +25,16 @@ const deleteEntry = (id: string): MenuEntry => ({ title: 'Delete', danger: true,
 export const robotMenu = (e: Press, id: string, rename?: () => void): void =>
   showMenu(e, [...renameFirst(rename), starEntry(id), deleteEntry(id)]);
 
-// the board's adds the columns to move the robot to, and a hand move to hand back to the scribe
-export const boardRobotMenu = (e: Press, id: string): void => {
+// the board's leads with opening the terminal and renaming in the card, and adds the columns to move the robot to
+// and a hand move to hand back to the scribe
+export const boardRobotMenu = (e: Press, id: string, rename: () => void): void => {
   const f = app.store.getState().fleet;
   const c = f.robots[id];
   if (!c) return;
   const here = columnOf(f, c).id;
   showMenu(e, [
+    { title: 'Open terminal', run: () => app.store.getState().focus(id) },
+    { title: 'Rename', run: rename },
     starEntry(id),
     { title: 'Move to', items: f.columns.map((k) => ({ title: k.name, checked: k.id === here, run: () => { if (k.id !== here) void placeRobot(deps(), id, k.id); } })) },
     { title: 'Let the scribe place it', run: c.columnSource === 'manual' ? () => releaseRobot(deps(), id) : undefined },
@@ -61,7 +65,7 @@ export const columnMenu = (e: Press, id: string, o: { rename(): void; collapse()
 // the board's Auto-place chip: who places robots, with the scribe to pick only while it runs
 export const placingMenu = (x: number, y: number): void => {
   const f = app.store.getState().fleet;
-  const on = placingOn(f);
+  const on = scribePlaces(f);
   const scribe = !f.scribeOff && !f.scribeAsk;
   app.store.getState().openMenu({ x, y, bare: true, items: [
     { title: 'Off', note: 'by hand only', checked: !on, run: () => setPlacing(deps(), false) },

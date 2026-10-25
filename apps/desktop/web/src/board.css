@@ -8,6 +8,7 @@
 /* the island chips give way first in a narrow window, and scroll sideways rather than wrap */
 .kb-chips { flex: 0 1 auto; min-width: 0; display: flex; gap: var(--sp-lg); overflow-x: auto; scrollbar-width: none; }
 .kb-chips::-webkit-scrollbar { display: none; }
+.kb-chips[data-more="true"] { mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); -webkit-mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); }
 .kb-gap { flex: 1; }
 .kb-chip { flex: none; display: inline-flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: var(--w-medium); color: var(--ink-2); background: var(--fill-1); border: 1px solid var(--line-soft); white-space: nowrap; }
 .kb-chip:hover { background: var(--fill-2); color: var(--ink); }
@@ -50,8 +51,9 @@
 /* the robots scroll inside the column; the inset keeps a selected card's ring clear of the scroll edge */
 .kb-col-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-sm); overflow-y: auto; padding: var(--sp-xs); margin: calc(-1 * var(--sp-xs));
   scrollbar-width: thin; scrollbar-color: var(--fill-3) transparent; }
-.kb-col-body[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - 56px), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - 56px), transparent); }
-.kb-empty { flex: 1; min-height: 84px; display: grid; place-content: center; border-radius: var(--r-md); border: 1px dashed var(--line); color: var(--ink-3); font-size: var(--text-sm); }
+.kb-col-body[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - var(--col-fade)), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - var(--col-fade)), transparent); }
+.kb-empty { flex: 1; min-height: 84px; display: grid; place-content: center; gap: var(--sp-xs); text-align: center; border-radius: var(--r-md); border: 1px dashed var(--line); color: var(--ink-3); font-size: var(--text-sm); }
+.kb-empty b { font-weight: var(--w-semibold); color: var(--ink-2); }
 .kb-slot { flex: none; box-sizing: border-box; border-radius: calc(var(--r-md) + var(--sp-2xs)); border: 1px dashed color-mix(in srgb, var(--sel) 65%, transparent); background: color-mix(in srgb, var(--sel) 8%, transparent); }
 .kb-add-col { flex: 0 0 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: calc(var(--r-md) + var(--sp-2xs)); border: 1px dashed var(--line); background: none; color: var(--ink-3); font-size: var(--text-2xl); font-weight: var(--w-regular); }
 .kb-add-col:hover { background: var(--fill-1); color: var(--ink); }
@@ -89,6 +91,9 @@
 
 .kc-av { position: relative; grid-row: 1; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: radial-gradient(118% 118% at 33% 22%, var(--cream) 0%, var(--card-0) 44%, var(--card-2) 100%); box-shadow: 0 0 0 1.5px var(--lit); }
 .kc-av img { position: absolute; left: 50%; top: 2px; height: 50px; transform: translateX(-50%); pointer-events: none; }
+/* a card the keys select stops clear of the fade under the column */
+.kb-col-body .kc { scroll-margin-block: var(--sp-xs) var(--col-fade); }
+.kc-ren { grid-row: 1; width: 100%; font-size: var(--text-lg); }
 .kc-nm { grid-row: 1; min-width: 0; font-size: var(--text-lg); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); line-height: var(--lh-tight); overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .kc-note { grid-column: 1 / -1; grid-row: 2; align-self: start; max-height: 32px; font-size: var(--text-sm); line-height: var(--lh-tight); color: var(--ink-3); overflow-wrap: anywhere;
