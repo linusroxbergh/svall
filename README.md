@@ -255,11 +255,12 @@ The first build takes several minutes and about 1.5 GB of disk.
   swap them, or onto water to make a new island. Drag an island's label to move
   it and its corner to resize it. On mission control, `arrange` packs the fleet
   into the window, and `update info` and `status` start a helper agent.
-- **Board** (Cmd+M): every robot as a card in a column: To do, In progress,
-  In review and Done until you rename, reorder, add or delete them. Drag a
-  card, or right-click → Move to, to place it; its agent is told nothing. The
-  bar filters by island and by robots that need you, and its Auto-place chip
-  says whether the scribe places robots.
+- **Board** (Cmd+M, or the Map/Board switch at the top left): every robot as a
+  card in a column: To do, In progress, In review and Done until you rename,
+  reorder, add or delete them. Drag a card, or right-click → Move to, to place
+  it; its agent is told nothing. A card names its island, and the bar filters
+  by island and by robots that need you; its Auto-place chip says whether the
+  scribe places robots, and its Place now has the scribe place them at once.
 - **Sidebar**: islands as a folder tree. Drag robots and islands to move or
   reorder them. A starred robot also stands in Starred at the top, newest
   first; drag there to star one at a spot or to reorder.

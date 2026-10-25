@@ -23,8 +23,10 @@ export function NameInput({ name, className, testid, onSave, onDone }: { name: s
 }
 
 /** A robot on the board: every card one size, with two lines kept for the name and two for the note. */
-export const BoardCard = memoByValue(function BoardCard({ c, selected, arrived, dragging, lifted, fileHover, renaming, onRename, onRenamed, on }: {
+export const BoardCard = memoByValue(function BoardCard({ c, island, selected, arrived, dragging, lifted, fileHover, renaming, onRename, onRenamed, on }: {
   c: Robot;
+  // the robot's island, left out while the board shows a single island
+  island?: string;
   selected: boolean;
   arrived: boolean;
   // the card's place in its column while it is dragged, and the copy that follows the pointer
@@ -59,6 +61,7 @@ export const BoardCard = memoByValue(function BoardCard({ c, selected, arrived, 
         <span className="kc-st"><i />{status}</span>
         {unread && <span className="kc-un">unread</span>}
         <span className="kc-sp" />
+        {island && <span className="kc-isl" title={island} data-testid={`kc-island-${c.id}`}>{island}</span>}
         {pr && <span className="kc-mk" data-kind="review" title={reviewText(pr)} data-testid={`kc-review-${c.id}`}><PrGlyph /></span>}
         {isMonitoring(c) && <span className="kc-mk" data-kind="monitor" title="Monitoring" data-testid={`kc-monitor-${c.id}`}><EyeGlyph /></span>}
         {c.columnSource === 'manual' && <span className="kc-hand" title="Placed by hand" data-testid={`kc-hand-${c.id}`}><HandGlyph /></span>}

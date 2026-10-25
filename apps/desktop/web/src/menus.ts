@@ -1,5 +1,5 @@
 import { columnOf } from '@svall/protocol';
-import { deleteEmptyColumn, placeRobot, releaseRobot, setPlacing, setStar, stepColumn } from './actions.js';
+import { deleteEmptyColumn, placeNow, placeRobot, releaseRobot, setPlacing, setStar } from './actions.js';
 import { app, deps } from './boot.js';
 import { scribePlaces } from './selectors.js';
 import type { MenuEntry } from './store/ui.js';
@@ -47,28 +47,25 @@ export const islandMenu = (e: Press, id: string, empty: boolean, rename?: () => 
   showMenu(e, [...renameEntry(rename), { title: 'Delete', danger: true, run: empty ? () => app.store.getState().setDeletingIsland(id) : undefined }]);
 
 // a column with robots asks where they go before it is deleted; the board keeps its last column
-export const columnMenu = (e: Press, id: string, o: { rename(): void; collapse(): void; addAfter(): void }): void => {
+export const columnMenu = (e: Press, id: string, o: { rename(): void; collapse(): void }): void => {
   const f = app.store.getState().fleet;
-  const at = f.columns.findIndex((k) => k.id === id);
   const crowded = Object.values(f.robots).some((c) => columnOf(f, c).id === id);
   const remove = () => (crowded ? app.store.getState().setDeletingColumn(id) : void deleteEmptyColumn(deps(), id));
   showMenu(e, [
     { title: 'Rename', run: o.rename },
-    { title: 'Move left', run: at > 0 ? () => stepColumn(deps(), id, -1) : undefined },
-    { title: 'Move right', run: at < f.columns.length - 1 ? () => stepColumn(deps(), id, 1) : undefined },
     { title: 'Collapse', run: o.collapse },
-    { title: 'Add column after', run: o.addAfter },
     { title: 'Delete', danger: true, run: f.columns.length > 1 ? remove : undefined },
   ]);
 };
 
-// the board's Auto-place chip: who places robots, with the scribe to pick only while it runs
+// the board's Auto-place chip: a placing pass now, then who places robots; both need the scribe running
 export const placingMenu = (x: number, y: number): void => {
   const f = app.store.getState().fleet;
   const on = scribePlaces(f);
   const scribe = !f.scribeOff && !f.scribeAsk;
   app.store.getState().openMenu({ x, y, bare: true, items: [
-    { title: 'Off', note: 'by hand only', checked: !on, run: () => setPlacing(deps(), false) },
+    { title: 'Place now', run: scribe ? () => void placeNow(deps()) : undefined },
+    { title: 'Off', note: 'by hand only', checked: !on, sep: true, run: () => setPlacing(deps(), false) },
     { title: 'Scribe', checked: on, run: scribe ? () => setPlacing(deps(), true) : undefined },
     { title: 'Scribe settings…', sep: true, run: () => app.store.getState().toggleSettings(true, 'fleet') },
   ] });

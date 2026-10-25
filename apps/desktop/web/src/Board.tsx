@@ -4,7 +4,6 @@ import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorde
 import { app, deps } from './boot.js';
 import { BoardCard, NameInput } from './BoardCard.js';
 import { useApp } from './hooks.js';
-import { keyTip } from './keys.js';
 import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
@@ -13,6 +12,7 @@ import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
 import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
+import { ViewSwitch } from './ViewSwitch.js';
 
 type Filter = { island?: string; needsYou: boolean };
 // the card a drag carries, where the pointer holds it, and the column under the pointer
@@ -137,7 +137,6 @@ export function Board() {
   const halfCard = useApp((s) => s.halfCard);
   const sections = useApp((s) => s.sections);
   const dropHover = useApp((s) => s.dropHover);
-  const bindings = useApp((s) => s.settings.bindings);
   const placing = useApp((s) => scribePlaces(s.fleet));
   const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ needsYou: false });
@@ -160,6 +159,7 @@ export function Board() {
   const arrived = useArrivals(shown);
   const island = filter.island && fleet.islands[filter.island] ? filter.island : undefined;
   const inIsland = (c: Robot) => !island || c.islandId === island;
+  const islandOf = (c: Robot) => (island ? undefined : fleet.islands[c.islandId]?.name);
   const cols = boardColumns(shown, (c) => inIsland(c) && (!filter.needsYou || wantsUser(c)), arrived);
   const all = Object.values(fleet.robots);
   const needs = all.filter((c) => inIsland(c) && wantsUser(c)).length;
@@ -218,7 +218,7 @@ export function Board() {
     s.select(undefined);
     s.closeCard();
   };
-  const add = async (afterId?: string) => { const id = await addColumn(deps(), afterId); if (id) setRenaming(id); };
+  const add = async () => { const id = await addColumn(deps()); if (id) setRenaming(id); };
   const shut = (id: string) => Boolean(sections[shutKey(id)]?.shut);
   const fold = (id: string, to: boolean) => app.store.getState().setSection(shutKey(id), { shut: to });
   // a new robot lands in the first column, so one asked for elsewhere is placed there by hand
@@ -231,7 +231,7 @@ export function Board() {
     }
   };
   const menu = (e: React.MouseEvent, id: string) =>
-    columnMenu(e, id, { rename: () => setRenaming(id), collapse: () => fold(id, true), addAfter: () => void add(id) });
+    columnMenu(e, id, { rename: () => setRenaming(id), collapse: () => fold(id, true) });
 
   const hovered = hov.hover && !lift && !shift && !card ? fleet.robots[hov.hover] : undefined;
   const hoverAt = (() => {
@@ -259,13 +259,13 @@ export function Board() {
       <section key={id} className="kb-col" aria-label={column.name} data-col={id} data-testid={`col-${id}`}
         data-target={Boolean(target)} data-reorder={reorder} data-moving={shift?.id === id}>
         <header className="kb-col-h" onContextMenu={(e) => menu(e, id)}>
-          <span className="kb-grip" data-testid={`col-grip-${id}`} title="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
           {renaming === id
             ? <NameInput name={column.name} className="kb-ren" testid="col-name-input" onSave={(name) => renameColumn(deps(), id, name)} onDone={() => setRenaming(undefined)} />
             : <span className="kb-col-n" data-testid={`col-name-${id}`} onDoubleClick={() => setRenaming(id)}>{column.name}</span>}
           <span className="kb-col-ct tnum" data-testid={`col-count-${id}`}>{robots.length}</span>
           {attention > 0 && <span className="kb-red tnum" title={`${attention} want you`}>{attention}</span>}
           <span className="kb-col-act">
+            <span className="kb-grip" data-testid={`col-grip-${id}`} title="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
             <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} title="New robot here" onClick={() => void newIn(id)}>+</button>
             <button type="button" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}>⋯</button>
           </span>
@@ -273,7 +273,7 @@ export function Board() {
         <Body onScroll={hov.end}>
           {target && <div className="kb-slot" data-testid="kb-slot" style={{ height: target.h }} />}
           {robots.map((c) => (
-            <BoardCard key={c.id} c={c} selected={c.id === selectedId} arrived={now - (arrived.get(c.id) ?? -Infinity) < theme.board.arriveMs}
+            <BoardCard key={c.id} c={c} island={islandOf(c)} selected={c.id === selectedId} arrived={now - (arrived.get(c.id) ?? -Infinity) < theme.board.arriveMs}
               dragging={lift?.id === c.id} fileHover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               renaming={renamingRobot === c.id} onRename={(name) => saveRobot(deps(), c.id, { name })} onRenamed={() => setRenamingRobot(undefined)}
               on={{
@@ -302,10 +302,7 @@ export function Board() {
   return (
     <div className="board" data-testid="board">
       <div className="kb-bar">
-        <div className="kb-seg" role="group" aria-label="View">
-          <button type="button" data-testid="board-map" title={keyTip('Map', 'toggleView', bindings)} onClick={() => app.store.getState().setView('map')}>Map</button>
-          <button type="button" aria-pressed="true">Board</button>
-        </div>
+        <ViewSwitch />
         <span className="kb-sep" />
         <div ref={chips} className="kb-chips" role="group" aria-label="Islands" data-testid="island-chips" data-more={moreChips} onScroll={readChips}>
           {chip('all', !island, 'All islands', all.length, () => setFilter((f) => ({ ...f, island: undefined })))}
@@ -334,7 +331,7 @@ export function Board() {
         </div>
         {lift && lifted && (
           <div className="kb-lift" style={{ left: lift.x - lift.dx, top: lift.y - lift.dy, width: lift.w }}>
-            <BoardCard c={lifted} selected={false} arrived={false} lifted />
+            <BoardCard c={lifted} island={islandOf(lifted)} selected={false} arrived={false} lifted />
           </div>
         )}
       </div>

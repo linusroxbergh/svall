@@ -234,9 +234,9 @@ export const methods = {
   'column.rename': { params: z.object({ id: z.string(), name: z.string() }), result: z.array(Column) },
   'column.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: z.array(Column) },
   'column.delete': { params: z.object({ id: z.string(), moveTo: z.string() }), result: z.array(Column) },
-  // names writes only names; islands runs only the island descriptions
+  // names writes only names; columns only moves robots to their columns, Auto-place on or off; islands runs only the island descriptions
   'scribe.sweep': {
-    params: z.object({ names: z.boolean().optional(), islands: z.boolean().optional() }),
+    params: z.object({ names: z.boolean().optional(), columns: z.boolean().optional(), islands: z.boolean().optional() }),
     result: z.object({ lines: z.array(z.string()) }),
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
@@ -438,4 +438,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 30;

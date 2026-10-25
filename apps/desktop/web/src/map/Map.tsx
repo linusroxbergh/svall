@@ -9,6 +9,7 @@ import { ResourcesLayer } from '../resources/Shelf.js';
 import { robotsOf, homeIsland, mapIslandsSorted, resumeErrorOf, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { Toast, toastCorner } from '../Toast.js';
+import { ViewSwitch } from '../ViewSwitch.js';
 import { useAutoArrange } from './arrange.js';
 import { useCamera } from './camera.js';
 import { cardRect } from './card.js';
@@ -140,6 +141,7 @@ export function Map() {
         )}
       </div>
       <div className="map-overlay">
+        <div className="map-view"><ViewSwitch /></div>
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf} links={links}

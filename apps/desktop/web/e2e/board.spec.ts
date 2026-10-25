@@ -69,6 +69,21 @@ test('draws the fleet in its columns, follows agent status, and a click selects 
   await expect(page.getByTestId(`kc-${shell.id}`)).toHaveAttribute('data-selected', 'false');
 });
 
+test('the view switch stands in one place over the map and the board, and switches them', async ({ page, svall }) => {
+  await svall.open('map');
+  const at = async () => (await page.getByTestId('view-board').boundingBox())!;
+  const onMap = await at();
+  await page.getByTestId('view-board').click();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('view-board')).toHaveAttribute('aria-pressed', 'true');
+  const onBoard = await at();
+  expect(onBoard.x).toBeCloseTo(onMap.x, 0);
+  expect(onBoard.y).toBeCloseTo(onMap.y, 0);
+  await page.getByTestId('view-map').click();
+  await expect(page.getByTestId('map')).toBeVisible();
+  await expect(page.getByTestId('view-map')).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('a drop places the robot in the column under it and tells its agent nothing', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('drop') });
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'mover', command: FAKE_CLAUDE });
@@ -214,7 +229,7 @@ test('the island chips fade at the right while more of them lie past it', async 
   await expect(chips).toHaveAttribute('data-more', 'false');
 });
 
-test('a column renames in place, a new one comes last with its name ready to type, and the menu moves it', async ({ page, svall }) => {
+test('a column renames in place, a new one comes last with its name ready to type, and its grip moves it', async ({ page, svall }) => {
   const k = await columns(svall);
   await svall.open();
   await page.getByTestId(`col-name-${k['In review']}`).dblclick();
@@ -238,15 +253,17 @@ test('a column renames in place, a new one comes last with its name ready to typ
   await expect(page.getByTestId(`col-empty-${blocked}`)).toBeVisible();
 
   await page.getByTestId(`col-menu-${blocked}`).click();
-  await expect(page.getByTestId('menu-move right')).toHaveAttribute('aria-disabled', 'true');
-  await page.getByTestId('menu-move left').click();
+  await expect(page.getByTestId('context-menu').getByRole('menuitem')).toHaveText(['Rename', 'Collapse', 'Delete', 'Reload']);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('context-menu')).toHaveCount(0);
+  // the grip drags it to the side of the column it lands on
+  const grip = (await page.getByTestId(`col-grip-${blocked}`).boundingBox())!, done = (await page.getByTestId(`col-${k.Done}`).boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(done.x + done.width / 4, done.y + 120, { steps: 8 });
+  await expect(page.getByTestId(`col-${k.Done}`)).toHaveAttribute('data-reorder', 'before');
+  await page.mouse.up();
   await expect.poll(() => names(svall)).toEqual(['To do', 'In progress', 'Waiting on me', 'Blocked on design', 'Done']);
-  await page.getByTestId(`col-menu-${k['To do']}`).click();
-  await page.getByTestId('menu-add column after').click();
-  await expect(page.getByTestId('col-name-input')).toBeFocused();
-  await page.keyboard.type('Next');
-  await page.keyboard.press('Enter');
-  await expect.poll(() => names(svall)).toEqual(['To do', 'Next', 'In progress', 'Waiting on me', 'Blocked on design', 'Done']);
 });
 
 test('a column with robots asks where they go before it is deleted; an empty one goes at once and Undo brings it back', async ({ page, svall }) => {
@@ -307,7 +324,7 @@ test('a collapsed column is a strip that keeps its count, takes a drop, opens on
   await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toBeVisible();
 });
 
-test('the chips show one island, or the robots that want the user', async ({ page, svall }) => {
+test('the chips show one island, or the robots that want the user, and a card names its island until one island shows', async ({ page, svall }) => {
   const a = await svall.api.call('island.create', { name: svall.uniq('alpha') });
   const b = await svall.api.call('island.create', { name: svall.uniq('beta') });
   const quiet = await svall.api.call('robot.create', { islandId: a.id, cwd: '/tmp', name: 'quiet' });
@@ -320,11 +337,13 @@ test('the chips show one island, or the robots that want the user', async ({ pag
   await expect(page.getByTestId('chip-all')).toHaveText('All islands 3');
   await expect(page.getByTestId(`chip-${a.id}`)).toContainText('2');
   await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 1');
+  await expect(page.getByTestId(`kc-island-${other.id}`)).toHaveText(b.name);
 
   await page.getByTestId(`chip-${b.id}`).click();
   await expect(page.getByTestId(`chip-${b.id}`)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.kc')).toHaveCount(1);
   await expect(page.getByTestId(`kc-${other.id}`)).toBeVisible();
+  await expect(page.getByTestId(`kc-island-${other.id}`)).toHaveCount(0);
   await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 0');
 
   await page.getByTestId(`chip-${a.id}`).click();
@@ -495,15 +514,16 @@ test('Keep off on an empty fleet counts as the first-launch toast, so the first 
   await expect(page.getByTestId('toast')).toHaveCount(0);
 });
 
-test('the Auto-place chip says who places robots and switches it, the scribe only while it runs', async ({ page, svall }) => {
+test('the Auto-place chip says who places robots and switches it, and places them now, the scribe only while it runs', async ({ page, svall }) => {
   await svall.open();
   const chip = page.getByTestId('chip-placing');
   await expect(chip).toHaveText('Auto-place: off ▾');
   await expect(chip).toHaveAttribute('data-on', 'false');
   await chip.click();
   const menu = page.getByTestId('context-menu');
-  await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only✓', 'Scribe', 'Scribe settings…']);
-  await expect(menu.getByRole('separator')).toHaveCount(1);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only✓', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByRole('separator')).toHaveCount(2);
+  await expect(menu.getByTestId('menu-place now')).toHaveAttribute('aria-disabled', 'true');
   await expect(menu.getByTestId('menu-scribe')).toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
@@ -520,16 +540,21 @@ test('the Auto-place chip says who places robots and switches it, the scribe onl
   await svall.api.call('scribe.set', { enabled: false });
   await expect(chip).toHaveText('Auto-place: off ▾');
   await chip.click();
-  await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only✓', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only✓', 'Scribe', 'Scribe settings…']);
   await page.keyboard.press('Escape');
   await svall.api.call('scribe.set', { enabled: true });
   await expect(chip).toHaveText('Auto-place: scribe ▾');
 
   await chip.click();
-  await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only', 'Scribe✓', 'Scribe settings…']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only', 'Scribe✓', 'Scribe settings…']);
   await menu.getByTestId('menu-off').click();
   await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBe(true);
   await expect(chip).toHaveText('Auto-place: off ▾');
+
+  // Place now runs a pass with Auto-place off too; no robot here has a session to read
+  await chip.click();
+  await menu.getByTestId('menu-place now').click();
+  await expect(page.getByTestId('toast')).toContainText('Every robot is in its column');
 
   await chip.click();
   await menu.getByTestId('menu-scribe settings…').click();

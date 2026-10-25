@@ -150,8 +150,9 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it("is 29 with the board's columns, robots placed by hand or let go, and placing.set", () => {
-    expect(PROTOCOL_VERSION).toBe(29);
+  it("is 30 with the board's columns, robots placed by hand or let go, placing.set, and a sweep of columns alone", () => {
+    expect(PROTOCOL_VERSION).toBe(30);
+    expect(methods['scribe.sweep'].params.parse({ columns: true })).toEqual({ columns: true });
     expect(methods['robot.place'].params.safeParse({ id: 'c_a', columnId: 'todo' }).success).toBe(true);
     expect(methods['column.delete'].params.safeParse({ id: 'todo' }).success).toBe(false);
     expect(methods['column.reorder'].params.safeParse({ id: 'todo', targetId: 'done' }).success).toBe(false);
