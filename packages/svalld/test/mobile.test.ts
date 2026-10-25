@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import http, { type IncomingMessage } from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
@@ -112,6 +113,18 @@ describe('bundle paths', () => {
       expect(undecodable.status).toBe(404);
       expect(await undecodable.text()).toBe('Not found');
       expect(await (await fetch(`${at}/empty/`)).text()).toMatch(/not built/);
+    } finally { await new Promise((r) => server.close(r)); }
+  });
+
+  it('answers 400 to a request target that is no URL', async () => {
+    const server = http.createServer((req, res) => serveBundle(req, res, dir));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    try {
+      const socket = net.connect((server.address() as { port: number }).port, '127.0.0.1');
+      socket.end('GET //[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n');
+      let said = '';
+      for await (const chunk of socket) said += String(chunk);
+      expect(said).toMatch(/^HTTP\/1\.1 400 /);
     } finally { await new Promise((r) => server.close(r)); }
   });
 
