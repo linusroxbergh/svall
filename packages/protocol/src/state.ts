@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { Portrait } from './portraits.js';
+import { MachineId } from './ids.js';
+import { LeftBehind, MachineLink, Moving, Placement } from './placement.js';
 
 export const AgentStatus = z.enum(['working', 'idle', 'blocked', 'done']);
 export type AgentStatus = z.infer<typeof AgentStatus>;
@@ -185,15 +187,18 @@ export const Robot = TerminalSlot.extend({
   codexDaemon: z.literal(true).optional(),
   browser: Browser.optional(),
   second: TerminalSlot.optional(),
-  // "Keep on this machine": a handover of the fleet waits until it is lifted
-  keepHere: z.literal(true).optional(),
+  // the machine running it; absent, the one holding the state
+  machine: MachineId.optional(),
+  placement: Placement.optional(),
+  moving: Moving.optional(),
+  left: LeftBehind.optional(),
   // its place among the starred, lowest first; absent, it is not starred
   star: z.number().int().optional(),
 });
 export type Robot = z.infer<typeof Robot>;
 
 /** The state.json schema this release reads and writes, which both machines of a handover have to share. */
-export const STATE_SCHEMA_VERSION = 10;
+export const STATE_SCHEMA_VERSION = 11;
 
 export const FleetState = z.object({
   version: z.literal(STATE_SCHEMA_VERSION),
@@ -201,6 +206,7 @@ export const FleetState = z.object({
   name: z.string().optional(),
   islands: z.record(z.string(), Island),
   robots: z.record(z.string(), Robot),
+  machines: z.record(MachineId, MachineLink).optional(),
   home: Home.prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the scribe is switched off: no automatic pass runs and a sweep is refused

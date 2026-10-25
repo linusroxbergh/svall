@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Robot, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
+  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
   PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, TRANSFER_SCHEMA_VERSION, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
@@ -34,13 +34,6 @@ describe('messages', () => {
   it('robot.update strips unknown keys like slot rather than refusing them', () => {
     expect(methods['robot.update'].params.parse({ id: 'c', slot: 1 })).toEqual({ id: 'c' });
   });
-  it('robot.update keeps a robot on this machine or lets it go, and a robot says which', () => {
-    expect(methods['robot.update'].params.parse({ id: 'c', keepHere: true })).toEqual({ id: 'c', keepHere: true });
-    expect(methods['robot.update'].params.parse({ id: 'c', keepHere: false })).toEqual({ id: 'c', keepHere: false });
-    const c = { id: 'c_1', islandId: 'home', cell: { x: 1, y: 1 }, name: 'n', portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false };
-    expect(Robot.parse({ ...c, keepHere: true }).keepHere).toBe(true);
-    expect(Robot.parse(c).keepHere).toBeUndefined();
-  });
   it('island.create refuses a size below 4x3', () => {
     expect(() => methods['island.create'].params.parse({ name: 'x', size: { w: 3, h: 3 } })).toThrow();
   });
@@ -52,7 +45,7 @@ describe('messages', () => {
     }
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 10, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
@@ -67,7 +60,7 @@ describe('messages', () => {
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
     const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 10, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
   it('waits a whole number of milliseconds a timer can hold', () => {

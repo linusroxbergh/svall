@@ -1,16 +1,13 @@
 import { z } from 'zod';
 import { isProfileName } from './names.js';
+import { MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 import { AgentKind, DEFAULT_CWD, FleetState, Home } from './state.js';
 
 // names such as `trift` and `local` route and present; only these ids decide ownership, so renaming
 // a host leaves every record alone
-export const MachineId = z.guid().brand<'MachineId'>();
-export type MachineId = z.infer<typeof MachineId>;
+export { MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 export const FleetId = z.guid().brand<'FleetId'>();
 export type FleetId = z.infer<typeof FleetId>;
-
-/** A sha256 digest as lowercase hex: what names a transfer manifest on the wire. */
-export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 hex digest');
 
 /**
  * A handover in flight: at most one per fleet, and the gateway is the only writer. The freeze and the
@@ -43,14 +40,6 @@ export const OwnerRecord = z.object({
   retiredNonces: z.array(z.guid()).optional(),
 });
 export type OwnerRecord = z.infer<typeof OwnerRecord>;
-
-/** A path a command can be built from: an absolute one, naming itself and nothing else. */
-export const MachinePath = z.string()
-  .regex(/^\/[^\0\n]*$/, 'an absolute path with no NUL or newline')
-  .refine((p) => !p.split('/').includes('..'), 'an absolute path that climbs nowhere');
-
-/** A Git object by its full name, SHA-1 or SHA-256, which git never reads as an option. */
-const ObjectName = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, 'a full hex object name');
 
 /**
  * One machine in the controller's registry. A machine reached directly has no `ssh`.

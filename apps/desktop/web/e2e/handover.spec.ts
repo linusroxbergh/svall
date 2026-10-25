@@ -508,17 +508,4 @@ test('preflight blockers name what they are about, and a new start carries the c
   await page.getByTestId('handover-choice-archive').click();
   await page.getByTestId('handover-try-again').click();
   expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', choices: { terminateShells: [b.id], archiveRoots: ['r_0a1b'] } });
-
-  await say(page, { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
-    { code: 'robot_pinned', message: 'ada is kept on this machine', entity: { kind: 'robot', id: a.id } },
-  ] } });
-  await receive(page, { type: 'handover.exit', code: 1 });
-  // the blocker points at the toggle, on the robot it names
-  await page.getByTestId('handover-open-card').click();
-  await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
-  await expect(page.getByTestId('side-name')).toHaveValue('ada');
-  await svall.api.call('robot.update', { id: a.id, keepHere: true });
-  await expect(page.getByTestId('side-keep-here')).toBeChecked();
-  await page.getByTestId('side-keep-here').click();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[a.id].keepHere).toBeUndefined();
 });

@@ -103,7 +103,7 @@ runIf('startDaemon', () => {
     const logged: string[] = [];
     const again = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
     try {
-      expect(again.store.state.version).toBe(10);
+      expect(again.store.state.version).toBe(11);
       expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe(fleet);
       expect(JSON.parse(fleet).mainAgent).toBe('codex');
       expect(fs.existsSync(p.legacyConfig)).toBe(false);

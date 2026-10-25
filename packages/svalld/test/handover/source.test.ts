@@ -559,13 +559,6 @@ describe('source preflight', () => {
     expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual([]);
   });
 
-  it('blocks a robot kept on this machine', async () => {
-    const b = boot();
-    b.store.update((d) => { d.robots.c_ada.keepHere = true; });
-    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
-    expect(r.blockers).toEqual([{ code: 'robot_pinned', message: 'ada is kept on this machine', entity: { kind: 'robot', id: 'c_ada' } }]);
-  });
-
   withGit('blocks a repository that names the platforms it runs on without the destination, and warns of an Xcode project', async () => {
     const b = boot({ realGit: true });
     const bo = path.join(b.work, 'bo');
@@ -1020,15 +1013,14 @@ describe('source freeze', () => {
     expect(r.data.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`core.hookspath names ${hooks}`) })]);
   });
 
-  it('finds a name it cannot carry, a transcript that is gone or a robot kept here before it touches a terminal', async () => {
+  it('finds a name it cannot carry or a transcript that is gone before it touches a terminal', async () => {
     const b = boot();
     b.gateway.begin();
     fs.writeFileSync(path.join(b.work, 'ada', 'bad\x01name'), '');
     fs.rmSync(b.transcript);
-    b.store.update((d) => { d.robots.c_cy.keepHere = true; });
     const r = await refusal(b.handover.freeze(b.freezeParams()));
     expect(r.code).toBe('blocked');
-    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_unsupported', 'robot_pinned', 'transcript_missing']);
+    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_unsupported', 'transcript_missing']);
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
     expect(b.ownership.writable()).toBe(true);
     expect(fs.existsSync(b.paths.journal)).toBe(false);

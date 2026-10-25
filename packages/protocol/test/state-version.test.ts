@@ -9,12 +9,13 @@ const SHAPES: Record<number, string> = {
   8: '01d8dd099a4299ad',
   9: '0948919b0399c74d',
   10: '3084ba6befe06ae7',
+  11: 'bc614327344782d2',
 };
 
-// a refine is a custom check, and its function cannot be read
+// a refine is a custom check, read by the source of its function
 const checks = (d: { checks?: z.core.$ZodCheck<never>[] }): unknown[] => (d.checks ?? []).map((c) => {
-  if (c._zod.def.check === 'custom') throw new Error('the state shape digest does not read a refine');
-  return c._zod.def;
+  const def = c._zod.def as { check: string; fn?: unknown };
+  return def.check === 'custom' ? { ...def, fn: String(def.fn) } : def;
 });
 
 // keys and enum values sorted, so a reorder is the same shape; a schema type it has not learned throws
@@ -42,14 +43,15 @@ describe('state version', () => {
     expect(digest(FleetState)).toBe(SHAPES[FleetState.shape.version.value]);
   });
 
-  it('reads a reorder as the same shape, and a changed pattern, key, length or strictness or a schema type it has not learned as a different one', () => {
+  it('reads a reorder as the same shape, and a changed pattern, key, length, refine or strictness or a schema type it has not learned as a different one', () => {
     expect(digest(z.object({ a: z.string(), b: z.enum(['x', 'y']) }))).toBe(digest(z.object({ b: z.enum(['y', 'x']), a: z.string() })));
     expect(digest(z.string().regex(/a/))).not.toBe(digest(z.string().regex(/b/)));
     expect(digest(z.record(z.string(), z.number()))).not.toBe(digest(z.record(z.string().regex(/^c_/), z.number())));
+    expect(digest(z.string().refine((s) => s.length > 1))).not.toBe(digest(z.string().refine((s) => s.length > 2)));
     expect(digest(z.array(z.number()))).not.toBe(digest(z.array(z.number()).length(2)));
     expect(digest(z.object({ a: z.string() }))).not.toBe(digest(z.object({ a: z.string() }).strict()));
     expect(digest(z.object({ a: z.string() }))).not.toBe(digest(z.object({ a: z.string() }).catchall(z.number())));
-    for (const t of [z.union([z.string(), z.number()]), z.string().nullable(), z.string().refine(Boolean), z.tuple([z.string()])]) {
+    for (const t of [z.union([z.string(), z.number()]), z.string().nullable(), z.tuple([z.string()])]) {
       expect(() => digest(t)).toThrow();
     }
   });

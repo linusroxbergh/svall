@@ -67,7 +67,6 @@ export function SideCard({ id }: { id: string }) {
   const details = useApp((s) => !s.sections['robot.details']?.shut);
   const active = useApp((s) => s.active);
   const load = useLoad(details && active).load?.robots?.[id];
-  const handover = useApp((s) => !!s.shell?.handoverEnabled);
   const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id]));
   if (!c) return null;
 
@@ -142,12 +141,6 @@ export function SideCard({ id }: { id: string }) {
               </>
             )}
             {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
-            {handover && (
-              <label className="row" title="A handover of this fleet waits until this is off">
-                <span>keep on this machine</span>
-                <b><input type="checkbox" data-testid="side-keep-here" checked={!!c.keepHere} onChange={(e) => save({ keepHere: e.target.checked })} /></b>
-              </label>
-            )}
           </div>
         </Section>
       </div>

@@ -1,0 +1,24 @@
+import { z } from 'zod';
+import { MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
+
+export const MoveId = z.string().regex(/^mv_[0-9a-z]{10}$/);
+export const MovePhase = z.enum(['rest', 'bundle', 'prepare', 'commit', 'activate', 'release', 'done', 'aborted']);
+export type MovePhase = z.infer<typeof MovePhase>;
+
+export const Refusal = z.object({ reason: z.string(), action: z.string(), run: z.string().optional(), details: z.array(z.string()) });
+export type Refusal = z.infer<typeof Refusal>;
+
+export const Placement = z.object({ generation: z.number().int().nonnegative() });
+export type Placement = z.infer<typeof Placement>;
+
+export const Moving = z.object({ id: MoveId, to: MachineId, phase: MovePhase, error: z.string().optional() });
+export type Moving = z.infer<typeof Moving>;
+
+export const LeftBehind = z.object({ moveId: MoveId, machine: MachineId, path: MachinePath, branch: z.string(), branchSha: ObjectName, fingerprint: Sha256 });
+export type LeftBehind = z.infer<typeof LeftBehind>;
+
+export const MachineLink = z.object({ name: z.string(), reachable: z.boolean(), since: z.number(), release: z.string().optional() });
+export type MachineLink = z.infer<typeof MachineLink>;
+
+/** The robot fields only the machine running the robot writes. */
+export const WORKER_OWNED = ['tmux', 'agent', 'unread', 'revive', 'resumeError', 'panePath', 'cwd', 'repo', 'second', 'shell', 'hint', 'codexDaemon'] as const;

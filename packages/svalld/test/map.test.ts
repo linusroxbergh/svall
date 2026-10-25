@@ -205,15 +205,6 @@ runIf('Fleet layout', () => {
     expect(fleet.brief(c.id)).toContain('Robot instructions: in Spanish');
   });
 
-  it('robot.update keeps a robot on this machine, and lets it go again', async () => {
-    const { fleet } = await boot();
-    const a = fleet.createIsland({ name: 'a' });
-    const c = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
-    expect(fleet.updateRobot(c.id, { keepHere: true }).keepHere).toBe(true);
-    expect(fleet.updateRobot(c.id, { note: 'x' }).keepHere).toBe(true);
-    expect(fleet.updateRobot(c.id, { keepHere: false }).keepHere).toBeUndefined();
-  });
-
   it('a move without a cell re-places a robot on the island it already stands on', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a' });

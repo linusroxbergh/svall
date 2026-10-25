@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Blocker, Outcome } from '@svall/protocol';
 import { writeDurable } from '../../src/handover/durable.js';
 import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
-import { Store } from '../../src/store.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { G, MAC, TRIFT, World, als, choices, fleetId, play, settledOn, worlds, type Scenario, type Target } from './fault-world.js';
 
@@ -249,22 +248,6 @@ describe('a crash at every failpoint', () => {
       });
     }
   }
-});
-
-describe('a freeze asked again that refuses', () => {
-  const world = worlds();
-
-  it('leaves no manifest behind that a freeze before it wrote and did not live to answer', async () => {
-    const w = world();
-    w.targets = [{ name: 'source.freeze.manifest', edge: 'after', nth: 1 }];
-    await play(w, 'move');
-    // meanwhile the user keeps cy on the source, so the freeze asked again refuses
-    Store.load(w.mac.paths.state, () => {}).update((d) => { d.robots.c_cy.keepHere = true; });
-    const said = await w.recover('resume');
-    expect(said, w.violations.join('\n')).toContain('resume->blocked');
-    expect(w.violations).toEqual([]);
-    expect(settledOn(w)).toBe('source');
-  });
 });
 
 describe('a prepare asked again after a crash at its last flush', () => {

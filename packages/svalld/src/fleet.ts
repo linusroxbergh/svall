@@ -600,7 +600,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   updateRobot(id: string, patch: {
-    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; figure?: number; keepHere?: boolean;
+    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; figure?: number;
   }): Robot {
     const current = this.robot(id);
     if (patch.islandId) this.island(patch.islandId);
@@ -618,8 +618,6 @@ export class Fleet extends EventEmitter<Events> {
       if (patch.instructions !== undefined) c.instructions = patch.instructions;
       if (patch.agentProfile) c.agentProfile = patch.agentProfile;
       else if (patch.agentProfile === '') delete c.agentProfile;
-      if (patch.keepHere) c.keepHere = true;
-      else if (patch.keepHere === false) delete c.keepHere;
       if (context) c.context = context;
       if (patch.islandId && patch.islandId !== c.islandId) this.placeOn(d, id, patch.islandId);
     });

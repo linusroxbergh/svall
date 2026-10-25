@@ -460,9 +460,6 @@ export class SourceHandover {
     const kinds = Object.values(state.robots).flatMap((c) => [c.agent?.kind, c.second?.agent?.kind]).filter((k): k is AgentKind => k !== undefined);
     const agents = { kinds, source: await this.agents(), destination: info.agentAdapters.map(probeOf), opencodeAnswered: opencodeAnswered(state) };
     blockers.push(...agentBlockers(agents, warnings));
-    for (const c of Object.values(state.robots)) {
-      if (c.keepHere) blockers.push({ code: 'robot_pinned', message: `${c.name} is kept on this machine`, entity: { kind: 'robot', id: c.id } });
-    }
     const inventory = await this.inventory(state, p);
     blockers.push(...await this.exportSessions(inventory, true));
     blockers.push(...await platformBlockers(inventory.roots, info.platform, this.d.scanFs ?? realScanFs));
