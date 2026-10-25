@@ -157,6 +157,25 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(d.asked.find((a) => a.method === 'repo.probe')?.params).toEqual({ path: `${t.far}/code/svall-notes`, remote: 'git@github.com:linus/svall-notes.git' });
   });
 
+  it('an origin carrying a token reaches the worker and the plan without it; an ssh user and an scp-style remote stay', async () => {
+    const t = machines();
+    const root = t.repo('code/svall', { origin: false });
+    t.g(root, 'remote', 'add', 'origin', 'https://example.invalid/linus/svall.git');
+    const cases = [
+      ['https://linus:ghp_secret@example.invalid/linus/svall.git', 'https://example.invalid/linus/svall.git'],
+      ['https://ghp_secret@example.invalid/linus/svall.git', 'https://example.invalid/linus/svall.git'],
+      ['ssh://git:pw@example.invalid/linus/svall.git', 'ssh://git@example.invalid/linus/svall.git'],
+      ['git@example.invalid:linus/svall.git', 'git@example.invalid:linus/svall.git'],
+    ];
+    for (const [origin, sent] of cases) {
+      t.g(root, 'remote', 'set-url', 'origin', origin);
+      const d = depsOf(t, [on(root)], { probe: async () => ({ state: 'none', refs: [], reachable: true }) });
+      const { plan } = await sheet(d);
+      expect(d.asked.find((a) => a.method === 'repo.probe')?.params).toEqual({ path: `${t.far}/code/svall`, remote: sent });
+      expect(plan.remote).toBe(sent);
+    }
+  });
+
   it('the first failing check is the reason and the others are details', async () => {
     const t = machines();
     const root = t.repo('code/svall');
@@ -211,7 +230,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
       .toEqual({ reason: 'moving to linus-vault', action: 'wait for the move to finish', details: [] });
   });
 
-  it('check 1: refuses a worker out of reach or on another release, and passes one on this release', async () => {
+  it('check 1: refuses a worker out of reach, one older to upgrade and one newer to catch this Mac up with, and passes one on this release', async () => {
     const t = machines();
     const down = depsOf(t, [shellIn(t)], { reachable: false });
     expect(await refusal(down)).toEqual({ reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: [] });
@@ -219,6 +238,8 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(down.asked).toEqual([]);
     expect(await refusal(depsOf(t, [shellIn(t)], { release: '0.16.0' })))
       .toEqual({ reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'upgrade it under Machines', details: [] });
+    expect(await refusal(depsOf(t, [shellIn(t)], { release: '0.18.0' })))
+      .toEqual({ reason: 'linus-vault runs 0.18.0, this Mac 0.17.0', action: 'update svall on this Mac', details: [] });
     await sheet(depsOf(t, [shellIn(t)]));
   });
 
@@ -292,7 +313,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(plan.remote).toBeUndefined();
   });
 
-  it('check 5: refuses a branch another robot is on, on any machine, and passes a branch of its own', async () => {
+  it('check 5: refuses a branch another robot is on, on any machine, the one a main checkout converts to included, and passes a branch of its own', async () => {
     const t = machines();
     const root = t.repo('code/svall');
     const wt = `${root}/.claude/worktrees/kb`;
@@ -307,6 +328,10 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(await refusal(depsOf(t, [c, there('kb')]))).toEqual(taken);
     expect(await refusal(depsOf(t, [c, on(wt, { id: 'c_2', name: 'board', main: root, branch: 'kb' })]))).toEqual(taken);
     await sheet(depsOf(t, [c, there('board')]));
+
+    // a main checkout travels on the branch it converts to
+    expect(await refusal(depsOf(t, [on(root), there('kanban')])))
+      .toEqual({ reason: 'board is on kanban too', action: 'put one of them on another branch first', details: [] });
   });
 
   it('check 6: refuses a tracked credential file that would travel, a path tar cannot hold and a bundle past BUNDLE_MAX; an untracked one stays unless ticked; node_modules is named', async () => {
@@ -358,6 +383,11 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const running = depsOf(t, [shellIn(t)], { terminals: [{ robotId: 'c_1', term: 2, class: 'foreground' }] });
     expect(await refusal(running)).toEqual({ reason: 'a command is running', action: 'move anyway and it ends', details: ['wait for it'] });
     expect((await sheet(running, { interruptAfterMs: 0 })).sheet.interrupts).toBe(true);
+    // a later failure keeps its details behind its sentence
+    const both = depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-working' }, { robotId: 'c_1', term: 2, class: 'foreground' }] });
+    expect(await refusal(both)).toEqual({
+      reason: 'kanban is working', action: 'interrupt after this turn', details: ['a command is running; move anyway and it ends', 'wait for it'],
+    });
 
     const idle = await sheet(depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-ready' }] }), { interruptAfterMs: 0 });
     expect(idle.sheet).toMatchObject({ interrupts: false, question: false });

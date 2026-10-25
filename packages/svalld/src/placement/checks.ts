@@ -12,7 +12,7 @@ import { relocate } from '../handover/relocate.js';
 import type { Classified } from '../handover/rest.js';
 import type { AgentProbe, AgentProber } from '../handover/sessions/registry.js';
 import type { HomeLinks, WorkerLink } from '../link/home.js';
-import { webUrl, type GitRunner } from '../links/git.js';
+import { remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
 import { BundleTooLarge, buildBundle, trackedCredentials, type BundleManifest } from './bundle.js';
 import { refuseUncarried, WORKTREES, worktreeSlug } from './convert.js';
@@ -37,6 +37,11 @@ export const MovePlan = z.object({
   interruptAfterMs: z.number().int().nonnegative().optional(),
 });
 export type MovePlan = z.infer<typeof MovePlan>;
+
+// MovePlan.parse keeps every field destinationPaths answers, as each type has it
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Landing = ReturnType<typeof destinationPaths>;
+true satisfies Same<MovePlan['paths'], Landing> & Same<keyof MovePlan['paths'], keyof Landing>;
 
 export type CheckResult = { ok: true; sheet: MoveSheet; plan: MovePlan } | { ok: false; refusal: Refusal };
 
@@ -64,6 +69,18 @@ const originOf = async (dir: string, git: GitRunner): Promise<string | undefined
   return (r.code === 0 && r.stdout.trim()) || undefined;
 };
 
+// a remote without the token an http URL may carry as its user or password, so the worker reads it with its own
+// credentials; an ssh URL keeps its user, and an scp-style one is no URL
+function withoutToken(remote: string): string {
+  let u: URL;
+  try { u = new URL(remote); } catch { return remote; }
+  const http = /^https?:$/.test(u.protocol);
+  if (!u.password && !(http && u.username)) return remote;
+  u.password = '';
+  if (http) u.username = '';
+  return u.href;
+}
+
 // the oldest root commit HEAD reaches, which every clone of a repository shares
 const rootOf = async (dir: string, git: GitRunner): Promise<string | undefined> => {
   const r = await git(['rev-list', '--max-parents=0', 'HEAD'], dir);
@@ -76,7 +93,7 @@ const remoteKey = (r?: string): string | undefined => r && (webUrl(r) ?? r);
 /** What the worker holds at `path`: a clone with its origin, root commit and ref shas, something else, or nothing. */
 export async function probeRepo(p: z.infer<typeof RepoProbeParams>, git: GitRunner): Promise<RepoProbe> {
   const st = fs.lstatSync(p.path, { throwIfNoEntry: false });
-  if (!st) return { state: 'none', refs: [], ...(p.remote && { reachable: (await git(['ls-remote', p.remote, 'HEAD'], os.homedir())).code === 0 }) };
+  if (!st) return { state: 'none', refs: [], ...(p.remote && { reachable: (await remoteGit(['ls-remote', p.remote, 'HEAD'], os.homedir())).code === 0 }) };
   if (!st.isDirectory()) return { state: 'other', refs: [] };
   const top = await git(['rev-parse', '--show-toplevel'], p.path);
   if (top.code !== 0 || fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(p.path)) return { state: 'other', refs: [] };
@@ -167,7 +184,10 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const link = d.links.for(to);
   const hello = link?.connected() ? link.hello() : undefined;
   if (!hello) fail({ reason: `${name} is not reachable`, action: 'try again when it is awake' });
-  else if (hello.release !== d.release) fail({ reason: `${name} runs ${hello.release}, this Mac ${d.release}`, action: 'upgrade it under Machines' });
+  else if (hello.release !== d.release) {
+    const action = compareVersions(hello.release, d.release) === 1 ? 'update svall on this Mac' : 'upgrade it under Machines';
+    fail({ reason: `${name} runs ${hello.release}, this Mac ${d.release}`, action });
+  }
   const linked = hello?.release === d.release ? hello : undefined;
 
   // 2: the robot's agents installed and logged in there, none older
@@ -212,7 +232,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     // 4: a clone of this repository at the main checkout's place there, or nothing there and a remote it reads
     if (homes) {
       clone = relocate(repo.mainRoot, homes.user);
-      remote = await originOf(repo.mainRoot, d.git);
+      const origin = await originOf(repo.mainRoot, d.git);
+      remote = origin && withoutToken(origin);
       const probe = await ask<RepoProbe>('repo.probe', { path: clone, ...(remote && { remote }) });
       const inTheWay: Failure = { reason: `${clone} on ${name} is not a clone of ${repoName}`, action: 'move it out of the way there first' };
       if (probe?.state === 'clone') {
@@ -225,11 +246,12 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       } else if (probe) mode = 'clone';
     }
 
-    // 5: no other robot, on any machine, on this branch; a converted main gets a branch of its own
-    if (!onMain && !detached) {
+    // 5: no other robot, on any machine, on the branch that travels, which for a main checkout is the one it converts to
+    const branch = convert?.slug ?? (detached ? undefined : repo.branch);
+    if (branch) {
       const places = new Set([clean(repo.mainRoot), ...(clone ? [clean(clone)] : [])]);
-      const other = Object.values(s.robots).find((r) => r.id !== c.id && r.repo?.branch === repo.branch && places.has(clean(r.repo.mainRoot)));
-      if (other) fail({ reason: `${other.name} is on ${repo.branch} too`, action: 'put one of them on another branch first' });
+      const other = Object.values(s.robots).find((r) => r.id !== c.id && r.repo?.branch === branch && places.has(clean(r.repo.mainRoot)));
+      if (other) fail({ reason: `${other.name} is on ${branch} too`, action: 'put one of them on another branch first' });
     }
 
     // 6: the bundle fits, and carries no tracked credential file; built here to know both, and built again by the move
@@ -264,7 +286,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     const [first, ...rest] = failed;
     return {
       ok: false,
-      refusal: { reason: first.reason, action: first.action, ...(first.run && { run: first.run }), details: [...first.details ?? [], ...rest.map((f) => `${f.reason}; ${f.action}`)] },
+      refusal: { reason: first.reason, action: first.action, ...(first.run && { run: first.run }), details: [...first.details ?? [], ...rest.flatMap((f) => [`${f.reason}; ${f.action}`, ...f.details ?? []])] },
     };
   }
   const credentialFiles = bundle?.manifest.credentialFiles ?? [];

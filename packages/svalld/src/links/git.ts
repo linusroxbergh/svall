@@ -16,8 +16,8 @@ const REDIRECTS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR
  * git as a reader beside the user's own: messages in English, and no index refresh that takes its lock. `config` is set
  * for every command, ahead of what the repository says.
  */
-function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', config: readonly string[] = []): GitRunner {
-  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
+function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', config: readonly string[] = [], more: NodeJS.ProcessEnv = {}): GitRunner {
+  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0', ...more };
   for (const k of REDIRECTS) delete env[k];
   const settings = config.flatMap((c) => ['-c', c]);
   return (args, cwd) => new Promise((resolve) => {
@@ -39,6 +39,9 @@ export const runGit: GitRunner = gitRunner();
 
 /** git for a handover, whose repositories may carry another machine's config: it runs no fsmonitor or hook that config names. */
 export const handoverGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
+
+/** git asking a remote with this machine's own credentials: it never prompts for one, and answers within 20 s. */
+export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
 
 /** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
 export type GitDirs = { root: string; commonDir: string; gitDir: string };
