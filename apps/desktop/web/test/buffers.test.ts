@@ -1,6 +1,6 @@
 import { history, isolateHistory, undo } from '@codemirror/commands';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { dropBuffer, dropBuffers, editBuffer, focusBuffer, getBuffer, isDirty, loadBuffer, markSaved, replaceText, setState, subscribeBuffer } from '../src/ide/buffers.js';
+import { dropBuffer, dropBuffers, editBuffer, focusBuffer, getBuffer, isDirty, loadBuffer, markSaved, replaceText, select, setState, subscribeBuffer } from '../src/ide/buffers.js';
 
 describe('buffers', () => {
   beforeEach(() => dropBuffers('c'));
@@ -40,6 +40,13 @@ describe('buffers', () => {
     let state = now.state;
     undo({ state, dispatch: (tr) => { state = tr.state; } });
     expect(state.doc.toString()).toBe('xone\n');
+  });
+
+  it('leaves the cursor where it was when the disk changes elsewhere', () => {
+    loadBuffer('c', 'a.ts', 'one\ntwo\nthree\n', 10, []);
+    select('c', 'a.ts', 5);
+    replaceText('c', 'a.ts', 'zero\none\ntwo\nthree\n', 30);
+    expect(getBuffer('c', 'a.ts')!.state.selection.main.head).toBe(10);
   });
 
   it('notifies a preview about edits and disk replacements while no view is mounted', () => {

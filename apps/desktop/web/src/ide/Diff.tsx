@@ -1,8 +1,9 @@
-import { unifiedMergeView } from '@codemirror/merge';
-import { EditorState } from '@codemirror/state';
+import { getOriginalDoc, originalDocChangeEffect, unifiedMergeView } from '@codemirror/merge';
+import { ChangeSet, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useEffect, useRef } from 'react';
 import { basename } from '../paths.js';
+import { change } from './buffers.js';
 import { languageFor, readOnlyExtensions } from './codemirror.js';
 
 type Props = { path: string; before?: string; after?: string; binary?: true };
@@ -10,24 +11,37 @@ type Props = { path: string; before?: string; after?: string; binary?: true };
 /** The working file over the base version: deletions inline, unchanged stretches folded. */
 export function Diff({ path, before, after, binary }: Props) {
   const host = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView>(undefined);
+  const sides = useRef({ before, after });
 
   useEffect(() => {
     const el = host.current;
     if (!el || binary) return;
-    let view: EditorView | undefined;
     let live = true;
     languageFor(basename(path)).then((lang) => {
       if (!live) return;
-      view = new EditorView({
+      view.current = new EditorView({
         parent: el,
         state: EditorState.create({
-          doc: after ?? '',
-          extensions: [readOnlyExtensions(), lang ?? [], unifiedMergeView({ original: before ?? '', mergeControls: false, collapseUnchanged: { margin: 3, minSize: 4 } })],
+          doc: sides.current.after ?? '',
+          extensions: [readOnlyExtensions(), lang ?? [], unifiedMergeView({ original: sides.current.before ?? '', mergeControls: false, collapseUnchanged: { margin: 3, minSize: 4 } })],
         }),
       });
     });
-    return () => { live = false; view?.destroy(); };
-  }, [path, before, after, binary]);
+    return () => { live = false; view.current?.destroy(); view.current = undefined; };
+  }, [path, binary]);
+
+  // new sides change the view in place, so its scroll and the stretches unfolded stay
+  useEffect(() => {
+    sides.current = { before, after };
+    const v = view.current;
+    if (!v) return;
+    const original = getOriginalDoc(v.state).toString();
+    v.dispatch({
+      changes: change(v.state.doc.toString(), after ?? ''),
+      effects: originalDocChangeEffect(v.state, ChangeSet.of(change(original, before ?? ''), original.length)),
+    });
+  }, [before, after]);
 
   if (binary) return <div className="ide-empty">Binary file</div>;
   return <div ref={host} className="diff" data-testid="diff" data-path={path} />;

@@ -75,11 +75,20 @@ export function focusBuffer(id: string, path: string): boolean {
   return view !== undefined;
 }
 
+/** The one change that turns `a` into `b`, spanning only what differs, so a cursor or scroll position outside it stays put. */
+export function change(a: string, b: string): { from: number; to: number; insert: string } {
+  let from = 0;
+  while (from < a.length && from < b.length && a[from] === b[from]) from++;
+  let end = 0;
+  while (end < a.length - from && end < b.length - from && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
+  return { from, to: a.length - end, insert: b.slice(from, b.length - end) };
+}
+
 /** Puts the disk's text in the buffer as one change, so undo can bring the edits back. */
 export function replaceText(id: string, path: string, text: string, mtimeMs: number): void {
   const b = buffers.get(key(id, path));
   if (!b) return;
-  const spec = { changes: { from: 0, to: b.state.doc.length, insert: text } };
+  const spec = { changes: change(b.state.doc.toString(), text) };
   const view = views.get(key(id, path));
   if (view) { view.dispatch(spec); b.state = view.state; }
   else { b.state = b.state.update(spec).state; notify(key(id, path), b.state.doc.toString()); }
