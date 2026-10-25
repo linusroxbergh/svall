@@ -64,8 +64,8 @@ export async function seedTrust(kind: AgentKind, clone: string, o: { agentHome: 
 }
 
 /**
- * Watches a pane for `forMs` for the agent's trust question and, once its answer shows, moves the selection onto it and
- * confirms, once. A CLI whose adapter gives no answer is never answered.
+ * Watches a pane for `forMs` for the agent's trust question and, once its answer shows, picks it and confirms, once. A
+ * CLI whose adapter gives no answer is never answered.
  */
 export async function answerTrustPrompt(
   tmux: Pick<Tmux, 'screen' | 'sendBytes'>, paneId: string, adapter: Pick<SessionAdapter, 'trustAnswer'>, o: { forMs: number; signal?: AbortSignal },
@@ -76,10 +76,10 @@ export async function answerTrustPrompt(
     const { rows } = await tmux.screen(paneId);
     const at = rows.findIndex((r) => r.includes(answer));
     if (at >= 0) {
-      // the selected choice is the one the pointer marks; without one, the answer's own number picks it
-      const pointer = rows.findIndex((r) => /^\s*[❯›>]\s/.test(r));
+      // the answer's own number picks it; a dialog that numbers none is walked from the choice the pointer marks
       const number = /(\d+)\.\s/.exec(rows[at])?.[1];
-      const keys = pointer >= 0 ? Array<string>(Math.abs(at - pointer)).fill(at > pointer ? DOWN : UP) : number ? [number] : [];
+      const pointer = rows.findIndex((r) => /^\s*[❯›>]\s/.test(r));
+      const keys = number ? [number] : pointer >= 0 ? Array<string>(Math.abs(at - pointer)).fill(at > pointer ? DOWN : UP) : [];
       for (const k of [...keys, ENTER]) await tmux.sendBytes(paneId, Buffer.from(k));
       return 'answered';
     }

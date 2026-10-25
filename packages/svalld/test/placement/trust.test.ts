@@ -85,12 +85,17 @@ function pane(after: number, later: string[]) {
 }
 
 describe('answerTrustPrompt', () => {
-  it('types the trust answer when the pane shows the prompt within forMs', async () => {
+  it('types the trust answer\'s number when the pane shows the prompt within forMs', async () => {
     const p = pane(2, TRUST_DIALOG);
     expect(await answerTrustPrompt(p.tmux, '%1', claudeAdapter, { forMs: 5000 })).toBe('answered');
-    // down from "No, exit" to the answer, then Enter, once
-    expect(p.typed).toEqual(['\x1b[B', '\r']);
+    // the answer's number, then Enter, once
+    expect(p.typed).toEqual(['2', '\r']);
     expect(p.reads()).toBe(3);
+
+    // a dialog that numbers no choice is walked down from the pointer
+    const bare = pane(0, TRUST_DIALOG.map((r) => r.replace(/\d\. /, '')));
+    expect(await answerTrustPrompt(bare.tmux, '%1', claudeAdapter, { forMs: 5000 })).toBe('answered');
+    expect(bare.typed).toEqual(['\x1b[B', '\r']);
 
     const never = pane(Infinity, TRUST_DIALOG);
     expect(await answerTrustPrompt(never.tmux, '%1', claudeAdapter, { forMs: 1200 })).toBe('none');

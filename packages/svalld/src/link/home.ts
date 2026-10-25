@@ -72,6 +72,9 @@ export class WorkerLink {
   private last = 0;
   private applying: Promise<void> = Promise.resolve();
   private waiting: { version: number; done(): void }[] = [];
+  // the newest snapshot the worker has taken, and who waits for one
+  private taken = 0;
+  private takers: { version: number; done(): void }[] = [];
   private answered = true;
   private heartbeat?: NodeJS.Timeout;
   private retry?: NodeJS.Timeout;
@@ -139,6 +142,12 @@ export class WorkerLink {
     return new Promise((done) => this.waiting.push({ version: snap.version, done }));
   }
 
+  /** Resolves once the worker has taken a snapshot of `version` or later, over this stream or one after it. */
+  took(version: number): Promise<void> {
+    if (this.taken >= version) return Promise.resolve();
+    return new Promise((done) => this.takers.push({ version, done }));
+  }
+
   private unreachable(): ApiError {
     return new ApiError('not_reachable', `${this.name} is not reachable`);
   }
@@ -190,6 +199,9 @@ export class WorkerLink {
       case 'snapshot.ack':
         for (const w of this.waiting.filter((w) => w.version <= f.version)) w.done();
         this.waiting = this.waiting.filter((w) => w.version > f.version);
+        this.taken = Math.max(this.taken, f.version);
+        for (const w of this.takers.filter((w) => w.version <= this.taken)) w.done();
+        this.takers = this.takers.filter((w) => w.version > this.taken);
         // a link that got this far is a good one; a failure before it keeps the backoff growing
         this.retryMs = FIRST_RETRY_MS;
         this.lastWhy = undefined;

@@ -223,6 +223,14 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     await sheet(depsOf(t, [shellIn(t)]));
   });
 
+  it('refuses an OpenCode robot, in its main terminal or its second', async () => {
+    const t = machines();
+    const opencode = { kind: 'opencode' as const, sessionId: 'ses_1', status: 'idle' as const, lastActivityAt: 0 };
+    for (const r of [shellIn(t, { agent: opencode }), shellIn(t, { second: { cwd: t.mac, unread: false, agent: opencode } })]) {
+      expect(await refusal(depsOf(t, [r]))).toMatchObject({ reason: 'OpenCode robots cannot move yet', action: 'wait for a later release' });
+    }
+  });
+
   it('refuses a robot already moving, naming where to', async () => {
     const t = machines();
     const moving = { id: 'mv_0123456789', to: W, phase: 'bundle' as const };

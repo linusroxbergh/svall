@@ -16,7 +16,7 @@ import { boundary, type Failpoint } from '../handover/failpoints.js';
 import { must } from '../handover/git-graph.js';
 import { hashStream, sha256Hex } from '../handover/hash.js';
 import { SourceJournal, type JournalState } from '../handover/journal.js';
-import { clean, realPath } from '../handover/portable-path.js';
+import { clean } from '../handover/portable-path.js';
 import { ProcessTable } from '../handover/processes.js';
 import { relocate } from '../handover/relocate.js';
 import { classifyTerminals, restTerminals, type RestChoices, type RestDeps } from '../handover/rest.js';
@@ -53,6 +53,18 @@ export const MoveJournal = z.object({
   // what the rest stopped, as a handover's source journal records it
   rest: SourceJournal.optional(),
   branchSha: ObjectName.optional(),
+  // what this machine changed for the move, each journaled before it is made, so an abort undoes only that
+  made: z.object({
+    // the worktree the robot left here, taken back for this move
+    unlocked: z.literal(true).optional(),
+    worktree: z.literal(true).optional(),
+    // the clone's main checkout let go of the branch
+    detached: z.literal(true).optional(),
+    // the branch as it was: its sha, or null for none
+    branch: ObjectName.nullable().optional(),
+    // the session files that were not here
+    files: z.array(z.string()).optional(),
+  }).optional(),
   error: z.string().optional(),
   updatedAt: z.number(),
 });
@@ -217,16 +229,36 @@ export async function lockWorktree(root: string, reason: string, git: GitRunner)
   if (r.code !== 0 && !/already locked/.test(r.stderr)) throw new Error(`${root} was not locked: ${r.stderr.trim()}`);
 }
 
-/** Whether git lists `root` as a locked worktree of the repository at `repo`. */
-export async function locked(repo: string, root: string, git: GitRunner): Promise<boolean> {
-  const entries = (await must(git, ['worktree', 'list', '--porcelain'], repo)).split('\n\n');
-  const entry = entries.find((e) => e.split('\n')[0] === `worktree ${realPath(root)}`);
-  return !!entry?.split('\n').some((l) => l === 'locked' || l.startsWith('locked '));
-}
-
 /** Empties a worktree of what git does not ignore and it does not track, but for credential files, which stay where they were. */
 export const cleanWorktree = (root: string, git: GitRunner): Promise<string> =>
   must(git, ['clean', '-q', '-f', '-d', ...CREDENTIAL_PATTERNS.flatMap((p) => ['-e', p])], root);
+
+export type Failure = Omit<Refusal, 'details'>;
+export const refused = (f: Failure): ApiError => new ApiError('refused', `${f.reason}; ${f.action}`, { refusal: { ...f, details: [] } });
+
+/** What moved in the worktree a robot left since it left, as a move that takes it back refuses it; `where` names its machine. */
+export async function changedSince(left: LeftBehind, where: string, git: GitRunner): Promise<Failure | undefined> {
+  const sha = await git(['rev-parse', '--verify', '-q', `refs/heads/${left.branch}^{commit}`], left.path);
+  if (sha.stdout.trim() !== left.branchSha) return { reason: `${left.branch} moved ${where} since the move`, action: 'merge or rename it' };
+  if (await fingerprintOf(left.path, git) !== left.fingerprint) return { reason: `changes ${where} in ${left.path} since the move`, action: 'stash or commit them' };
+  return undefined;
+}
+
+/** Unlocks the worktree a robot left at `root` and resets it to `sha`, cleaned, for the bundle that brings the robot back. */
+export async function takeBack(root: string, sha: string, git: GitRunner): Promise<void> {
+  const r = await git(['worktree', 'unlock', root], root);
+  if (r.code !== 0 && !/is not locked/.test(r.stderr)) throw new Error(`${root} was not unlocked: ${r.stderr.trim()}`);
+  await must(git, ['reset', '-q', '--hard', '--no-recurse-submodules', sha], root);
+  await cleanWorktree(root, git);
+}
+
+/** Leaves a worktree a move took back as the robot had left it: at `sha`, cleaned, locked with `reason`; answers its fingerprint. */
+export async function leaveAgain(root: string, sha: string, reason: string, git: GitRunner): Promise<string> {
+  await must(git, ['reset', '-q', '--hard', '--no-recurse-submodules', sha], root);
+  await cleanWorktree(root, git);
+  await lockWorktree(root, reason, git);
+  return fingerprintOf(root, git);
+}
 
 // `ms`, or less when `signal` aborts first
 const nap = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve) => {
@@ -269,7 +301,7 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     const open = () => w.fleet.reviveRobot(id, undefined, undefined, j.id);
     try { await (w.open ? boundary(w.open, open) : open()); } catch (e) { return (e as Error).message; }
     if (j.rest?.stoppedTerminals.some((t) => t.term === 2)) {
-      await w.fleet.openSecond(id).catch((e: Error) => w.log.error(`move ${j.id}: ${c.name}'s second terminal did not open: ${e.message}`));
+      await w.fleet.openSecond(id, undefined, j.id).catch((e: Error) => w.log.error(`move ${j.id}: ${c.name}'s second terminal did not open: ${e.message}`));
     }
     const pane = w.store.state.robots[id]?.tmux?.paneId;
     const adapter = agent && sessionAdapter(agent.kind);
@@ -308,9 +340,6 @@ export type PlacementDeps = {
   watchMs?: number;
 };
 
-type Failure = Omit<Refusal, 'details'>;
-const refused = (f: Failure): ApiError => new ApiError('refused', `${f.reason}; ${f.action}`, { refusal: { ...f, details: [] } });
-
 /**
  * The home's side of every move: a robot goes to a worker and comes back through rest, bundle, prepare, commit, activate
  * and release, each journaled before it runs. Before the commit a failure reopens the robot where it was; from the
@@ -344,7 +373,12 @@ export class Placement {
     const c = this.robot(robotId);
     if (to === this.d.me) return this.checkReturn(c, o);
     if (c.machine && c.machine !== this.d.me) return { ok: false, refusal: { reason: 'a robot moves home first', action: `move ${c.name} to this Mac first`, details: [] } };
-    return moveChecks(this.checkDeps(), robotId, to, o);
+    const checked = await moveChecks(this.checkDeps(), robotId, to, o);
+    // the worktree the robot left there is the one it goes back into, as it left it
+    if (!checked.ok || c.left?.machine !== to) return checked;
+    const { refusal } = await this.d.links.call<{ refusal?: Failure }>(to, 'move.compare', { left: c.left })
+      .catch((e: Error) => ({ refusal: { reason: e.message, action: 'try again when it is awake' } }));
+    return refusal ? { ok: false, refusal: { ...refusal, details: [] } } : checked;
   }
 
   /** Moves `robotId` to `to`; resolves with the move's id once it is committed, or rejects with why it was refused or undone. */
@@ -545,7 +579,11 @@ export class Placement {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
     // what a rest that failed part way had stopped is on disk
     const j = this.readable(failed.id) ?? failed;
-    const told = j.phase !== 'prepare' || await this.d.links.call(j.to, 'move.abort', { id: j.id }).then(() => true, (e: Error) => {
+    const told = j.phase !== 'prepare' || await this.d.links.call<{ fingerprint?: string }>(j.to, 'move.abort', { id: j.id }).then((r) => {
+      // a worktree the robot left there, taken back and left again, holds what it holds now
+      if (r.fingerprint) this.d.store.update((d) => { const l = d.robots[j.robotId]?.left; if (l?.machine === j.to) l.fingerprint = r.fingerprint!; });
+      return true;
+    }, (e: Error) => {
       this.d.log.error(`move ${j.id}: ${this.name(j.to)} was not told to remove what it prepared: ${e.message}`);
       return false;
     });
@@ -582,10 +620,7 @@ export class Placement {
         j = this.enter(j, 'bundle');
       }
       if (j.phase === 'bundle') j = this.enter(await this.bundleThere(j), 'prepare');
-      if (j.phase === 'prepare') {
-        await this.prepareHere(j);
-        j = this.enter(j, 'commit');
-      }
+      if (j.phase === 'prepare') j = this.enter(await this.prepareHere(j), 'commit');
     } catch (e) {
       await this.abortBack(j, e as Error);
       throw e;
@@ -616,50 +651,41 @@ export class Placement {
   }
 
   // the worktree the robot left here, as it was then, takes what comes back: reset to its base, cleaned, applied
-  private async prepareHere(j: MoveJournal): Promise<void> {
+  private async prepareHere(j: MoveJournal): Promise<MoveJournal> {
     const c = this.robot(j.robotId);
     const stage = this.files.stage(j.id);
     const { left } = c;
-    if (left && !j.manifest) throw new Error(`${c.name} comes back without the worktree it left`);
-    if (left && j.manifest) {
-      const changed = await this.changedSince(left);
+    const m = j.manifest;
+    if (left && !m) throw new Error(`${c.name} comes back without the worktree it left`);
+    if (left && m) {
+      const changed = await changedSince(left, 'on this Mac', this.d.git);
       if (changed) throw refused(changed);
       const dir = path.join(stage, 'bundle');
       await unpack(path.join(stage, 'bundle.tar'), dir);
-      await verifyBundle(dir, j.manifest);
-      const git = this.d.git;
-      const r = await git(['worktree', 'unlock', left.path], left.path);
-      if (r.code !== 0 && !/is not locked/.test(r.stderr)) throw new Error(`${left.path} was not unlocked: ${r.stderr.trim()}`);
-      await must(git, ['reset', '-q', '--hard', '--no-recurse-submodules', left.branchSha], left.path);
-      await cleanWorktree(left.path, git);
-      await applyBundle(left.path, dir, j.manifest, git);
+      await verifyBundle(dir, m);
+      j = { ...j, made: { unlocked: true } };
+      this.save(j);
+      await takeBack(left.path, left.branchSha, this.d.git);
+      await applyBundle(left.path, dir, m, this.d.git);
     }
     await unpack(path.join(stage, 'session.tar'), path.join(stage, 'session'));
     placeSessions(j.sessions ?? [], path.join(stage, 'session'));
     fs.rmSync(stage, { recursive: true, force: true });
+    return j;
   }
 
-  // what moved on this Mac since the move left, as the return refuses it
-  private async changedSince(left: LeftBehind): Promise<Failure | undefined> {
-    const sha = await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${left.branch}^{commit}`], left.path);
-    if (sha.stdout.trim() !== left.branchSha) return { reason: `${left.branch} moved on this Mac since the move`, action: 'merge or rename it' };
-    if (await fingerprintOf(left.path, this.d.git) !== left.fingerprint) return { reason: `changes on this Mac in ${left.path} since the move`, action: 'stash or commit them' };
-    return undefined;
-  }
-
-  // before the commit: a worktree here this return began on is left clean and locked again, holding what it holds now,
-  // and the worker reopens the robot where it was; a worker out of reach is told once it is back
+  // before the commit: a worktree here this return took back is left as the robot left it and locked again, and the
+  // worker reopens the robot where it was; a worker out of reach is told once it is back. A step that fails is logged,
+  // and the rest still run
   private async abortBack(failed: MoveJournal, error: Error): Promise<void> {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
     const j = this.readable(failed.id) ?? failed;
     const left = this.d.store.state.robots[j.robotId]?.left;
-    if (left && j.phase === 'prepare' && !await locked(left.path, left.path, this.d.git)) {
-      await must(this.d.git, ['reset', '-q', '--hard', '--no-recurse-submodules', 'HEAD'], left.path);
-      await cleanWorktree(left.path, this.d.git);
-      const branchSha = (await must(this.d.git, ['rev-parse', '--verify', `refs/heads/${left.branch}^{commit}`], left.path)).trim();
-      const fingerprint = await fingerprintOf(left.path, this.d.git);
-      await lockWorktree(left.path, `moved to ${this.name(j.from)} ${left.moveId}`, this.d.git);
-      this.d.store.update((d) => { d.robots[j.robotId].left = { ...left, branchSha, fingerprint }; });
+    if (left && j.made?.unlocked) {
+      await leaveAgain(left.path, left.branchSha, `moved to ${this.name(j.from)} ${left.moveId}`, this.d.git).then(
+        (fingerprint) => this.d.store.update((d) => { d.robots[j.robotId].left = { ...left, fingerprint }; }),
+        (e: Error) => this.d.log.error(`move ${j.id}: ${left.path} was not locked again: ${e.message}`),
+      );
     }
     const told = await this.d.links.call(j.from, 'move.abort', { id: j.id }).then(() => true, (e: Error) => {
       this.d.log.error(`move ${j.id}: ${this.name(j.from)} was not told to reopen ${j.robotId}: ${e.message}`);
@@ -682,7 +708,7 @@ export class Placement {
     if (c.moving) return fail({ reason: `moving to ${this.name(c.moving.to)}`, action: 'wait for the move to finish' });
     if (c.repo && !c.left) throw new Invalid(`${c.name} left no worktree on this Mac to come back to`);
     if (c.left) {
-      const changed = await this.changedSince(c.left);
+      const changed = await changedSince(c.left, 'on this Mac', this.d.git);
       if (changed) return fail(changed);
     }
     const plan = await this.returnPlan(c, from, hello, o.interruptAfterMs ?? (c.agent?.status === 'blocked' ? 0 : undefined));
@@ -738,9 +764,10 @@ export class Placement {
         const next = landed(base as Robot, j, back ? undefined : j.to);
         next.moving = { id: j.id, to: j.to, phase: 'commit' };
         delete next.left;
+        // the worktree the robot leaves, which a move back to that machine takes it back into
         const root = j.robot?.repo?.root;
-        if (!back && root && j.manifest && j.branchSha) {
-          next.left = { moveId: j.id, machine: this.d.me, path: root, branch: j.manifest.branch, branchSha: j.branchSha, fingerprint: j.manifest.fingerprint };
+        if (root && j.manifest && j.branchSha) {
+          next.left = { moveId: j.id, machine: j.from, path: root, branch: j.manifest.branch, branchSha: j.branchSha, fingerprint: j.manifest.fingerprint };
         }
         d.robots[j.robotId] = next;
       }));
@@ -748,13 +775,16 @@ export class Placement {
     if (!this.d.store.flush()) throw new Error('state.json was not written');
   }
 
-  // the worker holds this Mac's record of the move before it is asked to start the robot
+  // the worker holds this Mac's record of the move before it is asked to start the robot: a snapshot built after the
+  // commit, which a worker linked but not yet synced takes once it is
   private async snapshotTaken(machine: MachineId): Promise<void> {
+    const link = this.d.links.for(machine);
+    if (!link?.connected()) throw new ApiError('not_reachable', `${this.name(machine)} is not reachable`);
     let timer: NodeJS.Timeout | undefined;
     const late = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(`${this.name(machine)} did not take this Mac's record of the move within ${SNAPSHOT_MS / 1000} s; retry`)), SNAPSHOT_MS);
     });
-    try { await Promise.race([this.d.links.pushSnapshot(), late]); } finally { clearTimeout(timer); }
+    try { await Promise.race([this.d.links.pushSnapshot().then((v) => link.took(v)), late]); } finally { clearTimeout(timer); }
   }
 
   // the worker says how far it got, and starts the robot unless it has
@@ -771,12 +801,8 @@ export class Placement {
     }
   }
 
-  private async activateHere(j: MoveJournal): Promise<string | undefined> {
-    try {
-      await this.snapshotTaken(j.from);
-    } catch (e) {
-      return (e as Error).message;
-    }
+  // the robot is this Mac's from the commit on; the worker takes the snapshot that says so whenever it is linked
+  private activateHere(j: MoveJournal): Promise<string | undefined> {
     const { store, fleet, tmux, log } = this.d;
     return wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS }, j);
   }

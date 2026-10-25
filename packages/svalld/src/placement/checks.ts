@@ -179,6 +179,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   if (d.config.gatewayMachineId) fail({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first' });
   if (s.islands[c.islandId]?.kind === 'home') fail({ reason: 'mission control stays on this Mac', action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
+  if ([c.agent?.kind, c.second?.agent?.kind].includes('opencode')) fail({ reason: 'OpenCode robots cannot move yet', action: 'wait for a later release' });
 
   // 1: reachable, on this release
   const link = d.links.for(to);

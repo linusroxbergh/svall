@@ -935,8 +935,9 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too, or
-  // started `fresh` with that command and its prompt
-  openSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Robot> {
+  // started `fresh` with that command and its prompt. `move` is the move a moving robot opens it by
+  openSecond(id: string, fresh?: { command: string; prompt: string }, move?: string): Promise<Robot> {
+    this.still(id, move);
     if (fresh && this.deps.remote?.placedAt(id)) this.local(id);
     const far = this.deps.remote?.forward(id, 'robot.second', { id });
     if (far) return far;

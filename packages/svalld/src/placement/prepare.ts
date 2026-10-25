@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiError, MoveId, Sha256, type AgentKind, type FleetId, type MachineId } from '@svall/protocol';
+import { ApiError, LeftBehind, MoveId, Sha256, type AgentKind, type FleetId, type MachineId } from '@svall/protocol';
 import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { boundary } from '../handover/failpoints.js';
@@ -16,7 +16,9 @@ import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, verifyBundle } from './bundle.js';
-import { blobIds, fileSha, landed, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, restRobot, unpack, wake } from './move.js';
+import {
+  blobIds, changedSince, fileSha, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+} from './move.js';
 import { seedTrust } from './trust.js';
 
 const WATCH_MS = 60_000;
@@ -49,6 +51,9 @@ type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
 const ById = z.object({ id: MoveId });
 const WithJournal = z.object({ journal: MoveJournal });
 const Prepare = z.object({ id: MoveId, blobs: z.object({ bundle: Sha256.optional(), session: Sha256 }) });
+const Compare = z.object({ left: LeftBehind });
+
+type Made = NonNullable<MoveJournal['made']>;
 
 const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
   const p = schema.safeParse(raw);
@@ -91,6 +96,12 @@ export class PrepareService {
       'move.rest': byJournal((j) => this.rest(j)),
       'move.bundle': byId((id) => this.bundle(id)),
       'move.release': byId((id) => this.release(id)),
+      // what moved in the worktree a robot left here since it left
+      'move.compare': async (raw) => {
+        const { left } = parse(Compare, raw);
+        const refusal = fs.existsSync(left.path) ? await changedSince(left, `on ${this.name}`, this.d.git) : undefined;
+        return refusal ? { refusal } : {};
+      },
     };
   }
 
@@ -163,28 +174,39 @@ export class PrepareService {
     if (bundle?.sha256 !== blobs.bundle || session.sha256 !== blobs.session) throw new Error(`the files of move ${id} did not arrive as they left`);
     const stage = this.files.stage(id);
     return this.repoLock(j.plan.clone, async () => {
+      let cur = j;
+      const made = (m: Made): void => { cur = { ...cur, made: { ...cur.made, ...m } }; this.save(cur); };
       const m = j.manifest;
+      const { clone, paths } = j.plan;
       if (m) {
         const dir = path.join(stage, 'bundle');
         await unpack(path.join(stage, 'bundle.tar'), dir);
         await verifyBundle(dir, m);
-        await boundary('worker.prepare.worktree', () => this.worktree(j));
-        await boundary('worker.prepare.apply', () => applyBundle(j.plan.paths.root, dir, m, this.d.git));
+        await boundary('worker.prepare.worktree', () => this.worktree(j, made));
+        await boundary('worker.prepare.apply', async () => {
+          made({ branch: (await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`], clone)).stdout.trim() || null });
+          await applyBundle(paths.root, dir, m, this.d.git);
+        });
       }
       await unpack(path.join(stage, 'session.tar'), path.join(stage, 'session'));
-      boundary('worker.prepare.session', () => placeSessions(j.sessions ?? [], path.join(stage, 'session')));
-      // the robot is here at the move's generation, so the commit's snapshot keeps what this machine holds of it
+      boundary('worker.prepare.session', () => {
+        made({ files: (j.sessions ?? []).flatMap((s) => s.files.map((f) => path.join(s.destinationHome!, f.path))).filter((f) => !fs.existsSync(f)) });
+        placeSessions(j.sessions ?? [], path.join(stage, 'session'));
+      });
+      // the robot is here at the move's generation, marked as this machine's own record until the commit's snapshot
+      // replaces it, which keeps what this machine holds of it
       boundary('worker.prepare.journal', () => {
-        this.d.store.update((d) => { if (j.robot) d.robots[j.robotId] = landed(j.robot, j, this.d.me); });
-        this.save({ ...j, phase: 'commit' });
+        this.d.store.update((d) => { if (j.robot) d.robots[j.robotId] = { ...landed(j.robot, j, this.d.me), moving: { id: j.id, to: this.d.me, phase: 'prepare' } }; });
+        this.save({ ...cur, phase: 'commit' });
       });
       fs.rmSync(stage, { recursive: true, force: true });
       return { prepared: true as const, paths: j.plan.paths };
     });
   }
 
-  // the clone, made from the remote when there is none, and a worktree in it at the plan's place, the branch let go of first
-  private async worktree(j: MoveJournal): Promise<void> {
+  // the clone, made from the remote when there is none, and a worktree in it at the plan's place: the one the robot left
+  // here, unchanged since, or a new one, the branch let go of first
+  private async worktree(j: MoveJournal, made: (m: Made) => void): Promise<void> {
     const { clone, remote, paths } = j.plan;
     const m = j.manifest!;
     const git = this.d.git;
@@ -193,15 +215,24 @@ export class PrepareService {
       fs.mkdirSync(path.dirname(clone), { recursive: true });
       await must(this.d.cloneGit ?? cloneGit, ['clone', '-q', '--', remote, clone], path.dirname(clone));
     }
+    const left = j.robot?.left;
+    if (left?.machine === this.d.me && clean(left.path) === clean(paths.root) && fs.existsSync(paths.root)) {
+      const changed = await changedSince(left, `on ${this.name}`, git);
+      if (changed) throw refused(changed);
+      made({ unlocked: true });
+      return takeBack(paths.root, left.branchSha, git);
+    }
     if (fs.existsSync(paths.root)) throw new Error(`${paths.root} on ${this.name} is in the way; move it out of the way there first`);
     const holder = await holding(clone, m.branch, git);
     if (holder) {
       const idle = holder === realPath(clone) && !(await must(git, ['status', '--porcelain', '--untracked-files=no'], clone)).trim();
       if (!idle) throw new Error(`${m.branch} is checked out in ${holder} on ${this.name}; check out another branch there first`);
+      made({ detached: true });
       await must(git, ['checkout', '-q', '--detach'], clone);
     }
     // at a commit the clone holds; the bundle's commits and the branch come with its apply
     const start = m.commits ? m.commits.prerequisites[0] ?? 'HEAD' : m.base;
+    made({ worktree: true });
     await must(git, ['worktree', 'add', '-q', '--detach', paths.root, start], clone);
   }
 
@@ -211,7 +242,7 @@ export class PrepareService {
     if (j.phase === 'done') return { ok: true };
     if (j.phase !== 'commit' && j.phase !== 'activate') throw new ApiError('invalid', `move ${id} is ${j.phase} on ${this.name}`);
     const c = this.d.store.state.robots[j.robotId];
-    if (c?.machine !== this.d.me || c.placement?.generation !== j.generation) {
+    if (c?.machine !== this.d.me || c.placement?.generation !== j.generation || c.moving?.phase === 'prepare') {
       return { ok: false, error: `${this.name} has not taken this Mac's record of the move yet; retry` };
     }
     if (j.phase === 'commit') this.save({ ...j, phase: 'activate' });
@@ -235,40 +266,41 @@ export class PrepareService {
     return { ok: true };
   }
 
-  // before anything ran here: the worktree, its branch, the session files and the robot's record go; on the way back the
-  // robot reopens here as it was
-  private async abort(id: string): Promise<Record<string, never>> {
+  // before anything ran here: what this move made goes and what it changed is put back, and the robot's record goes; on
+  // the way back the robot reopens here as it was. A worktree the robot left here is left again, with its fingerprint
+  private async abort(id: string): Promise<{ fingerprint?: string }> {
     const j = this.files.read(id);
     if (!j || j.phase === 'aborted') return {};
     if (j.from === this.d.me) return this.reopen(j);
     if (j.phase === 'activate' || j.phase === 'done') throw new ApiError('invalid', `${j.robot?.name ?? j.robotId} already runs on ${this.name}`);
     this.receipts.delete(id);
-    await this.repoLock(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
+    const fingerprint = await this.repoLock(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
     fs.rmSync(this.files.stage(id), { recursive: true, force: true });
     this.save({ ...j, phase: 'aborted' });
-    return {};
+    return fingerprint ? { fingerprint } : {};
   }
 
-  private async remove(j: MoveJournal): Promise<void> {
+  private async remove(j: MoveJournal): Promise<string | undefined> {
     const { clone, paths } = j.plan;
-    const m = j.manifest;
+    const { manifest: m, made = {} } = j;
+    const left = j.robot?.left;
     const git = this.d.git;
-    if (m && fs.existsSync(clone)) {
-      const r = await git(['worktree', 'remove', '--force', paths.root], clone);
-      if (r.code !== 0 && fs.existsSync(paths.root)) throw new Error(`${paths.root} was not removed: ${r.stderr.trim()}`);
-      const sha = await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}`], clone);
-      if (sha.stdout.trim() === m.base && !(await holding(clone, m.branch, git))) await must(git, ['branch', '-q', '-D', m.branch], clone);
+    let fingerprint: string | undefined;
+    if (m && made.unlocked && left) fingerprint = await leaveAgain(paths.root, left.branchSha, `moved to ${this.d.homeName} ${left.moveId}`, git);
+    else if (m) {
+      if (made.worktree && fs.existsSync(paths.root)) await must(git, ['worktree', 'remove', '--force', paths.root], clone);
+      if (made.branch === null) {
+        const there = await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}`], clone);
+        if (there.code === 0 && !(await holding(clone, m.branch, git))) await must(git, ['branch', '-q', '-D', m.branch], clone);
+      } else if (made.branch) await must(git, ['update-ref', `refs/heads/${m.branch}`, made.branch], clone);
+      if (made.detached) await must(git, ['checkout', '-q', m.branch], clone);
     }
-    for (const s of j.sessions ?? []) {
-      for (const f of s.files) {
-        const file = path.join(s.destinationHome!, f.path);
-        if (f.type === 'file' && fs.existsSync(file) && await fileSha(file) === f.sha256) fs.rmSync(file);
-      }
-    }
+    for (const f of made.files ?? []) fs.rmSync(f, { force: true });
     this.d.store.update((d) => {
       const c = d.robots[j.robotId];
       if (c?.machine === this.d.me && c.placement?.generation === j.generation) delete c.machine;
     });
+    return fingerprint;
   }
 
   // ---- a robot going back to the home
@@ -323,7 +355,7 @@ export class PrepareService {
     const c = this.d.store.state.robots[j.robotId];
     if (c?.machine === this.d.me) {
       for (const t of j.rest?.stoppedTerminals ?? []) {
-        await (t.term === 2 ? this.d.fleet.openSecond(j.robotId) : this.d.fleet.reviveRobot(j.robotId, undefined, undefined, j.id))
+        await (t.term === 2 ? this.d.fleet.openSecond(j.robotId, undefined, j.id) : this.d.fleet.reviveRobot(j.robotId, undefined, undefined, j.id))
           .catch((e: Error) => this.d.log.error(`move ${j.id}: ${j.robotId} did not reopen: ${e.message}`));
       }
     }

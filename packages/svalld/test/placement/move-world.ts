@@ -248,8 +248,8 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   });
   stops.push(() => connection.stop());
 
-  // the home's daemon, started again after a crash from what it left on disk
-  const bootHome = async (life: Life = { dead: false }) => {
+  // the home's daemon, started again after a crash from what it left on disk; `syncAfterMs` holds off each link's sync
+  const bootHome = async (life: Life = { dead: false }, o: { syncAfterMs?: number } = {}) => {
     const store = Store.load(homePaths.state, () => {});
     const ownership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
     let version = Date.now();
@@ -258,7 +258,10 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
       paths: homePaths, store, log: silentLogger, release: RELEASE, machines: () => [entry], connect: socketTo(workerPaths.linkSock),
       onReport: (r, machine) => { applyReport(store, r, machine); },
       onEvent: (kind) => Promise.reject(new Error(`no ${kind}`)),
-      onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
+      onInventory: async (inv, machine) => {
+        if (o.syncAfterMs) await new Promise((resolve) => setTimeout(resolve, o.syncAfterMs));
+        return router.reconcileWorker(inv, machine);
+      },
       onCall: (method, params) => answer(method, params, ctx!),
       snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: macClaude, codex: path.join(mac, '.codex'), opencode: path.join(mac, '.config/opencode') } }),
     });
