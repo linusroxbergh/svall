@@ -324,7 +324,7 @@ test('a collapsed column is a strip that keeps its count, takes a drop, opens on
   await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toBeVisible();
 });
 
-test('the chips show one island, or the robots that want the user', async ({ page, svall }) => {
+test('the chips show one island, or the robots that want the user, and a card names its island until one island shows', async ({ page, svall }) => {
   const a = await svall.api.call('island.create', { name: svall.uniq('alpha') });
   const b = await svall.api.call('island.create', { name: svall.uniq('beta') });
   const quiet = await svall.api.call('robot.create', { islandId: a.id, cwd: '/tmp', name: 'quiet' });
@@ -337,11 +337,13 @@ test('the chips show one island, or the robots that want the user', async ({ pag
   await expect(page.getByTestId('chip-all')).toHaveText('All islands 3');
   await expect(page.getByTestId(`chip-${a.id}`)).toContainText('2');
   await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 1');
+  await expect(page.getByTestId(`kc-island-${other.id}`)).toHaveText(b.name);
 
   await page.getByTestId(`chip-${b.id}`).click();
   await expect(page.getByTestId(`chip-${b.id}`)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.kc')).toHaveCount(1);
   await expect(page.getByTestId(`kc-${other.id}`)).toBeVisible();
+  await expect(page.getByTestId(`kc-island-${other.id}`)).toHaveCount(0);
   await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 0');
 
   await page.getByTestId(`chip-${a.id}`).click();
