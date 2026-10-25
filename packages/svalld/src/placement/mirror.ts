@@ -12,12 +12,14 @@ import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
 import { realPath } from '../paths.js';
 import { readJsonSettings, same } from '../settings-file.js';
-import { isCredential, packTar } from './bundle.js';
+import { CREDENTIAL_PATTERNS, packTar } from './bundle.js';
 import { filesIn } from './docs-sync.js';
 import { fileSha, unpack } from './move.js';
 
 export const MIRROR_FILE_MAX = 5 * 1024 * 1024;
 const MIRROR_TREE_MAX = 200 * 1024 * 1024;
+// unpacking and applying a mirror of several trees at their limit
+const APPLY_MS = 2 * 60_000;
 
 /** Where a machine keeps what the mirror carries; `agentProfiles` is the fleet home's. */
 export type MirrorHomes = { claudeDir: string; codexDir: string; homedir: string; agentProfiles?: string };
@@ -26,42 +28,53 @@ export type MirrorPlan = { files: { from: string; to: string; mode: number }[]; 
 
 const ROOTS = { claude: 'claudeDir', codex: 'codexDir', home: 'homedir', profiles: 'agentProfiles' } as const;
 type Root = keyof typeof ROOTS;
-// the worker's `svall setup` writes these, which on the Mac name the app bundle
-const WORKER_OWNED = ['hooks', 'statusLine'];
+// the worker's own: its `svall setup` writes hooks and statusLine, which on the Mac name the app bundle, and the rest hold
+// secrets or run what fetches them
+const WORKER_OWNED = ['hooks', 'statusLine', 'env', 'apiKeyHelper', 'awsCredentialExport', 'awsAuthRefresh', 'otelHeadersHelper'];
+// a key or a login by its name: a move's credential patterns and more
+const SECRET = [...CREDENTIAL_PATTERNS, '.credentials.json', 'credentials.json', 'auth.json', 'id_ed25519*', '*.p12']
+  .map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
 // a settings value under a key named so is a path, which lands by home
 const PATH_KEY = /(Path|Dir|cwd)$/;
 const MANIFEST = 'mirror.json';
 const Manifest = z.object({ homedir: z.string(), claudeDir: z.string(), settings: z.record(z.string(), z.unknown()) });
 const Offer = z.object({ id: z.string(), sha256: Sha256 });
+const ById = z.object({ id: z.string() });
 
 const statOf = (file: string): fs.Stats | undefined => {
   try { return fs.statSync(file); } catch { return undefined; }
 };
 
-type Found = { file: string; rel: string; size: number; mode: number };
+type Walk = { found: { file: string; rel: string; mode: number }[]; bytes: number; seen: Set<string> };
 
-// the plain files under `dir`, links followed, less version control and anything named like a credential; a file over
-// the limit is named in `skipped`
-function walk(dir: string, skipped: string[], rel = '', seen = new Set<string>()): Found[] {
+// the plain files under `dir` that `keep` lets go, links followed and version control left out, gathered into `w`; false
+// once they pass the tree's limit. A file over the file limit is named in `skipped`
+function walk(dir: string, rel: string, w: Walk, keep: (file: string) => boolean, skipped: string[]): boolean {
   let names: string[];
   try {
     const real = fs.realpathSync(dir);
-    if (seen.has(real)) return [];
-    seen.add(real);
+    if (w.seen.has(real)) return true;
+    w.seen.add(real);
     names = fs.readdirSync(dir).sort();
   } catch {
-    return [];
+    return true;
   }
-  const found: Found[] = [];
   for (const name of names) {
-    if (name === '.git' || name === '.credentials.json' || isCredential(name)) continue;
     const file = path.join(dir, name);
-    const st = statOf(file);
-    if (st?.isDirectory()) found.push(...walk(file, skipped, path.posix.join(rel, name), seen));
-    else if (st?.isFile() && st.size > MIRROR_FILE_MAX) skipped.push(`${file} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
-    else if (st?.isFile()) found.push({ file, rel: path.posix.join(rel, name), size: st.size, mode: st.mode & 0o777 });
+    const st = name === '.git' ? undefined : statOf(file);
+    if (st?.isDirectory()) {
+      if (!walk(file, path.posix.join(rel, name), w, keep, skipped)) return false;
+    } else if (st?.isFile() && keep(file)) {
+      if (st.size > MIRROR_FILE_MAX) {
+        skipped.push(`${file} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
+        continue;
+      }
+      w.bytes += st.size;
+      if (w.bytes > MIRROR_TREE_MAX) return false;
+      w.found.push({ file, rel: path.posix.join(rel, name), mode: st.mode & 0o777 });
+    }
   }
-  return found;
+  return true;
 }
 
 // Claude's settings less what the worker owns; settings that cannot be read carry none
@@ -83,25 +96,33 @@ function claudeSettings(dir: string, skipped: string[]): Record<string, unknown>
 
 /**
  * What the home's agent configuration mirror carries: Claude's CLAUDE.md, skills, rules, agents, commands, keybindings
- * and settings, Codex's AGENTS.md, ~/.agents/skills and the fleet's agent profiles. Logins, plugins and ~/.claude.json
- * never travel; a file over 5 MB or a tree over 200 MB is skipped with a line in `skipped`.
+ * and settings, Codex's AGENTS.md, ~/.agents/skills and the fleet's agent profiles. Logins, keys, plugins, ~/.claude.json
+ * and the settings that hold secrets never travel; a file over 5 MB or a tree over 200 MB is skipped with a line in `skipped`.
  */
 export function mirrorPlan(o: MirrorHomes): MirrorPlan {
   const files: MirrorPlan['files'] = [];
   const skipped: string[] = [];
+  // a file stays on this Mac when it, or what a link leads to, is a plugin's, a login, or named like a key
+  const plugins = realPath(path.join(o.claudeDir, 'plugins'));
+  const logins = new Set([path.join(o.homedir, '.claude.json'), path.join(o.claudeDir, '.claude.json'), path.join(o.codexDir, 'auth.json')].map(realPath));
+  const keep = (file: string): boolean => {
+    const real = realPath(file);
+    return !holds(plugins, real) && !logins.has(real) && ![file, real].some((f) => SECRET.some((re) => re.test(path.basename(f))));
+  };
   const tree = (root: Root, top: string, under: string): void => {
-    const found = walk(top, skipped);
-    if (found.reduce((n, f) => n + f.size, 0) > MIRROR_TREE_MAX) {
+    const w: Walk = { found: [], bytes: 0, seen: new Set() };
+    if (!walk(top, '', w, keep, skipped)) {
       skipped.push(`${top} is over ${MIRROR_TREE_MAX / 2 ** 20} MB`);
       return;
     }
-    for (const f of found) files.push({ from: f.file, to: path.posix.join(root, under, f.rel), mode: f.mode });
+    for (const f of w.found) files.push({ from: f.file, to: path.posix.join(root, under, f.rel), mode: f.mode });
   };
   const one = (root: Root, dir: string, name: string): void => {
     const from = path.join(dir, name);
     const st = statOf(from);
-    if (st?.isFile() && st.size > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
-    else if (st?.isFile()) files.push({ from, to: path.posix.join(root, name), mode: st.mode & 0o777 });
+    if (!st?.isFile() || !keep(from)) return;
+    if (st.size > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
+    else files.push({ from, to: path.posix.join(root, name), mode: st.mode & 0o777 });
   };
   one('claude', o.claudeDir, 'CLAUDE.md');
   one('claude', o.claudeDir, 'keybindings.json');
@@ -150,7 +171,7 @@ function put(file: string, data: Buffer, mode: number): boolean {
 
 /**
  * Puts the mirror unpacked at `blobDir` into this machine's homes and returns the files written: each whose bytes differ,
- * an override's in place of the home's; Claude's settings merged by key over this machine's, its hooks and statusLine
+ * an override's in place of the home's; Claude's settings merged by key over this machine's, the keys this machine owns
  * kept, paths moved by home, the override's settings last.
  */
 export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: string }): string[] {
@@ -185,10 +206,11 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
   return written;
 }
 
-/** The home's side: its agent configuration packed and sent to a worker, which applies it once it has arrived. */
+/** The home's side: its agent configuration packed and sent to a worker. */
 export class Mirror {
   constructor(private o: MirrorHomes & { log: Logger }) {}
 
+  /** Resolves once the worker has applied what `link` carried. */
   async push(link: Pick<WorkerLink, 'call' | 'sendBlob'>): Promise<void> {
     const plan = mirrorPlan(this.o);
     for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on this Mac`);
@@ -199,29 +221,54 @@ export class Mirror {
       const id = `mirror_${crypto.randomUUID()}`;
       await link.call('config.blob', { id, sha256: await fileSha(file) });
       await link.sendBlob(id, file);
+      await link.call('config.apply', { id }, { timeoutMs: APPLY_MS });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
 }
 
-/** A worker's `config.blob`: the blob's id is taken before the home sends a byte, and the mirror applied once it has arrived as it left. */
+const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
+  const p = schema.safeParse(raw);
+  if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+  return p.data;
+};
+
+/**
+ * A worker's side: `config.blob` takes the blob's id before the home sends a byte of it, and `config.apply` applies it
+ * once it has arrived as it left, answering with the files written.
+ */
 export function mirrorCalls(o: MirrorHomes & { overrides: string; stage: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger }): Record<string, (raw: unknown) => Promise<unknown>> {
+  const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }> }>();
+  const drop = (id: string): void => {
+    const b = blobs.get(id);
+    blobs.delete(id);
+    if (b) fs.rmSync(b.dir, { recursive: true, force: true });
+  };
   return {
     'config.blob': async (raw) => {
-      const p = Offer.safeParse(raw);
-      if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+      const { id, sha256 } = parse(Offer, raw);
       fs.mkdirSync(o.stage, { recursive: true });
       const dir = fs.mkdtempSync(path.join(o.stage, 'mirror-'));
-      const tar = path.join(dir, 'mirror.tar');
-      void o.connection.receiveBlob(p.data.id, tar).then(async ({ sha256 }) => {
-        if (sha256 !== p.data.sha256) throw new Error('it did not arrive as it left');
-        await unpack(tar, path.join(dir, 'blob'));
-        const written = applyMirror(path.join(dir, 'blob'), o);
-        if (written.length) o.log.info(`mirror: ${written.length} files of the home's agent configuration written`);
-      }).catch((e: Error) => o.log.error(`mirror: the home's agent configuration was not applied: ${e.message}`))
-        .finally(() => fs.rmSync(dir, { recursive: true, force: true }));
+      const got = o.connection.receiveBlob(id, path.join(dir, 'mirror.tar'));
+      // a link that closes before the apply leaves nothing behind
+      got.catch(() => drop(id));
+      blobs.set(id, { dir, sha256, got });
       return { ready: true };
+    },
+    'config.apply': async (raw) => {
+      const { id } = parse(ById, raw);
+      const b = blobs.get(id);
+      if (!b) throw new ApiError('not_found', `no agent configuration ${id} came here`);
+      try {
+        if ((await b.got).sha256 !== b.sha256) throw new Error('the agent configuration did not arrive as it left');
+        await unpack(path.join(b.dir, 'mirror.tar'), path.join(b.dir, 'blob'));
+        const written = applyMirror(path.join(b.dir, 'blob'), o);
+        if (written.length) o.log.info(`mirror: ${written.length} files of the home's agent configuration written`);
+        return { written };
+      } finally {
+        drop(id);
+      }
     },
   };
 }

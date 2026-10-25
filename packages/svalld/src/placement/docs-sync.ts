@@ -104,26 +104,33 @@ export class HomeDocs {
 
   constructor(readonly dir: string, private log: Logger, private quietMs = DOCS_QUIET_MS) {}
 
-  /** Writes or removes the file a worker's event names unless it is so already; one that cannot be is logged and dropped, so one bad note never holds the link. */
+  /**
+   * Writes or removes the file a worker's event names unless it is so already. An event naming no file of the docs, or
+   * bytes not its own, is logged and dropped; a write that fails throws, and the event stays in the worker's outbox.
+   */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): void {
+    const named = this.named(kind, data, machine);
+    if (!named) return;
+    const { file, bytes, sha256 } = named;
+    if (!bytes) fs.rmSync(file, { force: true });
+    else if (shaOf(file) !== sha256) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      writeDurable(file, bytes);
+    }
+    this.applied.set(path.relative(this.dir, file), { sha256, machine });
+  }
+
+  // the file and bytes an event names, or none, said in the log, for one the docs cannot take
+  private named(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): { file: string; bytes?: Buffer; sha256?: string } | undefined {
     try {
-      if (kind === 'docs.write') {
-        const w = DocsWrite.parse(data);
-        const bytes = Buffer.from(w.data, 'base64');
-        if (sha256Hex(bytes) !== w.sha256) throw new Error(`${w.path} did not arrive as it left`);
-        const file = inside(this.dir, w.path);
-        if (shaOf(file) !== w.sha256) {
-          fs.mkdirSync(path.dirname(file), { recursive: true });
-          writeDurable(file, bytes);
-        }
-        this.applied.set(path.relative(this.dir, file), { sha256: w.sha256, machine });
-      } else {
-        const file = inside(this.dir, DocsDelete.parse(data).path);
-        fs.rmSync(file, { force: true });
-        this.applied.set(path.relative(this.dir, file), { machine });
-      }
+      if (kind === 'docs.delete') return { file: inside(this.dir, DocsDelete.parse(data).path) };
+      const w = DocsWrite.parse(data);
+      const bytes = Buffer.from(w.data, 'base64');
+      if (sha256Hex(bytes) !== w.sha256) throw new Error(`${w.path} did not arrive as it left`);
+      return { file: inside(this.dir, w.path), bytes, sha256: w.sha256 };
     } catch (e) {
-      this.log.error(`docs: ${kind} from ${machine} not taken: ${(e as Error).message}`);
+      this.log.error(`docs: ${kind} from ${machine} dropped: ${(e as Error).message}`);
+      return undefined;
     }
   }
 

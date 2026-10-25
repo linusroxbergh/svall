@@ -239,19 +239,19 @@ async function start(opts: Options): Promise<Daemon> {
   let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
-  const homeDocs = new HomeDocs(paths.docs, log);
+  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log);
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: runtimeVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },
     onEvent: async (kind, data, machine) => {
-      if (kind !== 'docs.write' && kind !== 'docs.delete') throw new Error(`${machine} sent ${kind}, which this svalld does not take`);
+      if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`${machine} sent ${kind}, which this svalld does not take`);
       homeDocs.apply(kind, data, machine);
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
     mirror: new Mirror({ claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, log }),
-    docs: homeDocs,
+    ...(homeDocs && { docs: homeDocs }),
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
   const connection = worker && new HomeConnection({

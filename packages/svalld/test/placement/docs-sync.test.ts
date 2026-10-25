@@ -55,6 +55,38 @@ describe('docs between the home and a worker', () => {
     expect(applied).toHaveBeenCalledTimes(2);
   });
 
+  it('a note the home has no space to write stays unacked and on the worker, and lands once the home can write it', async () => {
+    const w = world({ docs: true });
+    stops.push(() => w.stop());
+    await w.link();
+    const note = path.join(w.home.paths.docs, 'robots/c_1/notes.md');
+    const temp = (file: fs.PathLike): boolean => String(file).startsWith(`${note}.durable-`);
+    let full = true;
+    const open = fs.openSync.bind(fs) as (...a: unknown[]) => number;
+    const opens = vi.spyOn(fs, 'openSync').mockImplementation(((file: fs.PathLike, ...rest: unknown[]) => {
+      if (full && temp(file)) throw Object.assign(new Error(`ENOSPC: no space left on device, open '${String(file)}'`), { code: 'ENOSPC' });
+      return open(file, ...rest);
+    }) as typeof fs.openSync);
+    stops.push(() => opens.mockRestore());
+
+    const farNote = path.join(w.worker.paths.cache, 'docs/robots/c_1/notes.md');
+    put(farNote, 'found the bug\n');
+    await until(() => expect(opens.mock.calls.some(([file]) => temp(file))).toBe(true));
+    // the link closed on the failed write: the event is in the outbox past the home's ack, and the note is on the worker
+    const entry = read(w.worker.paths.outbox).trim().split('\n').map((l) => JSON.parse(l) as { seq: number; kind: string; data: { path: string } })
+      .find((e) => e.kind === 'docs.write' && e.data.path === 'robots/c_1/notes.md');
+    const acked = fs.existsSync(w.worker.paths.acked) ? Number(read(w.worker.paths.acked)) : 0;
+    expect(entry?.seq).toBeGreaterThan(acked);
+    expect(fs.existsSync(note)).toBe(false);
+    expect(read(farNote)).toBe('found the bug\n');
+
+    full = false;
+    await until(() => expect(read(note)).toBe('found the bug\n'));
+    // and the docs the home sends once synced again hold it
+    await nap(300);
+    expect(read(farNote)).toBe('found the bug\n');
+  });
+
   it('a tar the home packed before it took the worker\'s note leaves the note, and one packed after takes the home\'s copy', async () => {
     const base = makeHome();
     const dir = path.join(base, 'cache/docs');

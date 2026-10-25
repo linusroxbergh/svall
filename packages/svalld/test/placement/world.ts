@@ -14,6 +14,7 @@ import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
+import { Mirror, mirrorCalls, type MirrorHomes } from '../../src/placement/mirror.js';
 import { Router, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
@@ -63,10 +64,13 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
 /**
  * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
- * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it, and `docs` syncs
- * the fleet's docs as main.ts does, each watcher quiet for 100 ms.
+ * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
+ * fleet's docs as main.ts does, each watcher quiet for 100 ms, and `mirror` names each side's agent homes for the mirror.
  */
-export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true }) {
+export function world(o: {
+  home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
+  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } };
+}) {
   const config = Config.parse({});
   const stops: (() => unknown)[] = [];
 
@@ -88,6 +92,7 @@ export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetSta
     onCall: (method, params) => answer(method, params, homeCtx),
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes }),
     ...(homeDocs && { docs: homeDocs }),
+    ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
   });
   const homeRouter = new Router({ store: homeStore, me: H, log: silentLogger, links });
   const homeFleet = new Fleet({ store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter });
@@ -110,7 +115,10 @@ export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetSta
   const workerDocs = o.docs && new WorkerDocs({
     dir: path.join(workerPaths.cache, 'docs'), file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
   });
-  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), workerDocs?.handlers);
+  Object.assign(
+    handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), workerDocs?.handlers,
+    o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, connection, log: silentLogger }),
+  );
   const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter);
 
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop());
