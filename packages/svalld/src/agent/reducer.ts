@@ -74,16 +74,15 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   if (e.backend === 'opencode' && e.backgroundShells) {
     if (e.backgroundShells.length) next.agent.monitors = [...e.backgroundShells]; else delete next.agent.monitors;
   }
-  const ask = (agent: Agent) => {
+  const agent = next.agent;
+  const ask = () => {
     agent.status = 'blocked';
     agent.promptId = crypto.randomUUID();
     if (e.message) agent.prompt = e.message; else delete agent.prompt;
   };
-  // a subagent's events say only that it runs, and whether the question it asked is still open. For Claude Code the
-  // notification is what blocks; Codex asks at once, and its PreToolUse comes before the request, so only the asked
-  // tool's run on that thread answers. One can stop and start again under its id, when a shell it left running ends
+  // a subagent's events count it and track its question: Claude Code's notification blocks, Codex's request does at once
+  // and a later event on that thread answers. One can stop and start again under its id, when a shell it left running ends
   if (e.agentId) {
-    const agent = next.agent;
     const counted = agent.subagents ?? [];
     const was = counted.includes(e.agentId);
     const started = e.name === 'SubagentStart' && !was;
@@ -99,8 +98,9 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     const others = (agent.asking ?? []).filter((a) => a !== e.agentId);
     const asking = asks ? [...others, e.agentId] : others;
     if (asking.length) agent.asking = asking; else delete agent.asking;
-    if (asks && e.backend === 'codex') ask(agent);
-    else if (!asking.length && agent.status === 'blocked') {
+    if (asks && e.backend === 'codex') ask();
+    // the main thread's own question stays up; the poll clears a stale one
+    else if (!asking.length && agent.status === 'blocked' && !(e.backend === 'codex' && agent.askedTool)) {
       agent.status = 'working';
       delete agent.prompt;
       delete agent.promptId;
@@ -116,7 +116,6 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   if (e.model && e.sessionId === next.agent.sessionId) next.agent.model = e.model;
   // the hook carries the prompt before the transcript holds it, so this is the newest one there is
   if (e.prompt && (!e.sessionId || e.sessionId === next.agent.sessionId)) next.agent.lastPrompt = { ...e.prompt, at: now };
-  const agent = next.agent;
   if (e.monitor) agent.monitors = [...(agent.monitors ?? []), e.monitor].slice(-20);
   // the session's monitors are listed among its shells but watch on without a turn; one the list lacks is over
   let tasks = e.backgroundTasks;
@@ -133,13 +132,16 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     const live = agent.subagents.filter((a) => e.backgroundAgentIds!.includes(a));
     if (live.length) agent.subagents = live; else delete agent.subagents;
   }
-  // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
+  // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it; its
+  // own question comes through, and its asked tool's run answers that one
   if (agent.asking) {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
     const over = e.prompt || (stop && !e.backgroundAgents) || e.name === 'Interrupt' || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
+    const asksOwn = e.backend === 'codex' && (e.name === 'PermissionRequest' || (e.name === 'PreToolUse' && e.toolName === 'request_user_input'));
     if (over) delete agent.asking;
-    else if (agent.status === 'blocked' && e.name !== 'Notification') {
+    else if (agent.status === 'blocked' && e.name !== 'Notification' && !asksOwn) {
       if (stop) agent.background = true;
+      if ((e.name === 'PostToolUse' || e.name === 'PostToolUseFailure') && e.toolName === agent.askedTool) delete agent.askedTool;
       return next;
     }
   }
@@ -150,7 +152,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'PreToolUse':
       // Codex asks its own questions with a tool, which no permission request comes before; its run is the answer
       if (e.name === 'PreToolUse' && e.backend === 'codex' && e.toolName === 'request_user_input') {
-        ask(agent);
+        ask();
         agent.askedTool = e.toolName;
       } else {
         settle(agent, 'working');
@@ -189,11 +191,12 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool;
     // Codex and OpenCode ask at once
     case 'PermissionRequest':
-      if (e.backend !== 'claude') ask(agent);
-      if (e.toolName) agent.askedTool = e.toolName; else delete agent.askedTool;
+      if (e.backend !== 'claude') ask();
+      // OpenCode names the permission, not the tool whose run answers
+      if (e.backend !== 'opencode') { if (e.toolName) agent.askedTool = e.toolName; else delete agent.askedTool; }
       break;
     case 'Notification':
-      if (e.notificationType && BLOCKING.has(e.notificationType)) ask(agent);
+      if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
       // a minute after a turn ends, Claude Code says it sits at its prompt, background work or not. With background
       // work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {

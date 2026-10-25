@@ -40,7 +40,7 @@ export type HookEvent = {
   backgroundShells?: string[];
   // the task a Monitor tool call started, or the shell OpenCode sent to the background, its only way to watch
   monitor?: string;
-  // the Claude Code subagent the event came from, or the subagent any agent says started or stopped
+  // the subagent the event came from, or the one any agent says started or stopped
   agentId?: string;
   // the tool a tool or permission event is about
   toolName?: string;
@@ -137,8 +137,8 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   return ev;
 }
 
-// the events kept from a subagent, named by it. A Claude subagent's say only whether the question it asked is still
-// open; a Codex subagent shares its parent's session, and the dialog, so its tool calls ask and answer as the main thread's do
+// the events kept from a subagent, named by it: those that ask, and answer, its own question. A Codex subagent shares
+// its parent's session and dialog
 const FROM_SUBAGENT: Record<AgentKind, Set<unknown>> = {
   claude: new Set(['PreToolUse', 'PermissionRequest', 'SubagentStart', 'SubagentStop']),
   codex: new Set(['PreToolUse', 'PermissionRequest', 'PostToolUse', 'SubagentStart', 'SubagentStop']),

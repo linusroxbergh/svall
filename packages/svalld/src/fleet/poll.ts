@@ -67,6 +67,8 @@ export class Poll {
   private ticks = 0;
   private shellStreak = new Map<string, number>();
   private codexStreak = new Map<string, number>();
+  // the Codex questions whose prompt line read empty on the last tick
+  private emptyOnce = new Set<string>();
   private transcriptSize = new Map<string, number>();
   // one link sweep at a time, so the cap on robots out asking holds across ticks; the robots a
   // tick found moved wait in `pendingLinks` for the sweep that follows the one running
@@ -222,23 +224,26 @@ export class Poll {
     if (this.ticks % DORMANCY_EVERY === 0) this.deps.track(this.deps.endIdleAgents(), 'dormancy');
   }
 
-  // Claude Code and Codex fire no hook when a dialog about a tool is answered until the tool ends, which a long command runs
-  // on for minutes, nor Codex when an Esc dismisses a subagent's; the prompt line back in view and empty says the dialog is
-  // gone. A field of the dialog's own reads as a draft. Codex shows every thread's dialog; a Claude subagent's may be out of
-  // view, as may a question asked about no tool
+  // a dialog answered, or a Codex subagent's dismissed, fires no hook until its tool ends; the prompt line back in view and
+  // empty says it is gone. Codex shows every thread's dialog; Claude Code may not show a subagent's, or one about no tool
   private async dialogsGone(): Promise<void> {
+    const watched = (a?: Agent): a is Agent => a?.status === 'blocked' && (a.kind === 'codex' || (a.kind === 'claude' && !!a.askedTool && !a.asking));
     const asking = Object.values(this.deps.store.state.robots).flatMap((c) => [c, c.second].flatMap((t, i) => {
       const a = t?.agent;
-      const shown = a?.kind === 'codex' || (a?.kind === 'claude' && a.askedTool && !a.asking);
-      return t?.tmux && a?.status === 'blocked' && shown ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId, kind: a.kind }] : [];
+      return t?.tmux && watched(a) ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId, kind: a.kind }] : [];
     }));
+    // Codex blocks on the hook itself, before its dialog is drawn, so one empty read may be the frame before it
+    const once = this.emptyOnce;
+    this.emptyOnce = new Set();
     for (const q of asking) {
       const screen = await this.deps.tmux.screen(q.paneId).catch(() => undefined);
       if (!screen || isShellCommand(screen.command, this.deps.config.shell) || readComposer(q.kind, screen) !== 'empty') continue;
+      const key = q.promptId ?? q.paneId;
+      if (q.kind === 'codex' && !once.has(key)) { this.emptyOnce.add(key); continue; }
       this.deps.store.update((d) => {
         const t = q.second ? d.robots[q.id]?.second : d.robots[q.id];
         const a = t?.agent;
-        if (t?.tmux?.paneId !== q.paneId || a?.status !== 'blocked' || a.promptId !== q.promptId || (a.asking && a.kind !== 'codex')) return;
+        if (t?.tmux?.paneId !== q.paneId || !watched(a) || a.promptId !== q.promptId) return;
         a.status = 'working';
         delete a.prompt;
         delete a.promptId;

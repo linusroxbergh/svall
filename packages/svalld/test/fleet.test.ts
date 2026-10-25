@@ -610,11 +610,16 @@ runIf('Fleet', () => {
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'codex', name: 'PreToolUse', sessionId: 'sess', toolName: 'Bash', ...h } });
     await hook({ name: 'SessionStart' });
     await hook({ name: 'PermissionRequest', agentId: 'a1', message: 'mkdir probe' });
-    const screen = vi.spyOn(tmux, 'screen').mockResolvedValue(pane('codex-approval'));
+    // the hook lands before the dialog is drawn, so one empty read is not yet the dialog gone
+    const screen = vi.spyOn(tmux, 'screen').mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    screen.mockResolvedValue(pane('codex-approval'));
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
     // an Esc dismisses a subagent's dialog with no hook
     screen.mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent?.status).toBe('working');
     expect(store.state.robots[c.id].agent).not.toHaveProperty('asking');
@@ -624,6 +629,7 @@ runIf('Fleet', () => {
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', askedTool: 'Bash' });
     screen.mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent).toMatchObject({ status: 'working', askedTool: 'Bash' });
   });
