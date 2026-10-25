@@ -144,6 +144,7 @@
 .set-switch { width: calc(var(--ctl-sm) * 2); height: var(--ctl-sm); padding: 0; border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
 .set-switch[aria-checked="true"] { background: var(--sand); color: var(--ink-sand); }
 .set-switch[aria-checked="true"]:hover { background: var(--sand-hi); }
+.row[data-dim="true"] { opacity: var(--disabled); }
 .row b.set-keys { display: flex; align-items: center; gap: var(--sp-xs); }
 .key-chord { min-width: 52px; height: var(--ctl-sm); padding: 0 var(--sp-md); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--text-sm); }
 .key-chord[data-listening="true"] { background: var(--sand); color: var(--ink-sand); }

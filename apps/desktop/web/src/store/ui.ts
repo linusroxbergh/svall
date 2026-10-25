@@ -12,14 +12,16 @@ export type CardSize = 'half' | 'full';
 export type Terminal = { id: string; rect: Rect };
 // one native browser view the shell holds for a tab, and what it last reported about the page
 export type Webview = { tab: string; rect: Rect; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string };
-// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back
-export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void } };
+// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back,
+// and dismiss puts a Dismiss beside it
+export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void }; dismiss?: boolean };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
 // a right-click's menu, by the pointer that asked for it; an entry with items opens them beside it, one with neither
-// run nor items to pick shows greyed out, and a checked one carries a tick
-export type MenuEntry = { title: string; run?: () => void; danger?: boolean; items?: MenuEntry[]; checked?: boolean };
-export type PageMenu = { x: number; y: number; items: MenuEntry[] };
+// run nor items to pick shows greyed out, a checked one carries a tick, a note sits small at its right, and sep rules it off from those above
+export type MenuEntry = { title: string; run?: () => void; danger?: boolean; items?: MenuEntry[]; checked?: boolean; note?: string; sep?: boolean };
+// a button's own menu, bare, leaves out the page's Reload
+export type PageMenu = { x: number; y: number; items: MenuEntry[]; bare?: boolean };
 
 export type UiState = {
   view: View;
@@ -60,6 +62,8 @@ export type UiState = {
   // the sides ⌘⇧S hid, so the next press brings back those and no others
   hiddenSides?: { sidebar: boolean; card: boolean };
   settingsOpen: boolean;
+  // the pane a control elsewhere opened the settings on, a new object each ask so a repeated one turns back to it
+  settingsAsk?: { pane: string };
   // the action whose chord the settings' Keyboard pane is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
   usageOpen: boolean;
@@ -111,7 +115,7 @@ export type UiActions = {
   addressFocused(): void;
   askArrange(): void;
   arranged(): void;
-  showToast(message: string, tone?: Toast['tone'], action?: Toast['action']): void;
+  showToast(message: string, tone?: Toast['tone'], action?: Toast['action'], dismiss?: boolean): void;
   runToastAction(): void;
   clearToast(): void;
   askLink(ask: LinkAsk): void;
@@ -125,7 +129,7 @@ export type UiActions = {
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
   toggleSides(): void;
-  toggleSettings(open?: boolean): void;
+  toggleSettings(open?: boolean, pane?: string): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
@@ -184,6 +188,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     update: undefined,
     sidebarOpen: storage?.getSidebarOpen() ?? true,
     settingsOpen: firstRun,
+    settingsAsk: undefined,
     capturingKey: undefined,
     usageOpen: false,
     mobileOpen: false,
@@ -236,7 +241,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     addressFocused: () => set({ addressFocus: false }),
     askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
-    showToast: (message, tone = 'error', action) => set({ toast: { text: message, tone, ...(action && { action }) } }),
+    showToast: (message, tone = 'error', action, dismiss) => set({ toast: { text: message, tone, ...(action && { action }), ...(dismiss && { dismiss }) } }),
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },
     clearToast: () => set({ toast: undefined }),
     askLink: (linkAsk) => set({ linkAsk }),
@@ -262,13 +267,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       if (back.card) s.toggleSideCard(!hide);
       set({ hiddenSides: hide ? open : undefined });
     },
-    toggleSettings: (open) => set((s) => {
+    toggleSettings: (open, pane) => set((s) => {
       const next = open ?? !s.settingsOpen;
       // a window that closes has been answered, and what it leaves behind is this machine's settings;
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening
-      return { settingsOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
+      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
         keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen) ? true : s.keepPageFocus,
         capturingKey: next ? s.capturingKey : undefined };
     }),

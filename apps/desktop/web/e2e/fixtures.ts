@@ -39,12 +39,13 @@ export const test = base.extend<{ svall: Svall }>({
       open: async (view: 'board' | 'map' = 'board', opts?: { firstRun?: boolean; tour?: boolean }) => {
         // the first-run tour selects a robot and covers the map, so only the spec about it sees it
         if (!opts?.tour) await page.addInitScript((key) => { try { localStorage.setItem(key, 'done'); } catch { /* seeded where there is a store */ } }, TOUR_KEY);
-        // the settings window opens by itself on a machine with no settings of its own, and would stand over the map
+        // the settings window opens by itself on a machine with no settings of its own, and would stand over the map;
+        // the board's one-time toast is taken as shown
         if (!opts?.firstRun) {
           await page.addInitScript(({ key, value }) => {
             // this runs again on every navigation, and a reload is where a spec reads back what it saved
             try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch { /* seeded where there is a store */ }
-          }, { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1 }) });
+          }, { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1, boardToastShown: true }) });
           // specs click the map beside an open half card, so it opens at half the map rather than the first-use size
           await page.addInitScript((key) => {
             try { if (localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify({ w: 0.5, h: 0.5 })); } catch { /* seeded where there is a store */ }
@@ -71,8 +72,9 @@ export const test = base.extend<{ svall: Svall }>({
     for (const k of cols.filter((x) => !want.includes(x.name))) cols = await svall.api.call('column.delete', { id: k.id, moveTo: cols.find((x) => x.id !== k.id)!.id });
     const idOf = (name: string) => cols.find((k) => k.name === name)!.id;
     for (let i = 1; i < want.length; i++) cols = await svall.api.call('column.reorder', { id: idOf(want[i]), targetId: idOf(want[i - 1]), after: true });
-    // answers a new fleet's scribe question, which would otherwise cover the page
+    // answers a new fleet's scribe and placing questions, which would otherwise cover the page
     await svall.api.call('scribe.set', { enabled: false });
+    await svall.api.call('placing.set', { enabled: false });
     await use(svall);
     svall.api.close();
   },

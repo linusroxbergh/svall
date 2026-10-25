@@ -7,7 +7,7 @@ import { bridge, call, freshStore, sent, store } from './harness.js';
 bridge.present = true;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
-const { ScribeAsk } = await import('../../src/ScribeAsk.js');
+const { PlacingAsk, ScribeAsk } = await import('../../src/ScribeAsk.js');
 
 beforeEach(() => {
   window.__svallHome = undefined;
@@ -113,4 +113,26 @@ test('Enter on the agent select answers nothing', () => {
   render(<ScribeAsk />);
   fireEvent.keyDown(screen.getByTestId('scribe-ask-agent'), { key: 'Enter' });
   expect(call).not.toHaveBeenCalled();
+});
+
+test('the board asks about placing after the scribe, with Keep off focused, and Turn on brings a scribe that is off', () => {
+  act(() => { store.getState().setView('board'); store.getState().setFleet({ ...fleet(), scribeAsk: true, placingAsk: true }); });
+  const { rerender } = render(<PlacingAsk />);
+  expect(screen.queryByTestId('placing-ask')).toBeNull();
+  act(() => store.getState().setFleet({ ...fleet(), scribeOff: true, placingAsk: true }));
+  rerender(<PlacingAsk />);
+  expect(document.activeElement).toBe(screen.getByTestId('placing-ask-off'));
+  expect(screen.getByTestId('placing-ask').textContent).toContain('Turning this on turns the scribe on too.');
+  fireEvent.click(screen.getByTestId('placing-ask-on'));
+  expect(call).toHaveBeenCalledWith('scribe.set', { enabled: true });
+  expect(call).toHaveBeenCalledWith('placing.set', { enabled: true });
+});
+
+test('with the scribe on, the placing ask leaves it be; Escape keeps placing off', () => {
+  act(() => { store.getState().setView('board'); store.getState().setFleet({ ...fleet(), placingAsk: true }); });
+  render(<PlacingAsk />);
+  expect(screen.getByTestId('placing-ask').textContent).not.toContain('turns the scribe on');
+  fireEvent.keyDown(screen.getByTestId('placing-ask-off'), { key: 'Escape' });
+  expect(call).toHaveBeenCalledWith('placing.set', { enabled: false });
+  expect(call).not.toHaveBeenCalledWith('scribe.set', expect.anything());
 });

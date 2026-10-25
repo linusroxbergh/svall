@@ -6,7 +6,7 @@ import { refocusSurface } from './keyboard.js';
 import type { MenuEntry } from './store/ui.js';
 import { theme } from './theme.js';
 
-const RELOAD: MenuEntry = { title: 'Reload', run: () => window.location.reload() };
+const RELOAD: MenuEntry = { title: 'Reload', sep: true, run: () => window.location.reload() };
 
 const live = (it: MenuEntry): boolean => Boolean(it.run || it.items?.some((x) => x.run));
 
@@ -25,6 +25,7 @@ function Item({ it, active, onEnter, onLeave, onPick, rowRef }: {
       onPointerEnter={onEnter} onPointerLeave={onLeave} onClick={onPick}>
       {it.title}
       {it.items && <span className="ctx-mark">›</span>}
+      {it.note && <small className="ctx-mark ctx-note">{it.note}</small>}
       {it.checked && <span className="ctx-mark ctx-check" data-testid="menu-checked">✓</span>}
     </div>
   );
@@ -52,7 +53,7 @@ function SubMenu({ items, anchor, active, setActive, pick }: {
   );
 }
 
-/** A right-click's menu by the pointer, with the page's Reload under the caller's entries. */
+/** A right-click's menu by the pointer, with the page's Reload under the caller's entries unless the menu is bare. */
 export function ContextMenu() {
   const menu = useApp((s) => s.menu);
   const box = useRef<HTMLDivElement>(null);
@@ -61,7 +62,7 @@ export function ContextMenu() {
   // the entry whose items stand open beside it, and the one among them the keys are on
   const [sub, setSub] = useState(-1);
   const [subActive, setSubActive] = useState(-1);
-  const items = menu ? [...menu.items, RELOAD] : [];
+  const items = menu ? (menu.bare ? menu.items : [...menu.items, RELOAD]) : [];
   const subItems = items[sub]?.items ?? [];
 
   const close = () => app.store.getState().closeMenu();
@@ -129,7 +130,7 @@ export function ContextMenu() {
       onContextMenu={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}>
       {items.map((it, i) => (
         <Fragment key={i}>
-          {it === RELOAD && <div className="ctx-sep" role="separator" />}
+          {it.sep && <div className="ctx-sep" role="separator" />}
           <Item it={it} active={i === active} rowRef={(el) => { rows.current[i] = el; }}
             onEnter={() => { setActive(live(it) ? i : -1); if (it.items && live(it)) open(i, false); else setSub(-1); }}
             onLeave={() => setActive(-1)} onPick={() => press(i)} />

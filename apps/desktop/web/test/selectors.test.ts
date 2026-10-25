@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState, type ContextItem } from '@svall/protocol';
-import { boardColumns, placesOf, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
+import { boardColumns, placesOf, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, placingAsking, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -83,9 +83,22 @@ describe('selectors', () => {
     expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
     expect(isVeiled({ ...base, handoverOpen: true })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
+    expect(isVeiled({ ...base, view: 'board', fleet: { ...fleet(), placingAsk: true } })).toBe(true);
+    expect(isVeiled({ ...base, view: 'map', fleet: { ...fleet(), placingAsk: true } })).toBe(false);
   });
   it('veils while the resources shelf is open', () => {
     expect(isVeiled({ namingRobot: false, missionPrompt: false, resourcesOpen: true, hostOpen: false, handoverOpen: false, fleet: fleet() })).toBe(true);
+  });
+});
+
+describe('placingAsking', () => {
+  it('asks on the board only, and only once the scribe has its answer', () => {
+    const asking = { ...fleet(), placingAsk: true as const };
+    expect(placingAsking({ view: 'board', fleet: asking })).toBe(true);
+    expect(placingAsking({ view: 'map', fleet: asking })).toBe(false);
+    expect(placingAsking({ view: 'board', fleet: { ...asking, scribeAsk: true } })).toBe(false);
+    expect(placingAsking({ view: 'board', fleet: asking, fleetPicker: 'bare' })).toBe(false);
+    expect(placingAsking({ view: 'board', fleet: fleet() })).toBe(false);
   });
 });
 
