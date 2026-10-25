@@ -180,17 +180,12 @@ export async function verifyBundle(dir: string, manifest: BundleManifest): Promi
   if (bytes !== manifest.bytes) throw new Error(`${dir} holds ${bytes} bytes, not the ${manifest.bytes} the move's manifest counts`);
 }
 
-// the paths a patch writes that the index lacks; -z leaves them unquoted, and a rename's two follow its counts
+// the paths a patch writes that the index lacks; -z leaves them unquoted
 async function createdBy(patch: string, root: string, git: GitRunner): Promise<string[]> {
-  const fields = (await must(git, ['apply', '--numstat', '-z', patch], root)).split('\0');
-  const written: string[] = [];
-  for (let i = 0; i < fields.length; i++) {
-    const m = /^(?:\d+|-)\t(?:\d+|-)\t([\s\S]*)$/.exec(fields[i]);
-    if (m?.[1]) written.push(m[1]);
-    else if (m) { written.push(fields[i + 2]); i += 2; }
-  }
+  const numstat = (await must(git, ['apply', '--numstat', '-z', patch], root)).split('\0');
+  const written = numstat.flatMap((f) => /^(?:\d+|-)\t(?:\d+|-)\t([\s\S]+)$/.exec(f)?.[1] ?? []);
   const indexed = new Set((await must(git, ['ls-files', '-z'], root)).split('\0'));
-  return written.filter((p) => p && !indexed.has(p));
+  return written.filter((p) => !indexed.has(p));
 }
 
 /** Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless that is what left. */

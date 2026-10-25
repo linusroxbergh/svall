@@ -33,6 +33,8 @@ describe.skipIf(!hasGit)('bundle', () => {
     put(src, 'gone.txt', 'bye\n');
     put(src, 'tool.sh', 'echo hi\n');
     put(src, 'pic.bin', crypto.randomBytes(4096));
+    put(src, 'serve.sh', 'echo serve\n');
+    put(src, 'map.bin', crypto.randomBytes(4096));
     put(src, '.gitignore', 'build/\n');
     g(src, 'add', '.');
     g(src, 'commit', '-qm', 'base');
@@ -48,6 +50,8 @@ describe.skipIf(!hasGit)('bundle', () => {
     g(src, 'add', 'a.txt', 'pic.bin', 'new.txt', 'tool.sh');
     put(src, 'a.txt', 'one\ntwo\nstaged\nunstaged\n');
     fs.rmSync(path.join(src, 'gone.txt'));
+    fs.chmodSync(path.join(src, 'serve.sh'), 0o755);
+    put(src, 'map.bin', crypto.randomBytes(4096));
     put(src, 'notes/run.sh', '#!/bin/sh\n', 0o755);
     put(src, 'notes/blob.dat', crypto.randomBytes(1024), 0o660);
     fs.symlinkSync('../a.txt', path.join(src, 'notes/link'));
@@ -70,6 +74,11 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(perms(path.join(dst, 'tool.sh'))).toBe(0o755);
     expect(fs.readFileSync(path.join(dst, 'pic.bin'))).toEqual(fs.readFileSync(path.join(src, 'pic.bin')));
     expect(fs.existsSync(path.join(dst, 'gone.txt'))).toBe(false);
+    // a mode and a binary changed in the working tree alone, as the unstaged patch carries them
+    expect(g(dst, 'ls-files', '-s', 'serve.sh')).toMatch(/^100644 /);
+    expect(perms(path.join(dst, 'serve.sh'))).toBe(0o755);
+    expect(g(dst, 'diff', '--cached', '--name-only', 'map.bin')).toBe('');
+    expect(fs.readFileSync(path.join(dst, 'map.bin'))).toEqual(fs.readFileSync(path.join(src, 'map.bin')));
     expect(perms(path.join(dst, 'notes/run.sh'))).toBe(0o755);
     expect(perms(path.join(dst, 'notes/blob.dat'))).toBe(0o660);
     expect(fs.readFileSync(path.join(dst, 'notes/blob.dat'))).toEqual(fs.readFileSync(path.join(src, 'notes/blob.dat')));
