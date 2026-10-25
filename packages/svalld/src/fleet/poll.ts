@@ -222,23 +222,27 @@ export class Poll {
     if (this.ticks % DORMANCY_EVERY === 0) this.deps.track(this.deps.endIdleAgents(), 'dormancy');
   }
 
-  // Claude Code fires no hook when its dialog about a tool is answered until the tool ends, which a long command runs on
-  // for minutes; the prompt line back in view and empty says the dialog is gone. A field of the dialog's own reads as a draft
+  // Claude Code and Codex fire no hook when a dialog about a tool is answered until the tool ends, which a long command runs
+  // on for minutes, nor Codex when an Esc dismisses a subagent's; the prompt line back in view and empty says the dialog is
+  // gone. A field of the dialog's own reads as a draft. Codex shows every thread's dialog; a Claude subagent's may be out of
+  // view, as may a question asked about no tool
   private async dialogsGone(): Promise<void> {
     const asking = Object.values(this.deps.store.state.robots).flatMap((c) => [c, c.second].flatMap((t, i) => {
       const a = t?.agent;
-      return t?.tmux && a?.kind === 'claude' && a.status === 'blocked' && a.askedTool && !a.asking ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId }] : [];
+      const shown = a?.kind === 'codex' || (a?.kind === 'claude' && a.askedTool && !a.asking);
+      return t?.tmux && a?.status === 'blocked' && shown ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId, kind: a.kind }] : [];
     }));
     for (const q of asking) {
       const screen = await this.deps.tmux.screen(q.paneId).catch(() => undefined);
-      if (!screen || isShellCommand(screen.command, this.deps.config.shell) || readComposer('claude', screen) !== 'empty') continue;
+      if (!screen || isShellCommand(screen.command, this.deps.config.shell) || readComposer(q.kind, screen) !== 'empty') continue;
       this.deps.store.update((d) => {
         const t = q.second ? d.robots[q.id]?.second : d.robots[q.id];
         const a = t?.agent;
-        if (t?.tmux?.paneId !== q.paneId || a?.status !== 'blocked' || a.promptId !== q.promptId || a.asking) return;
+        if (t?.tmux?.paneId !== q.paneId || a?.status !== 'blocked' || a.promptId !== q.promptId || (a.asking && a.kind !== 'codex')) return;
         a.status = 'working';
         delete a.prompt;
         delete a.promptId;
+        delete a.asking;
       });
     }
   }

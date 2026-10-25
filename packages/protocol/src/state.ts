@@ -64,11 +64,11 @@ export const Agent = z.object({
   // task ids of the monitors the session started (Claude Code's Monitor, OpenCode's background shells), which are listed as
   // background shells but watch on without a turn
   monitors: z.array(z.string()).optional(),
-  // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
+  // subagents with a permission request open; Claude Code's notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
   // the subagents running, by id
   subagents: z.array(z.string()).optional(),
-  // the tool Claude Code's main thread last asked permission for, whose run alone answers the question
+  // the tool the main thread last asked permission for, whose run alone answers the question
   askedTool: z.string().optional(),
   // the newest prompt Claude Code accepted, as its UserPromptSubmit hook reported it. The transcript
   // is written after that hook, so this is what the last command reads until the entry lands.

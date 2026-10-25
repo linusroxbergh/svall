@@ -603,6 +603,31 @@ runIf('Fleet', () => {
     expect(store.state.robots[c.id].agent?.status).toBe('blocked');
   });
 
+  it("takes a Codex agent's question for answered once its empty prompt line is back, a subagent's too", async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'codex', name: 'PreToolUse', sessionId: 'sess', toolName: 'Bash', ...h } });
+    await hook({ name: 'SessionStart' });
+    await hook({ name: 'PermissionRequest', agentId: 'a1', message: 'mkdir probe' });
+    const screen = vi.spyOn(tmux, 'screen').mockResolvedValue(pane('codex-approval'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
+    // an Esc dismisses a subagent's dialog with no hook
+    screen.mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent?.status).toBe('working');
+    expect(store.state.robots[c.id].agent).not.toHaveProperty('asking');
+    expect(store.state.robots[c.id].agent).not.toHaveProperty('prompt');
+    await hook({ name: 'PermissionRequest', message: 'rm -rf build' });
+    screen.mockResolvedValue(pane('codex-approval'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', askedTool: 'Bash' });
+    screen.mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'working', askedTool: 'Bash' });
+  });
+
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
