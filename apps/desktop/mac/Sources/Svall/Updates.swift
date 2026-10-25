@@ -12,15 +12,17 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     /// The version the last probe of the feed found, until the user has looked at it in Sparkle's window.
     private(set) var waiting: String? { didSet { onWaiting?(waiting) } }
     var onWaiting: ((String?) -> Void)?
+    // the router's quit, which leaves a quit already under way to finish
+    var onQuit: () -> Void = { NSApp.terminateQuietly() }
 
     private override init() {
         super.init()
         // the other fleets' windows run from the bundle an update replaces, so they quit before it is installed.
         // anything local can post this, so the pid it names must be another running Svall's
-        DistributedNotificationCenter.default().addObserver(forName: Self.quitForUpdate, object: nil, queue: .main) { [me] note in
+        DistributedNotificationCenter.default().addObserver(forName: Self.quitForUpdate, object: nil, queue: .main) { [weak self, me] note in
             guard let from = note.object as? String, from != me, let pid = pid_t(from),
                   NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
-            NSApp.terminateQuietly()
+            self?.onQuit()
         }
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
               SvallHome.isPrivate || ProcessInfo.processInfo.environment[Self.handoff] != nil else { return }

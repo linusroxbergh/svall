@@ -122,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             alert.addButton(withTitle: "Reload")
             alert.addButton(withTitle: "Quit")
             NSApp.activate()
-            if alert.runModal() != .alertFirstButtonReturn { return NSApp.terminateQuietly() }
+            if alert.runModal() != .alertFirstButtonReturn { router?.quit(quietly: true); return }
         }
         pageCrashedAt = Date()
         webView.reload()
@@ -211,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                         NSAlert.tell("Svall could not move itself to the Trash", "Everything else is uninstalled. Drag Svall to the Trash yourself. (\(error.localizedDescription))")
                     }
                     if forget { Self.forgetAfterQuit(text) }
-                    NSApp.terminateQuietly()
+                    self.router?.quit(quietly: true)
                 }
             }
         }

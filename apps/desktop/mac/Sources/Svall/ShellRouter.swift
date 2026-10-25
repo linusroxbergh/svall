@@ -100,6 +100,7 @@ final class ShellRouter {
         notifier.onOpen = { [weak self] key in self?.open(key) }
         notifier.onAction = { [weak self] key, action, promptId in self?.sendNotify(.notifyAction(key: key, action: action, promptId: promptId)) }
         Updates.shared.onWaiting = { [weak self] version in self?.bridge.send(.updateAvailable(version)) }
+        Updates.shared.onQuit = { [weak self] in self?.quit(quietly: true) }
 
         bridge.onMessage = { [weak self] msg in self?.handle(msg) }
         keys.onChord = { [weak self] chord in
@@ -169,8 +170,8 @@ final class ShellRouter {
     }
 
     /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
-    func quit() {
-        if !quitFlow.pending { NSApp.terminate(nil) }
+    func quit(quietly: Bool = false) {
+        quitFlow.quit(quietly: quietly)
     }
 
     func askToQuit(confirm: Bool, _ answer: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
@@ -385,7 +386,7 @@ final class ShellRouter {
     // a fleet whose window is open is brought up; any other opens in a new instance of this app
     private func openFleet(_ home: String, quit: Bool) {
         // the picker gives way to the fleet it opened without asking
-        let done = { [weak self] in if quit, self?.quitFlow.pending != true { NSApp.terminateQuietly() } }
+        let done = { [weak self] in if quit { self?.quit(quietly: true) } }
         if let app = SvallHome.runningApp(of: home) {
             app.activate()
             return done()

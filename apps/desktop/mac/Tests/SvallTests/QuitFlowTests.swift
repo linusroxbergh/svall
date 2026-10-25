@@ -7,12 +7,14 @@ final class QuitFlowTests: XCTestCase {
     private var kills = 0
     private var holds = 0
     private var answers: [Bool] = []
+    private var quits: [Bool] = []
 
     private func flow(listening: Bool = true, elsewhere: Bool = false, handover: Bool = false, following: Bool = false, running: Bool = false) -> QuitFlow {
         QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
                  elsewhere: { elsewhere }, handoverOpen: { handover }, handoverFollowed: { following }, handoverRunning: { running || following },
                  confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); return true },
-                 kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 })
+                 kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 },
+                 terminate: { [unowned self] in quits.append($0) })
     }
 
     private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0) {
@@ -29,6 +31,20 @@ final class QuitFlowTests: XCTestCase {
         local.stopped(ok: true)
         XCTAssertEqual(answers, [true])
         XCTAssertEqual(kills, 0)
+    }
+
+    func testAQuitTheAppStartsWhileOneWaitsLeavesThatOneToFinish() {
+        let local = flow()
+        XCTAssertEqual(local.ask(confirm: true) { [unowned self] in answers.append($0) }, .terminateLater)
+        // an update's quit while the page names its unsaved files, then while the fleet stops
+        local.quit(quietly: true)
+        local.answered(unsaved: [], working: 0)
+        local.quit(quietly: true)
+        XCTAssertEqual(quits, [])
+        local.stopped(ok: true)
+        XCTAssertEqual(answers, [true])
+        local.quit(quietly: true)
+        XCTAssertEqual(quits, [true])
     }
 
     func testAFleetThatRunsElsewhereIsNeverAskedToStop() {
