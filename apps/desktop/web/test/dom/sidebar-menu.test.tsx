@@ -20,7 +20,7 @@ const rightClick = (testid: string): boolean => !fireEvent.contextMenu(screen.ge
 const pick = (title: string) => fireEvent.click(screen.getByTestId(`menu-${title}`));
 const entries = () => screen.getAllByRole('menuitem').map((el) => [el.textContent, el.getAttribute('aria-disabled') !== 'true']);
 const menu = (deletable: boolean) => [['Rename', true], ['Delete', deletable], ['Reload', true]];
-const robotMenu = [['Rename', true], ['Star', true], ['Delete', true], ['Reload', true]];
+const robotMenu = [['Open terminal', true], ['Rename', true], ['Star', true], ['Delete', true], ['Reload', true]];
 
 test('a robot row opens the app menu at the pointer, and Delete opens the delete confirmation', () => {
   expect(rightClick('sb-robot-c0')).toBe(true);
