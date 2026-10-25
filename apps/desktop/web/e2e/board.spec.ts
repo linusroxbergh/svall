@@ -428,6 +428,15 @@ test('the Auto-place chip says who places robots and switches it, the scribe onl
   await expect(chip).toHaveText('Auto-place: scribe ▾');
   await expect(chip).toHaveAttribute('data-on', 'true');
 
+  // with the scribe off nothing places robots, though placing stays on for when it runs again
+  await svall.api.call('scribe.set', { enabled: false });
+  await expect(chip).toHaveText('Auto-place: off ▾');
+  await chip.click();
+  await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only✓', 'Scribe', 'Scribe settings…']);
+  await page.keyboard.press('Escape');
+  await svall.api.call('scribe.set', { enabled: true });
+  await expect(chip).toHaveText('Auto-place: scribe ▾');
+
   await chip.click();
   await expect(menu.getByRole('menuitem')).toHaveText(['Offby hand only', 'Scribe✓', 'Scribe settings…']);
   await menu.getByTestId('menu-off').click();

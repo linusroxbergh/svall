@@ -10,7 +10,7 @@ import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
 import { TerminalCard } from './map/TerminalCard.js';
 import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
-import { boardColumns, islandsSorted, placesOf, robotsOf, wantsUser, type BoardColumn } from './selectors.js';
+import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
 
@@ -143,7 +143,7 @@ export function Board() {
   const sections = useApp((s) => s.sections);
   const dropHover = useApp((s) => s.dropHover);
   const bindings = useApp((s) => s.settings.bindings);
-  const placing = useApp((s) => placingOn(s.fleet));
+  const placing = useApp((s) => scribePlaces(s.fleet));
   const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ needsYou: false });
   const [renaming, setRenaming] = useState<string>();

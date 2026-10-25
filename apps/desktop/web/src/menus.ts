@@ -1,6 +1,7 @@
-import { columnOf, placingOn } from '@svall/protocol';
+import { columnOf } from '@svall/protocol';
 import { deleteEmptyColumn, placeRobot, releaseRobot, setPlacing, setStar, stepColumn } from './actions.js';
 import { app, deps } from './boot.js';
+import { scribePlaces } from './selectors.js';
 import type { MenuEntry } from './store/ui.js';
 
 type Press = Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>;
@@ -61,7 +62,7 @@ export const columnMenu = (e: Press, id: string, o: { rename(): void; collapse()
 // the board's Auto-place chip: who places robots, with the scribe to pick only while it runs
 export const placingMenu = (x: number, y: number): void => {
   const f = app.store.getState().fleet;
-  const on = placingOn(f);
+  const on = scribePlaces(f);
   const scribe = !f.scribeOff && !f.scribeAsk;
   app.store.getState().openMenu({ x, y, bare: true, items: [
     { title: 'Off', note: 'by hand only', checked: !on, run: () => setPlacing(deps(), false) },

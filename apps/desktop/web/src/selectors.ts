@@ -1,4 +1,4 @@
-import { byCell, byIslandOrder, columnOf, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, columnOf, placingOn, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 import type { View } from './store/ui.js';
 
@@ -173,6 +173,9 @@ export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string
 // the board asks about the scribe's placing once the scribe's own ask is answered
 export const placingAsking = (s: { view?: View; fleet: FleetState; fleetPicker?: string }): boolean =>
   s.view === 'board' && !!s.fleet.placingAsk && !s.fleet.scribeAsk && !s.fleetPicker;
+
+// placing rides the scribe's passes, so with the scribe off nothing places robots
+export const scribePlaces = (f: FleetState): boolean => placingOn(f) && !f.scribeOff && !f.scribeAsk;
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
