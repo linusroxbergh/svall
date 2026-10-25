@@ -71,6 +71,37 @@ describe('robot new', () => {
   });
 });
 
+describe('robot new --run', () => {
+  afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); });
+  const create = async (runSent: boolean, json = false) => {
+    let out = '';
+    let err = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
+    vi.spyOn(process.stderr, 'write').mockImplementation((s) => { err += String(s); return true; });
+    const client = { call: async (m: string) => (m === 'state.get' ? { islands: { i_1: { id: 'i_1', name: 'home' } }, robots: {} } : { ...base, id: 'c_new', runSent }), close() {} };
+    await robotCommands(async () => client as unknown as Client, () => json).parseAsync(['new', '--island', 'i_1', '--cwd', '/tmp', '--run', 'go'], { from: 'user' });
+    return { out, err };
+  };
+
+  it('prints the bare id, says on stderr the prompt was not sent, and exits 2', async () => {
+    const { out, err } = await create(false);
+    expect(out).toBe('c_new\n');
+    expect(err).toBe('prompt not sent; svall robot run c_new "<prompt>" sends it\n');
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('keeps the JSON, which carries runSent, and exits 2 with --json', async () => {
+    const { out } = await create(false, true);
+    expect(JSON.parse(out)).toMatchObject({ id: 'c_new', runSent: false });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('exits 0 once the prompt is sent', async () => {
+    expect(await create(true)).toEqual({ out: 'c_new\n', err: '' });
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+});
+
 describe('a robot command that stops on an error', () => {
   it('closes its connection to the fleet', async () => {
     const close = vi.fn();
