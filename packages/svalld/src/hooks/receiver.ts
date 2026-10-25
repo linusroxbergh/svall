@@ -40,7 +40,7 @@ export type HookEvent = {
   backgroundShells?: string[];
   // the task a Monitor tool call started, or the shell OpenCode sent to the background, its only way to watch
   monitor?: string;
-  // the Claude Code subagent the event came from, or the subagent any agent says started or stopped
+  // the subagent the event came from, or the one any agent says started or stopped
   agentId?: string;
   // the tool a tool or permission event is about
   toolName?: string;
@@ -137,8 +137,8 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   return ev;
 }
 
-// the events kept from a subagent. A codex subagent shares its parent's session, so its tool calls and permission
-// requests are the robot working and waiting; a Claude subagent's say only whether the question it asked is still open
+// the events kept from a subagent, named by it: those that ask, and answer, its own question. A Codex subagent shares
+// its parent's session and dialog
 const FROM_SUBAGENT: Record<AgentKind, Set<unknown>> = {
   claude: new Set(['PreToolUse', 'PermissionRequest', 'SubagentStart', 'SubagentStop']),
   codex: new Set(['PreToolUse', 'PermissionRequest', 'PostToolUse', 'SubagentStart', 'SubagentStop']),
@@ -158,9 +158,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   const name = h.hook_event_name;
   if (!(hooksFor(kind.data) as readonly unknown[]).includes(name)) return undefined;
   // a subagent's hooks are not the robot's turn
-  const valid = typeof h.agent_id === 'string' && AGENT_ID.test(h.agent_id) ? h.agent_id : undefined;
-  const subagent = kind.data === 'claude' || SUBAGENT_LIFE.has(name) ? valid : undefined;
-  if (h.agent_id && !(FROM_SUBAGENT[kind.data].has(name) && (subagent || kind.data === 'codex'))) return undefined;
+  const subagent = typeof h.agent_id === 'string' && AGENT_ID.test(h.agent_id) ? h.agent_id : undefined;
+  if (h.agent_id && !(FROM_SUBAGENT[kind.data].has(name) && subagent)) return undefined;
   if (SUBAGENT_LIFE.has(name) && !subagent) return undefined;
   const ev: HookEvent = { robotId, backend: kind.data, name: name as HookName };
   if (subagent) ev.agentId = subagent;

@@ -229,6 +229,7 @@ export class Prompts {
       a.status = answer === 'approve' || a.background ? 'working' : 'idle';
       delete a.prompt;
       delete a.promptId;
+      delete a.asking;
     });
   }
 
