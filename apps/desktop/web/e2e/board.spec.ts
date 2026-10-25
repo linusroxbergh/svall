@@ -87,6 +87,13 @@ test('right-click Move to places the robot, and Let the scribe place it hands th
   await page.getByTestId('menu-move to').hover();
   const sub = page.getByTestId('context-submenu');
   await expect(sub.getByRole('menuitem')).toHaveText(['To do✓', 'In progress', 'In review', 'Done']);
+  // its own column sends nothing, so the scribe keeps placing it
+  await sub.getByTestId('menu-to do').click();
+  await expect(page.getByTestId('context-menu')).toHaveCount(0);
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await expect(page.getByTestId('menu-let the scribe place it')).toHaveAttribute('aria-disabled', 'true');
+  expect((await robotOf(svall, c.id)).columnSource).toBeUndefined();
+  await page.getByTestId('menu-move to').hover();
   await sub.getByTestId('menu-in progress').click();
   await expect(page.getByTestId('context-menu')).toHaveCount(0);
   await expect(page.getByTestId(`col-${k['In progress']}`).getByTestId(`kc-${c.id}`)).toBeVisible();

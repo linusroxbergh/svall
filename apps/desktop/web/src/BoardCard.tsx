@@ -26,7 +26,7 @@ export const BoardCard = memoByValue(function BoardCard({ c, selected, arrived, 
   return (
     <article className="kc" aria-label={c.name} data-testid={lifted ? 'kc-lifted' : `kc-${c.id}`} data-status={status}
       data-selected={selected} data-need={status === 'blocked'} data-unread={unread} data-arrived={arrived}
-      data-dragging={dragging} data-lifted={lifted} data-hand={c.columnSource === 'manual'}
+      data-dragging={dragging} data-lifted={lifted}
       {...(!lifted && { 'data-drop': `robot:${c.id}`, 'data-drop-hover': fileHover })} {...on}>
       <span className="kc-av"><img src={figureUrl(figureOf(c))} alt="" draggable={false} /></span>
       <span className="kc-nm">{c.name}</span>

@@ -220,7 +220,7 @@ export function Board() {
   })();
   const cardBox = card ? cardRect({ size: cardSize, win: size, half: halfCard }) : undefined;
 
-  const lane = ({ column, robots }: BoardColumn, i: number) => {
+  const lane = ({ column, robots }: BoardColumn) => {
     const id = column.id;
     const target = lift?.over === id && lift.from !== id ? lift : undefined;
     const reorder = shift?.over?.id === id ? (shift.over.after ? 'after' : 'before') : undefined;
@@ -234,7 +234,7 @@ export function Board() {
     }
     const attention = robots.filter(wantsUser).length;
     return (
-      <section key={id} className="kb-col" aria-label={column.name} data-col={id} data-testid={`col-${id}`} data-index={i}
+      <section key={id} className="kb-col" aria-label={column.name} data-col={id} data-testid={`col-${id}`}
         data-target={Boolean(target)} data-reorder={reorder} data-moving={shift?.id === id}>
         <header className="kb-col-h" onContextMenu={(e) => menu(e, id)}>
           <span className="kb-grip" data-testid={`col-grip-${id}`} title="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>

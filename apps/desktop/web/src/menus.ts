@@ -32,7 +32,7 @@ export const boardRobotMenu = (e: Press, id: string): void => {
   const here = columnOf(f, c).id;
   showMenu(e, [
     starEntry(id),
-    { title: 'Move to', items: f.columns.map((k) => ({ title: k.name, checked: k.id === here, run: () => void placeRobot(deps(), id, k.id) })) },
+    { title: 'Move to', items: f.columns.map((k) => ({ title: k.name, checked: k.id === here, run: () => { if (k.id !== here) void placeRobot(deps(), id, k.id); } })) },
     { title: 'Let the scribe place it', run: c.columnSource === 'manual' ? () => releaseRobot(deps(), id) : undefined },
     deleteEntry(id),
   ]);
