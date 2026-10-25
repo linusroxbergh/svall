@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { bareUrl, type Robot, type ContextItem, type Island } from '@svall/protocol';
+import { bareUrl, columnOf, type FleetState, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { condenseTurns, readTail } from '../agent/transcript.js';
 import { carryBrief } from '../context/brief.js';
 import { prFirst } from '../context/items.js';
@@ -42,6 +42,9 @@ const transcriptSize = (c: Robot): number => {
 
 const scribeKey = (items: ContextItem[]): string =>
   items.filter((it) => it.source === 'scribe').map((it) => `${it.ref} ${it.label} ${it.pinned ?? ''}`).join('\n');
+
+// placing rides the scribe's passes and, like the scribe, waits on the user's first answer
+const placing = (s: FleetState): boolean => !s.placingOff && !s.placingAsk;
 
 // the scribe's own change stays out of the session's next prompt
 function carry(c: Robot, before: string, after: string): void {
@@ -207,9 +210,10 @@ export class Scribe {
     if (!transcript.trim()) { this.seen.set(id, { lastPassAt: this.now(), path, bytes }); return []; }
     const others = Object.values(state.robots).filter((o) => o.id !== id).map((o) => o.name);
     const prLinks = prEvidence(c, transcript, tail);
+    const columns = placing(state) ? state.columns : undefined;
     let answer: RobotAnswer;
     try {
-      answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks)));
+      answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks, columns)));
     } catch (e) {
       const last = this.seen.get(id) ?? { lastPassAt: 0, path, bytes: 0 };
       const failures = (last.failures ?? 0) + 1;
@@ -218,7 +222,8 @@ export class Scribe {
     }
     // a names-only pass leaves this transcript's note and links to the next pass
     if (!namesOnly) this.seen.set(id, { lastPassAt: this.now(), path, bytes });
-    return this.writeRobot(c, answer, [transcript, ...prLinks].join('\n'), namesOnly);
+    // a column answered without the board in the prompt places nothing
+    return this.writeRobot(c, columns ? answer : { ...answer, column: undefined }, [transcript, ...prLinks].join('\n'), namesOnly);
   }
 
   // each field is written only if nobody changed it while the model was thinking
@@ -251,9 +256,17 @@ export class Scribe {
           lines.push(`${cur.name}  links: ${links.map((l) => l.label).join(', ') || 'none'}`);
         }
       }
-      if (!lines.length || !island) return;
-      carry(cur, prevBrief, this.deps.brief(island, cur));
-      if (island.kind !== 'home') this.dirty.set(island.id, this.now());
+      if (lines.length && island) {
+        carry(cur, prevBrief, this.deps.brief(island, cur));
+        if (island.kind !== 'home') this.dirty.set(island.id, this.now());
+      }
+      // no brief or island prompt holds the column; a hand move made meanwhile wins
+      const wanted = !namesOnly && placing(d) && a.column?.trim().toLowerCase();
+      const column = wanted ? d.columns.find((k) => k.name.toLowerCase() === wanted) : undefined;
+      if (column && column.id !== columnOf(d, cur).id && cur.column === before.column && cur.columnSource !== 'manual') {
+        cur.column = column.id;
+        lines.push(`${cur.name}  column: ${column.name}`);
+      }
     });
     return lines;
   }
