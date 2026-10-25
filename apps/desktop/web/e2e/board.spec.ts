@@ -47,7 +47,7 @@ test('draws the fleet in its columns, follows agent status, and a click selects 
   await expect(page.getByTestId(`col-${k['To do']}`).getByTestId(`kc-${shell.id}`)).toBeVisible();
   await expect(page.getByTestId(`col-${k['In review']}`).getByTestId(`kc-${agent.id}`)).toBeVisible();
   await expect(page.getByTestId(`col-count-${k['In review']}`)).toHaveText('1');
-  await expect(page.getByTestId(`col-empty-${k.Done}`)).toHaveText('Drop a robot here');
+  await expect(page.getByTestId(`col-empty-${k.Done}`)).toHaveText('Nothing here yetDrop a robot, or + for a new one');
   // a robot moved by hand wears the hand
   await expect(page.getByTestId(`kc-hand-${agent.id}`)).toBeVisible();
   await expect(page.getByTestId(`kc-hand-${shell.id}`)).toHaveCount(0);
@@ -103,6 +103,8 @@ test('right-click Move to places the robot, and Let the scribe place it hands th
   const k = await columns(svall);
   await svall.open();
   await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await expect(page.getByTestId('context-menu').getByRole('menuitem'))
+    .toHaveText(['Open terminal', 'Rename', 'Star', 'Move to›', 'Let the scribe place it', 'Delete', 'Reload']);
   await expect(page.getByTestId('menu-let the scribe place it')).toHaveAttribute('aria-disabled', 'true');
   await page.getByTestId('menu-move to').hover();
   const sub = page.getByTestId('context-submenu');
@@ -124,6 +126,57 @@ test('right-click Move to places the robot, and Let the scribe place it hands th
   await expect.poll(async () => (await robotOf(svall, c.id)).columnSource).toBeUndefined();
   await expect(page.getByTestId(`kc-hand-${c.id}`)).toHaveCount(0);
   await expect(page.getByTestId(`col-${k['In progress']}`).getByTestId(`kc-${c.id}`)).toBeVisible();
+});
+
+test("a card's menu renames it in place and opens its terminal", async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('named') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'before' });
+  await svall.open();
+  const field = page.getByTestId(`kc-name-input-${c.id}`);
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await page.getByTestId('menu-rename').click();
+  await expect(field).toBeFocused();
+  await field.fill('after');
+  await field.press('Enter');
+  await expect(field).toHaveCount(0);
+  await expect.poll(async () => (await robotOf(svall, c.id)).name).toBe('after');
+  await expect(page.getByTestId(`kc-${c.id}`)).toContainText('after');
+  // Escape keeps the name it had
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await page.getByTestId('menu-rename').click();
+  await field.fill('dropped');
+  await field.press('Escape');
+  await expect(field).toHaveCount(0);
+  expect((await robotOf(svall, c.id)).name).toBe('after');
+
+  await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
+  await page.getByTestId('menu-open terminal').click();
+  await expect(page.getByTestId('terminal-card')).toBeVisible();
+});
+
+test('a card selected out of sight comes into its column', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('crowd') });
+  const ids: string[] = [];
+  for (let i = 0; i < 10; i++) ids.push((await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: `crowd ${i}` })).id);
+  await svall.open();
+  const last = page.getByTestId(`kc-${ids.at(-1)}`);
+  const inColumn = () => last.evaluate((el) => {
+    const body = el.closest('.kb-col-body')!.getBoundingClientRect(), r = el.getBoundingClientRect();
+    return r.top >= body.top && r.bottom <= body.bottom;
+  });
+  expect(await inColumn()).toBe(false);
+  await page.getByTestId(`sb-robot-${ids.at(-1)}`).click();
+  await expect(last).toHaveAttribute('data-selected', 'true');
+  await expect.poll(inColumn).toBe(true);
+});
+
+test('the island chips fade at the right while more of them lie past it', async ({ page, svall }) => {
+  for (let i = 0; i < 12; i++) await svall.api.call('island.create', { name: svall.uniq(`a long island name ${i}`) });
+  await svall.open();
+  const chips = page.getByTestId('island-chips');
+  await expect(chips).toHaveAttribute('data-more', 'true');
+  await chips.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+  await expect(chips).toHaveAttribute('data-more', 'false');
 });
 
 test('a column renames in place, a new one comes last with its name ready to type, and the menu moves it', async ({ page, svall }) => {
