@@ -134,13 +134,14 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const { sheet: s, plan } = await sheet(depsOf(t, [c]));
     const clone = `${t.far}/code/svall`;
     const wt = `${clone}/.claude/worktrees/kanban`;
+    const head = t.g(root, 'rev-parse', 'HEAD');
     expect(s).toEqual({
       sessionBytes: 0, branch: 'kanban', commits: 0, changedFiles: 2, untrackedFiles: 1, clone: 'clone', credentialFiles: [], stays: [],
       interrupts: false, question: false, converts: { main: root, branch: 'kanban', changed: 3 }, notInRepo: false,
     });
     expect(plan).toEqual({
       clone, paths: { root: wt, cwd: `${wt}/src`, repo: { root: wt, mainRoot: clone, branch: 'kanban', isWorktree: true } },
-      convert: { main: root, slug: 'kanban' }, remote: t.origin('svall'), have: [], carry: [],
+      convert: { main: root, slug: 'kanban' }, remote: t.origin('svall'), have: [head], carry: [],
     });
   });
 
@@ -342,6 +343,20 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(plan.remote).toBeUndefined();
   });
 
+  it('check 4: a first clone builds on the remote\'s branches, which the clone will hold, though the Mac knows no origin/HEAD', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    t.g(root, 'remote', 'set-head', 'origin', '--delete');
+    const wt = `${root}/.claude/worktrees/kb`;
+    t.g(root, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    put(wt, 'c.txt', 'three\n');
+    t.g(wt, 'add', 'c.txt');
+    t.g(wt, 'commit', '-qm', 'more');
+    const { sheet: s, plan } = await sheet(depsOf(t, [on(wt, { main: root, branch: 'kb' })]));
+    expect(s).toMatchObject({ clone: 'clone', commits: 1 });
+    expect(plan.have).toEqual([t.g(root, 'rev-parse', 'main')]);
+  });
+
   it('check 5: refuses a branch another robot is on, on any machine, the one a main checkout converts to included, and passes a branch of its own', async () => {
     const t = machines();
     const root = t.repo('code/svall');
@@ -454,7 +469,8 @@ describe.skipIf(!hasGit)('repo.probe', () => {
     const t = machines();
     const root = t.repo('code/svall');
     const clone = `${t.far}/code/svall`;
-    expect(await probeRepo({ path: clone, remote: t.origin('svall') }, handoverGit)).toEqual({ state: 'none', refs: [], reachable: true });
+    const head = t.g(root, 'rev-parse', 'HEAD');
+    expect(await probeRepo({ path: clone, remote: t.origin('svall') }, handoverGit)).toEqual({ state: 'none', refs: [head], reachable: true });
     expect(await probeRepo({ path: clone, remote: `${t.base}/origins/gone.git` }, handoverGit)).toEqual({ state: 'none', refs: [], reachable: false });
     expect(await probeRepo({ path: clone }, handoverGit)).toEqual({ state: 'none', refs: [] });
 
@@ -464,7 +480,6 @@ describe.skipIf(!hasGit)('repo.probe', () => {
     fs.rmSync(clone, { recursive: true });
 
     t.g(t.base, 'clone', '-q', t.origin('svall'), clone);
-    const head = t.g(root, 'rev-parse', 'HEAD');
     expect(await probeRepo({ path: clone }, handoverGit)).toEqual({ state: 'clone', remote: t.origin('svall'), rootCommit: head, refs: [head] });
     // a folder inside a clone is not one
     fs.mkdirSync(`${clone}/src`);

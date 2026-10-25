@@ -90,10 +90,18 @@ const rootOf = async (dir: string, git: GitRunner): Promise<string | undefined> 
 // a remote as any of its spellings, scp or url, with or without .git, names it
 const remoteKey = (r?: string): string | undefined => r && (webUrl(r) ?? r);
 
-/** What the worker holds at `path`: a clone with its origin, root commit and ref shas, something else, or nothing. */
+/**
+ * What the worker holds at `path`: a clone with its origin, root commit and ref shas, something else, or nothing, with
+ * the shas of the remote's branches a clone made from it would hold.
+ */
 export async function probeRepo(p: z.infer<typeof RepoProbeParams>, git: GitRunner): Promise<RepoProbe> {
   const st = fs.lstatSync(p.path, { throwIfNoEntry: false });
-  if (!st) return { state: 'none', refs: [], ...(p.remote && { reachable: (await remoteGit(['ls-remote', p.remote, 'HEAD'], os.homedir())).code === 0 }) };
+  if (!st && !p.remote) return { state: 'none', refs: [] };
+  if (!st) {
+    const r = await remoteGit(['ls-remote', '--heads', p.remote!], os.homedir());
+    const heads = r.code === 0 ? r.stdout.split('\n').map((l) => l.split('\t')[0]).filter(Boolean) : [];
+    return { state: 'none', refs: [...new Set(heads)], reachable: r.code === 0 };
+  }
   if (!st.isDirectory()) return { state: 'other', refs: [] };
   const top = await git(['rev-parse', '--show-toplevel'], p.path);
   if (top.code !== 0 || fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(p.path)) return { state: 'other', refs: [] };
@@ -246,7 +254,10 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       else if (probe && !remote) fail({ reason: `${repoName} has no remote`, action: `push ${repoName} to a remote first` });
       else if (probe && remote && !probe.reachable) {
         fail({ reason: `${name} cannot read ${webUrl(remote)?.replace(/^https:\/\//, '') ?? remote}`, action: 'log gh in there', run: 'gh auth login' });
-      } else if (probe) mode = 'clone';
+      } else if (probe) {
+        mode = 'clone';
+        have = probe.refs;
+      }
     }
 
     // 5: no other robot, on any machine, on the branch that travels, which for a main checkout is the one it converts to
