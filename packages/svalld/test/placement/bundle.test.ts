@@ -91,6 +91,28 @@ describe.skipIf(!hasGit)('bundle', () => {
     await expect(verifyBundle(into, manifest)).rejects.toThrow(/staged\.patch/);
   });
 
+  it('restores a file added with intent to add without `git apply -N`, which empties the rest of the index on older git', async () => {
+    const { at, g } = scratch();
+    const src = at('src');
+    g(at(''), 'init', '-q', src);
+    put(src, 'a.txt', 'one\n');
+    g(src, 'add', '.');
+    g(src, 'commit', '-qm', 'base');
+    const dst = at('dst');
+    g(at(''), 'clone', '-q', src, dst);
+    put(src, 'a.txt', 'one\nstaged\n');
+    g(src, 'add', 'a.txt');
+    put(src, 'b [x].txt', 'meant\n');
+    g(src, 'add', '-N', 'b [x].txt');
+
+    const into = at('bundle');
+    const manifest = await buildBundle(src, { git: handoverGit, into, have: [g(src, 'rev-parse', 'HEAD')], carry: [] });
+    const older: GitRunner = (args, cwd) => (args[0] === 'apply' && args.includes('--intent-to-add')
+      ? Promise.resolve({ code: 1, stdout: '', stderr: 'git 2.43 would empty the index here' }) : handoverGit(args, cwd));
+    await applyBundle(dst, into, manifest, older);
+    expect(g(dst, 'status', '--porcelain')).toBe(g(src, 'status', '--porcelain'));
+  });
+
   it('a branch with no upstream bundles against the shas the worker has', async () => {
     const { at, g } = scratch();
     const seed = at('seed');

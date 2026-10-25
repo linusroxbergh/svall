@@ -180,14 +180,32 @@ export async function verifyBundle(dir: string, manifest: BundleManifest): Promi
   if (bytes !== manifest.bytes) throw new Error(`${dir} holds ${bytes} bytes, not the ${manifest.bytes} the move's manifest counts`);
 }
 
+// the paths a patch writes that the index lacks; -z leaves them unquoted, and a rename's two follow its counts
+async function createdBy(patch: string, root: string, git: GitRunner): Promise<string[]> {
+  const fields = (await must(git, ['apply', '--numstat', '-z', patch], root)).split('\0');
+  const written: string[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const m = /^(?:\d+|-)\t(?:\d+|-)\t([\s\S]*)$/.exec(fields[i]);
+    if (m?.[1]) written.push(m[1]);
+    else if (m) { written.push(fields[i + 2]); i += 2; }
+  }
+  const indexed = new Set((await must(git, ['ls-files', '-z'], root)).split('\0'));
+  return written.filter((p) => p && !indexed.has(p));
+}
+
 /** Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless that is what left. */
 export async function applyBundle(root: string, dir: string, manifest: BundleManifest, git: GitRunner): Promise<void> {
   const at = (f: string): string => path.join(dir, f);
   if (manifest.commits) await must(git, ['bundle', 'unbundle', at(COMMITS)], root);
   await must(git, ['checkout', '-q', '--no-recurse-submodules', '-B', manifest.branch, manifest.base], root);
   if (fs.statSync(at(STAGED)).size) await must(git, ['apply', '--index', '--whitespace=nowarn', at(STAGED)], root);
-  // a new file in the unstaged patch was added with intent to add, which -N restores
-  if (fs.statSync(at(UNSTAGED)).size) await must(git, ['apply', '--intent-to-add', '--whitespace=nowarn', at(UNSTAGED)], root);
+  // a new file in the unstaged patch was added with intent to add, which `git add -N` restores; `git apply -N` would
+  // empty the rest of the index on the git Ubuntu 24.04 ships (2.43)
+  if (fs.statSync(at(UNSTAGED)).size) {
+    const created = await createdBy(at(UNSTAGED), root, git);
+    await must(git, ['apply', '--whitespace=nowarn', at(UNSTAGED)], root);
+    if (created.length) await must(git, ['--literal-pathspecs', 'add', '--intent-to-add', '--force', '--', ...created], root);
+  }
   if (manifest.untracked.length) await exec('tar', ['-x', '-p', '--no-same-owner', '-f', at(UNTRACKED), '-C', root]);
   for (const u of manifest.untracked) {
     const file = path.join(root, u.path);
