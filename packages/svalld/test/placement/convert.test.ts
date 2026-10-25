@@ -14,7 +14,7 @@ const put = (root: string, rel: string, data: string): void => {
 };
 
 // a main checkout with one commit, in a real folder the fixture's git reads with an empty global configuration
-function mainCheckout(): { main: string; g: (cwd: string, ...args: string[]) => string } {
+function mainCheckout(): { base: string; main: string; g: (cwd: string, ...args: string[]) => string } {
   const base = fs.realpathSync(makeHome());
   fs.writeFileSync(path.join(base, 'gitconfig'), '');
   const g = (cwd: string, ...args: string[]): string => git(base, cwd, ...args);
@@ -25,7 +25,7 @@ function mainCheckout(): { main: string; g: (cwd: string, ...args: string[]) => 
   put(main, '.gitignore', 'build/\n');
   g(main, 'add', '.');
   g(main, 'commit', '-qm', 'base');
-  return { main, g };
+  return { base, main, g };
 }
 
 const stashes = (g: (cwd: string, ...args: string[]) => string, main: string): string => g(main, 'stash', 'list', '--format=%H %gs');
@@ -81,6 +81,47 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(fs.existsSync(path.join(main, '.env'))).toBe(false);
     expect(fs.readFileSync(path.join(main, 'build/out.o'), 'utf8')).toBe('ignored\n');
     expect(stashes(g, main)).toBe(stash);
+  });
+
+  it('a submodule\'s own uncommitted edits stay in main even when the config says submodule.recurse', async () => {
+    const { base, main, g } = mainCheckout();
+    const lib = path.join(base, 'lib');
+    g(base, 'init', '-q', lib);
+    put(lib, 'f.txt', 'v1\n');
+    g(lib, 'add', '.');
+    g(lib, 'commit', '-qm', 'lib');
+    g(main, 'submodule', 'add', '-q', lib, 'lib');
+    g(main, 'commit', '-qm', 'add lib');
+    g(main, 'config', 'submodule.recurse', 'true');
+    put(main, 'lib/f.txt', 'DIRTY\n');
+    put(main, 'a.txt', 'one\nstaged\n');
+    g(main, 'add', 'a.txt');
+
+    const r = await convertMainCheckout(main, { git: handoverGit, slug: 'kanban' });
+    expect(fs.readFileSync(path.join(main, 'lib/f.txt'), 'utf8')).toBe('DIRTY\n');
+    expect(g(r.root, 'diff', '--cached', '--name-only')).toBe('a.txt');
+    expect(fs.readFileSync(path.join(main, 'a.txt'), 'utf8')).toBe('one\n');
+  });
+
+  it('refuses, touching nothing, while an assume-unchanged file or a merge in progress would be lost', async () => {
+    const hidden = mainCheckout();
+    hidden.g(hidden.main, 'update-index', '--assume-unchanged', 'a.txt');
+    put(hidden.main, 'a.txt', 'LOCAL\n');
+    await expect(convertMainCheckout(hidden.main, { git: handoverGit, slug: 'kanban' })).rejects.toThrow(/a\.txt.*assume-unchanged/);
+    expect(fs.readFileSync(path.join(hidden.main, 'a.txt'), 'utf8')).toBe('LOCAL\n');
+    expect(fs.existsSync(path.join(hidden.main, '.claude'))).toBe(false);
+    expect(hidden.g(hidden.main, 'branch', '--list', 'kanban')).toBe('');
+
+    const merging = mainCheckout();
+    merging.g(merging.main, 'checkout', '-q', '-b', 'other');
+    put(merging.main, 'o.txt', 'other\n');
+    merging.g(merging.main, 'add', '.');
+    merging.g(merging.main, 'commit', '-qm', 'other');
+    merging.g(merging.main, 'checkout', '-q', 'main');
+    merging.g(merging.main, 'merge', '-q', '--no-ff', '--no-commit', 'other');
+    await expect(convertMainCheckout(merging.main, { git: handoverGit, slug: 'kanban' })).rejects.toThrow(/merge/);
+    expect(fs.existsSync(path.join(merging.main, '.git/MERGE_HEAD'))).toBe(true);
+    expect(fs.existsSync(path.join(merging.main, '.claude'))).toBe(false);
   });
 
   it('feat/kanban on robot "Kanban Board" slugs to kanban-board and avoids a taken name', async () => {

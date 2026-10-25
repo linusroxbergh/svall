@@ -36,8 +36,9 @@ const CARRIED = [STAGED, UNSTAGED, UNTRACKED, COMMITS];
 
 // a patch git applies whatever prefixes, colors or external diff tools this machine's config names
 const PATCH = ['--binary', '--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', '--submodule=short', '--ignore-submodules=dirty'];
-// tracked changes by modes and object names, never patch text, which another machine's git and zlib may write otherwise
-const RAW = ['--raw', '-z', '--no-renames', '--no-abbrev', '--ignore-submodules=dirty'];
+// tracked changes by modes and object names in git's own order, never patch text, which another machine's git, zlib or
+// diff.orderFile may write otherwise
+const RAW = ['--raw', '-z', '--no-renames', '--no-abbrev', '--ignore-submodules=dirty', '-O/dev/null'];
 
 const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
 
@@ -118,9 +119,8 @@ async function packTar(root: string, paths: readonly string[], file: string): Pr
 }
 
 /**
- * Writes into `into` what a move carries of the worktree at `root` beyond the commits the worker holds, `have`: both
- * patches, the untracked files git does not ignore, credential files ignored or not only when `carry` names them, the
- * commits, and the manifest.
+ * Writes into `into` both patches, the untracked files git does not ignore (credential files only as `carry` names them),
+ * the commits past `have`, the worker's shas, and the manifest.
  */
 export async function buildBundle(root: string, o: { git: GitRunner; into: string; have: string[]; carry: string[] }): Promise<BundleManifest> {
   const { git, into } = o;
@@ -167,7 +167,7 @@ export async function verifyBundle(dir: string, manifest: BundleManifest): Promi
 export async function applyBundle(root: string, dir: string, manifest: BundleManifest, git: GitRunner): Promise<void> {
   const at = (f: string): string => path.join(dir, f);
   if (manifest.commits) await must(git, ['bundle', 'unbundle', at(COMMITS)], root);
-  await must(git, ['checkout', '-q', '-B', manifest.branch, manifest.base], root);
+  await must(git, ['checkout', '-q', '--no-recurse-submodules', '-B', manifest.branch, manifest.base], root);
   if (fs.statSync(at(STAGED)).size) await must(git, ['apply', '--index', '--whitespace=nowarn', at(STAGED)], root);
   // a new file in the unstaged patch was added with intent to add, which -N restores
   if (fs.statSync(at(UNSTAGED)).size) await must(git, ['apply', '--intent-to-add', '--whitespace=nowarn', at(UNSTAGED)], root);
@@ -176,6 +176,9 @@ export async function applyBundle(root: string, dir: string, manifest: BundleMan
     const file = path.join(root, u.path);
     const st = fs.lstatSync(file, { throwIfNoEntry: false });
     if (!st || await contentSha(file, st) !== u.sha256) throw new Error(`${file} did not unpack as it left`);
+    // a link's own permissions differ between macOS and Linux, so only its type is compared
+    const [got, want] = st.isSymbolicLink() ? [st.mode & 0o170000, u.mode & 0o170000] : [st.mode, u.mode];
+    if (got !== want) throw new Error(`${file} unpacked with mode ${got.toString(8)}, not the ${want.toString(8)} it left with`);
   }
   // the untracked files by the manifest's list, which this machine's ignore rules may read otherwise
   if (await digest(root, git, manifest.untracked) !== manifest.fingerprint) throw new Error(`${root} does not hold what the move carried`);

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { handoverGit } from '../../src/links/git.js';
+import { handoverGit, type GitRunner } from '../../src/links/git.js';
 import { applyBundle, BUNDLE_MAX, buildBundle, fingerprintOf, trackedCredentials, verifyBundle } from '../../src/placement/bundle.js';
 import { git, hasGit } from '../handover/git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -36,8 +36,9 @@ describe.skipIf(!hasGit)('bundle', () => {
     g(src, 'add', '.');
     g(src, 'commit', '-qm', 'base');
     const head = g(src, 'rev-parse', 'HEAD');
-    const dst = at('dst');
+    const [dst, lost] = [at('dst'), at('lost')];
     g(at(''), 'clone', '-q', src, dst);
+    g(at(''), 'clone', '-q', src, lost);
 
     put(src, 'a.txt', 'one\ntwo\nstaged\n');
     put(src, 'pic.bin', crypto.randomBytes(4096));
@@ -75,6 +76,13 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(fs.existsSync(path.join(dst, 'build'))).toBe(false);
     expect(await fingerprintOf(dst, handoverGit)).toBe(manifest.fingerprint);
     expect(await fingerprintOf(src, handoverGit)).toBe(manifest.fingerprint);
+    // a machine whose config names a diff.orderFile lists the same changes in another order
+    fs.writeFileSync(at('order'), 'tool.sh\npic.bin\nnew.txt\ngone.txt\na.txt\n');
+    const ordered: GitRunner = (args, cwd) => handoverGit(['-c', `diff.orderFile=${at('order')}`, ...args], cwd);
+    expect(await fingerprintOf(src, ordered)).toBe(manifest.fingerprint);
+
+    const noExec = manifest.untracked.map((u) => (u.path === 'notes/run.sh' ? { ...u, mode: u.mode & ~0o111 } : u));
+    await expect(applyBundle(lost, into, { ...manifest, untracked: noExec }, handoverGit)).rejects.toThrow(/notes\/run\.sh.*mode/);
 
     put(dst, 'notes/blob.dat', 'changed on the worker');
     expect(await fingerprintOf(dst, handoverGit)).not.toBe(manifest.fingerprint);
