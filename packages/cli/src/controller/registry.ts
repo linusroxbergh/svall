@@ -117,9 +117,9 @@ export class MachineRegistry {
     this.machines.set(entry.id, { ...entry.record, name });
   }
 
-  markGateway(idOrName: string): void {
+  clearGateway(idOrName: string): void {
     const entry = this.need(idOrName);
-    this.machines.set(entry.id, { ...entry.record, gateway: true });
+    this.machines.set(entry.id, { ...entry.record, gateway: false });
   }
 
   remove(idOrName: string): void {

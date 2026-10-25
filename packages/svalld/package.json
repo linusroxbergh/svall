@@ -54,7 +54,9 @@
     "./tmux/conf": "./src/tmux/conf.ts",
     "./linux/setup": "./src/linux/setup.ts",
     "./linux/service": "./src/linux/service.ts",
-    "./linux/provision": "./src/linux/provision.ts"
+    "./linux/provision": "./src/linux/provision.ts",
+    "./placement/workers": "./src/placement/workers.ts",
+    "./worker/mode": "./src/worker/mode.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. --project svalld"

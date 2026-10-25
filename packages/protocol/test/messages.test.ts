@@ -162,6 +162,7 @@ describe('protocol version', () => {
     expect(methods['robot.moveTo'].result.safeParse({ moveId: 'mv_0123456789' }).success).toBe(true);
     expect(methods['robot.moveRetry'].params.safeParse({ moveId: 'nope' }).success).toBe(false);
     expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 'linus-vault', reachable: true, robots: 1 }] }).machines[0].robots).toBe(1);
+    expect(methods['machines.refresh'].result.parse({})).toEqual({});
     const via = { ssh: 'linus-vault', controlSocket: '/tmp/svall-501/1-abc' };
     expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', via }).via).toEqual(via);
   });

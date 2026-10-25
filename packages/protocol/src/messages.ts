@@ -250,6 +250,8 @@ export const methods = {
     params: z.object({}),
     result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
   },
+  // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran
+  'machines.refresh': { params: z.object({}), result: z.object({}) },
   // names writes only names; islands runs only the island descriptions
   'scribe.sweep': {
     params: z.object({ names: z.boolean().optional(), islands: z.boolean().optional() }),

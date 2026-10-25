@@ -121,7 +121,7 @@ describe('svall setup on Linux', () => {
   });
 
   // under the same name the daemon still runs the tree the install replaced, and no other release may be kept
-  it.each(['1.0.0', '1.1.0'])('restarts every fleet daemon and the gateway onto a release installed over %s, and asks each from it', async (was) => {
+  it.each(['1.0.0', '1.1.0'])('restarts every fleet daemon onto a release installed over %s, and asks each from it', async (was) => {
     const home = process.env.HOME!;
     const prefix = path.join(home, '.local', 'share', 'svall');
     fs.mkdirSync(path.join(prefix, 'releases', was), { recursive: true });
@@ -154,13 +154,10 @@ describe('svall setup on Linux', () => {
       await setupCommand(() => ({ name: 'private', home: fleet, managed: true }), () => true, 'linux')
         .parseAsync(['--release', companionArchive(makeHome(), { version: '1.1.0', unsigned: true }), '--allow-unsigned'], { from: 'user' });
       expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.1.0'));
-      expect(fs.readdirSync(unitDir)).toContain('svall-gateway.service');
+      expect(fs.readdirSync(unitDir)).toEqual(['svall-svalld@private.service']);
       // `enable --now` leaves a daemon running on the release it replaced
       expect(asked).toHaveLength(1);
-      expect(asked[0].trim().split('\n').slice(-2)).toEqual([
-        '--user restart svall-svalld@private.service',
-        '--user restart svall-gateway.service',
-      ]);
+      expect(asked[0].trim().split('\n').at(-1)).toBe('--user restart svall-svalld@private.service');
     } finally {
       await new Promise((r) => wss.close(r));
       for (const d of [prefix, path.join(home, '.config'), fleet]) fs.rmSync(d, { recursive: true, force: true });

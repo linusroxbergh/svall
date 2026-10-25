@@ -166,6 +166,13 @@ describe('svall argument parsing', () => {
     expect((await run({}, 'version')).stdout).toContain('protocol');
   });
 
+  it("says the fleet serves a home's fleet as a worker once its home holds worker.json", async () => {
+    const home = makeHome();
+    expect(JSON.parse((await run({ SVALL_HOME: home }, 'version', '--json')).stdout).worker).toBeUndefined();
+    fs.writeFileSync(path.join(home, 'worker.json'), '{}');
+    expect(JSON.parse((await run({ SVALL_HOME: home }, 'version', '--json')).stdout).worker).toBe(true);
+  });
+
   it('says whether its release was built signed: with a signature and no unsigned mark', async () => {
     const root = makeHome();
     const signed = async () => JSON.parse((await run({ SVALL_RELEASE_ROOT: root }, 'version', '--json')).stdout).signed;

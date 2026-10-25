@@ -122,7 +122,7 @@ test("the dock shows the machine's name whole beside the utilities of a fleet on
   await expect(page.getByTestId('handover-tab')).toHaveCount(0);
 });
 
-test('with no gateway the sheet offers to add a machine, which opens the panel in its place', async ({ page, svall }) => {
+test('with no gateway the sheet says so, and offers no move', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token, true, null);
   await svall.open();
   await nothingOpen(page);
@@ -130,11 +130,7 @@ test('with no gateway the sheet offers to add a machine, which opens the panel i
   await openSheet(page);
   await expect(page.getByTestId('handover-to-gateway')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-local')).toHaveCount(0);
-  await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
-  await receive(page, { type: 'host.machines', machines: [] });
-  await page.getByTestId('handover-add-machine').click();
-  await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
-  await expect(page.getByTestId('host-name')).toBeVisible();
+  await expect(page.getByTestId('handover-no-gateway')).toHaveText('This fleet names no gateway to hand it over to.');
 });
 
 test('the sheet carries a move to the gateway through all six sections, then the page reaches the fleet where it landed', async ({ page, svall }) => {

@@ -143,8 +143,8 @@ enum HostOp: String, Decodable {
     /// doctor prints its checks as one report when it ends; the others print a step per line as they go
     var printsReport: Bool { self == .doctor }
 
-    /// enable and remove rewrite fleet.json, which names the fleet's gateway
-    var rewritesFleetConfig: Bool { self == .enable || self == .remove }
+    /// enable, remove and upgrade rewrite fleet.json, which names the fleet's gateway
+    var rewritesFleetConfig: Bool { self == .enable || self == .remove || self == .upgrade }
 }
 
 /// What the page named the operation with. Each field belongs to one operation's flags; the fleet an

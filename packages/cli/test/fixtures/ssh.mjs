@@ -161,6 +161,13 @@ function remote(opts) {
       if (reply.stderr) process.stderr.write(reply.stderr);
       process.exit(reply.code ?? 0);
     };
+    // what the command was given on its stdin, kept in the file the reply names
+    if (reply.input) {
+      const chunks = [];
+      process.stdin.on('data', (c) => chunks.push(c));
+      process.stdin.on('end', () => { fs.writeFileSync(reply.input, Buffer.concat(chunks)); answer(); });
+      return;
+    }
     if (reply.delayMs) { setTimeout(answer, reply.delayMs); return; }
     answer();
   }

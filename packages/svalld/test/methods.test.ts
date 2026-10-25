@@ -204,6 +204,16 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
   });
 });
 
+describe('machines.refresh', () => {
+  it('has the home link each machine enrolled since it started, and does nothing on a worker', async () => {
+    let refreshed = 0;
+    const ctx = { viewer: { kind: 'app' }, ownership: { assertOwner() {} }, links: { refresh: () => { refreshed++; } } } as unknown as Ctx;
+    expect(await dispatch({ id: 1, method: 'machines.refresh' }, ctx)).toEqual({ id: 1, result: {} });
+    expect(refreshed).toBe(1);
+    expect(await dispatch({ id: 2, method: 'machines.refresh' }, { ...ctx, links: undefined })).toEqual({ id: 2, result: {} });
+  });
+});
+
 describe('a move asked of a daemon that makes none', () => {
   it('is refused as a worker refuses what its home does', async () => {
     const ctx = { viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx;

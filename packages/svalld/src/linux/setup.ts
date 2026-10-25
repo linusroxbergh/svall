@@ -12,6 +12,7 @@ import { writeDurable } from '../handover/durable.js';
 import type { Runtime } from '../runtime.js';
 import { readJsonSettings } from '../settings-file.js';
 import { setupFleetHome, setupUser } from '../setup.js';
+import { isWorker } from '../worker/mode.js';
 import { SystemdError, daemonReload, enableLinger, enableUnit, lingerState, restartUnit, type Run } from './service.js';
 
 export const GATEWAY_UNIT = 'svall-gateway.service';
@@ -99,6 +100,7 @@ export function svalldUnit(o: UnitOptions & { fleet: string; home: string }): Un
     text: render('svall-svalld@.service.in', {
       FLEET: o.fleet,
       EXEC_START: execLine(o.runtime.daemon),
+      ARGS: isWorker(resolvePaths(o.home)) ? ' "--worker"' : '',
       SVALL_HOME: esc(o.home),
       HOME: esc(o.homedir),
       PATH: esc(unitPath(o)),
@@ -129,14 +131,14 @@ const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
 };
 
-/** The fleet's unit and, unless `fleetOnly`, the machine's gateway, written only when they are not already what they should be. */
-export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string }, fleetOnly = false): string[] {
+/** The fleet's unit and, with `gateway`, the machine's gateway, written only when they are not already what they should be. */
+export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string; gateway?: true }): string[] {
   fs.mkdirSync(o.unitDir, { recursive: true });
   const logs = path.join(o.prefix, 'log');
   fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
   fs.chmodSync(logs, 0o700);
   const done: string[] = [];
-  for (const unit of [svalldUnit(o), ...(fleetOnly ? [] : [gatewayUnit(o)])]) {
+  for (const unit of [svalldUnit(o), ...(o.gateway === true ? [gatewayUnit(o)] : [])]) {
     const file = path.join(o.unitDir, unit.name);
     if (readOrUndefined(file) === unit.text) continue;
     writeDurable(file, Buffer.from(unit.text), { mode: 0o644 });
@@ -149,7 +151,7 @@ type UnitStart = { started: true; done: string[] } | { started: false; reason: s
 
 // `rewritten`: units whose file changed under a daemon that may be running, which `enable --now` would leave on the old one
 async function startUnit(o: LinuxSetup, rewritten: string[]): Promise<UnitStart> {
-  const units = [svalldUnitName(o.fleet), GATEWAY_UNIT];
+  const units = [svalldUnitName(o.fleet)];
   let unit = units[0];
   try {
     await daemonReload(o.run);
@@ -195,15 +197,25 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   done.push(...(opencodeWanted ? installOpencodePlugin(opencode) : removeOpencodePlugin(opencode)));
   // each fleet's unit `fleet provision` wrote here takes the same template, PATH and env as this fleet's
   const named = ourUnits(o.unitDir).map(fleetOf).filter((f): f is string => f !== undefined && f !== o.fleet);
-  const units = [svalldUnitName(o.fleet), ...named.map(svalldUnitName), GATEWAY_UNIT];
+  const units = [svalldUnitName(o.fleet), ...named.map(svalldUnitName)];
   const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));
   const before = units.map(unitText);
   done.push(...writeUnits({ ...o, env }));
-  for (const fleet of named) done.push(...writeUnits({ ...o, env, fleet, home: profileHome(fleet, o.homedir) }, true));
+  for (const fleet of named) done.push(...writeUnits({ ...o, env, fleet, home: profileHome(fleet, o.homedir) }));
   if (!o.systemctl) return { done, started: false };
   const start = await startUnit(o, units.filter((u, i) => before[i] !== undefined && before[i] !== unitText(u)));
   if (!start.started) return { done: [...done, start.reason], started: false };
   return { done: [...done, ...start.done], started: true };
+}
+
+/** The fleet's unit written again, which runs svalld --worker once worker.json is in its home, and its daemon restarted onto it. */
+export async function serveAsWorker(o: UnitOptions & { fleet: string; home: string; unitDir: string; run: Run }): Promise<string[]> {
+  const unit = svalldUnitName(o.fleet);
+  const done = writeUnits({ ...o, env: o.env ?? await agentHomesEnv(o.run) });
+  await daemonReload(o.run);
+  await restartUnit(o.run, unit);
+  await enableUnit(o.run, unit);
+  return [...done, `systemctl --user restart ${unit}`];
 }
 
 /**

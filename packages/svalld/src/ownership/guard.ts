@@ -37,6 +37,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'robot.moveTo': 'mutation',
   'robot.moveRetry': 'mutation',
   'machines.list': 'read',
+  'machines.refresh': 'read',
   'scribe.sweep': 'mutation',
   'scribe.set': 'mutation',
   'worktrees.set': 'mutation',

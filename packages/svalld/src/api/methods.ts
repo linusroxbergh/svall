@@ -5,6 +5,7 @@ import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../handover/git-extensions.js';
 import type { HandoverService } from '../handover/service.js';
+import type { HomeLinks } from '../link/home.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
@@ -22,7 +23,7 @@ import type { FetchUsage } from '../usage/usage.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh'>; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -83,6 +84,7 @@ export const handlers: Handlers = {
       robots: Object.values(store.state.robots).filter((r) => r.machine === id).length,
     })),
   }),
+  'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
   'scribe.sweep': async (p, { fleet }) => ({ lines: await fleet.sweep(p) }),
   'scribe.set': (p, { fleet }) => { fleet.setScribe(p.enabled); return {}; },
   'worktrees.set': (p, { fleet }) => { fleet.setWorktrees(p.enabled); return {}; },

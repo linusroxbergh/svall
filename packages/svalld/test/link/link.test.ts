@@ -395,6 +395,20 @@ describe('the link', () => {
     expect(w.store.state.robots.r_1.note).toBe('short');
   });
 
+  it('refresh links a machine that has a token now, and leaves the links it holds as they are', async () => {
+    const w = world();
+    const l = w.links(async () => { throw new Error('ssh: connect to host vault port 22: Connection refused'); });
+    l.start();
+    const held = l.for(W);
+    expect(held).toBeDefined();
+    l.refresh();
+    expect(l.for(SPARE)).toBeUndefined();
+    issueToken(w.homePaths, SPARE);
+    l.refresh();
+    expect(l.for(SPARE)).toBeDefined();
+    expect(l.for(W)).toBe(held);
+  });
+
   it('call() answers not_reachable with the machine name while the link is down', async () => {
     const w = world({ handlers: { echo: async (p) => ({ echoed: p }) } });
     const down = w.links(async () => { throw new Error('ssh: connect to host vault port 22: Connection refused'); });

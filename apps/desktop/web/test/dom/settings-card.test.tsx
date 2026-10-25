@@ -275,9 +275,8 @@ test('Machines lists every machine with its ssh, the fleets it is the gateway of
   expect(trift.textContent).toContain('release 0.13.0');
   expect(trift.textContent).toContain('2 warnings');
   expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
-  // the gateway of this fleet is not offered to be made it again
-  expect(trift.querySelector('[data-testid="machine-enable"]')).toBeNull();
-  expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-enable"]')).not.toBeNull();
+  // no machine is offered as a gateway to make
+  expect(screen.queryByTestId('machine-enable')).toBeNull();
   // a rollback is offered only by the upgrade whose own rollback failed
   expect(trift.querySelector('[data-testid="machine-rollback"]')).toBeNull();
 

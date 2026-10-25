@@ -100,7 +100,7 @@ async function ensureUnit(o: Provision): Promise<{ unit: string; rewritten: bool
   const unit = svalldUnitName(o.profile);
   const had = fs.existsSync(path.join(o.unitDir, unit));
   const env = o.env ?? await agentHomesEnv(o.run);
-  const wrote = writeUnits({ ...o, fleet: o.profile, env }, true).length > 0;
+  const wrote = writeUnits({ ...o, fleet: o.profile, env }).length > 0;
   if (wrote) await daemonReload(o.run);
   return { unit, rewritten: had && wrote };
 }

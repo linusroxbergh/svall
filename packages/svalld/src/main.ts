@@ -331,7 +331,7 @@ async function start(opts: Options): Promise<Daemon> {
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
-      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement,
+      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links,
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {

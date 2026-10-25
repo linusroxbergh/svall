@@ -19,8 +19,7 @@ export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
 // the machines a fleet can be handed to: what the shell may run `svall host …` for, and with what
-export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable';
-// enable names no fleet: the shell supplies the one this window runs
+export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove';
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain

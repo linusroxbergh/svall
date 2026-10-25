@@ -77,15 +77,15 @@ export function buildProgram(): Command {
   program.addCommand(setupCommand(target, json));
   program.addCommand(agentCommand(target, json));
   program.addCommand(doctorCommand(target, json));
-  program.addCommand(hostCommands(json));
-  program.addCommand(workerCommands(home));
+  program.addCommand(hostCommands(json, target));
+  program.addCommand(workerCommands(target));
   program.addCommand(handoverCommand({ target, profile, json }));
   program.addCommand(gatewayCommands());
   program.addCommand(fleetCommands(home, json, profile, target));
   program.addCommand(uninstallCommand(json));
   program.addCommand(connectCommand(home, profile));
   program.addCommand(connectionInfoCommand(home, json));
-  program.addCommand(versionCommand(json));
+  program.addCommand(versionCommand(json, home));
 
   return program;
 }

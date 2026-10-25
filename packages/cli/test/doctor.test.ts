@@ -402,13 +402,11 @@ describe('doctor on Linux', () => {
   const unit = 'svall-svalld@private.service';
   const showOf = (u: string) => `systemctl --user show ${u} --property=LoadState --property=ActiveState --property=SubState --property=UnitFileState`;
   const show = showOf(unit);
-  const gateway = showOf('svall-gateway.service');
   const running = 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n';
   const linux = (commands: Record<string, string | Error> = {}, o: { daemonEnv?: Record<string, string>; files?: Record<string, string>; found?: AgentKind[] } = {}) => fake({
     platform: 'linux',
     commands: {
       [show]: running,
-      [gateway]: running,
       'loginctl show-user linus --property=Linger': 'Linger=yes\n',
       ...commands,
     },
@@ -426,7 +424,7 @@ describe('doctor on Linux', () => {
     expect(byName(await doctor(adhoc, linux({}, { daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
     // a named fleet's unit is the controller's to rewrite, so there is nothing to type on this machine
     const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({}, { daemonEnv: env, files: { '/u/.config/systemd/user/svall-svalld@work.service': '[Service]\n' } }).deps));
-    expect(named['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host enable <this machine> --fleet work from the controller$/) });
+    expect(named['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host upgrade <this machine> from the controller$/) });
     expect(named['daemon env']).not.toHaveProperty('run');
   });
 
@@ -439,25 +437,11 @@ describe('doctor on Linux', () => {
       .toMatchObject({ status: 'warn', detail: `${file} lacks XDG_CONFIG_HOME and XDG_DATA_HOME, which this account sets: svall setup` });
   });
 
-  it('checks the machine\'s gateway unit beside the fleet\'s', async () => {
-    expect(byName(await doctor(priv, linux().deps)).gateway)
-      .toMatchObject({ status: 'ok', detail: expect.stringContaining('svall-gateway.service: loaded, active (running), enabled') });
-    const stopped = byName(await doctor(priv, linux({ [gateway]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
-    expect(stopped.gateway).toMatchObject({ status: 'fail', detail: expect.stringContaining('inactive') });
-  });
-
-  it('names the listen EINVAL of a gateway whose socket path is too long, as systemd only says it keeps restarting', async () => {
-    const prefix = `/tmp/${'h'.repeat(61)}/.local/share/svall`;
-    vi.stubEnv('SVALL_GATEWAY_PREFIX', prefix);
-    try {
-      const looping = byName(await doctor(priv, linux({ [gateway]: 'LoadState=loaded\nActiveState=activating\nSubState=auto-restart\nUnitFileState=enabled\n' }).deps));
-      expect(looping.gateway).toMatchObject({
-        status: 'fail',
-        detail: `svall-gateway.service: loaded, activating (auto-restart), enabled; the gateway's socket ${prefix}/gateway/authority.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
-      });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+  it('checks the fleet\'s unit alone, as a companion runs no gateway', async () => {
+    const c = byName(await doctor(priv, linux().deps));
+    expect(c.gateway).toBeUndefined();
+    const stopped = byName(await doctor(priv, linux({ [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
+    expect(stopped.systemd).toMatchObject({ status: 'fail', detail: expect.stringContaining('inactive') });
   });
 
   it('asks systemd and loginctl instead of launchd', async () => {
@@ -531,7 +515,7 @@ describe('doctor on Linux', () => {
       platform: 'linux', agentPath,
       files: { '/u/.codex': '', '/u/.codex/hooks.json': codexHooks },
       commands: {
-        [show]: running, [gateway]: running, 'loginctl show-user linus --property=Linger': 'Linger=yes\n',
+        [show]: running, 'loginctl show-user linus --property=Linger': 'Linger=yes\n',
         // the login shell ssh hands a command to finds neither
         'claude --version': undefined as never,
         [`PATH=${agentPath} claude --version`]: '2.1.260 (Claude Code)\n',

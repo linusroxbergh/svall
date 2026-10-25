@@ -293,6 +293,8 @@ export class HomeLinks {
   private queued?: { promise: Promise<number>; fire(): void };
   private unsubscribe?: () => void;
   private oversize = false;
+  // set while the links run
+  private pushSoon?: () => void;
 
   constructor(private o: Options) {}
 
@@ -301,19 +303,30 @@ export class HomeLinks {
     const pushSoon = () => {
       this.pushSnapshot().catch((e: Error) => { if (!(e instanceof ApiError && e.code === 'too_large')) this.o.log.error(`snapshot not pushed: ${e.message}`); });
     };
-    try {
-      for (const entry of this.o.machines()) {
-        if (tokenFor(this.o.paths, entry.id)) this.links.set(entry.id, new WorkerLink(entry, this.o, pushSoon));
-      }
-    } catch (e) {
-      this.o.log.error(`no worker is linked: ${(e as Error).message}`);
-    }
-    for (const link of this.links.values()) link.start();
+    this.pushSoon = pushSoon;
+    this.refresh();
     // every change while a worker is synced reaches it
     this.unsubscribe = this.o.store.subscribe(() => { if ([...this.links.values()].some((l) => l.synced)) pushSoon(); });
   }
 
+  /** Links each machine in the registry that holds a token of this fleet's and is not linked yet. */
+  refresh(): void {
+    const pushSoon = this.pushSoon;
+    if (!pushSoon) return;
+    try {
+      for (const entry of this.o.machines()) {
+        if (this.links.has(entry.id) || !tokenFor(this.o.paths, entry.id)) continue;
+        const link = new WorkerLink(entry, this.o, pushSoon);
+        this.links.set(entry.id, link);
+        link.start();
+      }
+    } catch (e) {
+      this.o.log.error(`a worker is not linked: ${(e as Error).message}`);
+    }
+  }
+
   stop(): void {
+    this.pushSoon = undefined;
     this.unsubscribe?.();
     for (const link of this.links.values()) link.stop();
     this.queued?.fire();
