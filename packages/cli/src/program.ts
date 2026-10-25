@@ -18,6 +18,7 @@ import { setupCommand } from './commands/setup.js';
 import { statusCommand } from './commands/status.js';
 import { uninstallCommand } from './commands/uninstall.js';
 import { versionCommand } from './commands/version.js';
+import { workerCommands } from './commands/worker.js';
 import { connectFor } from './controller/connection.js';
 import { closeMastersOnSignal } from './controller/ssh.js';
 import { launch, realDeps } from './launch.js';
@@ -77,6 +78,7 @@ export function buildProgram(): Command {
   program.addCommand(agentCommand(target, json));
   program.addCommand(doctorCommand(target, json));
   program.addCommand(hostCommands(json));
+  program.addCommand(workerCommands(home));
   program.addCommand(handoverCommand({ target, profile, json }));
   program.addCommand(gatewayCommands());
   program.addCommand(fleetCommands(home, json, profile, target));

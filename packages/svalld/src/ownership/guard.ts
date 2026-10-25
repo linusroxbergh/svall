@@ -93,13 +93,17 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'handover.reaches': 'transaction',
 };
 
-/** Throws before the handler runs when this machine may not do what the call asks, or this caller may not ask it. */
-export function guardMethod(ownership: OwnershipState, method: MethodName, caller?: Viewer['kind']): void {
+/**
+ * Throws before the handler runs when this machine may not do what the call asks, or this caller may not ask it. A
+ * `worker` serves a home's fleet: it takes no handover or record, and what it does not read itself its home allows.
+ */
+export function guardMethod(ownership: OwnershipState, method: MethodName, caller?: Viewer['kind'], worker = false): void {
   const kind = classification[method];
+  if (worker && (kind === 'recovery' || kind === 'transaction')) throw Object.assign(new Error(`${method} does not answer on a worker`), { code: 'not_on_worker' });
   // a phone watches a handover and never drives one; an inspection hashes the roots and reads the folders this machine holds
   if ((kind === 'recovery' || kind === 'transaction' || method === 'handover.inspect') && caller !== 'app') {
     throw Object.assign(new Error(`${method} answers only a client that holds this fleet's token`), { code: 'unauthorized' });
   }
   if (kind === 'recovery' || kind === 'transaction') ownership.assertOwnId();
-  if (kind === 'mutation' || kind === 'terminal') ownership.assertOwner(kind);
+  if ((kind === 'mutation' || kind === 'terminal') && !worker) ownership.assertOwner(kind);
 }

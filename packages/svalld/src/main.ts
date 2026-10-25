@@ -31,6 +31,7 @@ import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
+import { Router, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
@@ -48,7 +49,7 @@ import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { workerOptions, workerStubs, type Off } from './worker/mode.js';
 import { Outbox } from './worker/outbox.js';
-import { applyReport } from './worker/snapshot.js';
+import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
 
 export type Daemon = { port: number; token: string; store: Store; fleet: Fleet; stop(): Promise<void> };
@@ -225,7 +226,27 @@ async function start(opts: Options): Promise<Daemon> {
   const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !gateway, copied });
   // a handover reads state.json back from disk, so a frozen, held or replica fleet writes each change at once
   store.batchWritesWhile(() => ownership.writable());
-  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound });
+  // the home's links to its workers, or a worker's to its home, for the fleet to route through; each starts once the
+  // fleet it carries is served, the API that answers what a worker sends on included, and stops before any of it
+  let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
+  // rises across restarts, so no worker holds a version newer than the home's next
+  let version = Date.now();
+  const links = worker ? undefined : new HomeLinks({
+    paths, store, log, release: runtimeVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
+    onReport: (r, machine) => { applyReport(store, r, machine); },
+    onEvent: (kind, _data, machine) => Promise.reject(new Error(`${machine} sent ${kind}, which this svalld does not take`)),
+    onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
+    onCall: (method, params) => answer!(method, params),
+    snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
+  });
+  const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
+  const connection = worker && new HomeConnection({
+    paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: runtimeVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+  });
+  const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
+  const report = connection && ((r: RobotSync) => connection.report(r));
+  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, report });
+  if (report) Object.assign(calls, workerCalls({ fleet, store, me, report, log }));
   const terminals = new TerminalHub(fleet, tmux, store, log);
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const authority = (): Authority | undefined => {
@@ -293,7 +314,7 @@ async function start(opts: Options): Promise<Daemon> {
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
-      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined),
+      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router,
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
@@ -302,6 +323,7 @@ async function start(opts: Options): Promise<Daemon> {
       return listen(0);
     });
     teardown.push(() => api.close());
+    answer = api.answer;
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
@@ -313,23 +335,11 @@ async function start(opts: Options): Promise<Daemon> {
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
     // and again while a device waits and tailscale has not answered
     if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
-    // the link starts once the fleet it carries is served, and stops before any of it
-    if (worker) {
-      const connection = new HomeConnection({
-        paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: runtimeVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: {},
-      });
+    if (connection) {
       await connection.start();
       teardown.push(() => connection.stop());
-    } else {
-      // rises across restarts, so no worker holds a version newer than the home's next
-      let version = Date.now();
-      const links = new HomeLinks({
-        paths, store, log, release: runtimeVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
-        onReport: (r, machine) => { applyReport(store, r, machine); },
-        onEvent: (kind, _data, machine) => Promise.reject(new Error(`${machine} sent ${kind}, which this svalld does not take`)),
-        onInventory: async (inv, machine) => { for (const r of inv.robots) applyReport(store, r, machine); },
-        snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
-      });
+    }
+    if (links) {
       links.start();
       teardown.push(() => links.stop());
     }

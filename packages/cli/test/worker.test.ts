@@ -1,0 +1,71 @@
+import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it } from 'vitest';
+import { resolvePaths } from '@svall/svalld/paths';
+import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const tsx = path.join(root, 'node_modules/.bin/tsx');
+const main = path.join(root, 'packages/cli/src/main.ts');
+
+afterEach(cleanHomes);
+
+function svall(home: string, ...args: string[]) {
+  const child = spawn(tsx, [main, ...args], { env: { ...process.env, SVALL_HOME: home } });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (c: Buffer) => { stdout += c.toString(); });
+  child.stderr.on('data', (c: Buffer) => { stderr += c.toString(); });
+  const done = new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => child.on('close', (code) => resolve({ code, stdout, stderr })));
+  return { child, done };
+}
+
+describe('svall worker', () => {
+  it('link carries its stdin to link.sock and the socket back on its stdout, and ends with its input', async () => {
+    const home = makeHome();
+    const heard: string[] = [];
+    const server = net.createServer((s) => {
+      s.on('data', (c: Buffer) => { heard.push(c.toString()); s.write('{"t":"hello"}\n'); });
+    });
+    await new Promise<void>((r) => server.listen(resolvePaths(home).linkSock, r));
+    try {
+      const { child, done } = svall(home, 'worker', 'link');
+      child.stdin.write('{"t":"ping"}\n');
+      await new Promise<void>((r) => child.stdout.once('data', () => r()));
+      child.stdin.end();
+      const r = await done;
+      expect(r).toEqual({ code: 0, stdout: '{"t":"hello"}\n', stderr: '' });
+      expect(heard.join('')).toBe('{"t":"ping"}\n');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('link ends with an error when no worker daemon listens', async () => {
+    const r = await svall(makeHome(), 'worker', 'link').done;
+    expect(r.code).not.toBe(0);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toMatch(/link\.sock/);
+  });
+
+  it('enroll writes worker.json, readable by its owner alone, with the token read from stdin', async () => {
+    const home = makeHome();
+    const ids = { home: crypto.randomUUID(), fleet: crypto.randomUUID() };
+    const enroll = (token: string) => {
+      const run = svall(home, 'worker', 'enroll', '--home-machine', ids.home, '--home-name', 'linus-mbp', '--fleet-id', ids.fleet);
+      run.child.stdin.end(token);
+      return run.done;
+    };
+    expect(await enroll('short\n')).toMatchObject({ code: 1, stderr: expect.stringMatching(/token/) });
+    expect(fs.existsSync(resolvePaths(home).workerFile)).toBe(false);
+    const token = 'a'.repeat(48);
+    expect(await enroll(`${token}\n`)).toEqual({ code: 0, stdout: '', stderr: '' });
+    const file = resolvePaths(home).workerFile;
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ homeMachineId: ids.home, fleetId: ids.fleet, token, homeName: 'linus-mbp' });
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+});

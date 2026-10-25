@@ -11,7 +11,7 @@ import { claudePaths, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Outbox } from '../worker/outbox.js';
 import { mergeSnapshot, ownedReport, Snapshot, type Inventory, type RobotSync } from '../worker/snapshot.js';
-import { LinkStream } from './stream.js';
+import { answerCall, LinkStream } from './stream.js';
 
 const HomeHello = z.object({ t: z.literal('hello'), token: z.string() });
 
@@ -60,10 +60,12 @@ export class HomeConnection {
     return this.link?.live ?? false;
   }
 
-  call<T>(method: string, params: unknown): Promise<T> {
-    if (!this.link?.live) return Promise.reject(this.unreachable());
-    return this.link.stream.call<T>(method, params).catch((e: unknown) => {
-      throw e instanceof ApiError && e.code === 'not_reachable' ? this.unreachable() : e;
+  call<T>(method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {
+    const link = this.link;
+    if (!link?.live) return Promise.reject(this.unreachable());
+    // a not_reachable the home answers is its own, about another machine
+    return link.stream.call<T>(method, params, o).catch((e: unknown) => {
+      throw e instanceof ApiError && e.code === 'not_reachable' && this.link !== link ? this.unreachable() : e;
     });
   }
 
@@ -136,23 +138,10 @@ export class HomeConnection {
         stream.send({ t: 'pong', release: this.o.release, bootId: this.o.bootId });
         return;
       case 'call':
-        void this.answer(stream, f);
+        void answerCall(stream, f, Object.hasOwn(this.o.handlers, f.method) ? this.o.handlers[f.method] : undefined);
         return;
       default:
         this.o.log.error(`link: ${f.t} from the home is not taken`);
-    }
-  }
-
-  private async answer(stream: LinkStream, f: Extract<LinkFrame, { t: 'call' }>): Promise<void> {
-    const handler = Object.hasOwn(this.o.handlers, f.method) ? this.o.handlers[f.method] : undefined;
-    try {
-      if (!handler) throw new ApiError('unknown_method', `unknown method ${f.method}`);
-      stream.send({ t: 'reply', id: f.id, result: await handler(f.params) });
-    } catch (e) {
-      const error = e instanceof ApiError
-        ? { code: e.code, message: e.message, ...(e.data && { data: e.data }) }
-        : { code: 'internal', message: (e as Error).message };
-      stream.send({ t: 'reply', id: f.id, error });
     }
   }
 }

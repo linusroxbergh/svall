@@ -1,6 +1,6 @@
 import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../handover/git-extensions.js';
@@ -8,10 +8,12 @@ import type { HandoverService } from '../handover/service.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
+import { errorFrame } from '../errors.js';
 import type { ClaudePaths } from '../paths.js';
 import { listsDeletable, rootIdOf, scanResources } from '../resources/scan.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { guardMethod } from '../ownership/guard.js';
+import { classification, guardMethod } from '../ownership/guard.js';
+import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
@@ -19,7 +21,7 @@ import type { FetchUsage } from '../usage/usage.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -52,9 +54,10 @@ export const handlers: Handlers = {
   'robot.seen': (p, { fleet }) => fleet.markSeen(p.id, p.term),
   'robot.second': (p, { fleet }) => fleet.openSecond(p.id),
   'robot.run': async (p, { fleet }) => ({ delivery: await fleet.run(p.id, p.text, p.enter, p.term) }),
-  'robot.read': async (p, { fleet }) => ({
+  // a placed robot's transcript is on the machine it runs on
+  'robot.read': async (p, { fleet, router }) => router?.forward(p.id, 'robot.read', p) ?? {
     text: p.source === 'screen' ? await fleet.readScreen(p.id, p.lines, p.term) : fleet.readTranscript(p.id, p.lines, p.term),
-  }),
+  },
   'robot.prompts': (p, { fleet }) => ({ prompts: fleet.readPrompts(p.id, p.limit) }),
   'robot.show': (p, { fleet }) => ({ text: fleet.brief(p.id) }),
   'robot.wait': async (p, { fleet, signal }) => ({ status: await fleet.waitFor(p.id, p.until, p.timeoutMs, signal, p.term) }),
@@ -135,6 +138,13 @@ export const handlers: Handlers = {
   'handover.reaches': (p, { handover }) => handover.reaches(p),
 };
 
+// a worker answers a read of the fleet, or of a robot placed on it, from its mirror; any other call is its home's
+function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
+  if (!ctx.router?.onWorker) return false;
+  const id = (params as { id?: unknown }).id;
+  return classification[method] !== 'read' || (typeof id === 'string' && ctx.router.placedAt(id) !== undefined);
+}
+
 export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   const def = Object.hasOwn(methods, req.method) ? (methods as Record<string, { params: ZodTypeAny }>)[req.method] : undefined;
   if (!def) return { id: req.id, error: { code: 'unknown_method', message: `unknown method ${req.method}` } };
@@ -142,16 +152,20 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
   try {
     // ahead of parsing: what this machine may not do, it may not do with any parameters
-    guardMethod(ctx.ownership, req.method as MethodName, ctx.viewer?.kind);
+    guardMethod(ctx.ownership, req.method as MethodName, ctx.viewer?.kind, ctx.router?.onWorker);
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
+    if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
   } catch (e) {
-    const err = e as Error & { code?: unknown; data?: unknown };
-    // a protocol code is lowercase words; a Node errno such as ENOENT is no answer a client can act on
-    const code = typeof err.code === 'string' && /^[a-z_]+$/.test(err.code) ? err.code : 'internal';
-    const data = err.data && typeof err.data === 'object' && !Array.isArray(err.data) ? err.data as Record<string, unknown> : undefined;
-    return { id: req.id, error: { code, message: err.message, ...(data ? { data } : {}) } };
+    return { id: req.id, error: errorFrame(e) };
   }
+}
+
+/** The result of a call, or its error thrown as the client would read it. */
+export async function answer(method: string, params: unknown, ctx: Ctx): Promise<unknown> {
+  const res = await dispatch({ id: 0, method, params }, ctx);
+  if ('error' in res) throw new ApiError(res.error.code, res.error.message, res.error.data);
+  return res.result;
 }

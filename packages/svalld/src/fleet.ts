@@ -36,6 +36,7 @@ import { randomName } from './names.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import type { OwnershipState } from './ownership/state.js';
 import { expandHome, userPaths, type Paths } from './paths.js';
+import type { Router } from './placement/router.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot, type Carried } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
@@ -48,6 +49,7 @@ import type { Store } from './store.js';
 import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
 import type { LiveWindow, Tmux } from './tmux/tmux.js';
 import { appPid } from './uninstall.js';
+import { ownedReport, type RobotSync } from './worker/snapshot.js';
 
 type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string] };
 
@@ -62,6 +64,8 @@ type Deps = {
   store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; ownership: OwnershipState; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number;
   runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; refreshLinks?: RefreshLinks; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>;
   endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[]; platform?: NodeJS.Platform;
+  // the machines robots placed elsewhere run on; on a worker, what it tells its home of the robots placed here
+  remote?: Router; report?: (r: RobotSync) => void;
 };
 type LiveRobot = Robot & { tmux: NonNullable<Robot['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
@@ -109,7 +113,7 @@ export class Fleet extends EventEmitter<Events> {
     });
     this.agentEvents = new AgentEvents({
       store, config, log, render: (island, c) => this.render(island, c), refreshLinks: deps.refreshLinks ?? refreshLinks,
-      writable, frozen: () => deps.ownership.isFrozen(), track, processes: this.sleep.processes,
+      writable, frozen: () => deps.ownership.isFrozen(), track, processes: this.sleep.processes, report: (id) => this.report(id),
     });
     this.prompts = new Prompts({
       fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving, writable, assertOwner: () => deps.ownership.assertOwner('mutation'),
@@ -231,7 +235,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   live(id: string): LiveRobot {
-    const c = this.robot(id);
+    const c = this.here(id);
     if (!c.tmux) throw new Dormant(`${c.name} is dormant; revive it first`);
     return c as LiveRobot;
   }
@@ -239,10 +243,24 @@ export class Fleet extends EventEmitter<Events> {
   // the terminal a call means: the main one, or the second when it says so
   terminal(id: string, term?: 2): { tmux: NonNullable<Robot['tmux']>; agent?: Agent } {
     if (term !== 2) return this.live(id);
-    const c = this.robot(id);
+    const c = this.here(id);
     if (!c.second) throw new Invalid(`${c.name} has no second terminal`);
     if (!c.second.tmux) throw new Dormant(`the second terminal of ${c.name} is dormant; revive it first`);
     return { tmux: c.second.tmux, agent: c.second.agent };
+  }
+
+  // a robot placed on another machine has its windows there, whatever ids that machine reported for them
+  private here(id: string): Robot {
+    const c = this.robot(id);
+    const at = this.deps.remote?.placedAt(id);
+    if (at) throw new Invalid(`${c.name} runs on ${this.deps.store.state.machines?.[at]?.name ?? at}`);
+    return c;
+  }
+
+  // on a worker, the fields of a robot placed here that the home takes from it
+  private report(id: string): void {
+    const c = this.deps.store.state.robots[id];
+    if (this.deps.report && c?.machine === this.deps.ownership.machineId) this.deps.report(ownedReport(c));
   }
 
   /** Names the terminals a handover has yet to start: reconciling leaves the agent and resume command each carries to it. */
@@ -691,6 +709,13 @@ export class Fleet extends EventEmitter<Events> {
   async closeRobot(id: string): Promise<void> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.robot(id);
+    const far = this.deps.remote?.forward(id, 'robot.close', { id });
+    if (far) {
+      this.deps.store.update((d) => { delete d.robots[id]; });
+      // a machine that is down is told again once it is back, by the robot it still holds
+      await far.catch((e: Error) => this.deps.log.error(`close ${id}: ${e.message}`));
+      return this.forgetRobot(id);
+    }
     for (const name of [id, secondName(id)]) this.closing.add(name);
     this.deps.store.update((d) => { delete d.robots[id]; });
     const killed = this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; })
@@ -703,7 +728,11 @@ export class Fleet extends EventEmitter<Events> {
     // a freeze waits for the windows to close and what the robot started to end
     this.track(killed.then((victims) => endProcs(victims, () => this.readLive(), this.deps.endOpts)), `end ${id}`);
     await killed;
-    // nothing the fleet keeps outside the state outlives the robot
+    this.forgetRobot(id);
+  }
+
+  // nothing the fleet keeps outside the state outlives the robot
+  private forgetRobot(id: string): void {
     this.seen.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
     removeDocs(this.deps.paths.docs, 'robot', id, this.deps.log);
@@ -712,6 +741,8 @@ export class Fleet extends EventEmitter<Events> {
   /** Ends the agent and everything it started, closes the second terminal, dormant if it ran an agent, and leaves the
    * robot dormant without a carry-on note; the session resumes on the next open. */
   async sleepRobot(id: string): Promise<void> {
+    const far = this.deps.remote?.forward(id, 'robot.sleep', { id });
+    if (far) { await far; return; }
     await Promise.all([this.reviving.get(id), this.ending.get(id)].map((p) => p?.catch(() => {})));
     const c = this.robot(id);
     const procs = await this.readLive();
@@ -765,6 +796,8 @@ export class Fleet extends EventEmitter<Events> {
 
   // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place of the resume
   reviveRobot(id: string, prompt?: string, fresh?: string): Promise<Revived> {
+    const far = this.deps.remote?.forward(id, 'robot.revive', { id });
+    if (far) return far;
     // a page still open on a robot that the stop has just put to sleep would wake it again
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
@@ -844,6 +877,9 @@ export class Fleet extends EventEmitter<Events> {
    * its first prompt, a summary of the session it could not resume, whose files stay where they are.
    */
   async startFresh(id: string, term?: 2): Promise<Robot> {
+    // the session's transcript is on the machine the robot runs on
+    const far = this.deps.remote?.forward(id, 'robot.fresh', { id, term });
+    if (far) return far;
     const c = this.robot(id);
     const slot = term === 2 ? c.second : c;
     const which = term === 2 ? `${c.name}'s second terminal` : c.name;
@@ -884,6 +920,8 @@ export class Fleet extends EventEmitter<Events> {
   // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too, or
   // started `fresh` with that command and its prompt
   openSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Robot> {
+    const far = this.deps.remote?.forward(id, 'robot.second', { id });
+    if (far) return far;
     const inFlight = this.openingSecond.get(id);
     if (inFlight) return inFlight;
     const p = this.doOpenSecond(id, this.writable(), fresh).finally(() => this.openingSecond.delete(id));
@@ -972,7 +1010,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
-    return this.prompts.run(id, text, enter, term);
+    return this.deps.remote?.forward(id, 'robot.run', { id, text, enter, term })?.then((r) => r.delivery) ?? this.prompts.run(id, text, enter, term);
   }
 
   answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
@@ -984,6 +1022,8 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   async readScreen(id: string, lines: number, term?: 2): Promise<string> {
+    const far = this.deps.remote?.forward(id, 'robot.read', { id, source: 'screen', lines, term });
+    if (far) return (await far).text;
     return (await this.deps.tmux.capture(this.terminal(id, term).tmux.paneId, lines)).toString('utf8');
   }
 
@@ -1003,7 +1043,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   waitFor(id: string, until: AgentStatus[], timeoutMs: number, signal?: AbortSignal, term?: 2): Promise<WaitResult> {
-    return this.prompts.waitFor(id, until, timeoutMs, signal, term);
+    return this.deps.remote?.forward(id, 'robot.wait', { id, until, timeoutMs, term }, signal)?.then((r) => r.status) ?? this.prompts.waitFor(id, until, timeoutMs, signal, term);
   }
 
   /** Hears each session that starts in a terminal, once its SessionStart has landed there. */

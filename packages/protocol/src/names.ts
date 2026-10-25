@@ -1,5 +1,5 @@
 // commands a fleet's existing home may be named for: no -p reaches that fleet, yet it is one
-export const HELD_COMMANDS = ['robot', 'host', 'handover', 'gateway', 'fleet', 'connect', 'connection-info', 'version'];
+export const HELD_COMMANDS = ['robot', 'host', 'handover', 'gateway', 'fleet', 'connect', 'connection-info', 'version', 'worker'];
 // svall's own commands, which `svall <name>` would run instead of opening a fleet by that name
 export const RESERVED = ['status', 'island', 'char', 'scribe', 'browser', 'mobile', 'setup', 'agent', 'doctor', 'uninstall', ...HELD_COMMANDS, 'help'];
 const NAME = /^[a-z][a-z0-9-]*$/;

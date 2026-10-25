@@ -17,6 +17,8 @@ import type { Store } from '../store.js';
 type Deps = {
   store: Store; config: Config; log: Logger; render: (island: Island, c?: Robot) => string; refreshLinks: RefreshLinks;
   writable: () => boolean; frozen: () => boolean; track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
+  // a worker tells its home what each event left of the robot
+  report?: (robotId: string) => void;
 };
 
 // a pid is looked at again after this long, as one an ended server freed may come back as an agent
@@ -44,7 +46,7 @@ export class AgentEvents {
   }
 
   private async run(e: SocketEvent): Promise<string | undefined> {
-    if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.robotId, e.hook.pid); return undefined; }
+    if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.robotId, e.hook.pid); this.deps.report?.(e.hook.robotId); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
     const frozen = this.deps.frozen();
     let reply: string | undefined;
@@ -83,6 +85,7 @@ export class AgentEvents {
         d.robots[ev.robotId] = next;
       }
     });
+    this.deps.report?.(ev.robotId);
     // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the robot
     const agent = this.deps.store.state.robots[ev.robotId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;

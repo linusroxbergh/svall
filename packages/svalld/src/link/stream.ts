@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import type { Duplex, Readable } from 'node:stream';
 import { ApiError, LinkFrame } from '@svall/protocol';
+import { errorFrame } from '../errors.js';
 
 export const MAX_LINE = 2 * 1024 * 1024;
 export const BLOB_PART = 1024 * 1024;
@@ -165,5 +166,15 @@ export class LinkStream {
     for (const r of this.receivers.values()) { r.out.destroy(); r.reject(why); }
     this.receivers.clear();
     this.o.onClose(err);
+  }
+}
+
+/** Replies to a call with what `run` answers, or with the error it throws; a method nothing runs is unknown. */
+export async function answerCall(stream: LinkStream, f: Extract<LinkFrame, { t: 'call' }>, run?: (params: unknown) => Promise<unknown>): Promise<void> {
+  try {
+    if (!run) throw new ApiError('unknown_method', `unknown method ${f.method}`);
+    stream.send({ t: 'reply', id: f.id, result: await run(f.params) });
+  } catch (e) {
+    stream.send({ t: 'reply', id: f.id, error: errorFrame(e) });
   }
 }

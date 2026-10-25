@@ -85,7 +85,9 @@ runIf('svalld --worker', () => {
       expect(await api.call('mobile.get')).toMatchObject({ error: { code: 'not_on_worker', message: 'not on a worker' } });
       expect(await api.call('usage.get')).toMatchObject({ result: { available: false, windows: [] } });
       expect(await api.call('fleets.list')).toMatchObject({ error: { code: process.platform === 'darwin' ? 'not_on_worker' : 'forbidden' } });
-      expect(await api.call('island.create', { name: 'x' })).toMatchObject({ result: { name: 'x' } });
+      // a change is the home's to make, and no home has linked
+      expect(await api.call('island.create', { name: 'x' })).toMatchObject({ error: { code: 'not_reachable', message: expect.stringMatching(/ cannot reach this Mac right now; try again when it is awake$/) } });
+      expect(Object.values(d.store.state.islands).map((i) => i.name)).not.toContain('x');
       expect(asked).toBe(0);
     } finally {
       api.close();

@@ -11,7 +11,7 @@ import type { Store } from '../store.js';
 import { shq } from '../text.js';
 import { Inventory, RobotSync, Snapshot } from '../worker/snapshot.js';
 import { SshMaster } from './ssh.js';
-import { LinkStream, MAX_LINE } from './stream.js';
+import { answerCall, LinkStream, MAX_LINE } from './stream.js';
 
 /** How often the home pings a worker; a ping still unanswered at the next beat closes the link. */
 export const HEARTBEAT_MS = 15_000;
@@ -38,6 +38,8 @@ type Options = {
   onReport(r: RobotSync, machine: MachineId): void;
   onEvent(kind: string, data: unknown, machine: MachineId): Promise<void>;
   onInventory(inv: Inventory, machine: MachineId): Promise<void>;
+  /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
+  onCall?(method: string, params: unknown): Promise<unknown>;
   snapshot: () => Snapshot;
 };
 
@@ -181,7 +183,7 @@ export class WorkerLink {
         this.answered = true;
         return;
       case 'call':
-        stream.send({ t: 'reply', id: f.id, error: { code: 'unknown_method', message: `unknown method ${f.method}` } });
+        void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params)));
         return;
       default:
         this.o.log.error(`${this.name}: ${f.t} from a worker is not taken`);
