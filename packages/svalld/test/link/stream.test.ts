@@ -79,4 +79,21 @@ describe('LinkStream', () => {
     await vi.waitFor(() => expect(closed.length).toBeGreaterThan(0));
     expect(closed.find((e) => e)?.message).toMatch(/1024/);
   });
+
+  it('fails sendBlob with not_reachable on a closed link', async () => {
+    const { a } = ends();
+    a.close();
+    await expect(a.sendBlob('b1', Buffer.alloc(10), 10)).rejects.toMatchObject({ code: 'not_reachable' });
+  });
+
+  it('fails a blob whose target cannot be written, closing the link instead of crashing', async () => {
+    const { a, b, closed } = ends();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'link-blob-'));
+    tmp.push(dir);
+    const received = b.receiveBlob('b1', path.join(dir, 'missing', 'out.bin'));
+    const failed = expect(received).rejects.toMatchObject({ code: 'not_reachable' });
+    void a.sendBlob('b1', Buffer.alloc(10), 10).catch(() => {});
+    await failed;
+    await vi.waitFor(() => expect(closed.length).toBeGreaterThan(0));
+  });
 });
