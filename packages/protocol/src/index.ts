@@ -13,3 +13,4 @@ export * from './setup.js';
 export * from './handover.js';
 export * from './handover-events.js';
 export * from './placement.js';
+export * from './link.js';
