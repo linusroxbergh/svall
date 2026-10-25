@@ -92,11 +92,11 @@ const freeColumnName = (cols: Column[]): string => {
   }
 };
 
-// the new column's id; without afterId it goes last
-export async function addColumn(d: ActionDeps, afterId?: string): Promise<string | undefined> {
+// the new column's id; it goes last
+export async function addColumn(d: ActionDeps): Promise<string | undefined> {
   const name = freeColumnName(d.store.getState().fleet.columns);
   try {
-    const cols = await d.api.call('column.add', { name, ...(afterId ? { afterId } : {}) });
+    const cols = await d.api.call('column.add', { name });
     return cols.find((k) => k.name === name)?.id;
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
@@ -110,13 +110,6 @@ export function renameColumn(d: ActionDeps, id: string, name: string): void {
 
 export function reorderColumn(d: ActionDeps, id: string, targetId: string, after: boolean): void {
   if (id !== targetId) d.api.call('column.reorder', { id, targetId, after }).catch(toast(d));
-}
-
-// one place left or right; the board's ends stay put
-export function stepColumn(d: ActionDeps, id: string, by: 1 | -1): void {
-  const cols = d.store.getState().fleet.columns;
-  const other = cols[cols.findIndex((k) => k.id === id) + by];
-  if (other) reorderColumn(d, id, other.id, by === 1);
 }
 
 export function deleteColumn(d: ActionDeps, id: string, moveTo: string): void {
@@ -378,6 +371,20 @@ export const setPlacing = (d: ActionDeps, enabled: boolean): void => {
   if (enabled && (f.scribeOff || f.scribeAsk)) setScribe(d, true);
   d.api.call('placing.set', { enabled }).catch(toast(d));
 };
+
+// one scribe pass that only moves robots to the columns their work is at, Auto-place on or off
+export async function placeNow(d: ActionDeps): Promise<void> {
+  d.store.getState().showToast('Placing robots…', 'ok');
+  try {
+    const { lines } = await d.api.call('scribe.sweep', { columns: true });
+    const moved = lines.filter((l) => l.includes('  column: ')).length;
+    const failed = lines.filter((l) => l.includes('  failed: ')).length;
+    const text = moved ? `Moved ${moved} robot${moved === 1 ? '' : 's'}` : 'Every robot is in its column';
+    d.store.getState().showToast(failed ? `${text}; the scribe failed on ${failed}` : text, failed ? 'error' : 'ok');
+  } catch (e) {
+    toast(d)(e as Error);
+  }
+}
 
 export const setWorktrees = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('worktrees.set', { enabled }).catch(toast(d));

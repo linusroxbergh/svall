@@ -508,6 +508,18 @@ describe('Scribe, swept', () => {
     expect(w.store.state.robots.a.note).toBe('');
   });
 
+  it('moves only columns with columns, with placing off, and passes over a robot placed by hand', async () => {
+    const w = world(answer({ name: { value: 'docs plan', reason: 'generated' }, note: 'n', column: 'Done' }));
+    w.store.update((d) => { delete d.placingAsk; d.placingOff = true; });
+    w.island('i1');
+    w.robot('a');
+    w.robot('b', { name: 'by hand', column: 'doing', columnSource: 'manual' });
+    expect(await w.scribe.sweep({ columns: true })).toEqual(['golden heron  column: Done']);
+    expect(w.store.state.robots.a).toMatchObject({ name: 'golden heron', note: '', column: 'done' });
+    expect(w.calls).toHaveLength(1);
+    expect(w.calls[0].prompt).toContain('Columns, left to right: To do · In progress · In review · Done\nColumn: To do\n');
+  });
+
   it('leaves the note to the next automatic pass after a names-only sweep', async () => {
     const w = world(answer({ name: { value: 'docs plan', reason: 'generated' }, note: 'n' }));
     w.island('i1');

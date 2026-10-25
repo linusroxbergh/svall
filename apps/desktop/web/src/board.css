@@ -36,15 +36,15 @@
 :is(.kb-col, .kb-strip)[data-reorder="after"]::after { right: calc(-1 * var(--sp-sm)); }
 
 .kb-col-h { flex: none; display: flex; align-items: center; gap: var(--sp-md); height: 34px; padding: 0 var(--sp-sm) 0 var(--sp-lg); min-width: 0; }
-/* the grip stands in the inset left of the name, so showing it moves nothing */
-.kb-grip { position: absolute; left: var(--sp-2xs); top: var(--sp-xs); width: 10px; height: 34px; display: grid; place-items: center; color: var(--ink-3); cursor: grab; opacity: 0; transition: opacity var(--dur) var(--ease); }
-.kb-grip svg { width: 10px; height: 14px; }
 .kb-col-n { min-width: 0; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kb-col-ct { flex: none; font-size: var(--text-sm); color: var(--ink-3); }
+/* the name's size, so the two share a baseline */
+.kb-col-ct { flex: none; font-size: var(--text-md); color: var(--ink-3); }
 .kb-col-act { margin-left: auto; flex: none; display: flex; gap: var(--sp-2xs); opacity: 0; transition: opacity var(--dur) var(--ease); }
-.kb-col:is(:hover, :focus-within) :is(.kb-col-act, .kb-grip) { opacity: 1; }
-.kb-col-act button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border-radius: var(--r-sm); background: none; color: var(--ink-3); font-size: var(--text-xl); line-height: 1; }
-.kb-col-act button:hover { background: var(--fill-2); color: var(--ink); }
+.kb-col:is(:hover, :focus-within) .kb-col-act { opacity: 1; }
+.kb-col-act :is(button, .kb-grip) { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border-radius: var(--r-sm); background: none; color: var(--ink-3); font-size: var(--text-xl); line-height: 1; }
+.kb-col-act :is(button, .kb-grip):hover { background: var(--fill-2); color: var(--ink); }
+.kb-grip { cursor: grab; }
+.kb-grip svg { width: 10px; height: 14px; }
 .kb-ren { flex: 1; min-width: 0; height: 26px; box-sizing: border-box; padding: 0 var(--sp-md); border-radius: var(--r-sm); background: var(--fill-2); border: 1px solid var(--sel); box-shadow: var(--ring);
   font: inherit; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); outline: none; user-select: text; -webkit-user-select: text; }
 

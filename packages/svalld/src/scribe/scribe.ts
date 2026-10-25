@@ -33,7 +33,9 @@ type Deps = {
   brief: (island: Island, robot: Robot) => string;
 };
 type Job = { kind: 'robot' | 'island'; id: string };
-export type SweepOptions = { names?: boolean; islands?: boolean };
+export type SweepOptions = { names?: boolean; columns?: boolean; islands?: boolean };
+// what a sweep's robot pass writes, when not all of it
+type Only = 'names' | 'columns';
 
 // a path no file can have, too long or with a name too long, holds nothing
 const transcriptSize = (c: Robot): number => {
@@ -134,7 +136,7 @@ export class Scribe {
   // a sweep asked for while the same one is waiting or running joins it; a different one runs after it
   sweep(o: SweepOptions = {}): Promise<string[]> {
     if (this.off()) return Promise.reject(new Invalid(SCRIBE_OFF));
-    const key = `${!!o.names} ${!!o.islands}`;
+    const key = `${!!o.names} ${!!o.columns} ${!!o.islands}`;
     if (this.sweeping?.key === key) return this.sweeping.done;
     const before = this.sweeping?.done;
     const done: Promise<string[]> = (async () => { await before?.catch(() => {}); return this.doSweep(o); })()
@@ -149,12 +151,15 @@ export class Scribe {
     if (this.off()) throw new Invalid(SCRIBE_OFF);
     const state = this.deps.store.state;
     const lines: string[] = [];
+    const only: Only | undefined = o.names ? 'names' : o.columns ? 'columns' : undefined;
     if (!o.islands) {
-      const ids = Object.values(state.robots).filter((c) => c.tmux && c.agent?.transcriptPath && c.agent.status !== 'blocked').map((c) => c.id);
+      // a robot placed by hand stays where it is
+      const ids = Object.values(state.robots).filter((c) => c.tmux && c.agent?.transcriptPath && c.agent.status !== 'blocked' &&
+        !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
       this.queue = this.queue.filter((j) => j.kind !== 'robot');
-      lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, o.names))).flat());
+      lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, only))).flat());
     }
-    if (!o.names) {
+    if (!only) {
       const ids = Object.values(this.deps.store.state.islands).filter((i) => i.kind !== 'home').map((i) => i.id);
       for (const id of ids) this.dirty.delete(id);
       this.queue = this.queue.filter((j) => j.kind !== 'island');
@@ -169,11 +174,11 @@ export class Scribe {
     return !!(scribeOff || scribeAsk);
   }
 
-  private async safe(job: Job, namesOnly?: boolean): Promise<string[]> {
+  private async safe(job: Job, only?: Only): Promise<string[]> {
     if (this.stopped || this.off()) return [];
     if (job.kind === 'robot') this.active.add(job.id);
     try {
-      return job.kind === 'robot' ? await this.passRobot(job.id, namesOnly) : await this.passIsland(job.id);
+      return job.kind === 'robot' ? await this.passRobot(job.id, only) : await this.passIsland(job.id);
     } catch (e) {
       if (this.stopped) return [];
       const what = job.kind === 'robot' ? this.deps.store.state.robots[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
@@ -196,7 +201,7 @@ export class Scribe {
     return text;
   }
 
-  private async passRobot(id: string, namesOnly?: boolean): Promise<string[]> {
+  private async passRobot(id: string, only?: Only): Promise<string[]> {
     const state = this.deps.store.state;
     const c = state.robots[id];
     if (!c?.agent?.transcriptPath) return [];
@@ -207,7 +212,7 @@ export class Scribe {
     if (!transcript.trim()) { this.seen.set(id, { lastPassAt: this.now(), path, bytes }); return []; }
     const others = Object.values(state.robots).filter((o) => o.id !== id).map((o) => o.name);
     const prLinks = prEvidence(c, transcript, tail);
-    const columns = placingOn(state) ? state.columns : undefined;
+    const columns = only === 'columns' || placingOn(state) ? state.columns : undefined;
     let answer: RobotAnswer;
     try {
       answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks, columns)));
@@ -217,14 +222,14 @@ export class Scribe {
       this.seen.set(id, { ...last, failures, retryAt: this.now() + Math.min(RETRY_MS * 2 ** (failures - 1), MAX_RETRY_MS) });
       throw e;
     }
-    // a names-only pass leaves this transcript's note and links to the next pass
-    if (!namesOnly) this.seen.set(id, { lastPassAt: this.now(), path, bytes });
+    // a pass that writes only names or columns leaves this transcript's note and links to the next pass
+    if (!only) this.seen.set(id, { lastPassAt: this.now(), path, bytes });
     // a column answered without the board in the prompt places nothing
-    return this.writeRobot(c, columns ? answer : { ...answer, column: undefined }, [transcript, ...prLinks].join('\n'), namesOnly);
+    return this.writeRobot(c, columns ? answer : { ...answer, column: undefined }, [transcript, ...prLinks].join('\n'), only);
   }
 
   // each field is written only if nobody changed it while the model was thinking
-  private writeRobot(before: Robot, a: RobotAnswer, transcript: string, namesOnly?: boolean): string[] {
+  private writeRobot(before: Robot, a: RobotAnswer, transcript: string, only?: Only): string[] {
     const lines: string[] = [];
     this.deps.store.update((d) => {
       const cur = d.robots[before.id];
@@ -232,12 +237,12 @@ export class Scribe {
       const island = d.islands[cur.islandId];
       const prevBrief = island ? this.deps.brief(island, cur) : '';
       const taken = new Set(Object.values(d.robots).filter((o) => o.id !== cur.id).map((o) => o.name));
-      const name = cur.name === before.name ? acceptName(cur.name, a.name, taken) : undefined;
+      const name = only !== 'columns' && cur.name === before.name ? acceptName(cur.name, a.name, taken) : undefined;
       if (name) { lines.push(`${cur.name} → ${name}`); cur.name = name; }
-      const note = namesOnly ? undefined : acceptLine(a.note, NOTE_MAX);
+      const note = only ? undefined : acceptLine(a.note, NOTE_MAX);
       const noted = !!note && note !== cur.note && cur.note === before.note && cur.noteSource !== 'manual';
       if (noted) { cur.note = note; lines.push(`${cur.name}  note: ${note}`); }
-      if (!namesOnly && a.links && scribeKey(cur.context) === scribeKey(before.context)) {
+      if (!only && a.links && scribeKey(cur.context) === scribeKey(before.context)) {
         // a PR the scribe takes from the branch's lookup keeps the state that lookup read until the next one
         const states = new Map(cur.context.flatMap((it) => (it.prState ? [[bareUrl(it.ref), it.prState] as const] : [])));
         const links = prFirst(acceptLinks(a.links, transcript, cur.context)).map((l) => {
@@ -258,7 +263,7 @@ export class Scribe {
         if (island.kind !== 'home') this.dirty.set(island.id, this.now());
       }
       // no brief or island prompt holds the column; a hand move made meanwhile wins
-      const wanted = !namesOnly && placingOn(d) && a.column?.trim().toLowerCase();
+      const wanted = (only === 'columns' || (!only && placingOn(d))) && a.column?.trim().toLowerCase();
       const column = wanted ? d.columns.find((k) => k.name.toLowerCase() === wanted) : undefined;
       if (column && column.id !== columnOf(d, cur).id && cur.column === before.column && cur.columnSource !== 'manual') {
         cur.column = column.id;
