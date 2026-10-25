@@ -102,7 +102,7 @@ export async function probeRepo(p: z.infer<typeof RepoProbeParams>, git: GitRunn
 }
 
 // each agent's home as both machines' CLIs name it, else the user's
-function homesOf(from: string, to: string, local: AgentProbe[], far: AgentAdapter[]): Homes {
+export function homesOf(from: string, to: string, local: { kind: AgentKind; home?: string }[], far: { kind: AgentKind; home?: string }[]): Homes {
   const user = { from, to };
   const agent = Object.fromEntries(AgentKind.options.map((k) => {
     const [here, there] = [local.find((p) => p.kind === k)?.home, far.find((a) => a.kind === k)?.home];
@@ -138,7 +138,7 @@ async function changedFiles(root: string, git: GitRunner): Promise<number> {
 }
 
 // the robot as converting its main checkout leaves it: in the worktree `slug` on that branch, its folders in main moved there
-function converted(c: Robot, repo: Repo, slug: string): Robot {
+export function converted(c: Robot, repo: Repo, slug: string): Robot {
   const main = clean(repo.mainRoot);
   const root = path.posix.join(main, WORKTREES, slug);
   const into = (p: string): string => (holds(main, clean(p)) ? path.posix.join(root, path.posix.relative(main, clean(p))) : p);

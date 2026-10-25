@@ -10,7 +10,10 @@ import { G, MAC, TRIFT, World, als, choices, fleetId, play, settledOn, worlds, t
 afterEach(cleanHomes);
 
 const REPO = path.join(import.meta.dirname, '../../../..');
-const NAMES = Object.keys(FAILPOINTS) as Failpoint[];
+const ALL = Object.keys(FAILPOINTS) as Failpoint[];
+// a move's own steps are crashed in test/placement
+type HandoverPoint = Exclude<Failpoint, `move.${string}` | `worker.${string}`>;
+const NAMES = ALL.filter((n): n is HandoverPoint => !/^(move|worker)\./.test(n));
 
 describe('the failpoint registry', () => {
   it('runs a step as it is while nothing arms it', async () => {
@@ -61,7 +64,7 @@ describe('the failpoint registry', () => {
   it('names every failpoint where a step of the code runs it', () => {
     const sources = ['packages/svalld/src', 'packages/cli/src'].flatMap((dir) => (fs.readdirSync(path.join(REPO, dir), { recursive: true }) as string[])
       .filter((f) => f.endsWith('.ts') && !f.endsWith('failpoints.ts')).map((f) => fs.readFileSync(path.join(REPO, dir, f), 'utf8')));
-    expect(NAMES.filter((name) => !sources.some((text) => text.includes(`'${name}'`)))).toEqual([]);
+    expect(ALL.filter((name) => !sources.some((text) => text.includes(`'${name}'`)))).toEqual([]);
   });
 });
 
@@ -75,7 +78,7 @@ describe('the failpoint registry', () => {
  * resume after the crash `after` names reaches the step, as an abort never gets that far.
  */
 type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void; resumes?: true; resumeOnly?: true };
-const REACH: Record<Failpoint, Reach> = {
+const REACH: Record<HandoverPoint, Reach> = {
   'source.freeze.journal': { scenario: 'move', times: 1 },
   'source.freeze.surrender': { scenario: 'move', times: 1 },
   'source.rest.terminated': { scenario: 'move', times: 1 },

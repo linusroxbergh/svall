@@ -25,6 +25,7 @@ import { startHookReceiver } from './hooks/receiver.js';
 import { HomeLinks, sshTransport } from './link/home.js';
 import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
+import { handoverGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, copiedRemedy, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
@@ -32,6 +33,8 @@ import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
+import { Placement } from './placement/move.js';
+import { PrepareService } from './placement/prepare.js';
 import { Router, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
@@ -246,8 +249,18 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
   const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, ...(connection && { report: (r: RobotSync) => connection.report(r) }) });
-  if (connection) Object.assign(calls, workerCalls({ fleet, store, me, log }));
   const terminals = new TerminalHub(fleet, tmux, store, log);
+  // what each machine's agent CLIs are: a handover and a move read them
+  const agents = agentProber(realProbeDeps(paths.env));
+  if (connection && worker) {
+    const prepare = new PrepareService({
+      store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
+    });
+    Object.assign(calls, workerCalls({ fleet, store, me, log }), prepare.handlers);
+  }
+  const placement = links && new Placement({
+    store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, config, release: runtimeVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
+  });
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const authority = (): Authority | undefined => {
     if (off.has('gateway')) return undefined;
@@ -256,7 +269,7 @@ async function start(opts: Options): Promise<Daemon> {
     return named ? opts.authority ?? { get: (id) => fleetAuthority({ gatewayMachineId: named, machineId: me }).get(id) } : undefined;
   };
   const handover = new HandoverService({
-    ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps(paths.env)), fleet, setGateway: (id) => setGateway(paths, config, id),
+    ownership, journal: openJournal(paths), agents, fleet, setGateway: (id) => setGateway(paths, config, id),
     ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
     authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
     source: {
@@ -341,9 +354,11 @@ async function start(opts: Options): Promise<Daemon> {
       await connection.start();
       teardown.push(() => connection.stop());
     }
-    if (links) {
+    if (links && placement) {
       links.start();
-      teardown.push(() => links.stop());
+      teardown.push(() => links.stop(), () => placement.stop());
+      // a move a stop left unfinished: undone before its commit, run on after it; one whose worker is down waits for it
+      await placement.recoverMoves().catch((e: Error) => log.error(`moves: ${e.message}`));
     }
     log.info(`svalld started: home=${paths.home} port=${api.port}`);
     return {

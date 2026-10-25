@@ -43,6 +43,9 @@ export const handoverGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmon
 /** git asking a remote with this machine's own credentials: it never prompts for one, and answers within 20 s. */
 export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
 
+/** git fetching from a remote with this machine's own credentials, which never prompts for one. */
+export const cloneGit: GitRunner = gitRunner(600_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
+
 /** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
 export type GitDirs = { root: string; commonDir: string; gitDir: string };
 

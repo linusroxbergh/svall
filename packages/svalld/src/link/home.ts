@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
 import { ApiError, MachineId, type LinkFrame, type MachineLink } from '@svall/protocol';
@@ -115,6 +116,20 @@ export class WorkerLink {
     return this.stream.call<T>(method, params, o).catch((e: unknown) => {
       throw e instanceof ApiError && e.code === 'not_reachable' ? this.unreachable() : e;
     });
+  }
+
+  /** Streams `file` as blob `id`, which the worker has said it takes. */
+  sendBlob(id: string, file: string): Promise<void> {
+    if (!this.stream || !this.peer) return Promise.reject(this.unreachable());
+    return this.stream.sendBlob(id, fs.createReadStream(file), fs.statSync(file).size).catch((e: unknown) => {
+      throw e instanceof ApiError && e.code === 'not_reachable' ? this.unreachable() : e;
+    });
+  }
+
+  /** Writes blob `id` to `into` as the worker sends it; to be asked before the worker is told to send. */
+  receiveBlob(id: string, into: string): Promise<{ sha256: string }> {
+    if (!this.stream || !this.peer) return Promise.reject(this.unreachable());
+    return this.stream.receiveBlob(id, into);
   }
 
   /** Sends `snap` to a synced worker; settles once the worker has taken it or the link is gone. */

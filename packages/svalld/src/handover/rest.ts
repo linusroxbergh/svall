@@ -6,8 +6,7 @@ import type { TerminalHub } from '../terminals.js';
 import { noServer, type LiveWindow, type Tmux } from '../tmux/tmux.js';
 import { boundary } from './failpoints.js';
 import { ProcessTable, bootId, killGroup, suspended, type PaneProcesses, type Proc } from './processes.js';
-import type { SourceJournal } from './journal.js';
-import type { HandoverService } from './service.js';
+import type { JournalState, SourceJournal } from './journal.js';
 
 export type TerminalRef = { robotId: string; term?: 2 };
 
@@ -41,7 +40,8 @@ export type RestDeps = {
   store: Pick<Store, 'state' | 'update' | 'subscribe'>;
   tmux: Pick<Tmux, 'listWindows' | 'sendBytes' | 'killWindow'>;
   viewers: Pick<TerminalHub, 'detach'>;
-  journal: Pick<HandoverService, 'journalState' | 'write'>;
+  /** The open source journal the rest records what it stops in: a handover's, or a move's. */
+  journal: { journalState(): JournalState; write(j: SourceJournal): void };
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
   kill?: (group: number, signal: NodeJS.Signals) => void;
   clock?: Clock;
@@ -61,6 +61,8 @@ export type RestOptions = {
   callTimeoutMs?: number;
   /** Stops the wait. Once windows start closing, resting runs to the end. */
   cancel?: AbortSignal;
+  /** The terminals to rest; absent, every one. */
+  only?: (t: TerminalRef) => boolean;
 };
 
 // inside the freeze call's budget, with room for the settling that follows an interrupt; a later interrupt extends both
@@ -250,7 +252,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     x.state = deps.store.state;
     const { table } = seen;
     x.alive = (group) => table.alive(group);
-    const current = new Map(classifyTerminals(x.state, seen.live, seen.table).map((c) => [keyOf(c), c]));
+    const current = new Map(classifyTerminals(x.state, seen.live, seen.table).filter((c) => o.only?.(c) ?? true).map((c) => [keyOf(c), c]));
     // a frozen fleet opens no window, so the terminals live at the recheck are all there are
     tracks ??= [...current.entries()].map(([key, c]) => ({ ...refOf(c), key }));
     const steps = tracks.map((t) => ({ t, c: current.get(t.key), s: step(t, current.get(t.key), x) }));
@@ -264,7 +266,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     }
     if (blockers.length) return { ok: false, blockers };
     for (const { t, c } of steps) if (c && t.terminatedAt === undefined) { t.agent = c.agent; t.flags = launchFlags(c); }
-    if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now(), () => serversGone(deps, o));
+    if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now(), () => serversGone(deps, o, o.only));
     for (const { t, c, s } of steps) {
       if (s === 'interrupt' && c) {
         const escape = () => bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
@@ -435,7 +437,9 @@ async function layToRest(
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
   deps.store.update((d) => {
-    for (const id of Object.keys(d.robots)) for (const t of [{ robotId: id }, { robotId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
+    for (const id of Object.keys(d.robots)) {
+      for (const t of [{ robotId: id }, { robotId: id, term: 2 as const }]) if (o.only?.(t) ?? true) lay(d, t, stopped.has(keyOf(t)));
+    }
   });
   await gone();
   return { ok: true, terminals: open.map(({ t }) => refOf(t)) };

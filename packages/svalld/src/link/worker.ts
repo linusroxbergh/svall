@@ -69,6 +69,20 @@ export class HomeConnection {
     });
   }
 
+  /** Streams `file` as blob `id`, which the home has said it takes. */
+  sendBlob(id: string, file: string): Promise<void> {
+    const link = this.link;
+    if (!link?.live) return Promise.reject(this.unreachable());
+    return link.stream.sendBlob(id, fs.createReadStream(file), fs.statSync(file).size);
+  }
+
+  /** Writes blob `id` to `into` as the home sends it; to be asked before the home is told to send. */
+  receiveBlob(id: string, into: string): Promise<{ sha256: string }> {
+    const link = this.link;
+    if (!link?.live) return Promise.reject(this.unreachable());
+    return link.stream.receiveBlob(id, into);
+  }
+
   report(r: RobotSync): void {
     const seq = this.o.outbox.append('robot.sync', r);
     if (this.link?.live) this.link.stream.send({ t: 'event', seq, kind: 'robot.sync', data: r });

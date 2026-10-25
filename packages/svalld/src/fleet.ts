@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -240,6 +240,7 @@ export class Fleet extends EventEmitter<Events> {
 
   live(id: string): LiveRobot {
     const c = this.local(id);
+    this.still(id);
     if (!c.tmux) throw new Dormant(`${c.name} is dormant; revive it first`);
     return c as LiveRobot;
   }
@@ -248,6 +249,7 @@ export class Fleet extends EventEmitter<Events> {
   terminal(id: string, term?: 2): { tmux: NonNullable<Robot['tmux']>; agent?: Agent } {
     if (term !== 2) return this.live(id);
     const c = this.local(id);
+    this.still(id);
     if (!c.second) throw new Invalid(`${c.name} has no second terminal`);
     if (!c.second.tmux) throw new Dormant(`the second terminal of ${c.name} is dormant; revive it first`);
     return { tmux: c.second.tmux, agent: c.second.agent };
@@ -256,6 +258,13 @@ export class Fleet extends EventEmitter<Events> {
   // a robot placed on another machine has its windows, processes and files there, which nothing here looks at
   private runsHere(c: Robot): boolean {
     return this.deps.remote?.runsHere(c) ?? true;
+  }
+
+  // a robot on its way to another machine opens no terminal, takes no prompt and is not closed; only `move`, the move carrying it, revives it
+  private still(id: string, move?: string): void {
+    const { robots, machines } = this.deps.store.state;
+    const m = Object.hasOwn(robots, id) ? robots[id].moving : undefined;
+    if (m && m.id !== move) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? 'this Mac'}`);
   }
 
   // the robot, when it runs here; one placed elsewhere is refused, whatever ids its machine reported for its windows
@@ -712,6 +721,7 @@ export class Fleet extends EventEmitter<Events> {
   async closeRobot(id: string): Promise<void> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.robot(id);
+    this.still(id);
     const far = this.deps.remote?.forward(id, 'robot.close', { id });
     if (far) {
       this.deps.store.update((d) => { delete d.robots[id]; });
@@ -793,12 +803,14 @@ export class Fleet extends EventEmitter<Events> {
    *  Only the owner opens windows, and a terminal an open handover carries is that handover's to reopen. */
   async resumeInterrupted(): Promise<void> {
     if (!this.writable()) return;
-    const ids = Object.values(this.deps.store.state.robots).filter((c) => c.revive?.interrupted && this.runsHere(c) && !this.carried(c.id)).map((c) => c.id);
+    const ids = Object.values(this.deps.store.state.robots).filter((c) => c.revive?.interrupted && !c.moving && this.runsHere(c) && !this.carried(c.id)).map((c) => c.id);
     await Promise.all(ids.map((id) => this.reviveRobot(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
   }
 
-  // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place of the resume
-  reviveRobot(id: string, prompt?: string, fresh?: string): Promise<Revived> {
+  // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place
+  // of the resume; `move` is the move a moving robot is revived by
+  reviveRobot(id: string, prompt?: string, fresh?: string, move?: string): Promise<Revived> {
+    this.still(id, move);
     // the protocol's revive carries neither, so a robot placed elsewhere is refused one
     if ((prompt !== undefined || fresh !== undefined) && this.deps.remote?.placedAt(id)) this.local(id);
     const far = this.deps.remote?.forward(id, 'robot.revive', { id });
@@ -1016,6 +1028,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
+    this.still(id);
     return this.deps.remote?.forward(id, 'robot.run', { id, text, enter, term })?.then((r) => r.delivery) ?? this.prompts.run(id, text, enter, term);
   }
 
