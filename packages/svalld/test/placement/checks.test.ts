@@ -184,7 +184,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const d = depsOf(t, [c], { gateway: true, reachable: false, terminals: [{ robotId: 'c_1', class: 'agent-working' }] });
     expect(await refusal(d)).toEqual({
       reason: 'this fleet has a gateway',
-      action: 'remove the gateway in Settings › Machines first',
+      action: "svall host upgrade linus-vault makes it this fleet's worker",
       details: [
         'mission control stays on this Mac; move a robot from another island',
         'linus-vault is not reachable; try again when it is awake',
@@ -212,7 +212,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
   it('refuses while fleet.json names a gateway, and not without one', async () => {
     const t = machines();
     expect(await refusal(depsOf(t, [shellIn(t)], { gateway: true })))
-      .toEqual({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first', details: [] });
+      .toEqual({ reason: 'this fleet has a gateway', action: "svall host upgrade linus-vault makes it this fleet's worker", details: [] });
     await sheet(depsOf(t, [shellIn(t)]));
   });
 
@@ -222,7 +222,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const d = { ...depsOf(t, [shellIn(t)]), gateway: () => named };
     await sheet(d);
     named = W;
-    expect(await refusal(d)).toEqual({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first', details: [] });
+    expect(await refusal(d)).toEqual({ reason: 'this fleet has a gateway', action: "svall host upgrade linus-vault makes it this fleet's worker", details: [] });
   });
 
   it('refuses mission control, and not a robot on an island', async () => {

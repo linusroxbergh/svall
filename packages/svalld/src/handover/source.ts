@@ -193,7 +193,7 @@ function unasked(e: unknown): Blocker {
   const code = e instanceof AuthorityFailure ? e.code : undefined;
   if (code === 'identity_mismatch') return { code, message: `this machine's route to its gateway leads elsewhere: ${said}` };
   if (code === 'not_found') {
-    return { code: 'identity_mismatch', message: `the gateway holds no record of this fleet (${said}); a gateway set up again needs svall host enable <gateway> --fleet <fleet>` };
+    return { code: 'identity_mismatch', message: `the gateway holds no record of this fleet (${said}); svall -p <fleet> host upgrade <gateway> makes that machine this fleet's worker instead` };
   }
   if (code === 'authority_corrupt') {
     return { code, message: `the gateway cannot read its record of this fleet: ${said}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };

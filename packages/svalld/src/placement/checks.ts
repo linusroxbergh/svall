@@ -54,7 +54,7 @@ export type CheckDeps = {
   links: { for(machine: MachineId): Pick<WorkerLink, 'connected' | 'hello'> | undefined; call: HomeLinks['call'] };
   git: GitRunner;
   agents: AgentProber;
-  /** The gateway fleet.json names now, which `svall host enable` can change while the daemon runs. */
+  /** The gateway fleet.json names now, which `svall host upgrade` can change while the daemon runs. */
   gateway: () => MachineId | undefined;
   release: string;
   homedir: string;
@@ -176,7 +176,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  if (d.gateway()) fail({ reason: 'this fleet has a gateway', action: 'remove the gateway in Settings › Machines first' });
+  const gateway = d.gateway();
+  if (gateway) fail({ reason: 'this fleet has a gateway', action: `svall host upgrade ${named(gateway)} makes it this fleet's worker` });
   if (s.islands[c.islandId]?.kind === 'home') fail({ reason: 'mission control stays on this Mac', action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
   if ([c.agent?.kind, c.second?.agent?.kind].includes('opencode')) fail({ reason: 'OpenCode robots cannot move yet', action: 'wait for a later release' });

@@ -64,8 +64,9 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
   };
 }
 
-const line = (e: StepEvent): string =>
-  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd();
+/** A step as a run prints it; a detail of several lines, as the replicas step's, lists them under the step. */
+export const stepLine = (e: StepEvent): string =>
+  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
 
 type Op = 'add' | 'upgrade' | 'rollback' | 'remove';
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
@@ -143,7 +144,7 @@ function reporter(json: boolean, last: (o: HostOutcome) => string): { emit: (e: 
   const write = (v: unknown) => process.stdout.write(`${JSON.stringify(v)}\n`);
   if (json) return { emit: write, finish: write };
   return {
-    emit: (e) => { if (e.status !== 'start') process.stdout.write(`${line(e)}\n`); },
+    emit: (e) => { if (e.status !== 'start') process.stdout.write(`${stepLine(e)}\n`); },
     finish: (o) => { process.stdout.write(`${last(o)}\n`); },
   };
 }

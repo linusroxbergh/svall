@@ -571,7 +571,7 @@ describe('preflight', () => {
   it('blocks a Begin the gateway refuses with the code that says why, transaction_open only for a handover it holds open', async () => {
     const cases: [string, string, RegExp][] = [
       ['authority_corrupt', 'authority_corrupt', /unreadable.*svall fleet recover/],
-      ['not_found', 'identity_mismatch', /holds no record.*svall host enable/],
+      ['not_found', 'identity_mismatch', /holds no record.*svall -p <fleet> host upgrade <gateway>/],
       ['internal', 'authority_unreachable', /failed/],
       ['invalid_phase', 'transaction_open', /is ready-to-commit/],
       ['transaction_mismatch', 'transaction_open', /already in handover/],
@@ -664,9 +664,9 @@ describe('preflight', () => {
     for (const w of [local, far, prompt, daemon]) expect(w.ops).not.toContain('gateway:begin');
   });
 
-  it('blocks at once, naming host enable, on a destination whose companion runs another fleet, and asks it only once', async () => {
+  it('blocks at once, naming host upgrade, on a destination whose companion runs another fleet, and asks it only once', async () => {
     const w = new World();
-    const said = 'trift answered with fleetId 47a74455-7dbc-46c0-8076-30d830cf4f72, not ours: `svall host enable trift --fleet private` gives it a copy of this fleet';
+    const said = 'trift answered with fleetId 47a74455-7dbc-46c0-8076-30d830cf4f72, not ours: `svall host upgrade trift` makes it this fleet\'s worker';
     w.destination.answers['system.info'] = (() => { throw new FleetMismatch(said); }) as never;
     const out = await controller(w).start(trift, {});
     expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: said }] });

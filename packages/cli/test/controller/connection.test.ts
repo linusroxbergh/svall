@@ -107,14 +107,14 @@ describe('remote connections', () => {
     expect(err).toBeInstanceOf(MachineMismatch);
   });
 
-  it('names host enable as the way on when the companion runs another fleet under the profile', async () => {
+  it('names host upgrade as the way on when the companion runs another fleet under the profile', async () => {
     const theirs = FleetId.parse(crypto.randomUUID());
     ssh.answer(description({ port: 4711, fleetId: theirs }));
-    for (const [profile, flag] of [['work', 'work'], [undefined, 'private']] as const) {
+    for (const [profile, flag] of [['work', '-p work '], [undefined, '']] as const) {
       const err = await remoteConnectionInfo(await master(), remote, { fleetId: FLEET, ...(profile && { profile }) }).catch((e: SshError) => e);
       expect(err).toBeInstanceOf(FleetMismatch);
       expect((err as Error).message).toContain(`trift answered with fleetId ${theirs}, not ${FLEET}`);
-      expect((err as Error).message).toContain(`\`svall host enable trift --fleet ${flag}\``);
+      expect((err as Error).message).toContain(`\`svall ${flag}host upgrade trift\` makes it this fleet's worker`);
     }
   });
 

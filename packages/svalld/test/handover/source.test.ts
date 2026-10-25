@@ -425,7 +425,7 @@ describe('source preflight', () => {
       [new AuthorityFailure('invalid_request', '/Users/linus/.config/svall/machines.json names no ssh route to the gateway 1111'), 'authority_unreachable', /no ssh route.*svall host add/],
       [new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'), 'authority_unreachable', /did not answer owner\.get/],
       [new AuthorityFailure('authority_corrupt', `the record for fleet ${fleetId} is unreadable`), 'authority_corrupt', /unreadable.*svall fleet recover/],
-      [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall host enable/],
+      [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall -p <fleet> host upgrade <gateway>/],
     ];
     for (const [failure, code, says] of cases) {
       b.gateway.refuses = failure;

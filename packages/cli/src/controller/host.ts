@@ -5,7 +5,7 @@ import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@sva
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
-import { isFleetName, isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
+import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
@@ -535,6 +535,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
       await run.step('enrol', () => enrol(master, { name: o.name, machine, svallBase: remote.svallBase }, d));
+      const left = gatewayLeft(d);
+      if (left) await run.step('fleet', () => Promise.resolve({ value: undefined, status: 'warn' as const, ...left }));
 
       const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, homedir: d.homedir }, run);
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
@@ -611,6 +613,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       checks.push(v.worker === true ? { name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' }
         : { name: 'worker', status: 'fail', detail: `this fleet does not run there as a worker: svall host upgrade ${entry.record.name} makes it one` });
     } catch (err) { checks.push(failed('release', err)); }
+    const left = gatewayLeft(d);
+    if (left) checks.push({ name: 'fleet', status: 'fail', detail: `${left.detail}; ${left.action}` });
     try {
       const far = await farVersions(agentCall(master, { home: entry.record.home, svallBase: base, report }));
       checks.push({ name: 'versions', ...pick(versionsOutcome(far, await d.localAgents().catch((err: Error) => err), entry.record.ssh)) });
@@ -651,8 +655,9 @@ async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<Ss
   return { value: opened, detail: `connected to ${entry.record.ssh}` };
 }
 
-// $1 the units folder there, $2 the gateway's unit, $3 the fleet's: whether the gateway's is there, and whether the fleet's runs it as a worker
-const UNITS = '[ -f "$1/$2" ] && echo gateway; if [ -f "$1/$3" ]; then if grep -q -- --worker "$1/$3"; then echo worker; else echo plain; fi; fi; exit 0';
+// $1 the units folder there, $2 the gateway's unit, $3 the fleet's, $4 the fleet's replicas folder: whether the gateway's
+// is there, whether the fleet's runs it as a worker, and whether an earlier handover left records in the replicas folder
+const UNITS = '[ -f "$1/$2" ] && echo gateway; if [ -f "$1/$3" ]; then if grep -q -- --worker "$1/$3"; then echo worker; else echo plain; fi; fi; for f in "$4"/*/*.json; do [ -f "$f" ] && echo replicas && break; done; exit 0';
 // $1 the gateway's unit file
 const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload';
 // $1 the fleet's replicas folder: each record an earlier handover left in it, ended by a NUL
@@ -690,10 +695,13 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => {
       const out = machineOutcome(d.registry, name);
-      // its daemon there runs the fleet itself, which enrolling it as a worker would take over
-      if ([cachedOwner(d.fleet.home)?.ownerMachineId, readRoute(d.fleet.home)?.ownerMachineId].includes(out.value.id)) {
-        throw new StepError(`this fleet runs on ${name}, where a handover moved it`,
-          `bring it back to this Mac with svall ${d.fleet.profile ? `-p ${d.fleet.profile} ` : ''}handover local, then upgrade ${name} again`);
+      // a fleet whose daemon runs there itself, which enrolling the machine or stopping its gateway would take from it
+      const there = [d.fleet.home, ...fleetHomes(d.homedir).filter((home) => home !== d.fleet.home)]
+        .filter((home) => [cachedOwner(home)?.ownerMachineId, readRoute(home)?.ownerMachineId].includes(out.value.id));
+      if (there.length) {
+        const [them, runs] = there.length > 1 ? ['them', 'run'] : ['it', 'runs'];
+        throw new StepError(`${there.map((home) => (home === d.fleet.home ? 'this fleet' : home)).join(' and ')} ${runs} on ${name}, where a handover moved ${them}`,
+          `bring ${them} back to this Mac with ${there.map((home) => svallAt(home, d, 'handover local')).join(' and ')}, then upgrade ${name} again`);
       }
       return Promise.resolve(out);
     });
@@ -750,40 +758,54 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
   });
 }
 
-/** The far machine as this fleet's worker: enrolled where it is not one, its gateway unit gone, and fleet.json naming no gateway. */
+/**
+ * The far machine as this fleet's worker: enrolled where it is not one, fleet.json naming it no gateway, its gateway unit
+ * gone once no fleet here names it, and the folders an earlier handover left there named.
+ */
 async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d: HostDeps): Promise<void> {
   const name = entry.record.name;
   const unitDir = unitDirOf(entry.record.home);
+  const replicas = path.posix.join(profileHome(d.fleet.profile ?? PRIVATE, entry.record.home), 'replicas');
   const found = await run.step('enrol', async () => {
-    const said = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE)), 'the units there')).split('\n');
-    const gateway = said.includes('gateway');
-    if (said.includes('worker') && !gateway) return { value: { gateway, enrolled: false }, status: 'skip' as const, detail: `${name} serves this fleet as a worker` };
-    if (!gateway && !said.includes('plain')) {
-      return { value: { gateway, enrolled: false }, status: 'warn' as const, detail: `no unit of this fleet runs on ${name}`, action: `svall host add ${name} --ssh ${entry.record.ssh} again makes it this fleet's worker` };
+    const said = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE), replicas), 'the units there')).split('\n');
+    const at = { gateway: said.includes('gateway'), replicas: said.includes('replicas'), enrolled: false };
+    if (said.includes('worker')) return { value: at, status: 'skip' as const, detail: `${name} serves this fleet as a worker` };
+    if (!at.gateway && !said.includes('plain')) {
+      return { value: at, status: 'warn' as const, detail: `no unit of this fleet runs on ${name}`, action: `svall host add ${name} --ssh ${entry.record.ssh} again makes it this fleet's worker` };
     }
     const enrolled = await enrol(master, { name, machine: entry.id, svallBase: entry.record.svallBase }, d);
-    return { ...enrolled, value: { gateway, enrolled: true } };
+    return { ...enrolled, value: { ...at, enrolled: true } };
   });
+  // before the gateway unit goes, so a run stopped past here leaves a fleet with no gateway, not one naming a worker
+  if (found.gateway || found.enrolled || entry.record.gateway || gatewayOf(d.fleet.home)) {
+    await run.step('fleet', () => {
+      const file = resolvePaths(d.fleet.home).fleetConfig;
+      if (readFleet(file).gatewayMachineId === entry.id) patchFleetConfig(file, { gatewayMachineId: undefined });
+      if (!fleetsNaming(entry.id, d.homedir).length) {
+        d.registry.clearGateway(entry.id);
+        d.registry.save();
+      }
+      const left = gatewayLeft(d);
+      return Promise.resolve(left ? { value: undefined, status: 'warn' as const, ...left } : { value: undefined, detail: `${file} names no gateway` });
+    });
+  }
   if (found.gateway) {
     await run.step('gateway', async () => {
+      const others = fleetHomes(d.homedir).filter((home) => gatewayOf(home) === entry.id);
+      if (others.length) {
+        return {
+          value: undefined, status: 'warn' as const,
+          detail: `${GATEWAY_UNIT} keeps running there for ${others.join(', ')}, which ${others.length > 1 ? 'name' : 'names'} ${name} as gateway`,
+          action: others.map((home) => svallAt(home, d, `host upgrade ${name}`)).join('; '),
+        };
+      }
       await probe(master, sh('svall-gateway-off', GATEWAY_OFF, path.posix.join(unitDir, GATEWAY_UNIT)), `systemctl --user disable --now ${GATEWAY_UNIT}`);
       return { value: undefined, detail: `${GATEWAY_UNIT} is stopped and removed there` };
     });
   }
-  const file = resolvePaths(d.fleet.home).fleetConfig;
-  const names = (): boolean => { try { return readFleetConfig({ fleetConfig: file }).gatewayMachineId === entry.id; } catch { return false; } };
-  if (found.gateway || found.enrolled || entry.record.gateway || names()) {
-    await run.step('fleet', () => {
-      if (readFleet(file).gatewayMachineId === entry.id) patchFleetConfig(file, { gatewayMachineId: undefined });
-      d.registry.clearGateway(entry.id);
-      d.registry.save();
-      return Promise.resolve({ value: undefined, detail: `${file} names no gateway` });
-    });
-  }
-  if (found.gateway || found.enrolled) {
+  if (found.gateway || found.enrolled || found.replicas) {
     await run.step('replicas', async () => {
-      const home = path.posix.join(entry.record.home, d.fleet.profile ? `.svall-${d.fleet.profile}` : '.svall');
-      const folders = await replicaFolders(master, path.posix.join(home, 'replicas'));
+      const folders = await replicaFolders(master, replicas);
       return folders.length
         ? { value: undefined, status: 'warn' as const, detail: folders.join('\n') }
         : { value: undefined, status: 'skip' as const, detail: 'no folder an earlier handover copied is left there' };
@@ -840,10 +862,33 @@ function fleetHomes(homedir: string): string[] {
     .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
 }
 
+/** The gateway the fleet at `home` names; one whose fleet.json cannot be read names none. */
+function gatewayOf(home: string): MachineId | undefined {
+  try { return readFleetConfig({ fleetConfig: resolvePaths(home).fleetConfig }).gatewayMachineId; } catch { return undefined; }
+}
+
 /** The fleets on this Mac whose fleet.json names `id` as their gateway, by profile; one that cannot be read names none. */
 export function fleetsNaming(id: MachineId, homedir: string): string[] {
-  const names = (home: string): boolean => { try { return readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === id; } catch { return false; } };
-  return fleetHomes(homedir).filter(names).map((home) => profileOf(home, homedir));
+  return fleetHomes(homedir).filter((home) => gatewayOf(home) === id).map((home) => profileOf(home, homedir));
+}
+
+/** `svall <args>` for the fleet at `home`: by its -p, or by its folder for a home named for a command svall keeps. */
+function svallFor(home: string, homedir: string, args: string): string {
+  const profile = profileOf(home, homedir);
+  if (profile !== PRIVATE && !isProfileName(profile)) return `SVALL_HOME=${shq(home)} svall ${args}`;
+  return `svall ${profile === PRIVATE ? '' : `-p ${profile} `}${args}`;
+}
+
+// this run's fleet by the -p it was run with, any other by its home
+const svallAt = (home: string, d: HostDeps, args: string): string =>
+  (home === d.fleet.home ? `svall ${d.fleet.profile ? `-p ${d.fleet.profile} ` : ''}${args}` : svallFor(home, d.homedir, args));
+
+/** What is left while this fleet's fleet.json names a gateway, as placement refuses every move then. */
+function gatewayLeft(d: HostDeps): { detail: string; action: string } | undefined {
+  const id = gatewayOf(d.fleet.home);
+  if (!id) return undefined;
+  const name = d.registry.get(id)?.record.name ?? id;
+  return { detail: `this fleet names ${name} as its gateway, and no robot moves while it does`, action: `${svallAt(d.fleet.home, d, `host upgrade ${name}`)} makes it this fleet's worker` };
 }
 
 /**
@@ -855,12 +900,7 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   const me = d.machineId();
   const homes = fleetHomes(d.homedir);
   const named = homes.filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
-  const svall = (home: string, args: string): string => {
-    const profile = profileOf(home, d.homedir);
-    // a home named for a command svall keeps is no -p's, and is reached by its folder
-    if (profile !== PRIVATE && !isProfileName(profile)) return `\`SVALL_HOME=${shq(home)} svall ${args}\``;
-    return `\`svall ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
-  };
+  const svall = (home: string, args: string): string => `\`${svallFor(home, d.homedir, args)}\``;
   // a gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it, and whichever
   // gateway it is, the handover may have committed the fleet to this machine before any cache here said so
   const open = homes.filter((home) => fs.existsSync(resolvePaths(home).journal) || fileStore(path.join(home, 'controller')).read() !== undefined);

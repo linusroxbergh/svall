@@ -160,7 +160,7 @@ const unrun = (machines: MachineView[], owner: MachineId): string[] => machines.
 const aloneRisks = (o: { owner: string; lost: string }): string[] => [
   `${o.lost} is not reached here and never learns of this record: if it comes back still running this fleet, both machines run it until it is stopped there.`,
   `Work done since the last handover on a machine that loses the fleet stays on that machine's disk only; none of it is carried to ${o.owner}.`,
-  'No machine is this fleet\'s gateway from here on: nothing can hand it over until `svall host enable <host> --fleet <fleet>` names one.',
+  'No machine is this fleet\'s gateway from here on, so nothing can hand it over; `svall -p <fleet> host upgrade <host>` makes a machine this fleet\'s worker, where its robots move instead.',
 ];
 
 const risks = (o: { owner: string; gateway: string; lost?: string }): string[] => [
@@ -375,7 +375,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
       `${gatewayName} may still run this fleet if it comes back, and it never learns of this record: stop this fleet's daemon there before it runs again`,
       `\`svall host remove ${gatewayName} --forget\` drops ${gatewayName} from this machine's registry once it is gone for good`,
       ...machines.filter((m) => m.machineId !== local && m.machineId !== gatewayId && m.from !== 'daemon').map((m) => `${m.name} still names ${gatewayName} as this fleet's gateway and is not told of this record`),
-      `\`svall host enable <host> --fleet <fleet>\` makes a machine this fleet's gateway again, and handovers work as before`,
+      `\`svall -p <fleet> host upgrade <host>\` makes a machine this fleet's worker, where its robots move instead`,
     ];
     if (!running) {
       d.emit({ event: 'recover.result', data: { result: 'incomplete', message: `the record is written here, and ${owner.record.name}'s daemon has not taken it: it runs the fleet from it when it next starts`, actions } });

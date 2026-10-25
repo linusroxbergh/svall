@@ -63,7 +63,7 @@
 .host-step[data-status="warn"] .host-mark { color: var(--working); }
 .host-step[data-status="fail"] .host-mark { color: var(--blocked); }
 .host-name { flex: none; width: 72px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); }
-.host-said { min-width: 0; overflow-wrap: anywhere; }
+.host-said { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 /* what the user has to go and do about this step, which the checklist never hides */
 .host-said em { display: block; font-style: normal; color: var(--sand); }
 /* a terminal on the machine, wide enough for a login's long link; the shell draws it over the surface */

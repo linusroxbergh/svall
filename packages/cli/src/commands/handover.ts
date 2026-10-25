@@ -7,7 +7,6 @@ import { Command, Option as Flag } from 'commander';
 import { migrateState, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
 import { InvalidConfig, namedGateway, patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { resolvePaths } from '@svall/svalld/paths';
-import { profileOf } from '@svall/svalld/profile';
 import { messageOf } from '@svall/svalld/text';
 import type { Handover } from '../controller/handover.js';
 import { connectHandover, type Connected } from '../controller/reach.js';
@@ -97,7 +96,7 @@ function placedRobots(fleetHome: string): string | undefined {
 }
 
 const noGateway = (c: Ctx): string =>
-  `this fleet has no gateway, so no other machine can be handed it; name one with \`svall host enable <host> --fleet ${c.profile ?? profileOf(c.fleetHome)}\``;
+  `this fleet has no gateway, so no other machine can be handed it; \`svall ${c.profile ? `-p ${c.profile} ` : ''}host upgrade <host>\` makes a machine this fleet's worker, where its robots move instead`;
 const live = (pid: number | undefined, w: Words): string =>
   `a handover of this fleet is already running here${pid ? ` (pid ${pid})` : ''}; \`${w.svall('handover attach')}\` follows it`;
 

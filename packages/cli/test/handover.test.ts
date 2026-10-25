@@ -355,7 +355,7 @@ describe('svall handover', () => {
   it('refuses a fleet with no gateway before anything else, naming the command that gives it one', async () => {
     const h = harness({ gateway: false, profile: 'lab' });
     expect(await runHandover(start(), h.ctx)).toEqual({ code: 1 });
-    expect(h.out()).toContain('svall host enable <host> --fleet lab');
+    expect(h.out()).toContain('`svall -p lab host upgrade <host>` makes a machine this fleet\'s worker');
     expect(h.connects()).toBe(0);
     expect(fs.existsSync(h.paths.dir)).toBe(false);
     expect(await runHandover({ kind: 'resume' }, harness({ gateway: false, json: true }).ctx)).toEqual({ code: 1 });
@@ -364,7 +364,7 @@ describe('svall handover', () => {
     const helper = harness({ gateway: false });
     expect(await runHandover(start(), { ...helper.ctx, helper: true })).toEqual({ code: 1 });
     expect(helper.out()).toBe('');
-    expect(helper.err()).toContain('svall host enable <host> --fleet');
+    expect(helper.err()).toContain('`svall host upgrade <host>`');
   });
 
   it('svall handover linus-vault refuses while a robot is placed there', async () => {
@@ -816,7 +816,7 @@ describe('svall handover', () => {
 
     const ungated = harness({ gateway: false, json: true });
     expect(await runStatus(ungated.ctx)).toBe(0);
-    expect(ungated.events()).toEqual([{ event: 'handover.status', data: expect.objectContaining({ standing: 'none', reason: expect.stringContaining('svall host enable') }) }]);
+    expect(ungated.events()).toEqual([{ event: 'handover.status', data: expect.objectContaining({ standing: 'none', reason: expect.stringContaining('svall host upgrade <host>') }) }]);
   });
 
   it('says where the handover stands naming each machine as the registry does, and the handover once', async () => {
