@@ -556,9 +556,5 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). There is no CLA.
 
 ## License
 
-GPL-3.0-or-later, see [`LICENSE`](LICENSE). Copyright (c) 2026 Linus Roxbergh.
-The fonts are OFL; their folder has the licence file. The third-party software
-the app and the controller carry is listed in
-[`apps/desktop/mac/NOTICE`](apps/desktop/mac/NOTICE) and the release's
-`licenses/NOTICE`. The name and icon are not covered by the licence, see
-[`TRADEMARK.md`](TRADEMARK.md).
+GPL-3.0-or-later, see [`LICENSE`](LICENSE). The name and icon are not covered by
+the licence, see [`TRADEMARK.md`](TRADEMARK.md).
