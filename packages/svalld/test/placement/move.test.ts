@@ -9,7 +9,7 @@ import { fingerprintOf } from '../../src/placement/bundle.js';
 import { Store } from '../../src/store.js';
 import { hasGit } from '../handover/git-fixture.js';
 import { cleanHomes } from '../helpers.js';
-import { Crash, SID, moveWorld, until, type MoveWorld } from './move-world.js';
+import { Crash, OSID, SID, moveWorld, until, type MoveWorld } from './move-world.js';
 import { H, W } from './world.js';
 
 const worlds: MoveWorld[] = [];
@@ -281,6 +281,39 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
     expect(fs.readFileSync(transcript(w.macClaude), 'utf8')).toBe(fs.readFileSync(transcript(w.farClaude), 'utf8'));
     expect(w.mac1.opened).toEqual(['c_1']);
+  });
+
+  it('an OpenCode robot moves with its session written out of OpenCode here and read into OpenCode there, and comes back the same way', async () => {
+    const w = open({ opencode: true });
+    const home = await w.start();
+    const log = (dir: string) => path.join(dir, `${OSID}.jsonl`);
+
+    await home.placement.start('c_1', W);
+    // the worker's OpenCode holds the session in the robot's folder there, and this Mac's keeps its own copy
+    expect(w.opencode.far.sessions.get(OSID)).toEqual({ directory: w.farWt, messages: [{ id: 'msg_1' }, { id: 'msg_2' }] });
+    expect(w.opencode.mac.sessions.get(OSID)).toEqual({ directory: w.wt, messages: [{ id: 'msg_1' }, { id: 'msg_2' }] });
+    expect(fs.readFileSync(log(w.farOpencode), 'utf8')).toBe(fs.readFileSync(log(w.macOpencode), 'utf8'));
+    expect(fs.existsSync(path.join(w.farOpencode, 'exports'))).toBe(false);
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: w.farWt, agent: { kind: 'opencode', transcriptPath: log(w.farOpencode) } });
+    expect(w.vault.lines.at(-1)?.text).toMatch(new RegExp(`^opencode .*-s ${OSID}$`));
+
+    // a turn there, then the way back replaces this Mac's older copy with the worker's
+    w.opencode.far.sessions.get(OSID)!.messages.push({ id: 'msg_3' });
+    await home.placement.start('c_1', H);
+    expect(w.opencode.mac.sessions.get(OSID)).toEqual({ directory: w.wt, messages: [{ id: 'msg_1' }, { id: 'msg_2' }, { id: 'msg_3' }] });
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: w.wt, agent: { kind: 'opencode', transcriptPath: log(w.macOpencode) } });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(w.mac1.lines.at(-1)?.text).toMatch(new RegExp(`^opencode .*-s ${OSID}$`));
+  });
+
+  it('a return refuses an OpenCode session this Mac went on with meanwhile, and its copy stays', async () => {
+    const w = open({ opencode: true });
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    w.opencode.mac.sessions.get(OSID)!.messages.push({ id: 'msg_here' });
+    await expect(home.placement.start('c_1', H)).rejects.toThrow(`the destination's OpenCode went on with session ${OSID} past the copy coming in`);
+    expect(w.opencode.mac.sessions.get(OSID)?.messages.at(-1)).toEqual({ id: 'msg_here' });
+    expect(home.store.state.robots.c_1.machine).toBe(W);
   });
 
   it('a robot back from a worker goes there again into the worktree it left, and is refused when that changed since', async () => {

@@ -8,7 +8,8 @@ import { boundary } from '../handover/failpoints.js';
 import { must } from '../handover/git-graph.js';
 import { clean, realPath } from '../handover/portable-path.js';
 import type { RestDeps } from '../handover/rest.js';
-import type { AgentProber } from '../handover/sessions/registry.js';
+import { cliRunner, type AgentProber } from '../handover/sessions/registry.js';
+import type { CliRun } from '../handover/sessions/types.js';
 import type { HomeConnection } from '../link/worker.js';
 import { cloneGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
@@ -17,7 +18,7 @@ import type { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, verifyBundle } from './bundle.js';
 import {
-  blobIds, changedSince, fileSha, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+  blobIds, changedSince, fileSha, importSessions, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
 } from './move.js';
 import { seedTrust } from './trust.js';
 
@@ -44,6 +45,8 @@ export type PrepareDeps = {
   log: Logger;
   moves?: MoveFiles;
   watchMs?: number;
+  /** Runs an agent CLI that keeps its sessions in a database of its own. */
+  cli?: CliRun;
 };
 
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
@@ -193,6 +196,7 @@ export class PrepareService {
         made({ files: (j.sessions ?? []).flatMap((s) => s.files.map((f) => path.join(s.destinationHome!, f.path))).filter((f) => !fs.existsSync(f)) });
         placeSessions(j.sessions ?? [], path.join(stage, 'session'));
       });
+      await importSessions(j.sessions ?? [], path.join(stage, 'session'), paths, path.join(this.files.dir, 'held'), this.d.cli ?? cliRunner());
       // the robot is here at the move's generation, marked as this machine's own record until the commit's snapshot
       // replaces it, which keeps what this machine holds of it
       boundary('worker.prepare.journal', () => {
@@ -329,7 +333,7 @@ export class PrepareService {
     if (j.phase !== 'bundle') throw new ApiError('invalid', `move ${id} is ${j.phase} on ${this.name}`);
     const c = structuredClone(this.d.store.state.robots[j.robotId]);
     const stage = this.files.stage(id);
-    const packed = await packMove(c, j, stage, this.d.git);
+    const packed = await packMove(c, j, stage, this.d.git, this.d.cli);
     const [bundle, session] = [path.join(stage, 'bundle.tar'), path.join(stage, 'session.tar')];
     const blobs = { ...(c.repo && { bundle: await fileSha(bundle) }), session: await fileSha(session) };
     const ids = blobIds(id);

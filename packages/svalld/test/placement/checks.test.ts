@@ -232,12 +232,16 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     await sheet(depsOf(t, [shellIn(t)]));
   });
 
-  it('refuses an OpenCode robot, in its main terminal or its second', async () => {
+  it('passes an OpenCode robot, whose session counts its log alone until its OpenCode writes it out', async () => {
     const t = machines();
-    const opencode = { kind: 'opencode' as const, sessionId: 'ses_1', status: 'idle' as const, lastActivityAt: 0 };
-    for (const r of [shellIn(t, { agent: opencode }), shellIn(t, { second: { cwd: t.mac, unread: false, agent: opencode } })]) {
-      expect(await refusal(depsOf(t, [r]))).toMatchObject({ reason: 'OpenCode robots cannot move yet', action: 'wait for a later release' });
-    }
+    const sid = 'ses_0123456789abAbCdEfGhIjKlMn';
+    const log = path.join(t.mac, '.svall/transcripts/opencode', `${sid}.jsonl`);
+    fs.mkdirSync(path.dirname(log), { recursive: true });
+    fs.writeFileSync(log, '{"kind":"agent"}\n');
+    const agent = { kind: 'opencode' as const, sessionId: sid, transcriptPath: log, status: 'idle' as const, lastActivityAt: 0 };
+    const local: AgentProbe[] = [{ kind: 'opencode', version: '2.1.4', home: path.dirname(log), loggedIn: true, hooks: true }];
+    const far: AgentAdapter[] = [{ kind: 'opencode', version: '2.1.4', adapter: 1, home: `${t.far}/.svall/transcripts/opencode`, loggedIn: true, hooks: true }];
+    expect((await sheet(depsOf(t, [shellIn(t, { agent })], { local, far }))).sheet).toMatchObject({ sessionBytes: 17 });
   });
 
   it('refuses a robot already moving, naming where to', async () => {

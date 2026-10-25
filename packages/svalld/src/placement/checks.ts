@@ -9,7 +9,7 @@ import { must } from '../handover/git-graph.js';
 import { clean, holds } from '../handover/portable-path.js';
 import { relocate } from '../handover/relocate.js';
 import type { Classified } from '../handover/rest.js';
-import type { AgentProbe, AgentProber } from '../handover/sessions/registry.js';
+import { sessionAdapter, type AgentProbe, type AgentProber } from '../handover/sessions/registry.js';
 import type { HomeLinks, WorkerLink } from '../link/home.js';
 import { remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
@@ -128,7 +128,9 @@ function agentFailures(c: Robot, local: AgentProbe[], far: AgentAdapter[], name:
 
 async function sessionBytes(c: Robot): Promise<number> {
   const { sourceHome, files } = await sessionLanding(c);
-  const sizes = await Promise.all(files.map(async (f) => (await fs.promises.lstat(path.join(sourceHome, f))).size));
+  // a session a CLI keeps in a database of its own is written out to its export file only as it moves
+  const exported = c.agent && sessionAdapter(c.agent.kind).exportFile?.(c.agent.sessionId);
+  const sizes = await Promise.all(files.filter((f) => f !== exported).map(async (f) => (await fs.promises.lstat(path.join(sourceHome, f))).size));
   return sizes.reduce((n, s) => n + s, 0);
 }
 
@@ -180,7 +182,6 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   if (gateway) fail({ reason: 'this fleet has a gateway', action: `svall host upgrade ${named(gateway)} makes it this fleet's worker` });
   if (s.islands[c.islandId]?.kind === 'home') fail({ reason: 'mission control stays on this Mac', action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
-  if ([c.agent?.kind, c.second?.agent?.kind].includes('opencode')) fail({ reason: 'OpenCode robots cannot move yet', action: 'wait for a later release' });
 
   // 1: reachable, on this release
   const link = d.links.for(to);

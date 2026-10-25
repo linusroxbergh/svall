@@ -19,7 +19,8 @@ import { clean } from '../handover/portable-path.js';
 import { ProcessTable } from '../handover/processes.js';
 import { relocate } from '../handover/relocate.js';
 import { classifyTerminals, restTerminals, type RestChoices, type RestDeps } from '../handover/rest.js';
-import { installSession, sessionAdapter, type AgentProber } from '../handover/sessions/registry.js';
+import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../handover/sessions/registry.js';
+import type { CliRun } from '../handover/sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import type { GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
@@ -127,9 +128,10 @@ export async function unpack(file: string, dir: string): Promise<void> {
 
 /**
  * Copies each terminal's session into `into/<n>` by its path under its agent home, and names where it lands: the
- * transcript at the plan's place for it, the files beside it as under the source's agent home.
+ * transcript at the plan's place for it, the files beside it as under the source's agent home. A CLI that keeps its
+ * sessions in a database of its own writes the session out to its export file there.
  */
-async function stageSessions(c: Robot, paths: MovePlan['paths'], into: string): Promise<TransferSession[]> {
+async function stageSessions(c: Robot, paths: MovePlan['paths'], into: string, run: CliRun): Promise<TransferSession[]> {
   const sessions: TransferSession[] = [];
   for (const [term, slot, dest] of [[undefined, c, paths.transcriptPath], [2, c.second, paths.secondTranscriptPath]] as const) {
     const a = slot?.agent;
@@ -139,23 +141,25 @@ async function stageSessions(c: Robot, paths: MovePlan['paths'], into: string): 
     if (!dest.endsWith(`/${transcript}`)) throw new Error(`${a.kind} session ${a.sessionId} has no place at ${dest}`);
     const n = String(sessions.length);
     const listed: TransferSession['files'] = [];
+    const adapter = sessionAdapter(a.kind);
     for (const f of files) {
       const to = path.join(into, n, f);
       fs.mkdirSync(path.dirname(to), { recursive: true });
-      fs.copyFileSync(path.join(sourceHome, f), to);
+      if (f === adapter.exportFile?.(a.sessionId)) await adapter.exportSession!(a.sessionId, to, run, (slot ?? c).cwd);
+      else fs.copyFileSync(path.join(sourceHome, f), to);
       const st = fs.statSync(to);
       listed.push({ type: 'file', path: f, mode: st.mode & 0o777, size: st.size, mtimeMs: Math.floor(st.mtimeMs), sha256: sha256Hex(fs.readFileSync(to)) });
     }
     sessions.push({
       robotId: c.id, ...(term && { term }), agent: a.kind, sessionId: a.sessionId, sourcePath: a.transcriptPath, destinationPath: dest,
-      sourceHome, destinationHome: dest.slice(0, -transcript.length - 1), adapter: sessionAdapter(a.kind).adapter, files: listed,
+      sourceHome, destinationHome: dest.slice(0, -transcript.length - 1), adapter: adapter.adapter, files: listed,
     });
   }
   return sessions;
 }
 
 /** Builds the bundle of the robot's worktree and stages its sessions under `stage`, each folder packed as the blob that carries it. */
-export function packMove(c: Robot, j: MoveJournal, stage: string, git: GitRunner): Promise<Pick<MoveJournal, 'manifest' | 'branchSha' | 'sessions'>> {
+export function packMove(c: Robot, j: MoveJournal, stage: string, git: GitRunner, run: CliRun = cliRunner()): Promise<Pick<MoveJournal, 'manifest' | 'branchSha' | 'sessions'>> {
   return boundary('move.bundle', async () => {
     fs.rmSync(stage, { recursive: true, force: true });
     let packed: Pick<MoveJournal, 'manifest' | 'branchSha'> = {};
@@ -165,7 +169,7 @@ export function packMove(c: Robot, j: MoveJournal, stage: string, git: GitRunner
       await pack(path.join(stage, 'bundle'), path.join(stage, 'bundle.tar'));
       packed = { manifest, branchSha };
     }
-    const sessions = await stageSessions(c, j.plan.paths, path.join(stage, 'session'));
+    const sessions = await stageSessions(c, j.plan.paths, path.join(stage, 'session'), run);
     await pack(path.join(stage, 'session'), path.join(stage, 'session.tar'));
     return { ...packed, sessions };
   });
@@ -174,6 +178,26 @@ export function packMove(c: Robot, j: MoveJournal, stage: string, git: GitRunner
 /** Puts each carried session, staged under `staged/<n>`, where its agent resumes it on this machine. */
 export function placeSessions(sessions: readonly TransferSession[], staged: string): void {
   sessions.forEach((s, n) => installSession(s, path.join(staged, String(n))));
+}
+
+/**
+ * Reads each carried session a CLI keeps in a database of its own into this machine's from its staged export, to resume
+ * at the plan's folder, in place of the copy held here, which waits in `held` and comes back if the import fails.
+ */
+export async function importSessions(sessions: readonly TransferSession[], staged: string, paths: MovePlan['paths'], held: string, run: CliRun): Promise<void> {
+  for (const [n, s] of sessions.entries()) {
+    const adapter = sessionAdapter(s.agent, s.adapter);
+    if (!adapter.exportFile || !adapter.dropSession || !adapter.importSession || !adapter.restoreSession) continue;
+    const file = path.join(staged, String(n), adapter.exportFile(s.sessionId));
+    const cwd = (s.term === 2 ? paths.second : undefined) ?? paths.cwd;
+    const keep = path.join(held, s.agent, `${s.sessionId}.json`);
+    await adapter.dropSession(s.sessionId, file, cwd, run, keep);
+    try { await adapter.importSession(s.sessionId, file, cwd, run); } catch (e) {
+      if (fs.existsSync(keep)) await adapter.restoreSession(s.sessionId, keep, run);
+      throw e;
+    }
+    fs.rmSync(keep, { force: true });
+  }
 }
 
 /** The robot as it runs on `machine` (the home, when absent) from the commit on: at its paths there, at the move's generation, dormant with the revive its rest left. */
@@ -337,6 +361,8 @@ export type PlacementDeps = {
   log: Logger;
   moves?: MoveFiles;
   watchMs?: number;
+  /** Runs an agent CLI that keeps its sessions in a database of its own. */
+  cli?: CliRun;
 };
 
 /**
@@ -527,7 +553,7 @@ export class Placement {
         await this.d.links.pushMirror(j.to);
         await this.convert(j);
         const c = this.robot(j.robotId);
-        const packed = await packMove(c, j, this.files.stage(j.id), this.d.git);
+        const packed = await packMove(c, j, this.files.stage(j.id), this.d.git, this.d.cli);
         j = this.enter({ ...j, robot: structuredClone(c), ...packed }, 'prepare');
       }
       if (j.phase === 'prepare') {
@@ -671,6 +697,7 @@ export class Placement {
     }
     await unpack(path.join(stage, 'session.tar'), path.join(stage, 'session'));
     placeSessions(j.sessions ?? [], path.join(stage, 'session'));
+    await importSessions(j.sessions ?? [], path.join(stage, 'session'), j.plan.paths, path.join(this.files.dir, 'held'), this.d.cli ?? cliRunner());
     fs.rmSync(stage, { recursive: true, force: true });
     return j;
   }

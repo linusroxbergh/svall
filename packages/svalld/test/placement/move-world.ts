@@ -10,6 +10,7 @@ import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
 import { ProcessTable, type Proc } from '../../src/handover/processes.js';
 import type { AgentProbe } from '../../src/handover/sessions/registry.js';
+import type { CliRun } from '../../src/handover/sessions/types.js';
 import { HomeLinks, type Transport } from '../../src/link/home.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { handoverGit, type GitRunner } from '../../src/links/git.js';
@@ -33,7 +34,9 @@ import { H, W, island } from './world.js';
 
 export const SID = '0b1c2d3e-4f50-4162-8394-a5b6c7d8e9f0';
 export const SID2 = '1c2d3e4f-5061-4273-84a5-b6c7d8e9f0a1';
+export const OSID = 'ses_0123456789abAbCdEfGhIjKlMn';
 const CLAUDE = '2.1.300';
+const OPENCODE = '2.1.4';
 const RELEASE = '1.2.3';
 const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false } };
 
@@ -100,7 +103,7 @@ export class Box {
     sendLine: async (paneId: string, text: string) => {
       this.lines.push({ paneId, text });
       const w = this.byPane(paneId);
-      const resumed = /^claude\b.*--resume (\S+)/.exec(text);
+      const resumed = /^claude\b.*--resume (\S+)/.exec(text) ?? /^opencode\b.* -s (\S+)/.exec(text);
       if (!w || !resumed) return;
       w.job = text;
       setImmediate(() => this.started?.(w.name, resumed[1]));
@@ -118,6 +121,31 @@ export class Box {
     const shell = { pid: w.pid, ppid: 1, pgid: w.pid, tpgid: group, stat: 'Ss', args: '-zsh' };
     return w.job ? [shell, { pid: group, ppid: w.pid, pgid: group, tpgid: group, stat: 'S+', args: w.job }] : [shell];
   }));
+}
+
+type Held = { directory: string; messages: { id: string }[] };
+
+/** A machine's OpenCode: the sessions its database holds, as `opencode session export|import|delete --standalone` reads and writes them. */
+export class FakeOpencode {
+  sessions = new Map<string, Held>();
+  readonly run: CliRun = async (cmd, args, o = {}) => {
+    const no = (stderr: string) => ({ code: 1, stdout: '', stderr });
+    if (cmd !== 'opencode' || args[0] !== 'session' || args[2] !== '--standalone') return no(`${args.join(' ')} is not faked`);
+    const verb = args[1];
+    const id = args.at(-1)!;
+    if (verb === 'import') {
+      const { info, messages } = JSON.parse(fs.readFileSync(id, 'utf8')) as { info: { id: string }; messages: Held['messages'] };
+      if (this.sessions.has(info.id)) return { code: 0, stdout: '', stderr: '' };
+      this.sessions.set(info.id, { directory: args[4], messages });
+      return { code: 0, stdout: `Imported session: ${info.id}\n`, stderr: '' };
+    }
+    const held = this.sessions.get(id);
+    if (!held) return no(`Error: Session not found: ${id}`);
+    if (verb === 'delete') this.sessions.delete(id);
+    else if (verb === 'export') fs.writeFileSync(o.stdout!, JSON.stringify({ info: { id, location: { directory: held.directory } }, messages: held.messages }));
+    else return no(`${verb} is not faked`);
+    return { code: 0, stdout: '', stderr: '' };
+  };
 }
 
 const socketTo = (sock: string): Transport => async () => {
@@ -139,7 +167,7 @@ const put = (file: string, data: string): void => {
  * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
  * agent configuration.
  */
-export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'> } = {}) {
+export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean } = {}) {
   const base = fs.realpathSync(makeHome());
   fs.writeFileSync(path.join(base, 'gitconfig'), '');
   const g = (cwd: string, ...args: string[]): string => git(base, cwd, ...args);
@@ -188,11 +216,21 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   const notes = path.join(mac, 'notes');
   fs.mkdirSync(notes, { recursive: true });
   const cwd = o.notInRepo ? notes : wt;
-  const window = mac1.window('c_1', cwd, 'claude');
+  // or an OpenCode robot, whose session its OpenCode keeps and Svall's plugin logs under the fleet home
+  const macOpencode = path.join(mac, '.svall/transcripts/opencode');
+  const farOpencode = path.join(far, '.svall/transcripts/opencode');
+  const opencode = { mac: new FakeOpencode(), far: new FakeOpencode() };
+  const agent = (): NonNullable<Robot['agent']> => {
+    if (!o.opencode) return { kind: 'claude', sessionId: SID, transcriptPath: transcript(SID, cwd), status: 'idle', lastActivityAt: 0 };
+    put(path.join(macOpencode, `${OSID}.jsonl`), `${JSON.stringify({ kind: 'agent', text: 'built the board' })}\n`);
+    opencode.mac.sessions.set(OSID, { directory: cwd, messages: [{ id: 'msg_1' }, { id: 'msg_2' }] });
+    return { kind: 'opencode', sessionId: OSID, transcriptPath: path.join(macOpencode, `${OSID}.jsonl`), status: 'idle', lastActivityAt: 0 };
+  };
+  const window = mac1.window('c_1', cwd, o.opencode ? 'opencode' : 'claude');
   const c1: Robot = {
     id: 'c_1', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'kanban', note: '', portrait: 'owl', instructions: '', cwd, context: [], shell: { lastOutputAt: 0 }, unread: false,
     ...(!o.notInRepo && { repo: { root: wt, mainRoot: main, branch: 'kanban', isWorktree: true } }),
-    agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript(SID, cwd), status: 'idle', lastActivityAt: 0, ...o.agent },
+    agent: { ...agent(), ...o.agent },
     tmux: { windowId: window.windowId, paneId: window.paneId },
   };
   const robots: Record<string, Robot> = { c_1: c1 };
@@ -223,8 +261,11 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   // the worker's Claude has been logged in, so its config file is there
   fs.mkdirSync(farClaude, { recursive: true });
   fs.writeFileSync(path.join(far, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true }));
-  const macProbe: AgentProbe = { kind: 'claude', version: CLAUDE, home: macClaude, loggedIn: true, hooks: true };
-  const farAdapter: AgentAdapter = { kind: 'claude', version: CLAUDE, adapter: 1, home: farClaude, loggedIn: true, hooks: true };
+  const macProbe: AgentProbe = o.opencode
+    ? { kind: 'opencode', version: OPENCODE, home: macOpencode, loggedIn: true, hooks: true }
+    : { kind: 'claude', version: CLAUDE, home: macClaude, loggedIn: true, hooks: true };
+  const farHome = o.opencode ? farOpencode : farClaude;
+  const farAdapter: AgentAdapter = { kind: macProbe.kind, version: macProbe.version, adapter: 1, home: farHome, loggedIn: true, hooks: true };
   const viewers = { detach: async () => {} };
   const stops: (() => unknown)[] = [];
 
@@ -244,8 +285,8 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   vault.started = (id, sid) => workerFleet.emit('session-start', id, undefined, sid);
   const prepare = new PrepareService({
     store: workerStore, fleet: workerFleet, tmux: vault.tmux as unknown as Tmux, viewers, connection, me: W, fleetId: config.id, homeName: 'mac', paths: workerPaths,
-    git: handoverGit, cloneGit: handoverGit, agents: async () => [{ ...macProbe, home: farClaude }], processes: vault.processes,
-    agentRunning: async () => false, log: silentLogger, watchMs: 5000,
+    git: handoverGit, cloneGit: handoverGit, agents: async () => [{ ...macProbe, home: farHome }], processes: vault.processes,
+    agentRunning: async () => false, log: silentLogger, watchMs: 5000, cli: opencode.far.run,
   });
   const terminals = new TerminalHub(workerFleet, vault.tmux as unknown as Tmux, workerStore, silentLogger);
   Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), prepare.handlers, {
@@ -279,7 +320,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, fleetId: config.id, paths: homePaths,
       git: mortalGit(handoverGit, life), agents: async () => [macProbe], gateway: () => undefined, release: RELEASE, homedir: mac,
       tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, log: silentLogger,
-      moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000,
+      moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run,
     });
     links.start();
     stops.push(() => placement.stop(), () => links.stop());
@@ -288,7 +329,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   };
 
   return {
-    base, g, mac, far, main, wt, wt2, notes, macClaude, farClaude, origin, mac1, vault, homePaths, workerPaths,
+    base, g, mac, far, main, wt, wt2, notes, macClaude, farClaude, macOpencode, farOpencode, opencode, origin, mac1, vault, homePaths, workerPaths,
     /** where the worker's clone and the robot's worktree land */
     clone: path.join(far, 'code/app'),
     farWt: path.join(far, 'code/app/.claude/worktrees/kanban'),
@@ -300,7 +341,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
     bootHome,
     async stop(): Promise<void> {
       for (const s of stops.splice(0).reverse()) await s();
-      for (const f of ['code', '.claude', '.claude.json']) fs.rmSync(path.join(far, f), { recursive: true, force: true });
+      for (const f of ['code', '.claude', '.claude.json', '.svall']) fs.rmSync(path.join(far, f), { recursive: true, force: true });
     },
   };
 }
