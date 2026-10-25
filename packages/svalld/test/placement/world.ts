@@ -15,6 +15,7 @@ import { resolvePaths, type Paths } from '../../src/paths.js';
 import { Router, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
+import { TerminalHub } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
@@ -92,11 +93,13 @@ export function world(o: { home?: Partial<FleetState>; worker?: Partial<FleetSta
     log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers,
   });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
+  const workerTmux = { ...o.tmux } as Tmux;
   const workerFleet = new Fleet({
-    store: workerStore, tmux: { ...o.tmux } as Tmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
+    store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [],
   });
-  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }));
+  const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
+  Object.assign(handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }));
   const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter);
 
   stops.push(() => connection.stop(), () => links.stop());

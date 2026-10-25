@@ -2,14 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, keptSession, type AgentStatus } from '@svall/protocol';
+import { AgentKind, ApiError, Refusal, keptSession, type AgentStatus, type MoveSheet } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
+import { parseDuration } from './handover.js';
 import { int, point } from './parse.js';
-import { robotId, islandId, NoMatch } from './resolve.js';
+import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 
 /** The agent `svall robot new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
 export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
@@ -22,6 +23,39 @@ export function termOf(v: string | undefined): 2 | undefined {
   if (v === undefined || v === '1') return undefined;
   if (v === '2') return 2;
   throw new Error(`bad --term "${v}", expected 1 or 2`);
+}
+
+// in thousands, as the sheet counts them, to the whole unit
+function size(n: number): string {
+  const kb = Math.round(n / 1000);
+  return kb < 1000 ? `${Math.max(1, kb)} KB` : `${Math.round(n / 1_000_000)} MB`;
+}
+const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
+
+/** What a move carries, as one line: "session 4 MB · branch kanban: 2 commits not on origin, 3 changed files · …". */
+function sheetLine(s: MoveSheet, repo: string | undefined, machine: string): string {
+  const changed = s.changedFiles + s.untrackedFiles;
+  const carried = [...(s.commits ? [`${count(s.commits, 'commit')} not on origin`] : []), ...(changed ? [count(changed, 'changed file')] : [])];
+  const c = s.converts;
+  const main = c && path.basename(c.main);
+  return [
+    ...(s.sessionBytes ? [`session ${size(s.sessionBytes)}`] : []),
+    s.notInRepo ? 'in no repository: it moves with its session only' : `branch ${s.branch}${carried.length ? `: ${carried.join(', ')}` : ''}`,
+    ...(repo && !s.notInRepo ? [`${repo} on ${machine}: ${s.clone === 'clone' ? 'will clone (first time)' : 'cloned already'}`] : []),
+    ...s.stays,
+    ...(c ? [c.changed
+      ? `your ${count(c.changed, 'changed file')} in ${main}'s main checkout ${c.changed === 1 ? 'moves' : 'move'} to a new branch ${c.branch}`
+      : `it leaves ${main}'s main checkout for a new branch ${c.branch}`] : []),
+    ...(s.question ? ['its open question is dropped; it asks again'] : []),
+    ...(s.interrupts ? ['what still runs is interrupted'] : []),
+  ].join(' · ');
+}
+
+// one sentence and one action, as the checks or the move itself refused it
+function refuseMove(r: Refusal, json: boolean): void {
+  if (json) printResult({ ok: false, refusal: r }, true);
+  else process.stderr.write(`refused: ${r.reason}\n  → ${r.action}\n`);
+  process.exitCode = 2;
 }
 
 export function robotCommands(connect: () => Promise<Client>, json: () => boolean): Command {
@@ -72,11 +106,40 @@ Handing work to a new robot:
       });
     });
 
-  cmd.command('move <id>').description('move a robot to another island or cell').requiredOption('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
-    .action((id: string, o: { island: string; cell?: string }) => withFleet(connect, async (c, state) => {
-      const ch = await c.call('robot.move', { id: robotId(state, id), islandId: islandId(state, o.island), cell: point(o.cell, '--cell') });
-      printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
-    }));
+  cmd.command('move <id>').description('move a robot to another island or cell, or to run on another machine; a refused move exits 2')
+    .option('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
+    .addOption(new Option('--machine <name>', 'a machine under Machines; prints what travels, then moves it').conflicts(['island', 'cell']))
+    .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
+    .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
+    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[] }) => {
+      if (!island === !to) throw new Error('name one of --island and --machine');
+      if (island) {
+        await withFleet(connect, async (c, state) => {
+          const ch = await c.call('robot.move', { id: robotId(state, id), islandId: islandId(state, island), cell: point(cell, '--cell') });
+          printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
+        });
+        return;
+      }
+      const interruptAfterMs = interruptAfter === undefined ? undefined : parseDuration(interruptAfter);
+      await withFleet(connect, async (c, state) => {
+        const robot = state.robots[robotId(state, id)];
+        const machine = machineId(state, to!);
+        const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }) };
+        const checked = await c.call('robot.moveCheck', params);
+        if (!checked.ok) { refuseMove(checked.refusal, json()); return; }
+        if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), state.machines![machine].name)}\n`);
+        let moveId: string;
+        try {
+          ({ moveId } = await c.call('robot.moveTo', params));
+        } catch (e) {
+          const refusal = e instanceof ApiError && e.code === 'refused' ? Refusal.safeParse(e.data?.refusal) : undefined;
+          if (!refusal?.success) throw e;
+          refuseMove(refusal.data, json());
+          return;
+        }
+        printResult({ ok: true, sheet: checked.sheet, moveId }, json(), () => moveId);
+      });
+    });
 
   cmd.command('run <id> <text...>').description("type text into a robot's terminal, then Enter; prints delivered or queued, exits 2 when refused").option('--no-enter', 'leave the text in the prompt line, where runs after it queue until it is sent or cleared').option('--term <n>', 'terminal to type into: 1 (default) or 2')
     .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, async (c, state) => {

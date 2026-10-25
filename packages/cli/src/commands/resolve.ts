@@ -1,4 +1,4 @@
-import type { FleetState } from '@svall/protocol';
+import type { FleetState, MachineId } from '@svall/protocol';
 
 export class NoMatch extends Error {}
 
@@ -12,3 +12,5 @@ function pick(items: Record<string, { id: string; name: string }>, ref: string, 
 
 export const robotId = (state: FleetState, ref: string): string => pick(state.robots, ref, 'robot');
 export const islandId = (state: FleetState, ref: string): string => pick(state.islands, ref, 'island');
+export const machineId = (state: FleetState, ref: string): MachineId =>
+  pick(Object.fromEntries(Object.entries(state.machines ?? {}).map(([id, m]) => [id, { id, name: m.name }])), ref, 'machine') as MachineId;

@@ -8,6 +8,7 @@ import type { HomeConnection } from '../link/worker.js';
 import { handoverGit } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
+import type { TerminalHub } from '../terminals.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
 import { probeRepo, RepoProbeParams } from './checks.js';
 
@@ -100,8 +101,8 @@ export class Router {
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
 
 /** What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change does. */
-export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger }): Handlers {
-  const { fleet, store, me } = o;
+export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach'> }): Handlers {
+  const { fleet, store, me, terminals } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
     const p = methods[method].params.safeParse(raw);
     if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
@@ -128,6 +129,7 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
     'robot.second': on('robot.second', (p) => fleet.openSecond(p.id)),
     'robot.sleep': on('robot.sleep', async (p) => { await fleet.sleepRobot(p.id); return {}; }),
     'robot.seen': on('robot.seen', async (p) => fleet.markSeen(p.id, p.term)),
+    'term.attach': on('term.attach', (p) => terminals.attach(p.id, p.term)),
     'robot.close': forget,
     'robot.forget': forget,
     'repo.probe': async (raw) => {

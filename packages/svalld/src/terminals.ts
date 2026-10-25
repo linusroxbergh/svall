@@ -1,6 +1,8 @@
-import type { Event } from '@svall/protocol';
+import type { Event, Result } from '@svall/protocol';
 import type { Fleet } from './fleet.js';
+import type { HomeLinks } from './link/home.js';
 import type { Logger } from './log.js';
+import type { Router } from './placement/router.js';
 import type { Store } from './store.js';
 import type { Tmux } from './tmux/tmux.js';
 
@@ -23,6 +25,9 @@ const DRAIN_LIMIT = 1_000_000;
 const REJOIN_AT = DRAIN_LIMIT / 4;
 const DRAIN_TIMEOUT = 30_000;
 
+/** On the home: which robots run on a worker, and the links that reach each one. */
+type Remote = { router: Pick<Router, 'placedAt' | 'forward'>; links: Pick<HomeLinks, 'for'> };
+
 export class TerminalHub {
   private viewers = new Map<string, Set<Viewer>>();
   private writes = new Map<string, Promise<void>>();
@@ -33,7 +38,7 @@ export class TerminalHub {
   // viewers whose socket held DRAIN_LIMIT unsent and has not drained to REJOIN_AT, and the terminals they missed output of
   private behind = new Map<Viewer, Set<string>>();
 
-  constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger) {
+  constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger, private remote?: Remote) {
     fleet.on('output', (id, data) => this.stream(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
     fleet.on('pause', (id) => this.resumeWhenDrained(id));
     fleet.on('continue', (id) => { this.resync(id).catch((e) => log.error(`resync ${id}: ${String(e)}`)); });
@@ -90,7 +95,14 @@ export class TerminalHub {
     await this.resizeFor(viewer, id, c.tmux.windowId, cols, rows);
   }
 
-  async attach(id: string, term?: 2): Promise<{ socket: string; session: string; tmux: string }> {
+  async attach(id: string, term?: 2): Promise<Result<'term.attach'>> {
+    const { remote } = this;
+    const at = remote?.router.placedAt(id);
+    if (remote && at) {
+      // the robot's tmux is on its machine, which a terminal reaches over the ssh master the link to it runs on
+      const far = await remote.router.forward(id, 'term.attach', { id, term })!;
+      return { ...far, via: remote.links.for(at)!.via() };
+    }
     const { windowId } = this.fleet.terminal(id, term).tmux;
     const session = viewerSession(id, term);
     await this.tmux.attachSession(session, windowId);

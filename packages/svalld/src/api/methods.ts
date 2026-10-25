@@ -1,6 +1,6 @@
 import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../handover/git-extensions.js';
@@ -13,6 +13,7 @@ import type { ClaudePaths } from '../paths.js';
 import { listsDeletable, rootIdOf, scanResources } from '../resources/scan.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { classification, guardMethod } from '../ownership/guard.js';
+import type { Placement } from '../placement/move.js';
 import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Store } from '../store.js';
@@ -21,7 +22,7 @@ import type { FetchUsage } from '../usage/usage.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -29,6 +30,12 @@ const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.st
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
+
+// moves are the home's: a worker sends them on before they reach a handler
+const placementOf = ({ placement }: Ctx): Placement => {
+  if (!placement) throw new ApiError('not_on_worker', 'not on a worker');
+  return placement;
+};
 
 // svalld runs on the two platforms a handover can compare; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
@@ -63,6 +70,19 @@ export const handlers: Handlers = {
   'robot.show': (p, { fleet }) => ({ text: fleet.brief(p.id) }),
   'robot.wait': async (p, { fleet, signal }) => ({ status: await fleet.waitFor(p.id, p.until, p.timeoutMs, signal, p.term) }),
   'robot.answer': async (p, { fleet }) => { await fleet.answerPrompt(p.id, p.answer, p.promptId); return {}; },
+  // the plan stays with the move that builds it
+  'robot.moveCheck': async (p, ctx) => {
+    const r = await placementOf(ctx).check(p.id, p.machine, p);
+    return r.ok ? { ok: true, sheet: r.sheet } : { ok: false, refusal: r.refusal };
+  },
+  'robot.moveTo': async (p, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, p) }),
+  'robot.moveRetry': async (p, ctx) => { await placementOf(ctx).retry(p.moveId); return {}; },
+  'machines.list': (_p, { store }) => ({
+    machines: Object.entries(store.state.machines ?? {}).map(([id, m]) => ({
+      id: id as MachineId, name: m.name, reachable: m.reachable, release: m.release,
+      robots: Object.values(store.state.robots).filter((r) => r.machine === id).length,
+    })),
+  }),
   'scribe.sweep': async (p, { fleet }) => ({ lines: await fleet.sweep(p) }),
   'scribe.set': (p, { fleet }) => { fleet.setScribe(p.enabled); return {}; },
   'worktrees.set': (p, { fleet }) => { fleet.setWorktrees(p.enabled); return {}; },

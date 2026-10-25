@@ -249,14 +249,14 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
   const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, ...(connection && { report: (r: RobotSync) => connection.report(r) }) });
-  const terminals = new TerminalHub(fleet, tmux, store, log);
+  const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
   // what each machine's agent CLIs are: a handover and a move read them
   const agents = agentProber(realProbeDeps(paths.env));
   if (connection && worker) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log }), prepare.handlers);
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals }), prepare.handlers);
   }
   const placement = links && new Placement({
     store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, config, release: runtimeVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
@@ -329,7 +329,7 @@ async function start(opts: Options): Promise<Daemon> {
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
-      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router,
+      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement,
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {

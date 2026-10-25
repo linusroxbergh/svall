@@ -22,6 +22,7 @@ import { PrepareService } from '../../src/placement/prepare.js';
 import { Router, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
+import { TerminalHub } from '../../src/terminals.js';
 import type { Screen, Tmux } from '../../src/tmux/tmux.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
@@ -243,7 +244,8 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
     git: handoverGit, cloneGit: handoverGit, agents: async () => [{ ...macProbe, home: farClaude }], processes: vault.processes,
     agentRunning: async () => false, log: silentLogger, watchMs: 5000,
   });
-  Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }), prepare.handlers, {
+  const terminals = new TerminalHub(workerFleet, vault.tmux as unknown as Tmux, workerStore, silentLogger);
+  Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), prepare.handlers, {
     'system.info': async () => ({ agentAdapters: [farAdapter] }),
   });
   stops.push(() => connection.stop());

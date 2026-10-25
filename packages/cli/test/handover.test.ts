@@ -367,6 +367,28 @@ describe('svall handover', () => {
     expect(helper.err()).toContain('svall host enable <host> --fleet');
   });
 
+  it('svall handover linus-vault refuses while a robot is placed there', async () => {
+    const h = harness({ json: true });
+    const VAULT = MachineId.parse('77777777-8888-4999-8aaa-bbbbbbbbbbbb');
+    h.registry.add({ name: 'linus-vault', ssh: 'linus-vault.test', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall', gateway: false }, VAULT);
+    const ada = {
+      id: 'c_ada', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [], shell: { lastOutputAt: 0 }, unread: false,
+      machine: VAULT, placement: { generation: 1 },
+    };
+    fs.writeFileSync(path.join(h.home, 'state.json'), JSON.stringify({ ...emptyState(), robots: { c_ada: ada }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } }));
+    const refused = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error: 'ada runs on linus-vault; move every robot back first', safe: [], stop: 'invalid' } };
+
+    expect(await runHandover(start('linus-vault'), h.ctx)).toEqual({ code: 1 });
+    expect(await runHandover(check('linus-vault'), h.ctx)).toEqual({ code: 1 });
+    expect(await launchHelper(start('linus-vault'), h.ctx)).toBe(1);
+    expect(h.events()).toEqual([refused, refused, refused]);
+    expect(h.connects()).toBe(0);
+    expect(h.launched).toEqual([]);
+    // what is already open still finishes
+    expect(await runHandover({ kind: 'resume' }, h.ctx)).toEqual({ code: 0 });
+    expect(h.tx.calls).toEqual([{ kind: 'resume' }]);
+  });
+
   it('prints each blocker before Begin with what it names, and the warnings, and exits 1 without asking when no one can answer', async () => {
     for (const o of [{ tty: false }, { tty: true, json: true }]) {
       const h = harness(o);

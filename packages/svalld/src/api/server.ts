@@ -9,6 +9,7 @@ import type { Logger } from '../log.js';
 import type { Mobile } from '../mobile.js';
 import type { Phones } from '../phones.js';
 import type { OwnershipState } from '../ownership/state.js';
+import type { Placement } from '../placement/move.js';
 import type { Router } from '../placement/router.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
@@ -24,7 +25,7 @@ import { serveBundle } from './static.js';
 type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
-  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router;
+  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement;
   // read on every request: activating a handover replaces them in the config they come from
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -106,7 +107,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 
 /** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be, for the methods a worker may send. */
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown): Promise<unknown> }> {
-  const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership, router } = opts;
+  const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership, router, placement } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? (() => []);
   const dist = opts.dist ?? mobileDist();
@@ -124,7 +125,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership, router };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership, router, placement };
   // how far a handover has come reaches every screen watching it
   const viewers = new Set<Viewer>();
   const broadcast = (ev: Event): void => { for (const v of viewers) v.send(ev); };

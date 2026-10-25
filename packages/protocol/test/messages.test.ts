@@ -11,6 +11,10 @@ describe('serverWait', () => {
     expect(serverWait('robot.wait', { id: 'c', until: ['idle'], timeoutMs: 5_000 })).toBe(5_000);
     expect(serverWait('robot.create', { islandId: 'home', cwd: '/tmp' })).toBe(0);
     expect(serverWait('robot.create', { islandId: 'home', cwd: '/tmp', command: 'claude', run: 'hi' })).toBe(RUN_TIMEOUT_MS);
+    // a move answers once it has run past its commit; an interrupt chosen for later extends its rest
+    expect(serverWait('robot.moveTo', { id: 'c', machine: UUID_A })).toBe(15 * 60_000);
+    expect(serverWait('robot.moveTo', { id: 'c', machine: UUID_A, interruptAfterMs: 60_000 })).toBe(16 * 60_000);
+    expect(serverWait('robot.moveCheck', { id: 'c', machine: UUID_A })).toBe(0);
   });
 });
 
@@ -143,8 +147,23 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it("is 28 with robot.* methods, the fleet's robots and each one's figure", () => {
-    expect(PROTOCOL_VERSION).toBe(28);
+  it('is 29 with a robot moved to another machine, the machines it can go to, and the route a terminal attaches over', () => {
+    expect(PROTOCOL_VERSION).toBe(29);
+    const sheet = {
+      sessionBytes: 4_000_000, branch: 'kanban', commits: 2, changedFiles: 3, untrackedFiles: 0, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
+      interrupts: false, question: false, notInRepo: false,
+    };
+    expect(methods['robot.moveCheck'].result.parse({ ok: true, sheet })).toEqual({ ok: true, sheet });
+    expect(methods['robot.moveCheck'].result.parse({ ok: false, refusal: { reason: 'r', action: 'a', details: [] } })).toEqual({ ok: false, refusal: { reason: 'r', action: 'a', details: [] } });
+    expect(methods['robot.moveTo'].params.safeParse({ id: 'c_a', machine: 'linus-vault' }).success).toBe(false);
+    expect(methods['robot.moveTo'].result.safeParse({ moveId: 'mv_0123456789' }).success).toBe(true);
+    expect(methods['robot.moveRetry'].params.safeParse({ moveId: 'nope' }).success).toBe(false);
+    expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 'linus-vault', reachable: true, robots: 1 }] }).machines[0].robots).toBe(1);
+    const via = { ssh: 'linus-vault', controlSocket: '/tmp/svall-501/1-abc' };
+    expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', via }).via).toEqual(via);
+  });
+
+  it("was 28 with robot.* methods, the fleet's robots and each one's figure", () => {
     expect(methods['robot.update'].params.parse({ id: 'c_a', figure: 7 })).toEqual({ id: 'c_a', figure: 7 });
     expect('char.update' in methods).toBe(false);
     expect(FleetState.safeParse({ ...emptyState(), robots: {} }).success).toBe(true);
