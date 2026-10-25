@@ -6,15 +6,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-// the specs' page has a port and an address of its own, so a dev server already up on 5173 never answers them
-export const WEB_PORT = 5183;
-export const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
 export type DaemonInfo = { home: string; port: number; token: string; pid: number };
 
 export const freePort = (): Promise<number> => new Promise((resolve) => {
   const s = net.createServer();
   s.listen(0, '127.0.0.1', () => { const { port } = s.address() as net.AddressInfo; s.close(() => resolve(port)); });
 });
+
+// the runner picks the specs' page a free port once, and its workers inherit it, so runs in other worktrees and a dev server never answer them
+export const WEB_PORT = Number(process.env.SVALL_E2E_WEB_PORT ||= String(await freePort()));
+export const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
 
 export function newHome(port: number): string {
   const home = `/tmp/svall-e2e-${crypto.randomBytes(3).toString('hex')}`;
