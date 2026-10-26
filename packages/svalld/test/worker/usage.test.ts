@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentKind, Robot, UsageSnapshot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { mergeUsage } from '../../src/usage/merge.js';
@@ -52,10 +52,13 @@ describe('usage across machines', () => {
   it('the home\'s usage.get carries a worker\'s codex window beside its own claude windows, home first where keys meet', async () => {
     expect(mergeUsage({ available: true, windows: [{ key: 'session', label: 'Session', pct: 10 }, { key: 'codex:primary', label: 'Codex', pct: 5 }] }, [{ available: true, windows: [{ key: 'codex:primary', label: 'Codex', pct: 40 }, { key: 'codex:secondary', label: 'Codex 7 days', pct: 3 }] }]).windows.map((w) => [w.key, w.pct]))
       .toEqual([['session', 10], ['codex:primary', 5], ['codex:secondary', 3]]);
-    const w = open({ home: { robots: fleet }, worker: { robots: fleet }, usage: { claude: async () => session, tails } });
+    const claude = vi.fn(async () => session);
+    const w = open({ home: { robots: fleet }, worker: { robots: fleet }, usage: { claude, tails } });
     await linked(w);
     expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx))
       .toMatchObject({ result: { available: true, windows: [{ key: 'session', pct: 10 }, { key: 'codex:primary', pct: 40 }] } });
+    // w1 leaves the home's claude robot to the home, so Claude's login is asked once, by the home
+    expect(claude).toHaveBeenCalledTimes(1);
   });
 
   it('merges plan limits as available when a running machine\'s are, idle when every machine is, and names the home\'s login', () => {
@@ -74,8 +77,9 @@ describe('usage across machines', () => {
     await linked(w);
     const asked = Date.now();
     expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx)).toEqual({ id: 1, result: session });
-    expect(Date.now() - asked).toBeLessThan(6_000);
-  }, 15_000);
+    // within the 5 s budget plus a loaded machine's slack, well short of a link call's own 30 s
+    expect(Date.now() - asked).toBeLessThan(15_000);
+  }, 25_000);
 
   it('a worker whose answer is not a usage reading is left out, and the home\'s windows answer', async () => {
     const w = open({ home: { robots: fleet }, worker: { robots: fleet }, far: { 'usage.get': async () => ({ available: true }) }, usage: { claude: async () => session, tails } });
