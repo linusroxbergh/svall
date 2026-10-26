@@ -161,6 +161,15 @@ x86-64 Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Sil
 - **Fresh installs.** Installing on a clean machine with no Node, `host upgrade` and `setup --rollback` are the
   fresh-install run's, below. `host upgrade --rollback` runs in neither.
 
+## Robot placement between two machines
+
+`pnpm integration:placement` (`scripts/integration/robot-placement.mjs`) builds a companion from the checkout and two
+Ubuntu 24.04 containers, a home and the worker `svall host add` makes of the other, with three Claude robots over a
+bare remote both reach. It moves them out and back, restarts the worker, stops the home while the worker's agent
+works, and kills the home's daemon or drops the link at each phase of a move, checking on both machines the branch,
+index, files, locks and journals, the one agent resumed on its session, and the remote untouched. `--steps`,
+`--scenarios`, `--keep` and `--prefix` work as in the handover run; it exits 1 at the first step with a failed check.
+
 ## Fresh installs
 
 `scripts/integration/fresh-install.sh` provisions a clean Ubuntu 24.04 machine as a user does: with the controller

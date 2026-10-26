@@ -178,9 +178,9 @@ On the Linux machine itself:
 - `svall uninstall` refuses while the machine is a fleet's gateway, runs a fleet for its gateway, or holds a handover
   journal, since that would strand the fleet. Uninstalling a worker ends the robots that run there, so move them back
   first. `svall host remove` from the Mac checks the fleets that Mac knows of, then runs it with `--force-fleet` for
-  each of them that names the machine as its gateway, so it still refuses for a fleet another Mac keeps there. To remove a machine two Macs use, bring the other Mac's fleet home and run
-  `svall host remove <name> --forget` there, then `svall uninstall --force` here and
-  `svall host remove <name> --forget` on the first Mac.
+  each of them that names the machine as its gateway, so it still refuses for a fleet another Mac keeps there. To
+  remove a machine two Macs use, bring the other Mac's fleet home and run `svall host remove <name> --forget` there,
+  then `svall uninstall --force` here and `svall host remove <name> --forget` on the first Mac.
 - Each fleet's own log is `svalld.log` in its fleet home (`~/.svall` for the private fleet), beside the units'
   logs in `~/.local/share/svall/log`.
 - `systemctl --user status svall-svalld@private` shows the fleet's unit.

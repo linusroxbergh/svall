@@ -15,8 +15,8 @@ fleet's `config.json` in two:
    it.
 2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `agentsOff` and
    `mobile.httpsPort`.
-3. `fleet.json` gets every other key it knows and a new fleet `id`. It has no `handover` block, so handover stays off
-   until you turn it on with `svall handover on`.
+3. `fleet.json` gets every other key it knows and a new fleet `id`. It has no `handover` block, which moving robots to
+   a worker does not need ([Moving a robot](placement.md)).
 4. A key neither file knows stays only in `config.json.bak`.
 
 The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on
@@ -44,8 +44,8 @@ written, until you keep one of the two; the daemon's log and `svall doctor` both
 
 - Each fleet home is split and migrated by its own daemon, on its next start, and gets its own `fleet.json`,
   `node.json`, id and `owner.json`.
-- Remote machines are set up per fleet: `handover.enabled` in that fleet's `fleet.json`, `svall host enable <host>
-  --fleet <name>`, and `svall -p <name> handover …`. On Linux each fleet runs as `svall-svalld@<name>.service`.
+- Remote machines are set up per fleet: `svall -p <name> host add <host>` makes the machine that fleet's worker, and
+  `svall -p <name> robot move …` moves its robots. On Linux each fleet runs as `svall-svalld@<name>.service`.
 - `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are now commands, and no longer
   name a fleet, even with `-p`. `svall setup` names each fleet home made under one of them, such as
   `~/.svall-host`, and the `mv` to a name that reaches it again. A `config.json` whose `name` is one of them splits
@@ -131,4 +131,4 @@ mv config.json config.json.bak && mv handover-aside/* . && rmdir handover-aside
 The fleet keeps its id, its gateway and its generation, and the state is migrated again. A setting changed in
 `config.json` while on the older release is not carried over; copy it into `fleet.json` or `node.json`. If you leave
 `config.json` instead, it is split again into a fleet with a new id, which its gateway holds no record of: run `svall
-host enable` for it again.
+host upgrade <host>`, which makes that machine the fleet's worker.

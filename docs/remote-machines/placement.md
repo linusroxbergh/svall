@@ -16,7 +16,7 @@ robot that runs elsewhere. The sheet says in one line what travels, such as
 
 > session 564 KB · branch kanban: 2 commits not on origin, 3 changed files · storefront on linus-vault: will clone (first time) · .env stays here
 
-and **Move** runs it. From a terminal:
+and **Move** runs it. Moving back, the line counts what comes back from the worker the same way. From a terminal:
 
 ```sh
 svall robot move <id> --machine linus-vault    # to the worker
@@ -28,9 +28,9 @@ reason and the action. `--interrupt-after <duration>` (such as `30s`, or `0`) in
 long, `--carry <file>` takes a credential file such as `.env` along, and `--retry` runs the robot's current move again
 from the step it stopped at.
 
-While it moves the card says "moving…", and opening a terminal, a revive, `svall robot run` and closing the robot are
-refused with "moving to linus-vault". Then the card shows the badge, and the terminal reopens on the other machine with
-the same conversation, in the robot's folder there.
+While it moves the card says "moving" and its terminal "moving to linus-vault…"; opening a terminal, a revive, `svall
+robot run` and closing the robot are refused with "moving to linus-vault". Then the card shows the badge, and the
+terminal reopens on the other machine with the same conversation, in the robot's folder there.
 
 ## The checks
 
@@ -106,6 +106,9 @@ recorded:
 - A branch that moved refuses: "kanban moved on this Mac since the move; merge or rename it".
 - A worktree that changed refuses: "changes on this Mac in /Users/ada/code/app/.claude/worktrees/kanban since the
   move; stash or commit them".
+- An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
+  since the move; save it with opencode session export, then delete it". A move out refuses the same way for the
+  worker's copy.
 
 Otherwise the worktree is reset to the commit it was left at, unlocked, and the robot's work from the worker is
 applied to it: its commits, its staged and unstaged changes and its untracked files. The worktree it leaves on the
@@ -114,8 +117,9 @@ worker is then locked the same way, and the next move there takes it back by the
 ## When something goes wrong
 
 - **Before the robot is the destination's** (a failed check of the files, a lost connection, a crash), the robot
-  reopens where it was, with its window, and the destination removes what it prepared. A main checkout the move
-  converted stays converted, and the robot reopens in its new worktree.
+  reopens where it was, with its window, and the destination removes what it prepared, but for an OpenCode session it
+  read in, which the next move there replaces. A main checkout the move converted stays converted, and the robot
+  reopens in its new worktree.
 - **After it is**, a crash on either machine resumes the move from its journal; the robot never reopens on the machine
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.

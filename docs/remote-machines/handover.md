@@ -45,8 +45,6 @@ its terminal, and open it again from **Handover**, which is marked while a decis
 | Carry the folder whole | a terminal in a folder that holds Git repositories no robot works in, such as a shell in `~/Developer` | Carries that folder with those repositories. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
-A robot marked **keep on this machine** on its card blocks the handover until you turn that off.
-
 Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own, and quitting
 leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
 handover stands, with **Resume** and **Abort** before the commit. After it, resuming is all that is safe, so the sheet
@@ -356,9 +354,8 @@ With one Linux machine, nothing can replace it as the gateway, since a Mac is ne
 
 - This Mac's daemon takes a record above every generation it saw, lets go any handover its journal holds (the
   terminals it rested reopen, and what it prepared is dropped), and runs the fleet. `fleet.json` names no gateway
-  from then on, so no handover moves the fleet until `svall host enable <host> --fleet <fleet>` makes a machine its
-  gateway again, at the generation this Mac holds (see [A gateway set up again](#a-gateway-set-up-again)). This
-  Mac's own journal of a handover is dropped with it.
+  from then on, so no handover moves the fleet again; `svall host add` makes a Linux machine its worker, to move
+  robots to one at a time ([Moving a robot](placement.md)). This Mac's own journal of a handover is dropped with it.
 - With this Mac's daemon not running, the command writes `owner.json` and `fleet.json` itself and ends `incomplete`
   until the daemon starts, unless a handover journal lies there, which only the daemon lets go, even one it cannot
   read: start it first (`svall doctor` says why it is not running), then run the command again.
@@ -376,52 +373,36 @@ you stop the fleet's daemon there for good (`systemctl --user disable --now sval
 stop starts again at the next boot, or `svall uninstall --force`), and its copy of the work since the last handover
 stays on its disk.
 
-To make it the gateway again, `svall fleet recover --force-owner local --gateway <name>` writes a record naming this
-Mac over whatever record it holds, names it the gateway in `fleet.json`, and tells its daemon to let the fleet go;
-`svall host enable` refuses while its record names another owner. As a last resort, on that machine move its record
-`~/.local/share/svall/gateway/fleets/<fleet id>.json` aside and run `svall uninstall --force`, then `svall host add`
-and `svall host enable` it again from this Mac.
+To use it again, on that machine move its record `~/.local/share/svall/gateway/fleets/<fleet id>.json` aside and run
+`svall uninstall --force`, then `svall host add` it again from this Mac, which makes it the fleet's worker.
 
 ### A gateway set up again
 
 A gateway machine that was reinstalled, or whose account was made again, has lost its record of the fleet and comes
 back with a new machine id: commands that reach it find no Svall there, or another machine than the registry
-names. Set it up again from this Mac, under the same name:
+names. No machine becomes a gateway in this release: set it up again from this Mac, under the same name, as the
+fleet's worker:
 
 ```sh
 svall host add studio --ssh ada@studio        # installs the companion; the registry takes the new machine id
-svall host enable studio --fleet private      # a new record naming this Mac the owner, and the machine's copy
+svall host upgrade studio                     # fleet.json names no gateway, and the machine serves it as a worker
 ```
 
-The new record starts at the generation this Mac's `owner.json` holds, so the next handover begins there. Where
-another machine holds a later generation, such as one that ran the fleet since, a daemon never gives up its
-generation for a lower one, so a handover stops at Checks with `generation_mismatch`. `svall fleet recover
---force-owner local` then writes a record above both, and this Mac takes it.
+From then on no handover moves the fleet, and its robots [move there one at a time](placement.md).
 
 An account under another user name is another ssh destination: run `svall host remove studio` first, with `--forget`
 if the old account can no longer be reached, then add the machine at the new one.
 
-If the fleet was running on that machine, run the same three commands. Until the recovery, this Mac holds the fleet
-read-only as it was when it last left; what was done on the other machine since then is gone.
-
-If the fleet was running there and the account comes back under another user name, `svall host remove studio`
-refuses, `--forget` included, because this Mac still has the fleet on that machine, and `svall host enable` for a
-new name refuses while `fleet.json` names `studio`. Add the machine under a new name, recover with it as the
-gateway, give it its copy of the fleet, and only then forget the old one:
-
-```sh
-svall host add studio2 --ssh ada2@studio
-svall fleet recover --force-owner local --gateway studio2
-svall host enable studio2 --fleet private
-svall host remove studio --forget
-```
+If the fleet was running on that machine, run `svall fleet recover --force-owner local` first ([When the only gateway
+is gone](#when-the-only-gateway-is-gone)). Until then, this Mac holds the fleet read-only as it was when it last left;
+what was done on the other machine since then is gone.
 
 ## When the Mac is lost
 
 A fleet the Linux machine runs goes on there, and `svall` in a terminal on it works as before. A new Mac cannot take
-the fleet in this version, since `svall host add` and `svall host enable` set up only a Linux machine. For a fleet the
-lost Mac ran, `svall fleet recover --force-owner local` in a terminal on the Linux machine runs it there from the copy
-it holds from the last handover; what was done on the Mac since is gone with it.
+the fleet in this version, since `svall host add` sets up only a Linux machine. For a fleet the lost Mac ran, `svall
+fleet recover --force-owner local` in a terminal on the Linux machine runs it there from the copy it holds from the
+last handover; what was done on the Mac since is gone with it.
 
 ## Known limitations
 
