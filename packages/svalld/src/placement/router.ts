@@ -34,6 +34,20 @@ export class Router {
     return this.o.home !== undefined;
   }
 
+  get me(): MachineId {
+    return this.o.me;
+  }
+
+  /** On a worker, the home it serves. */
+  get homeId(): MachineId | undefined {
+    return this.o.home?.id;
+  }
+
+  /** On a worker, whether its home is linked; the home is its own. */
+  get homeConnected(): boolean {
+    return this.o.home?.connection.connected() ?? true;
+  }
+
   /** Whether a robot runs on this machine; one that names none runs on the home. */
   runsHere(c: Pick<Robot, 'machine'>): boolean {
     return (c.machine ?? this.o.home?.id ?? this.o.me) === this.o.me;
@@ -94,30 +108,35 @@ export class Router {
   // the name the home's registry gives this worker, which its snapshot carries
   private unreachable(): ApiError {
     const name = this.o.store.state.machines?.[this.o.me]?.name ?? os.hostname().split('.')[0];
-    return new ApiError('not_reachable', `${name} cannot reach this Mac right now; try again when it is awake`);
+    return new ApiError('not_reachable', unreachableLine(name));
   }
 }
 
+export const unreachableLine = (worker: string) => `${worker} cannot reach this Mac right now; try again when it is awake`;
+
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
+
+/** Ends a robot placed here, its windows and what it started; its worktree stays, locked, for the session it may yet resume. */
+export async function forgetRobot(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger }, id: string): Promise<void> {
+  const c = o.store.state.robots[id];
+  if (!Object.hasOwn(o.store.state.robots, id) || c.machine !== o.me) return;
+  await o.fleet.closeRobot(id);
+  if (c.repo?.isWorktree) {
+    const r = await handoverGit(['worktree', 'lock', '--reason', `closed robot ${id}`, c.repo.root], c.repo.mainRoot);
+    if (r.code !== 0) o.log.error(`${id}: ${c.repo.root} was not locked: ${r.stderr.trim()}`);
+  }
+}
 
 /** What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change does. */
 export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach'> }): Handlers {
-  const { fleet, store, me, terminals } = o;
+  const { fleet, terminals } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
     const p = methods[method].params.safeParse(raw);
     if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
     return run(p.data as ParsedParams<M>);
   };
-  // the robot's windows and what it started end, and its worktree stays, locked, for the session it may yet resume
   const forget = async (raw: unknown) => {
-    const { id } = z.object({ id: z.string() }).parse(raw);
-    const c = store.state.robots[id];
-    if (!Object.hasOwn(store.state.robots, id) || c.machine !== me) return {};
-    await fleet.closeRobot(id);
-    if (c.repo?.isWorktree) {
-      const r = await handoverGit(['worktree', 'lock', '--reason', `closed robot ${id}`, c.repo.root], c.repo.mainRoot);
-      if (r.code !== 0) o.log.error(`${id}: ${c.repo.root} was not locked: ${r.stderr.trim()}`);
-    }
+    await forgetRobot(o, z.object({ id: z.string() }).parse(raw).id);
     return {};
   };
   return {

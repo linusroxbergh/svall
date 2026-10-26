@@ -130,6 +130,28 @@ Otherwise the worktree is reset to the commit it was left at, unlocked, and the 
 applied to it: its commits, its staged and unstaged changes and its untracked files. The worktree it leaves on the
 worker is then locked the same way, and the next move there takes it back by the same rules.
 
+## While this Mac sleeps
+
+A robot on a worker keeps working while this Mac sleeps or is out of reach, and `svall` in its terminal answers from
+the worker:
+
+- `svall robot new` starts the robot on the same worker, awake Mac or not, with `--cwd` inside a clone the worker
+  has. Started while this Mac is away, its note says "started on linus-vault while this Mac slept". A path outside
+  the worker's clones is refused: "/home/ada/notes is not inside a clone on linus-vault; start it in one"; so is
+  mission control: "mission control stays on this Mac; start it on another island". A worker starts at most five
+  robots until this Mac answers again; the sixth: "linus-vault has started 5 robots since this Mac last answered;
+  wait for it".
+- `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
+  `svall robot close` and `svall robot run` and `read` reach the robots on it.
+- `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it.
+
+Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": new
+islands, moves, browser tabs, a robot's figure or island, and calls about robots on other machines.
+
+The worker journals each change in order until this Mac takes it; `journal/applied.ndjson` in its Svall home lists
+the last 500 this Mac has acknowledged, with what each changed. Once the fleet it last sent is an hour old, a robot's
+brief there says so under its heading: "context as of 2026-10-26T06:12:00.000Z; ada-mac is not reachable".
+
 ## When something goes wrong
 
 - **Before the robot is the destination's** (a failed check of the files, a lost connection, a crash), the robot

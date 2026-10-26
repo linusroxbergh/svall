@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { MachineId, OwnerRecord } from '@svall/protocol';
+import { MachineId, OwnerRecord, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -37,7 +37,7 @@ import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs } from './placement/docs-sync.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PrepareService } from './placement/prepare.js';
-import { Router, workerCalls } from './placement/router.js';
+import { Router, forgetRobot, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { releaseVersion } from './release.js';
 import { runtimeVersion, variant } from './runtime.js';
@@ -55,6 +55,7 @@ import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { workerOptions, workerStubs, type Off } from './worker/mode.js';
+import { WorkerMutations } from './worker/mutations.js';
 import { Outbox } from './worker/outbox.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
@@ -255,12 +256,21 @@ async function start(opts: Options): Promise<Daemon> {
     ...(homeDocs && { docs: homeDocs }),
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
-  const connection = worker && new HomeConnection({
-    paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+  const outbox = worker && Outbox.open(paths);
+  const connection = worker && outbox && new HomeConnection({
+    paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+    onAcked: (dropped) => mutations?.acked(dropped),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
   const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
-  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, ...(connection && { report: (r: RobotSync) => connection.report(r) }) });
+  const fleet = new Fleet({
+    store, tmux, paths, config, log, ownership, agentsFound, remote: router,
+    ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
+  });
+  // what the CLI in a worker's panes starts there, and changes there while its home is away
+  const mutations = worker && connection && outbox && new WorkerMutations({
+    store, fleet, connection, outbox, me, home: worker.worker.homeMachineId, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
+  });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
   // what each machine's agent CLIs are: a handover and a move read them
   const agents = agentProber(realProbeDeps(paths.env));
@@ -348,6 +358,7 @@ async function start(opts: Options): Promise<Daemon> {
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links,
+      ...(mutations && { mutations }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {

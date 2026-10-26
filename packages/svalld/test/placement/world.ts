@@ -15,11 +15,12 @@ import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
 import { Mirror, mirrorCalls, type MirrorHomes } from '../../src/placement/mirror.js';
-import { Router, workerCalls } from '../../src/placement/router.js';
+import { Router, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
+import { WorkerMutations } from '../../src/worker/mutations.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
 import { makeHome } from '../helpers.js';
@@ -58,7 +59,7 @@ function storeWith(paths: Paths, state: Partial<FleetState>): Store {
 }
 
 // the parts of the API context the calls under test read
-const ctxOf = (store: Store, fleet: Fleet, ownership: OwnershipState, router: Router): Ctx => ({ store, fleet, ownership, router, viewer }) as unknown as Ctx;
+const ctxOf = (store: Store, fleet: Fleet, ownership: OwnershipState, router: Router, mutations?: WorkerMutations): Ctx => ({ store, fleet, ownership, router, viewer, mutations }) as unknown as Ctx;
 
 type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
@@ -81,10 +82,18 @@ export function world(o: {
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
   const homeDocs = o.docs && new HomeDocs(homePaths.docs, silentLogger, 100);
+  // the mutations the home took, in order; while `hold` holds, the next waits
+  const received: { kind: string; data: unknown }[] = [];
+  let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
     onReport: (r, machine) => { applyReport(homeStore, r, machine); },
     onEvent: async (kind, data, machine) => {
+      if (kind === 'mutation') {
+        await held;
+        received.push({ kind, data });
+        return;
+      }
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`no ${kind}`);
       homeDocs.apply(kind, data, machine);
     },
@@ -101,16 +110,20 @@ export function world(o: {
   const workerStore = storeWith(workerPaths, o.worker ?? {});
   const workerOwnership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
   const handlers: Handlers = {};
+  const outbox = Outbox.open(workerPaths);
   const connection = new HomeConnection({
-    paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store: workerStore, outbox: Outbox.open(workerPaths),
-    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers,
+    paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store: workerStore, outbox,
+    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers, onAcked: (dropped) => mutations.acked(dropped),
   });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
   const workerTmux = { ...o.tmux } as Tmux;
   const workerFleet = new Fleet({
     store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
-    report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [],
+    report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [], refreshLinks: async () => {},
+    created: (c, p) => mutations.created(c, p),
   });
+  const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
+  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, home: H, paths: workerPaths, log: silentLogger, forget });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
   const workerDocs = o.docs && new WorkerDocs({
     dir: path.join(workerPaths.cache, 'docs'), file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
@@ -119,12 +132,20 @@ export function world(o: {
     handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), workerDocs?.handlers,
     o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, connection, log: silentLogger }),
   );
-  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter);
+  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, mutations);
 
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop());
   return {
-    home: { paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs },
-    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs },
+    home: {
+      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, received,
+      /** Holds the mutations the home takes from here on, until the function it returns is called. */
+      hold(): () => void {
+        let release!: () => void;
+        held = new Promise((r) => { release = r; });
+        return () => { held = undefined; release(); };
+      },
+    },
+    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs, outbox, tmux: workerTmux, mutations },
     /** Both ends up, and the worker synced. */
     async link(): Promise<void> {
       workerDocs?.start();

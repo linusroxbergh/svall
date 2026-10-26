@@ -92,11 +92,14 @@ const crewLines = (island: Island, c: Robot): string[] => [
 const WORKTREE = '- In a git repo, start every task and review in a new worktree inside the main checkout, before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. A path in the task names a file; change it in your worktree. Change the main checkout only when the user says so.';
 
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
-export function renderBrief(island: Island, robot?: Robot, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false): string {
+export function renderBrief(
+  island: Island, robot?: Robot, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false, asOf?: { at: number; home: string },
+): string {
   const crew = robot && island.kind !== 'home' ? robot : undefined;
   // the profile stands right under the heading: no free text comes before it to pass for its start, and a brief Claude cuts short keeps it
   const head = [
     ...(robot && profile ? profileLines(profile) : []),
+    asOf && `context as of ${new Date(asOf.at).toISOString()}; ${asOf.home} is not reachable`,
     `Island: ${headline(island.name, island.description)}`,
     island.instructions && `Island instructions: ${ellipsis(island.instructions, INSTRUCTIONS_MAX)}`,
     robot && `Robot: ${headline(robot.name, robot.note)}`,

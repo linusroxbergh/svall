@@ -32,7 +32,7 @@ describe('routing calls for placed robots', () => {
       .toEqual({ id: 1, error: { code: 'not_reachable', message: 'w1 is not reachable' } });
   });
 
-  it('on the worker, robot.read of a robot here answers locally with the home down; robot.update is refused with the one sentence', async () => {
+  it('on the worker, robot.read and robot.update of its note answer locally with the home down; robot.update of its figure is refused with the one sentence', async () => {
     const captured: string[] = [];
     const w = open({
       worker: { robots: { c_1: onW1, c_home: robot({ id: 'c_home', tmux: { windowId: '@1', paneId: '%1' } }) }, machines: { [W]: { name: 'w1', reachable: true, since: 1 } } },
@@ -42,7 +42,8 @@ describe('routing calls for placed robots', () => {
     expect(await dispatch({ id: 1, method: 'robot.read', params: { id: 'c_1' } }, w.worker.ctx)).toEqual({ id: 1, result: { text: '$ make test\nok\n' } });
     expect(captured).toEqual(['%1']);
     expect(await dispatch({ id: 2, method: 'state.get', params: {} }, w.worker.ctx)).toMatchObject({ result: { robots: { c_1: { machine: W } } } });
-    expect(await dispatch({ id: 3, method: 'robot.update', params: { id: 'c_1', note: 'reviewing' } }, w.worker.ctx))
+    expect(await dispatch({ id: 3, method: 'robot.update', params: { id: 'c_1', note: 'reviewing' } }, w.worker.ctx)).toMatchObject({ id: 3, result: { note: 'reviewing' } });
+    expect(await dispatch({ id: 3, method: 'robot.update', params: { id: 'c_1', figure: 2 } }, w.worker.ctx))
       .toEqual({ id: 3, error: { code: 'not_reachable', message: UNREACHABLE } });
     // a robot the home runs is the home's to read, whatever ids the mirror holds for it
     expect(await dispatch({ id: 4, method: 'robot.read', params: { id: 'c_home' } }, w.worker.ctx)).toEqual({ id: 4, error: { code: 'not_reachable', message: UNREACHABLE } });
@@ -56,6 +57,8 @@ describe('routing calls for placed robots', () => {
   it('on the worker, a call its mirror cannot answer is the home\'s, and the change comes back in the next snapshot', async () => {
     const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
+    // a change to a robot here is the home's once it has acked all the worker journaled
+    await until(() => { if (w.worker.outbox.last() !== w.worker.outbox.acked()) throw new Error('not drained yet'); });
     expect(await dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', note: 'reviewing' } }, w.worker.ctx)).toMatchObject({ id: 1, result: { id: 'c_1', note: 'reviewing' } });
     expect(w.home.store.state.robots.c_1.note).toBe('reviewing');
     await until(() => { if (w.worker.store.state.robots.c_1.note !== 'reviewing') throw new Error('no snapshot yet'); });
