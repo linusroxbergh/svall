@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
 import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
@@ -37,6 +37,12 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     app.api().call('term.lastScreen', { id }).then((r) => { if (!left) setLastScreen(r.text); }, () => {});
     return () => { left = true; setLastScreen(''); };
   }, [id, lost]);
+  // the capture runs from the scrollback down to the screen, which is what shows
+  const screenRef = useRef<HTMLPreElement>(null);
+  useLayoutEffect(() => {
+    const el = screenRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lastScreen]);
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
   const ref = useRef<HTMLDivElement>(null);
@@ -104,7 +110,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     return (
       <div className="revive away">
         <span data-testid="terminal-unreachable">{unreachable}</span>
-        {lastScreen && <pre data-testid="terminal-last-screen">{lastScreen}</pre>}
+        {lastScreen && <pre ref={screenRef} data-testid="terminal-last-screen">{lastScreen.replace(/\r/g, '')}</pre>}
       </div>
     );
   }
