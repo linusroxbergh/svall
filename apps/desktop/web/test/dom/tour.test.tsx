@@ -41,16 +41,54 @@ test('the tour selects its first robot once, so a robot shown after a sheet clos
 });
 
 test('with its anchor out of sight the tour still offers its buttons, and Escape ends it for good', () => {
-  const { queryByTestId } = render(<Tour />);
+  const { getByTestId, queryByTestId } = render(<>
+    <Tour />
+    <input data-testid="rename" onKeyDown={(e) => { if (e.key === 'Escape') e.stopPropagation(); }} />
+    <div className="map" data-testid="sea" />
+  </>);
   expect(queryByTestId('tour-next')).not.toBeNull();
   expect(queryByTestId('tour-skip')).not.toBeNull();
-  const esc = () => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
-  // a dialog over the page keeps its own Escape
+  const esc = (at: Element = document.body) => act(() => { at.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  // a field, a dialog over the page and a map drag keep their own Escape
+  esc(getByTestId('rename'));
   act(() => store.getState().setMissionPrompt(true));
   esc();
-  expect(queryByTestId('tour')).not.toBeNull();
   act(() => store.getState().setMissionPrompt(false));
+  getByTestId('sea').dataset.dragging = 'true';
+  esc();
+  getByTestId('sea').dataset.dragging = 'false';
+  expect(queryByTestId('tour')).not.toBeNull();
   esc();
   expect(queryByTestId('tour')).toBeNull();
   expect(localStorage.getItem('svall.tour')).toBe('done');
+});
+
+test('a tour with nothing to point at stays mid-window as the window resizes', async () => {
+  const { getByTestId } = render(<Tour />);
+  const frame = () => act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+  const size = (w: number, h: number) => { Object.defineProperty(window, 'innerWidth', { value: w, configurable: true }); Object.defineProperty(window, 'innerHeight', { value: h, configurable: true }); };
+  const [w, h] = [innerWidth, innerHeight];
+  try {
+    await frame();
+    size(600, 400);
+    await frame();
+    // jsdom lays nothing out, so the bubble measures 0×0 and its corner is the window's middle
+    expect([getByTestId('tour').style.left, getByTestId('tour').style.top]).toEqual(['300px', '200px']);
+  } finally {
+    size(w, h);
+  }
+});
+
+test('an anchor outside the window is out of sight: the bubble stands mid-window without a ring', async () => {
+  const { container, getByTestId } = render(<><Tour /><div data-testid="token-c1" /></>);
+  const frame = () => act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+  const at = (left: number) => { getByTestId('token-c1').getBoundingClientRect = () => ({ x: left, y: 100, left, top: 100, right: left + 80, bottom: 200, width: 80, height: 100 }) as DOMRect; };
+  at(-500);
+  await frame();
+  expect(container.querySelector('.tour-ring')).toBeNull();
+  expect(getByTestId('tour').dataset.side).toBeUndefined();
+  at(200);
+  await frame();
+  expect(container.querySelector('.tour-ring')).not.toBeNull();
+  expect(getByTestId('tour').dataset.side).toBe('bottom');
 });

@@ -69,9 +69,12 @@ const sameBox = (a?: Box, b?: Box) => a?.left === b?.left && a?.top === b?.top &
 // a browser zooms the page with CSS, which rects carry and lengths do not; the shell zooms the page whole
 const zoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
 
-// every match of the selector, as one box in the page's own pixels
+// every match of the selector in the window, as one box in the page's own pixels
 function boxOf(selector: string): Box | undefined {
-  const els = [...document.querySelectorAll(selector)].filter((e) => e.getBoundingClientRect().width > 0);
+  const els = [...document.querySelectorAll(selector)].filter((e) => {
+    const r = e.getBoundingClientRect();
+    return r.width > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+  });
   if (els.length === 0) return undefined;
   const rs = els.map((e) => e.getBoundingClientRect()), z = zoom();
   const radius = els.length === 1 ? parseFloat(getComputedStyle(els[0]).borderTopLeftRadius) || 0 : undefined;
@@ -98,6 +101,7 @@ export function Tour() {
   const bindings = useApp((s) => s.settings.bindings);
   const [box, setBox] = useState<Box>();
   const [size, setSize] = useState({ w: 300, h: 0 });
+  const [view, setView] = useState({ w: innerWidth, h: innerHeight });
   const bubble = useRef<HTMLDivElement>(null);
   const cardOpen = useApp((s) => s.card !== undefined);
   const cur = ready ? STEPS[step] : undefined;
@@ -108,14 +112,15 @@ export function Tour() {
     setStep(next);
   };
 
-  // the map pans and the side card eases in, so the anchor is measured every frame; the bubble moves with it,
-  // and the hole a terminal under it gives up has to follow
+  // the map pans, the side card eases in and the window resizes, so the anchor and the window are measured every
+  // frame; the bubble moves with them, and the hole a terminal under it gives up has to follow
   useEffect(() => {
     if (!selector) return;
     let raf = 0, held = '';
     const tick = () => {
       const b = boxOf(selector);
       setBox((prev) => (sameBox(prev, b) ? prev : b));
+      setView((prev) => (prev.w === innerWidth && prev.h === innerHeight ? prev : { w: innerWidth, h: innerHeight }));
       const el = bubble.current;
       if (el) {
         setSize((prev) => (prev.w === el.offsetWidth && prev.h === el.offsetHeight ? prev : { w: el.offsetWidth, h: el.offsetHeight }));
@@ -142,22 +147,24 @@ export function Tour() {
   const shown = Boolean(cur);
   useEffect(() => (shown && bubble.current ? holdCutout(app.bridge, bubble.current, true) : undefined), [shown, step]);
 
-  // Escape ends the tour before the card or the map read it; a dialog over the page keeps its own
+  // Escape ends the tour before the page's own Escape on the window closes the card. A field, menu or dialog that
+  // takes Escape stops it before the document, the editor keeps its keys, and a map drag's Escape is left to cancel it
   useEffect(() => {
     if (!shown) return;
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || isVeiled(app.store.getState())) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || isVeiled(app.store.getState())) return;
+      if ((e.target as Element | null)?.closest?.('.cm-editor') || document.querySelector('.map[data-dragging="true"]')) return;
       e.stopPropagation();
       go(STEPS.length);
     };
-    window.addEventListener('keydown', key, true);
-    return () => window.removeEventListener('keydown', key, true);
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
   }, [shown]);
 
   if (!cur || !at) return null;
   const k = (id: Parameters<typeof keyLabel>[0]) => keyLabel(id, bindings) ?? '';
   const last = step === STEPS.length - 1;
-  const z = zoom(), vw = innerWidth / z, vh = innerHeight / z;
+  const z = zoom(), vw = view.w / z, vh = view.h / z;
   const ring = box && { left: Math.max(box.left - 6, 3), top: Math.max(box.top - 6, 3), right: Math.min(box.right + 6, vw - 3), bottom: Math.min(box.bottom + 6, vh - 3), radius: (box.radius ?? 12) + 6 };
   return (
     <>

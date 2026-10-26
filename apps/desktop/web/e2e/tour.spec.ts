@@ -107,3 +107,30 @@ test('under the page zoom a browser applies, the ring stands on its target', asy
   await page.getByTestId('tour-next').click();
   await expect.poll(() => ringsOn(page, page.getByTestId('side-card'))).toBe(true);
 });
+
+test('a rename and a map drag keep their own Escape while the tour shows', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('first') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp' });
+  await svall.open('map', { firstRun: true, tour: true });
+  await page.getByTestId('settings-close').click();
+  const tour = page.getByTestId('tour');
+  await expect(tour).toContainText('1 of 5');
+  await page.getByTestId(`sb-island-${island.id}`).dblclick();
+  const input = page.getByTestId('island-name-input');
+  await input.fill(svall.uniq('renamed'));
+  await input.press('Escape');
+  await expect(input).toHaveCount(0);
+  await expect(page.getByTestId(`sb-island-${island.id}`)).toContainText(island.name);
+  await expect(tour).toBeVisible();
+  const token = page.getByTestId(`token-${c.id}`), before = (await token.boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2 + 120, before.y + before.height / 2 + 60, { steps: 5 });
+  await expect.poll(async () => (await token.boundingBox())!.x - before.x).toBeGreaterThan(30);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(tour).toBeVisible();
+  // a drop would land a beat after the release
+  await page.waitForTimeout(500);
+  expect((await svall.api.call('state.get', {})).robots[c.id].cell).toEqual(c.cell);
+});
