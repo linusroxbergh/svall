@@ -34,6 +34,14 @@ describe('needOf', () => {
     expect(needOf(f, [phone('me')])).toMatchObject({ working: 0, waiting: 2, phones: 1 });
   });
 
+  it('counts nothing of a robot that runs on a worker, which needs nothing of this Mac', () => {
+    const W = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as NonNullable<Robot['machine']>;
+    let f = patch(fleet(), 'c0', { agent: agent('working', { lastActivityAt: 500 }), second: second('working'), machine: W });
+    f = patch(f, 'c1', { agent: agent('blocked'), machine: W });
+    f = { ...f, machines: { [W]: { name: 'linus-vault', reachable: true, since: 0 } } };
+    expect(needOf(f, [])).toEqual(need());
+  });
+
   it('dates the need from the newest activity of any agent, in either terminal, or the newest phone', () => {
     let f = patch(fleet(), 'c0', { agent: agent('blocked', { lastActivityAt: 100 }) });
     f = patch(f, 'c1', { agent: agent('idle', { lastActivityAt: 200 }), second: second('idle', { lastActivityAt: 300 }) });
