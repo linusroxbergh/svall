@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { SetupRow } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { silentLogger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
+import { readConsent } from '../src/placement/mirror-consent.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
@@ -14,6 +16,7 @@ import { Workspace } from '../src/workspace/workspace.js';
 import { TerminalHub } from '../src/terminals.js';
 import { hasGit } from './handover/git-fixture.js';
 import { cleanHomes, makeHome, ownerOf } from './helpers.js';
+import { farHome, macHome, mirroredFiles, statsOf } from './placement/mirror-homes.js';
 import { moveWorld, type MoveWorld } from './placement/move-world.js';
 import { W, island, placed, world } from './placement/world.js';
 
@@ -211,6 +214,79 @@ describe('machines.refresh', () => {
     expect(await dispatch({ id: 1, method: 'machines.refresh' }, ctx)).toEqual({ id: 1, result: {} });
     expect(refreshed).toBe(1);
     expect(await dispatch({ id: 2, method: 'machines.refresh' }, { ...ctx, links: undefined })).toEqual({ id: 2, result: {} });
+  });
+});
+
+describe('machines.setup and machines.consent', () => {
+  let worker: ReturnType<typeof farHome>;
+  let w: ReturnType<typeof world>;
+  afterEach(() => w.stop());
+  const byKey = (key: string) => (r: SetupRow) => r.key === key;
+  const call = async (ctx: Ctx, method: 'machines.setup' | 'machines.consent', params: object): Promise<{ rows: SetupRow[] }> => {
+    const res = await dispatch({ id: 1, method, params }, ctx);
+    if ('error' in res) throw new Error(`${res.error.code}: ${res.error.message}`);
+    return res.result as { rows: SetupRow[] };
+  };
+  const workerJson = () => JSON.parse(fs.readFileSync(worker.claudeJson, 'utf8'));
+  // every file the mirror writes on the worker but the one that holds linear
+  const others = () => statsOf(mirroredFiles(worker).filter((f) => f !== worker.claudeJson));
+  const linked = async () => {
+    worker = farHome();
+    w = world({ mirror: { home: macHome(), worker } });
+    await w.link();
+    await w.home.links.pushMirror(W);
+  };
+
+  it('machines.consent on ticks a server\'s fields, mirrors only that change, and answers rows with the server ok and its keys on the worker', async () => {
+    await linked();
+    const before = others();
+    const r = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.LINEAR_API_KEY lin…90', tick: { on: true } });
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    expect(others()).toEqual(before);
+  });
+
+  it('machines.consent off empties the copied keys there on the same call', async () => {
+    await linked();
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    const r = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: [], on: false });
+    expect(workerJson().mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1", tick: { on: false } });
+  });
+
+  it('machines.setup with the link down answers the plan rows, the probe-dependent ones saying not checked, within waitMs', async () => {
+    worker = farHome();
+    w = world({
+      mirror: { home: macHome(), worker }, connect: async () => { throw new Error('connection refused'); },
+      home: { machines: { [W]: { name: 'w1', reachable: false, since: 0 } } },
+    });
+    w.home.links.start();
+    const started = Date.now();
+    const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 500 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(490);
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
+    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toEqual({ key: 'var:REMOTE_TOKEN', status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
+  });
+
+  it('machines.setup waits for a link coming up and answers what the worker holds', async () => {
+    worker = farHome();
+    w = world({ mirror: { home: macHome(), worker } });
+    await w.worker.connection.start();
+    w.home.links.start();
+    const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 5_000 });
+    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN' });
+  });
+
+  it('machines.setup on a worker answers not_on_worker, machines.consent from a worker is refused by the home, and a phone is refused both', async () => {
+    await linked();
+    const consent = { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true };
+    expect(await dispatch({ id: 1, method: 'machines.setup', params: { machine: W } }, w.worker.ctx)).toEqual({ id: 1, error: { code: 'not_on_worker', message: 'not on a worker' } });
+    expect(await dispatch({ id: 2, method: 'machines.consent', params: consent }, w.worker.ctx)).toMatchObject({ id: 2, error: { code: 'unauthorized' } });
+    const phone = { ...w.home.ctx, viewer: { ...w.home.ctx.viewer, kind: 'phone' } } as Ctx;
+    expect(await dispatch({ id: 3, method: 'machines.setup', params: { machine: W } }, phone)).toMatchObject({ id: 3, error: { code: 'forbidden' } });
+    expect(await dispatch({ id: 4, method: 'machines.consent', params: consent }, phone)).toMatchObject({ id: 4, error: { code: 'forbidden' } });
+    expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
   });
 });
 

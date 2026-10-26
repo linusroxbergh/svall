@@ -28,7 +28,7 @@ fleet stays on the Mac; the Linux machine is its worker.
   any robot runs on a worker or is moving to one. The Handover button, `svall host enable` and **keep on this
   machine** (`svall robot update --keep-here`) are gone: no machine becomes a gateway, and robots move one
   by one instead.
-- The fleet state moves to schema 12, which drops each robot's keep-on-this-machine mark, and the protocol to 32; the
+- The fleet state moves to schema 12, which drops each robot's keep-on-this-machine mark, and the protocol to 33; the
   old state is kept beside it.
 - A Linux machine runs this Mac's release: after Svall updates, `svall host upgrade <name>` updates each machine.
 

@@ -8,7 +8,7 @@ Dev; a Linux machine takes it with `svall host upgrade`.
 
 On its first start, each fleet's daemon on the Mac migrates `state.json` from version 11 to 12, which drops each
 robot's keep-on-this-machine mark, and keeps the file as it was beside it as `state.json.v11-<time>`. The app,
-`svall` and the daemons of this release speak protocol 32; an update installs all of them together.
+`svall` and the daemons of this release speak protocol 33; an update installs all of them together.
 
 Then run `svall host upgrade <machine>`, or **Upgrade** under Settings → Machines, for each Linux machine 0.18 set up.
 It installs this Mac's release there, and goes back to the release before if the fleet's daemon there does not answer
@@ -66,11 +66,11 @@ runs, and the daemon's log or setup's output names it; copy anything you still w
 `svall doctor` warns of one still there. A `config.json.bak` already in the way stops the split before anything is
 written, until you keep one of the two; the daemon's log and `svall doctor` both say so.
 
-### State schema 12 and protocol 32
+### State schema 12 and protocol 33
 
 - On its first start, the daemon migrates `state.json` to version 12, where a second terminal has a folder of its own.
   The file as it was stays beside it as `state.json.v8-<time>`, or `.v7-` from a release before OpenCode support.
-- The app, `svall` and the daemons of one release speak protocol 32 to each other. An app or `svall` from an older
+- The app, `svall` and the daemons of one release speak protocol 33 to each other. An app or `svall` from an older
   release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
   gets `machine.json`, this Mac's id. A fleet with no gateway starts even where `~/.config/svall` cannot be written

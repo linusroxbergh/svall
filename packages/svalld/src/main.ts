@@ -249,6 +249,11 @@ async function start(opts: Options): Promise<Daemon> {
   const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(store.state.robots, id));
   // what a worker did while this Mac slept, applied once each
   const replay = worker ? undefined : new Replay({ store, paths, log, synced: (m): boolean => links?.for(m)?.synced === true, homedir: os.homedir() });
+  // the home's agent configuration, which each worker takes
+  const homeMirror = worker ? undefined : new Mirror({
+    claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles,
+    consent: paths.mirrorConsent, log,
+  });
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
@@ -276,10 +281,7 @@ async function start(opts: Options): Promise<Daemon> {
     },
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
-    mirror: new Mirror({
-      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles,
-      consent: paths.mirrorConsent, log,
-    }),
+    mirror: homeMirror,
     ...(homeDocs && { docs: homeDocs }),
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
@@ -402,6 +404,7 @@ async function start(opts: Options): Promise<Daemon> {
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
+      mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${profile} `,
       ...(mutations && { mutations }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

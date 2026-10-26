@@ -103,6 +103,8 @@ export class WorkerLink {
   private taken = 0;
   private takers: { version: number; done(): void }[] = [];
   private answered = true;
+  // who waits in `linked`
+  private linkers: ((linked: boolean) => void)[] = [];
   private heartbeat?: NodeJS.Timeout;
   private retry?: NodeJS.Timeout;
   private retryMs = FIRST_RETRY_MS;
@@ -129,6 +131,21 @@ export class WorkerLink {
     return this.odd;
   }
 
+  /** Resolves true once the worker is synced; false after `timeoutMs`, once the link stops or the worker greets in mismatch. */
+  linked(timeoutMs: number): Promise<boolean> {
+    if (this.synced) return Promise.resolve(true);
+    if (this.stopped || this.odd || timeoutMs <= 0) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => settle(false), timeoutMs);
+      const settle = (linked: boolean) => {
+        clearTimeout(timer);
+        this.linkers = this.linkers.filter((l) => l !== settle);
+        resolve(linked);
+      };
+      this.linkers.push(settle);
+    });
+  }
+
   /** Greets a worker in mismatch again on its stream, as after its upgrade. */
   greetAgain(): void {
     if (this.odd && this.stream) this.greet(this.stream);
@@ -152,6 +169,7 @@ export class WorkerLink {
     clearTimeout(this.retry);
     clearTimeout(this.rehello);
     this.stream?.close();
+    this.settleLinked(false);
   }
 
   call<T>(method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {
@@ -205,6 +223,10 @@ export class WorkerLink {
   took(version: number): Promise<void> {
     if (this.taken >= version) return Promise.resolve();
     return new Promise((done) => this.takers.push({ version, done }));
+  }
+
+  private settleLinked(linked: boolean): void {
+    for (const settle of [...this.linkers]) settle(linked);
   }
 
   // what a hook throws is logged, and the link goes on
@@ -310,6 +332,7 @@ export class WorkerLink {
       }
       this.odd = h;
       this.rehello = setTimeout(() => this.greetAgain(), REHELLO_MS);
+      this.settleLinked(false);
       return;
     }
     this.odd = undefined;
@@ -363,6 +386,7 @@ export class WorkerLink {
         await this.o.onInventory(this.inventory, this.machine);
         if (stream !== this.stream) return;
         this.synced = true;
+        this.settleLinked(true);
         this.hook('onSynced failed', () => this.o.onSynced?.(this.machine));
         this.pushSoon();
         void this.pushMirror();

@@ -153,6 +153,7 @@ export function world(o: {
   const homeTerminals = new TerminalHub(homeFleet, untouchable, homeStore, homeLog, { router: homeRouter, links });
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
+    mirror: homeMirror, fleetFlag: '',
   });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
