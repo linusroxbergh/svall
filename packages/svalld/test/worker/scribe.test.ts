@@ -133,6 +133,27 @@ describe('the scribe on a placed robot', () => {
     expect(far).toHaveBeenCalledTimes(2);
   });
 
+  it('a robot moved here while its worker answered has the change carried into its brief, as a robot here does', async () => {
+    const dir = makeHome();
+    const robots = { c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }) };
+    let moveHome = () => {};
+    const worker: RunScribe = async () => { moveHome(); return JSON.stringify({ note: 'building the board' }); };
+    const { w, scribe } = await open({ home: { robots }, worker: { robots }, scribe: { worker } });
+    moveHome = () => w.home.store.update((d) => {
+      const c = d.robots.c_1;
+      delete c.machine;
+      delete c.placement;
+      c.agent!.brief = w.home.fleet['render'](d.islands.i_1, c);
+    });
+    grow(path.join(dir, 'c_1.jsonl'), 4000);
+
+    scribe.tick();
+    await scribe.settled();
+    const c = w.home.store.state.robots.c_1;
+    expect(c.note).toBe('building the board');
+    expect(c.agent!.brief).toBe(w.home.fleet['render'](w.home.store.state.islands.i_1, c));
+  });
+
   it('a pass that fails on the worker shows the end of what its child printed in the home\'s scribe error', async () => {
     const dir = makeHome();
     const robots = { c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }) };

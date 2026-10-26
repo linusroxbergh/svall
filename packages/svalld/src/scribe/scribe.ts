@@ -239,12 +239,11 @@ export class Scribe {
     const c = state.robots[id];
     if (!c?.agent?.transcriptPath) return [];
     const columns = only === 'columns' || placingOn(state) ? state.columns : undefined;
-    const here = this.here(c);
-    const pass = here ? await this.read(c, only, columns) : await this.readFar(c, only, columns, sweep);
+    const pass = this.here(c) ? await this.read(c, only, columns) : await this.readFar(c, only, columns, sweep);
     if (!pass) return [];
     this.answered();
     // a column answered without the board in the prompt places nothing
-    return this.writeRobot(c, columns ? pass.answer : { ...pass.answer, column: undefined }, pass.evidence, only, here);
+    return this.writeRobot(c, columns ? pass.answer : { ...pass.answer, column: undefined }, pass.evidence, only);
   }
 
   /** The pass a robot's home asked for over its transcript here, which writes nothing: one at rest and grown, or any in a sweep. */
@@ -302,11 +301,12 @@ export class Scribe {
   }
 
   // each field is written only if nobody changed it while the model was thinking; a robot's delivered brief is its machine's
-  private writeRobot(before: Robot, a: RobotAnswer, transcript: string, only?: Only, here = true): string[] {
+  private writeRobot(before: Robot, a: RobotAnswer, transcript: string, only?: Only): string[] {
     const lines: string[] = [];
     this.deps.store.update((d) => {
       const cur = d.robots[before.id];
       if (!cur) return;
+      const here = this.here(cur);
       const island = d.islands[cur.islandId];
       const prevBrief = island && here ? this.deps.brief(island, cur) : '';
       const taken = new Set(Object.values(d.robots).filter((o) => o.id !== cur.id).map((o) => o.name));
