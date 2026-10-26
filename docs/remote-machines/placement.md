@@ -7,7 +7,9 @@ and nothing else, and keeps its own clone of each repository its robots work in.
 
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker shows
 a machine badge on its card, token and board card, and keeps its board column; `svall robot run`, `read`, `wait` and
-`revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker.
+`revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
+Changes and Resources stay hidden, as its files are on the worker's disk; **Terminal there** opens a terminal in its
+folder.
 
 ## Moving one
 

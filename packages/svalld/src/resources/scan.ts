@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import { deletable, frontmatter, type FleetState, type ResourceGroup, type ResourceItem, type ResourceKind, type ResourceSource } from '@svall/protocol';
+import { ApiError, deletable, frontmatter, type FleetState, type ResourceGroup, type ResourceItem, type ResourceKind, type ResourceSource, type Robot } from '@svall/protocol';
 import { listAgentProfiles } from '../agent-profiles.js';
 import type { CodexPaths } from '../codex/install.js';
 import { docsDir, fleetDir, listDocs, repoRootOf, repoSlug } from '../docs.js';
@@ -52,12 +52,18 @@ export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths,
   return docs !== undefined && isDocsRoot(root, state, docs) ? root : undefined;
 }
 
-/** The folder a workspace id names: a resource root when the id is one, else the robot's own folder. */
-export function workspaceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): string {
+/**
+ * The folder a workspace id names: a resource root when the id is one, else the robot's own folder, refused for a robot
+ * `here` says runs on another machine, as that folder is on its disk.
+ */
+export function workspaceRoot(
+  id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, here?: (c: Robot) => boolean,
+): string {
   const res = resourceRoot(id, state, claude, codex, docs, agentProfiles);
   if (res) return res;
   if (!Object.hasOwn(state.robots, id)) throw new NotFound(`no robot ${id}`);
   const c = state.robots[id];
+  if (here && !here(c)) throw new ApiError('not_here', `${c.name} is on ${c.machine ? state.machines?.[c.machine]?.name ?? c.machine : 'its home'}`);
   return c.repo?.root ?? c.cwd;
 }
 

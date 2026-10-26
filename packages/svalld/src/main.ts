@@ -315,7 +315,7 @@ async function start(opts: Options): Promise<Daemon> {
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c)), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   const phones = new Phones();
   const mobile = off.has('mobile') ? workerStubs.mobile : mobileControl(realDeps(), {
     home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
