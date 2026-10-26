@@ -3,6 +3,7 @@ import { Mutation, UPDATE_FIELDS, cellKey, isLand, methods, type ContextItem, ty
 import { settleItems } from '../context/items.js';
 import { removeDocs } from '../docs.js';
 import { setNote } from '../fleet.js';
+import { isRobotId } from '../ids.js';
 import { addIsland } from '../islands.js';
 import { blockedCells, occupiedCells, placeOnIsland, unfold, uniqueName } from '../layout.js';
 import type { Logger } from '../log.js';
@@ -73,7 +74,7 @@ export class Replay {
         try {
           if (m.method === 'robot.create') this.create(m, machine, worker, log);
           else if (p && !p.success) throw p.error;
-          else if (p) this.update(m, p.data, settled, worker, log);
+          else if (p) this.update(m, p.data, settled, machine, worker, log);
           else if (m.method === 'robot.close') {
             const id = this.close(m, machine, worker);
             if (id) later.push(() => removeDocs(this.o.paths.docs, 'robot', id, this.o.log));
@@ -100,6 +101,7 @@ export class Replay {
   private create(m: Mutation, machine: MachineId, worker: string, log: Logger): void {
     const r = m.robot;
     if (!r) throw new Error('it carries no robot');
+    if (!isRobotId(r.id)) throw new Error(`${JSON.stringify(r.id)} is not a robot id`);
     if (Object.hasOwn(this.o.store.state.robots, r.id)) return;
     this.o.store.update((d) => {
       const own = Object.hasOwn(d.islands, r.islandId) ? d.islands[r.islandId] : undefined;
@@ -130,13 +132,14 @@ export class Replay {
   }
 
   // a field changed here since the worker's base, or a name another robot has taken, keeps this Mac's value, and the note names the worker's
-  private update(m: Mutation, p: ParsedParams<'robot.update'>, settled: Settled | undefined, worker: string, log: Logger): void {
+  private update(m: Mutation, p: ParsedParams<'robot.update'>, settled: Settled | undefined, machine: MachineId, worker: string, log: Logger): void {
     const { robots } = this.o.store.state;
     if (!Object.hasOwn(robots, p.id)) {
       log.info(`${worker}: ${p.id} is closed here; what ${worker} changed of it while this Mac slept is dropped`);
       return;
     }
     const c = robots[p.id];
+    if (c.machine !== machine) throw new Error(`it no longer runs on ${worker}`);
     const next: Partial<Pick<Robot, (typeof UPDATE_FIELDS)[number]>> = {};
     const lost: string[] = [];
     for (const k of UPDATE_FIELDS) {

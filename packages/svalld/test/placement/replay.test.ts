@@ -109,12 +109,12 @@ describe('the home replaying what a worker did while it slept', () => {
     await create();
     const [m] = journaled();
     await w.link();
-    const r = { ...m.robot!, id: 'c_other', name: 'other', column: 'done', columnSource: 'manual' as const };
+    const r = { ...m.robot!, id: 'c_others', name: 'other', column: 'done', columnSource: 'manual' as const };
     // the home's tmux fails any call made to it, and the failure would be logged
     await apply({ ...m, id: 'mu_0000000001', params: { ...(m.params as object), command: 'claude', run: 'go on' }, robot: r });
-    expect(w.home.store.state.robots.c_other).toMatchObject({ machine: W, name: 'other' });
-    expect(w.home.store.state.robots.c_other).not.toHaveProperty('column');
-    expect(w.home.store.state.robots.c_other).not.toHaveProperty('columnSource');
+    expect(w.home.store.state.robots.c_others).toMatchObject({ machine: W, name: 'other' });
+    expect(w.home.store.state.robots.c_others).not.toHaveProperty('column');
+    expect(w.home.store.state.robots.c_others).not.toHaveProperty('columnSource');
     expect(logged).toEqual([]);
   });
 
@@ -155,6 +155,22 @@ describe('the home replaying what a worker did while it slept', () => {
     // the scribe leaves a lost value where it was written
     await apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 });
     expect(w.home.store.state.robots.c_2).toMatchObject({ note: 'the scribe\'s\nw1 set note to "mine" while this Mac slept; it had changed here since', noteSource: 'manual' });
+  });
+
+  it('a create whose id is not a robot id is logged and not applied', async () => {
+    const { w, create, journaled, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } } } });
+    await create();
+    const [m] = journaled();
+    await apply({ ...m, id: 'mu_0000000004', robot: { ...m.robot!, id: '../x' } });
+    expect(Object.keys(w.home.store.state.robots)).toEqual(['c_1']);
+    expect(logged).toEqual(['w1: robot.create mu_0000000004 not applied: "../x" is not a robot id']);
+  });
+
+  it('an update of a robot that does not run on the sender is not applied, and its note says why', async () => {
+    const { w, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_h: robot({ id: 'c_h' }) } } });
+    await apply({ id: 'mu_0000000005', method: 'robot.update', params: { id: 'c_h', name: 'taken' }, base: { name: 'c_h' }, snapshotVersion: 0, at: 1 });
+    expect(w.home.store.state.robots.c_h).toMatchObject({ name: 'c_h', note: 'w1 changed this robot while this Mac slept; it could not be applied here: it no longer runs on w1' });
+    expect(logged).toEqual(['w1: robot.update mu_0000000005 not applied: it no longer runs on w1']);
   });
 
   it('a robot that keeps its cell on an island folded here unfolds it', async () => {
