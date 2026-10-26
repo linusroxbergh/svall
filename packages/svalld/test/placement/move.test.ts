@@ -63,6 +63,8 @@ describe.skipIf(!hasGit)('the move transaction', () => {
         try { ask(); } catch (e) { refused.push(e); }
       }
       closed = home.fleet.closeRobot('c_1').catch((e: unknown) => e);
+      // a board column is this Mac's, and a card dropped on the way stays there
+      home.fleet.placeRobot('c_1', 'review');
     });
 
     const id = await home.placement.start('c_1', W);
@@ -92,6 +94,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(here.machine).toBe(W);
     expect(here.moving).toBeUndefined();
     expect(here.left).toEqual({ moveId: id, machine: H, path: w.wt, branch: 'kanban', branchSha: before.head, fingerprint });
+    expect(here).toMatchObject({ column: 'review', columnSource: 'manual' });
     expect(w.mac1.opened).toEqual([]);
     expect(home.placement.status(id).phase).toBe('done');
   });

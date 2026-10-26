@@ -5,9 +5,9 @@ move to a worker keeps its conversation, its branch, its commits and its uncommi
 this Mac sleeps. The fleet stays on this Mac: its islands, map, notes, phone and mission control. A worker runs robots
 and nothing else, and keeps its own clone of each repository its robots work in.
 
-Robots on different machines share islands, cards, the map and the keyboard flow. A robot on a worker shows a machine
-badge on its card and token; `svall robot run`, `read`, `wait` and `revive` reach it there, and its terminal attaches
-over this Mac's own ssh connection to the worker.
+Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker shows
+a machine badge on its card, token and board card, and keeps its board column; `svall robot run`, `read`, `wait` and
+`revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker.
 
 ## Moving one
 
@@ -143,6 +143,8 @@ linus-vault; move every robot back first".
 - The phone cannot see the server's robots while the Mac sleeps.
 - No replica divergence protection, because there are no replicas: the only shared thing is a branch, and git owns it.
 - A worker that disappears for good: its robots stay unknown until you close them.
+- The scribe reads the transcripts of robots on this Mac alone: a robot on a worker keeps its name, note and board
+  column until you change them.
 - A question an agent had open does not survive a move: the agent resumes idle and asks again.
 - The conversation travels whole: anything the agent pasted or printed in it, a key included, is in the transcript
   on both machines.
