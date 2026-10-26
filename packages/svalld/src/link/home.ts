@@ -352,8 +352,8 @@ export class WorkerLink {
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
           this.acked = f.seq;
-          // what the home made of it, a refused delete included, reaches the worker in docs packed past this seq
-          if (staged) this.pushDocs();
+          // what the home made of a docs change, a refused delete included, reaches the worker in docs packed past this seq
+          if (staged && staged.docs) this.pushDocs();
         }
         stream.send({ t: 'ack', seq: this.acked });
       }

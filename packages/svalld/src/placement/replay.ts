@@ -42,8 +42,9 @@ function gives(state: FleetState, islandId: string): boolean {
   try { placeOnIsland(structuredClone(state), islandId); return true; } catch { return false; }
 }
 
-/** An event's change to the store, made inside the link's hold, and what follows once that change is written. */
-export type Staged = { change(): void; after?(): void };
+/** An event's change to the store, made inside the link's hold, and what follows once that change is written; `docs`
+ *  when the worker is to have the fleet's docs once the event is acked. */
+export type Staged = { change(): void; after?(): void; docs?: true };
 
 /** What a worker did while this Mac slept, applied here once each, in the order the worker did it. */
 export class Replay {
@@ -54,7 +55,7 @@ export class Replay {
 
   /** Reads from disk what a mutation needs. Neither step throws: a mutation that does not parse is logged and skipped, one that
    *  cannot apply is logged and its robot's note says why. `change` writes the store alone; logs and removed docs wait for `after`. */
-  async prepare(raw: unknown, machine: MachineId): Promise<Required<Staged>> {
+  async prepare(raw: unknown, machine: MachineId): Promise<Staged & { after(): void }> {
     const worker = this.o.store.state.machines?.[machine]?.name ?? machine;
     const parsed = Mutation.safeParse(raw);
     if (!parsed.success) {

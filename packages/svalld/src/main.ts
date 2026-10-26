@@ -253,7 +253,7 @@ async function start(opts: Options): Promise<Daemon> {
       if (replay && kind === 'mutation') return replay.prepare(data, machine);
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();
       const conflict = homeDocs.apply(kind, data, machine);
-      return conflict && { change: () => noteConflict(store, machine, conflict, os.homedir()) };
+      return conflict && { change: () => noteConflict(store, machine, conflict, os.homedir()), docs: true as const };
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),

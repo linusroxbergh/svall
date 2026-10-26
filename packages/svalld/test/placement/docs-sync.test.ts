@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, type FleetState } from '@svall/protocol';
 import { repoSlug } from '../../src/docs.js';
 import { sha256Hex } from '../../src/handover/hash.js';
+import { newMutationId } from '../../src/ids.js';
 import { silentLogger } from '../../src/log.js';
 import { resolvePaths } from '../../src/paths.js';
 import { concerns, docsTar, HomeDocs, noteConflict, WorkerDocs } from '../../src/placement/docs-sync.js';
@@ -227,16 +228,24 @@ describe('a doc changed on both machines', () => {
     await until(() => expect(read(path.join(farDir, 'notes.md'))).toBe('v2, changed here\n'));
   });
 
-  it('a delete refused while linked brings this Mac\'s copy back to the worker at once', async () => {
+  it('a delete refused while linked brings this Mac\'s copy back to the worker at once, and a mutation\'s ack sends no docs', async () => {
     const { w, dir, farDir } = apart('v1\n');
     // a change here sends no docs, so only the refusal can
     vi.spyOn(w.home.docs!, 'watch').mockReturnValue(() => {});
+    const pushes = vi.spyOn(w.home.docs!, 'push');
     await w.link();
     await until(() => { if (!w.worker.connection.connected()) throw new Error('not live yet'); });
+    await until(() => expect(pushes).toHaveBeenCalledTimes(1));
+    const update = { id: newMutationId(), method: 'robot.update', params: { id: 'c_1', note: 'from w1' }, snapshotVersion: 0, at: Date.now(), base: { note: '' } };
+    w.worker.connection.journal('mutation', update);
+    await until(() => expect(w.home.store.state.robots.c_1.note).toBe('from w1'));
+    await nap(300);
+    expect(pushes).toHaveBeenCalledTimes(1);
     put(path.join(dir, 'notes.md'), 'v2, changed here\n');
     fs.rmSync(path.join(farDir, 'notes.md'));
-    await until(() => expect(w.home.store.state.robots.c_1.note).toBe('w1 deleted robots/c_1/notes.md, which changed here since; it stays'));
+    await until(() => expect(w.home.store.state.robots.c_1.note).toBe('from w1\nw1 deleted robots/c_1/notes.md, which changed here since; it stays'));
     await until(() => expect(read(path.join(farDir, 'notes.md'))).toBe('v2, changed here\n'));
+    expect(pushes).toHaveBeenCalledTimes(2);
   });
 
   it('a write whose base is the home\'s current content applies, and a replay of it is nothing', async () => {

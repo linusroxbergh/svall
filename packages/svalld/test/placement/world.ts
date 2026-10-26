@@ -98,7 +98,7 @@ export function world(o: {
       }
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`no ${kind}`);
       const conflict = homeDocs.apply(kind, data, machine);
-      return conflict && { change: () => noteConflict(homeStore, machine, conflict, '/Users/ada') };
+      return conflict && { change: () => noteConflict(homeStore, machine, conflict, '/Users/ada'), docs: true as const };
     },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
     onCall: (method, params) => answer(method, params, homeCtx),
