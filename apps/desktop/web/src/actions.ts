@@ -378,7 +378,7 @@ export const setPlacing = (d: ActionDeps, enabled: boolean): void => {
 
 // one scribe pass that only moves robots to the columns their work is at, Auto-place on or off
 export async function placeNow(d: ActionDeps): Promise<void> {
-  d.store.getState().showToast('Placing robots…', 'ok');
+  d.store.getState().setPlacingNow(true);
   try {
     const { lines } = await d.api.call('scribe.sweep', { columns: true });
     const moved = lines.filter((l) => l.includes('  column: ')).length;
@@ -387,6 +387,8 @@ export async function placeNow(d: ActionDeps): Promise<void> {
     d.store.getState().showToast(failed ? `${text}; the scribe failed on ${failed}` : text, failed ? 'error' : 'ok');
   } catch (e) {
     toast(d)(e as Error);
+  } finally {
+    d.store.getState().setPlacingNow(false);
   }
 }
 

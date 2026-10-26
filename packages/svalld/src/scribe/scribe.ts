@@ -155,9 +155,9 @@ export class Scribe {
     const lines: string[] = [];
     const only: Only | undefined = o.names ? 'names' : o.columns ? 'columns' : undefined;
     if (!o.islands) {
-      // a robot placed by hand stays where it is
-      const ids = Object.values(state.robots).filter((c) => c.tmux && c.agent?.transcriptPath && c.agent.status !== 'blocked' &&
-        (this.deps.runsHere?.(c) ?? true) && !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
+      // a robot placed by hand stays where it is; a dormant one is placed from the transcript it left
+      const ids = Object.values(state.robots).filter((c) => (only === 'columns' ? transcriptSize(c) > 0 : c.tmux) && c.agent?.transcriptPath &&
+        c.agent.status !== 'blocked' && (this.deps.runsHere?.(c) ?? true) && !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
       this.queue = this.queue.filter((j) => j.kind !== 'robot');
       lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, only))).flat());
     }
