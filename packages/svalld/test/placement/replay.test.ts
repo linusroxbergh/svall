@@ -80,27 +80,36 @@ function setup(o: { home?: Partial<FleetState>; lose?: () => number } = {}) {
 
 describe('the home replaying what a worker did while it slept', () => {
   it('a robot created offline appears at home once, on its cell, with the slept note; a replay after a lost ack adds nothing', async () => {
+    let seq = 0;
     // a crew the island would be laid out afresh for, which leaves the worker's cell free
-    const { w, create, journaled } = setup({ home: { robots: { c_x: robot({ id: 'c_x', cell: { x: 1, y: 3 } }) } } });
+    const { w, create, journaled } = setup({ home: { robots: { c_x: robot({ id: 'c_x', cell: { x: 1, y: 3 } }) } }, lose: () => seq });
     const { id } = await create();
     const [m] = journaled();
+    seq = w.worker.outbox.after(0).find((e) => e.kind === 'mutation')!.seq;
     await w.link();
     await until(() => expect(w.home.store.state.robots[id]).toMatchObject({ machine: W, placement: { generation: 0 }, islandId: 'i_1', cell: m.robot!.cell, note: SLEPT, noteSource: 'manual' }));
     const held = structuredClone(w.home.store.state.robots[id]);
+    // the transport loses the create's ack with the stream; the worker sends it again on the next
+    await until(() => expect(w.worker.outbox.acked()).toBe(w.worker.outbox.last()));
+    expect(w.home.store.state.robots[id]).toEqual(held);
+    // and the same mutation applied again adds nothing
     await w.home.replay.apply(m, W);
     expect(w.home.store.state.robots[id]).toEqual(held);
     expect(Object.keys(w.home.store.state.robots)).toHaveLength(3);
   });
 
-  it('a replayed create leaves the board column to the home', async () => {
-    const { w, create, journaled } = setup();
+  it('a replayed create leaves the board column to the home, and types nothing here, its run included', async () => {
+    const { w, create, journaled, logged } = setup();
     await create();
     const [m] = journaled();
     await w.link();
-    await w.home.replay.apply({ ...m, id: 'mu_0000000001', robot: { ...m.robot!, id: 'c_other', name: 'other', column: 'done', columnSource: 'manual' } }, W);
+    const r = { ...m.robot!, id: 'c_other', name: 'other', column: 'done', columnSource: 'manual' as const };
+    // the home's tmux fails any call made to it, and the failure would be logged
+    await w.home.replay.apply({ ...m, id: 'mu_0000000001', params: { ...(m.params as object), command: 'claude', run: 'go on' }, robot: r }, W);
     expect(w.home.store.state.robots.c_other).toMatchObject({ machine: W, name: 'other' });
     expect(w.home.store.state.robots.c_other).not.toHaveProperty('column');
     expect(w.home.store.state.robots.c_other).not.toHaveProperty('columnSource');
+    expect(logged).toEqual([]);
   });
 
   it('a mutation that does not parse is logged, acked and skipped, and the next one applies', async () => {

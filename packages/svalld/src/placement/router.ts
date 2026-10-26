@@ -86,8 +86,8 @@ export class Router {
   }
 
   /**
-   * Takes a worker's inventory on the home: its reports, a note on each robot it started since that shares a branch in its clone,
-   * a dormant record for each robot placed there that it no longer holds, and a forget for each it holds that the home closed.
+   * Takes a worker's inventory on the home: its reports, a note on each robot started there since the last reconnect that shares
+   * a branch in its clone, a dormant record for each robot placed there it no longer holds, and a forget for each the home closed.
    */
   async reconcileWorker(inv: Inventory, machine: MachineId): Promise<void> {
     const { links } = this.o;
