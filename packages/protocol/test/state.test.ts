@@ -12,7 +12,7 @@ describe('state schemas', () => {
 
   it('accepts an empty fleet', () => {
     expect(FleetState.parse(emptyState())).toEqual({
-      version: 11, islands: {}, robots: {},
+      version: 12, islands: {}, robots: {},
       home: {
         cwd: '~/.svall/home', command: 'claude --model opus',
         actions: [
@@ -27,7 +27,7 @@ describe('state schemas', () => {
   });
 
   it('fills home and the columns from defaults when a state file has none', () => {
-    const s = FleetState.parse({ version: 11, islands: {}, robots: {} });
+    const s = FleetState.parse({ version: 12, islands: {}, robots: {} });
     expect(s.columns).toEqual(defaultColumns());
     expect(s.home.command).toBe('claude --model opus');
     expect(s.defaultCwd).toBe(DEFAULT_CWD);
@@ -64,8 +64,8 @@ describe('state schemas', () => {
     expect(ContextItem.parse(item)).toEqual(item);
     expect(Island.parse({ id: 'i', name: 'n', description: '', instructions: 'never touch src/legacy', context: [item], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }).instructions)
       .toBe('never touch src/legacy');
-    expect(emptyState().version).toBe(11);
-    expect(STATE_SCHEMA_VERSION).toBe(11);
+    expect(emptyState().version).toBe(12);
+    expect(STATE_SCHEMA_VERSION).toBe(12);
   });
 
   it('keeps both terminals of an imported state that carries no tmux ids', () => {
@@ -74,7 +74,7 @@ describe('state schemas', () => {
       cwd: '/work', shell: { lastOutputAt: 0 }, unread: false, revive: { command: 'claude --resume a' },
       second: { cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } },
     });
-    const s = FleetState.parse({ version: 11, islands: {}, robots: { c } });
+    const s = FleetState.parse({ version: 12, islands: {}, robots: { c } });
     expect(s.robots.c.revive).toEqual({ command: 'claude --resume a' });
     expect(s.robots.c.second).toEqual({ cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } });
   });

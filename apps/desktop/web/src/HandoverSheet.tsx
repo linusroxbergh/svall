@@ -11,7 +11,6 @@ import {
 } from './handover.js';
 import { useApp } from './hooks.js';
 import { plural } from './host.js';
-import { startHost } from './HostSetup.js';
 import { accountHome } from './paths.js';
 
 const MARK: Record<SectionState, string> = { pending: '·', active: '›', waiting: '!', done: '✓', stopped: '×' };
@@ -278,29 +277,9 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
   );
 }
 
-/** No gateway to move to: a machine this Mac knows made the gateway, or a new one added, and back to the sheet after. */
+/** No gateway to move to: setup makes none, and a robot moves to a machine from its card. */
 function NoGateway() {
-  const machines = useApp((s) => s.machines);
-  const error = useApp((s) => s.machinesError);
-  const running = useApp((s) => !!s.host?.running);
-  const list = () => { app.bridge.send({ type: 'host.list' }); };
-  useEffect(list, []);
-  const known = machines?.filter((m) => m.ssh) ?? [];
-  const enable = (name: string) => { store().hostFromHandover(name); startHost('enable', { name }); };
-  return (
-    <div className="host-note" data-testid="handover-no-gateway">
-      {error ?? (known.length ? "Make a machine this fleet's gateway to move the fleet there." : 'Add a Linux machine to move this fleet to.')}
-      <div className="acts">
-        {error && <button className="btn" data-testid="handover-machines-reload" onClick={list}>Read again</button>}
-        {known.map((m) => (
-          <button key={m.id} className="btn pri" data-testid={`handover-enable-${m.name}`} disabled={running} onClick={() => enable(m.name)}>
-            Make {m.name} this fleet&apos;s gateway
-          </button>
-        ))}
-        <button className={known.length ? 'btn' : 'btn pri'} data-testid="handover-add-machine" disabled={running} onClick={() => store().hostFromHandover()}>Add machine</button>
-      </div>
-    </div>
-  );
+  return <div className="host-note" data-testid="handover-no-gateway">This fleet names no gateway to hand it over to.</div>;
 }
 
 /** The one place the fleet can go: the gateway from this Mac, and this Mac from the gateway. */

@@ -1,16 +1,11 @@
 import { z } from 'zod';
 import { isProfileName } from './names.js';
+import { FleetId, MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 import { AgentKind, DEFAULT_CWD, FleetState, Home } from './state.js';
 
 // names such as `trift` and `local` route and present; only these ids decide ownership, so renaming
 // a host leaves every record alone
-export const MachineId = z.guid().brand<'MachineId'>();
-export type MachineId = z.infer<typeof MachineId>;
-export const FleetId = z.guid().brand<'FleetId'>();
-export type FleetId = z.infer<typeof FleetId>;
-
-/** A sha256 digest as lowercase hex: what names a transfer manifest on the wire. */
-export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 hex digest');
+export { FleetId, MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
 
 /**
  * A handover in flight: at most one per fleet, and the gateway is the only writer. The freeze and the
@@ -43,14 +38,6 @@ export const OwnerRecord = z.object({
   retiredNonces: z.array(z.guid()).optional(),
 });
 export type OwnerRecord = z.infer<typeof OwnerRecord>;
-
-/** A path a command can be built from: an absolute one, naming itself and nothing else. */
-export const MachinePath = z.string()
-  .regex(/^\/[^\0\n]*$/, 'an absolute path with no NUL or newline')
-  .refine((p) => !p.split('/').includes('..'), 'an absolute path that climbs nowhere');
-
-/** A Git object by its full name, SHA-1 or SHA-256, which git never reads as an option. */
-const ObjectName = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, 'a full hex object name');
 
 /**
  * One machine in the controller's registry. A machine reached directly has no `ssh`.
@@ -141,7 +128,7 @@ export const HandoverIssueCode = z.enum([
   'identity_mismatch', 'generation_mismatch', 'transaction_open',
   'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter',
   'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing',
-  'home_mismatch', 'parent_missing', 'robot_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
+  'home_mismatch', 'parent_missing', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'authority_unreachable', 'authority_corrupt', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'git_config_command', 'codex_trust', 'codex_hooks', 'codex_sandbox', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',

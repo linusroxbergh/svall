@@ -23,7 +23,7 @@ function footInner(c: Robot, status: DisplayStatus, word: string | undefined, fa
 }
 
 export const Token = memoByValue(function Token({
-  c, status, world, links, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, links, selected, dragging, settling, hover, offset, failed, machine, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Robot;
   status: DisplayStatus;
@@ -37,6 +37,8 @@ export const Token = memoByValue(function Token({
   offset?: { x: number; y: number };
   // why a handover could not resume this robot, from the app's store; the landing page has none
   failed?: string;
+  // the worker a placed robot runs on
+  machine?: string;
   pointer: PointerHandlers;
   onHoverStart(): void;
   onHoverEnd(): void;
@@ -98,7 +100,7 @@ export const Token = memoByValue(function Token({
           </svg>
         </button>
       </div>
-      {(review || monitor || subs > 0) && (
+      {(review || monitor || subs > 0 || machine) && (
         <span className="corner">
           <span className="marks">
             {review && (
@@ -126,6 +128,7 @@ export const Token = memoByValue(function Token({
               </span>
             </span>
           )}
+          {machine && <span className="mach" data-testid={`token-machine-${c.id}`} title={`Runs on ${machine}`}>{machine}</span>}
         </span>
       )}
       {links && c.context.length > 0 && (

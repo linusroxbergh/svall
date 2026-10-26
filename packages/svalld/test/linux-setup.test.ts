@@ -9,7 +9,7 @@ import { codexPaths } from '../src/codex/install.js';
 import { DEFAULT_EXCLUDES, rootMatcher } from '../src/handover/inventory.js';
 import { scanPath } from '../src/handover/manifest.js';
 import { ReplicaStore } from '../src/handover/replicas.js';
-import { agentHomesEnv, svalldUnit, gatewayUnit, probeOrRollback, restartUnits, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
+import { agentHomesEnv, svalldUnit, gatewayUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
 import { machineId } from '../src/machine.js';
 import { opencodePaths } from '../src/opencode/install.js';
@@ -136,6 +136,22 @@ WantedBy=default.target
     const unit = svalldUnit({ runtime: checkoutRuntime('/src/a$b%c'), homedir: '/home/linus', prefix: '/p', fleet: 'private', home: '/home/linus/.svall' });
     expect(unit.text).toContain('ExecStart="/src/a$b%%c/node_modules/.bin/tsx" "/src/a$$b%%c/packages/svalld/src/bin.ts"\n');
   });
+
+  it('runs the fleet daemon with --worker once its home holds worker.json', () => {
+    const home = makeHome();
+    expect(svalldUnit({ ...release, fleet: 'private', home }).text).toContain('ExecStart="/home/linus/.local/share/svall/current/bin/svalld"\n');
+    fs.writeFileSync(resolvePaths(home).workerFile, '{}');
+    expect(svalldUnit({ ...release, fleet: 'private', home }).text).toContain('ExecStart="/home/linus/.local/share/svall/current/bin/svalld" "--worker"\n');
+  });
+
+  it('writes the fleet\'s unit alone, and the gateway\'s only when asked for it', () => {
+    const unitDir = makeHome();
+    const o = { ...release, prefix: path.join(makeHome(), 'svall'), fleet: 'private', home: makeHome(), unitDir };
+    writeUnits(o);
+    expect(fs.readdirSync(unitDir)).toEqual(['svall-svalld@private.service']);
+    writeUnits({ ...o, gateway: true });
+    expect(fs.readdirSync(unitDir).sort()).toEqual(['svall-gateway.service', 'svall-svalld@private.service']);
+  });
 });
 
 describe('the agent homes a daemon is given', () => {
@@ -232,7 +248,7 @@ describe('setupLinux', () => {
     expect(fs.existsSync(path.join(f.home, 'hooks/agent-hook.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(f.home, 'node.json'))).toBe(true);
     expect(fs.existsSync(path.join(f.o.shimDir, 'svall'))).toBe(true);
-    expect(fs.readdirSync(f.unitDir).sort()).toEqual(['svall-gateway.service', 'svall-svalld@private.service']);
+    expect(fs.readdirSync(f.unitDir)).toEqual(['svall-svalld@private.service']);
     expect(fs.existsSync(path.join(f.o.prefix, 'log'))).toBe(true);
     expect(done.some((l) => l.includes('svall-svalld@private.service'))).toBe(true);
     expect(done.some((l) => l.toLowerCase().includes('launchd') || l.includes('plist'))).toBe(false);
@@ -288,7 +304,7 @@ describe('setupLinux', () => {
     expect(again.done.some((l) => l.startsWith('systemd unit ->'))).toBe(false);
   });
 
-  it('reloads and enables this fleet and the machine\'s gateway, and turns lingering on', async () => {
+  it('reloads and enables this fleet, and turns lingering on', async () => {
     const f = installed();
     const answers: Record<string, string> = { 'loginctl show-user linus --property=Linger': 'Linger=no\n' };
     const fake = fakeRun(answers);
@@ -301,7 +317,6 @@ describe('setupLinux', () => {
     expect(fake.calls.filter(([, first]) => first !== '-lic')).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
-      ['systemctl', '--user', 'enable', '--now', 'svall-gateway.service'],
       ['loginctl', 'show-user', 'linus', '--property=Linger'],
       ['loginctl', 'enable-linger', 'linus'],
       ['loginctl', 'show-user', 'linus', '--property=Linger'],
@@ -339,7 +354,6 @@ describe('setupLinux', () => {
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
       ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
-      ['systemctl', '--user', 'enable', '--now', 'svall-gateway.service'],
     ]);
     expect(done).toContain('systemctl --user restart svall-svalld@private.service');
 
@@ -364,7 +378,6 @@ describe('setupLinux', () => {
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'restart', 'svall-svalld@work.service'],
       ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
-      ['systemctl', '--user', 'enable', '--now', 'svall-gateway.service'],
     ]);
 
     const again = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });
@@ -407,6 +420,24 @@ describe('setupLinux', () => {
     expect(fs.existsSync(path.join(mc, 'AGENTS.md'))).toBe(true);
   });
 
+  it('serves the fleet as a worker: its unit written again with --worker, and its daemon restarted onto it', async () => {
+    const f = installed();
+    await setupLinux(f.o);
+    const unit = path.join(f.unitDir, 'svall-svalld@private.service');
+    expect(fs.readFileSync(unit, 'utf8')).not.toContain('--worker');
+    fs.writeFileSync(resolvePaths(f.home).workerFile, '{}');
+    const fake = fakeRun();
+    const done = await serveAsWorker({ ...f.o, run: fake.run });
+    expect(fs.readFileSync(unit, 'utf8')).toContain('"--worker"\n');
+    expect(fs.existsSync(path.join(f.unitDir, 'svall-gateway.service'))).toBe(false);
+    expect(fake.calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
+      ['systemctl', '--user', 'daemon-reload'],
+      ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
+      ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
+    ]);
+    expect(done).toEqual([`systemd unit -> ${unit}`, 'systemctl --user restart svall-svalld@private.service']);
+  });
+
   it('keeps the files it wrote when the machine has no systemd, and says so', async () => {
     const f = installed();
     const fake = fakeRun({ 'systemctl --user daemon-reload': enoent('systemctl') });
@@ -442,7 +473,7 @@ describe('setupLinuxRelease', () => {
     expect(done.some((l) => l.includes('no systemd user services'))).toBe(true);
   });
 
-  it('restarts every fleet daemon and the gateway onto a release that replaced another before it probes', async () => {
+  it('restarts every fleet daemon onto a release that replaced another before it probes', async () => {
     const f = installed();
     const r = withReleases(f);
     fs.mkdirSync(f.o.unitDir, { recursive: true });
@@ -455,10 +486,9 @@ describe('setupLinuxRelease', () => {
       rollback: rollbackRelease,
     });
     // the work unit setup rewrote was restarted once already
-    expect(seenAtProbe.filter((c) => c[2] === 'restart').slice(-3)).toEqual([
+    expect(seenAtProbe.filter((c) => c[2] === 'restart').slice(-2)).toEqual([
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
       ['systemctl', '--user', 'restart', 'svall-svalld@work.service'],
-      ['systemctl', '--user', 'restart', 'svall-gateway.service'],
     ]);
   });
 
@@ -500,7 +530,6 @@ describe('setupLinuxRelease', () => {
     // the daemon still runs the tree the reinstall removed, under the same release name
     expect(seenAtProbe.filter((c) => c[2] === 'restart')).toEqual([
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
-      ['systemctl', '--user', 'restart', 'svall-gateway.service'],
     ]);
   });
 });

@@ -80,13 +80,14 @@ final class QuitFlow {
         return .terminateLater
     }
 
-    /// The page's answer to `.quitAsk`: the files the quit would drop and the agents it would stop mid-task.
-    func answered(unsaved: [String], working: Int) {
+    /// The page's answer to `.quitAsk`: the files the quit would drop, the agents it would stop mid-task, and the robots on
+    /// workers, which keep running there.
+    func answered(unsaved: [String], working: Int, placed: Int = 0) {
         guard quitAnswer != nil, !confirming, !stopping else { return }
         quitTimeout?.invalidate()
         if userQuit || !unsaved.isEmpty {
             confirming = true
-            let ok = confirmQuit(unsaved: unsaved, working: working)
+            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed)
             confirming = false
             guard ok else { return finishQuit(false) }
         }
@@ -144,7 +145,7 @@ final class QuitFlow {
         kill { [weak self] in self?.finishQuit(true) }
     }
 
-    private func confirmQuit(unsaved: [String], working: Int) -> Bool {
+    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0) -> Bool {
         // a handover may be bringing the fleet to this Mac, or hold its robots at rest for the move
         let handover = handoverOpen()
         let working = elsewhere() ? 0 : working
@@ -153,16 +154,18 @@ final class QuitFlow {
             : handover && handoverRunning() ? "The handover carries on while Svall is closed."
             : handover ? "The open handover waits in the Handover sheet until you open Svall again."
             : working == 0 ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
+        let away = handover || elsewhere() || placed == 0 ? ""
+            : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
         let message: String, detail: String
         if unsaved.isEmpty {
             message = "Quit Svall?"
             detail = handover ? busy : elsewhere() ? "Your robots keep working on the machine this fleet runs on."
-                : working == 0 ? "Your robots stop and pick up where they left off when you open Svall again."
-                : busy + " Everything picks up where it left off when you open Svall again."
+                : working == 0 ? "\(placed == 0 ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away
+                : busy + " Everything picks up where it left off when you open Svall again." + away
         } else {
             message = "Quit with unsaved changes?"
             let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
-            detail = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy)
+            detail = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy) + away
         }
         return confirm(message, detail)
     }

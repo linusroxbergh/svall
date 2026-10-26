@@ -1,5 +1,6 @@
 // Mocked Claude Code for the integration run: answers the CLI probes a handover makes, and in a terminal runs as an
-// agent that posts Svall's hook events (with its own pid) to $SVALL_HOME/hooks.sock and keeps a transcript where
+// agent that posts Svall's hook events (with its own pid) and, after each turn, the context reading its statusLine
+// would send (the transcript's record count as a percentage) to $SVALL_HOME/hooks.sock, and keeps a transcript where
 // Claude Code 2.1.x keeps one (<config>/projects/<slug of the real cwd>/<session>.jsonl). `--resume <id>` finds that
 // transcript under the real cwd's slug, or else the newest of that id in another project folder, and appends to it, as
 // the real CLI does after its folder moved; it fails the way the real one does when there is none. As the real one,
@@ -58,24 +59,27 @@ const robotId = process.env.SVALL_ROBOT_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const home = process.env.SVALL_HOME;
 
-function post(hook) {
+function send(line) {
   if (!home || !robotId) return Promise.resolve();
   return new Promise((resolve) => {
     const sock = net.createConnection(path.join(home, 'hooks.sock'));
     const done = () => { clearTimeout(timer); sock.destroy(); resolve(); };
     const timer = setTimeout(done, 2000);
     sock.on('error', done);
-    sock.on('connect', () => sock.end(`${JSON.stringify({ robotId, term, pid: process.pid, hook: { session_id: sessionId, transcript_path: transcriptPath, cwd, ...hook } })}\n`, done));
+    sock.on('connect', () => sock.end(`${JSON.stringify(line)}\n`, done));
   });
 }
+const post = (hook) => send({ robotId, term, pid: process.pid, hook: { session_id: sessionId, transcript_path: transcriptPath, cwd, ...hook } });
 
 let last = null;
+let records = fs.existsSync(transcriptPath) ? fs.readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean).length : 0;
 const append = (entry) => {
   fs.mkdirSync(path.dirname(transcriptPath), { recursive: true, mode: 0o700 });
   const uuid = crypto.randomUUID();
   const rec = { parentUuid: last, isSidechain: false, userType: 'external', cwd, sessionId, version: VERSION, ...entry, uuid, timestamp: new Date().toISOString() };
   last = uuid;
   fs.appendFileSync(transcriptPath, `${JSON.stringify(rec)}\n`, { mode: 0o600 });
+  records += 1;
 };
 
 let ending = false;
@@ -103,6 +107,7 @@ for await (const line of rl) {
   append({ type: 'user', promptId, message: { role: 'user', content: text } });
   append({ type: 'assistant', message: { model: 'fake-model', role: 'assistant', content: [{ type: 'text', text: `did: ${text}` }], usage: { input_tokens: 1000, output_tokens: 10 } } });
   process.stdout.write(`did: ${text}\n${PROMPT}`);
+  await send({ robotId, term, status: { contextPct: Math.min(records, 100), sessionId, model: 'fake-model' } });
   await post({ hook_event_name: 'Stop' });
 }
 await end();

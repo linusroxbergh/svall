@@ -24,13 +24,18 @@ enum AttachCommand {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
+    /// The robot's own route when it runs on another machine, else the window's.
+    static func route(_ window: ConnectionRoute, _ attach: WebAttach) -> ConnectionRoute {
+        attach.via.map { .remote(RemoteRoute(name: $0.ssh, destination: $0.ssh, controlSocket: $0.controlSocket)) } ?? window
+    }
+
     // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name.
-    // nil while the route is unknown, or its master is gone: a session is attached only where the helper says it lives
+    // nil while the route is unknown, or its master is gone: a session is attached only where the helper or the daemon says it lives
     static func build(route: ConnectionRoute, attach: WebAttach, tmux: String,
                       masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
         let target = "=" + attach.session
         let session = "-S \(quote(attach.socket)) attach -t \(quote(target))"
-        switch route {
+        switch Self.route(route, attach) {
         case .local:
             return "\(quote(tmux)) \(session)"
         case .pending:
@@ -141,17 +146,20 @@ final class SurfaceManager {
         }
         if let machine { return open(id: id, rect: rect, machine: machine, opacity: opacity) }
         guard let attach else { return }
-        let route = route()
+        let route = AttachCommand.route(route(), attach)
         // a local attach runs this Mac's tmux, decided here; a remote one runs the far tmux the page names
         let binary = SvallHome.tmuxBinary
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else {
+            // a robot's own master is gone: the page asks again, and the daemon answers once its link is back
+            if attach.via != nil { return onExited(id) }
             // the helper is opening a route, or opening one again: once it is online rebuild() has the page ask again
             attached.insert(id)
             return
         }
         let program = switch route { case .remote: "ssh"; default: binary }
         guard make(id: id, command: command, program: program, rect: rect, opacity: opacity) != nil else { return }
-        attached.insert(id)
+        // a robot on another machine is reached over its own route, which a change of the window's leaves open
+        if attach.via != nil { machines.insert(id) } else { attached.insert(id) }
     }
 
     /// A terminal on another machine, with what the page asked for typed once its prompt is up. An ssh that ends before

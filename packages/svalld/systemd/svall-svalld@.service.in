@@ -6,7 +6,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=@EXEC_START@
+ExecStart=@EXEC_START@@ARGS@
 Environment="SVALL_HOME=@SVALL_HOME@"
 Environment="HOME=@HOME@"
 Environment="PATH=@PATH@"

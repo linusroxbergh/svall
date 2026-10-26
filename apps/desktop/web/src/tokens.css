@@ -51,6 +51,9 @@
   --done: #63D7C0;
   --idle: #8A9CAB;
   --shell: #EAF1EE;
+  /* a robot between machines, and one on a worker this Mac cannot reach */
+  --moving: #A8B8C6;
+  --unknown: #A6A094;
   --sel: #8ED0FF;
   --star: var(--pt-sun);
   /* a PR waiting on its reviewers */
@@ -135,8 +138,10 @@
 
   /* ink on a status fill */
   --ink-on-working: #3A2406; --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
+  --ink-on-moving: #1C2833; --ink-on-unknown: #26231E;
   /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
   --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
+  --moving-ink: #5F7282; --unknown-ink: #6E685E;
 
   /* islands: the cream card, the sea and the lamp */
   --cream: #FFFDF4;

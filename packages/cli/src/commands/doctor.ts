@@ -11,11 +11,9 @@ import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled }
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
 import { BWRAP_COMMAND, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
-import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
-import { gatewayPrefix } from '@svall/svalld/gateway/bin';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
-import { agentHomesEnv, svalldUnitName, GATEWAY_UNIT, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
+import { agentHomesEnv, svalldUnitName, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
 import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svalld/machine';
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
@@ -246,7 +244,7 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
     return { name: 'daemon env', status: 'ok', detail: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
   }
   const { plist: file, fix } = linux
-    ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host enable <this machine> --fleet ${t.name} from the controller` }
+    ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host upgrade <this machine> from the controller` }
     : plistOf(t, d);
   const text = d.read(file);
   if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${file}` };
@@ -259,14 +257,12 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
 const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
 
-async function unitCheck(name: string, unit: string, d: DoctorDeps, why?: () => string | undefined): Promise<Check> {
+async function unitCheck(name: string, unit: string, d: DoctorDeps): Promise<Check> {
   try {
     const s = await unitStatus(asRun(d), unit);
     const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
     if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${SHIM} setup` };
-    if (s.active === 'active') return { name, status: 'ok', detail };
-    const cause = why?.();
-    return { name, status: 'fail', detail: cause ? `${detail}; ${cause}` : detail };
+    return { name, status: s.active === 'active' ? 'ok' : 'fail', detail };
   } catch (e) {
     return { name, status: 'fail', detail: (e as Error).message };
   }
@@ -404,7 +400,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await svalld(t, d),
     await hookReceiver(t, d),
     ...(linux
-      ? [await systemd(t, d), daemonEnv(t, d), await unitCheck('gateway', GATEWAY_UNIT, d, () => socketTooLong(gatewayPaths(gatewayPrefix()).socket, 'linux')?.message), await linger(d)]
+      ? [await systemd(t, d), daemonEnv(t, d), await linger(d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), ...(d.handover ? [await rsync(d)] : [])]),
     hooks(d),
     await codexCheck(d),

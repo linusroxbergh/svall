@@ -2,14 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, keptSession, type AgentStatus } from '@svall/protocol';
+import { AgentKind, ApiError, Refusal, convertLine, keptSession, moveSummary, type AgentStatus, type MoveSheet } from '@svall/protocol';
 import type { Client } from '../client.js';
+import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
+import { parseDuration } from './handover.js';
 import { int, point } from './parse.js';
-import { robotId, islandId, NoMatch } from './resolve.js';
+import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 
 /** The agent `svall robot new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
 export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
@@ -24,6 +26,23 @@ export function termOf(v: string | undefined): 2 | undefined {
   throw new Error(`bad --term "${v}", expected 1 or 2`);
 }
 
+/** What a move carries, as one line, with what it does to a main checkout and to a question or a turn under way. */
+function sheetLine(s: MoveSheet, repo: string | undefined, machine: string): string {
+  return [
+    moveSummary(s, repo, machine),
+    ...(s.converts ? [convertLine(s.converts)] : []),
+    ...(s.question ? ['its open question is dropped; it asks again'] : []),
+    ...(s.interrupts ? ['what still runs is interrupted'] : []),
+  ].join(' · ');
+}
+
+// one sentence and one action, as the checks or the move itself refused it
+function refuseMove(r: Refusal, json: boolean): void {
+  if (json) printResult({ ok: false, refusal: r }, true);
+  else process.stderr.write(`refused: ${r.reason}\n  → ${r.action}\n`);
+  process.exitCode = 2;
+}
+
 export function robotCommands(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('robot').alias('char').description('manage robots');
 
@@ -31,7 +50,7 @@ export function robotCommands(connect: () => Promise<Client>, json: () => boolea
     const island = o.island ? islandId(state, o.island) : undefined;
     const robots = Object.values(state.robots).filter((ch) => !island || ch.islandId === island);
     printResult(robots, json(), () => [table(robots.map((ch) => ({
-      id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.keepHere ? `${ch.name} (kept here)` : ch.name, state: stateOf(ch),
+      id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.name, state: stateOf(ch),
       ctx: contextOf(ch), branch: ch.repo?.branch ?? '', cwd: ch.cwd,
       cell: `${ch.cell.x},${ch.cell.y}`,
     }))), ...robots.flatMap(resumeFailures)].join('\n'));
@@ -76,11 +95,54 @@ Handing work to a new robot:
       });
     });
 
-  cmd.command('move <id>').description('move a robot to another island or cell').requiredOption('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
-    .action((id: string, o: { island: string; cell?: string }) => withFleet(connect, async (c, state) => {
-      const ch = await c.call('robot.move', { id: robotId(state, id), islandId: islandId(state, o.island), cell: point(o.cell, '--cell') });
-      printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
-    }));
+  cmd.command('move <id>').description('move a robot to another island or cell, or to run on another machine; a refused move exits 2')
+    .option('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
+    .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this Mac; prints what travels, then moves it').conflicts(['island', 'cell']))
+    .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
+    .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
+    .addOption(new Option('--retry', 'run on the move the robot is in, from the step it stopped at').conflicts(['island', 'cell', 'machine', 'carry', 'interruptAfter']))
+    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; retry?: boolean }) => {
+      if (!island && !to && !retry) throw new Error('name one of --island, --machine and --retry');
+      if (retry) {
+        await withFleet(connect, async (c, state) => {
+          const robot = state.robots[robotId(state, id)];
+          if (!robot.moving) throw new Error(`${robot.name} is in no move to retry`);
+          const moveId = robot.moving.id;
+          await c.call('robot.moveRetry', { moveId });
+          printResult({ moveId }, json(), () => moveId);
+        });
+        return;
+      }
+      if (island) {
+        await withFleet(connect, async (c, state) => {
+          const ch = await c.call('robot.move', { id: robotId(state, id), islandId: islandId(state, island), cell: point(cell, '--cell') });
+          printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
+        });
+        return;
+      }
+      const interruptAfterMs = interruptAfter === undefined ? undefined : parseDuration(interruptAfter);
+      await withFleet(connect, async (c, state) => {
+        const robot = state.robots[robotId(state, id)];
+        // this Mac is the home, whose id its own system.info answers; a worker's daemon answers its own, which the fleet lists
+        const machine = to === LOCAL ? (await c.call('system.info', {})).machineId : machineId(state, to!);
+        const worker = to === LOCAL && state.machines?.[machine];
+        if (worker) { refuseMove({ reason: `this terminal is on ${worker.name}`, action: 'run this on the Mac', details: [] }, json()); return; }
+        const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }) };
+        const checked = await c.call('robot.moveCheck', params);
+        if (!checked.ok) { refuseMove(checked.refusal, json()); return; }
+        if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), to === LOCAL ? 'this Mac' : state.machines![machine].name)}\n`);
+        let moveId: string;
+        try {
+          ({ moveId } = await c.call('robot.moveTo', params));
+        } catch (e) {
+          const refusal = e instanceof ApiError && e.code === 'refused' ? Refusal.safeParse(e.data?.refusal) : undefined;
+          if (!refusal?.success) throw e;
+          refuseMove(refusal.data, json());
+          return;
+        }
+        printResult({ ok: true, sheet: checked.sheet, moveId }, json(), () => moveId);
+      });
+    });
 
   cmd.command('run <id> <text...>').description("type text into a robot's terminal, then Enter; prints delivered or queued, exits 2 when refused").option('--no-enter', 'leave the text in the prompt line, where runs after it queue until it is sent or cleared').option('--term <n>', 'terminal to type into: 1 (default) or 2')
     .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, async (c, state) => {
@@ -120,17 +182,15 @@ Handing work to a new robot:
 
   contextOptions(cmd.command('update <id>').description("change a robot's name, note, island, context, instructions or agent profile")
     .option('--name <n>').option('--note <n>').option('--note-file <path>', 'read the note from a file, for text a shell would mangle')
-    .option('--island <id>').option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder; \'\' clears it')
-    .option('--keep-here', 'keep this robot on this machine: a handover is blocked until it is cleared')
-    .option('--no-keep-here', 'let a handover carry this robot again'))
-    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string; keepHere?: boolean } & ContextFlags & { instructions?: string }) => {
+    .option('--island <id>').option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder; \'\' clears it'))
+    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string } & ContextFlags & { instructions?: string }) => {
       if (o.note !== undefined && o.noteFile) throw new Error('use --note or --note-file, not both');
       await withFleet(connect, async (c, state) => {
         const current = state.robots[robotId(state, id)];
         const ch = await c.call('robot.update', {
           id: current.id, name: o.name,
           note: o.noteFile ? fs.readFileSync(expandHome(o.noteFile), 'utf8').trim() : o.note,
-          islandId: o.island && islandId(state, o.island), context: editContext(current.context, o), instructions: o.instructions, agentProfile: o.agentProfile, keepHere: o.keepHere,
+          islandId: o.island && islandId(state, o.island), context: editContext(current.context, o), instructions: o.instructions, agentProfile: o.agentProfile,
         });
         printResult(ch, json(), () => `${ch.id} ${ch.name}`);
       });
@@ -139,7 +199,7 @@ Handing work to a new robot:
   cmd.command('show <id>').description('print the brief the agent gets').action((id: string) => withFleet(connect, async (c, state) => {
     const ch = state.robots[robotId(state, id)];
     const r = await c.call('robot.show', { id: ch.id });
-    printResult(r, json(), () => (ch.keepHere ? `${ch.name} is kept on this machine, so a handover is blocked until that is cleared\n${r.text}` : r.text));
+    printResult(r, json(), () => r.text);
   }));
 
   cmd.command('seen <id>').description("mark a robot's last turn seen: done turns idle").action((id: string) => withFleet(connect, async (c, state) => {

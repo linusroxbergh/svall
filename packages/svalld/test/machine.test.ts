@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { daemonPath } from '../src/launchd.js';
-import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, mintMachineId, rebindMachine } from '../src/machine.js';
+import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); delete process.env.SVALL_CONFIG_DIR; cleanHomes(); });
@@ -127,5 +127,18 @@ describe('the hardware a machine id was made on', () => {
     expect(copiedRemedy('/c/machine.json')).toBe(
       "this machine shares another machine's id; move /c/machine.json aside and restart svalld so this machine mints its own id, then `svall host add` it again from the controller, or on the controller `svall fleet recover --force-owner local` runs the fleet here; if it is the machine the file was made on, with new hardware, `svall doctor --rebind` keeps its id",
     );
+  });
+});
+
+describe('readRegistry', () => {
+  it('reads every machine by id, and none while there is no registry', () => {
+    const dir = makeHome();
+    expect(readRegistry(dir)).toEqual([]);
+    const id = crypto.randomUUID();
+    const record = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false };
+    fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({ machines: { [id]: record } }));
+    expect(readRegistry(dir)).toEqual([{ id, record }]);
+    fs.writeFileSync(path.join(dir, 'machines.json'), '{');
+    expect(() => readRegistry(dir)).toThrow(path.join(dir, 'machines.json'));
   });
 });

@@ -452,7 +452,6 @@ describe('the choices a blocker takes', () => {
     expect(choiceFor(b('agent_unsettled'))).toBe('terminate');
     expect(choiceFor(b('destination_diverged', { kind: 'root', id: 'r_a' }))).toBe('archive');
     expect(choiceFor(b('destination_occupied', { kind: 'root', id: 'r_a' }))).toBe('archive');
-    expect(choiceFor(b('robot_pinned'))).toBeUndefined();
     const working = b('agent_working', { kind: 'robot', id: 'c3' });
     const unsettled = b('agent_unsettled', { kind: 'robot', id: 'c1' });
     const busy = b('shell_busy', { kind: 'robot', id: 'c2' });
@@ -573,11 +572,6 @@ describe('what each blocker and warning is explained with', () => {
   it("covers both reasons Codex there cannot sandbox its commands, AppArmor's and any other", () => {
     const other = blockerHint({ code: 'codex_sandbox', message: 'On studio, codex sandbox -- true fails there (bwrap: no such file): run it there to see why' }, ctx);
     expect(other).toBe('Codex on studio cannot sandbox its commands, so it asks before each one.\nFix what the message names there.');
-  });
-
-  it('points a kept robot at its toggle', () => {
-    expect(blockerHint({ code: 'robot_pinned', message: 'Ada is kept on this machine', entity: { kind: 'robot', id: 'c1' } }, ctx))
-      .toMatch(/Keep on this machine.*Ada/);
   });
 
   it('names both sides of a pull when a copy kept changing', () => {

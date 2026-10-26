@@ -241,7 +241,8 @@ export async function exited(pid: number, waitMs = 60_000): Promise<void> {
 
 /** What dormancy acts on: the fleet, its tmux server, what ps shows, and the windows of agents ended for idleness or
  *  put to sleep, until tmux has closed them, the agent has exited and a sleep has ended what it started. */
-export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>> };
+// `runsHere`: absent, every robot runs on this machine
+export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>>; runsHere?: (c: Robot) => boolean };
 
 // an agent idle past the fleet's limit is ended to free what it holds; its robot goes dormant, and a revive
 // resumes the session with the launch flags it still needs. `seen` is when the user last looked at each robot, and
@@ -250,7 +251,7 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
   const hours = o.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
   if (!hours) return;
   const afterMs = hours * 3_600_000;
-  const due = (c: Robot) => !holding(c.id) && drowsy(c, Date.now(), afterMs, seen.get(c.id));
+  const due = (c: Robot) => (o.runsHere?.(c) ?? true) && !holding(c.id) && drowsy(c, Date.now(), afterMs, seen.get(c.id));
   const idle = Object.values(o.store.state.robots).filter(due);
   if (!idle.length) return;
   const procs = await o.processes();
@@ -291,6 +292,7 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
   // dormant before the kill: the SessionEnd the kill sends then finds no live robot to clear
   o.store.update((d) => {
     for (const c of Object.values(d.robots)) {
+      if (!(o.runsHere?.(c) ?? true)) continue;
       const second = agentProc(c.second?.agent);
       if (second) pids.push(second.pid);
       if (c.second?.tmux) loseSecond(c, second ? startFlags(second.args, c.second.agent!.kind) : undefined);

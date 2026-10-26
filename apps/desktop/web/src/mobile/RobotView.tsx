@@ -38,6 +38,7 @@ const readSize = (): number => {
 
 export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.Element {
   const robot = useApp((s) => s.fleet.robots[id]);
+  const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet) : undefined));
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
   const status = useApp((s) => s.status);
   const online = status === 'online';
@@ -181,8 +182,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
           {island && <small>{island.name}</small>}
         </span>
         {/* without svalld the robot's status is stale, so the header says so instead */}
-        <span className="conn" data-status={!online ? status : robot ? statusOf(robot) : 'gone'}>
-          {!online ? status : robot ? statusLabel(statusOf(robot)) : 'gone'}
+        <span className="conn" data-status={!online ? status : robotStatus ?? 'gone'}>
+          {!online ? status : robotStatus ? statusLabel(robotStatus) : 'gone'}
         </span>
         <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context ›</button>
       </header>

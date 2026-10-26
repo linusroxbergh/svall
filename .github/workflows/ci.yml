@@ -43,8 +43,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - run: swift test --package-path apps/desktop/mac
 
-  # a fleet handed between two Linux containers on real sshd, rsync, tmux, Git and systemd; see docs/integration.md
-  integration:
+  # robots moved between a home and a worker in two Linux containers, with faults at each phase of a move; see
+  # scripts/integration/robot-placement.mjs
+  placement:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -55,12 +56,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: scripts/integration/fleet-handover.sh --out "$RUNNER_TEMP/fleet-handover"
+      - run: pnpm integration:placement --out "$RUNNER_TEMP/robot-placement"
       - id: logs
         if: failure()
-        run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/fleet-handover"
+        run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/robot-placement"
       - if: failure() && steps.logs.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: fleet-handover-logs
-          path: ${{ runner.temp }}/fleet-handover
+          name: robot-placement-logs
+          path: ${{ runner.temp }}/robot-placement

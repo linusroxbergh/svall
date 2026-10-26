@@ -1,4 +1,4 @@
-import type { MobileStatus, PhoneSession } from '@svall/protocol';
+import type { MachineId, MobileStatus, PhoneSession } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
@@ -22,6 +22,7 @@ export type LinkAsk = { url: string; robotId: string; x: number; y: number; surf
 export type MenuEntry = { title: string; run?: () => void; danger?: boolean; items?: MenuEntry[]; checked?: boolean; note?: string; sep?: boolean };
 // a button's own menu, bare, leaves out the page's Reload
 export type PageMenu = { x: number; y: number; items: MenuEntry[]; bare?: boolean };
+export type MoveAsk = { id: string; to?: MachineId };
 
 export type UiState = {
   view: View;
@@ -37,6 +38,8 @@ export type UiState = {
   closingRobot?: string;
   // a working robot's sleep waits on the user's answer
   sleepingRobot?: string;
+  // the robot the move sheet is about, and the worker it goes to: none is this Mac
+  moveSheet?: MoveAsk;
   deletingIsland?: string;
   // a board column with robots in it, whose delete waits on where they go
   deletingColumn?: string;
@@ -99,6 +102,7 @@ export type UiActions = {
   setMissionPrompt(open: boolean): void;
   setClosingRobot(id?: string): void;
   setSleepingRobot(id?: string): void;
+  setMoveSheet(ask?: MoveAsk): void;
   setDeletingIsland(id?: string): void;
   setDeletingColumn(id?: string): void;
   setFleetPicker(mode?: 'bare' | 'menu'): void;
@@ -170,6 +174,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     missionPrompt: false,
     closingRobot: undefined,
     sleepingRobot: undefined,
+    moveSheet: undefined,
     deletingIsland: undefined,
     deletingColumn: undefined,
     card: undefined,
@@ -224,6 +229,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setMissionPrompt: (open) => set({ missionPrompt: open }),
     setClosingRobot: (id) => set({ closingRobot: id }),
     setSleepingRobot: (id) => set({ sleepingRobot: id }),
+    setMoveSheet: (ask) => set({ moveSheet: ask }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
     setDeletingColumn: (id) => set({ deletingColumn: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),

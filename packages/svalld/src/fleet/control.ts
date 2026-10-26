@@ -1,4 +1,5 @@
 import type { EventEmitter } from 'node:events';
+import type { Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Logger } from '../log.js';
 import { secondName } from '../reconcile.js';
@@ -19,6 +20,8 @@ type Deps = {
   writable: () => boolean; track: (work: Promise<unknown>, what: string) => void;
   // whether the last poll saw the agent in a window, by name, quit to its shell
   atShell: (key: string) => boolean;
+  // a robot placed on another machine has its panes there, whose ids this server may use for its own
+  runsHere: (c: Robot) => boolean;
 };
 
 /** The fleet's tmux control client: pane output for the terminals, windows that close, and a client attached afresh
@@ -88,11 +91,11 @@ export class ControlLink {
   }
 
   private robotByPane(paneId: string): string | undefined {
-    return Object.values(this.deps.store.state.robots).find((c) => c.tmux?.paneId === paneId)?.id;
+    return Object.values(this.deps.store.state.robots).find((c) => c.tmux?.paneId === paneId && this.deps.runsHere(c))?.id;
   }
 
   private robotByWindow(windowId: string): string | undefined {
-    return Object.values(this.deps.store.state.robots).find((c) => c.tmux?.windowId === windowId)?.id;
+    return Object.values(this.deps.store.state.robots).find((c) => c.tmux?.windowId === windowId && this.deps.runsHere(c))?.id;
   }
 
   // tmux also reports a close when a viewer session holding a linked window goes away
@@ -100,7 +103,7 @@ export class ControlLink {
     if (await this.deps.tmux.hasWindow(windowId) || !this.deps.writable()) return;
     const id = this.robotByWindow(windowId);
     if (id) { this.deps.store.update((d) => { const ch = d.robots[id]; if (ch) markDormant(ch); }); return; }
-    const owner = Object.values(this.deps.store.state.robots).find((ch) => ch.second?.tmux?.windowId === windowId)?.id;
+    const owner = Object.values(this.deps.store.state.robots).find((ch) => ch.second?.tmux?.windowId === windowId && this.deps.runsHere(ch))?.id;
     if (owner) this.deps.store.update((d) => { const ch = d.robots[owner]; if (ch) loseSecond(ch, undefined, this.deps.atShell(secondName(owner))); });
   }
 

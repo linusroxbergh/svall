@@ -14,6 +14,8 @@
 .sdot[data-status="blocked"] { background: var(--blocked); color: var(--blocked); }
 .sdot[data-status="done"] { background: var(--done); color: var(--done); }
 .sdot[data-status="shell"] { background: var(--shell); color: var(--shell); }
+.sdot[data-status="moving"] { background: var(--moving); color: var(--moving); }
+.sdot[data-status="unknown"] { background: var(--unknown); color: var(--unknown); }
 
 .modal-back { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; background: var(--shade-1); backdrop-filter: blur(2px); }
 .modal { background: var(--surface-2); backdrop-filter: none; width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
@@ -31,6 +33,8 @@
 .modal-pick { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .modal .acts { display: flex; gap: var(--sp-md); }
 .modal .acts .btn { flex: 1; }
+/* a choice the move sheet asks about again as it changes */
+.move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .fleet-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); }
 .fleet-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-md) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }
 .fleet-row:hover:not(:disabled), .fleet-row:focus-visible { background: var(--fill-2); }
@@ -51,7 +55,7 @@
 .machine-acts { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 .machine .row b.machine-said { font-weight: var(--w-regular); color: var(--ink-2); }
 .host .acts { flex-wrap: wrap; }
-.host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); }
+.host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }
 .host-note ul { margin: 0; padding-left: var(--sp-2xl); }
 .host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
 .host-phase { display: flex; flex-direction: column; gap: var(--sp-xs); }
@@ -61,7 +65,7 @@
 .host-step[data-status="warn"] .host-mark { color: var(--working); }
 .host-step[data-status="fail"] .host-mark { color: var(--blocked); }
 .host-name { flex: none; width: 72px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); }
-.host-said { min-width: 0; overflow-wrap: anywhere; }
+.host-said { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 /* what the user has to go and do about this step, which the checklist never hides */
 .host-said em { display: block; font-style: normal; color: var(--sand); }
 /* a terminal on the machine, wide enough for a login's long link; the shell draws it over the surface */

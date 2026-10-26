@@ -82,6 +82,27 @@ export const FAILPOINTS = {
   'controller.rsync': 'controller',
   'controller.verify': 'controller',
   'controller.commit': 'controller',
+
+  // a move's steps, on the machine it leaves and the one it goes to
+  'move.rest': 'source',
+  'move.bundle': 'source',
+  'move.journal.rest': 'source',
+  'move.journal.bundle': 'source',
+  'move.journal.prepare': 'source',
+  'move.journal.commit': 'source',
+  'move.journal.activate': 'source',
+  'move.journal.release': 'source',
+  'move.journal.done': 'source',
+  'move.journal.aborted': 'source',
+  'move.commit.state': 'source',
+  'move.release.lock': 'source',
+  'worker.prepare.worktree': 'destination',
+  'worker.prepare.apply': 'destination',
+  'worker.prepare.session': 'destination',
+  'worker.prepare.journal': 'destination',
+  'worker.activate.open': 'destination',
+  'worker.activate.trust': 'destination',
+  'worker.abort.remove': 'destination',
 } as const satisfies Record<string, FailSide>;
 
 export type Failpoint = keyof typeof FAILPOINTS;

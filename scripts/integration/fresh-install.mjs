@@ -6,10 +6,10 @@
 // Each folder holds one release as scripts/release-build.sh writes it: the controller tree the app carries, packed, and
 // the companion archives its manifest pins. The controller runs here, on this host, from that tree, with a home of its
 // own; the machine is a clean Ubuntu 24.04 container with systemd and sshd, an account at the controller's home path
-// and no Node. The run adds the machine with the first release (`svall host add`), which turns lingering on, gives it
-// a second fleet (`svall host enable`), checks the units run that release and nothing else, upgrades to
+// and no Node. The run adds the machine with the first release (`svall host add`), which turns lingering on and makes
+// it the controller's fleet's worker, checks the unit runs that release and nothing else, upgrades to
 // the second release (`svall host upgrade`), then goes back with `svall setup --rollback` on the machine, checking the
-// units each time. A release that pins its companion on this host's loopback is served from its folder and downloaded,
+// unit each time. A release that pins its companion on this host's loopback is served from its folder and downloaded,
 // and one that carries it, as Svall.app's does, takes it from its own tree; any other is named by path with --release.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -21,10 +21,8 @@ import { brief, flags, harness, lines } from './harness.mjs';
 
 const M = 'svall-fresh';
 const USER = 'svall';
-const FLEET = 'work';
-// host add starts the private fleet's daemon and the gateway; host enable adds the second fleet's
-const ADDED = ['svall-svalld@private.service', 'svall-gateway.service'];
-const UNITS = [...ADDED, `svall-svalld@${FLEET}.service`];
+// host add starts the private fleet's daemon, as this fleet's worker
+const UNITS = ['svall-svalld@private.service'];
 const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d+\//;
 
 const o = flags(process.argv.slice(2));
@@ -34,7 +32,7 @@ const out = o.out ? path.resolve(o.out) : fs.mkdtempSync(path.join(os.tmpdir(), 
 const { log, say, docker, check, step, booted } = harness(out);
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-fresh-'));
-// the controller's own home, which the machine's account shares: short, as the gateway's socket lives under it and a
+// the controller's own home, which the machine's account shares: short, as the fleet's sockets live under it and a
 // unix socket's path holds at most 108 bytes, and not under /tmp, which the machine empties when it starts again
 const HOME = fs.mkdtempSync('/var/tmp/h');
 const PREFIX = `${HOME}/.local/share/svall`;
@@ -224,7 +222,7 @@ function inspect() {
   };
 }
 
-/** Both units up and enabled, each on `version`'s own Node and tree, and nothing else the machine could run instead. */
+/** The unit up and enabled, on `version`'s own Node and tree, and nothing else the machine could run instead. */
 function runs(label, rel, releases) {
   const want = `${PREFIX}/releases/${rel.version}`;
   let s = inspect();
@@ -248,7 +246,7 @@ function runs(label, rel, releases) {
 
 const ADVICE = new Set(['claude', 'codex', 'opencode']);
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
-  'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
+  'identity', 'enrol', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
 
 // with no --release the controller fetches the companion its manifest pins, checks its digest and caches it
 const named = (rel) => (rel.served || rel.carried ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
@@ -265,6 +263,10 @@ function downloaded(rel, label) {
 }
 
 function hostAdd(a) {
+  // the controller's private fleet, as Svall makes it at its first start, which the machine becomes a worker of
+  const home = path.join(HOME, '.svall');
+  fs.mkdirSync(home, { mode: 0o700 });
+  fs.writeFileSync(path.join(home, 'fleet.json'), `${JSON.stringify({ id: crypto.randomUUID() })}\n`);
   const r = svall(a, 'host', 'add', 'fresh', '--ssh', 'fresh', ...named(a), '--json');
   save('host-add.ndjson', r.stdout);
   const events = lines(r.stdout);
@@ -279,28 +281,17 @@ function hostAdd(a) {
   check('host add linger', at('linger')?.detail?.startsWith(`turned on for ${USER}:`), () => brief(at('linger')));
   // the machine has Ubuntu's tmux 3.4 on its PATH, and the units start the release's own
   check('host add tmux', at('tmux')?.detail === "tmux 3.7c, Svall's own", () => brief(at('tmux')));
-  check('host add service', at('service')?.status === 'ok' && ADDED.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
+  check('host add service', at('service')?.status === 'ok' && UNITS.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
     () => brief(at('service')));
+  check('host add enrol', at('enrol')?.detail?.startsWith('fresh serves this fleet as a worker of '), () => brief(at('enrol')));
   check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
+  // the JSON actions are the three installs, what the text line "fresh needs 3 things ..." counts
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
     && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',
       'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup']), () => brief(result));
-}
-
-/** A second fleet whose gateway the machine is, as a handover moves one: its own daemon's unit on the machine. */
-function enable(a) {
-  const home = path.join(HOME, `.svall-${FLEET}`);
-  fs.mkdirSync(home, { mode: 0o700 });
-  fs.writeFileSync(path.join(home, 'fleet.json'), `${JSON.stringify({ id: crypto.randomUUID() })}\n`);
-  const r = svall(a, 'host', 'enable', 'fresh', '--fleet', FLEET, '--json');
-  save('host-enable.ndjson', r.stdout);
-  const events = lines(r.stdout);
-  const fleet = events.find((e) => e.step === 'fleet' && e.status !== 'start');
-  check('host enable result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
-  check('host enable fleet', fleet?.status === 'ok' && fleet.detail?.includes(`under ${UNITS[2]}`), () => brief(fleet));
 }
 
 function doctor(rel, label) {
@@ -309,7 +300,7 @@ function doctor(rel, label) {
   const report = json(r.stdout) ?? {};
   const checks = Object.fromEntries((report.checks ?? []).map((c) => [c.name, c]));
   check(`${label} doctor fails nothing`, (report.checks ?? []).length > 0 && !report.checks.some((c) => c.status === 'fail'), () => brief(report));
-  for (const name of ['systemd', 'gateway', 'linger', 'svalld', 'release', 'home']) {
+  for (const name of ['systemd', 'worker', 'linger', 'svalld', 'release', 'home']) {
     check(`${label} doctor ${name}`, checks[name]?.status === 'ok', () => brief(checks[name]));
   }
   check(`${label} doctor release`, checks.release?.detail?.startsWith(`${rel.version} (${signedWord(rel)}), protocol`), () => brief(checks.release));
@@ -320,8 +311,9 @@ function upgrade(b) {
   save('host-upgrade.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  for (const s of steps) check(`host upgrade ${s.step}`, s.status === 'ok', () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
-  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe']),
+  // the machine is this fleet's worker already, which the enrol step finds
+  for (const s of steps) check(`host upgrade ${s.step}`, s.status === 'ok' || (s.status === 'skip' && s.step === 'enrol'), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol']),
     () => brief(steps.map((s) => s.step)));
   check('host upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
   check('host upgrade release', steps.find((s) => s.step === 'release')?.detail === from(b), () => brief(steps.find((s) => s.step === 'release')));
@@ -349,8 +341,7 @@ try {
   say(`   logs in ${out}; controller home ${HOME}`);
   step(`a clean Ubuntu 24.04 ${o.arch} machine, an account at the controller's home path`, machine);
   step(`host add from ${a.version}${route(a)}`, () => hostAdd(a));
-  step(`host enable --fleet ${FLEET}`, () => enable(a));
-  step('after a restart with no login, both fleets and the gateway run the release', () => {
+  step('after a restart with no login, the worker runs the release', () => {
     reboot();
     runs('added', a, [a.version]);
     doctor(a, 'added');

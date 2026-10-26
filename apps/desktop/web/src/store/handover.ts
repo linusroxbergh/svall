@@ -16,8 +16,6 @@ export type HandoverState = {
   hostOpen: boolean;
   // the machine the panel opens on, when what opened it named one
   hostMachine?: string;
-  // the handover sheet opened the panel, and gets the user back once the machine is this fleet's gateway
-  hostForHandover: boolean;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
   // the terminal the panel shows on its machine, and the command typed in it
@@ -33,8 +31,6 @@ export type HandoverState = {
 export type HandoverActions = {
   setConnectionState(connection: ConnectionState): void;
   toggleHost(open?: boolean, machine?: string): void;
-  // the panel in place of the sheet, on a machine to make the gateway or none to add one, with no earlier run to act on
-  hostFromHandover(machine?: string): void;
   openHostTerminal(machine: string, run?: string): void;
   closeHostTerminal(): void;
   hostStarted(op: HostOp, args: HostArgs): void;
@@ -63,7 +59,6 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   host: undefined,
   hostOpen: false,
   hostMachine: undefined,
-  hostForHandover: false,
   hostConfirm: undefined,
   hostTerminal: undefined,
   machines: undefined,
@@ -72,8 +67,7 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   handoverOpen: false,
   // the fleet the page already holds stands while its machine is away: only the report changes
   setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
-  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined, hostForHandover: next && s.hostForHandover }; }),
-  hostFromHandover: (machine) => set({ handoverOpen: false, hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: undefined, hostForHandover: true, host: undefined }),
+  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined }; }),
   openHostTerminal: (machine, run) => set({ hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run } : {} }),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   // the panel follows the machine its run is about, an add's included

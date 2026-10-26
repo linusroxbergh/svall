@@ -10,12 +10,12 @@ import { REFUSED } from '../controller/host.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 
-/** `svall fleet provision`: the companion's own copy of a fleet whose gateway it is, as `svall host enable` asks for it. */
+/** `svall fleet provision`: the companion's own copy of a fleet whose gateway it is; `svall host add` enrols a worker instead. */
 export function provisionCommand(
   target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform, provision: typeof provisionFleet = provisionFleet,
 ): Command {
   return new Command('provision')
-    .description('give this machine its copy of a fleet it is the gateway of; svall host enable runs it over ssh')
+    .description('give this machine its copy of a fleet it is the gateway of; svall host add makes a machine a fleet\'s worker instead')
     .requiredOption('--id <fleet>', 'the fleet id')
     .requiredOption('--gateway <machine>', 'the id of the machine that is the fleet\'s gateway')
     .action(async (o: { id: string; gateway: string }) => {

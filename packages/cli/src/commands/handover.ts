@@ -4,10 +4,9 @@ import type net from 'node:net';
 import readline from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Command, Option as Flag } from 'commander';
-import { type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
+import { migrateState, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type MachineId, type Outcome, type StopReason, type Verdict } from '@svall/protocol';
 import { InvalidConfig, namedGateway, patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { resolvePaths } from '@svall/svalld/paths';
-import { profileOf } from '@svall/svalld/profile';
 import { messageOf } from '@svall/svalld/text';
 import type { Handover } from '../controller/handover.js';
 import { connectHandover, type Connected } from '../controller/reach.js';
@@ -79,8 +78,25 @@ function gatewayOf(fleetHome: string): MachineId | undefined {
   }
 }
 
+/** Why a handover may not start: robots placed on a worker, or on their way to one, which it would not carry; a state it cannot read says so. */
+function placedRobots(fleetHome: string): string | undefined {
+  const file = resolvePaths(fleetHome).state;
+  try {
+    if (!fs.existsSync(file)) return undefined;
+    const { state } = migrateState(JSON.parse(fs.readFileSync(file, 'utf8')));
+    const on = (m: MachineId): string => state.machines?.[m]?.name ?? m;
+    const away = Object.values(state.robots).flatMap((r) => {
+      if (r.machine) return [`${r.name} runs on ${on(r.machine)}`];
+      return r.moving ? [`${r.name} is moving to ${on(r.moving.to)}`] : [];
+    });
+    return away.length ? `${away.join(', ')}; move every robot back first` : undefined;
+  } catch (e) {
+    return `${file} cannot be read (${messageOf(e)}); start this fleet's daemon first, which reads it or sets it aside`;
+  }
+}
+
 const noGateway = (c: Ctx): string =>
-  `this fleet has no gateway, so no other machine can be handed it; name one with \`svall host enable <host> --fleet ${c.profile ?? profileOf(c.fleetHome)}\``;
+  `this fleet has no gateway, so no other machine can be handed it; \`svall ${c.profile ? `-p ${c.profile} ` : ''}host upgrade <host>\` makes a machine this fleet's worker, where its robots move instead`;
 const live = (pid: number | undefined, w: Words): string =>
   `a handover of this fleet is already running here${pid ? ` (pid ${pid})` : ''}; \`${w.svall('handover attach')}\` follows it`;
 
@@ -165,6 +181,8 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
   let gateway: MachineId | undefined;
   try { gateway = gatewayOf(c.fleetHome); } catch (e) { return refuse(stopped(messageOf(e))); }
   if (!gateway) return refuse(stopped(noGateway(c)));
+  const placed = job.kind === 'start' ? placedRobots(c.fleetHome) : undefined;
+  if (placed) return refuse(stopped(placed));
   const to = job.kind === 'start' ? c.deps.registry().get(job.to) : undefined;
   if (job.kind === 'start' && !to) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`svall host add\`${c.deps.registry().setAside()}`));
   view.about.destination = to?.record.name;
@@ -384,6 +402,8 @@ export async function launchHelper(job: Job, c: Ctx): Promise<number> {
   let gateway: MachineId | undefined;
   try { gateway = gatewayOf(c.fleetHome); } catch (e) { return refuse(stopped(messageOf(e))); }
   if (!gateway) return refuse(stopped(noGateway(c)));
+  const placed = job.kind === 'start' ? placedRobots(c.fleetHome) : undefined;
+  if (placed) return refuse(stopped(placed));
   if (job.kind === 'start' && !c.deps.registry().get(job.to)) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`svall host add\`${c.deps.registry().setAside()}`));
   const paths = helperPaths(c.fleetHome, c.deps.tmpdir);
   // a lock the child could not take is said here, where the app reads it, and not only in the child's log

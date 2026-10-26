@@ -58,7 +58,7 @@ describe('host run', () => {
   it('names a machine this Mac knows by its name, and leaves out the ids of fleets and handovers and the generations', () => {
     const [studio, other, fleet, theirs, tx] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '1a1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
     const names = { [studio]: 'studio' };
-    const said = (detail: string) => applyStep(beginRun('enable', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
+    const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
     expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
     expect(said(`trift answered with machineId ${other}, not ${studio}`)).toBe('trift answered as another machine');
     expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
@@ -85,59 +85,46 @@ describe('host run', () => {
 });
 
 describe('the end of a run', () => {
-  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable', code: number, steps: ReturnType<typeof step>[], args = {}) =>
+  const ended = (op: 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove', code: number, steps: ReturnType<typeof step>[], args = {}) =>
     endRun(steps.reduce((run, s) => applyStep(run, s), beginRun(op, { name: 'box', ...args })), code);
+  const ready = 'box is ready. Robots you move there keep working while this Mac sleeps.';
 
-  it('says an add that finished clean added the machine, and offers to make it the gateway until it is one', () => {
-    const add = ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]);
-    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added', next: 'gateway' });
-    expect(outcomeOf(add, 'studio')).toEqual({ text: 'box is added', next: 'gateway' });
-    expect(outcomeOf(add, 'box')).toEqual({ text: 'box is added: ready for handover', next: 'handover' });
-  });
-
-  it('lists what an add left to do, and still offers the gateway', () => {
-    const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]);
-    expect(outcomeOf(add, undefined)).toEqual({ text: 'box is added; still to do:', list: ['log in'], next: 'gateway' });
-    // one stopped part way never reached the registry
-    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]), undefined)).toEqual({ text: 'Add machine ended with exit 143' });
-  });
-
-  it('names the step a run stopped at and what it said, with what is left to do', () => {
-    const add = ended('add', 1, [step('ssh', 'ok'), step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })]);
-    expect(outcomeOf(add, undefined)).toEqual({ text: 'Add machine stopped at Install: svall setup exited 1', list: ['log in'] });
-    expect(outcomeOf(ended('remove', 1, []), undefined)).toEqual({ text: 'Remove ended with exit 1' });
+  it('the outcome line reads ready when nothing is left to do, and counts the things otherwise', () => {
+    expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]))).toEqual({ text: ready, done: true });
+    const replicas = step('replicas', 'warn', { detail: '22 GB from an earlier handover is in /home/box/lab; delete it when you no longer need it' });
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok'), replicas]))).toEqual({ text: ready, done: true });
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('codex', 'skip'), step('release', 'ok')]))).toEqual({ text: ready, done: true });
+    // each step's action is one thing, and so is each failed step that names none
+    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
+    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })])))
+      .toEqual({ text: 'box needs 2 things before robots can move there.' });
+    const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
+    expect(outcomeOf(blocked)).toEqual({ text: 'box needs 2 things before robots can move there.' });
+    // one stopped part way said nothing it left to do
+    expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
   });
 
   it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
-    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'fail', { detail: 'setup --rollback exited 1' })]), undefined).next).toBe('rollback');
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'fail', { detail: 'setup --rollback exited 1' })])).next).toBe('rollback');
     // an upgrade stopped before it installed left the machine as it was, and one stopped in install has no release to go back from
-    expect(outcomeOf(ended('upgrade', 1, [step('master', 'fail', { detail: 'no' })]), undefined).next).toBeUndefined();
-    expect(outcomeOf(ended('upgrade', 1, [step('install', 'fail', { detail: 'no' })]), undefined).next).toBeUndefined();
-    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'warn', { action: 'read the log' })]), undefined).next).toBeUndefined();
-    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is upgraded' });
+    expect(outcomeOf(ended('upgrade', 1, [step('master', 'fail', { detail: 'no' })])).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 1, [step('install', 'fail', { detail: 'no' })])).next).toBeUndefined();
+    expect(outcomeOf(ended('upgrade', 1, [step('probe', 'warn'), step('rollback', 'warn', { action: 'read the log' })])).next).toBeUndefined();
   });
 
-  it('says a check is ready and how many warnings it found, or lists the checks that block', () => {
-    const fine = ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('gh', 'warn'), step('codex', 'skip'), step('release', 'ok')]);
-    expect(outcomeOf(fine, 'box')).toEqual({ text: 'ready for handover; 2 warnings', next: 'handover' });
-    expect(outcomeOf(fine, undefined)).toEqual({ text: "ready to be this fleet's gateway; 2 warnings", next: 'gateway' });
-    expect(outcomeOf(ended('doctor', 0, [step('release', 'ok')]), 'box').text).toBe('ready for handover');
-    const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
-    expect(outcomeOf(blocked, 'box')).toEqual({ text: '2 checks block a handover:', list: ['Release: 0.4.0, protocol 3', 'Fleet service: inactive'] });
-  });
-
-  it('says what a new gateway, a removal and a rollback did, and offers the handover once there is a gateway', () => {
-    expect(outcomeOf(ended('enable', 0, [step('fleet', 'ok')]), 'box')).toEqual({ text: "box is this fleet's gateway: ready for handover", next: 'handover' });
-    expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]), undefined)).toEqual({ text: 'box is removed' });
-    expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }), undefined)).toEqual({ text: 'box is forgotten' });
-    expect(outcomeOf(ended('rollback', 0, [step('probe', 'ok')]), undefined)).toEqual({ text: 'box is rolled back' });
+  it('says what a removal and a rollback did, or where it stopped', () => {
+    expect(outcomeOf(ended('remove', 0, [step('registry', 'ok')]))).toEqual({ text: 'box is removed', done: true });
+    expect(outcomeOf(ended('remove', 0, [step('uninstall', 'skip')], { forget: true }))).toEqual({ text: 'box is forgotten', done: true });
+    expect(outcomeOf(ended('rollback', 0, [step('probe', 'ok')]))).toEqual({ text: 'box is rolled back', done: true });
+    expect(outcomeOf(ended('remove', 1, [step('uninstall', 'fail', { detail: 'svall uninstall exited 1' })]))).toEqual({ text: 'Remove stopped at Uninstall: svall uninstall exited 1' });
+    expect(outcomeOf(ended('remove', 1, []))).toEqual({ text: 'Remove ended with exit 1' });
   });
 });
 
 describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
-    expect(['master', 'identity', 'authority', 'fleet', 'registry'].map(stepLabel))
-      .toEqual(['Connection', 'Installed release', 'Ownership record', 'Fleets', 'Machine list']);
+    expect(['master', 'identity', 'enrol', 'fleet', 'replicas', 'registry'].map(stepLabel))
+      .toEqual(['Connection', 'Installed release', 'Worker', 'Fleets', 'Earlier handover', 'Machine list']);
     // the checks a machine's own doctor reports
     expect(['systemd', 'gateway', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
       .toEqual(['Fleet service', 'Gateway service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);

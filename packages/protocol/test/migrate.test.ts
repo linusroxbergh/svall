@@ -12,14 +12,14 @@ const older = <T extends object>(version: number, rest: T) => {
   const { robots: _, ...base } = emptyState();
   return { ...base, version, ...rest };
 };
-const asCurrent = <T extends { characters: object }>({ characters, ...rest }: T) => ({ ...rest, version: 11, robots: characters });
+const asCurrent = <T extends { characters: object }>({ characters, ...rest }: T) => ({ ...rest, version: 12, robots: characters });
 
 describe('migrateState', () => {
-  it('passes a version 11 file through', () => {
+  it('passes a version 12 file through', () => {
     const { state, migrated, dropped } = migrateState(emptyState());
     expect(migrated).toBe(false);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(11);
+    expect(state.version).toBe(12);
   });
 
   const agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 3 };
@@ -32,11 +32,11 @@ describe('migrateState', () => {
   });
 
   for (const version of [7, 8]) {
-    it(`lifts a version ${version} file to 11: a second terminal gets its robot's cwd, and an absent one stays absent`, () => {
+    it(`lifts a version ${version} file to 12: a second terminal gets its robot's cwd, and an absent one stays absent`, () => {
       const { state, migrated, dropped } = migrateState(withSecond(version));
       expect(migrated).toBe(true);
       expect(dropped).toEqual([]);
-      expect(state.version).toBe(11);
+      expect(state.version).toBe(12);
       expect(state.robots.c0.second).toEqual({ cwd: '/work', tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent });
       expect(state.robots.c1.second).toBeUndefined();
     });
@@ -62,7 +62,7 @@ describe('migrateState', () => {
 
   it('lifts a version 8 file a handover wrote, with a dormant second and what a handover keeps on a robot, as it is', () => {
     const second = { cwd: '/work/sub', unread: false, agent, revive: { command: 'claude --resume s' }, restedBy: 'tx-1', resumeError: 'it did not come up' };
-    const c = { ...robot('c_a', 'i_a'), keepHere: true, restedBy: 'tx-1', resumeError: 'it did not come up', revive: { command: '' }, second };
+    const c = { ...robot('c_a', 'i_a'), restedBy: 'tx-1', resumeError: 'it did not come up', revive: { command: '' }, second };
     const raw = older(8, { islands: { i_a: island('i_a') }, characters: { c_a: c } });
     const { state, migrated, dropped } = migrateState(raw);
     expect(migrated).toBe(true);
@@ -107,9 +107,27 @@ describe('migrateState', () => {
     const { state, migrated, dropped } = migrateState(raw);
     expect(migrated).toBe(true);
     expect(dropped).toEqual([]);
-    expect(state).toEqual({ ...raw, version: 11, columns: defaultColumns(), placingAsk: true });
+    expect(state).toEqual({ ...raw, version: 12, columns: defaultColumns(), placingAsk: true });
     expect(state.columns.map((k) => k.name)).toEqual(['To do', 'In progress', 'In review', 'Done']);
     expect(columnOf(state, state.robots.c_a).name).toBe('To do');
+  });
+
+  it('lifts a version 10 file whose robot carries keepHere to 12, the mark dropped', () => {
+    const raw = { version: 10, islands: { i_a: island('i_a') }, home: defaultHome(), defaultCwd: DEFAULT_CWD };
+    const { state, migrated, dropped } = migrateState({ ...raw, robots: { c_a: { ...robot('c_a', 'i_a'), keepHere: true } } });
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 12, robots: { c_a: robot('c_a', 'i_a') }, columns: defaultColumns(), placingAsk: true });
+  });
+
+  it('lifts a version 11 file to 12 with its board as it is, and drops keepHere', () => {
+    const columns = [{ id: 'todo', name: 'Backlog' }, { id: 'k_1', name: 'Shipping' }];
+    const placed = { ...robot('c_a', 'i_a'), column: 'k_1', columnSource: 'manual' };
+    const raw = { version: 11, islands: { i_a: island('i_a') }, home: defaultHome(), defaultCwd: DEFAULT_CWD, columns, placingOff: true };
+    const { state, migrated, dropped } = migrateState({ ...raw, robots: { c_a: { ...placed, keepHere: true } } });
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 12, robots: { c_a: placed } });
   });
 
   it('reads a current file whose fleet still has the animals switch, and drops the key', () => {
@@ -129,8 +147,8 @@ describe('migrateState', () => {
   });
 
   it('refuses a file from a newer svalld', () => {
-    expect(() => migrateState({ version: 12, islands: {}, robots: {} })).toThrow(NewerStateVersion);
-    expect(() => migrateState({ version: 12, islands: {}, robots: {} })).toThrow(/newer than this svalld reads \(11\)/);
+    expect(() => migrateState({ version: 13, islands: {}, robots: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 13, islands: {}, robots: {} })).toThrow(/newer than this svalld reads \(12\)/);
   });
 
   it('rejects garbage', () => {

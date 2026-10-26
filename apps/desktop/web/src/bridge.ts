@@ -2,7 +2,8 @@ import type { AgentKind, ContextItem, HandoverChoices } from '@svall/protocol';
 import type { HandoverEvent } from './handover.js';
 
 export type Rect = { x: number; y: number; width: number; height: number };
-export type Attach = { socket: string; session: string; tmux: string };
+// via: for a robot placed on another machine, the ssh destination and master socket that reach it
+export type Attach = { socket: string; session: string; tmux: string; via?: { ssh: string; controlSocket: string } };
 // a terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's
 // loopback that reaches the same port there
 export type MachineTerm = { ssh: string; type?: string; forward?: number };
@@ -18,8 +19,7 @@ export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
 // the machines a fleet can be handed to: what the shell may run `svall host …` for, and with what
-export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'enable';
-// enable names no fleet: the shell supplies the one this window runs
+export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove';
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
@@ -94,7 +94,7 @@ export type ToShell =
   | { type: 'handover.choose'; choices: HandoverChoices }
   | { type: 'handover.cancel' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
-  | { type: 'quit.answer'; unsaved: string[]; working: number }
+  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number }
   // the fleet has stopped, or could not be asked to
   | { type: 'quit.stopped'; ok: boolean }
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone

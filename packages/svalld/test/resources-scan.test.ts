@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, HOME_ISLAND, type FleetState, type ResourceSource } from '@svall/protocol';
 import { docsDir, repoSlug } from '../src/docs.js';
 import { claudePaths } from '../src/paths.js';
-import { fleetRoots, listsDeletable, resourceRoot, rootIdOf, scanResources } from '../src/resources/scan.js';
+import { fleetRoots, listsDeletable, resourceRoot, rootIdOf, scanResources, workspaceRoot } from '../src/resources/scan.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 const put = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -51,6 +51,18 @@ describe('resourceRoot', () => {
     expect(resourceRoot('r:/etc', state, claude)).toBeUndefined();
     expect(resourceRoot('r:/h', state, claude)).toBeUndefined();
     expect(resourceRoot('a', state, claude)).toBeUndefined();
+  });
+});
+
+describe('workspaceRoot', () => {
+  it('answers a robot here with its folder, and refuses one that runs on another machine, naming it, whose folder there is not on this disk', () => {
+    const claude = { dir: '/h/.claude', json: '/h/.claude.json' };
+    const W = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a';
+    const state = stateOf(robot('a', 'i1', '/r/app/.claude/worktrees/x', '/r/app'), { ...robot('b', 'i1', '/home/ada/app', '/home/ada/app'), machine: W } as ReturnType<typeof robot>);
+    state.machines = { [W]: { name: 'linus-vault', reachable: true, since: 0 } } as FleetState['machines'];
+    const here = (c: { machine?: string }) => !c.machine;
+    expect(workspaceRoot('a', state, claude, undefined, undefined, undefined, here)).toBe('/r/app/.claude/worktrees/x');
+    expect(() => workspaceRoot('b', state, claude, undefined, undefined, undefined, here)).toThrow(expect.objectContaining({ code: 'not_here', message: 'b is on linus-vault' }));
   });
 });
 

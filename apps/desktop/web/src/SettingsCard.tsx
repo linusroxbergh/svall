@@ -155,23 +155,6 @@ function FleetName() {
   );
 }
 
-const SETUP_DOC = 'https://github.com/linusroxbergh/svall/blob/main/docs/remote-machines/setup.md';
-
-// fleet.json's handover.enabled, which the shell sets with `svall handover on|off` and then names again in shell.info
-function RemoteMachines() {
-  const on = useApp((s) => !!s.shell?.handoverEnabled);
-  const gateway = useApp((s) => s.shell?.gateway);
-  const away = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
-  return (
-    <div className="row">
-      <span>remote machines (experimental)<Info id="remote">Move this fleet to a Linux machine and back. Adds Machines here, Handover at the foot of the sidebar and each card&apos;s keep on this machine switch. Kept in fleet.json, so it moves with the fleet. <a href={SETUP_DOC} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Setting up a Linux machine</a></Info></span>
-      <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-handover" disabled={!!away || (on && !!gateway)}
-        title={away ? `The fleet runs on ${away}, which holds its setting` : on && gateway ? `${gateway} is this fleet's gateway: remove it under Machines first` : undefined}
-        onClick={() => app.bridge.send({ type: 'handover.enable', on: !on })}>{on ? 'on' : 'off'}</button></b>
-    </div>
-  );
-}
-
 const checked = (c: NonNullable<MachineRow['check']>): string => {
   const when = new Date(c.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   const found = c.failed ? `${c.failed} ${c.failed === 1 ? 'check' : 'checks'} failed` : c.warned ? `${c.warned} ${c.warned === 1 ? 'warning' : 'warnings'}` : 'ready';
@@ -247,7 +230,6 @@ function Scribe() {
           <b><button className="set-switch" role="switch" aria-checked={worktrees} data-testid="set-worktrees" onClick={() => setWorktrees(deps(), !worktrees)}>{worktrees ? 'on' : 'off'}</button></b>
         </div>
         <Dormancy />
-        {app.bridge.present && <RemoteMachines />}
       </div>
     </>
   );
@@ -423,7 +405,6 @@ const PANES = [
 export function SettingsCard() {
   const bindings = useApp((s) => s.settings.bindings);
   const update = useApp((s) => s.update);
-  const handover = useApp((s) => !!s.shell?.handoverEnabled);
   const shell = app.bridge.present;
   const box = useRef<HTMLDivElement>(null);
   // the Machines panel covers it, and a terminal that panel shows must not give up the window's rect
@@ -432,9 +413,8 @@ export function SettingsCard() {
   const ask = useApp((s) => s.settingsAsk);
   const [picked, pick] = useState<string>(ask?.pane ?? 'machine');
   useEffect(() => { if (ask) pick(ask.pane); }, [ask]);
-  // banners need the shell, Machines waits on fleet.json's handover.enabled, and Updates stands only while one waits;
-  // a pane that goes leaves the first in its place
-  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'machines' || handover) && (p !== 'updates' || update));
+  // banners need the shell, and Updates stands only while one waits; a pane that goes leaves the first in its place
+  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
   return (
     <div className="set-win" ref={box} data-testid="settings" role="dialog" aria-label="Settings">

@@ -19,9 +19,9 @@ final class QuitFlowTests: XCTestCase {
                  terminate: { [unowned self] in quits.append($0) })
     }
 
-    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0) {
+    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0, placed: Int = 0) {
         XCTAssertEqual(flow.ask(confirm: true) { [unowned self] in answers.append($0) }, .terminateLater)
-        flow.answered(unsaved: unsaved, working: working)
+        flow.answered(unsaved: unsaved, working: working, placed: placed)
     }
 
     func testALocalFleetIsPutToSleepByThePage() {
@@ -33,6 +33,15 @@ final class QuitFlowTests: XCTestCase {
         local.stopped(ok: true)
         XCTAssertEqual(answers, [true])
         XCTAssertEqual(kills, 0)
+    }
+
+    func testRobotsOnWorkersAreSaidToKeepRunningThere() {
+        quit(flow(), working: 1, placed: 2)
+        quit(flow(), placed: 1)
+        XCTAssertEqual(asked, [
+            "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. 2 robots keep running on their machines.",
+            "Quit Svall? The robots on this Mac stop and pick up where they left off when you open Svall again. 1 robot keeps running on its machine.",
+        ])
     }
 
     func testAQuitTheAppStartsWhileOneWaitsLeavesThatOneToFinish() {

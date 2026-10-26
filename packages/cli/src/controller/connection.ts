@@ -6,7 +6,7 @@ import { versionMachineId, type OwnerAnswer } from '@svall/svalld/gateway/client
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svalldUnitName } from '@svall/svalld/linux/setup';
-import { isProfileName, PRIVATE, profileOf } from '@svall/svalld/profile';
+import { isProfileName, profileOf } from '@svall/svalld/profile';
 import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { Client } from '../client.js';
@@ -24,7 +24,7 @@ const RETRIED: SshErrorKind[] = ['unreachable', 'daemon_down'];
 
 export const retryable = (err: unknown): boolean => err instanceof SshError && RETRIED.includes(err.kind);
 
-/** A companion that runs another fleet under the profile asked: no retry changes that, only `svall host enable`. */
+/** A companion that runs another fleet under the profile asked: no retry changes that, only `svall host upgrade`. */
 export class FleetMismatch extends SshError {
   constructor(message: string) { super('other', message); }
 }
@@ -136,7 +136,7 @@ export async function remoteConnectionInfo(master: SshMaster, machine: MachineEn
     throw new SshError('other', `${name}: svall connection-info did not answer a connection description`);
   }
   if (o.fleetId !== undefined && info.fleetId !== o.fleetId) {
-    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall host enable ${name} --fleet ${o.profile ?? PRIVATE}\` gives it a copy of this one`);
+    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${o.profile ? `-p ${o.profile} ` : ''}host upgrade ${name}\` makes it this fleet's worker`);
   }
   if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`);
   if (!o.anyProtocol && info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);

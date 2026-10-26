@@ -246,9 +246,9 @@ final class HostProcessTests: XCTestCase {
     }
 
     func testTheOperationsThatRewriteTheFleetsConfigAreTheOnesThatTellThePageItsGatewayAfresh() {
-        XCTAssertTrue(HostOp.enable.rewritesFleetConfig)
-        XCTAssertTrue(HostOp.remove.rewritesFleetConfig)
-        for op in [HostOp.add, .doctor, .upgrade] { XCTAssertFalse(op.rewritesFleetConfig, op.rawValue) }
+        // an upgrade drops the gateway of a fleet whose machine becomes its worker
+        for op in [HostOp.enable, .remove, .upgrade] { XCTAssertTrue(op.rewritesFleetConfig, op.rawValue) }
+        for op in [HostOp.add, .doctor] { XCTAssertFalse(op.rewritesFleetConfig, op.rawValue) }
     }
 
     func testTheWindowNamesTheMachineTheFleetIsOn() {

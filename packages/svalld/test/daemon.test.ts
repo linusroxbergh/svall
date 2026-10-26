@@ -103,7 +103,7 @@ runIf('startDaemon', () => {
     const logged: string[] = [];
     const again = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
     try {
-      expect(again.store.state.version).toBe(11);
+      expect(again.store.state.version).toBe(12);
       expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe(fleet);
       expect(JSON.parse(fleet).mainAgent).toBe('codex');
       expect(fs.existsSync(p.legacyConfig)).toBe(false);
@@ -345,6 +345,8 @@ runIf('startDaemon', () => {
     homes.push(home);
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=secret');
+    fs.writeFileSync(path.join(home, 'worker.json'), '{"token":"secret"}');
+    fs.writeFileSync(path.join(home, 'workers.json'), '{"m":{"token":"secret"}}');
     const claudeDir = path.join(os.homedir(), '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
     fs.writeFileSync(path.join(claudeDir, '.credentials.json'), '{"secret":1}');
@@ -357,14 +359,15 @@ runIf('startDaemon', () => {
     let next = 1;
     const call = (method: string, params: unknown) => new Promise<{ result?: unknown; error?: { code: string } }>((resolve) => {
       const id = next++;
-      ws.on('message', (raw) => { const m = JSON.parse(raw.toString()) as { id?: number }; if (m.id === id) resolve(m as never); });
+      const take = (raw: WebSocket.RawData) => { const m = JSON.parse(raw.toString()) as { id?: number }; if (m.id === id) { ws.off('message', take); resolve(m as never); } };
+      ws.on('message', take);
       ws.send(JSON.stringify({ id, method, params }));
     });
     try {
       await new Promise((r) => ws.once('open', r));
       ws.send(JSON.stringify({ token: d.token }));
       const c = await d.fleet.createRobot({ islandId: d.fleet.createIsland({ name: 'x' }).id, cwd: os.homedir() });
-      for (const p of ['.svall-files/token', '.svall-files/mobile-key', '.svall-files/vapid.json', '.svall-files/.env', '.svall-later/token']) {
+      for (const p of ['.svall-files/token', '.svall-files/mobile-key', '.svall-files/vapid.json', '.svall-files/.env', '.svall-files/worker.json', '.svall-files/workers.json', '.svall-later/token']) {
         expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ error: { code: 'invalid' } });
       }
       for (const p of ['.svall-files/fleet.json', '.svall-files/node.json']) {

@@ -77,16 +77,31 @@ export function resolvePaths(home: string = svallHome()) {
     vapid: path.join(home, 'vapid.json'),
     docs: path.join(home, 'docs'),
     agentProfiles: path.join(home, 'agent-profiles'),
+    // a worker's own settings and files, in the mirror's layout, over what the home's agent configuration brings
+    mirrorOverrides: path.join(home, 'mirror-overrides'),
     trash: path.join(home, 'trash'),
     opencodeConfig: path.join(home, 'opencode-config'),
     opencodeReplaced: path.join(home, 'opencode-config-replaced'),
     zdotdir: path.join(home, 'zsh'),
+    // a worker's: the home it serves, that home's last snapshot, the outbox and the seq the home last acknowledged, the link's socket
+    workerFile: path.join(home, 'worker.json'),
+    cache: path.join(home, 'cache'),
+    snapshotFile: path.join(home, 'cache', 'snapshot.json'),
+    // the sha256 of each doc as the worker and the home last both held it
+    docsSynced: path.join(home, 'cache', 'docs-synced.json'),
+    outbox: path.join(home, 'journal', 'outbox.ndjson'),
+    acked: path.join(home, 'journal', 'acked'),
+    linkSock: path.join(home, 'link.sock'),
+    // each robot move's journal, on either side of it
+    moves: path.join(home, 'journal', 'moves'),
+    // the home's: the token it issued each worker of this fleet
+    workersFile: path.join(home, 'workers.json'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile, p.workersFile];
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

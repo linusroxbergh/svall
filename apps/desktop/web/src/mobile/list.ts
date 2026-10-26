@@ -21,13 +21,13 @@ export function sections(f: FleetState): Section[] {
   return out;
 }
 
-export const waiting = (f: FleetState): number => Object.values(f.robots).filter(wantsUser).length;
+export const waiting = (f: FleetState): number => Object.values(f.robots).filter((c) => wantsUser(c, f)).length;
 
 /** The line under a robot's name: its note flattened to one line, or nothing. */
 export const subtitle = (c: Robot): string => c.note.trim().replace(/\s*\n+\s*/g, ' · ');
 
 const LABEL: Record<DisplayStatus, string> = {
-  working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell',
+  working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell', moving: 'moving', unknown: 'unknown',
 };
 /** A status as the phone words it, in the list and over the terminal alike. */
 export const statusLabel = (s: DisplayStatus): string => LABEL[s];

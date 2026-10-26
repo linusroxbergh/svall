@@ -316,6 +316,10 @@ export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem
 export const reviveRobot = (d: ActionDeps, id: string): Promise<boolean> =>
   d.api.call('robot.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
 
+// a move stopped after its commit runs on from the step it stopped at
+export const retryMove = (d: ActionDeps, moveId: string): Promise<void> =>
+  d.api.call('robot.moveRetry', { moveId }).then(() => {}, toast(d));
+
 // a new session in the terminal's folder, told what the session that could not resume held
 export const startFresh = (d: ActionDeps, id: string, second?: boolean): Promise<void> => {
   const c = d.store.getState().fleet.robots[id];

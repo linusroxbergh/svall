@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
-import { openSecondTerminal, reviveRobot, startFresh } from './actions.js';
+import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
 import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
+import { destinationName, isPlaced, unreachableOf } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
 
@@ -18,11 +19,16 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const c = useApp((s) => s.fleet.robots[id]);
   const key = second ? secondKey(id) : id;
   const error = useApp((s) => s.terminalErrors[key]);
-  const failed = useApp((s) => resumeErrorOf(s, second ? s.fleet.robots[id]?.second : s.fleet.robots[id]));
+  const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id], second ? 2 : 1));
   const veiled = useApp(isVeiled);
   // the fleet is between machines: its terminals were rested at the source and reopen where it lands
   const resting = useApp((s) => holdsTerminals(s.handover));
   const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
+  // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
+  const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to); });
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && unreachableOf(s.fleet, r); });
+  const mismatch = useApp((s) => { const r = s.fleet.robots[id]; return !!r && isPlaced(r) && s.fleet.machines?.[r.machine]?.mismatch === true; });
+  const away = !!movingTo || !!unreachable;
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
   const ref = useRef<HTMLDivElement>(null);
@@ -43,16 +49,16 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   }, [windowId]);
   const active = useApp((s) => s.active);
   useEffect(() => {
-    if (second || !dormant || held || failed || resting || !active) return;
+    if (second || !dormant || held || failed || resting || away || !active) return;
     const t = setTimeout(() => {
       const cur = app.store.getState().fleet.robots[id];
       if (cur && !cur.tmux) void reviveRobot(deps(), id).then((ok) => { if (!ok) setHeld(true); });
     }, 1000);
     return () => clearTimeout(t);
-  }, [id, second, dormant, held, failed, resting, active]);
+  }, [id, second, dormant, held, failed, resting, away, active]);
 
   useEffect(() => {
-    if (resting || dormant || error || veiled) return;
+    if (resting || away || dormant || error || veiled) return;
     const el = ref.current;
     if (!el) return;
     const rect = () => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
@@ -61,22 +67,32 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     const ro = new ResizeObserver(() => m.move(key, rect()));
     ro.observe(el);
     return () => { ro.disconnect(); m.hide(key); };
-  }, [key, resting, dormant, error, veiled]);
+  }, [key, resting, away, dormant, error, veiled]);
 
   // a changed opacity restates the surface where it is; re-running the attach effect would flicker it.
   // the settings sliders keep the keyboard, so the surface only takes focus while they are away
   useEffect(() => {
     const el = ref.current;
     const s = app.store.getState();
-    if (!el || resting || veiled || !s.terminals[key]) return;
+    if (!el || resting || away || veiled || !s.terminals[key]) return;
     const r = el.getBoundingClientRect();
     app.manager().show(key, { x: r.left, y: r.top, width: r.width, height: r.height }, opacity, !s.settingsOpen && !keepPageFocus && !aside).catch(() => {});
-  }, [key, opacity, resting, veiled]);
+  }, [key, opacity, resting, away, veiled]);
 
   if (!c) return null;
   if (resting) {
     return <button type="button" className="revive held" data-testid="terminal-held" onClick={() => app.store.getState().toggleHandover(true)}>{restingSays}</button>;
   }
+  if (movingTo) {
+    return (
+      <div className="revive" data-testid="terminal-moving">
+        <span>moving to {movingTo}…</span>
+        {c.moving?.error && <span data-testid="move-error">{c.moving.error}</span>}
+        {c.moving?.error && <button data-testid="move-retry" onClick={() => void retryMove(deps(), c.moving!.id)}>Retry</button>}
+      </div>
+    );
+  }
+  if (unreachable) return <div className="revive" data-testid="terminal-unreachable">{unreachable} {mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}</div>;
   if (error) {
     return (
       <div className="revive" data-testid="terminal-error">

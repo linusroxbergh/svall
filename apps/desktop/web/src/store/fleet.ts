@@ -29,7 +29,7 @@ const pruned = (s: App, fleet: FleetState) => {
   const islandGone = s.selectedIslandId !== undefined && !fleet.islands[s.selectedIslandId];
   return {
     focusedId: alive(fleet, s.focusedId), selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingRobot: alive(fleet, s.closingRobot),
-    sleepingRobot: alive(fleet, s.sleepingRobot),
+    sleepingRobot: alive(fleet, s.sleepingRobot), moveSheet: alive(fleet, s.moveSheet?.id) ? s.moveSheet : undefined,
     selectedIslandId: islandGone ? undefined : s.selectedIslandId, sideCardOpen: s.sideCardOpen && !islandGone,
     deletingIsland: deletable(fleet, s.deletingIsland), deletingColumn: columnDeletable(fleet, s.deletingColumn), ide: pruneIde(s.ide, fleet, s.fleet),
   };

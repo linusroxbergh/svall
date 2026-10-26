@@ -5,6 +5,7 @@ import {
   CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, MachinePath, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
   TransferRoot, Warning,
 } from './handover.js';
+import { MoveId, MoveSheet, Refusal } from './placement.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
@@ -100,6 +101,12 @@ export const ACTIVATE_TIMEOUT_MS = 10 * 60_000;
 export const COMPLETE_TIMEOUT_MS = 2 * 60_000;
 // how long taking a forced record may take, since the machine it names reopens the terminals its handover rested
 const ADOPT_TIMEOUT_MS = 2 * 60_000;
+// how long a move may take to rest, carry and commit a robot, past the interrupt it was asked to wait for
+const MOVE_TIMEOUT_MS = 15 * 60_000;
+// a check asks the worker its agents and probes its clone (an ls-remote of up to 20 s), and builds the bundle to size it
+const MOVE_CHECK_TIMEOUT_MS = 3 * 60_000;
+// a retry waits for the worker to take the snapshot (60 s), to start the robot (two minutes) and for the release
+const MOVE_RETRY_TIMEOUT_MS = 5 * 60_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -115,6 +122,9 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'handover.activate') return ACTIVATE_TIMEOUT_MS;
   if (method === 'handover.complete') return COMPLETE_TIMEOUT_MS;
   if (method === 'ownership.adopt') return ADOPT_TIMEOUT_MS;
+  if (method === 'robot.moveTo') return MOVE_TIMEOUT_MS + ((params as { interruptAfterMs?: number }).interruptAfterMs ?? 0);
+  if (method === 'robot.moveCheck') return MOVE_CHECK_TIMEOUT_MS;
+  if (method === 'robot.moveRetry') return MOVE_RETRY_TIMEOUT_MS;
   return 0;
 };
 
@@ -134,6 +144,8 @@ export type FsEntry = z.infer<typeof FsEntry>;
 export const ChangedFile = z.object({ path: z.string(), status: z.enum(['A', 'M', 'D', 'R', '?']), from: z.string().optional() });
 export type ChangedFile = z.infer<typeof ChangedFile>;
 const RootPath = z.object({ id: z.string(), path: z.string() });
+// carry names the credential files ticked to travel; interruptAfterMs, how long a working agent has before it is interrupted
+const MoveParams = z.object({ id: z.string(), machine: MachineId, carry: z.array(z.string()).optional(), interruptAfterMs: z.number().int().nonnegative().optional() });
 export const ResourceKind = z.enum(['docs', 'agentProfiles', 'instructions', 'skills', 'agents', 'commands', 'plugins', 'mcp', 'hooks', 'settings', 'autoMemory']);
 export type ResourceKind = z.infer<typeof ResourceKind>;
 // rootId and path are what fs.read takes; find is text to put the cursor on, folder what a skill's row unfolds to
@@ -190,7 +202,7 @@ export const methods = {
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // '' clears it
-      agentProfile: z.string().optional(), figure: z.number().int().min(1).optional(), keepHere: z.boolean().optional(),
+      agentProfile: z.string().optional(), figure: z.number().int().min(1).optional()
     }),
     result: Robot,
   },
@@ -228,6 +240,21 @@ export const methods = {
   // Enter takes the permission dialog's highlighted "Yes"; Esc is its "No". promptId is the agent's promptId the answer was
   // shown with; a newer question is not answered by it
   'robot.answer': { params: z.object({ id: z.string(), answer: z.enum(['approve', 'deny']), promptId: z.string().optional() }), result: z.object({}) },
+  // what a move to `machine` carries, or the first check that stops it; the home's own id asks about the way back
+  'robot.moveCheck': {
+    params: MoveParams,
+    result: z.union([z.object({ ok: z.literal(true), sheet: MoveSheet }), z.object({ ok: z.literal(false), refusal: Refusal })]),
+  },
+  // answers once the move has run past its commit; a refusal comes back as `refused`, the refusal in its data
+  'robot.moveTo': { params: MoveParams, result: z.object({ moveId: MoveId }) },
+  // runs a committed move on from the step it stopped at
+  'robot.moveRetry': { params: z.object({ moveId: MoveId }), result: z.object({}) },
+  'machines.list': {
+    params: z.object({}),
+    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
+  },
+  // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran
+  'machines.refresh': { params: z.object({}), result: z.object({}) },
   // each answers the board's columns, left to right. A name is trimmed and unlike every other column's in any case;
   // without afterId the column goes last, and a deleted column's robots go to moveTo
   'column.add': { params: z.object({ name: z.string(), afterId: z.string().optional() }), result: z.array(Column) },
@@ -297,8 +324,12 @@ export const methods = {
   'term.input': { params: z.object({ id: z.string(), data: z.string().base64() }), result: z.object({}) },
   'term.resize': { params: Id.merge(TermSize), result: z.object({}) },
   'term.close': { params: Id, result: z.object({}) },
-  // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there
-  'term.attach': { params: Id.extend({ term: Term }), result: z.object({ socket: z.string(), session: z.string(), tmux: z.string() }) },
+  // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there; `via`, for a robot
+  // placed on another machine, the ssh destination and master socket that reach it
+  'term.attach': {
+    params: Id.extend({ term: Term }),
+    result: z.object({ socket: z.string(), session: z.string(), tmux: z.string(), via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional() }),
+  },
   'system.info': { params: z.object({}), result: SystemInfo },
   'ownership.get': { params: z.object({}), result: OwnershipInfo },
   // token-only: the gateway's record as `svall fleet recover` relays it after a forced write, and the gateway that holds it now,
@@ -438,4 +469,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 30;
+export const PROTOCOL_VERSION = 31;

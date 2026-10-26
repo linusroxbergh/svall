@@ -399,7 +399,7 @@ describe('fleet recover --force-owner', () => {
       expect.stringMatching(/^trift may still run this fleet if it comes back/),
       expect.stringContaining('svall host remove trift --forget'),
       'vault still names trift as this fleet\'s gateway and is not told of this record',
-      expect.stringContaining('svall host enable <host> --fleet <fleet>'),
+      expect.stringContaining('svall -p <fleet> host upgrade <host>'),
     ]);
   });
 

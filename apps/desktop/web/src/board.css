@@ -74,6 +74,10 @@
 .kc[data-status="blocked"] { --lit: var(--blocked); }
 .kc[data-status="done"] { --lit: var(--done); }
 .kc[data-status="shell"] { --lit: var(--shell); }
+.kc[data-status="moving"] { --lit: var(--moving); }
+.kc[data-status="unknown"] { --lit: var(--unknown); }
+/* a robot between machines greys until it lands */
+.kc[data-status="moving"] .kc-av { filter: grayscale(1); opacity: .7; }
 .kc:hover { border-color: var(--line); background: color-mix(in srgb, var(--surface-2) 97%, var(--ink)); }
 .kc[data-unread="true"] { border-color: color-mix(in srgb, var(--done) 40%, transparent); }
 .kc[data-need="true"] { background: color-mix(in srgb, var(--blocked) 8%, var(--surface-2)); border-color: color-mix(in srgb, var(--blocked) 38%, transparent); }
@@ -105,6 +109,8 @@
 .kc-un::before { content: '·'; margin-right: var(--sp-sm); color: var(--ink-3); }
 .kc-sp { flex: 1; }
 .kc-isl { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); font-size: var(--text-xs); }
+.kc-mach { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 var(--sp-sm); border-radius: var(--r-pill);
+  background: var(--fill-1); color: var(--ink); font-size: var(--text-xs); font-weight: var(--w-semibold); }
 .kc-mk { flex: none; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; box-shadow: 0 0 0 1px var(--shade-2); }
 .kc-mk svg { width: 10px; height: 10px; display: block; }
 .kc-mk[data-kind="review"] { background: var(--review); color: var(--ink-on-review); }

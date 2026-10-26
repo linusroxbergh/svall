@@ -6,7 +6,7 @@ export function FleetSummary() {
   const robots = Object.values(fleet.robots);
   const islands = islandsSorted(fleet);
   const counts = countsByStatus(fleet);
-  const blocked = robots.filter((c) => statusOf(c) === 'blocked').length;
+  const blocked = robots.filter((c) => statusOf(c, fleet) === 'blocked').length;
   const unread = robots.filter(isUnread).length;
   return (
     <aside className="side" data-testid="fleet-summary">
@@ -14,7 +14,7 @@ export function FleetSummary() {
       <h2 className="h2">{robots.length} {robots.length === 1 ? 'robot' : 'robots'}<br />on {islands.length} {islands.length === 1 ? 'island' : 'islands'}</h2>
       <div className="desc">{blocked} blocked, {unread} unread.</div>
       <div className="rows">
-        {DISPLAY_STATUSES.map((s) => (
+        {[...DISPLAY_STATUSES, ...(['moving', 'unknown'] as const).filter((s) => counts[s] > 0)].map((s) => (
           <div key={s} className="row">
             <span className="sname"><i className="sdot" data-status={s} />{s}</span>
             <b className="tnum">{counts[s]}</b>

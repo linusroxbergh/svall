@@ -1,10 +1,11 @@
 import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shq } from '@svall/svalld/text';
-import { redact, runProcess } from '../../src/controller/process.js';
-import { classifyExit, classifySsh, SshError, SshMaster, sweepMasters } from '../../src/controller/ssh.js';
+import { redact, runProcess } from '@svall/svalld/link/process';
+import { classifyExit, classifySsh, SshError, SshMaster, sweepMasters } from '@svall/svalld/link/ssh';
 import { waitFor } from '../../../svalld/test/helpers.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 
@@ -252,6 +253,24 @@ describe('SshMaster', () => {
     const words = ssh.remoteCalls().at(-1) as string[];
     expect(words[0]).toBe('/opt/svall/current/bin/svall');
     expect(words).not.toContain('--');
+    await master.close();
+  });
+
+  it('runs a far command with its stdin and stdout as one stream, and ends it with the stream', async () => {
+    const master = await open('trift');
+    ssh.execute({ rsync: '/usr/bin/true' });
+    const cat = master.stream(['cat']);
+    cat.stream.write('over the link\n');
+    const [chunk] = await once(cat.stream, 'data');
+    expect(String(chunk)).toBe('over the link\n');
+    expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '--', 'svall-remote.invalid', 'cat']);
+    cat.stream.end();
+    expect(await cat.exited).toMatchObject({ code: 0 });
+    // a stream let go of mid-command takes ssh with it
+    const held = master.stream(['cat']);
+    held.stream.on('error', () => {});
+    held.stream.destroy();
+    await held.exited;
     await master.close();
   });
 

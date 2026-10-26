@@ -44,7 +44,8 @@ const PHASES = [
   { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger'] },
   // the tmux the units start, which the release installed carries
   { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'tmux', 'uninstall'] },
-  { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'authority', 'fleet'] },
+  // an upgrade makes a gateway this fleet's worker once its probe passes
+  { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'enrol', 'gateway', 'fleet', 'replicas'] },
   { phase: 'agents', label: 'Agent CLIs', steps: ['claude', 'codex', 'opencode', 'versions'] },
   // an upgrade puts the release before back when its probe fails
   { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback'] },
@@ -95,15 +96,12 @@ export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, runnin
 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
-/** An add is done once its machine is in the registry, whatever it left to do; a stopped one never got there. */
-export const added = (run: HostRun): boolean => run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok');
-
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
-  service: 'Services', identity: 'Installed release', authority: 'Ownership record', fleet: 'Fleets', claude: 'Claude Code',
+  service: 'Services', identity: 'Installed release', enrol: 'Worker', fleet: 'Fleets', replicas: 'Earlier handover', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
-  systemd: 'Fleet service', gateway: 'Gateway service', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
+  systemd: 'Fleet service', worker: 'Worker', gateway: 'Gateway service', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall',
 };
@@ -116,41 +114,31 @@ export const stepSaid = (row: HostStep, machine: string): string | undefined =>
   (row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail);
 
 export const OP_TITLE: Record<HostOp, string> = {
-  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', enable: "Make it this fleet's gateway",
+  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove',
 };
 
-/** How a finished run ends: what it did, what is left, and the one step the panel offers next. */
-export type RunOutcome = { text: string; list?: string[]; next?: 'gateway' | 'handover' | 'rollback' };
+/** How a finished run ends: its one line, whether nothing is left (`done`), and the one step the panel offers next. */
+export type RunOutcome = { text: string; done?: true; next?: 'rollback' };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-/** `gateway`: the machine this fleet names as its gateway, before which nothing is ready for handover. */
-export function outcomeOf(run: HostRun, gateway: string | undefined): RunOutcome {
+// each step's action, and each failed step that names none
+const thingsLeft = (run: HostRun): number => runActions(run).length + run.steps.filter((s) => s.status === 'fail' && !s.action).length;
+
+export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
-  const actions = runActions(run);
-  const list = actions.length ? { list: actions } : {};
-  const theGateway = gateway === name;
-  const onward = theGateway ? { next: 'handover' as const } : { next: 'gateway' as const };
-  if (run.op === 'doctor') {
-    const failed = run.steps.filter((s) => s.status === 'fail');
-    if (failed.length) return { text: `${plural(failed.length, 'check')} block${failed.length === 1 ? 's' : ''} a handover:`, list: failed.map((s) => `${stepLabel(s.step)}: ${s.detail ?? 'failed'}`) };
-    const warned = run.steps.filter((s) => s.status === 'warn').length;
-    const ready = theGateway ? 'ready for handover' : "ready to be this fleet's gateway";
-    if (run.code === 0) return { text: `${ready}${warned ? `; ${plural(warned, 'warning')}` : ''}`, ...list, ...onward };
-  }
-  const failed = run.steps.find((s) => s.status === 'fail');
+  const left = thingsLeft(run);
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
-  if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}`, ...list, ...rollback };
-  if (added(run)) {
-    return { text: `${name} is added${actions.length ? '; still to do:' : theGateway ? ': ready for handover' : ''}`, ...list, ...onward };
+  if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
+    if (left) return { text: `${name} needs ${plural(left, 'thing')} before robots can move there.`, ...rollback };
+    if (run.code === 0) return { text: `${name} is ready. Robots you move there keep working while this Mac sleeps.`, done: true };
   }
-  if (run.code !== 0) return { text: actions.length ? 'still to do:' : `${OP_TITLE[run.op]} ended with exit ${run.code}`, ...list, ...rollback };
-  const done: Partial<Record<HostOp, string>> = {
-    upgrade: `${name} is upgraded`, rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}`,
-    enable: `${name} is this fleet's gateway: ready for handover`,
-  };
-  return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, ...list, ...(run.op === 'enable' ? { next: 'handover' as const } : {}) };
+  const failed = run.steps.find((s) => s.status === 'fail');
+  if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };
+  if (run.code !== 0) return { text: `${OP_TITLE[run.op]} ended with exit ${run.code}` };
+  const done: Partial<Record<HostOp, string>> = { rollback: `${name} is rolled back`, remove: `${name} is ${run.args.forget ? 'forgotten' : 'removed'}` };
+  return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, done: true };
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;

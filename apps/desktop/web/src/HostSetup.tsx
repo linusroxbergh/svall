@@ -3,7 +3,7 @@ import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
-import { added, groupSteps, machineName, OP_TITLE, outcomeOf, runActions, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
+import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
 
@@ -17,7 +17,6 @@ export function startHost(op: HostOp, args: HostArgs): void {
 
 /** What can be done to a machine in the registry, each on that machine and in the panel that follows it. */
 export function MachineActions({ name }: { name: string }) {
-  const gateway = useApp((s) => s.shell?.gateway);
   const running = useApp((s) => !!s.host?.running);
   // a terminal needs the destination the registry has for it, which the page may not have read yet
   const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
@@ -26,14 +25,10 @@ export function MachineActions({ name }: { name: string }) {
   const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget }); };
   return (
     <span className="machine-acts">
-      <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs for a handover, checked now" onClick={() => run('doctor')}>Check</button>
+      <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs before robots can move there, checked now" onClick={() => run('doctor')}>Check</button>
       <button className="btn set-open" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={() => run('upgrade')}>Upgrade</button>
       <button className="btn set-open" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
         onClick={() => store().openHostTerminal(name)}>Terminal</button>
-      {gateway !== name && (
-        <button className="btn set-open" data-testid="machine-enable" disabled={running}
-          title="It keeps this fleet's ownership record; the fleet stays on this Mac" onClick={() => run('enable')}>Make gateway</button>
-      )}
       <button className="btn set-open dan" data-testid="machine-remove" disabled={running} title="Uninstall Svall on this machine and drop its route" onClick={() => ask(false)}>Remove</button>
       <button className="btn set-open dan" data-testid="machine-forget" disabled={running}
         title="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={() => ask(true)}>Forget</button>
@@ -41,30 +36,24 @@ export function MachineActions({ name }: { name: string }) {
   );
 }
 
+// the footer: the run's one line, then Done, or Check again on a machine in the registry while something is left
 function Outcome({ run }: { run: HostRun }) {
-  const gateway = useApp((s) => s.shell?.gateway);
+  const known = useApp((s) => !!s.machines?.some((m) => m.name === run.args.name));
   if (run.running) return <div className="host-note" data-testid="host-running">{OP_TITLE[run.op]}: running…</div>;
-  const o = outcomeOf(run, gateway);
+  const o = outcomeOf(run);
   const name = run.args.name;
   return (
     <div className="host-note" data-testid="host-outcome">
       {o.text}
-      {o.list && <ul>{o.list.map((a) => <li key={a}>{a}</li>)}</ul>}
-      {o.next && (
-        <div className="acts">
-          {o.next === 'gateway' && (
-            <button className="btn" data-testid="host-next-gateway" onClick={() => startHost('enable', { name })}>{OP_TITLE.enable}</button>
-          )}
-          {o.next === 'handover' && (
-            <button className="btn" data-testid="host-next-handover"
-              onClick={() => { app.store.getState().toggleHost(false); app.store.getState().toggleHandover(true); }}>Open Handover</button>
-          )}
-          {o.next === 'rollback' && (
-            <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
-              onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
-          )}
-        </div>
-      )}
+      <div className="acts">
+        {o.next === 'rollback' && (
+          <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
+            onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
+        )}
+        {o.done || !known
+          ? <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
+          : <button className="btn" data-testid="host-check-again" onClick={() => startHost('doctor', { name })}>Check again</button>}
+      </div>
     </div>
   );
 }
@@ -134,7 +123,6 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
 /** One machine and what is done to it, or a new one being added: the steps `svall host …` reports, as they arrive. */
 export function HostSetup() {
   const open = useApp((s) => s.hostOpen);
-  const enabled = useApp((s) => !!s.shell?.handoverEnabled);
   const run = useApp((s) => s.host);
   const confirm = useApp((s) => s.hostConfirm);
   const machine = useApp((s) => s.hostMachine);
@@ -142,8 +130,6 @@ export function HostSetup() {
   const terminal = useApp((s) => s.hostTerminal);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
-  const forHandover = useApp((s) => s.hostForHandover);
-  const gateway = useApp((s) => s.shell?.gateway);
   const shut = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -159,17 +145,7 @@ export function HostSetup() {
     return () => window.removeEventListener('keydown', key, true);
   }, [open]);
 
-  // for the handover sheet: an add with nothing left to do goes on to make the gateway, and the gateway made goes back to the sheet
-  useEffect(() => {
-    if (!forHandover || !run || run.running || run.code !== 0) return;
-    if (added(run) && !runActions(run).length) startHost('enable', { name: run.args.name });
-    else if (run.op === 'enable' && gateway === run.args.name) {
-      app.store.getState().toggleHost(false);
-      app.store.getState().toggleHandover(true);
-    }
-  }, [forHandover, run, gateway]);
-
-  if (!open || !enabled) return null;
+  if (!open) return null;
   const running = run?.running ?? false;
   // a run another machine's panel started stays in sight while it runs, so it can be stopped
   const shown = run && (running || run.args.name === machine) ? run : undefined;

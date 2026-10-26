@@ -324,15 +324,6 @@ export function blockersIn(run: HandoverRun, id: SectionId): Blocker[] {
   return run.result?.status === 'blocked' && here(run.result.phase) ? run.result.blockers : [];
 }
 
-/** What the corner's Handover control says about the run: waiting on the user, under way, or stopped part way. */
-export function badgeOf(run: HandoverRun | undefined): 'waiting' | 'live' | 'stopped' | undefined {
-  if (!run) return undefined;
-  if (decisionPending(run)) return 'waiting';
-  if (live(run) && (run.phase || run.preflight)) return 'live';
-  const a = actionsOf(run);
-  return a.resume || a.abort || a.forget ? 'stopped' : undefined;
-}
-
 export type Actions = {
   // live, before the commit: Abort is a cancel sent to the helper
   cancel: boolean;
@@ -475,7 +466,6 @@ const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Z
 
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext, warning = false): string | undefined {
-  const who = b.entity?.kind === 'robot' ? ctx.name(b.entity.id) : 'it';
   // the Linux machine, by the name svall host knows it by
   const linux = ctx.pull ? ctx.source : ctx.destination;
   const svall = ctx.svall ?? 'svall';
@@ -547,8 +537,6 @@ export function blockerHint(b: Blocker, ctx: HintContext, warning = false): stri
     }
     case 'repository_unused':
       return `Carry the folder whole copies those repositories to ${ctx.destination} with it.`;
-    case 'robot_pinned':
-      return `${who} is set to Keep on this machine: turn that off on ${who}'s card.`;
     case 'external_writer':
       return ctx.pull
         ? `Something kept writing there, on ${ctx.source} or in its copy on ${ctx.destination}.\nClose whatever writes there, then try again.`

@@ -31,6 +31,8 @@ type Deps = {
   awake?: () => Promise<boolean>;
   // how a robot's brief reads; the fleet's carries the docs in scope
   brief: (island: Island, robot: Robot) => string;
+  // a robot whose transcript is on this machine; absent, every robot's is
+  runsHere?: (c: Robot) => boolean;
 };
 type Job = { kind: 'robot' | 'island'; id: string };
 export type SweepOptions = { names?: boolean; columns?: boolean; islands?: boolean };
@@ -94,7 +96,7 @@ export class Scribe {
 
   private due(id: string, now: number): boolean {
     const c = this.deps.store.state.robots[id];
-    return !!c && eligible(c, this.seen.get(id), transcriptSize(c), now);
+    return !!c && (this.deps.runsHere?.(c) ?? true) && eligible(c, this.seen.get(id), transcriptSize(c), now);
   }
 
   // called on every fleet poll: queue what is due, and start the next pass once the last one is done and spaced
@@ -155,7 +157,7 @@ export class Scribe {
     if (!o.islands) {
       // a robot placed by hand stays where it is
       const ids = Object.values(state.robots).filter((c) => c.tmux && c.agent?.transcriptPath && c.agent.status !== 'blocked' &&
-        !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
+        (this.deps.runsHere?.(c) ?? true) && !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
       this.queue = this.queue.filter((j) => j.kind !== 'robot');
       lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, only))).flat());
     }

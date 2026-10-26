@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyState, type ContextItem } from '@svall/protocol';
+import { emptyState, type ContextItem, type MachineId } from '@svall/protocol';
 import { boardColumns, placesOf, robotsByPriority, robotsOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, placingAsking, resumeErrorOf, scribePlaces, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
@@ -68,6 +68,23 @@ describe('selectors', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'done', lastActivityAt: 0 } }))).toBe('done');
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'blocked', lastActivityAt: 0 } }))).toBe('blocked');
   });
+  it('shows a robot moving between machines as moving, and one on a worker whose link is down as unknown', () => {
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const working = { agent: { kind: 'claude' as const, sessionId: 's', transcriptPath: 't', status: 'working' as const, lastActivityAt: 0 } };
+    const f = { machines: { [vault]: { name: 'linus-vault', reachable: false, since: 0 } } };
+    const placed = chr('x', 'i', { x: 0, y: 0 }, { ...working, machine: vault });
+    expect(statusOf(placed, f)).toBe('unknown');
+    expect(statusOf(placed)).toBe('working');
+    expect(statusOf(placed, { machines: { [vault]: { ...f.machines[vault], reachable: true } } })).toBe('working');
+    expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { ...working, moving: { id: 'mv_0123456789', to: vault, phase: 'bundle' } }))).toBe('moving');
+    expect(statusOf({ ...placed, moving: { id: 'mv_0123456789', to: vault, phase: 'activate' } }, f)).toBe('moving');
+  });
+  it('asks nothing of the user for a robot last seen blocked on a worker out of reach', () => {
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const blocked = chr('x', 'i', { x: 0, y: 0 }, { machine: vault, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'blocked', lastActivityAt: 0 } });
+    expect(wantsUser(blocked, { machines: { [vault]: { name: 'linus-vault', reachable: false, since: 0 } } })).toBe(false);
+    expect(wantsUser(blocked, { machines: { [vault]: { name: 'linus-vault', reachable: true, since: 0 } } })).toBe(true);
+  });
   it('shows a robot with no window as idle, whatever turn or question its agent was left on', () => {
     for (const status of ['working', 'blocked'] as const) {
       expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status, lastActivityAt: 0 } }))).toBe('idle');
@@ -82,6 +99,7 @@ describe('selectors', () => {
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
     expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
     expect(isVeiled({ ...base, handoverOpen: true })).toBe(true);
+    expect(isVeiled({ ...base, moveSheet: { id: 'c0' } })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
     expect(isVeiled({ ...base, view: 'board', fleet: { ...fleet(), placingAsk: true } })).toBe(true);
     expect(isVeiled({ ...base, view: 'map', fleet: { ...fleet(), placingAsk: true } })).toBe(false);
@@ -167,7 +185,7 @@ describe('countsByStatus', () => {
   });
 
   it('counts the fixture fleet as three shells', () => {
-    expect(countsByStatus(fleet())).toEqual({ working: 0, idle: 0, blocked: 0, done: 0, shell: 3 });
+    expect(countsByStatus(fleet())).toEqual({ working: 0, idle: 0, blocked: 0, done: 0, shell: 3, moving: 0, unknown: 0 });
   });
 
   it('counts agents by agent status, a dormant one\'s too', () => {
@@ -176,7 +194,16 @@ describe('countsByStatus', () => {
     f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { agent });
     f.robots.c1 = chr('c1', 'i_b', { x: 2, y: 1 }, { agent: { ...agent, status: 'blocked' } });
     f.robots.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined, agent: { ...agent, status: 'idle' } });
-    expect(countsByStatus(f)).toEqual({ working: 1, idle: 1, blocked: 1, done: 0, shell: 0 });
+    expect(countsByStatus(f)).toEqual({ working: 1, idle: 1, blocked: 1, done: 0, shell: 0, moving: 0, unknown: 0 });
+  });
+
+  it('counts a robot on a worker out of reach as unknown', () => {
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const f = fleet();
+    f.machines = { [vault]: { name: 'linus-vault', reachable: false, since: 0 } };
+    f.robots.c0.machine = vault;
+    expect(countsByStatus(f)).toEqual({ working: 0, idle: 0, blocked: 0, done: 0, shell: 2, moving: 0, unknown: 1 });
+    expect(islandStatus(f, 'i_b')).toBe('unknown');
   });
 });
 
@@ -223,7 +250,7 @@ describe('a robot with two sessions', () => {
     expect(contextPctOf(c)).toBe(71);
     expect(contextPctOf(chr('c', 'i', at))).toBeUndefined();
     expect(isUnread(c)).toBe(true);
-    expect(wantsUser(c)).toBe(true);
+    expect(wantsUser(c, fleet())).toBe(true);
   });
   it('monitors in either session count', () => {
     expect(isMonitoring(chr('c', 'i', at, { agent: { ...agent('idle'), monitors: ['m1'] } }))).toBe(true);
@@ -273,5 +300,12 @@ describe('resumeErrorOf', () => {
   it('shows nothing for a terminal whose window is open, or one there is not', () => {
     expect(resumeErrorOf(on, { ...dormant, tmux: { windowId: '@1', paneId: '%1' } })).toBeUndefined();
     expect(resumeErrorOf(on, undefined)).toBeUndefined();
+  });
+  it('shows why a terminal of a robot on a worker could not resume there, either terminal, whatever the fleet asks', () => {
+    const W = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    expect(resumeErrorOf({}, { ...dormant, machine: W })).toBe(failed);
+    const second = { machine: W, tmux: { windowId: '@1', paneId: '%1' }, second: { cwd: '/w', unread: false, resumeError: failed } };
+    expect(resumeErrorOf({}, second)).toBeUndefined();
+    expect(resumeErrorOf({}, second, 2)).toBe(failed);
   });
 });

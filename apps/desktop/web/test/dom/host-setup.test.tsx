@@ -52,3 +52,32 @@ test('every step that failed offers a way on: what the step said to do, or the r
   fireEvent.click(screen.getByTestId('host-again-tmux'));
   expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
 });
+
+test('a run ends in one line, with Done once nothing is left and Check again while something is', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64', gateway: false, fleets: [] }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'probe', status: 'ok', detail: 'trift answers on release 1.2.3' });
+    store.getState().hostDone('upgrade', 0);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. Robots you move there keep working while this Mac sleeps.Done');
+  expect(screen.queryByTestId('machine-enable')).toBeNull();
+  expect(screen.queryByTestId('host-check-again')).toBeNull();
+  fireEvent.click(screen.getByTestId('host-done'));
+  expect(store.getState().hostOpen).toBe(false);
+
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'claude', status: 'warn', detail: 'not logged in', action: 'ssh ada@trift, then claude auth login' });
+    store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'inactive' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift needs 2 things before robots can move there.Check again');
+  expect(screen.queryByTestId('host-done')).toBeNull();
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('host-check-again'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
+});

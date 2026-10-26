@@ -355,7 +355,7 @@ describe('svall handover', () => {
   it('refuses a fleet with no gateway before anything else, naming the command that gives it one', async () => {
     const h = harness({ gateway: false, profile: 'lab' });
     expect(await runHandover(start(), h.ctx)).toEqual({ code: 1 });
-    expect(h.out()).toContain('svall host enable <host> --fleet lab');
+    expect(h.out()).toContain('`svall -p lab host upgrade <host>` makes a machine this fleet\'s worker');
     expect(h.connects()).toBe(0);
     expect(fs.existsSync(h.paths.dir)).toBe(false);
     expect(await runHandover({ kind: 'resume' }, harness({ gateway: false, json: true }).ctx)).toEqual({ code: 1 });
@@ -364,7 +364,40 @@ describe('svall handover', () => {
     const helper = harness({ gateway: false });
     expect(await runHandover(start(), { ...helper.ctx, helper: true })).toEqual({ code: 1 });
     expect(helper.out()).toBe('');
-    expect(helper.err()).toContain('svall host enable <host> --fleet');
+    expect(helper.err()).toContain('`svall host upgrade <host>`');
+  });
+
+  it('svall handover linus-vault refuses while a robot is placed there', async () => {
+    const h = harness({ json: true });
+    const VAULT = MachineId.parse('77777777-8888-4999-8aaa-bbbbbbbbbbbb');
+    h.registry.add({ name: 'linus-vault', ssh: 'linus-vault.test', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall', gateway: false }, VAULT);
+    const ada = {
+      id: 'c_ada', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [], shell: { lastOutputAt: 0 }, unread: false,
+      machine: VAULT, placement: { generation: 1 },
+    };
+    // bo is on its way there, before the commit that names its machine
+    const bo = { ...ada, id: 'c_bo', name: 'bo', cell: { x: 1, y: 0 }, machine: undefined, placement: undefined, moving: { id: 'mv_0123456789', to: VAULT, phase: 'bundle' } };
+    const file = path.join(h.home, 'state.json');
+    fs.writeFileSync(file, JSON.stringify({ ...emptyState(), robots: { c_ada: ada, c_bo: bo }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } }));
+    const error = 'ada runs on linus-vault, bo is moving to linus-vault; move every robot back first';
+    const refused = { event: 'handover.result', data: { status: 'interrupted', phase: 'begin', error, safe: [], stop: 'invalid' } };
+
+    expect(await runHandover(start('linus-vault'), h.ctx)).toEqual({ code: 1 });
+    expect(await runHandover(check('linus-vault'), h.ctx)).toEqual({ code: 1 });
+    expect(await launchHelper(start('linus-vault'), h.ctx)).toBe(1);
+    expect(h.events()).toEqual([refused, refused, refused]);
+    expect(h.connects()).toBe(0);
+    expect(h.launched).toEqual([]);
+    // what is already open still finishes
+    expect(await runHandover({ kind: 'resume' }, h.ctx)).toEqual({ code: 0 });
+    expect(h.tx.calls).toEqual([{ kind: 'resume' }]);
+
+    // a state that cannot be read says what to do
+    fs.writeFileSync(file, '{ torn');
+    const torn = harness({ json: true });
+    fs.copyFileSync(file, path.join(torn.home, 'state.json'));
+    expect(await runHandover(start(), torn.ctx)).toEqual({ code: 1 });
+    expect((torn.events()[0] as { data: { error: string } }).data.error).toMatch(/state\.json cannot be read \(.+\); start this fleet's daemon first, which reads it or sets it aside$/);
   });
 
   it('prints each blocker before Begin with what it names, and the warnings, and exits 1 without asking when no one can answer', async () => {
@@ -783,7 +816,7 @@ describe('svall handover', () => {
 
     const ungated = harness({ gateway: false, json: true });
     expect(await runStatus(ungated.ctx)).toBe(0);
-    expect(ungated.events()).toEqual([{ event: 'handover.status', data: expect.objectContaining({ standing: 'none', reason: expect.stringContaining('svall host enable') }) }]);
+    expect(ungated.events()).toEqual([{ event: 'handover.status', data: expect.objectContaining({ standing: 'none', reason: expect.stringContaining('svall host upgrade <host>') }) }]);
   });
 
   it('says where the handover stands naming each machine as the registry does, and the handover once', async () => {

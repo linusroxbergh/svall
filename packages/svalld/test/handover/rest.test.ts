@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FleetId, MachineId, emptyState, type Agent, type Robot } from '@svall/protocol';
 import { hookCommand, statusWrapper } from '../../src/agent-hooks.js';
 import { Config } from '../../src/config.js';
+import { markDormant } from '../../src/dormancy.js';
 import { Fleet } from '../../src/fleet.js';
 import { SourceJournal, openJournal } from '../../src/handover/journal.js';
 import { ProcessTable, killGroup, type Proc } from '../../src/handover/processes.js';
@@ -234,6 +235,15 @@ describe('restTerminals', () => {
     expect(ada.second).toEqual({ cwd: '/side/moved', unread: false, revive: { command: '' }, restedBy: tx.id });
     expect(store.state.robots.c_bo).toMatchObject({ revive: { command: `codex resume -c tui.resume_cwd=session ${SID2}` }, restedBy: tx.id });
     expect(world.timers()).toBe(0);
+  });
+
+  it('lays a terminal to rest with its agent when the fleet took its exit hook and its window close first, as an unfrozen fleet does', async () => {
+    const { store, world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('claude', 'idle') })]);
+    world.pane(1, { job: [`claude --resume ${SID}`] });
+    world.onKill = () => store.update((d) => { delete d.robots.c_ada.agent; markDormant(d.robots.c_ada); });
+
+    expect((await restTerminals(deps, { choices: {} })).ok).toBe(true);
+    expect(store.state.robots.c_ada).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, restedBy: tx.id });
   });
 
   it('leaves a robot put to sleep alone while its window still closes and its agent still exits', async () => {

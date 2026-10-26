@@ -14,6 +14,8 @@
     "./test-helpers": "./test/helpers.ts",
     "./config": "./src/config.ts",
     "./machine": "./src/machine.ts",
+    "./link/ssh": "./src/link/ssh.ts",
+    "./link/process": "./src/link/process.ts",
     "./handover/portable-path": "./src/handover/portable-path.ts",
     "./handover/inventory": "./src/handover/inventory.ts",
     "./handover/divergence": "./src/handover/divergence.ts",
@@ -52,7 +54,9 @@
     "./tmux/conf": "./src/tmux/conf.ts",
     "./linux/setup": "./src/linux/setup.ts",
     "./linux/service": "./src/linux/service.ts",
-    "./linux/provision": "./src/linux/provision.ts"
+    "./linux/provision": "./src/linux/provision.ts",
+    "./placement/workers": "./src/placement/workers.ts",
+    "./worker/mode": "./src/worker/mode.ts"
   },
   "scripts": {
     "test": "vitest run --root ../.. --project svalld"

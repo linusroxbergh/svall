@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Robot } from '@svall/protocol';
+import { ApiError, type MoveSheet, type Refusal, type Robot } from '@svall/protocol';
 import type { Client } from '../src/client.js';
 import { agentFor, robotCommands, termOf } from '../src/commands/robot.js';
 import { statusCommand } from '../src/commands/status.js';
@@ -105,7 +105,7 @@ describe('robot new --run', () => {
 describe('a robot command that stops on an error', () => {
   it('closes its connection to the fleet', async () => {
     const close = vi.fn();
-    const client = { call: async () => ({ version: 10, islands: {}, robots: { c_a: base } }), close };
+    const client = { call: async () => ({ version: 12, islands: {}, robots: { c_a: base } }), close };
     await expect(robotCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'robot', 'show', 'nobody'])).rejects.toThrow('no robot "nobody"');
     expect(close).toHaveBeenCalledOnce();
   });
@@ -116,7 +116,7 @@ describe('robot wait', () => {
   const wait = async (ref: string, robots: Record<string, Robot>, flags: string[] = []) => {
     vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const calls: string[] = [];
-    const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 10, islands: {}, robots } : { status: 'gone' }; }, close() {} };
+    const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 12, islands: {}, robots } : { status: 'gone' }; }, close() {} };
     await robotCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'robot', 'wait', ref, '--until', 'idle', ...flags]);
     return calls;
   };
@@ -135,54 +135,6 @@ describe('robot wait', () => {
 
   it('refuses a name two robots share', async () => {
     await expect(wait('a', { c_a: base, c_b: { ...base, id: 'c_b' } })).rejects.toThrow(/matches/);
-  });
-});
-
-describe('Keep on this machine', () => {
-  const ada: Robot = { ...base, id: 'c_ada', name: 'ada', keepHere: true };
-  const bo: Robot = { ...base, id: 'c_bo', name: 'bo' };
-
-  function daemon() {
-    const updates: Record<string, unknown>[] = [];
-    const client = {
-      call: async (method: string, params: Record<string, unknown>) => {
-        if (method === 'state.get') return { robots: { c_ada: ada, c_bo: bo }, islands: { i_1: { id: 'i_1', name: 'home' } } };
-        if (method === 'robot.update') { updates.push(params); return { ...ada, ...params }; }
-        if (method === 'robot.show') return { text: 'the brief' };
-        return {};
-      },
-      close: () => undefined,
-    };
-    return { updates, connect: async () => client as unknown as Client };
-  }
-
-  async function svall(connect: () => Promise<Client>, ...argv: string[]): Promise<string> {
-    const out: string[] = [];
-    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out.push(String(s)); return true; });
-    try {
-      await robotCommands(connect, () => false).parseAsync(argv, { from: 'user' });
-    } finally {
-      spy.mockRestore();
-    }
-    return out.join('');
-  }
-
-  it('is set and cleared through robot.update, and left alone otherwise', async () => {
-    const d = daemon();
-    await svall(d.connect, 'update', 'bo', '--keep-here');
-    await svall(d.connect, 'update', 'ada', '--no-keep-here');
-    await svall(d.connect, 'update', 'ada', '--name', 'ada2');
-    expect(d.updates.map((u) => u.keepHere)).toEqual([true, false, undefined]);
-    expect(d.updates.map((u) => u.id)).toEqual(['c_bo', 'c_ada', 'c_ada']);
-  });
-
-  it('marks a kept robot where robot list and robot show name it', async () => {
-    const d = daemon();
-    const list = await svall(d.connect, 'list');
-    expect(list).toMatch(/ada \(kept here\)/);
-    expect(list).not.toMatch(/bo \(kept here\)/);
-    expect(await svall(d.connect, 'show', 'ada')).toMatch(/^ada is kept on this machine, so a handover is blocked until that is cleared\n/);
-    expect(await svall(d.connect, 'show', 'bo')).toBe('the brief\n');
   });
 });
 
@@ -254,5 +206,122 @@ describe('robot revive', () => {
     const d = daemon({ ...ada, agent: old, second: { cwd: '/r', unread: false, agent: { ...old, kind: 'opencode', sessionId: 'ses_old' } } });
     expect(await run(d, '--fresh')).toBe('c_ada dormant; old session old-1 kept at /h/.codex/sessions/r.jsonl\n');
     expect(await run(d, '--fresh', '--term', '2')).toBe('c_ada dormant; old session ses_old kept in OpenCode\n');
+  });
+});
+
+describe('robot move to a machine', () => {
+  afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); });
+  const VAULT = '7b9e3c1a-0d2f-4e5a-8b6c-9d0e1f2a3b4c';
+  const kanban: Robot = {
+    ...base, id: 'c_1', name: 'kanban',
+    repo: { root: '/Users/ada/code/svall/.claude/worktrees/kanban-board', mainRoot: '/Users/ada/code/svall', branch: 'kanban-board', isWorktree: true },
+  };
+  const state = { version: 12, islands: { i_1: { id: 'i_1', name: 'work' } }, robots: { c_1: kanban }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
+  const sheet: MoveSheet = {
+    sessionBytes: 4_200_000, branch: 'kanban-board', commits: 2, changedFiles: 2, untrackedFiles: 1, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
+    interrupts: false, question: false, notInRepo: false,
+  };
+  const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt after this turn'] };
+
+  const HOME = '0f1e2d3c-4b5a-4697-8877-665544332211';
+  function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot>; answers?: string } = {}) {
+    const calls: [string, unknown][] = [];
+    const client = {
+      call: async (method: string, params: unknown) => {
+        if (method === 'state.get') return { ...state, robots: o.robots ?? state.robots };
+        if (method === 'system.info') return { machineId: o.answers ?? HOME };
+        calls.push([method, params]);
+        if (method === 'robot.moveRetry') return {};
+        if (method === 'robot.moveCheck') return o.check ?? { ok: true, sheet };
+        return o.moveTo ? o.moveTo() : { moveId: 'mv_0123456789' };
+      },
+      close: () => undefined,
+    };
+    return { calls, connect: async () => client as unknown as Client };
+  }
+  const run = async (d: ReturnType<typeof daemon>, argv: string[], json = false) => {
+    let out = '';
+    let err = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
+    vi.spyOn(process.stderr, 'write').mockImplementation((s) => { err += String(s); return true; });
+    await robotCommands(d.connect, () => json).parseAsync(['move', ...argv], { from: 'user' });
+    vi.restoreAllMocks();
+    return { out, err };
+  };
+
+  it('svall robot move c_1 --machine linus-vault prints the sheet and the move id; a refusal exits 2 with reason and action', async () => {
+    const d = daemon();
+    expect(await run(d, ['c_1', '--machine', 'linus-vault'])).toEqual({
+      out: 'session 4 MB · branch kanban-board: 2 commits not on origin, 3 changed files · svall on linus-vault: will clone (first time) · .env stays here\nmv_0123456789\n',
+      err: '',
+    });
+    expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: VAULT }], ['robot.moveTo', { id: 'c_1', machine: VAULT }]]);
+    expect(process.exitCode).toBeFalsy();
+
+    const refused = daemon({ check: { ok: false, refusal } });
+    expect(await run(refused, ['kanban', '--machine', VAULT])).toEqual({ out: '', err: 'refused: linus-vault is not reachable\n  → try again when it is awake\n' });
+    expect(refused.calls.map(([m]) => m)).toEqual(['robot.moveCheck']);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('says a refusal the move itself answers as the checks do, and gives either as one JSON object with --json', async () => {
+    const late = () => { throw new ApiError('refused', 'kanban is working; interrupt after this turn', { refusal: { reason: 'kanban is working', action: 'interrupt after this turn', details: [] } }); };
+    expect((await run(daemon({ moveTo: late }), ['c_1', '--machine', 'linus-vault'])).err).toBe('refused: kanban is working\n  → interrupt after this turn\n');
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+
+    expect(JSON.parse((await run(daemon(), ['c_1', '--machine', 'linus-vault'], true)).out)).toEqual({ ok: true, sheet, moveId: 'mv_0123456789' });
+    expect(process.exitCode).toBeFalsy();
+    expect(JSON.parse((await run(daemon({ check: { ok: false, refusal } }), ['c_1', '--machine', 'linus-vault'], true)).out)).toEqual({ ok: false, refusal });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends the interrupt and the credential files chosen, and phrases what else the sheet says', async () => {
+    const d = daemon({
+      check: { ok: true, sheet: { ...sheet, sessionBytes: 0, branch: 'kanban', commits: 1, changedFiles: 0, untrackedFiles: 0, clone: 'warm', stays: [], interrupts: true, question: true, converts: { main: '/Users/ada/code/svall', branch: 'kanban', changed: 1 } } },
+    });
+    const { out } = await run(d, ['c_1', '--machine', 'linus-vault', '--interrupt-after', '30s', '--carry', '.env', '--carry', 'id_rsa']);
+    expect(out.split('\n')[0]).toBe('branch kanban: 1 commit not on origin · svall on linus-vault: cloned already · your 1 changed file in svall\'s main checkout moves to a new branch kanban · its open question is dropped; it asks again · what still runs is interrupted');
+    expect(d.calls[0]).toEqual(['robot.moveCheck', { id: 'c_1', machine: VAULT, carry: ['.env', 'id_rsa'], interruptAfterMs: 30_000 }]);
+    expect(d.calls[1]).toEqual(['robot.moveTo', { id: 'c_1', machine: VAULT, carry: ['.env', 'id_rsa'], interruptAfterMs: 30_000 }]);
+
+    const clean = daemon({ check: { ok: true, sheet: { ...sheet, sessionBytes: 0, branch: 'kanban', commits: 0, changedFiles: 0, untrackedFiles: 0, stays: [], converts: { main: '/Users/ada/code/svall', branch: 'kanban', changed: 0 } } } });
+    expect((await run(clean, ['c_1', '--machine', 'linus-vault'])).out.split('\n')[0]).toBe("branch kanban · svall on linus-vault: will clone (first time) · it leaves svall's main checkout for a new branch kanban");
+
+    const shell = daemon({ check: { ok: true, sheet: { ...sheet, branch: '', commits: 0, changedFiles: 0, untrackedFiles: 0, stays: [], credentialFiles: [], notInRepo: true } } });
+    expect((await run(shell, ['c_1', '--machine', 'linus-vault'])).out.split('\n')[0]).toBe('session 4 MB · in no repository: it moves with its session only');
+  });
+
+  it('svall robot move c_1 --machine local brings it back to this Mac by the home\'s id', async () => {
+    const d = daemon({ check: { ok: true, sheet: { ...sheet, sessionBytes: 0, commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [] } } });
+    expect((await run(d, ['c_1', '--machine', 'local'])).out).toBe('branch kanban-board · svall on this Mac: cloned already\nmv_0123456789\n');
+    expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: HOME }], ['robot.moveTo', { id: 'c_1', machine: HOME }]]);
+
+    // a terminal on a worker reaches that worker's daemon, whose own id local would name
+    const far = daemon({ answers: VAULT });
+    expect(await run(far, ['c_1', '--machine', 'local'])).toEqual({ out: '', err: 'refused: this terminal is on linus-vault\n  → run this on the Mac\n' });
+    expect(far.calls).toEqual([]);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('retries the move a robot is in with --retry, and says so when it is in none', async () => {
+    const moving = { ...kanban, moving: { id: 'mv_abcdefghij', to: VAULT, phase: 'activate', error: 'claude exited' } } as Robot;
+    const d = daemon({ robots: { c_1: moving } });
+    expect((await run(d, ['kanban', '--retry'])).out).toBe('mv_abcdefghij\n');
+    expect(d.calls).toEqual([['robot.moveRetry', { moveId: 'mv_abcdefghij' }]]);
+    await expect(run(daemon(), ['c_1', '--retry'])).rejects.toThrow('kanban is in no move to retry');
+  });
+
+  it('takes one of --island, --machine and --retry, and names a machine the fleet does not have', async () => {
+    await expect(run(daemon(), ['c_1'])).rejects.toThrow('name one of --island, --machine and --retry');
+    const cmd = robotCommands(daemon().connect, () => false);
+    cmd.commands.find((c) => c.name() === 'move')!.exitOverride().configureOutput({ writeErr: () => {} });
+    for (const flags of [
+      ['--island', 'work', '--machine', 'linus-vault'], ['--island', 'work', '--carry', '.env'], ['--machine', 'linus-vault', '--cell', '1,1'],
+      ['--retry', '--island', 'work'], ['--retry', '--machine', 'linus-vault'], ['--retry', '--carry', '.env'], ['--retry', '--interrupt-after', '30s'],
+    ]) {
+      await expect(cmd.parseAsync(['move', 'c_1', ...flags], { from: 'user' }), flags.join(' ')).rejects.toThrow(/cannot be used with/);
+    }
+    await expect(run(daemon(), ['c_1', '--machine', 'trift'])).rejects.toThrow('no machine "trift"');
   });
 });

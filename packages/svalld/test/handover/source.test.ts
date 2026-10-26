@@ -425,7 +425,7 @@ describe('source preflight', () => {
       [new AuthorityFailure('invalid_request', '/Users/linus/.config/svall/machines.json names no ssh route to the gateway 1111'), 'authority_unreachable', /no ssh route.*svall host add/],
       [new AuthorityFailure('timeout', 'the gateway authority did not answer owner.get within 10000ms'), 'authority_unreachable', /did not answer owner\.get/],
       [new AuthorityFailure('authority_corrupt', `the record for fleet ${fleetId} is unreadable`), 'authority_corrupt', /unreadable.*svall fleet recover/],
-      [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall host enable/],
+      [new AuthorityFailure('not_found', `the gateway holds no record for fleet ${fleetId}`), 'identity_mismatch', /holds no record.*svall -p <fleet> host upgrade <gateway>/],
     ];
     for (const [failure, code, says] of cases) {
       b.gateway.refuses = failure;
@@ -549,7 +549,7 @@ describe('source preflight', () => {
   it('blocks an OpenCode session with an undo pending, at preflight and at freeze before any terminal rests, and keeps no copy of it', async () => {
     const b = opencodeBoot();
     hold(b.env, { info: { id: OC, location: { directory: path.join(b.work, 'ada') }, revert: { messageID: 'msg_1' } }, messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_1', text: 'two' }] });
-    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then hand over$/), entity: { kind: 'robot', id: 'c_ada' } };
+    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then move it$/), entity: { kind: 'robot', id: 'c_ada' } };
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: b.info }) });
     expect(r.blockers).toEqual([pending]);
     expect(b.checked.length).toBe(1);
@@ -557,13 +557,6 @@ describe('source preflight', () => {
     b.gateway.begin();
     expect(blockersOf(await refusal(b.handover.freeze(b.freezeParams({ destination: b.machines({ info: b.info }).destination }))))).toEqual([pending]);
     expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual([]);
-  });
-
-  it('blocks a robot kept on this machine', async () => {
-    const b = boot();
-    b.store.update((d) => { d.robots.c_ada.keepHere = true; });
-    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
-    expect(r.blockers).toEqual([{ code: 'robot_pinned', message: 'ada is kept on this machine', entity: { kind: 'robot', id: 'c_ada' } }]);
   });
 
   withGit('blocks a repository that names the platforms it runs on without the destination, and warns of an Xcode project', async () => {
@@ -1020,15 +1013,14 @@ describe('source freeze', () => {
     expect(r.data.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`core.hookspath names ${hooks}`) })]);
   });
 
-  it('finds a name it cannot carry, a transcript that is gone or a robot kept here before it touches a terminal', async () => {
+  it('finds a name it cannot carry or a transcript that is gone before it touches a terminal', async () => {
     const b = boot();
     b.gateway.begin();
     fs.writeFileSync(path.join(b.work, 'ada', 'bad\x01name'), '');
     fs.rmSync(b.transcript);
-    b.store.update((d) => { d.robots.c_cy.keepHere = true; });
     const r = await refusal(b.handover.freeze(b.freezeParams()));
     expect(r.code).toBe('blocked');
-    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_unsupported', 'robot_pinned', 'transcript_missing']);
+    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_unsupported', 'transcript_missing']);
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
     expect(b.ownership.writable()).toBe(true);
     expect(fs.existsSync(b.paths.journal)).toBe(false);

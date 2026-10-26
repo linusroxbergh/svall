@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Robot, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
+  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
   PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, TRANSFER_SCHEMA_VERSION, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
@@ -11,6 +11,13 @@ describe('serverWait', () => {
     expect(serverWait('robot.wait', { id: 'c', until: ['idle'], timeoutMs: 5_000 })).toBe(5_000);
     expect(serverWait('robot.create', { islandId: 'home', cwd: '/tmp' })).toBe(0);
     expect(serverWait('robot.create', { islandId: 'home', cwd: '/tmp', command: 'claude', run: 'hi' })).toBe(RUN_TIMEOUT_MS);
+    // a move answers once it has run past its commit; an interrupt chosen for later extends its rest
+    expect(serverWait('robot.moveTo', { id: 'c', machine: UUID_A })).toBe(15 * 60_000);
+    expect(serverWait('robot.moveTo', { id: 'c', machine: UUID_A, interruptAfterMs: 60_000 })).toBe(16 * 60_000);
+    // a check asks the worker its agents and its clone, whose ls-remote alone may take 20 s
+    expect(serverWait('robot.moveCheck', { id: 'c', machine: UUID_A })).toBe(3 * 60_000);
+    // a retry waits out the worker's taking the snapshot, the robot's start there and the release
+    expect(serverWait('robot.moveRetry', { moveId: 'mv_0123456789' })).toBe(5 * 60_000);
   });
 });
 
@@ -34,13 +41,6 @@ describe('messages', () => {
   it('robot.update strips unknown keys like slot rather than refusing them', () => {
     expect(methods['robot.update'].params.parse({ id: 'c', slot: 1 })).toEqual({ id: 'c' });
   });
-  it('robot.update keeps a robot on this machine or lets it go, and a robot says which', () => {
-    expect(methods['robot.update'].params.parse({ id: 'c', keepHere: true })).toEqual({ id: 'c', keepHere: true });
-    expect(methods['robot.update'].params.parse({ id: 'c', keepHere: false })).toEqual({ id: 'c', keepHere: false });
-    const c = { id: 'c_1', islandId: 'home', cell: { x: 1, y: 1 }, name: 'n', portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false };
-    expect(Robot.parse({ ...c, keepHere: true }).keepHere).toBe(true);
-    expect(Robot.parse(c).keepHere).toBeUndefined();
-  });
   it('island.create refuses a size below 4x3', () => {
     expect(() => methods['island.create'].params.parse({ name: 'x', size: { w: 3, h: 3 } })).toThrow();
   });
@@ -52,7 +52,7 @@ describe('messages', () => {
     }
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 12, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
@@ -67,7 +67,7 @@ describe('messages', () => {
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
     const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 12, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
   it('waits a whole number of milliseconds a timer can hold', () => {
@@ -150,8 +150,24 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it("is 30 with the board's columns, robots placed by hand or let go, placing.set, and a sweep of columns alone", () => {
-    expect(PROTOCOL_VERSION).toBe(30);
+  it('is 31 with a robot moved to another machine, the machines it can go to, and the route a terminal attaches over', () => {
+    expect(PROTOCOL_VERSION).toBe(31);
+    const sheet = {
+      sessionBytes: 4_000_000, branch: 'kanban', commits: 2, changedFiles: 3, untrackedFiles: 0, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
+      interrupts: false, question: false, notInRepo: false,
+    };
+    expect(methods['robot.moveCheck'].result.parse({ ok: true, sheet })).toEqual({ ok: true, sheet });
+    expect(methods['robot.moveCheck'].result.parse({ ok: false, refusal: { reason: 'r', action: 'a', details: [] } })).toEqual({ ok: false, refusal: { reason: 'r', action: 'a', details: [] } });
+    expect(methods['robot.moveTo'].params.safeParse({ id: 'c_a', machine: 'linus-vault' }).success).toBe(false);
+    expect(methods['robot.moveTo'].result.safeParse({ moveId: 'mv_0123456789' }).success).toBe(true);
+    expect(methods['robot.moveRetry'].params.safeParse({ moveId: 'nope' }).success).toBe(false);
+    expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 'linus-vault', reachable: true, robots: 1 }] }).machines[0].robots).toBe(1);
+    expect(methods['machines.refresh'].result.parse({})).toEqual({});
+    const via = { ssh: 'linus-vault', controlSocket: '/tmp/svall-501/1-abc' };
+    expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', via }).via).toEqual(via);
+  });
+
+  it("was 30 with the board's columns, robots placed by hand or let go, placing.set, and a sweep of columns alone", () => {
     expect(methods['scribe.sweep'].params.parse({ columns: true })).toEqual({ columns: true });
     expect(methods['robot.place'].params.safeParse({ id: 'c_a', columnId: 'todo' }).success).toBe(true);
     expect(methods['column.delete'].params.safeParse({ id: 'todo' }).success).toBe(false);

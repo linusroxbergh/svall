@@ -11,7 +11,11 @@ import { workspaceRoot } from '../src/resources/scan.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
+import { TerminalHub } from '../src/terminals.js';
+import { hasGit } from './handover/git-fixture.js';
 import { cleanHomes, makeHome, ownerOf } from './helpers.js';
+import { moveWorld, type MoveWorld } from './placement/move-world.js';
+import { W, island, placed, world } from './placement/world.js';
 
 afterEach(cleanHomes);
 
@@ -153,5 +157,101 @@ describe('a failed call', () => {
     const fleet = { renameFleet() { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } };
     expect(await dispatch({ id: 1, method: 'fleet.rename', params: { name: 'x' } }, { fleet, viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx))
       .toEqual({ id: 1, error: { code: 'internal', message: 'EACCES: permission denied' } });
+  });
+});
+
+describe.skipIf(!hasGit)('a move asked through the API', () => {
+  const worlds: MoveWorld[] = [];
+  afterEach(async () => { for (const w of worlds.splice(0)) await w.stop(); });
+  const started = async () => {
+    const w = moveWorld();
+    worlds.push(w);
+    const home = await w.start();
+    const ctx = { store: home.store, fleet: home.fleet, router: home.router, placement: home.placement, viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx;
+    return { home, ctx };
+  };
+
+  it('robot.moveCheck answers the sheet for a movable robot and the refusal for mission control', async () => {
+    const { home, ctx } = await started();
+    expect(await dispatch({ id: 1, method: 'robot.moveCheck', params: { id: 'c_1', machine: W } }, ctx)).toEqual({
+      id: 1,
+      result: {
+        ok: true,
+        sheet: {
+          sessionBytes: expect.any(Number), branch: 'kanban', commits: 1, changedFiles: 2, untrackedFiles: 1, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
+          interrupts: false, question: false, notInRepo: false,
+        },
+      },
+    });
+
+    home.store.update((d) => { d.islands.i_home = { ...island, id: 'i_home', kind: 'home' }; d.robots.c_1.islandId = 'i_home'; });
+    const refusal = { reason: 'mission control stays on this Mac', action: 'move a robot from another island', details: [] };
+    expect(await dispatch({ id: 2, method: 'robot.moveCheck', params: { id: 'c_1', machine: W } }, ctx)).toEqual({ id: 2, result: { ok: false, refusal } });
+    expect(await dispatch({ id: 3, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx)).toEqual({
+      id: 3, error: { code: 'refused', message: 'mission control stays on this Mac; move a robot from another island', data: { refusal } },
+    });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+  });
+
+  it('robot.moveTo answers the move id once the robot runs there, and machines.list counts it', async () => {
+    const { home, ctx } = await started();
+    const moved = await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx) as { result: { moveId: string } };
+    expect(moved.result.moveId).toMatch(/^mv_[0-9a-z]{10}$/);
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', reachable: true, release: '1.2.3', robots: 1 }] } });
+    // a move that is done has nothing left to run on
+    expect(await dispatch({ id: 3, method: 'robot.moveRetry', params: { moveId: moved.result.moveId } }, ctx)).toMatchObject({ id: 3, error: { code: 'invalid' } });
+  });
+});
+
+describe('machines.refresh', () => {
+  it('has the home link each machine enrolled since it started, and does nothing on a worker', async () => {
+    let refreshed = 0;
+    const ctx = { viewer: { kind: 'app' }, ownership: { assertOwner() {} }, links: { refresh: () => { refreshed++; } } } as unknown as Ctx;
+    expect(await dispatch({ id: 1, method: 'machines.refresh' }, ctx)).toEqual({ id: 1, result: {} });
+    expect(refreshed).toBe(1);
+    expect(await dispatch({ id: 2, method: 'machines.refresh' }, { ...ctx, links: undefined })).toEqual({ id: 2, result: {} });
+  });
+});
+
+describe('a move asked of a daemon that makes none', () => {
+  it('is refused as a worker refuses what its home does', async () => {
+    const ctx = { viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx;
+    for (const [method, params] of [['robot.moveCheck', { id: 'c_1', machine: W }], ['robot.moveTo', { id: 'c_1', machine: W }], ['robot.moveRetry', { moveId: 'mv_0123456789' }]] as const) {
+      expect(await dispatch({ id: 1, method, params }, ctx)).toEqual({ id: 1, error: { code: 'not_on_worker', message: 'not on a worker' } });
+    }
+  });
+});
+
+describe('term.attach for a robot on another machine', () => {
+  it("term.attach for a placed robot carries via with the worker's ssh destination and the master socket", async () => {
+    const live = placed({ id: 'c_1', tmux: { windowId: '@3', paneId: '%3' } });
+    const attached: string[][] = [];
+    const tmux = {
+      socket: '/home/ada/.svall/tmux.sock', binary: '/home/ada/.local/share/svall/current/bin/tmux',
+      attachSession: async (session: string, windowId: string) => { attached.push([session, windowId]); },
+    };
+    const w = world({ home: { robots: { c_1: live } }, worker: { robots: { c_1: live } }, tmux });
+    try {
+      // the home's tmux is never asked: a call to it throws
+      const terminals = new TerminalHub(w.home.fleet, {} as Tmux, w.home.store, silentLogger, { router: w.home.router, links: w.home.links });
+      const ctx = { ...w.home.ctx, terminals } as Ctx;
+      expect(await dispatch({ id: 1, method: 'term.attach', params: { id: 'c_1' } }, ctx)).toEqual({ id: 1, error: { code: 'not_reachable', message: 'w1 is not reachable' } });
+      await w.link();
+      expect(await dispatch({ id: 2, method: 'term.attach', params: { id: 'c_1' } }, ctx)).toEqual({
+        id: 2, result: { socket: tmux.socket, session: 'v-c_1', tmux: tmux.binary, via: { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' } },
+      });
+      expect(attached).toEqual([['v-c_1', '@3']]);
+    } finally {
+      await w.stop();
+    }
+  });
+
+  it('answers not_reachable for a machine whose link went while the worker answered', async () => {
+    const store = Store.load(resolvePaths(makeHome()).state, () => {});
+    store.update((d) => { d.machines = { [W]: { name: 'w1', reachable: true, since: 0 } }; });
+    const remote = { router: { placedAt: () => W, forward: async () => ({ socket: '/s', session: 'v-c_1', tmux: '/t' }) }, links: { for: () => undefined } };
+    const terminals = new TerminalHub({ on() {} } as unknown as Fleet, {} as Tmux, store, silentLogger, remote as unknown as ConstructorParameters<typeof TerminalHub>[4]);
+    await expect(terminals.attach('c_1')).rejects.toMatchObject({ code: 'not_reachable', message: 'w1 is not reachable' });
   });
 });

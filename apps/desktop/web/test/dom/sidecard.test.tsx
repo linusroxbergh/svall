@@ -1,21 +1,24 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId, Robot } from '@svall/protocol';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
 import { figureOf, figureUrl, stepFigure } from '../../src/portraits.js';
 import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
-import { bridge, call, freshStore, store } from './harness.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
 let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
+let load: unknown;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
-  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {});
+  return why ? Promise.reject(new Error(why))
+    : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : method === 'load.get' ? load ?? {} : {});
 });
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -50,6 +53,7 @@ const type = (el: HTMLTextAreaElement, value: string) => { el.focus(); fireEvent
 
 beforeEach(() => {
   refuse = undefined;
+  load = undefined;
   freshStore();
   store.getState().select('c0', true);
 });
@@ -385,4 +389,65 @@ test('Enter in the island delete dialog stays with the button in focus, Cancel f
   } finally {
     window.removeEventListener('keydown', page);
   }
+});
+
+const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+const withVault = (reachable: boolean, c0: Partial<Robot> = {}) => {
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable, since: 0 } };
+  Object.assign(f.robots.c0, c0);
+  act(() => store.getState().setFleet(f));
+};
+const moves = () => [...document.querySelectorAll('[data-testid^="side-move"]')].map((b) => b.textContent);
+
+test('a robot here offers a move to each worker within reach, which opens the move sheet', () => {
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 }, ['0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId]: { name: 'studio', reachable: false, since: 0 } };
+  act(() => store.getState().setFleet(f));
+  render(<Side />);
+  expect(moves()).toEqual(['Move to linus-vault']);
+  expect(screen.queryByTestId('side-machine')).toBeNull();
+  fireEvent.click(screen.getByTestId(`side-move-${VAULT}`));
+  expect(store.getState().moveSheet).toEqual({ id: 'c0', to: VAULT });
+});
+
+test('a placed robot wears its machine, moves back to this Mac, and its folder buttons act there', async () => {
+  load = { at: 0, cores: 8, total: { cpu: 1, mem: 1, procs: 1 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: { c0: { cpu: 0.5, mem: 1e8, procs: 3, shellOnly: false, sleepable: false } } };
+  withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
+  await act(async () => { render(<Side />); });
+  expect(screen.getByTestId('side-machine').textContent).toBe('linus-vault');
+  expect(moves()).toEqual(['Move to this Mac']);
+  expect(screen.queryByTestId('side-cpu')).toBeNull();
+  expect(screen.queryByTestId('side-resources')).toBeNull();
+  expect(screen.getByTestId('side-cwd').title).toBe('Copy linus-vault:/home/ada/svall');
+  bridge.present = true;
+  try { fireEvent.click(screen.getByTestId('side-cwd')); } finally { bridge.present = false; }
+  expect(sent).toContainEqual({ type: 'copy', text: 'linus-vault:/home/ada/svall' });
+  fireEvent.click(screen.getByTestId('side-finder'));
+  expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+  expect(sent).toContainEqual({ type: 'host.list' });
+  expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/ada/svall'" });
+  fireEvent.click(screen.getByTestId('side-move-home'));
+  expect(store.getState().moveSheet).toEqual({ id: 'c0' });
+});
+
+test('a placed robot that landed on mission control can still move back to this Mac', () => {
+  withVault(true, { machine: VAULT, islandId: 'home' });
+  render(<Side />);
+  expect(moves()).toEqual(['Move to this Mac']);
+});
+
+test('a robot on a worker the fleet no longer lists goes by the machine\'s id', () => {
+  withVault(true, { machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId });
+  render(<Side />);
+  expect(screen.getByTestId('side-machine').textContent).toBe('0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f');
+  expect(screen.getByTestId('side-cwd').title).toBe('Copy 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f:/tmp');
+});
+
+test('mission control and a robot already moving offer no move', () => {
+  withVault(true, { islandId: 'home' });
+  render(<Side />);
+  expect(moves()).toEqual([]);
+  withVault(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'bundle' } });
+  expect(moves()).toEqual([]);
 });

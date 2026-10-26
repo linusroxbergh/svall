@@ -90,7 +90,7 @@ describe('svall argument parsing', () => {
       const r = await run({ HOME: home, SVALL_HOME: fleet, SVALL_CONFIG_DIR: config }, '--host', 'trift', 'status');
       expect(r.code).toBe(1);
       expect(ssh.remoteCalls().filter((w) => w.includes('connection-info'))).toEqual([['/opt/svall/current/bin/svall', 'connection-info', '--json', '-p', 'work']]);
-      expect(r.stderr).toContain('--fleet work');
+      expect(r.stderr).toContain("`svall -p work host upgrade trift` makes it this fleet's worker");
     } finally {
       ssh.clean();
     }
@@ -164,6 +164,32 @@ describe('svall argument parsing', () => {
       runtime: { node: process.version, platform: process.platform, arch: process.arch },
     });
     expect((await run({}, 'version')).stdout).toContain('protocol');
+  });
+
+  it("names the home whose fleet it serves as a worker, as its worker.json says, and never the token", async () => {
+    const home = makeHome();
+    expect(JSON.parse((await run({ SVALL_HOME: home }, 'version', '--json')).stdout).worker).toBeUndefined();
+    const ids = { homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID() };
+    fs.writeFileSync(path.join(home, 'worker.json'), JSON.stringify({ ...ids, homeName: 'ada-mbp', token: 'a'.repeat(48) }));
+    const r = await run({ SVALL_HOME: home }, 'version', '--json');
+    expect(JSON.parse(r.stdout).worker).toEqual({ ...ids, homeName: 'ada-mbp' });
+    expect(r.stdout).not.toContain('a'.repeat(48));
+  });
+
+  it('says a handover moved the fleet here once its owner.json names this machine past its first record', async () => {
+    const home = makeHome();
+    const config = makeHome();
+    const fleetId = crypto.randomUUID();
+    const version = async () => JSON.parse((await run({ SVALL_HOME: home, SVALL_CONFIG_DIR: config }, 'version', '--json')).stdout);
+    const me = (await version()).machineId;
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: fleetId }));
+    // a fleet no gateway holds owns itself from its first start
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 0, ownerMachineId: me }));
+    expect((await version()).handedOver).toBeUndefined();
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: me }));
+    expect((await version()).handedOver).toEqual({ fleetId });
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: crypto.randomUUID() }));
+    expect((await version()).handedOver).toBeUndefined();
   });
 
   it('says whether its release was built signed: with a signature and no unsigned mark', async () => {

@@ -9,7 +9,8 @@ import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
 import { TerminalCard } from './map/TerminalCard.js';
 import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
-import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, wantsUser, type BoardColumn } from './selectors.js';
+import { isPlaced, machineName } from './placement.js';
+import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, statusOf, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
 import { ViewSwitch } from './ViewSwitch.js';
@@ -160,9 +161,10 @@ export function Board() {
   const island = filter.island && fleet.islands[filter.island] ? filter.island : undefined;
   const inIsland = (c: Robot) => !island || c.islandId === island;
   const islandOf = (c: Robot) => (island ? undefined : fleet.islands[c.islandId]?.name);
-  const cols = boardColumns(shown, (c) => inIsland(c) && (!filter.needsYou || wantsUser(c)), arrived);
+  const machineOf = (c: Robot) => (isPlaced(c) ? machineName(fleet, c.machine) : undefined);
+  const cols = boardColumns(shown, (c) => inIsland(c) && (!filter.needsYou || wantsUser(c, fleet)), arrived);
   const all = Object.values(fleet.robots);
-  const needs = all.filter((c) => inIsland(c) && wantsUser(c)).length;
+  const needs = all.filter((c) => inIsland(c) && wantsUser(c, fleet)).length;
   const now = Date.now();
   const crewed = all.length > 0;
 
@@ -254,7 +256,7 @@ export function Board() {
         </button>
       );
     }
-    const attention = robots.filter(wantsUser).length;
+    const attention = robots.filter((c) => wantsUser(c, fleet)).length;
     return (
       <section key={id} className="kb-col" aria-label={column.name} data-col={id} data-testid={`col-${id}`}
         data-target={Boolean(target)} data-reorder={reorder} data-moving={shift?.id === id}>
@@ -273,7 +275,7 @@ export function Board() {
         <Body onScroll={hov.end}>
           {target && <div className="kb-slot" data-testid="kb-slot" style={{ height: target.h }} />}
           {robots.map((c) => (
-            <BoardCard key={c.id} c={c} island={islandOf(c)} selected={c.id === selectedId} arrived={now - (arrived.get(c.id) ?? -Infinity) < theme.board.arriveMs}
+            <BoardCard key={c.id} c={c} status={statusOf(c, fleet)} machine={machineOf(c)} island={islandOf(c)} selected={c.id === selectedId} arrived={now - (arrived.get(c.id) ?? -Infinity) < theme.board.arriveMs}
               dragging={lift?.id === c.id} fileHover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               renaming={renamingRobot === c.id} onRename={(name) => saveRobot(deps(), c.id, { name })} onRenamed={() => setRenamingRobot(undefined)}
               on={{
@@ -331,7 +333,7 @@ export function Board() {
         </div>
         {lift && lifted && (
           <div className="kb-lift" style={{ left: lift.x - lift.dx, top: lift.y - lift.dy, width: lift.w }}>
-            <BoardCard c={lifted} island={islandOf(lifted)} selected={false} arrived={false} lifted />
+            <BoardCard c={lifted} status={statusOf(lifted, fleet)} machine={machineOf(lifted)} island={islandOf(lifted)} selected={false} arrived={false} lifted />
           </div>
         )}
       </div>

@@ -135,7 +135,7 @@ function beginRefused(e: Refused): Blocker {
   switch (e.code) {
     case 'generation_mismatch': return { code: 'generation_mismatch', message };
     case 'not_owner': case 'invalid_request': return { code: 'identity_mismatch', message };
-    case 'not_found': return { code: 'identity_mismatch', message: `${message}; a gateway set up again needs svall host enable <gateway> --fleet <fleet>` };
+    case 'not_found': return { code: 'identity_mismatch', message: `${message}; svall -p <fleet> host upgrade <gateway> makes that machine this fleet's worker instead` };
     case 'authority_corrupt': return { code: 'authority_corrupt', message: `${message}; put a readable record back there, or replace the gateway with svall fleet recover --force-owner <machine> --gateway <other machine>` };
     case 'transaction_mismatch': case 'invalid_phase': case 'handover_committed': return { code: 'transaction_open', message };
     default: return { code: 'authority_unreachable', message: `${message}; its log on the gateway machine says why` };

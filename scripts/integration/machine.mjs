@@ -1,10 +1,20 @@
-// The in-machine half of the fleet handover integration run, run inside each container with the release's own node:
+// The in-machine half of the fleet handover and robot placement integration runs, run inside each container with the
+// release's own node:
 //
-//   snap [--gateway <fleetId>]            one JSON document: this machine's view of the fleet, its repos, sessions,
-//                                         terminals, agent processes and OpenCode servers (and, on the gateway, its record)
+//   snap [--gateway <fleetId>] [--light]  one JSON document: this machine's view of the fleet, its repos, sessions,
+//                                         terminals, agent processes and OpenCode servers, worktree locks, move
+//                                         journals and outbox (and, on the gateway, its record); --light leaves out
+//                                         repos, trees and sessions
+//   machines                              the links the fleet's state holds, by machine id
 //   drive <host|local> [--fault kill|drop --at begin|transfer|ready|commit|activate] --log <file> [--cap <s>]
 //                                         runs `svall handover <host|local> --json`, injects the fault at that boundary,
 //                                         and prints what happened as one JSON document
+//   drive move|return <robot> [--machine <name>] [--fault kill|drop --at rest|bundle|prepare|commit|activate|release] [--cap <s>]
+//                                         on the home: runs `svall robot move <robot> --machine <name|local> --json`,
+//                                         injects the fault at that phase of the move, and prints what happened as one JSON document
+//   watch <robot> --out <file> [--for <s>]
+//                                         appends to <file> the robot's agent as the daemon's API shows it at connect and
+//                                         after each change, waiting for the daemon to answer first
 //   link <port>                           (root, on the remote) drops and restores the sshd port on request
 import { execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -108,7 +118,7 @@ function gitOf(dir) {
   };
 }
 
-/** Each process whose command line holds `needle`, with its arguments and working folder. */
+/** Each process whose command line holds `needle`, with its arguments, working folder and the robot its terminal names. */
 function processes(needle) {
   const out = [];
   for (const pid of fs.readdirSync('/proc').filter((f) => /^\d+$/.test(f))) {
@@ -117,9 +127,56 @@ function processes(needle) {
     if (!args.some((a) => a.includes(needle))) continue;
     let cwd = null;
     try { cwd = fs.readlinkSync(`/proc/${pid}/cwd`); } catch { /* gone */ }
-    out.push({ pid: Number(pid), args, cwd });
+    let robotId = null;
+    try { robotId = fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').find((e) => e.startsWith('SVALL_ROBOT_ID='))?.slice(15) ?? null; } catch { /* gone */ }
+    out.push({ pid: Number(pid), args, cwd, robotId });
   }
   return out;
+}
+
+// the repos the handover run makes, and every worktree of src/app, by their paths under the home
+function repos() {
+  const listed = run('git', ['worktree', 'list', '--porcelain'], { cwd: path.join(HOME, 'src/app') });
+  const worktrees = listed.startsWith('ERROR') ? [] : listed.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => path.relative(HOME, l.slice(9)));
+  return [...new Set([...REPOS, ...worktrees])].filter((r) => r && !r.startsWith('..'));
+}
+
+/** Each worktree of src/app with the reason it is locked for, or null. */
+function locks() {
+  const listed = run('git', ['worktree', 'list', '--porcelain'], { cwd: path.join(HOME, 'src/app') });
+  if (listed.startsWith('ERROR')) return {};
+  return Object.fromEntries(listed.split('\n\n').filter(Boolean).map((e) => {
+    const ls = e.split('\n');
+    const locked = ls.find((l) => l === 'locked' || l.startsWith('locked '));
+    return [path.relative(HOME, ls[0].slice(9)), locked === undefined ? null : locked.slice(7)];
+  }));
+}
+
+const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+
+/** A worker's outbox: the last seq and the one the home acknowledged, and each entry yet to be, with the agent it reports. */
+function outbox() {
+  const file = path.join(FLEET, 'journal', 'outbox.ndjson');
+  const entries = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+  const acked = Number((fs.existsSync(path.join(FLEET, 'journal', 'acked')) ? fs.readFileSync(path.join(FLEET, 'journal', 'acked'), 'utf8') : '0').trim());
+  return {
+    acked,
+    last: entries.at(-1)?.seq ?? acked,
+    entries: entries.map((e) => ({ seq: e.seq, kind: e.kind, robotId: e.data?.robotId, ...(e.data?.fields && { agent: agentOf(e.data.fields) }) })),
+  };
+}
+
+// the agent fields a status change shows
+const agentOf = (c) => (c?.agent ? { status: c.agent.status, contextPct: c.agent.contextPct ?? null, prompt: c.agent.lastPrompt?.text ?? null } : null);
+
+/** This machine's journal of each move: its robot, ends and phase. */
+function moves() {
+  const dir = path.join(FLEET, 'journal', 'moves');
+  if (!fs.existsSync(dir)) return {};
+  return Object.fromEntries(fs.readdirSync(dir).filter((f) => /^mv_[0-9a-z]{10}\.json$/.test(f)).map((f) => {
+    const j = readJson(path.join(dir, f));
+    return [f.slice(0, -5), j && { robotId: j.robotId, from: j.from, to: j.to, phase: j.phase, ...(j.error && { error: j.error }) }];
+  }));
 }
 
 // the mocked OpenCode retitles itself, so its command line is one string of the words the native binary's would hold
@@ -166,19 +223,27 @@ async function snap(o) {
     fleet: { id: fleet.id, gatewayMachineId: fleet.gatewayMachineId, handoverEnabled: fleet.handover?.enabled },
     robots: state.robots ? Object.values(state.robots).map((c) => ({
       id: c.id, name: c.name, cwd: c.cwd, islandId: c.islandId, tmux: c.tmux ?? null, revive: c.revive ?? null,
-      agent: c.agent ? { kind: c.agent.kind, sessionId: c.agent.sessionId, status: c.agent.status, pid: c.agent.pid ?? null } : null,
+      agent: c.agent ? { kind: c.agent.kind, sessionId: c.agent.sessionId, status: c.agent.status, pid: c.agent.pid ?? null, contextPct: c.agent.contextPct ?? null, prompt: c.agent.lastPrompt?.text ?? null } : null,
+      machine: c.machine ?? null, placement: c.placement ?? null, moving: c.moving ?? null, left: c.left ?? null, branch: c.repo?.branch ?? null, root: c.repo?.root ?? null, note: c.note,
     })).sort((a, b) => a.id.localeCompare(b.id)) : state,
+    machines: state.machines ?? {},
     windows,
     agents: [
-      ...processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth')).map((p) => ({ kind: 'claude', ...p })),
+      ...processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth') && !p.args.includes('-p')).map((p) => ({ kind: 'claude', ...p })),
       ...opencodes().filter((p) => !['serve', 'session', 'auth', 'run', '--version', '--help'].includes(p.args[1])).map((p) => ({ kind: 'opencode', ...p })),
     ],
     servers: opencodes().filter((p) => p.args[1] === 'serve').map((p) => ({ ...p, ppid: ppidOf(p.pid) })),
     controllerJournal: fs.existsSync(controller) ? JSON.parse(fs.readFileSync(controller, 'utf8')) : null,
-    git: Object.fromEntries(REPOS.map((r) => [r, gitOf(path.join(HOME, r))])),
-    trees: Object.fromEntries(REPOS.map((r) => [r, walk(path.join(HOME, r), new Set(['.git']))])),
-    sessions: sessions(),
+    ...(!o.light && {
+      git: Object.fromEntries(repos().map((r) => [r, gitOf(path.join(HOME, r))])),
+      trees: Object.fromEntries(repos().map((r) => [r, walk(path.join(HOME, r), new Set(['.git', '.claude']))])),
+      sessions: sessions(),
+    }),
     opencode: opencodeSessions(),
+    worker: (({ token, ...w }) => w)(readJson(path.join(FLEET, 'worker.json')) ?? {}),
+    locks: locks(),
+    outbox: outbox(),
+    moves: moves(),
   };
   if (o.gateway) {
     const said = run(path.join(HOME, '.local', 'bin', 'svall'), ['gateway', 'owner', 'get', '--fleet', o.gateway]).trim().split('\n').at(-1);
@@ -300,6 +365,120 @@ async function drive(o) {
   process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 
+const UNIT = 'svall-svalld@private.service';
+const MOVE_PHASES = ['rest', 'bundle', 'prepare', 'commit', 'activate', 'release'];
+
+/**
+ * One move of a robot, with the home's daemon killed or the link dropped at a phase. Each write of the move's journal
+ * stops the daemon until the phase is read, so the fault lands at that phase; a kill takes the daemon alone, as a crash
+ * does, and systemd starts it again. A move refused while the worker catches up is asked again.
+ */
+async function driveMove(o) {
+  const [kind, robot] = o._;
+  const machine = kind === 'return' ? 'local' : o.machine;
+  const { fault = 'none', at } = o;
+  if (fault !== 'none' && !MOVE_PHASES.includes(at)) throw new Error(`bad --at ${at}`);
+  const dir = path.join(FLEET, 'journal', 'moves');
+  fs.mkdirSync(dir, { recursive: true });
+  const before = new Set(fs.readdirSync(dir));
+  const pid = Number(execFileSync('systemctl', ['--user', 'show', '-p', 'MainPID', '--value', UNIT], { encoding: 'utf8' }).trim());
+  const t0 = Date.now();
+  const summary = { kind, robot, fault, at: at ?? null, moveId: null, trigger: null, phases: [] };
+  let busy = false;
+  const watcher = fs.watch(dir, (_e, name) => {
+    if (busy || summary.trigger || !name || !/^mv_[0-9a-z]{10}\.json$/.test(name) || before.has(name)) return;
+    busy = true;
+    const armed = fault !== 'none';
+    if (armed) try { process.kill(pid, 'SIGSTOP'); } catch { /* gone */ }
+    const phase = readJson(path.join(dir, name))?.phase;
+    summary.moveId = name.slice(0, -5);
+    if (phase && summary.phases.at(-1) !== phase) summary.phases.push(phase);
+    const reached = armed && MOVE_PHASES.indexOf(phase) >= MOVE_PHASES.indexOf(at);
+    const land = async () => {
+      if (reached) {
+        summary.trigger = { phase, ms: Date.now() - t0 };
+        if (fault === 'kill') process.kill(pid, 'SIGKILL');
+        else summary.drop = await link('drop');
+      }
+      if (armed && !(reached && fault === 'kill')) try { process.kill(pid, 'SIGCONT'); } catch { /* gone */ }
+      busy = false;
+    };
+    void land();
+  });
+  let r;
+  for (let tries = 0; ; tries++) {
+    r = await new Promise((resolve) => {
+      const child = spawn(path.join(HOME, '.local', 'bin', 'svall'), ['robot', 'move', robot, '--machine', machine, '--json'], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => { stdout += d; });
+      child.stderr.on('data', (d) => { stderr += d; });
+      let timer;
+      if (fault === 'drop') timer = setTimeout(() => { summary.capped = true; child.kill('SIGKILL'); }, Number(o.cap ?? 300) * 1000);
+      child.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
+    });
+    if (summary.moveId || !/catching up/.test(r.stderr) || tries >= 30) break;
+    await sleep(1000);
+  }
+  // a fault that is landing finishes before the move is read back
+  while (busy) await sleep(10);
+  watcher.close();
+  if (summary.drop) summary.restore = await link('restore');
+  Object.assign(summary, { exit: r.code, stdout: r.stdout.trim(), stderr: r.stderr.trim(), ms: Date.now() - t0 });
+  const phase = summary.moveId && readJson(path.join(dir, `${summary.moveId}.json`))?.phase;
+  if (phase && summary.phases.at(-1) !== phase) summary.phases.push(phase);
+  process.stdout.write(`${JSON.stringify(summary)}\n`);
+}
+
+// RFC 6902 add, replace and remove, which are the ops the daemon's state patches hold
+function applyOp(doc, op) {
+  const keys = op.path.split('/').slice(1).map((k) => k.replaceAll('~1', '/').replaceAll('~0', '~'));
+  const key = keys.pop();
+  let parent = doc;
+  for (const k of keys) { parent = parent?.[k]; if (parent === undefined || parent === null) return; }
+  if (op.op === 'remove' && Array.isArray(parent)) parent.splice(Number(key), 1);
+  else if (op.op === 'remove') delete parent[key];
+  else if (op.op === 'add' && Array.isArray(parent)) parent.splice(key === '-' ? parent.length : Number(key), 0, op.value);
+  else if (op.op === 'add' || op.op === 'replace') parent[key] = op.value;
+}
+
+/** The robot's agent as the daemon's API shows it: once at connect, then after each change to it, one JSON line each. */
+async function watch(o) {
+  const id = o._[0];
+  const end = Date.now() + Number(o.for ?? 120) * 1000;
+  const say = (v) => fs.appendFileSync(o.out, `${JSON.stringify({ ms: Date.now(), ...v })}\n`);
+  while (Date.now() < end) {
+    let port;
+    let token;
+    try { port = Number(fs.readFileSync(path.join(FLEET, 'port'), 'utf8')); token = fs.readFileSync(path.join(FLEET, 'token'), 'utf8').trim(); } catch { await sleep(10); continue; }
+    const closed = await new Promise((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      const doc = { robots: {} };
+      let state = 'hello';
+      let last;
+      const show = () => {
+        const now = JSON.stringify(agentOf(doc.robots[id]));
+        if (now !== last) { last = now; say({ agent: JSON.parse(now) }); }
+      };
+      const timer = setTimeout(() => ws.close(), Math.max(0, end - Date.now()));
+      ws.onerror = () => {};
+      ws.onclose = () => { clearTimeout(timer); resolve(state); };
+      ws.onopen = () => ws.send(JSON.stringify({ token }));
+      ws.onmessage = (m) => {
+        const msg = JSON.parse(m.data);
+        if (state === 'hello') { state = 'asked'; ws.send(JSON.stringify({ id: 1, method: 'state.get', params: {} })); return; }
+        if (state === 'asked' && msg.id === 1) { doc.robots[id] = msg.result?.robots?.[id] ?? null; state = 'live'; say({ connected: true }); show(); return; }
+        if (state === 'live' && msg.event === 'state.patch') {
+          for (const op of msg.data.ops) if (op.path === `/robots/${id}` || op.path.startsWith(`/robots/${id}/`)) applyOp(doc, op);
+          show();
+        }
+      };
+    });
+    if (closed === 'live') say({ disconnected: true });
+    else await sleep(10);
+  }
+}
+
 /** Root on the remote: `drop` stops every packet to and from sshd's port, `restore` lets them through again. */
 function serveLink(port) {
   const rules = [['INPUT', '--dport'], ['OUTPUT', '--sport']];
@@ -315,7 +494,10 @@ function serveLink(port) {
 
 const [cmd, ...rest] = process.argv.slice(2);
 const o = flags(rest);
-if (cmd === 'snap') await snap(o);
+if (cmd === 'machines') process.stdout.write(`${JSON.stringify((await settled(() => rpc('state.get'))).machines ?? {})}\n`);
+else if (cmd === 'snap') await snap(o);
+else if (cmd === 'drive' && ['move', 'return'].includes(o._[0])) await driveMove(o);
 else if (cmd === 'drive') await drive(o);
+else if (cmd === 'watch') await watch(o);
 else if (cmd === 'link') serveLink(o._[0] ?? 7070);
 else { process.stderr.write(`unknown command ${cmd}\n`); process.exit(2); }

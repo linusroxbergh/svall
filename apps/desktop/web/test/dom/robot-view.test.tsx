@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import { setAppStore } from '../../src/hooks.js';
 import { figureUrl } from '../../src/portraits.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
@@ -243,6 +244,18 @@ test('the header words a blocked robot as the list does', () => {
   store.getState().setStatus('online');
   const { container } = render(<RobotView id="c2" onBack={() => {}} />);
   expect(container.querySelector('.conn')?.textContent).toBe('needs you');
+});
+
+test('the header says unknown for a robot on a worker out of reach', () => {
+  const f = blockedFleet();
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  f.machines = { [vault]: { name: 'linus-vault', reachable: false, since: 0 } };
+  f.robots.c2.machine = vault;
+  store.getState().setFleet(f);
+  store.getState().setStatus('online');
+  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  expect(container.querySelector('.conn')?.textContent).toBe('unknown');
+  expect(container.querySelector('.conn')?.getAttribute('data-status')).toBe('unknown');
 });
 
 test('a robot closed while it is open takes its view back to the list', () => {

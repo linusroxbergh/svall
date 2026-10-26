@@ -1,6 +1,7 @@
 import type { FleetState, PhoneSession } from '@svall/protocol';
 import type { Bridge } from './bridge.js';
 import type { HandoverRun } from './handover.js';
+import { isPlaced } from './placement.js';
 import { slotStatus, wantsUser } from './selectors.js';
 import type { KeepAwake } from './settings.js';
 import type { AppStore } from './store/index.js';
@@ -13,7 +14,8 @@ export type Need = { working: number; shells: number; waiting: number; phones: n
 
 export function needOf(f: FleetState, phones: PhoneSession[]): Need {
   const need = { working: 0, shells: 0, waiting: 0, phones: phones.length, since: 0 };
-  for (const c of Object.values(f.robots)) {
+  // a robot on a worker works on while this Mac sleeps
+  for (const c of Object.values(f.robots).filter((r) => !isPlaced(r))) {
     for (const term of [1, 2] as const) {
       const a = term === 1 ? c.agent : c.second?.agent;
       if (!a) continue;
@@ -21,7 +23,7 @@ export function needOf(f: FleetState, phones: PhoneSession[]): Need {
       if (slotStatus(c, term) !== 'working') continue;
       if (a.shellsOnly) need.shells++; else need.working++;
     }
-    need.waiting += Number(wantsUser(c));
+    need.waiting += Number(wantsUser(c, f));
   }
   for (const p of phones) need.since = Math.max(need.since, p.since);
   return need;

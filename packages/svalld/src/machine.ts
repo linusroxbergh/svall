@@ -29,6 +29,25 @@ export const Registry = z.object({
 
 export const registryFile = (dir: string = configDir()): string => path.join(dir, 'machines.json');
 
+export type MachineEntry = { id: MachineId; record: MachineRecord };
+
+/** Every machine in the registry; none while it has no file. */
+export function readRegistry(dir: string = configDir()): MachineEntry[] {
+  const file = registryFile(dir);
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw e;
+  }
+  try {
+    return Object.entries(Registry.parse(JSON.parse(text)).machines).map(([id, record]) => ({ id: id as MachineId, record: record as MachineRecord }));
+  } catch (e) {
+    throw new Error(`invalid machine registry ${file}: ${(e as Error).message}`, { cause: e });
+  }
+}
+
 /**
  * The Mac's IOPlatformUUID, or Linux's machine-id, keyed for svall as machine-id(5) asks, so the id itself is never
  * kept. `ioreg` is named outright: launchd starts svalld on a PATH without /usr/sbin.

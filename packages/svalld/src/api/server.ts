@@ -5,10 +5,13 @@ import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, 
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { HandoverService } from '../handover/service.js';
+import type { HomeLinks } from '../link/home.js';
 import type { Logger } from '../log.js';
 import type { Mobile } from '../mobile.js';
 import type { Phones } from '../phones.js';
 import type { OwnershipState } from '../ownership/state.js';
+import type { Placement } from '../placement/move.js';
+import type { Router } from '../placement/router.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import type { ClaudePaths } from '../paths.js';
@@ -17,13 +20,13 @@ import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { mobileDist, variant } from '../runtime.js';
-import { dispatch, type Ctx } from './methods.js';
+import { answer, dispatch, type Ctx } from './methods.js';
 import { serveBundle } from './static.js';
 
 type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
-  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState;
+  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh'>;
   // read on every request: activating a handover replaces them in the config they come from
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -103,8 +106,9 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
   return logins.includes(login) ? login : undefined;
 }
 
-export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void> }> {
-  const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership } = opts;
+/** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be, for the methods a worker may send. */
+export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown): Promise<unknown> }> {
+  const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership, router, placement, links } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? (() => []);
   const dist = opts.dist ?? mobileDist();
@@ -122,7 +126,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership, router, placement, links };
   // how far a handover has come reaches every screen watching it
   const viewers = new Set<Viewer>();
   const broadcast = (ev: Event): void => { for (const v of viewers) v.send(ev); };
@@ -305,6 +309,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       server.on('error', (e) => log.error(`api: ${String(e)}`));
       resolve({
         port: bound,
+        answer: (method, params) => answer(method, params, { ...base, viewer: { kind: 'app', send: () => {}, backlog: () => 0 } }),
         close: () => new Promise((r) => {
           for (const off of unwatch) off();
           clearInterval(heartbeat);

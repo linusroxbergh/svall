@@ -4,14 +4,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Blocker, Outcome } from '@svall/protocol';
 import { writeDurable } from '../../src/handover/durable.js';
 import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
-import { Store } from '../../src/store.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { G, MAC, TRIFT, World, als, choices, fleetId, play, settledOn, worlds, type Scenario, type Target } from './fault-world.js';
 
 afterEach(cleanHomes);
 
 const REPO = path.join(import.meta.dirname, '../../../..');
-const NAMES = Object.keys(FAILPOINTS) as Failpoint[];
+const ALL = Object.keys(FAILPOINTS) as Failpoint[];
+// a move's own steps are crashed in test/placement
+type HandoverPoint = Exclude<Failpoint, `move.${string}` | `worker.${string}`>;
+const NAMES = ALL.filter((n): n is HandoverPoint => !/^(move|worker)\./.test(n));
 
 describe('the failpoint registry', () => {
   it('runs a step as it is while nothing arms it', async () => {
@@ -62,7 +64,7 @@ describe('the failpoint registry', () => {
   it('names every failpoint where a step of the code runs it', () => {
     const sources = ['packages/svalld/src', 'packages/cli/src'].flatMap((dir) => (fs.readdirSync(path.join(REPO, dir), { recursive: true }) as string[])
       .filter((f) => f.endsWith('.ts') && !f.endsWith('failpoints.ts')).map((f) => fs.readFileSync(path.join(REPO, dir, f), 'utf8')));
-    expect(NAMES.filter((name) => !sources.some((text) => text.includes(`'${name}'`)))).toEqual([]);
+    expect(ALL.filter((name) => !sources.some((text) => text.includes(`'${name}'`)))).toEqual([]);
   });
 });
 
@@ -76,7 +78,7 @@ describe('the failpoint registry', () => {
  * resume after the crash `after` names reaches the step, as an abort never gets that far.
  */
 type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void; resumes?: true; resumeOnly?: true };
-const REACH: Record<Failpoint, Reach> = {
+const REACH: Record<HandoverPoint, Reach> = {
   'source.freeze.journal': { scenario: 'move', times: 1 },
   'source.freeze.surrender': { scenario: 'move', times: 1 },
   'source.rest.terminated': { scenario: 'move', times: 1 },
@@ -249,22 +251,6 @@ describe('a crash at every failpoint', () => {
       });
     }
   }
-});
-
-describe('a freeze asked again that refuses', () => {
-  const world = worlds();
-
-  it('leaves no manifest behind that a freeze before it wrote and did not live to answer', async () => {
-    const w = world();
-    w.targets = [{ name: 'source.freeze.manifest', edge: 'after', nth: 1 }];
-    await play(w, 'move');
-    // meanwhile the user keeps cy on the source, so the freeze asked again refuses
-    Store.load(w.mac.paths.state, () => {}).update((d) => { d.robots.c_cy.keepHere = true; });
-    const said = await w.recover('resume');
-    expect(said, w.violations.join('\n')).toContain('resume->blocked');
-    expect(w.violations).toEqual([]);
-    expect(settledOn(w)).toBe('source');
-  });
 });
 
 describe('a prepare asked again after a crash at its last flush', () => {

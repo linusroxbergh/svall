@@ -18,7 +18,7 @@ function carries(file: string, transcript: string, sessionId: string): boolean {
 }
 
 // Claude reads a legacy .config.json in its config folder first, else .claude.json in CLAUDE_CONFIG_DIR, or beside ~/.claude
-function configOf(home: string): string {
+export function configOf(home: string): string {
   const legacy = path.join(home, '.config.json');
   if (fs.existsSync(legacy)) return legacy;
   const byDefault = claudePaths();
@@ -102,6 +102,7 @@ export const claudeAdapter: SessionAdapter = {
   carries,
 
   trusts,
+  trustQuestion: 'Is this a project you created or one you trust?',
   // its prompt preselects "No, exit"
   trustAnswer: 'Yes, I trust this folder',
 

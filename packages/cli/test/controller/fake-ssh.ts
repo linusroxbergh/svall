@@ -13,8 +13,8 @@ export type FakeSsh = {
   remoteCalls: () => string[][];
   /** what the remote `svall connection-info` answers; unset means a daemon that is not running */
   answer: (info: unknown) => void;
-  /** what the far side answers a command holding all of `match`; the first entry that fits wins */
-  reply: (match: string[], r: { stdout?: string; stderr?: string; code?: number; delayMs?: number }) => void;
+  /** what the far side answers a command holding all of `match`, after keeping its stdin in `input`; the first entry that fits wins */
+  reply: (match: string[], r: { stdout?: string; stderr?: string; code?: number; delayMs?: number; input?: string }) => void;
   /** the pid of the master on a socket, while one is up */
   masterPid: (socket: string) => number | undefined;
   /** forgets every scripted reply, so the same command can be answered differently later */

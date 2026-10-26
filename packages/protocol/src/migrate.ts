@@ -73,14 +73,29 @@ function liftV11(raw: object): object {
   return { ...raw, columns: defaultColumns(), placingAsk: true };
 }
 
+// a v11 robot may carry keepHere, which the schema has no field for
+function liftV12(raw: object): object {
+  const { robots } = raw as { robots?: unknown };
+  if (!isRecord(robots)) return raw;
+  return {
+    ...raw,
+    robots: Object.fromEntries(Object.entries(robots).map(([id, c]) => {
+      if (!isRecord(c)) return [id, c];
+      const { keepHere: _, ...kept } = c;
+      return [id, kept];
+    })),
+  };
+}
+
 export function migrateState(raw: unknown): { state: FleetState; migrated: boolean; dropped: string[] } {
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version === 'number' && version > CURRENT) throw new NewerStateVersion(version);
   if (typeof version === 'number' && version < OLDEST) throw new OlderStateVersion(version);
-  if (version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
+  if (version !== 7 && version !== 8 && version !== 9 && version !== 10 && version !== 11 && version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
   if (version === CURRENT) return { ...salvage(raw as object), migrated: false };
   let lifted = raw as object;
   if (version < 9) lifted = liftV9(lifted);
   if (version < 10) lifted = liftV10(lifted);
-  return { ...salvage({ ...liftV11(lifted), version: CURRENT }), migrated: true };
+  if (version < 11) lifted = liftV11(lifted);
+  return { ...salvage({ ...liftV12(lifted), version: CURRENT }), migrated: true };
 }

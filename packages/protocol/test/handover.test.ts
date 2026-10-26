@@ -144,7 +144,7 @@ describe('handover vocabulary', () => {
     expect(HandoverEntity.parse({ kind: 'git', id: 'r_1' }).kind).toBe('git');
   });
   it('keeps a blocker code for each way preflight refuses', () => {
-    for (const code of ['identity_mismatch', 'generation_mismatch', 'transaction_open', 'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter', 'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing', 'home_mismatch', 'parent_missing', 'robot_pinned', 'shell_busy', 'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_symlinked', 'mission_control_shared', 'transcript_missing', 'ssh_interactive', 'external_writer', 'rsync_unsupported']) {
+    for (const code of ['identity_mismatch', 'generation_mismatch', 'transaction_open', 'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter', 'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing', 'home_mismatch', 'parent_missing', 'shell_busy', 'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_symlinked', 'mission_control_shared', 'transcript_missing', 'ssh_interactive', 'external_writer', 'rsync_unsupported']) {
       expect(Blocker.parse({ code, message: code }).code).toBe(code);
     }
   });

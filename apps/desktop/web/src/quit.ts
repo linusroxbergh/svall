@@ -3,6 +3,7 @@ import type { Bridge } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { chordFor } from './keys.js';
 import { basename } from './paths.js';
+import { isPlaced } from './placement.js';
 import { flushDocs } from './resources/autosave.js';
 import { statusOf } from './selectors.js';
 import type { IdeState } from './store/ide.js';
@@ -37,8 +38,11 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
     void Promise.race([flushDocs().catch(() => {}), waited]).then(() => {
       clearTimeout(timer);
       const s = store.getState();
-      const working = Object.values(s.fleet.robots).filter((c) => statusOf(c) === 'working').length;
-      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working });
+      // a robot on a worker keeps running there, which the question says apart
+      const robots = Object.values(s.fleet.robots);
+      const working = robots.filter((c) => !isPlaced(c) && statusOf(c) === 'working').length;
+      const placed = robots.filter(isPlaced).length;
+      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }) });
     });
   });
   return () => { unwatch(); off(); };
