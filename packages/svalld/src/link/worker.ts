@@ -144,7 +144,7 @@ export class HomeConnection {
 
   /** The bytes sent to the home that its stream has not passed on yet, 0 while it is not linked. */
   backlog(): number {
-    return this.link?.stream.backlog() ?? 0;
+    return this.link?.live ? this.link.stream.backlog() : 0;
   }
 
   /** Puts an event in the outbox and sends it while the home is linked; returns its seq. */

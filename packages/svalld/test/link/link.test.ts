@@ -772,6 +772,26 @@ describe('the link', () => {
     expect(w.lost).toEqual([W]);
   });
 
+  it("the worker's backlog is 0 until the home is linked, and the bytes waiting once it is", async () => {
+    let called!: () => void;
+    const answering = new Promise<void>((r) => { called = r; });
+    const w = world({ handlers: { big: async () => { called(); return 'x'.repeat(900_000); } } });
+    await w.worker.start();
+    // a home that greets and calls, and never reads
+    const sock = net.connect(w.workerPaths.linkSock);
+    await once(sock, 'connect');
+    const send = (f: LinkFrame) => sock.write(`${JSON.stringify(f)}\n`);
+    send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
+    send({ t: 'call', id: 1, method: 'big', params: {} });
+    await answering;
+    await new Promise((r) => setImmediate(r));
+    expect(w.worker.backlog()).toBe(0);
+    send({ t: 'ack', seq: 0 });
+    await until(() => expect(w.worker.connected()).toBe(true));
+    expect(w.worker.backlog()).toBeGreaterThan(0);
+    sock.destroy();
+  });
+
   it('a hook that throws is logged and the link goes on', async () => {
     const logged: string[] = [];
     const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
