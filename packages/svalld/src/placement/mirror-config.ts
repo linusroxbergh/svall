@@ -10,19 +10,31 @@ import { relocated, type MirrorHomes } from './mirror.js';
 export const Scope = z.union([z.literal('user'), z.object({ project: z.string() }), z.object({ plugin: z.string() })]);
 export type Scope = z.infer<typeof Scope>;
 
-/** An MCP server as its agent's config holds it: `raw` the entry itself, the rest read from it; `file` a plugin server's file. */
+/**
+ * An MCP server as its agent's config holds it: `raw` the entry itself, the rest read from it; `file` the file it was read
+ * from and `place` the keys that lead to its entry there.
+ */
 export type McpServer = {
   agent: AgentKind; name: string; scope: Scope; command?: string; args: string[]; cwd?: string; env: Record<string, string>;
-  url?: string; headers: Record<string, string>; raw: Record<string, unknown>; known: boolean; file?: string;
+  url?: string; headers: Record<string, string>; raw: Record<string, unknown>; known: boolean; file?: string; place?: string[];
 };
 export type PluginInstall = { name: string; installPath: string };
-/** A value found by its field: `env.<KEY>`, `headers.<Name>`, `url.<param>`, `url.userinfo`, `args[<i>]`, `args[<i>].userinfo`, `oauth.<key>`. */
+/**
+ * A value found by its field: `env.<KEY>`, `headers.<Name>`, `url.<param>`, `url.userinfo`, `args[<i>]`, `args[<i>].<param>`,
+ * `args[<i>].userinfo`, `oauth.<key>`; a field that holds several is listed once for each.
+ */
 export type Secret = { field: string; value: string };
 
 export const KNOWN_FIELDS: readonly string[] = [
   'type', 'command', 'args', 'cwd', 'env', 'url', 'headers', 'transport', 'oauth', 'enabled', 'timeout', 'bearer_token_env_var', 'env_vars',
   'http_headers', 'env_http_headers', 'startup_timeout_sec', 'tool_timeout_sec', 'environment',
 ];
+// each agent's share of KNOWN_FIELDS, as its own server schema names them
+const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
+  claude: ['type', 'command', 'args', 'env', 'url', 'headers', 'oauth', 'timeout'],
+  codex: ['command', 'args', 'cwd', 'env', 'url', 'oauth', 'enabled', 'bearer_token_env_var', 'env_vars', 'http_headers', 'env_http_headers', 'startup_timeout_sec', 'tool_timeout_sec'],
+  opencode: ['type', 'command', 'cwd', 'environment', 'url', 'headers', 'oauth', 'enabled', 'timeout'],
+};
 /** Where each agent's entry holds a server's env, headers and args; OpenCode's args are its `command` from index 1. */
 export const FIELD_PATHS: Record<AgentKind, { env: string; headers: string; args: string }> = {
   claude: { env: 'env', headers: 'headers', args: 'args' },
@@ -43,7 +55,8 @@ export const OPENCODE_SECRET_PATHS: readonly string[] = ['provider.*.options.api
 const SECRET_FLAG = /(?:^|-)(api[-_]?key|token|secret|password|passwd|auth(?:orization)?|key|credential)s?$/i;
 const HEADER_FLAG = /^(--header|-H)$/;
 const ENV_ARG = /^[A-Z][A-Z0-9_]*=.+/;
-const USERINFO = /([a-z][a-z0-9+.-]*:\/\/)([^\s/?#@:]+):([^\s/?#@]*)@/i;
+const USERINFO = /([a-z][a-z0-9+.-]*:\/\/)([^\s/?#@:]+)(?::([^\s/?#@]*))?@/gi;
+const URL_START = /^[a-z][a-z0-9+.-]*:\/\//i;
 const MCP_REMOTE = /(^|\/)mcp-remote(@[^/\s]*)?$/;
 // Codex's and OpenCode 2's client_secret, OpenCode 1's clientSecret
 const OAUTH_SECRETS = ['client_secret', 'clientSecret'];
@@ -61,91 +74,115 @@ const docs = (v: unknown): [string, Doc][] => (isDoc(v) ? Object.entries(v).filt
 const texts = (v: unknown): Record<string, string> => (isDoc(v) ? Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === 'string')) as Record<string, string> : {});
 const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** JSON with `//` and `/* *\/` comments outside its strings, as opencode.jsonc holds it. */
-export const parseJsonc = (source: string): unknown =>
-  JSON.parse(source.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, s: string | undefined) => s ?? ''));
+/** JSON with `//` and `/* *\/` comments and trailing commas outside its strings, as OpenCode reads its config. */
+export function parseJsonc(source: string): unknown {
+  const bare = source.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, s: string | undefined) => s ?? '');
+  return JSON.parse(bare.replace(/("(?:\\.|[^"\\])*")|,(?=\s*[}\]])/g, (_, s: string | undefined) => s ?? ''));
+}
 
-// a config file's object, or undefined for none; a file there that cannot be read or parsed is named in `unreadable`
+// a config file's object, or undefined for none; a file there that cannot be read, or holds no object, is named in `unreadable`
 function readDoc(file: string, parse: (source: string) => unknown, unreadable: string[]): Doc | undefined {
   let source: string;
   try { source = fs.readFileSync(file, 'utf8'); } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') unreadable.push(file);
     return undefined;
   }
-  try {
-    const doc = parse(source);
-    return isDoc(doc) ? doc : undefined;
-  } catch {
-    unreadable.push(file);
-    return undefined;
-  }
+  let doc: unknown;
+  try { doc = parse(source); } catch { /* named below */ }
+  if (isDoc(doc)) return doc;
+  unreadable.push(file);
+  return undefined;
 }
 
-function toServer(agent: AgentKind, name: string, scope: Scope, raw: Doc, file?: string): McpServer {
+type Entry = { name: string; raw: Doc; file: string; place: string[] };
+// the server entries of `v`, which sits at `place` in `file`
+const entries = (file: string, place: string[], v: unknown): Entry[] => docs(v).map(([name, raw]) => ({ name, raw, file, place: [...place, name] }));
+
+// where `raw` holds its args, and from which index: OpenCode's command array from 1, else args
+function argsAt(agent: AgentKind, raw: Doc): [key: string, from: number] {
+  const key = FIELD_PATHS[agent].args;
+  return key !== 'command' ? [key, 0] : Array.isArray(raw.command) ? ['command', 1] : ['args', 0];
+}
+
+function toServer(agent: AgentKind, scope: Scope, { name, raw, file, place }: Entry): McpServer {
   const p = FIELD_PATHS[agent];
-  const argv = agent === 'opencode' && Array.isArray(raw.command) ? raw.command.map(String) : undefined;
-  const command = argv ? argv[0] : text(raw.command);
+  const [key, from] = argsAt(agent, raw);
+  const argv = Array.isArray(raw[key]) ? (raw[key] as unknown[]).map(String) : [];
+  const command = key === 'command' ? argv[0] : text(raw.command);
   const cwd = text(raw.cwd);
   const url = text(raw.url);
   return {
-    agent, name, scope, args: argv ? argv.slice(1) : Array.isArray(raw.args) ? raw.args.map(String) : [], env: texts(raw[p.env]), headers: texts(raw[p.headers]), raw,
-    known: Object.keys(raw).every((k) => KNOWN_FIELDS.includes(k)),
-    ...(command !== undefined && { command }), ...(cwd !== undefined && { cwd }), ...(url !== undefined && { url }), ...(file !== undefined && { file }),
+    agent, name, scope, args: argv.slice(from), env: texts(raw[p.env]), headers: texts(raw[p.headers]), raw, file, place,
+    known: Object.keys(raw).every((k) => AGENT_FIELDS[agent].includes(k)),
+    ...(command !== undefined && { command }), ...(cwd !== undefined && { cwd }), ...(url !== undefined && { url }),
   };
 }
 
-// a plugin's servers by the file each was read from: .mcp.json, then plugin.json's mcpServers, inline or in the file it names
-function pluginServers(installPath: string, unreadable: string[]): [string, [string, Doc][]][] {
-  const servers = (doc: Doc | undefined): [string, Doc][] => (doc ? docs(Object.hasOwn(doc, 'mcpServers') ? doc.mcpServers : doc) : []);
-  const mcpJson = path.join(installPath, '.mcp.json');
+// a plugin's server entries: .mcp.json's, then plugin.json's mcpServers, inline or in a file under the plugin it names; a
+// file whose servers have another shape is named in `unreadable`
+function pluginServers(installPath: string, unreadable: string[]): Entry[] {
+  const from = (file: string): Entry[] => {
+    const doc = readDoc(file, JSON.parse, unreadable);
+    if (!doc) return [];
+    if (!Object.hasOwn(doc, 'mcpServers')) return entries(file, [], doc);
+    if (isDoc(doc.mcpServers)) return entries(file, ['mcpServers'], doc.mcpServers);
+    unreadable.push(file);
+    return [];
+  };
   const manifest = path.join(installPath, '.claude-plugin/plugin.json');
   const named = readDoc(manifest, JSON.parse, unreadable)?.mcpServers;
-  const found: [string, [string, Doc][]][] = [[mcpJson, servers(readDoc(mcpJson, JSON.parse, unreadable))]];
-  if (isDoc(named)) found.push([manifest, docs(named)]);
-  else if (typeof named === 'string') {
-    const file = path.resolve(installPath, named);
-    found.push([file, servers(readDoc(file, JSON.parse, unreadable))]);
-  }
-  return found;
+  const file = typeof named === 'string' ? path.resolve(installPath, named) : undefined;
+  const inside = file !== undefined && holds(path.resolve(installPath), file);
+  if (named !== undefined && !isDoc(named) && !inside) unreadable.push(manifest);
+  return [...from(path.join(installPath, '.mcp.json')), ...entries(manifest, ['mcpServers'], named), ...(inside ? from(file) : [])];
 }
 
 /**
  * Every agent's MCP servers: Claude's user servers, those of its projects under the home and each plugin's, once per plugin
- * and name from the first install; Codex's mcp_servers; OpenCode's, from opencode.jsonc when there is one, else opencode.json.
+ * and name from the first install; Codex's mcp_servers; OpenCode's in opencode.json and opencode.jsonc, OpenCode 2's under
+ * mcp.servers and OpenCode 1's flat in mcp, which OpenCode 2 still reads.
  */
 export function readServers(homes: MirrorHomes, plugins: PluginInstall[]): { servers: McpServer[]; unreadable: string[] } {
   const servers: McpServer[] = [];
   const unreadable: string[] = [];
   const claude = readDoc(homes.claudeJson, JSON.parse, unreadable);
-  for (const [name, raw] of docs(claude?.mcpServers)) servers.push(toServer('claude', name, 'user', raw));
+  for (const e of entries(homes.claudeJson, ['mcpServers'], claude?.mcpServers)) servers.push(toServer('claude', 'user', e));
   for (const [dir, project] of docs(claude?.projects)) {
-    if (holds(homes.homedir, dir)) for (const [name, raw] of docs(project.mcpServers)) servers.push(toServer('claude', name, { project: dir }, raw));
+    if (!holds(homes.homedir, dir)) continue;
+    for (const e of entries(homes.claudeJson, ['projects', dir, 'mcpServers'], project.mcpServers)) servers.push(toServer('claude', { project: dir }, e));
   }
   const seen = new Set<string>();
   for (const p of plugins) {
-    for (const [file, found] of pluginServers(p.installPath, unreadable)) {
-      for (const [name, raw] of found) {
-        if (seen.has(JSON.stringify([p.name, name]))) continue;
-        seen.add(JSON.stringify([p.name, name]));
-        servers.push(toServer('claude', name, { plugin: p.name }, raw, file));
-      }
+    for (const e of pluginServers(p.installPath, unreadable)) {
+      if (seen.has(JSON.stringify([p.name, e.name]))) continue;
+      seen.add(JSON.stringify([p.name, e.name]));
+      servers.push(toServer('claude', { plugin: p.name }, e));
     }
   }
-  const codex = readDoc(path.join(homes.codexDir, 'config.toml'), parseToml, unreadable);
-  for (const [name, raw] of docs(codex?.mcp_servers)) servers.push(toServer('codex', name, 'user', raw));
-  const jsonc = path.join(homes.opencodeDir, 'opencode.jsonc');
-  const mcp = readDoc(fs.existsSync(jsonc) ? jsonc : path.join(homes.opencodeDir, 'opencode.json'), parseJsonc, unreadable)?.mcp;
-  // OpenCode 2 keeps its servers under mcp.servers and still reads OpenCode 1's beside them
-  const { servers: v2, ...v1 } = isDoc(mcp) ? mcp : {};
-  for (const [name, raw] of docs({ ...v1, ...(isDoc(v2) ? v2 : {}) })) servers.push(toServer('opencode', name, 'user', raw));
+  const toml = path.join(homes.codexDir, 'config.toml');
+  for (const e of entries(toml, ['mcp_servers'], readDoc(toml, parseToml, unreadable)?.mcp_servers)) servers.push(toServer('codex', 'user', e));
+  for (const file of ['opencode.json', 'opencode.jsonc'].map((f) => path.join(homes.opencodeDir, f))) {
+    const mcp = readDoc(file, parseJsonc, unreadable)?.mcp;
+    const flat = entries(file, ['mcp'], mcp).filter((e) => e.name !== 'servers' && e.name !== 'timeout');
+    for (const e of [...entries(file, ['mcp', 'servers'], isDoc(mcp) ? mcp.servers : undefined), ...flat]) servers.push(toServer('opencode', 'user', e));
+  }
   return { servers, unreadable };
 }
 
-/** Claude's installed plugins, each one's user-scope install first and then its others as listed. */
-export function readPlugins(claudeDir: string): PluginInstall[] {
-  const plugins = readDoc(path.join(claudeDir, 'plugins/installed_plugins.json'), JSON.parse, [])?.plugins;
-  return Object.entries(isDoc(plugins) ? plugins : {}).flatMap(([name, installs]) => {
-    const all = (Array.isArray(installs) ? installs : []).filter((i): i is Doc => isDoc(i) && typeof i.installPath === 'string');
+/**
+ * Claude's installed plugins, each one's user-scope install first and then its others as listed; a list that cannot be read,
+ * or names its installs in another shape, is named in `unreadable`.
+ */
+export function readPlugins(claudeDir: string, unreadable: string[]): PluginInstall[] {
+  const file = path.join(claudeDir, 'plugins/installed_plugins.json');
+  const plugins = readDoc(file, JSON.parse, unreadable)?.plugins;
+  if (plugins === undefined) return [];
+  const shaped = isDoc(plugins) && Object.values(plugins).every((l) => Array.isArray(l) && l.every((i) => isDoc(i) && typeof i.installPath === 'string'));
+  if (!shaped) {
+    unreadable.push(file);
+    return [];
+  }
+  return Object.entries(plugins as Record<string, Doc[]>).flatMap(([name, all]) => {
     const paths = [...all.filter((i) => i.scope === 'user'), ...all.filter((i) => i.scope !== 'user')].map((i) => i.installPath as string);
     return [...new Set(paths)].map((installPath) => ({ name, installPath }));
   });
@@ -153,11 +190,18 @@ export function readPlugins(claudeDir: string): PluginInstall[] {
 
 export const isReferenceOnly = (v: string): boolean => v.replace(VAR_REF, '').replace(/^(Bearer|Token|Basic)\s*$/i, '').trim() === '';
 
-// a URL's user:password in `source`, unless the password is only references
-function userinfo(source: string): string | undefined {
-  const m = USERINFO.exec(source);
-  return m && !isReferenceOnly(m[3]) ? `${m[2]}:${m[3]}` : undefined;
+// a URL's credential: user:password unless the password is only references, or the lone user of an http(s) URL unless
+// it is only references
+function credential(scheme: string, user: string, password: string | undefined): string | undefined {
+  if (password !== undefined) return isReferenceOnly(password) ? undefined : `${user}:${password}`;
+  return /https?:\/\/$/i.test(scheme) && !isReferenceOnly(user) ? user : undefined;
 }
+// the credential of each URL in `source`
+const credentials = (source: string): string[] =>
+  [...source.matchAll(USERINFO)].flatMap((m) => [credential(m[1], m[2], m[3])].filter((c): c is string => c !== undefined));
+// `source` without them
+const withoutCredentials = (source: string): string =>
+  source.replace(USERINFO, (all, scheme: string, user: string, password?: string) => (credential(scheme, user, password) === undefined ? all : scheme));
 
 // the query parameters of `url` before any fragment
 function params(url: string): { name: string; value: string }[] {
@@ -165,45 +209,56 @@ function params(url: string): { name: string; value: string }[] {
   return query.split('&').flatMap((kv) => (kv.indexOf('=') > 0 ? [{ name: kv.slice(0, kv.indexOf('=')), value: kv.slice(kv.indexOf('=') + 1) }] : []));
 }
 
-// `url` with its userinfo and the parameter values `drop` names emptied
-function urlWithout(url: string, drop: ReadonlySet<string>): string {
-  const u = drop.has('url.userinfo') ? url.replace(USERINFO, '$1') : url;
+// the secrets in `source`, the value of `field`: its query parameter values when `query`, and every URL credential in it
+function urlSecrets(source: string, field: string, query: boolean): Secret[] {
+  const values = query ? params(source).filter((p) => !isReferenceOnly(p.value)).map((p) => ({ field: `${field}.${p.name}`, value: p.value })) : [];
+  return [...values, ...credentials(source).map((value) => ({ field: `${field}.userinfo`, value }))];
+}
+
+// `source`, the value of `field`, with the credentials and parameter values `drop` names emptied
+function urlWithout(source: string, field: string, drop: ReadonlySet<string>): string {
+  const u = drop.has(`${field}.userinfo`) ? withoutCredentials(source) : source;
   const end = u.includes('#') ? u.indexOf('#') : u.length;
   const q = u.slice(0, end).indexOf('?');
   if (q < 0) return u;
-  const query = u.slice(q + 1, end).split('&').map((kv) => (kv.indexOf('=') > 0 && drop.has(`url.${kv.slice(0, kv.indexOf('='))}`) ? kv.slice(0, kv.indexOf('=') + 1) : kv));
+  const query = u.slice(q + 1, end).split('&').map((kv) => (kv.indexOf('=') > 0 && drop.has(`${field}.${kv.slice(0, kv.indexOf('='))}`) ? kv.slice(0, kv.indexOf('=') + 1) : kv));
   return `${u.slice(0, q + 1)}${query.join('&')}${u.slice(end)}`;
 }
+
+// a flag whose last word, in kebab-, snake- or camelCase, names a secret
+const secretFlag = (flag: string): boolean => SECRET_FLAG.test(flag.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replaceAll('_', '-'));
 
 // arg `i` as the part that stays and the value a secret there would be: after a secret flag or --header, or in
 // --flag=value with a secret flag, or KEY=value
 function argValue(args: string[], i: number): [keep: string, value: string] | undefined {
   const a = args[i];
   const flag = /^--?([^=]+)$/.exec(args[i - 1] ?? '')?.[1];
-  if (flag !== undefined && SECRET_FLAG.test(flag)) return ['', a];
+  if (flag !== undefined && secretFlag(flag)) return ['', a];
   if (HEADER_FLAG.test(args[i - 1] ?? '') && a.includes(':')) return [a.slice(0, a.indexOf(':') + 1), a.slice(a.indexOf(':') + 1).trim()];
   const assigned = /^--?([^=]+)=/.exec(a);
-  if (assigned && SECRET_FLAG.test(assigned[1])) return [assigned[0], a.slice(assigned[0].length)];
+  if (assigned && secretFlag(assigned[1])) return [assigned[0], a.slice(assigned[0].length)];
   if (ENV_ARG.test(a)) return [a.slice(0, a.indexOf('=') + 1), a.slice(a.indexOf('=') + 1)];
   return undefined;
 }
 
-// the secret in arg `i` and the arg without it; an arg listed whole is not listed again by its userinfo
-function argSecret(args: string[], i: number): (Secret & { emptied: string }) | undefined {
+// the secrets in arg `i`: its value whole, or else the query and credentials of a URL in it
+function argSecrets(args: string[], i: number): Secret[] {
   const kv = argValue(args, i);
-  if (kv && !isReferenceOnly(kv[1])) return { field: `args[${i}]`, value: kv[1], emptied: kv[0] };
-  const u = userinfo(args[i]);
-  return u === undefined ? undefined : { field: `args[${i}].userinfo`, value: u, emptied: args[i].replace(USERINFO, '$1') };
+  if (kv && !isReferenceOnly(kv[1])) return [{ field: `args[${i}]`, value: kv[1] }];
+  return urlSecrets(args[i], `args[${i}]`, URL_START.test(args[i]));
+}
+
+// arg `i` with the secrets `drop` names emptied
+function argWithout(args: string[], i: number, drop: ReadonlySet<string>): string {
+  const kv = argValue(args, i);
+  return kv && drop.has(`args[${i}]`) ? kv[0] : urlWithout(args[i], `args[${i}]`, drop);
 }
 
 /** The values in `s` that are secrets, each by its field; a value that is only references is none. */
 export function secretsOf(s: McpServer): Secret[] {
   const fields = (kind: 'env' | 'headers'): Secret[] => Object.entries(s[kind]).filter(([, v]) => !isReferenceOnly(v)).map(([k, v]) => ({ field: `${kind}.${k}`, value: v }));
-  const url = s.url === undefined ? [] : [
-    ...params(s.url).filter((p) => !isReferenceOnly(p.value)).map((p) => ({ field: `url.${p.name}`, value: p.value })),
-    ...[userinfo(s.url)].flatMap((u) => (u === undefined ? [] : [{ field: 'url.userinfo', value: u }])),
-  ];
-  const args = s.args.flatMap((_, i) => [argSecret(s.args, i)].flatMap((f) => (f ? [{ field: f.field, value: f.value }] : [])));
+  const url = s.url === undefined ? [] : urlSecrets(s.url, 'url', true);
+  const args = s.args.flatMap((_, i) => argSecrets(s.args, i));
   const oauth = Object.entries(texts(s.raw.oauth)).filter(([k, v]) => OAUTH_SECRETS.includes(k) && !isReferenceOnly(v)).map(([k, v]) => ({ field: `oauth.${k}`, value: v }));
   return [...fields('env'), ...fields('headers'), ...url, ...args, ...oauth];
 }
@@ -272,12 +327,11 @@ export function redacted(s: McpServer, keep: ReadonlySet<string>): Record<string
     raw.env_vars = [...names, ...unset.filter((k) => !names.some((n) => n === k || (isDoc(n) && n.name === k)))];
   } else for (const k of unset) env[k] = s.agent === 'claude' ? `\${${k}}` : `{env:${k}}`;
   for (const h of Object.keys(s.headers)) if (drop.has(`headers.${h}`)) (raw[p.headers] as Doc)[h] = '';
-  if (s.url !== undefined) raw.url = urlWithout(s.url, drop);
-  const argv = raw[p.args] as unknown[];
-  const from = s.agent === 'opencode' ? 1 : 0;
-  s.args.forEach((_, i) => {
-    const f = argSecret(s.args, i);
-    if (f && drop.has(f.field)) argv[i + from] = f.emptied;
+  if (s.url !== undefined) raw.url = urlWithout(s.url, 'url', drop);
+  const [key, from] = argsAt(s.agent, raw);
+  s.args.forEach((a, i) => {
+    const emptied = argWithout(s.args, i, drop);
+    if (emptied !== a) (raw[key] as unknown[])[i + from] = emptied;
   });
   const oauth = raw.oauth;
   if (isDoc(oauth)) for (const k of OAUTH_SECRETS) if (drop.has(`oauth.${k}`)) oauth[k] = '';
@@ -310,8 +364,7 @@ const SECRET_PATHS: Record<AgentKind, readonly string[]> = { claude: [], codex: 
 export function configSecrets(agent: AgentKind, doc: Record<string, unknown>): Secret[] {
   const keys = SECRET_PATHS[agent].flatMap((p) => strings(at(doc, p.split('.')))).filter((l) => !isReferenceOnly(l.value));
   const skip = new Set([...keys.map((l) => l.field), ...(agent === 'claude' ? at(doc, MARKETPLACE_URL.split('.')).map((l) => l.field) : [])]);
-  const userinfos = strings(at(doc, ['**'])).filter((l) => !skip.has(l.field))
-    .flatMap((l) => [userinfo(l.value)].flatMap((u) => (u === undefined ? [] : [{ field: `${l.field}.userinfo`, value: u }])));
+  const userinfos = strings(at(doc, ['**'])).filter((l) => !skip.has(l.field)).flatMap((l) => credentials(l.value).map((value) => ({ field: `${l.field}.userinfo`, value })));
   return [...keys, ...userinfos];
 }
 

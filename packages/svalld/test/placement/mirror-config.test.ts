@@ -55,10 +55,12 @@ function server(agent: AgentKind, o: Partial<Pick<McpServer, 'command' | 'args' 
   return { agent, name: 'srv', scope: 'user', args: [], env: {}, headers: {}, known: true, ...fields, ...(command !== undefined ? { command } : {}), raw };
 }
 
-// homes whose only agent configuration is OpenCode's opencode.jsonc holding `text`
+// homes with no agent configuration but what a test puts in OpenCode's folder
+const bareHomes = () => ({ homedir: bare, claudeDir: path.join(bare, '.claude'), codexDir: path.join(bare, '.codex'), claudeJson: path.join(bare, '.claude.json'), opencodeDir: oc });
+// such homes whose opencode.jsonc holds `text`
 function withJsonc(text: string) {
   put(path.join(oc, 'opencode.jsonc'), text);
-  return { homedir: bare, claudeDir: path.join(bare, '.claude'), codexDir: path.join(bare, '.codex'), claudeJson: path.join(bare, '.claude.json'), opencodeDir: oc };
+  return bareHomes();
 }
 
 const codexDoc = { model: 'gpt-5', model_providers: { acme: {
@@ -68,12 +70,13 @@ const ocDoc = { provider: { openai: { options: { apiKey: 'sk-oc-123' } }, anthro
 
 describe('reading agent configs and finding secrets by field', () => {
   it('reads Claude user, project and plugin servers, Codex mcp_servers and OpenCode local and remote servers into one shape', () => {
-    const { servers, unreadable } = readServers(mac, readPlugins(mac.claudeDir));
+    const listed: string[] = [];
+    const { servers, unreadable } = readServers(mac, readPlugins(mac.claudeDir, listed));
     expect(servers.map((s) => [s.agent, s.name, s.scope])).toEqual([
       ['claude', 'linear', 'user'], ['claude', 'remote', 'user'], ['claude', 'chrome', 'user'], ['claude', 'db', { project: `${mac.homedir}/code/app` }],
       ['claude', 'pdf', { plugin: 'acme' }], ['codex', 'github', 'user'], ['opencode', 'ctx', 'user'], ['opencode', 'far', 'user'],
     ]);
-    expect(unreadable).toEqual([]);
+    expect([...listed, ...unreadable]).toEqual([]);
   });
 
   it('finds secrets by field and references as needs; a value that is both is both', () => {
@@ -133,7 +136,7 @@ describe('reading agent configs and finding secrets by field', () => {
       a: [{ scope: 'project', projectPath: '/p', installPath: at('a-old') }, { scope: 'user', installPath: at('a') }],
       b: [{ scope: 'user', installPath: at('b') }], c: [{ scope: 'user', installPath: at('c') }], d: [{ scope: 'user', installPath: at('d') }],
     } }));
-    const servers = readServers(mac, readPlugins(mac.claudeDir)).servers.filter((s) => typeof s.scope === 'object' && 'plugin' in s.scope);
+    const servers = readServers(mac, readPlugins(mac.claudeDir, [])).servers.filter((s) => typeof s.scope === 'object' && 'plugin' in s.scope);
     expect(servers.map((s) => [s.name, s.command, s.file])).toEqual([
       ['s1', 'x', at('a/.mcp.json')], ['s2', 'x', at('b/.mcp.json')], ['s3', 'x', at('c/.claude-plugin/plugin.json')], ['s4', 'x', at('d/servers.json')],
     ]);
@@ -165,5 +168,78 @@ describe('reading agent configs and finding secrets by field', () => {
     expect(oauthLogin(server('codex', { url: 'https://mcp.linear.app/mcp' }))).toEqual({ run: 'codex mcp login srv' });
     expect(oauthLogin(server('opencode', { url: 'https://mcp.linear.app/mcp' }))).toEqual({ run: 'opencode mcp auth srv' });
     expect(oauthLogin(server('codex', { command: 'npx', args: ['-y', 'mcp-remote', 'https://x.test/sse', '3334'] }))).toEqual({ run: 'codex', forward: 3334 });
+  });
+
+  it('a URL in an arg gives up its query values, every credential of each URL in a string is a secret, a lone token too, and all are emptied', () => {
+    const q = server('claude', { command: 'npx', args: ['-y', 'mcp-remote', 'https://server.test/x/mcp?api_key=sk-live-123&profile=${PROFILE}'] });
+    expect(secretsOf(q)).toEqual([{ field: 'args[2].api_key', value: 'sk-live-123' }]);
+    expect(redacted(q, new Set()).args).toEqual(['-y', 'mcp-remote', 'https://server.test/x/mcp?api_key=&profile=${PROFILE}']);
+    const u = server('claude', { url: 'https://tok-1@x.test/mcp', args: ['--from', 'git+https://ghp_tok@github.com/o/r.git', '--mirrors=https://u:p@a.test,https://v:q@b.test', 'https://${GH_TOKEN}@github.com/o', 'ssh://git@github.com/o', 'postgres://user@h/db'] });
+    expect(secretsOf(u)).toEqual([
+      { field: 'url.userinfo', value: 'tok-1' }, { field: 'args[1].userinfo', value: 'ghp_tok' }, { field: 'args[2].userinfo', value: 'u:p' }, { field: 'args[2].userinfo', value: 'v:q' },
+    ]);
+    expect(needsOf(u)).toEqual(['GH_TOKEN']);
+    expect(redacted(u, new Set())).toMatchObject({ url: 'https://x.test/mcp', args: ['--from', 'git+https://github.com/o/r.git', '--mirrors=https://a.test,https://b.test', 'https://${GH_TOKEN}@github.com/o', 'ssh://git@github.com/o', 'postgres://user@h/db'] });
+    expect(configSecrets('codex', { feeds: 'https://a:1@x.test https://tok@y.test' }).map((f) => [f.field, f.value])).toEqual([['feeds.userinfo', 'a:1'], ['feeds.userinfo', 'tok']]);
+  });
+
+  it('a secret flag ends in a word of any case: --githubToken and --access_token too', () => {
+    expect(secretsOf(server('claude', { args: ['--githubToken', 'g1', '--access_token=a1', '--monkey', 'm1'] })).map((f) => f.field)).toEqual(['args[1]', 'args[2]']);
+  });
+
+  it('a field another agent reads is no field of this one: Claude http_headers, Codex headers, OpenCode env and args make a server not known, and redacting it holds', () => {
+    put(mac.claudeJson, JSON.stringify({ mcpServers: { c1: { url: 'https://x.test', http_headers: { Authorization: 'Bearer sk-c' } }, c2: { command: 'x', environment: { K: 'v' } }, ok: { type: 'http', url: 'https://x.test', headers: {}, timeout: 5 } } }));
+    put(path.join(mac.codexDir, 'config.toml'), '[mcp_servers.x1.headers]\nAuthorization = "Bearer sk-x"\n[mcp_servers.x2]\ncommand = "x"\nenvironment = { K = "v" }\n[mcp_servers.ok]\ncommand = "x"\ncwd = "/tmp"\nenv_vars = ["K"]\n');
+    put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ mcp: { servers: {
+      o1: { type: 'local', command: ['x'], env: { K: 'v' } }, o2: { type: 'local', command: 'x', args: ['--token', 't'] }, o3: { type: 'remote', url: 'https://x.test', http_headers: { A: 'b' } },
+      ok: { type: 'local', command: ['x'], environment: {}, cwd: '/tmp' },
+    } } }));
+    const { servers } = readServers(mac, []);
+    expect(servers.map((s) => [s.agent, s.name, s.known])).toEqual([
+      ['claude', 'c1', false], ['claude', 'c2', false], ['claude', 'ok', true], ['codex', 'x1', false], ['codex', 'x2', false], ['codex', 'ok', true],
+      ['opencode', 'o1', false], ['opencode', 'o2', false], ['opencode', 'o3', false], ['opencode', 'ok', true],
+    ]);
+    expect(redacted(servers.find((s) => s.name === 'o2')!, new Set())).toEqual({ type: 'local', command: 'x', args: ['--token', ''] });
+  });
+
+  it('every server names its file and its place there; OpenCode\'s come from opencode.json and opencode.jsonc both, under mcp.servers and flat both, one name in each', () => {
+    const plugin = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
+    const at = Object.fromEntries(readServers(mac, readPlugins(mac.claudeDir, [])).servers.map((s) => [s.name, [s.file, s.place]]));
+    expect([at.linear, at.db, at.pdf, at.github]).toEqual([
+      [mac.claudeJson, ['mcpServers', 'linear']], [mac.claudeJson, ['projects', `${mac.homedir}/code/app`, 'mcpServers', 'db']], [plugin, ['pdf']],
+      [path.join(mac.codexDir, 'config.toml'), ['mcp_servers', 'github']],
+    ]);
+    put(path.join(oc, 'opencode.json'), JSON.stringify({ mcp: { timeout: { startup: 5 }, dup: { type: 'local', command: ['a'], environment: { K: 'sk-v1' } }, servers: { dup: { type: 'local', command: ['b'] } } } }));
+    put(path.join(oc, 'opencode.jsonc'), '{ "mcp": { "servers": { "j": { "type": "remote", "url": "https://j.test" } } } }');
+    expect(readServers(bareHomes(), []).servers.map((s) => [s.name, s.file, s.place, secretsOf(s).map((f) => f.field)])).toEqual([
+      ['dup', path.join(oc, 'opencode.json'), ['mcp', 'servers', 'dup'], []], ['dup', path.join(oc, 'opencode.json'), ['mcp', 'dup'], ['env.K']],
+      ['j', path.join(oc, 'opencode.jsonc'), ['mcp', 'servers', 'j'], []],
+    ]);
+  });
+
+  it('a file that cannot be parsed or holds servers in a shape the mirror does not know is unreadable and yields none: .claude.json, config.toml, plugin JSON, a manifest naming an array or a file outside its plugin, installed_plugins.json', () => {
+    const at = (p: string) => path.join(mac.claudeDir, 'plugins/cache/mp', p);
+    put(mac.claudeJson, '{ "mcpServers": ');
+    put(path.join(mac.codexDir, 'config.toml'), '[mcp_servers.x\n');
+    put(path.join(mac.opencodeDir, 'opencode.json'), '[]');
+    put(at('a/.mcp.json'), '{ "s": ');
+    put(at('b/.claude-plugin/plugin.json'), JSON.stringify({ mcpServers: ['./extra.json'] })); put(at('b/extra.json'), JSON.stringify({ s: { command: 'x', env: { K: 'sk-arr' } } }));
+    put(at('c/.claude-plugin/plugin.json'), JSON.stringify({ mcpServers: '../outside.json' })); put(at('outside.json'), JSON.stringify({ s: { command: 'x' } }));
+    put(at('d/.mcp.json'), JSON.stringify({ mcpServers: 'x' }));
+    expect(readServers(mac, ['a', 'b', 'c', 'd'].map((n) => ({ name: n, installPath: at(n) })))).toEqual({ servers: [], unreadable: [
+      mac.claudeJson, at('a/.mcp.json'), at('b/.claude-plugin/plugin.json'), at('c/.claude-plugin/plugin.json'), at('d/.mcp.json'),
+      path.join(mac.codexDir, 'config.toml'), path.join(mac.opencodeDir, 'opencode.json'),
+    ] });
+    const list = path.join(mac.claudeDir, 'plugins/installed_plugins.json');
+    for (const broken of ['{ "plugins": ', '{ "version": 1, "plugins": { "a": { "installPath": "/x" } } }']) {
+      put(list, broken);
+      const listed: string[] = [];
+      expect([readPlugins(mac.claudeDir, listed), listed]).toEqual([[], [list]]);
+    }
+  });
+
+  it('an opencode.jsonc with trailing commas parses, a comma in a string stays', () => {
+    const { servers, unreadable } = readServers(withJsonc('{ "mcp": { "servers": { "t": { "type": "local", "command": ["x", "a,}",], }, }, }, }'), []);
+    expect([unreadable, servers.map((s) => [s.command, s.args])]).toEqual([[], [['x', ['a,}']]]]);
   });
 });
