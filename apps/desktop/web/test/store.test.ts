@@ -513,6 +513,29 @@ describe('store', () => {
     expect(store.getState().fleet.robots.c1.second).toBeUndefined();
     expect(panesOf(store.getState(), 'c1')).toEqual({ left: 'terminal' });
   });
+  it('moves the files tree to a file it does not show, and up a folder at a time with the way down open', () => {
+    const store = createAppStore();
+    const f = fleet();
+    f.robots.c1 = { ...f.robots.c1, cwd: '/Users/ada/svall/.wt/auth', repo: { root: '/Users/ada/svall/.wt/auth', mainRoot: '/Users/ada/svall', branch: 'auth', isWorktree: true } };
+    store.getState().setFleet(f);
+    const s = () => store.getState();
+    s().openFile('c1', 'src/a.ts');
+    s().setTop('c1', '/Users/ada/svall');
+    expect(s().ide.c1).toMatchObject({ top: '/Users/ada/svall', expanded: ['src', '', '/Users/ada/svall/.wt'] });
+    // a file the tree shows already leaves it where it stands
+    s().activateFile('c1', 'src/a.ts');
+    expect(s().ide.c1.top).toBe('/Users/ada/svall');
+    s().openFile('c1', '/Users/ada/Desktop/run.log');
+    expect(s().ide.c1.top).toBe('/Users/ada/Desktop');
+    s().activateFile('c1', 'src/a.ts');
+    expect(s().ide.c1.top).toBe('');
+    s().reveal('c1', '/Users/ada/Desktop/invoices', true);
+    expect(s().ide.c1.top).toBe('/Users/ada/Desktop/invoices');
+    const held = s().ide;
+    s().setTop('c1', '/Users/ada/Desktop/invoices');
+    expect(s().ide).toBe(held);
+  });
+
   it('keeps open files and folders per robot, and forgets a robot that goes', () => {
     const store = createAppStore();
     store.getState().setFleet(fleet());
@@ -521,11 +544,12 @@ describe('store', () => {
     s().openFile('c1', 'src/a.ts');
     s().openFile('c1', 'src/b.ts');
     s().openFile('c1', 'src/a.ts');
-    expect(s().ide.c1).toMatchObject({ open: ['src/a.ts', 'src/b.ts'], active: 'src/a.ts' });
-    s().toggleFolder('c1', 'src');
-    expect(s().ide.c1.expanded).toEqual(['src']);
+    // an opened file's folders open in the tree
+    expect(s().ide.c1).toMatchObject({ open: ['src/a.ts', 'src/b.ts'], active: 'src/a.ts', expanded: ['src'] });
     s().toggleFolder('c1', 'src');
     expect(s().ide.c1.expanded).toEqual([]);
+    s().toggleFolder('c1', 'src');
+    expect(s().ide.c1.expanded).toEqual(['src']);
     s().markFile('c1', 'src/a.ts', { dirty: true });
     s().markFile('c1', 'src/a.ts', { conflict: true });
     expect(s().ide.c1).toMatchObject({ dirty: ['src/a.ts'], conflict: ['src/a.ts'] });

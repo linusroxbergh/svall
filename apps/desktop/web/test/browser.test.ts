@@ -113,6 +113,14 @@ describe('browser manager', () => {
     expect(calls.filter((k) => k.method === 'browser.open')).toEqual([]);
   });
 
+  it('opens a path followed in a terminal in the robot\'s Files, not out of the app', async () => {
+    const { bridge, calls, sent } = fakes();
+    bridge.emit({ type: 'term.openUrl', id: 'c0', url: '/tmp/run.log', x: 0, y: 0 });
+    await Promise.resolve();
+    expect(calls.filter((k) => k.method === 'fs.read')).toEqual([{ method: 'fs.read', params: { id: 'c0', path: 'run.log' } }]);
+    expect(sent.filter((m) => m.type === 'openUrl')).toEqual([]);
+  });
+
   it('sends a link the browser cannot hold, and one of a robot that is gone, out of the app', () => {
     const { bridge, calls, sent, store } = fakes();
     bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'mailto:a@b.test', x: 0, y: 0 });

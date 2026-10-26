@@ -2,15 +2,14 @@ import type { FsEntry } from '@svall/protocol';
 import { useEffect, useState } from 'react';
 import { app } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { childOf } from './where.js';
 
-type Props = { id: string; dir: string; depth: number; tick: number; onOpen(path: string): void };
-
-const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
+type Props = { id: string; root: string; dir: string; depth: number; tick: number; onOpen(path: string): void };
 // one array for every robot with nothing open: a selector must answer the same thing twice
 const NONE: string[] = [];
 
 /** One folder's rows; a folder row holds its own Tree once expanded. */
-export function Tree({ id, dir, depth, tick, onOpen }: Props) {
+export function Tree({ id, root, dir, depth, tick, onOpen }: Props) {
   const expanded = useApp((s) => s.ide[id]?.expanded ?? NONE);
   const active = useApp((s) => s.ide[id]?.active);
   const [entries, setEntries] = useState<FsEntry[]>();
@@ -30,7 +29,7 @@ export function Tree({ id, dir, depth, tick, onOpen }: Props) {
   return (
     <>
       {entries.map((e) => {
-        const path = join(dir, e.name);
+        const path = childOf(dir, e.name, root);
         const open = e.kind === 'dir' && expanded.includes(path);
         return (
           <div key={path}>
@@ -39,8 +38,9 @@ export function Tree({ id, dir, depth, tick, onOpen }: Props) {
               onClick={() => (e.kind === 'dir' ? app.store.getState().toggleFolder(id, path) : onOpen(path))}>
               <span className="tree-caret">{e.kind === 'dir' ? (open ? '▾' : '▸') : ''}</span>
               <span className="tree-name">{e.name}</span>
+              {path === '' && <span className="tree-robot" title="The robot's folder" />}
             </button>
-            {open && <Tree id={id} dir={path} depth={depth + 1} tick={tick} onOpen={onOpen} />}
+            {open && <Tree id={id} root={root} dir={path} depth={depth + 1} tick={tick} onOpen={onOpen} />}
           </div>
         );
       })}

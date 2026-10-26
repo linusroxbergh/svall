@@ -6,7 +6,7 @@ import type { Logger } from '../log.js';
 import type { Viewer } from '../terminals.js';
 import { WorkspaceError } from './errors.js';
 import { baseRef, branchOf, changedFiles, fileAt, ignoredNames, isTop, sizeAt } from './git.js';
-import { inside, realOf, within } from './paths.js';
+import { anywhere, inside, realOf, within } from './paths.js';
 
 const MAX_FILE = 2 * 1024 * 1024;
 const PROBE = 8 * 1024;
@@ -91,15 +91,22 @@ export class Workspace {
     return { refused, is };
   }
 
-  private at(id: string, rel: string, refusal = this.refusal()): string {
-    const abs = inside(this.rootOf(id), rel);
+  // with `absolute`, an absolute path may lead anywhere; the robot's root is still asked for, so one on another machine stays refused
+  private at(id: string, rel: string, refusal = this.refusal(), absolute = false): string {
+    const root = this.rootOf(id);
+    const abs = absolute && path.isAbsolute(rel) ? anywhere(rel) : inside(root, rel);
     if (refusal.is(abs)) throw new WorkspaceError('invalid', `${rel} is not the fleet's to open`);
     return abs;
   }
 
+  // the folder a path is read and written under: the robot's root, which moves with it, and for an absolute path the disk's
+  private base(id: string, rel: string): string {
+    return path.isAbsolute(rel) ? path.parse(rel).root : this.rootOf(id);
+  }
+
   async list(id: string, rel: string): Promise<FsEntry[]> {
     const refusal = this.refusal();
-    const abs = this.at(id, rel, refusal);
+    const abs = this.at(id, rel, refusal, true);
     let dirents: fs.Dirent[];
     try { dirents = fs.readdirSync(abs, { withFileTypes: true }); }
     catch { throw new WorkspaceError('not_found', `${rel || '.'} is not a folder`); }
@@ -114,21 +121,21 @@ export class Workspace {
   }
 
   read(id: string, rel: string): { text: string; mtimeMs: number; root: string } {
-    const abs = this.at(id, rel);
+    const abs = this.at(id, rel, undefined, true);
     const st = statOf(rel, abs);
     if (!st?.isFile()) throw new WorkspaceError('not_found', `${rel} is not a file`);
     if (st.size > MAX_FILE) throw new WorkspaceError('too_large', `${rel} is over 2 MB`);
     let buf: Buffer;
     try { buf = fs.readFileSync(abs); } catch (e) { throw refuse(rel, 'be read', e); }
     if (isBinary(buf)) throw new WorkspaceError('binary', `${rel} is not text`);
-    return { text: buf.toString('utf8'), mtimeMs: st.mtimeMs, root: this.rootOf(id) };
+    return { text: buf.toString('utf8'), mtimeMs: st.mtimeMs, root: this.base(id, rel) };
   }
 
   // root is the one the file was read under: the text never lands in another checkout the robot has moved to since
   write(id: string, rel: string, text: string, mtimeMs: number, root?: string): { mtimeMs: number; conflict?: true } {
-    const now = this.rootOf(id);
+    const now = this.base(id, rel);
     if (root !== undefined && root !== now) throw new WorkspaceError('invalid', `${rel} was opened in ${root}; the robot is now in ${now}`);
-    const abs = this.at(id, rel);
+    const abs = this.at(id, rel, undefined, true);
     const st = statOf(rel, abs);
     // a rename would put a file in place of a socket or a pipe
     if (st && !st.isFile()) throw new WorkspaceError('invalid', `${rel} cannot be written`);

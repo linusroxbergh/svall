@@ -353,3 +353,40 @@ test('the map card carries the same Files and Changes tabs, and the map stays pu
   await page.keyboard.press('Meta+1');
   await expect(card.getByTestId('surface')).toHaveAttribute('data-robot', c.id);
 });
+
+test('a path followed in the terminal opens in Files, the tree going outside the root and back', async ({ page, svall }) => {
+  // the repository and a folder beside it, by their real paths as git gives the root, so the tree's way up from one reaches the other
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-paths-')));
+  made.push(base);
+  const dir = path.join(base, 'repo'), outside = path.join(base, 'out');
+  fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+  fs.mkdirSync(outside);
+  fs.writeFileSync(path.join(dir, 'src/hello.ts'), 'export const hello = 1;\n');
+  git(dir, 'init', '-q', '-b', 'main');
+  const log = path.join(outside, 'run.log');
+  fs.writeFileSync(log, 'one\ntwo\n');
+  const island = await svall.api.call('island.create', { name: svall.uniq('paths') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: dir, name: 'reader' });
+  const { receive } = await svall.nativeShell();
+  await svall.open();
+  await page.locator('.kc').first().dblclick();
+  const follow = (url: string) => receive({ type: 'term.openUrl', id: c.id, url, x: 0, y: 0 });
+  const editor = page.getByTestId('editor');
+
+  await follow('src/hello.ts:1');
+  await expect(editor).toHaveAttribute('data-path', 'src/hello.ts');
+  await expect(page.getByTestId('tree-src/hello.ts')).toHaveAttribute('data-active', 'true');
+  await expect(page.getByTestId('files-back')).toHaveCount(0);
+
+  await follow(log);
+  await expect(editor).toHaveAttribute('data-path', log);
+  await expect(page.getByTestId(`tree-${log}`)).toHaveAttribute('data-active', 'true');
+
+  // up a folder the robot's root is one of the rest, and the way back takes the tree home
+  await page.getByTestId(`crumb-${path.dirname(outside)}`).click();
+  await expect(page.getByTestId(`tree-${outside}`)).toBeVisible();
+  await expect(page.getByTestId('tree-')).toBeVisible();
+  await page.getByTestId('files-back').click();
+  await expect(page.getByTestId('tree-src')).toBeVisible();
+  await expect(page.getByTestId('files-back')).toHaveCount(0);
+});

@@ -66,6 +66,8 @@ export type ToShell =
   | { type: 'openUrl'; url: string }
   | { type: 'openFolder'; path: string }
   | { type: 'reveal'; path: string }
+  // a file the editor cannot show: a picture, PDF or film in its own app, text in the text editor, anything else in Finder
+  | { type: 'openFile'; path: string }
   | { type: 'copy'; text: string }
   | { type: 'openConfig'; which: 'ghostty' | 'fleet' }
   | { type: 'zoom'; factor: number; fontDelta: number }

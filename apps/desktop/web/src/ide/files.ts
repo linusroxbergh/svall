@@ -1,8 +1,13 @@
 import type { Api } from '../api.js';
-import { basename } from '../paths.js';
+import type { Bridge } from '../bridge.js';
+import { pick, shows, type Surface } from '../panes.js';
+import { accountHome, basename, shortPath } from '../paths.js';
+import { panesOf } from '../selectors.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
 import { editorExtensions, languageFor } from './codemirror.js';
+import { rootIn } from '../store/ide.js';
+import { absOf, isAbsolute, placeOf, resolve, rootOf } from './where.js';
 
 type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
@@ -16,24 +21,62 @@ export function onSaved(listener: (d: FilesDeps, id: string, path: string) => vo
   saveListeners.add(listener);
 }
 
+async function load(d: FilesDeps, id: string, path: string): Promise<void> {
+  if (getBuffer(id, path)) return;
+  const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
+  loadBuffer(id, path, text, mtimeMs, [editorExtensions(() => { void saveFile(d, id, path); }), lang ?? []]).root = root;
+}
+
 /** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why. */
 export async function openFile(d: FilesDeps, id: string, path: string): Promise<void> {
-  if (!getBuffer(id, path)) {
-    try {
-      const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
-      loadBuffer(id, path, text, mtimeMs, [editorExtensions(() => { void saveFile(d, id, path); }), lang ?? []]).root = root;
-    } catch (e) {
-      d.store.getState().showToast(`${path}: ${(e as Error).message}`);
-      return;
-    }
+  // an absolute path under the root opens as its place there, so the file has one tab
+  const root = rootIn(d.store.getState(), id);
+  const place = root !== undefined && isAbsolute(path) ? placeOf(path, root) : path;
+  try { await load(d, id, place); } catch (e) {
+    d.store.getState().showToast(`${place}: ${(e as Error).message}`);
+    return;
+  }
+  d.store.getState().openFile(id, place);
+}
+
+/** A path followed in the robot's terminal `beside`, as its agent prints it: relative to its cwd, and maybe ending in :line or :line:col.
+ *  Files opens on the other side, a file at its line, a folder as the tree's top; a file the editor cannot show goes to the Mac. */
+export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' | 'send'> }, id: string, text: string, beside: Surface): Promise<void> {
+  const c = d.store.getState().fleet.robots[id];
+  if (!c) return;
+  const root = rootOf(c);
+  // the terminal's link takes in the stop that ends a sentence, and the spaces that end a line
+  const [, name, line] = /^(.*?)(?::(\d+))?(?::\d+)?$/.exec(text.trimEnd().replace(/[.!?;]+$/, ''))!;
+  // git gives the root by its real path, so a cwd below a link other than /private's is not under it; the root stands in
+  const cwd = placeOf(c.cwd, root);
+  const abs = resolve(name, isAbsolute(cwd) ? root : absOf(cwd, root), accountHome(root) ?? accountHome(d.store.getState().shell?.home));
+  const path = placeOf(abs, root);
+  const panes = panesOf(d.store.getState(), id);
+  if (!shows(panes, 'files')) d.store.getState().setPanes(id, pick(panes, panes.right === beside ? 'left' : 'right', 'files'));
+  try { await load(d, id, path); } catch (e) {
+    const code = (e as { code?: string }).code;
+    const s = d.store.getState();
+    if (code === 'binary' || code === 'too_large') {
+      s.reveal(id, path);
+      if (d.bridge.present) d.bridge.send({ type: 'openFile', path: abs });
+    } else if (code === 'not_found' && await d.api.call('fs.list', { id, path }).then(() => true, () => false)) s.reveal(id, path, true);
+    else s.showToast(code === 'not_found' ? `${shortPath(abs)} is not there` : (e as Error).message);
+    return;
   }
   d.store.getState().openFile(id, path);
+  if (line) placeLine(id, path, Number(line));
 }
 
 /** The cursor goes to the first place `find` stands; text that is not there moves nothing. */
 export function placeCursor(id: string, path: string, find: string): void {
   const at = getBuffer(id, path)?.state.doc.toString().indexOf(find) ?? -1;
   if (at >= 0) select(id, path, at);
+}
+
+/** The cursor goes to the start of line `n`, or of the last line in a shorter file. */
+function placeLine(id: string, path: string, n: number): void {
+  const doc = getBuffer(id, path)?.state.doc;
+  if (doc) select(id, path, doc.line(Math.min(Math.max(1, n), doc.lines)).from);
 }
 
 /** Writes the buffer if the disk still has the mtime it was read at, or with `over`, the newer one Overwrite writes over.
