@@ -405,8 +405,14 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     w.worker.handlers['move.sheet'] = () => new Promise(() => {});
     // the sheet's 30 s, cut short
     const call = home.links.call.bind(home.links);
-    home.links.call = ((m, method, params, o) => call(m, method, params, method === 'move.sheet' ? { ...o, timeoutMs: 100 } : o)) as typeof home.links.call;
+    const waits: (number | undefined)[] = [];
+    home.links.call = ((m, method, params, o) => {
+      if (method !== 'move.sheet') return call(m, method, params, o);
+      waits.push(o?.timeoutMs);
+      return call(m, method, params, { ...o, timeoutMs: 100 });
+    }) as typeof home.links.call;
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 did not answer the move sheet in 30 s', action: 'try again' } });
+    expect(waits).toEqual([30_000]);
     home.links.call = call;
     delete w.worker.handlers['move.sheet'];
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 runs a release without move.sheet', action: 'upgrade it under Machines' } });

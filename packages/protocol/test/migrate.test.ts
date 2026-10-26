@@ -112,6 +112,14 @@ describe('migrateState', () => {
     expect(columnOf(state, state.robots.c_a).name).toBe('To do');
   });
 
+  it('lifts a version 10 file whose robot carries keepHere to 12, the mark dropped', () => {
+    const raw = { version: 10, islands: { i_a: island('i_a') }, home: defaultHome(), defaultCwd: DEFAULT_CWD };
+    const { state, migrated, dropped } = migrateState({ ...raw, robots: { c_a: { ...robot('c_a', 'i_a'), keepHere: true } } });
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 12, robots: { c_a: robot('c_a', 'i_a') }, columns: defaultColumns(), placingAsk: true });
+  });
+
   it('lifts a version 11 file to 12 with its board as it is, and drops keepHere', () => {
     const columns = [{ id: 'todo', name: 'Backlog' }, { id: 'k_1', name: 'Shipping' }];
     const placed = { ...robot('c_a', 'i_a'), column: 'k_1', columnSource: 'manual' };
