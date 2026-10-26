@@ -151,6 +151,17 @@ The worker journals each change in order until this Mac takes it; `journal/appli
 the last 500 this Mac has acknowledged, with what each changed. Once the fleet it last sent is an hour old, a robot's
 brief there says so under its heading: "context as of 2026-10-26T06:12:00.000Z; ada-mac is not reachable".
 
+Once this Mac answers, what the worker did lands here once each, in the order it was done:
+
+- A robot started there keeps its cell, or stands elsewhere on its island when another robot took that cell meanwhile.
+  One whose island was deleted here, or is full, stands on the island "recovered from linus-vault", its worktree and
+  transcript left as they are.
+- A field changed here since keeps this Mac's value, and the note names the worker's: "linus-vault set note to
+  "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile.
+- A change this Mac cannot apply is skipped, and the robot's note says why.
+- A robot started on a branch another robot works on in the same clone says so in its note: "shares branch kb with
+  board".
+
 ## When something goes wrong
 
 - **Before the robot is the destination's** (a failed check of the files, a lost connection, a crash), the robot

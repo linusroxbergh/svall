@@ -111,7 +111,7 @@ describe('a worker serving its robots while the home is away', () => {
     // the Mac wakes and acks the five over the link, then sleeps again
     await w.link();
     await drained(w);
-    expect(w.home.received).toHaveLength(5);
+    expect(Object.keys(w.home.store.state.robots).filter((id) => id !== 'c_1')).toHaveLength(5);
     w.home.links.stop();
     await until(() => { if (w.worker.connection.connected()) throw new Error('still linked'); });
     for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while this Mac slept' } });
@@ -192,9 +192,9 @@ describe('a worker serving its robots while the home is away', () => {
     release();
     await linking;
     await drained(w);
+    expect(w.home.store.state.robots.c_1.note).toBe('held');
     expect(await update('home')).toMatchObject({ result: { note: 'home' } });
     expect(w.home.store.state.robots.c_1.note).toBe('home');
-    expect(w.home.received.map((e) => Mutation.parse(e.data).params)).toEqual([{ id: 'c_1', note: 'offline' }, { id: 'c_1', note: 'held' }]);
   });
 
   it('an acked mutation is recorded in journal/applied.ndjson with what it changed, before the outbox trims it', async () => {

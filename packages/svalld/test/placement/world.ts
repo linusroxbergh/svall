@@ -9,12 +9,13 @@ import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
 import { HomeLinks, type Transport } from '../../src/link/home.js';
 import { HomeConnection } from '../../src/link/worker.js';
-import { silentLogger } from '../../src/log.js';
+import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
 import { Mirror, mirrorCalls, type MirrorHomes } from '../../src/placement/mirror.js';
+import { Replay } from '../../src/placement/replay.js';
 import { Router, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
@@ -66,11 +67,12 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 /**
  * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
  * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
- * fleet's docs as main.ts does, each watcher quiet for 100 ms, and `mirror` names each side's agent homes for the mirror.
+ * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
+ * and the home's replay and router log to `homeLog`.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
-  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } };
+  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } }; homeLog?: Logger;
 }) {
   const config = Config.parse({});
   const stops: (() => unknown)[] = [];
@@ -82,8 +84,8 @@ export function world(o: {
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
   const homeDocs = o.docs && new HomeDocs(homePaths.docs, silentLogger, 100);
-  // the mutations the home took, in order; while `hold` holds, the next waits
-  const received: { kind: string; data: unknown }[] = [];
+  const homeLog = o.homeLog ?? silentLogger;
+  // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
@@ -91,8 +93,7 @@ export function world(o: {
     onEvent: async (kind, data, machine) => {
       if (kind === 'mutation') {
         await held;
-        received.push({ kind, data });
-        return;
+        return replay.apply(data, machine);
       }
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`no ${kind}`);
       homeDocs.apply(kind, data, machine);
@@ -103,7 +104,8 @@ export function world(o: {
     ...(homeDocs && { docs: homeDocs }),
     ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
   });
-  const homeRouter = new Router({ store: homeStore, me: H, log: silentLogger, links });
+  const replay = new Replay({ store: homeStore, fleet: { createIsland: (p) => homeFleet.createIsland(p) }, paths: homePaths, log: homeLog });
+  const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
   const homeFleet = new Fleet({ store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter });
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter);
 
@@ -137,7 +139,7 @@ export function world(o: {
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop());
   return {
     home: {
-      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, received,
+      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay,
       /** Holds the mutations the home takes from here on, until the function it returns is called. */
       hold(): () => void {
         let release!: () => void;

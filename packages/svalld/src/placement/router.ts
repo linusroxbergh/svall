@@ -11,6 +11,8 @@ import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
 import { probeRepo, RepoProbeParams } from './checks.js';
+import { addLine, sharesBranch, type Replay } from './replay.js';
+import { homeRootOf } from './repo-key.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
 const callMs = (method: MethodName, params: unknown): number => 30_000 + serverWait(method, params);
@@ -23,6 +25,9 @@ type Options = {
   links?: Pick<HomeLinks, 'call'>;
   /** On a worker: the home worker.json names, and the link to it. */
   home?: { id: MachineId; connection: Pick<HomeConnection, 'call' | 'connected'> };
+  /** On the home: the robots each worker's replay started, and the user folder a worker's paths are compared in. */
+  replay?: Pick<Replay, 'created'>;
+  homedir?: string;
 };
 
 /** Which machine answers a call about a robot: the one it runs on. */
@@ -81,13 +86,26 @@ export class Router {
   }
 
   /**
-   * Takes a worker's inventory on the home: the fields it reports of each robot, a dormant record for each robot placed
-   * there that it no longer holds, and a forget for each it holds that the home has closed.
+   * Takes a worker's inventory on the home: the fields it reports of each robot, a note on each robot it started since the
+   * last reconnect whose branch another robot in that clone works on, a dormant record for each robot placed there that it no
+   * longer holds, and a forget for each it holds that the home has closed.
    */
   async reconcileWorker(inv: Inventory, machine: MachineId): Promise<void> {
     const { links } = this.o;
     if (!links) throw new Error(`${machine}: only the home reconciles a worker`);
     for (const r of inv.robots) applyReport(this.o.store, r, machine);
+    // the repo each robot's report brings, its clone named as on the home
+    const { robots, machines } = this.o.store.state;
+    const root = (c: Robot) => homeRootOf(c, machines, this.o.homedir);
+    const shared = new Map<string, string>();
+    for (const id of this.o.replay?.created(machine) ?? []) {
+      const c = Object.hasOwn(robots, id) ? robots[id] : undefined;
+      const branch = c?.repo?.branch;
+      if (!c || !branch) continue;
+      const other = Object.values(robots).find((r) => r.id !== id && r.repo?.branch === branch && root(r) === root(c));
+      if (other) shared.set(id, sharesBranch(branch, other.name));
+    }
+    if (shared.size) this.o.store.update((d) => { for (const [id, line] of shared) addLine(d.robots[id], line); });
     const held = new Set(inv.robots.map((r) => r.robotId));
     const name = this.o.store.state.machines?.[machine]?.name ?? machine;
     const note = `${name} no longer has this robot's window`;

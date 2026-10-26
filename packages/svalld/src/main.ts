@@ -37,6 +37,7 @@ import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs } from './placement/docs-sync.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PrepareService } from './placement/prepare.js';
+import { Replay } from './placement/replay.js';
 import { Router, forgetRobot, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { releaseVersion } from './release.js';
@@ -242,10 +243,13 @@ async function start(opts: Options): Promise<Daemon> {
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
   const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log);
+  // what a worker did while this Mac slept, applied once each
+  const replay = worker ? undefined : new Replay({ store, fleet: { createIsland: (p) => fleet.createIsland(p) }, paths, log });
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },
     onEvent: async (kind, data, machine) => {
+      if (kind === 'mutation' && replay) return replay.apply(data, machine);
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();
       homeDocs.apply(kind, data, machine);
     },
@@ -262,7 +266,9 @@ async function start(opts: Options): Promise<Daemon> {
     onAcked: (dropped) => mutations?.acked(dropped),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
+  const router = new Router({
+    store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }),
+  });
   const fleet = new Fleet({
     store, tmux, paths, config, log, ownership, agentsFound, remote: router,
     ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),

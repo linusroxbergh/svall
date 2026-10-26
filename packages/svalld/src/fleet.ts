@@ -54,7 +54,7 @@ import { watchOwned, type RobotSync } from './worker/snapshot.js';
 type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string] };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
-function setNote(c: Robot, note: string): void {
+export function setNote(c: Robot, note: string): void {
   c.note = note;
   if (note) c.noteSource = 'manual'; else delete c.noteSource;
 }

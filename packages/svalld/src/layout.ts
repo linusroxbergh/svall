@@ -253,8 +253,9 @@ class IslandFull extends Error { code = 'invalid'; }
 
 // the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
 // the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
-// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
-export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string, log?: Logger): Cell {
+// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving; `force` takes the
+// cell even where a neighbour could not be pushed clear, which unfold logs
+export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string, log?: Logger, force?: true): Cell {
   const island = draft.islands[islandId];
   if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
   // a robot re-placed on its own island is not its own crew, or the grid would size for it twice
@@ -264,7 +265,7 @@ export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: st
   crew.forEach((id, i) => { draft.robots[id].cell = cells[i]; });
   unfold(draft, islandId, log);
   // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
-  if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
+  if (!force && !placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
   return cells[crew.length];
 }
 
