@@ -10,7 +10,7 @@ export const BLOB_PART = 1024 * 1024;
 /** A result whose JSON is over PART_REPLY bytes is replied in link.part slices of PART_SLICE bytes, each sent as base64. */
 export const PART_REPLY = 1024 * 1024;
 export const PART_SLICE = 768 * 1024;
-// how long a reply sent in parts waits for its link.part calls
+// how long a reply sent in parts is held after it was sent or a part of it was last served
 const PARTS_TTL = 60_000;
 const CALL_TIMEOUT = 30_000;
 
@@ -18,6 +18,8 @@ const Parts = z.object({ __parts: z.object({ id: z.string(), count: z.number().i
 const PartAsk = z.object({ id: z.string(), index: z.number().int().nonnegative() });
 
 type Pending = { resolve(v: any): void; reject(e: Error): void; done(): void };
+// a call's deadline, which its reply and every part of it share
+type Budget = { method: string; ms: number; end: number; signal?: AbortSignal };
 type Receiver = { out: fs.WriteStream; hash: crypto.Hash; next: number; count: number; resolve(v: { sha256: string }): void; reject(e: Error): void };
 
 const gone = (err?: Error) => new ApiError('not_reachable', err ? `the link closed: ${err.message}` : 'the link is closed');
@@ -27,7 +29,7 @@ export class LinkStream {
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private receivers = new Map<string, Receiver>();
-  // the replies sent in parts, by id, until their last part is asked or PARTS_TTL passes
+  // the replies sent in parts, by id, until their last part is asked or PARTS_TTL passes with none asked
   private held = new Map<string, { bytes: Buffer; timer: NodeJS.Timeout }>();
   private nextHeld = 1;
   private closed = false;
@@ -46,34 +48,39 @@ export class LinkStream {
 
   /** Calls `method` on the far end; a result replied in parts arrives whole. */
   async call<T>(method: string, params: unknown, o: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<T> {
-    const result = await this.ask(method, params, o);
+    const ms = o.timeoutMs ?? CALL_TIMEOUT;
+    const budget: Budget = { method, ms, end: Date.now() + ms, signal: o.signal };
+    const result = await this.ask(method, params, budget);
     const parts = Parts.safeParse(result);
-    return (parts.success ? await this.gather(parts.data.__parts, o) : result) as T;
+    return (parts.success ? await this.gather(parts.data.__parts, budget) : result) as T;
   }
 
-  private ask(method: string, params: unknown, o: { timeoutMs?: number; signal?: AbortSignal }): Promise<unknown> {
+  private ask(method: string, params: unknown, b: Budget): Promise<unknown> {
     if (this.closed) return Promise.reject(gone());
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => settle(() => reject(new ApiError('timeout', `${method} got no reply in ${o.timeoutMs ?? CALL_TIMEOUT} ms`))), o.timeoutMs ?? CALL_TIMEOUT);
-      const onAbort = () => settle(() => reject(new ApiError('aborted', `${method} was aborted`)));
+      const timer = setTimeout(() => settle(() => reject(new ApiError('timeout', `${b.method} got no reply in ${b.ms} ms`))), b.end - Date.now());
+      const onAbort = () => settle(() => reject(new ApiError('aborted', `${b.method} was aborted`)));
       const done = () => {
         clearTimeout(timer);
-        o.signal?.removeEventListener('abort', onAbort);
+        b.signal?.removeEventListener('abort', onAbort);
         this.pending.delete(id);
       };
       const settle = (fn: () => void) => { done(); fn(); };
-      if (o.signal?.aborted) return onAbort();
-      o.signal?.addEventListener('abort', onAbort);
+      if (b.signal?.aborted) return onAbort();
+      b.signal?.addEventListener('abort', onAbort);
       this.pending.set(id, { resolve: (v) => settle(() => resolve(v)), reject: (e) => settle(() => reject(e)), done });
       this.write({ t: 'call', id, method, params });
     });
   }
 
-  private async gather({ id, count }: { id: string; count: number }, o: { timeoutMs?: number; signal?: AbortSignal }): Promise<unknown> {
+  private async gather({ id, count }: { id: string; count: number }, b: Budget): Promise<unknown> {
     const slices: Buffer[] = [];
     for (let index = 0; index < count; index++) {
-      const { data } = await this.ask('link.part', { id, index }, o) as { data: string };
+      // a part not held is one of a reply the far end let go, PARTS_TTL after it last served one
+      const { data } = await this.ask('link.part', { id, index }, b).catch((e: unknown) => {
+        throw e instanceof ApiError && e.code === 'not_found' ? new ApiError('timeout', `${b.method}'s reply expired before it all arrived; try again`) : e;
+      }) as { data: string };
       slices.push(Buffer.from(data, 'base64'));
     }
     return JSON.parse(Buffer.concat(slices).toString('utf8'));
@@ -132,7 +139,7 @@ export class LinkStream {
     return { __parts: { id, count: Math.ceil(bytes.length / PART_SLICE) } };
   }
 
-  /** The base64 of one part of a reply `fitReply` holds, which it lets go after the last. */
+  /** The base64 of one part of a reply `fitReply` holds, which it holds PARTS_TTL more after each part and lets go after the last. */
   replyPart(params: unknown): { data: string } {
     const { id, index } = PartAsk.parse(params);
     const held = this.held.get(id);
@@ -141,6 +148,8 @@ export class LinkStream {
     if (at + PART_SLICE >= held.bytes.length) {
       clearTimeout(held.timer);
       this.held.delete(id);
+    } else {
+      held.timer.refresh();
     }
     return { data: held.bytes.subarray(at, at + PART_SLICE).toString('base64') };
   }

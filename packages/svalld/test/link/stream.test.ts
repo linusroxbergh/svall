@@ -110,6 +110,17 @@ describe('LinkStream', () => {
     await vi.waitFor(() => expect(closed.length).toBeGreaterThan(0));
   });
 
+  it('replies whole up to 1 MiB of JSON, in parts past it, on lines of at most 2 MiB', async () => {
+    expect([PART_REPLY, PART_SLICE, MAX_LINE]).toEqual([1024 * 1024, 768 * 1024, 2 * 1024 * 1024]);
+    // {"text":"…"} is 11 bytes around the text
+    const whole = served(async () => ({ text: 'x'.repeat(1024 * 1024 - 11) }));
+    await whole.a.call('big', {});
+    expect(whole.linesSeen.filter((l) => l.includes('"link.part"'))).toEqual([]);
+    const parted = served(async () => ({ text: 'x'.repeat(1024 * 1024 - 10) }));
+    await parted.a.call('big', {});
+    expect(parted.linesSeen.filter((l) => l.includes('"link.part"'))).toHaveLength(2);
+  });
+
   it('a reply over PART_REPLY arrives whole through link.part, in 768 KiB slices', async () => {
     const text = 'x'.repeat(3 * 1024 * 1024 - 64);
     const { a, linesSeen } = served(async () => ({ text }));
@@ -124,7 +135,7 @@ describe('LinkStream', () => {
     expect(linesSeen.every((l) => Buffer.byteLength(l) <= MAX_LINE)).toBe(true);
   });
 
-  it('lets a reply in parts go once its last part is asked, or a minute after it was sent', async () => {
+  it('lets a reply in parts go once its last part is asked, or a minute after a part was last served', async () => {
     const { a } = served(async () => ({ text: 'x'.repeat(PART_REPLY) }));
     await a.call('big', {});
     await expect(a.call('link.part', { id: '1', index: 0 })).rejects.toMatchObject({ code: 'not_found' });
@@ -133,9 +144,42 @@ describe('LinkStream', () => {
     const s = new LinkStream(pair()[0], { onFrame: () => {}, onClose: () => {} });
     const { __parts } = s.fitReply({ text: 'x'.repeat(PART_REPLY) }) as { __parts: { id: string; count: number } };
     expect(__parts.count).toBe(2);
-    expect(s.replyPart({ id: __parts.id, index: 0 }).data).toHaveLength(PART_SLICE / 3 * 4);
+    vi.advanceTimersByTime(59_999);
+    // the base64 of 768 KiB, and a minute more for the rest
+    expect(s.replyPart({ id: __parts.id, index: 0 }).data).toHaveLength(1024 * 1024);
+    vi.advanceTimersByTime(59_999);
+    expect(s.replyPart({ id: __parts.id, index: 0 }).data).toHaveLength(1024 * 1024);
     vi.advanceTimersByTime(60_000);
     expect(() => s.replyPart({ id: __parts.id, index: 1 })).toThrow('part 1 of reply 1 is not held');
+  });
+
+  it("a reply in parts keeps its call's one deadline, and one whose parts expired between two says so", async () => {
+    vi.useFakeTimers();
+    // b answers each link.part `late` ms after it is asked
+    const slow = (late: number) => {
+      const [da, db] = pair();
+      const b: LinkStream = new LinkStream(db, {
+        onFrame: (f) => {
+          if (f.t !== 'call') return;
+          if (f.method === 'link.part') setTimeout(() => void answerCall(b, f), late);
+          else void answerCall(b, f, async () => ({ text: 'x'.repeat(3 * 1024 * 1024) }));
+        },
+        onClose: () => {},
+      });
+      return new LinkStream(da, { onFrame: () => {}, onClose: () => {} });
+    };
+    const failure = (p: Promise<unknown>) => {
+      const got: { e?: unknown } = {};
+      p.catch((e: unknown) => { got.e = e; });
+      return got;
+    };
+    const timed = failure(slow(20_000).call('big', {}, { timeoutMs: 30_000 }));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(timed.e).toMatchObject({ code: 'timeout', message: 'big got no reply in 30000 ms' });
+
+    const expired = failure(slow(60_001).call('big', {}, { timeoutMs: 120_000 }));
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(expired.e).toMatchObject({ code: 'timeout', message: "big's reply expired before it all arrived; try again" });
   });
 
   it('backlog reports the bytes not yet written to the duplex', async () => {
