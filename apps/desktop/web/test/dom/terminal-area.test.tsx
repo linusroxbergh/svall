@@ -155,6 +155,15 @@ test('a robot on a worker out of reach says so in place of its terminal, and att
   expect(call).not.toHaveBeenCalled();
 });
 
+test('a robot on a worker linked on another build names the upgrade in place of its terminal', () => {
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } };
+  Object.assign(f.robots.c1, { machine: VAULT });
+  act(() => store.getState().setFleet(f));
+  render(<TerminalArea id="c1" />);
+  expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault runs a different build; upgrade it under Machines');
+});
+
 test('a moving robot says where it goes, and Retry runs on a move whose activate failed', async () => {
   placed(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'prepare' } });
   render(<TerminalArea id="c1" />);

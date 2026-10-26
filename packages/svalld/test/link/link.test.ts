@@ -62,10 +62,8 @@ const socketTo = (sock: string): Transport => async () => {
 // the versions a home on this build greets a worker with
 const HELLO = { release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
 
-/**
- * A home and a worker, each with a store of its own, and the worker's outbox; the home holds r_1 placed on the worker.
- * `versions`: the state schema and link protocol the worker says it speaks.
- */
+// A home and a worker, each with a store of its own, and the worker's outbox; the home holds r_1 placed on the worker.
+// `versions`: the state schema and link protocol the worker says it speaks.
 function world(o: {
   handlers?: Record<string, (p: unknown) => Promise<unknown>>; log?: Logger; versions?: { schema: number; protocol: number }; onEvent?: (kind: string) => Promise<void>;
 } = {}) {

@@ -36,10 +36,11 @@ every robot is on this Mac when the machine becomes a worker, and stays there un
 
 After `svall host upgrade` a fleet has no gateway: the upgrade removed it from `fleet.json` and removed
 `svall-gateway.service` from the machine, and kept neither. 0.18 runs that fleet on this Mac and never contacts the
-machine. To hand the fleet over to it again, set the machine up as 0.18 does: run `svall host remove <machine>`
-before step 2, move the fleet's home on the machine aside (`~/.svall`, whose state 0.18 does not read), and after
-step 4 run 0.18's `svall host add` and `svall host enable <machine> --fleet <fleet>`. Or put back backups of the
-machine's account and of `fleet.json` from before the upgrade.
+machine. To hand the fleet over to it again, set the machine up as 0.18 does: before step 2, run `svall uninstall
+--force` on the machine over ssh (it takes the fleet's home there with it, `~/.svall`, or `~/.svall-<fleet>` for a
+named fleet) and `svall host remove <machine> --forget` on this Mac; after step 4 run 0.18's `svall host add` and
+`svall host enable <machine> --fleet <fleet>`. Or put back backups of the machine's account and of `fleet.json` from
+before the upgrade.
 
 ## Upgrading from 0.14 or earlier
 

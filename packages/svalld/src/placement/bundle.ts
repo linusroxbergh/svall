@@ -194,10 +194,8 @@ export const branchAhead = (machine: string, name: string) => ({ reason: `${mach
 export const holdsWhole = async (sha: string, head: string, root: string, git: GitRunner): Promise<boolean> =>
   (await git(['merge-base', '--is-ancestor', sha, head], root)).code === 0;
 
-/**
- * Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless
- * that is what left. A branch of its name on `machine` that holds commits the bundle's lacks is refused, but at `keep`.
- */
+// Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless
+// that is what left. A branch of its name on `machine` that holds commits the bundle's lacks is refused, but at `keep`.
 export async function applyBundle(root: string, dir: string, manifest: BundleManifest, git: GitRunner, o: { machine?: string; keep?: string } = {}): Promise<void> {
   const at = (f: string): string => path.join(dir, f);
   if (manifest.commits) await must(git, ['bundle', 'unbundle', at(COMMITS)], root);

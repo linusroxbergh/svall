@@ -52,10 +52,8 @@ export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths,
   return docs !== undefined && isDocsRoot(root, state, docs) ? root : undefined;
 }
 
-/**
- * The folder a workspace id names: a resource root when the id is one, else the robot's own folder, refused for a robot
- * `here` says runs on another machine, as that folder is on its disk.
- */
+// The folder a workspace id names: a resource root when the id is one, else the robot's own folder, refused for a robot
+// `here` says runs on another machine, as that folder is on its disk.
 export function workspaceRoot(
   id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, here?: (c: Robot) => boolean,
 ): string {
