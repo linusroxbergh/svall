@@ -21,8 +21,8 @@ const input = vi.fn();
 vi.mock('../../src/mobile/term.js', () => ({
   linkTerminal: () => ({ input: (d: string) => input(d), resize: () => {}, open: () => open(), close: () => {} }),
 }));
-// the last terminal the view made, on the alternate screen of an app tracking the mouse
-let xterm: { element: HTMLElement; typed(d: string): void };
+// the last terminal the view made, on the alternate screen of an app tracking the mouse, and what was painted on it
+let xterm: { element: HTMLElement; typed(d: string): void; painted: string[] };
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
@@ -32,7 +32,10 @@ vi.mock('@xterm/xterm', () => ({
     modes = { mouseTrackingMode: 'any' };
     element = document.createElement('div');
     typed: (d: string) => void = () => {};
+    painted: string[] = [];
     constructor() { xterm = this; }
+    reset(): void { this.painted = []; }
+    write(d: string): void { this.painted.push(d); }
     loadAddon(): void {}
     open(host: HTMLElement): void { host.append(this.element); }
     onData(h: (d: string) => void): void { this.typed = h; }
@@ -272,6 +275,21 @@ test('the phone shows "<machine> is not reachable" over a placed robot\'s termin
   expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault is not reachable');
   act(() => store.getState().setFleet(onVault(true)));
   expect(screen.queryByTestId('phone-unreachable')).toBeNull();
+});
+
+test('a phone opening a placed robot while its worker is away shows the last screen the home saw under the sentence, and opens the terminal once it is back', async () => {
+  store.getState().setFleet(onVault(false));
+  store.getState().setStatus('online');
+  call.mockResolvedValueOnce({ text: '$ make test\r\nok', at: 1 });
+  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(call).toHaveBeenCalledWith('term.lastScreen', { id: 'c2' });
+  expect(xterm.painted).toEqual(['$ make test\r\nok']);
+  expect(open).not.toHaveBeenCalled();
+  expect(container.querySelector('.failed')).toBeNull();
+  expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault is not reachable');
+  await act(async () => { store.getState().setFleet(onVault(true)); });
+  expect(open).toHaveBeenCalledTimes(1);
 });
 
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {

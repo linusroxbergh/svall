@@ -107,18 +107,28 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     link.current?.resize();
   }, [fontSize]);
 
-  // Safari drops the socket on lock and discards backgrounded tabs; every return repaints the pane
+  // Safari drops the socket on lock and discards backgrounded tabs; every return repaints the pane. A worker out of
+  // reach shows the last screen the home saw of the pane, and the terminal opens once it is back
+  const away = !!unreachable;
   useEffect(() => {
     if (!online) return;
     let left = false;
     setFailed(undefined);
     setSendError(undefined);
-    // opening a dormant robot wakes it, as on the desktop
-    const woken = robot && !robot.tmux ? phone.api().call('robot.revive', { id }) : Promise.resolve();
-    woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
+    if (away) {
+      phone.api().call('term.lastScreen', { id }).then((r) => {
+        if (left || !r.text) return;
+        xterm.current?.reset();
+        xterm.current?.write(r.text);
+      }, () => {});
+    } else {
+      // opening a dormant robot wakes it, as on the desktop
+      const woken = robot && !robot.tmux ? phone.api().call('robot.revive', { id }) : Promise.resolve();
+      woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
+    }
     phone.api().fire('robot.seen', { id });
     return () => { left = true; };
-  }, [id, online, attempt]);
+  }, [id, online, attempt, away]);
 
   // a window lost while the view is open waits for revive, as on the desktop; one that comes back clears it
   const windowId = robot?.tmux?.windowId;
