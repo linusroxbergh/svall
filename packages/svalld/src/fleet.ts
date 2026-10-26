@@ -42,7 +42,7 @@ import { reconcile, secondName, snapshot, type Carried } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
-import { Scribe, type SweepOptions } from './scribe/scribe.js';
+import { Scribe, type FarPass, type Only, type SweepOptions } from './scribe/scribe.js';
 import { fullWake } from './scribe/wake.js';
 import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
@@ -108,10 +108,11 @@ export class Fleet extends EventEmitter<Events> {
 
   constructor(private deps: Deps) {
     super();
-    const { store, log, config } = deps;
+    const { store, log, config, remote } = deps;
     const run = deps.runScribe ?? perPass(() => this.scribeRunner());
     const runsHere = (c: Robot) => this.runsHere(c);
-    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere });
+    const far = remote && ((id: string, only?: Only, columns?: Column[], sweep?: true) => remote.scribe(id, only, columns, sweep));
+    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere, far });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending, runsHere };
     const writable = () => this.writable();
     const track = (work: Promise<unknown>, what: string) => this.track(work, what);
@@ -419,7 +420,8 @@ export class Fleet extends EventEmitter<Events> {
     const { paths, store } = this.deps;
     const agent = store.state.scribeAgent ?? 'claude';
     const cwd = path.join(paths.home, 'scribe');
-    const model = this.model('scribe', agent);
+    // a worker passes its robots for its home, on the home's model
+    const model = this.deps.remote?.onWorker ? store.state.scribeModel : this.model('scribe', agent);
     if (agent === 'claude') return claudeRunner({ model: model!, cwd, envFile: paths.env });
     return agent === 'codex' ? codexRunner({ model, cwd }) : opencodeRunner({ model, cwd });
   }
@@ -478,6 +480,11 @@ export class Fleet extends EventEmitter<Events> {
   // names, notes, links and island descriptions for the whole fleet, now; one line per change
   sweep(o: SweepOptions): Promise<string[]> {
     return this.scribe.sweep(o);
+  }
+
+  /** The pass a robot's home asked for over its transcript here, which writes nothing. */
+  scribeRead(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
+    return this.scribe.readRobot(id, only, columns, sweep);
   }
 
   setScribe(enabled: boolean): void {

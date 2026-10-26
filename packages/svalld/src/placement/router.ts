@@ -1,12 +1,13 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type Result, type Robot } from '@svall/protocol';
+import { ApiError, Column, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import { handoverGit } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { FarPass, type Only } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
@@ -16,6 +17,8 @@ import { homeRootOf } from './repo-key.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
 const callMs = (method: MethodName, params: unknown): number => 30_000 + serverWait(method, params);
+const SCRIBE_MS = 10 * 60_000;
+const ScribeRun = z.object({ id: z.string(), only: z.enum(['names', 'columns']).optional(), columns: z.array(Column).optional(), sweep: z.literal(true).optional() });
 
 type Options = {
   store: Store;
@@ -72,6 +75,17 @@ export class Router {
     // a worker is linked to its home alone, which sends the call on
     if (!this.o.links) return this.toHome(method, params, signal) as Promise<Result<M>>;
     return this.o.links.call<Result<M>>(at, method, params, { timeoutMs: callMs(method, params), signal });
+  }
+
+  /** On the home: the scribe's pass over a placed robot's transcript, made on its machine; undefined when that machine made none. */
+  async scribe(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
+    const at = this.placedAt(id);
+    if (!at || !this.o.links) return undefined;
+    const raw = await this.o.links.call(at, 'scribe.run', { id, only, columns, sweep }, { timeoutMs: SCRIBE_MS })
+      .catch((e: unknown) => { if (e instanceof ApiError && e.code === 'not_reachable') return undefined; throw e; });
+    // a machine away, a pass skipped there and an answer this Mac cannot read all wait for the next pass
+    const r = FarPass.safeParse(raw);
+    return r.success ? r.data : undefined;
   }
 
   /** A worker's call to its home, refused while the home cannot be reached. */
@@ -168,6 +182,11 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
     'term.attach': on('term.attach', (p) => terminals.attach(p.id, p.term)),
     'robot.close': forget,
     'robot.forget': forget,
+    'scribe.run': async (raw) => {
+      const p = ScribeRun.safeParse(raw);
+      if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+      return (await fleet.scribeRead(p.data.id, p.data.only, p.data.columns, p.data.sweep)) ?? { skipped: true };
+    },
     'repo.probe': async (raw) => {
       const p = RepoProbeParams.safeParse(raw);
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));

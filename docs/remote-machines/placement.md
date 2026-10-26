@@ -10,7 +10,9 @@ a machine badge on its card, token and board card, and keeps its board column; `
 `revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
 Changes and Resources stay hidden, as its files are on the worker's disk; **Terminal there** opens a terminal in its
 folder. The Usage panel counts the robots on each worker too, read on the worker where their transcripts are; a worker
-that does not answer within 5 seconds is left out, and this Mac's own limits still show.
+that does not answer within 5 seconds is left out, and this Mac's own limits still show. The scribe names, notes and
+links a robot on a worker, and places it on the board, as it does one here: this Mac asks, the worker reads the
+transcript, and this Mac writes the answer.
 
 ## Moving one
 
@@ -198,8 +200,7 @@ linus-vault; move every robot back first".
 - The phone cannot see the server's robots while the Mac sleeps.
 - No replica divergence protection, because there are no replicas: the only shared thing is a branch, and git owns it.
 - A worker that disappears for good: its robots stay unknown until you close them.
-- The scribe reads the transcripts of robots on this Mac alone: a robot on a worker keeps its name, note and board
-  column until you change them.
+- The scribe passes a robot on a worker only while this Mac is awake to ask for it.
 - A question an agent had open does not survive a move: the agent resumes idle and asks again.
 - The conversation travels whole: anything the agent pasted or printed in it, a key included, is in the transcript
   on both machines.

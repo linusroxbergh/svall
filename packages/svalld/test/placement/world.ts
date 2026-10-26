@@ -19,6 +19,7 @@ import { homeRootOf } from '../../src/placement/repo-key.js';
 import { Replay } from '../../src/placement/replay.js';
 import { Router, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
+import type { RunScribe } from '../../src/scribe/run.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
@@ -71,12 +72,13 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
  * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
  * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
  * and the home's replay, router and docs log to `homeLog`; each side reads its robots' usage as main.ts does, its
- * Claude login answering with `usage.claude` and each rollout with its text in `usage.tails`.
+ * Claude login answering with `usage.claude` and each rollout with its text in `usage.tails`; `scribe` answers each
+ * side's scribe passes, and the worker's scribe is off as main.ts has it.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
   mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } }; homeLog?: Logger;
-  usage?: { claude?: FetchUsage; tails?: Record<string, string> };
+  usage?: { claude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
 }) {
   const config = Config.parse({});
   const stops: (() => unknown)[] = [];
@@ -117,12 +119,13 @@ export function world(o: {
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
   const homeFleet = new Fleet({
     store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter,
-    repoRoot: (c) => homeRootOf(c, homeStore.state.machines, '/Users/ada'),
+    repoRoot: (c) => homeRootOf(c, homeStore.state.machines, '/Users/ada'), runScribe: o.scribe?.home,
   });
   const homeUsage = usageOf(homeStore, homeRouter);
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, { usage: homeUsage, links });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
+  workerStore.update((d) => { d.scribeOff = true; });
   const workerOwnership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
   const handlers: Handlers = {};
   const outbox = Outbox.open(workerPaths);
@@ -136,6 +139,7 @@ export function world(o: {
     store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [], refreshLinks: async () => {},
     created: (c, p) => mutations.created(c, p), repoRoot: (c) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home),
+    runScribe: o.scribe?.worker,
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
   const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
@@ -161,7 +165,7 @@ export function world(o: {
         return () => { held = undefined; release(); };
       },
     },
-    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs, outbox, tmux: workerTmux, mutations, usage: workerUsage },
+    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs, outbox, tmux: workerTmux, mutations, usage: workerUsage, handlers },
     /** Both ends up, and the worker synced. */
     async link(): Promise<void> {
       workerDocs?.start();
