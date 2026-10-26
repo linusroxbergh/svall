@@ -18,7 +18,7 @@ import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, branchAhead, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, serversLeft, takeBack, unpack, wake,
   type ReturnSheet,
 } from './move.js';
 import { seedTrust } from './trust.js';
@@ -384,6 +384,8 @@ export class PrepareService {
     if (j.phase === 'done') throw new ApiError('invalid', `move ${j.id} is done on ${this.name}`);
     const c = this.d.store.state.robots[j.robotId];
     if (c?.machine === this.d.me) {
+      const { store, tmux, processes, kill, clock } = this.d;
+      await serversLeft({ store, tmux, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) }, j, (x) => this.save(x));
       for (const t of j.rest?.stoppedTerminals ?? []) {
         await (t.term === 2 ? this.d.fleet.openSecond(j.robotId, undefined, j.id) : this.d.fleet.reviveRobot(j.robotId, undefined, undefined, j.id))
           .catch((e: Error) => this.d.log.error(`move ${j.id}: ${j.robotId} did not reopen: ${e.message}`));

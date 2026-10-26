@@ -18,7 +18,7 @@ import { SourceJournal, type JournalState } from '../handover/journal.js';
 import { clean } from '../path-tools.js';
 import { ProcessTable } from '../processes.js';
 import { relocate } from './relocate.js';
-import { classifyTerminals, restTerminals, type Classified, type RestChoices, type RestDeps } from './rest.js';
+import { classifyTerminals, restTerminals, serversGone, type Classified, type RestChoices, type RestDeps } from './rest.js';
 import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../sessions/registry.js';
 import { SessionError, type CliRun, type SessionAdapter } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
@@ -270,9 +270,19 @@ export async function liveTerminals(d: Pick<RestDeps, 'store' | 'tmux' | 'proces
 /** What a worker sends of a robot's way back: what travels, and the class of each of its live terminals there. */
 export type ReturnSheet = Carried & { terminals: Pick<Classified, 'term' | 'class'>[] };
 
+// the move's `rest` as the rest code reads and writes it, each write saved with the move's journal
+function restJournal(j: MoveJournal, save: (j: MoveJournal) => void): RestDeps['journal'] & { current(): MoveJournal } {
+  let cur = j;
+  return {
+    journalState: (): JournalState => ({ kind: 'open', journal: cur.rest! }),
+    write: (rest: SourceJournal) => { cur = { ...cur, rest }; save(cur); },
+    current: () => cur,
+  };
+}
+
 /** Rests the robot's terminals and closes their windows, recording what it stops as the journal's `rest`. */
 export async function restRobot(deps: RestSide, j: MoveJournal, save: (j: MoveJournal) => void, fleetId: FleetId, choices: RestChoices): Promise<MoveJournal> {
-  let cur: MoveJournal = j.rest ? j : {
+  const cur: MoveJournal = j.rest ? j : {
     ...j,
     rest: {
       role: 'source', transactionId: j.id, generation: 0, fleetId, fromMachineId: j.from, toMachineId: j.to, phase: 'freeze',
@@ -280,13 +290,25 @@ export async function restRobot(deps: RestSide, j: MoveJournal, save: (j: MoveJo
     },
   };
   save(cur);
-  const journal = {
-    journalState: (): JournalState => ({ kind: 'open', journal: cur.rest! }),
-    write: (rest: SourceJournal) => { cur = { ...cur, rest }; save(cur); },
-  };
+  const journal = restJournal(cur, save);
   const r = await boundary('move.rest', () => restTerminals({ ...deps, journal }, { choices, only: (t) => t.robotId === j.robotId }));
   if (!r.ok) throw new Error(r.blockers.map((b) => b.message).join('; '));
-  return cur;
+  return journal.current();
+}
+
+/**
+ * Waits for the OpenCode server each terminal the move's rest closed left running, and kills one that outlasts the
+ * settle, before the terminal reopens: an OpenCode resumed beside it would share its database. A terminal whose window
+ * still runs keeps its server.
+ */
+export async function serversLeft(deps: Omit<RestSide, 'viewers'>, j: MoveJournal, save: (j: MoveJournal) => void): Promise<void> {
+  if (!j.rest) return;
+  const live = new Set((await deps.tmux.listWindows().catch((e: unknown) => { if (noServer(e)) return []; throw e; })).map((w) => w.windowId));
+  await serversGone({ ...deps, journal: restJournal(j, save) }, {}, (t) => {
+    const c = deps.store.state.robots[t.robotId];
+    const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
+    return !window || !live.has(window);
+  });
 }
 
 /** Locks the worktree at `root` with `reason`; one locked already stays as it is. */
@@ -684,6 +706,7 @@ export class Placement {
       delete c.restedBy;
       if (c.second) delete c.second.restedBy;
     });
+    await serversLeft(this.restDeps(), j, (x) => this.save(x));
     for (const t of j.rest?.stoppedTerminals ?? []) {
       await (t.term === 2 ? this.d.fleet.openSecond(id) : this.d.fleet.reviveRobot(id))
         .catch((e: Error) => this.d.log.error(`move ${j.id}: ${id} did not reopen: ${e.message}`));
