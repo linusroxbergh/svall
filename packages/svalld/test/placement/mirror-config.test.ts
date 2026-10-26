@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  configNeeds, configSecrets, FIELD_PATHS, isMacOnly, isOAuth, needsOf, oauthLogin, readPluginConfigs, readPlugins, readServers, redacted,
+  configNeeds, configSecrets, FIELD_PATHS, isMacOnly, isOAuth, needsOf, oauthLogin, readMirrorVars, readPluginConfigs, readPlugins, readServers, redacted,
   relocatedServer, runtimesOf, secretsOf, type McpServer,
 } from '../../src/placement/mirror-config.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -243,5 +243,16 @@ describe('reading agent configs and finding secrets by field', () => {
   it('an opencode.jsonc with trailing commas parses, a comma in a string stays', () => {
     const { servers, unreadable } = readServers(withJsonc('{ "mcp": { "servers": { "t": { "type": "local", "command": ["x", "a,}",], }, }, }, }'), []);
     expect([unreadable, servers.map((s) => [s.command, s.args])]).toEqual([[], [['x', ['a,}']]]]);
+  });
+});
+
+describe('readMirrorVars', () => {
+  it('reads the recorded names, dropping any that are not variable names, and nothing when the file is absent or malformed', () => {
+    const dir = makeHome();
+    expect(readMirrorVars(path.join(dir, 'none.json'))).toEqual([]);
+    fs.writeFileSync(path.join(dir, 'bad.json'), '{oops');
+    expect(readMirrorVars(path.join(dir, 'bad.json'))).toEqual([]);
+    fs.writeFileSync(path.join(dir, 'ok.json'), JSON.stringify(['GAMMA_TOKEN', 'lower', 'A B', 7, '_X1']));
+    expect(readMirrorVars(path.join(dir, 'ok.json'))).toEqual(['GAMMA_TOKEN', '_X1']);
   });
 });

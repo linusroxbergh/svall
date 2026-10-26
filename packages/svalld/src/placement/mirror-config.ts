@@ -74,7 +74,6 @@ const docs = (v: unknown): [string, Doc][] => (isDoc(v) ? Object.entries(v).filt
 const texts = (v: unknown): Record<string, string> => (isDoc(v) ? Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === 'string')) as Record<string, string> : {});
 const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** JSON with `//` and `/* *\/` comments and trailing commas outside its strings, as OpenCode reads its config. */
 /** The variable names the mirror recorded as needed on this machine; none when the file is absent or unreadable. */
 export function readMirrorVars(file: string): string[] {
   try {
@@ -83,6 +82,7 @@ export function readMirrorVars(file: string): string[] {
   } catch { return []; }
 }
 
+/** JSON with `//` and `/* *\/` comments and trailing commas outside its strings, as OpenCode reads its config. */
 export function parseJsonc(source: string): unknown {
   const bare = source.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, s: string | undefined) => s ?? '');
   return JSON.parse(bare.replace(/("(?:\\.|[^"\\])*")|,(?=\s*[}\]])/g, (_, s: string | undefined) => s ?? ''));

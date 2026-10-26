@@ -44,7 +44,7 @@ async function readAll(input: NodeJS.ReadableStream): Promise<string> {
 
 // the value read without echo from a terminal, or whole from a pipe with one trailing newline trimmed
 async function readSecret(name: string): Promise<string> {
-  if (process.stdin.isTTY !== true) return (await readAll(process.stdin)).replace(/\n$/, '');
+  if (process.stdin.isTTY !== true) return (await readAll(process.stdin)).replace(/\r?\n$/, '');
   const muted = new Writable({ write: (_c, _e, done) => done() });
   process.stderr.write(`value for ${name} (not shown): `);
   const rl = readline.createInterface({ input: process.stdin, output: muted, terminal: true });
@@ -83,13 +83,19 @@ export function workerCommands(target: () => Target): Command {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) throw new Error(`${name} is not a variable name`);
       const value = await readSecret(name);
       if (!value) throw new Error('no value given');
+      // the .env reader would return anything else changed
+      if (/[\r\n]/.test(value) || value !== value.trim() || /^(["']).*\1$/.test(value)) {
+        throw new Error('the value cannot be stored in .env: it must be one line, without leading or trailing spaces, and not wrapped in quotes');
+      }
       const file = resolvePaths(target().home).env;
       const old = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
       const lines = old.split('\n').filter((l, i, all) => l !== '' || i < all.length - 1);
       const line = `${name}=${value}`;
-      const at = lines.findIndex((l) => new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`).test(l));
-      if (at < 0) lines.push(line); else lines[at] = line;
-      writeDurable(file, Buffer.from(`${lines.join('\n')}\n`), { mode: 0o600 });
+      const mine = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`);
+      const at = lines.findIndex((l) => mine.test(l));
+      const kept = lines.filter((l) => !mine.test(l));
+      kept.splice(at < 0 ? kept.length : at, 0, line);
+      writeDurable(file, Buffer.from(`${kept.join('\n')}\n`), { mode: 0o600 });
       process.stdout.write(`${name} is set for this fleet's robots on this machine\n`);
     });
   return cmd;
