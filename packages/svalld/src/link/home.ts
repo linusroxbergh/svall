@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
-import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineLink } from '@svall/protocol';
+import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineLink, type MethodName } from '@svall/protocol';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
@@ -24,6 +24,8 @@ const LAST_RETRY_MS = 60_000;
 const PUSH_AFTER_MS = 250;
 // how often a worker in mismatch is greeted again
 const REHELLO_MS = 5 * 60_000;
+// how long each worker has to answer what the home asks them all
+const ASK_MS = 5_000;
 
 export type Via = { ssh: string; controlSocket: string };
 export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via: Via }>;
@@ -457,6 +459,11 @@ export class HomeLinks {
     return this.links.get(machine);
   }
 
+  /** The workers a call reaches now. */
+  connectedWorkers(): MachineId[] {
+    return [...this.links.values()].filter((l) => l.connected()).map((l) => l.machine);
+  }
+
   /** Sends `machine` the home's agent configuration, as before a move; resolves whether or not it went. */
   pushMirror(machine: MachineId): Promise<void> {
     return this.links.get(machine)?.pushMirror() ?? Promise.resolve();
@@ -501,4 +508,12 @@ export class HomeLinks {
     await Promise.all([...this.links.values()].map((l) => l.push(snap)));
     return snap.version;
   }
+}
+
+/** What every connected worker answers `method` with, each asked at once with no params; one that fails or takes
+ *  longer than ASK_MS is left out. */
+export async function askWorkers<T>(links: Pick<HomeLinks, 'call' | 'connectedWorkers'>, method: MethodName): Promise<{ machine: MachineId; answer: T }[]> {
+  const answers = await Promise.all(links.connectedWorkers().map((machine) =>
+    links.call<T>(machine, method, {}, { timeoutMs: ASK_MS }).then((answer) => ({ machine, answer }), () => undefined)));
+  return answers.filter((a) => a !== undefined);
 }

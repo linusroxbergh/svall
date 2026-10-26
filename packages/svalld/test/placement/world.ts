@@ -22,6 +22,7 @@ import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
+import { fleetUsage, type FetchUsage } from '../../src/usage/usage.js';
 import { WorkerMutations } from '../../src/worker/mutations.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
@@ -61,7 +62,7 @@ function storeWith(paths: Paths, state: Partial<FleetState>): Store {
 }
 
 // the parts of the API context the calls under test read
-const ctxOf = (store: Store, fleet: Fleet, ownership: OwnershipState, router: Router, mutations?: WorkerMutations): Ctx => ({ store, fleet, ownership, router, viewer, mutations }) as unknown as Ctx;
+const ctxOf = (store: Store, fleet: Fleet, ownership: OwnershipState, router: Router, more: Partial<Ctx>): Ctx => ({ store, fleet, ownership, router, viewer, ...more }) as unknown as Ctx;
 
 type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
@@ -69,14 +70,20 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
  * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
  * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
  * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
- * and the home's replay, router and docs log to `homeLog`.
+ * and the home's replay, router and docs log to `homeLog`; each side reads its robots' usage as main.ts does, its
+ * Claude login answering with `usage.claude` and each rollout with its text in `usage.tails`.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
   mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } }; homeLog?: Logger;
+  usage?: { claude?: FetchUsage; tails?: Record<string, string> };
 }) {
   const config = Config.parse({});
   const stops: (() => unknown)[] = [];
+  const usageOf = (store: Store, router: Router): FetchUsage => fleetUsage({
+    state: () => store.state, claude: o.usage?.claude ?? (async () => ({ available: false, windows: [] })),
+    readTail: (file) => o.usage?.tails?.[file] ?? '', runsHere: (c) => router.runsHere(c),
+  });
 
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
@@ -112,7 +119,8 @@ export function world(o: {
     store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter,
     repoRoot: (c) => homeRootOf(c, homeStore.state.machines, '/Users/ada'),
   });
-  const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter);
+  const homeUsage = usageOf(homeStore, homeRouter);
+  const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, { usage: homeUsage, links });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
   const workerOwnership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
@@ -132,19 +140,20 @@ export function world(o: {
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
   const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
+  const workerUsage = usageOf(workerStore, workerRouter);
   const workerDocs = o.docs && new WorkerDocs({
     dir: path.join(workerPaths.cache, 'docs'), file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
   });
   Object.assign(
-    handlers, o.far ?? workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), workerDocs?.handlers,
+    handlers, o.far ?? { ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), 'usage.get': () => workerUsage() }, workerDocs?.handlers,
     o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, connection, log: silentLogger }),
   );
-  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, mutations);
+  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, { mutations, usage: workerUsage });
 
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop());
   return {
     home: {
-      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay,
+      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay, usage: homeUsage,
       /** Holds the mutations the home takes from here on, until the function it returns is called. */
       hold(): () => void {
         let release!: () => void;
@@ -152,7 +161,7 @@ export function world(o: {
         return () => { held = undefined; release(); };
       },
     },
-    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs, outbox, tmux: workerTmux, mutations },
+    worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs, outbox, tmux: workerTmux, mutations, usage: workerUsage },
     /** Both ends up, and the worker synced. */
     async link(): Promise<void> {
       workerDocs?.start();

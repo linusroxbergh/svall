@@ -1,11 +1,11 @@
 import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo, type UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../handover/git-extensions.js';
 import type { HandoverService } from '../handover/service.js';
-import type { HomeLinks } from '../link/home.js';
+import { askWorkers, type HomeLinks } from '../link/home.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
@@ -19,12 +19,13 @@ import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
+import { mergeUsage } from '../usage/merge.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh'>; mutations?: WorkerMutations; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -104,7 +105,12 @@ export const handlers: Handlers = {
   'fleets.start': async (p, { fleets }) => ({ home: await fleets.start(p.home) }),
   'fleet.rename': (p, { fleet }) => { fleet.renameFleet(p.name); return {}; },
   'fleet.stop': async (_p, { fleet }) => { await fleet.stopAll(); return {}; },
-  'usage.get': (_p, { usage }) => usage(),
+  // each worker reads its own robots' usage, where their transcripts are
+  'usage.get': async (_p, { usage, links }) => {
+    if (!links) return usage();
+    const [home, workers] = await Promise.all([usage(), askWorkers<UsageSnapshot>(links, 'usage.get')]);
+    return mergeUsage(home, workers.map((w) => w.answer));
+  },
   'load.get': (_p, { load }) => load(),
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first

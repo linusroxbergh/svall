@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { FleetState, UsageSnapshot, UsageWindow } from '@svall/protocol';
+import type { FleetState, Robot, UsageSnapshot, UsageWindow } from '@svall/protocol';
 import { lastTokenCount, type RawRateLimits, type RawRateWindow } from '../agent/codex-transcript.js';
 import { readTail as readFileTail } from '../agent/transcript.js';
 import { spawnClaude } from '../claude.js';
@@ -145,7 +145,7 @@ const CODEX_TAIL = 64 * 1024;
 // a plan shows only while a robot runs on it. Codex answers no usage question out of band and
 // reports its limits on every turn instead, so they are read off the live sessions' rollouts when the
 // panel asks: nothing is remembered, and a reading is no older than the last turn of an open session
-export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string }): FetchUsage {
+export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string; runsHere?: (c: Robot) => boolean }): FetchUsage {
   const tail = o.readTail ?? ((file: string) => readFileTail(file, CODEX_TAIL));
   // the login line names only the plans whose windows show
   const withAccount = (snapshot: UsageSnapshot, claude: UsageSnapshot | undefined, codex: boolean): UsageSnapshot => {
@@ -156,7 +156,8 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
     return account ? { ...snapshot, account } : snapshot;
   };
   return async () => {
-    const agents = Object.values(o.state().robots).flatMap((c) => (c.tmux && c.agent ? [c.agent] : []));
+    // a robot runsHere leaves out is read on the machine it runs on, where its transcript is
+    const agents = Object.values(o.state().robots).flatMap((c) => (c.tmux && c.agent && (o.runsHere?.(c) ?? true) ? [c.agent] : []));
     const newest = agents
       .flatMap((a) => (a.kind === 'codex' && a.transcriptPath ? [lastTokenCount(tail(a.transcriptPath))] : []))
       .flatMap((t) => (t?.limits ? [{ at: t.at, limits: t.limits }] : []))
