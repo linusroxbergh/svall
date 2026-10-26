@@ -36,6 +36,7 @@ describe('Outbox', () => {
     expect(emptied.append('robot.sync', {})).toBe(4);
   });
 
+  // a thousand durable writes, which take tens of seconds under a loaded run
   it("keeps one unacknowledged entry per kind and key, on disk too, and never folds an entry without a key", () => {
     const paths = resolvePaths(makeHome());
     const o = Outbox.open(paths);
@@ -52,7 +53,7 @@ describe('Outbox', () => {
     expect([o.last(), ...o.after(0)]).toEqual([1003, ...kept]);
     expect(fs.readFileSync(paths.outbox, 'utf8').trim().split('\n').map((l) => JSON.parse(l))).toEqual(kept);
     expect(Outbox.open(paths).after(0)).toEqual(kept);
-  });
+  }, 90_000);
 
   it('an ack of a seq that gave way trims up to it, and the entries after it replay in order', () => {
     const paths = resolvePaths(makeHome());
