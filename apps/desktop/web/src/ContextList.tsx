@@ -5,7 +5,7 @@ import { followLink } from './LinkAsk.js';
 import { LinkIcon } from './map/LinkIcon.js';
 import { linkText } from './map/tokenText.js';
 
-export function ContextPills({ items, ids, robotId, onChange }: { items: ContextItem[]; ids: { list: string; remove: string }; robotId?: string; onChange(next: ContextItem[]): void }) {
+export function ContextPills({ items, ids, robotId, onChange }: { items: ContextItem[]; ids: { list: string; remove: string }; robotId?: string; onChange(next: ContextItem[], removed?: string): void }) {
   return (
     <div className="pills" data-testid={ids.list}>
       {items.map((it, i) => (
@@ -13,7 +13,7 @@ export function ContextPills({ items, ids, robotId, onChange }: { items: Context
           <i className="lg"><LinkIcon item={it} /></i>
           <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} title={it.ref}
             onClick={(e) => { e.preventDefault(); followLink(it, robotId, { x: e.clientX, y: e.clientY }); }}>{linkText(it)}</a>
-          <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i))}>×</button>
+          <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i), it.ref)}>×</button>
         </span>
       ))}
     </div>

@@ -181,7 +181,8 @@ export const methods = {
     result: Island,
   },
   'island.update': {
-    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional() }),
+    // removed: the refs a person took off context, which the scribe leaves off until they are added again
+    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), removed: z.array(z.string()).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional() }),
     result: Island,
   },
   'island.delete': { params: Id, result: z.object({}) },
@@ -201,6 +202,8 @@ export const methods = {
     params: z.object({
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
+      // the refs a person took off context, which the scribe and the branch lookup leave off until they are added again
+      removed: z.array(z.string()).optional(),
       // '' clears it
       agentProfile: z.string().optional(), figure: z.number().int().min(1).optional()
     }),

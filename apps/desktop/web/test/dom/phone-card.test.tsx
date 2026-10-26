@@ -49,9 +49,9 @@ test('a link opens in the browser, and a path on the Mac is only named', () => {
 test('removes and adds context as the whole list', () => {
   open();
   fireEvent.click(screen.getByRole('button', { name: 'Remove the PR' }));
-  expect(updates().at(-1)).toEqual({ id: 'c0', context: [plan] });
+  expect(updates().at(-1)).toEqual({ id: 'c0', context: [plan], removed: [pr.ref] });
   fireEvent.click(screen.getByRole('button', { name: 'Remove plan.md' }));
-  expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr] });
+  expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr], removed: [plan.ref] });
   expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => screen.getByLabelText('Add a url or path').getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   fireEvent.change(screen.getByLabelText('Add a url or path'), { target: { value: ' https://herdr.dev/docs ' } });
   fireEvent.submit(screen.getByLabelText('Add a url or path').closest('form')!);

@@ -170,7 +170,7 @@ test('a link the scribe added is taken off by its ×', () => {
   store.getState().setFleet(f);
   render(<Side />);
   fireEvent.click(screen.getByTestId('context-remove'));
-  expect(updates()).toEqual([['robot.update', { id: 'c0', context: [] }]]);
+  expect(updates()).toEqual([['robot.update', { id: 'c0', context: [], removed: ['https://doc'] }]]);
 });
 
 test('a link half typed for one robot is not offered to the next', () => {

@@ -82,7 +82,7 @@ export function SideCard({ id }: { id: string }) {
   const pct = contextPctOf(c);
   const starred = c.star !== undefined;
   const save = (patch: Patch) => saveRobot(deps(), id, patch);
-  const saveContext = (context: ContextItem[]) => saveRobotContext(deps(), id, context);
+  const saveContext = (context: ContextItem[], removed?: string) => saveRobotContext(deps(), id, context, removed);
 
   return (
     <aside className="side" data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>

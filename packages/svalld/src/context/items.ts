@@ -25,13 +25,14 @@ export function settleItems(items: ContextItem[], current: ContextItem[] = []): 
   });
 }
 
-// a scribe or branch link a person takes off is remembered, so neither adds it back until it is added by hand
-export function setContext(holder: { context: ContextItem[]; removedLinks?: string[] }, next: ContextItem[]): void {
+// a scribe or branch link a person names as removed is remembered, so neither adds it back until it is added by hand
+export function setContext(holder: { context: ContextItem[]; removedLinks?: string[] }, next: ContextItem[], removed: string[] = []): void {
   const kept = new Set(next.map((it) => bareUrl(it.ref)));
-  const gone = holder.context.filter((it) => it.source !== 'manual' && !kept.has(bareUrl(it.ref))).map((it) => bareUrl(it.ref));
-  const removed = [...new Set([...(holder.removedLinks ?? []), ...gone])].filter((ref) => !kept.has(ref));
+  const named = new Set(removed.map((ref) => bareUrl(itemUrl(ref))));
+  const gone = holder.context.filter((it) => it.source !== 'manual' && named.has(bareUrl(it.ref))).map((it) => bareUrl(it.ref));
+  const all = [...new Set([...(holder.removedLinks ?? []), ...gone])].filter((ref) => !kept.has(ref));
   holder.context = next;
-  if (removed.length) holder.removedLinks = removed; else delete holder.removedLinks;
+  if (all.length) holder.removedLinks = all; else delete holder.removedLinks;
 }
 
 // the PR the work is on leads a robot's links: the branch's own, as the lookup shows it or the scribe holds it (the

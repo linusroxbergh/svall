@@ -75,13 +75,21 @@ describe('prFirst', () => {
 
 describe('setContext', () => {
   const item = (source: ContextItem['source'], ref: string): ContextItem => ({ kind: 'other', ref, label: '', source });
-  it('remembers a scribe or branch link taken off, not a manual one, until it is added again', () => {
+  it('remembers a scribe or branch link named as removed, not a manual one, until it is added again', () => {
     const holder: { context: ContextItem[]; removedLinks?: string[] } = { context: [item('scribe', 'https://Doc/'), item('auto', 'https://repo'), item('manual', 'https://mine')] };
-    setContext(holder, [item('auto', 'https://repo')]);
+    setContext(holder, [item('auto', 'https://repo')], ['https://Doc/', 'https://mine']);
     expect(holder.removedLinks).toEqual(['doc/']);
-    setContext(holder, []);
+    setContext(holder, [], ['https://repo']);
     expect(holder.removedLinks).toEqual(['doc/', 'repo/']);
     setContext(holder, [item('manual', 'https://doc'), item('manual', 'https://repo')]);
     expect(holder).toEqual({ context: [item('manual', 'https://doc'), item('manual', 'https://repo')] });
+  });
+  // a list sent before a scribe or branch write landed leaves that link out without anyone taking it off
+  it('records nothing for a link the list only leaves out', () => {
+    const holder: { context: ContextItem[]; removedLinks?: string[] } = { context: [item('auto', 'https://github.com/o/r/pull/5')] };
+    setContext(holder, [item('manual', 'https://mine')]);
+    expect(holder.removedLinks).toBeUndefined();
+    setContext(holder, [], ['https://github.com/o/r/pull/5/files']);
+    expect(holder.removedLinks).toBeUndefined();
   });
 });

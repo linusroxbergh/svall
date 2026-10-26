@@ -27,7 +27,7 @@ export function IslandCard({ id }: { id: string }) {
   if (!i) return null;
   const robots = robotsOf(fleet, id);
   const save = (patch: Omit<Params<'island.update'>, 'id'>) => saveIsland(deps(), id, patch);
-  const saveContext = (context: ContextItem[]) => saveIslandContext(deps(), id, context);
+  const saveContext = (context: ContextItem[], removed?: string) => saveIslandContext(deps(), id, context, removed);
   return (
     <aside className="side" data-testid="side-island-card" data-drop={`island:${id}`} data-drop-hover={hover}>
       <div className="kicker">Island</div>

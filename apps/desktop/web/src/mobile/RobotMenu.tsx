@@ -44,7 +44,7 @@ function Context({ c }: { c: Robot }) {
           <div key={`${it.ref}-${i}`} className="m-link">
             <i className="lg"><LinkIcon item={it} /></i>
             {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{name}</a> : <span className="m-link-text">{name}</span>}
-            <button type="button" aria-label={`Remove ${name}`} onClick={() => set(c.context.filter((_, j) => j !== i))}>×</button>
+            <button type="button" aria-label={`Remove ${name}`} onClick={() => save({ context: c.context.filter((_, j) => j !== i), removed: [it.ref] })}>×</button>
           </div>
         );
       })}
