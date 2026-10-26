@@ -42,7 +42,9 @@ test('a placed robot shows its machine badge, Move to this Mac, and a not-reacha
   const id = await seed(svall, false, (c) => { c.machine = VAULT; });
   await fakeShell(page, svall);
   await svall.open();
-  await page.getByTestId(`sb-robot-${id}`).click();
+  await expect(page.getByTestId(`kc-${id}`)).toHaveAttribute('data-status', 'unknown');
+  await expect(page.getByTestId(`kc-machine-${id}`)).toHaveText('linus-vault');
+  await page.getByTestId(`kc-${id}`).dblclick();
   await expect(page.getByTestId('terminal-unreachable')).toHaveText('linus-vault is not reachable');
   expect((await sent(page)).some((m) => m.type === 'term.show' && m.id === id)).toBe(false);
 
@@ -77,7 +79,8 @@ test('the card greys while moving and shows Retry on an activate error', async (
   await expect(page.getByTestId(`token-${id}`).locator('.card')).toHaveCSS('filter', /grayscale/);
 
   await svall.open();
-  await page.getByTestId(`sb-robot-${id}`).click();
+  await expect(page.getByTestId(`kc-${id}`)).toHaveAttribute('data-status', 'moving');
+  await page.getByTestId(`kc-${id}`).dblclick();
   const moving = page.getByTestId('terminal-moving');
   await expect(moving).toContainText('moving to linus-vault…');
   await expect(moving.getByTestId('move-error')).toHaveText('claude exited back to its shell');
