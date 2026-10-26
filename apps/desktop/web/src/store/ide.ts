@@ -13,7 +13,7 @@ const emptyIde = (): IdeState => ({ panes: SINGLE, ratio: 0.5, open: [], top: ''
 const withSet = (list: string[], v: string, on: boolean): string[] =>
   list.includes(v) === on ? list : on ? [...list, v] : list.filter((x) => x !== v);
 
-const rootIn = (s: App, id: string): string | undefined => {
+export const rootIn = (s: App, id: string): string | undefined => {
   if (id.startsWith('r:')) return id.slice(2);
   const c = s.fleet.robots[id];
   return c && rootOf(c);

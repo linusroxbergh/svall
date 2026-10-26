@@ -33,7 +33,8 @@ const lines = (out: Buffer): string[] => out.toString().split('\0').filter(Boole
 /** The names in `dir` git ignores; none outside a repository. */
 export async function ignoredNames(dir: string, names: string[]): Promise<Set<string>> {
   if (names.length === 0) return new Set();
-  const r = await git(['check-ignore', '--stdin', '-z'], dir, names.join('\0') + '\0');
+  // `dir` may be any folder on the disk, and a repository's own config could name a command for fsmonitor to run
+  const r = await git(['-c', 'core.fsmonitor=false', 'check-ignore', '--stdin', '-z'], dir, names.join('\0') + '\0');
   // 0 some matched, 1 none did, 128 no repository or other refusal
   return new Set(r.code === 0 ? lines(r.stdout) : []);
 }

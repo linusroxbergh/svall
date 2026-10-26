@@ -6,7 +6,8 @@ import { panesOf } from '../selectors.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
 import { editorExtensions, languageFor } from './codemirror.js';
-import { placeOf, resolve, rootOf, within } from './where.js';
+import { rootIn } from '../store/ide.js';
+import { absOf, isAbsolute, placeOf, resolve, rootOf } from './where.js';
 
 type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
@@ -28,11 +29,14 @@ async function load(d: FilesDeps, id: string, path: string): Promise<void> {
 
 /** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why. */
 export async function openFile(d: FilesDeps, id: string, path: string): Promise<void> {
-  try { await load(d, id, path); } catch (e) {
-    d.store.getState().showToast(`${path}: ${(e as Error).message}`);
+  // an absolute path under the root opens as its place there, so the file has one tab
+  const root = rootIn(d.store.getState(), id);
+  const place = root !== undefined && isAbsolute(path) ? placeOf(path, root) : path;
+  try { await load(d, id, place); } catch (e) {
+    d.store.getState().showToast(`${place}: ${(e as Error).message}`);
     return;
   }
-  d.store.getState().openFile(id, path);
+  d.store.getState().openFile(id, place);
 }
 
 /** A path followed in the robot's terminal `beside`, as its agent prints it: relative to its cwd, and maybe ending in :line or :line:col.
@@ -41,9 +45,11 @@ export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' |
   const c = d.store.getState().fleet.robots[id];
   if (!c) return;
   const root = rootOf(c);
-  const [, name, line] = /^(.*?)(?::(\d+))?(?::\d+)?$/.exec(text)!;
-  // git gives the root by its real path, so a cwd below a link (/tmp is /private/tmp) is not under it; the root stands in
-  const abs = resolve(name, within(c.cwd, root) ? c.cwd : root, accountHome(root));
+  // the terminal's link takes in the stop that ends a sentence, and the spaces that end a line
+  const [, name, line] = /^(.*?)(?::(\d+))?(?::\d+)?$/.exec(text.trimEnd().replace(/[.!?;]+$/, ''))!;
+  // git gives the root by its real path, so a cwd below a link other than /private's is not under it; the root stands in
+  const cwd = placeOf(c.cwd, root);
+  const abs = resolve(name, isAbsolute(cwd) ? root : absOf(cwd, root), accountHome(root) ?? accountHome(d.store.getState().shell?.home));
   const path = placeOf(abs, root);
   const panes = panesOf(d.store.getState(), id);
   if (!shows(panes, 'files')) d.store.getState().setPanes(id, pick(panes, panes.right === beside ? 'left' : 'right', 'files'));

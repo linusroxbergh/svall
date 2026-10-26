@@ -21,6 +21,13 @@ describe('where', () => {
     expect(childOf('/', 'tmp', ROOT)).toBe('/tmp');
   });
 
+  it('places a path under a root whichever side of /private the two are spelled on', () => {
+    expect(placeOf('/tmp/x/a.ts', '/private/tmp/x')).toBe('a.ts');
+    expect(placeOf('/private/tmp/x/a.ts', '/tmp/x')).toBe('a.ts');
+    expect(placeOf('/tmp/x', '/private/tmp/x')).toBe('');
+    expect(placeOf('/tmp/y/a.ts', '/private/tmp/x')).toBe('/tmp/y/a.ts');
+  });
+
   it('lists the folders from a place up to the tree\'s top, the top left out', () => {
     expect(between('src/lib', '', ROOT)).toEqual(['src/lib', 'src']);
     expect(between('src', '/Users/ada/svall', ROOT)).toEqual(['src', '', '/Users/ada/svall/.wt']);

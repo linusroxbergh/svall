@@ -11,7 +11,14 @@ export const parent = (abs: string): string => abs.slice(0, abs.lastIndexOf('/')
 
 export const absOf = (p: string, root: string): string => (isAbsolute(p) ? p : p ? `${root}/${p}` : root);
 
-export const placeOf = (abs: string, root: string): string => (abs === root ? '' : within(abs, root) ? abs.slice(root.length + 1) : abs);
+// macOS keeps /tmp, /var and /etc in /private: git names a root by its real path, while a cwd or a tool may keep the link
+const unlinked = (abs: string, root: string): string =>
+  within(abs, root) ? abs : within(`/private${abs}`, root) ? `/private${abs}` : abs.startsWith('/private/') && within(abs.slice(8), root) ? abs.slice(8) : abs;
+
+export const placeOf = (abs: string, root: string): string => {
+  const p = unlinked(abs, root);
+  return p === root ? '' : within(p, root) ? p.slice(root.length + 1) : abs;
+};
 
 export const childOf = (dir: string, name: string, root: string): string => placeOf(`${absOf(dir, root).replace(/\/$/, '')}/${name}`, root);
 

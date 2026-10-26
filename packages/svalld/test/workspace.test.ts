@@ -204,6 +204,17 @@ describe('Workspace files', () => {
     expect(fs.existsSync(path.join(dir, '.git/hooks/pre-commit'))).toBe(false);
   });
 
+  it('lists a repository outside the root without running the command its config names', async () => {
+    const other = repo();
+    const ran = path.join(makeHome(), 'ran');
+    const hook = path.join(makeHome(), 'hook.sh');
+    fs.writeFileSync(hook, `#!/bin/sh\ntouch '${ran}'\nexit 1\n`, { mode: 0o755 });
+    sh(other, 'config', 'core.fsmonitor', hook);
+    const ws = workspace({ c: repo() });
+    expect((await ws.list('c', other)).find((e) => e.name === 'build')).toMatchObject({ ignored: true });
+    expect(fs.existsSync(ran)).toBe(false);
+  });
+
   it('refuses to write through a symlink that leads nowhere yet', async () => {
     const dir = repo();
     const outside = makeHome();
