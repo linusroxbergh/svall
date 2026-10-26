@@ -325,11 +325,11 @@ type Wake = {
 };
 
 // answers the agent's trust question if it shows before the robot's session reports its start or `watchMs` passes
-function watchTrust(w: Wake, j: MoveJournal, pane: string, adapter: SessionAdapter): void {
+function watchTrust(w: Wake, j: MoveJournal, name: string, pane: string, adapter: SessionAdapter): void {
   const stop = new AbortController();
   const unheard = w.fleet.onSessionStart((robotId, term) => { if (robotId === j.robotId && term === undefined) stop.abort(); });
   void answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, signal: stop.signal })
-    .catch((e: Error) => w.log.error(`move ${j.id}: ${j.robotId}'s trust question went unwatched: ${e.message}`))
+    .catch((e: Error) => w.log.error(`move ${j.id}: ${name}'s trust question went unwatched: ${e.message}`))
     .finally(unheard);
 }
 
@@ -363,7 +363,7 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     const pane = w.store.state.robots[id]?.tmux?.paneId;
     const adapter = agent && sessionAdapter(agent.kind);
     if (!adapter || !pane) return undefined;
-    if (w.trust) watchTrust(w, j, pane, adapter);
+    if (w.trust) watchTrust(w, j, c.name, pane, adapter);
     // a CLI that reports no session until its first turn is up once its window is
     if (!adapter.sessionStartOnResume) return undefined;
     return await Promise.race([started, dormant, nap(w.watchMs, watch.signal).then(() => undefined)]);
