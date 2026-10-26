@@ -45,21 +45,22 @@ export class WorkerMutations {
   };
 
   constructor(private o: {
-    store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked' | 'last'>;
+    store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
     me: MachineId; home: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>;
   }) {}
 
-  /** Whether the home has acknowledged all this worker has journaled. */
+  /** Whether the home has acknowledged every mutation this worker has journaled; its reports change nothing it could lack. */
   drained(): boolean {
-    return this.o.outbox.last() === this.o.outbox.acked();
+    return !this.o.outbox.after(this.o.outbox.acked()).some((e) => e.kind === 'mutation');
   }
 
-  // until the home has taken the journal, a change to a robot here goes after it
+  // until the home has taken the mutations, a change to a robot here goes after them
   private away(): boolean {
     return !this.o.connection.connected() || !this.drained();
   }
 
-  /** Whether this worker answers the call itself: a new robot always, and a change to one of its robots while the home is away. */
+  /** Whether this worker answers the call itself: a new robot always, and a change to one of its robots while the home is away
+   *  or has yet to take a mutation. */
   serves(method: MethodName, params: unknown): boolean {
     if (method === 'robot.create') return true;
     const id = (params as { id?: unknown }).id;
@@ -105,12 +106,11 @@ export class WorkerMutations {
 
   private async create(p: ParsedParams<'robot.create'>): Promise<Result<'robot.create'>> {
     if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(NOT_HOME);
-    const away = this.away();
-    if (away) {
-      if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA));
-      if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(this.name, p.cwd));
-    }
-    return this.o.fleet.createRobot({ ...p, note: away ? SLEPT_NOTE(this.name) : undefined });
+    // the quota, the clone and the note are for a robot started while the home cannot be reached
+    if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
+    if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA));
+    if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(this.name, p.cwd));
+    return this.o.fleet.createRobot({ ...p, note: SLEPT_NOTE(this.name) });
   }
 
   private async update(p: ParsedParams<'robot.update'>): Promise<Result<'robot.update'>> {

@@ -135,12 +135,11 @@ worker is then locked the same way, and the next move there takes it back by the
 A robot on a worker keeps working while this Mac sleeps or is out of reach, and `svall` in its terminal answers from
 the worker:
 
-- `svall robot new` starts the robot on the same worker, awake Mac or not, with `--cwd` inside a clone the worker
-  has. Started while this Mac is away, its note says "started on linus-vault while this Mac slept". A path outside
-  the worker's clones is refused: "/home/ada/notes is not inside a clone on linus-vault; start it in one"; so is
-  mission control: "mission control stays on this Mac; start it on another island". A worker starts at most five
-  robots until this Mac answers again; the sixth: "linus-vault has started 5 robots since this Mac last answered;
-  wait for it".
+- `svall robot new` starts the robot on the same worker, awake Mac or not; mission control is refused: "mission
+  control stays on this Mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
+  worker has ("/home/ada/notes is not inside a clone on linus-vault; start it in one"), the robot's note says
+  "started on linus-vault while this Mac slept", and the worker starts at most five robots until this Mac answers
+  again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
   `svall robot close` and `svall robot run` and `read` reach the robots on it.
 - `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it.

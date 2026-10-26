@@ -135,7 +135,26 @@ describe('a worker serving its robots while the home is away', () => {
     expect(mutations()).toEqual([]);
   });
 
-  it('while linked but not drained, update of a robot here is served locally; once drained it goes to the home', async () => {
+  it('with only reports unacked and the link live, an update goes to the home and a create gets neither the quota, the clone check nor the slept note', async () => {
+    const { w, call, create, mutations } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
+    await w.link();
+    await until(() => { if (w.worker.outbox.last() !== w.worker.outbox.acked()) throw new Error('not drained yet'); });
+    w.worker.store.update((d) => { d.robots.c_1.unread = true; });
+    expect(w.worker.outbox.after(w.worker.outbox.acked()).map((e) => e.kind)).toEqual(['robot.sync']);
+    expect(await call('robot.update', { id: 'c_1', note: 'linked' })).toMatchObject({ result: { note: 'linked' } });
+    expect(w.home.store.state.robots.c_1.note).toBe('linked');
+    w.worker.store.update((d) => { d.robots.c_1.unread = false; });
+    expect(await call('robot.update', { id: 'c_1', figure: 2 })).toMatchObject({ result: { figure: 2 } });
+    // the home holds every mutation unacked, and the link stays live
+    const release = w.home.hold();
+    for (let i = 0; i < 6; i++) expect(await create()).toMatchObject({ result: { machine: W, note: '' } });
+    expect(await create({ cwd: os.tmpdir() })).toMatchObject({ result: { machine: W, note: '' } });
+    expect(mutations()).toHaveLength(7);
+    expect(madeIn(await create()).noteSource).toBeUndefined();
+    release();
+  });
+
+  it('while linked with a mutation unacked, update of a robot here is served locally; once it is acked the next goes to the home', async () => {
     const { w, call } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
     const update = (note: string) => call('robot.update', { id: 'c_1', note });
     expect(await update('offline')).toMatchObject({ result: { note: 'offline' } });
