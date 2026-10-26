@@ -245,7 +245,7 @@ async function start(opts: Options): Promise<Daemon> {
   let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
-  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m);
+  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(store.state.robots, id));
   // what a worker did while this Mac slept, applied once each
   const replay = worker ? undefined : new Replay({ store, paths, log });
   const links = worker ? undefined : new HomeLinks({

@@ -101,7 +101,7 @@ export function world(o: {
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
   const homeLog = o.homeLog ?? silentLogger;
-  const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, 100);
+  const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(homeStore.state.robots, id), 100);
   // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({

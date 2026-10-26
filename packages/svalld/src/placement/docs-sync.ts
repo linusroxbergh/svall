@@ -145,10 +145,11 @@ export class HomeDocs {
   private applied = new Map<string, { sha256?: string; machine: MachineId }>();
   private oversize = false;
 
-  constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private quietMs = DOCS_QUIET_MS) {}
+  constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private holds: (robotId: string) => boolean, private quietMs = DOCS_QUIET_MS) {}
 
   /** Takes a worker's change made on this Mac's copy or held here already, else answers the conflict: a write kept beside
-   *  the file, a delete refused. A malformed event is logged and dropped; a failed write throws and stays in the outbox. */
+   *  the file, a delete refused. A malformed event, and one in the folder of a robot closed here, is logged and dropped; a
+   *  failed write throws and stays in the outbox. */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
     if (!named) return undefined;
@@ -171,6 +172,8 @@ export class HomeDocs {
       const bytes = e.data === undefined ? undefined : Buffer.from(e.data, 'base64');
       if (bytes && sha256Hex(bytes) !== e.sha256) throw new Error(`${e.path} did not arrive as it left`);
       const file = inside(this.dir, e.path);
+      const [tree, robot] = path.relative(this.dir, file).split(path.sep);
+      if (tree === 'robots' && !this.holds(robot)) throw new Error(`${robot} is closed here`);
       if (!e.id) this.log.info(`docs: ${kind} of ${e.path} from ${this.nameOf(machine)} carries no id, as an older release journaled it`);
       // past the worker's own last change, the home holds `base` only by a change made here since
       const made = e.prev === undefined ? e.base : e.prev ?? undefined;
