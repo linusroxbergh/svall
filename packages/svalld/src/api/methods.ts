@@ -139,8 +139,8 @@ export const handlers: Handlers = {
     const far = (await askWorkers(links, 'resources.get')).map((w) => ({ machine: w.machine, sources: w.answer.sources }));
     return { sources: mergeSources(sources, far, { docs, machines: store.state.machines, homedir: router?.homedir ?? os.homedir() }) };
   },
-  'fs.list': async (p, { workspace, router }) => router?.forwardRoot(p.id, 'fs.list', p) ?? { entries: await workspace.list(p.id, p.path) },
-  'fs.read': (p, { workspace, router }) => router?.forwardRoot(p.id, 'fs.read', p) ?? workspace.read(p.id, p.path),
+  'fs.list': async (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.list', p, signal) ?? { entries: await workspace.list(p.id, p.path) },
+  'fs.read': (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.read', p, signal) ?? workspace.read(p.id, p.path),
   'fs.write': (p, ctx) => { refuseRemote(ctx, p.id, p.path); return ctx.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root); },
   'docs.create': (p, { workspace }) => workspace.create(p.id, p.path, p.text),
   'docs.rename': (p, { workspace, fleet, agentProfiles }) => {
@@ -156,8 +156,8 @@ export const handlers: Handlers = {
     return { token: workspace.setAside(p.id, p.path) };
   },
   'resources.restore': (p, { workspace }) => { workspace.putBack(p.token); return {}; },
-  'repo.status': (p, { workspace, router }) => router?.forwardRoot(p.id, 'repo.status', p) ?? workspace.status(p.id, p.base),
-  'repo.file': (p, { workspace, router }) => router?.forwardRoot(p.id, 'repo.file', p) ?? workspace.file(p.id, p.path, p.base, p.from),
+  'repo.status': (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'repo.status', p, signal) ?? workspace.status(p.id, p.base),
+  'repo.file': (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'repo.file', p, signal) ?? workspace.file(p.id, p.path, p.base, p.from),
   'repo.watch': async (p, { workspace, viewer, router, remoteWatches }) => {
     if (remoteWatches && router?.rootPlacedAt(p.id)) await remoteWatches.watch(p.id, viewer);
     else workspace.watch(p.id, viewer);

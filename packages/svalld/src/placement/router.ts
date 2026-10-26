@@ -78,11 +78,11 @@ export class Router {
   }
 
   /** The answer of the machine a workspace id's folder is on to a call about it, a clone named by its path there; undefined for a folder here. */
-  forwardRoot<M extends MethodName>(id: string, method: M, params: Params<M>): Promise<Result<M>> | undefined {
+  forwardRoot<M extends MethodName>(id: string, method: M, params: Params<M>, signal?: AbortSignal): Promise<Result<M>> | undefined {
     const at = this.rootPlacedAt(id);
     if (!at || !this.o.links) return undefined;
     const far = farRootOf(id);
-    return this.o.links.call<Result<M>>(at, method, far ? { ...params, id: `r:${far.root}` } : params, { timeoutMs: callMs(method, params) });
+    return this.o.links.call<Result<M>>(at, method, far ? { ...params, id: `r:${far.root}` } : params, { timeoutMs: callMs(method, params), signal });
   }
 
   /** On the home, the user folder a worker's paths are named from here. */

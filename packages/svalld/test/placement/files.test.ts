@@ -161,13 +161,17 @@ describe('clones at one path on two workers', () => {
     const store = Store.load(resolvePaths(makeHome()).state, () => {});
     store.update((d) => { Object.assign(d, { ...emptyState(), robots: { c_1: placed({ id: 'c_1', cwd: root, repo }), c_2: placed({ id: 'c_2', cwd: root, repo, machine: W2 }) } }); });
     const asked: unknown[] = [];
-    const links = { call: async (machine: MachineId, method: string, params: unknown) => { asked.push([machine, method, params]); return { text: machine, mtimeMs: 1, root }; } };
+    const signals: unknown[] = [];
+    const links = { call: async (machine: MachineId, method: string, params: unknown, o?: { signal?: AbortSignal }) => { asked.push([machine, method, params]); signals.push(o?.signal); return { text: machine, mtimeMs: 1, root }; } };
     const router = new Router({ store, me: H, log: silentLogger, links: links as unknown as Pick<HomeLinks, 'call'> });
     expect(router.rootPlacedAt(farRootId(W, root))).toBe(W);
     expect(router.rootPlacedAt(farRootId(W2, root))).toBe(W2);
     expect(router.rootPlacedAt(`r:${root}`)).toBeUndefined();
-    expect(await router.forwardRoot(farRootId(W2, root), 'fs.read', { id: farRootId(W2, root), path: 'a.txt' })).toEqual({ text: W2, mtimeMs: 1, root });
+    const closed = new AbortController();
+    expect(await router.forwardRoot(farRootId(W2, root), 'fs.read', { id: farRootId(W2, root), path: 'a.txt' }, closed.signal)).toEqual({ text: W2, mtimeMs: 1, root });
     expect(asked).toEqual([[W2, 'fs.read', { id: `r:${root}`, path: 'a.txt' }]]);
+    // the caller's socket closing ends the wait on the link
+    expect(signals).toEqual([closed.signal]);
 
     const far = (id: string): ResourceSource => ({
       rootId: `r:${root}`, root, name: 'kanban', tier: 'repo', islandIds: ['i_1'], robotIds: [id],
