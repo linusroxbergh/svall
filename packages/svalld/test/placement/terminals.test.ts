@@ -30,15 +30,19 @@ function paneTmux() {
   const keys: { paneId: string; text: string }[] = [];
   const screens: [string, number][] = [];
   const sessions: { name: string; attached: number; created: number }[] = [];
+  const pane = { screen: Buffer.from('$ \n') };
+  // while held, a screen waits to be read
+  let gate: Promise<void> | undefined;
+  const hold = () => { let release!: () => void; gate = new Promise((r) => { release = r; }); return () => { gate = undefined; release(); }; };
   const tmux: Partial<Tmux> = {
-    viewerScreen: async (paneId, lines) => { screens.push([paneId, lines]); return Buffer.from('$ \n'); },
+    viewerScreen: async (paneId, lines) => { screens.push([paneId, lines]); await gate; return pane.screen; },
     resize: async (windowId, cols, rows) => { resized.push({ windowId, cols, rows }); },
     sendBytes: async (paneId, bytes) => { keys.push({ paneId, text: bytes.toString() }); },
     listSessions: async () => sessions,
     autoSize: async () => {},
     capture: async () => Buffer.from('$ make test\nok'),
   };
-  return { tmux, resized, keys, screens, sessions };
+  return { tmux, resized, keys, screens, sessions, hold, pane };
 }
 
 type Seen = Viewer & { got: Event[]; full: boolean };
@@ -100,6 +104,25 @@ describe('the terminal of a robot on a worker', () => {
     // a viewer gone lets go of all it held there
     w.home.terminals.closeAll(phone);
     await until(() => expect(w.worker.terminals.viewerCount('c_1')).toBe(0));
+  });
+
+  it('a close that reaches the worker while that viewer\'s open is under way there lets go of it once the open ends', async () => {
+    const { w, screens, hold, phone, other } = await linked();
+    await w.home.terminals.open('c_1', 120, 40, 2000, other);
+    const release = hold();
+    const opening = w.home.terminals.open('c_1', 40, 12, 2000, phone);
+    await until(() => expect(screens).toHaveLength(2));
+    let closed = 0;
+    const far = w.worker.handlers['far.term.close'];
+    w.worker.handlers['far.term.close'] = async (p) => { const r = await far(p); closed++; return r; };
+    w.home.terminals.close('c_1', phone);
+    await until(() => expect(closed).toBe(1));
+    release();
+    await expect(opening).rejects.toMatchObject({ code: 'gone' });
+    expect(w.worker.terminals.viewerCount('c_1')).toBe(1);
+    w.worker.fleet.emit('output', 'c_1', Buffer.from('x\n'));
+    await until(() => expect(other.got).toEqual([output('x\n')]));
+    expect(phone.got).toEqual([]);
   });
 
   it('a viewer whose socket is full misses output and is resynced once it drains, and the link\'s heartbeat is answered meanwhile', async () => {

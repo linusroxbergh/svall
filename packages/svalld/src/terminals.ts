@@ -35,8 +35,10 @@ export class TerminalHub {
   private writes = new Map<string, Promise<void>>();
   // robots whose tmux window a viewer has pinned to manual sizing
   private pinned = new Set<string>();
-  // how often each viewer was let go of whole: an open, or a wait to rejoin, begun before the last time must not go on
+  // how often each viewer was let go of whole, and of each terminal: a wait to rejoin, or an open, begun before the
+  // last time must not go on
   private closes = new WeakMap<Viewer, number>();
+  private closed = new WeakMap<Viewer, Map<string, number>>();
   // viewers whose socket held DRAIN_LIMIT unsent and has not drained to REJOIN_AT, and the terminals they missed output of
   private behind = new Map<Viewer, Set<string>>();
   // on the home: the terminals viewers here hold on placed robots, and the last lines each robot's worker sent of its pane
@@ -68,8 +70,8 @@ export class TerminalHub {
     if (!set) { set = new Set(); this.viewers.set(id, set); }
     // the viewer can leave while tmux is answering; resuming against a set close() already dropped
     // would stream to nobody and re-pin a window close() has just handed back
-    const closes = this.closes.get(viewer);
-    const current = () => this.viewers.get(id) === set && this.closes.get(viewer) === closes;
+    const closed = this.closed.get(viewer)?.get(id);
+    const current = () => this.viewers.get(id) === set && this.closed.get(viewer)?.get(id) === closed;
     try {
       await this.resizeFor(viewer, id, c.tmux.windowId, cols, rows);
       if (!current()) throw new Gone(id);
@@ -151,6 +153,8 @@ export class TerminalHub {
 
   close(id: string, viewer: Viewer): void {
     this.far?.close(id, viewer);
+    const closed = this.closed.get(viewer) ?? new Map<string, number>();
+    this.closed.set(viewer, closed.set(id, (closed.get(id) ?? 0) + 1));
     const set = this.viewers.get(id);
     if (!set) return;
     set.delete(viewer);
