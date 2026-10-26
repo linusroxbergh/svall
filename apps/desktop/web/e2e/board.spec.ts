@@ -220,13 +220,26 @@ test('a double click on a card showing only its top under the fade opens that ca
   await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', ids[6]);
 });
 
-test('the island chips fade at the right while more of them lie past it', async ({ page, svall }) => {
+test('the island chips fade at the right while more of them lie past it, and the arrows page through them', async ({ page, svall }) => {
   for (let i = 0; i < 12; i++) await svall.api.call('island.create', { name: svall.uniq(`a long island name ${i}`) });
   await svall.open();
   const chips = page.getByTestId('island-chips');
+  const back = page.getByTestId('chips-back'), next = page.getByTestId('chips-next');
   await expect(chips).toHaveAttribute('data-more', 'true');
+  await expect(back).toBeDisabled();
+  // the chip cut at the right edge comes to the left one, whole
+  const cut = await chips.evaluate((el) => [...el.children].findIndex((c) => c.getBoundingClientRect().right > el.getBoundingClientRect().right));
+  await next.click();
+  await expect(back).toBeEnabled();
+  await expect.poll(() => chips.evaluate((el, i) => el.children[i].getBoundingClientRect().left - el.getBoundingClientRect().left, cut)).toBeCloseTo(0, 0);
   await chips.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
   await expect(chips).toHaveAttribute('data-more', 'false');
+  await expect(next).toBeDisabled();
+  const end = await chips.evaluate((el) => el.scrollLeft);
+  await back.click();
+  await expect.poll(() => chips.evaluate((el) => el.scrollLeft)).toBeLessThan(end);
+  await chips.evaluate((el) => { el.scrollLeft = 0; });
+  await expect(back).toBeDisabled();
 });
 
 test('a column renames in place, a new one comes last with its name ready to type, and its grip moves it', async ({ page, svall }) => {
