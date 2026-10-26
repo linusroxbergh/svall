@@ -208,6 +208,8 @@ describe.skipIf(!hasGit)('a crash of either side during a move', () => {
     it(`a ${k.dies} that dies at ${k.name}:${k.edge} moving ${k.scenario} ends with the move done or aborted and the robot on exactly one machine`, async () => {
       const w = await boot(k.scenario);
       const earlier = journaled(w);
+      const opens = (box: MoveWorld['mac1']) => box.opened.filter((n) => n === 'c_1').length;
+      const opened = { mac: opens(w.mac1), far: opens(w.vault) };
       await crashed(w, k);
       await on('home', () => w.home.placement.recoverMoves());
 
@@ -218,18 +220,29 @@ describe.skipIf(!hasGit)('a crash of either side during a move', () => {
       const here = w.home.store.state.robots.c_1;
       expect(here.moving).toBeUndefined();
       expect(here.machine).toBe(phase() === 'done' ? to : from);
-      const windows = (box: MoveWorld['mac1']) => [...box.windows.values()].filter((x) => x.name === 'c_1');
-      expect([...windows(w.mac1), ...windows(w.vault)]).toHaveLength(1);
-      expect(windows(here.machine === W ? w.vault : w.mac1)).toHaveLength(1);
+      const [box, other, there] = here.machine === W ? [w.vault, w.mac1, w.worker.store] : [w.mac1, w.vault, w.home.store];
+      const windows = (b: MoveWorld['mac1'], name: string) => [...b.windows.values()].filter((x) => x.name === name);
+      for (const name of WORLDS[k.scenario]?.busy ? ['c_1', 'c_1-2'] : ['c_1']) {
+        expect([...windows(w.mac1, name), ...windows(w.vault, name)]).toHaveLength(1);
+        expect(windows(box, name)).toHaveLength(1);
+      }
+      // the machine it does not run on never opened it, and the one it runs on names its window
+      expect(opens(other)).toBe(other === w.mac1 ? opened.mac : opened.far);
+      await until(() => expect(there.state.robots.c_1?.tmux?.windowId).toBe(windows(box, 'c_1')[0].windowId));
       await until(() => expect(w.worker.store.state.robots.c_1?.machine).toBe(here.machine));
+      // no OpenCode server a closed window left runs on beside it
+      expect([...w.mac1.left, ...w.vault.left]).toEqual([]);
       // where it runs is unlocked, and what it left is locked by the move that took it; a move out undone leaves nothing there
       const far = fs.existsSync(w.clone) ? listed(w, w.clone, w.farWt) : undefined;
       const [mine, left] = here.machine === W ? [far, listed(w, w.main, w.wt)] : [listed(w, w.main, w.wt), far];
       expect(mine).toEqual({});
       if (phase() === 'done') expect(left?.locked).toBe(`moved to ${k.scenario === 'back' ? 'mac' : 'w1'} ${id}`);
-      else if (k.scenario !== 'back') expect([left, fs.existsSync(w.farWt)]).toEqual([undefined, false]);
+      else if (k.scenario === 'back') expect(left?.locked).toMatch(/^moved to w1 mv_/);
+      else expect([left, fs.existsSync(w.farWt)]).toEqual([undefined, false]);
       // a move deletes nothing on its source
       expect(fs.existsSync(k.scenario === 'back' ? w.farWt : w.wt)).toBe(true);
+      // and loses no event the worker journaled
+      await until(() => expect(drained(w)).toBe(true));
     });
   }
 });

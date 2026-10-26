@@ -87,7 +87,8 @@ export class Box {
   started?: (robotId: string, sessionId: string) => void;
   /** whether each OpenCode TUI runs a private server that outlives its window until SIGKILL, as one stuck shutting down does */
   lingers = false;
-  private left: Proc[] = [];
+  /** the servers closed windows left running */
+  left: Proc[] = [];
   private next = 1;
 
   constructor(readonly name: string) {}
@@ -194,7 +195,7 @@ const put = (file: string, data: string): void => {
  * A Mac under `base/Users/ada` holding robot c_1 in worktree kanban of code/app, with commits past origin, a staged, an
  * unstaged and an untracked change and a .env, and its Claude session; and worker w1, whose user home is this test's
  * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
- * agent configuration. A rest's waits pass at once.
+ * agent configuration.
  */
 export function moveWorld(o: {
   agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean; agentRunsThere?: boolean;
@@ -306,11 +307,18 @@ export function moveWorld(o: {
   const farAdapter: AgentAdapter = { kind: macProbe.kind, version: macProbe.version, adapter: 1, home: farHome, loggedIn: true, hooks: true };
   const viewers = { detach: async () => {} };
   const stops: (() => unknown)[] = [];
+  // a rest's polls pass at once and move its clock on; a call's time limit runs in real time
   let skew = 0;
   const clock: Clock = {
     now: () => Date.now() + skew,
     sleep: (ms, signal) => new Promise((resolve) => {
-      const next = setImmediate(() => { skew += Math.max(0, ms); resolve(); });
+      const done = () => { skew += Math.max(0, ms); resolve(); };
+      if (ms >= 1000) {
+        const late = setTimeout(done, ms);
+        signal?.addEventListener('abort', () => clearTimeout(late), { once: true });
+        return;
+      }
+      const next = setImmediate(done);
       signal?.addEventListener('abort', () => clearImmediate(next), { once: true });
     }),
   };
