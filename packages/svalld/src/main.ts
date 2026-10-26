@@ -244,7 +244,7 @@ async function start(opts: Options): Promise<Daemon> {
   let version = Date.now();
   const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log);
   // what a worker did while this Mac slept, applied once each
-  const replay = worker ? undefined : new Replay({ store, fleet: { createIsland: (p) => fleet.createIsland(p) }, paths, log });
+  const replay = worker ? undefined : new Replay({ store, paths, log });
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },

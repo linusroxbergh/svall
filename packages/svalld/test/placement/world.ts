@@ -104,7 +104,7 @@ export function world(o: {
     ...(homeDocs && { docs: homeDocs }),
     ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
   });
-  const replay = new Replay({ store: homeStore, fleet: { createIsland: (p) => homeFleet.createIsland(p) }, paths: homePaths, log: homeLog });
+  const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
   const homeFleet = new Fleet({ store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter });
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter);

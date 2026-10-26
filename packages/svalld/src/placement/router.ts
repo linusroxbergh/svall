@@ -11,7 +11,7 @@ import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
 import { probeRepo, RepoProbeParams } from './checks.js';
-import { addLine, sharesBranch, type Replay } from './replay.js';
+import { sharesBranch, withLine, type Replay } from './replay.js';
 import { homeRootOf } from './repo-key.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
@@ -86,9 +86,8 @@ export class Router {
   }
 
   /**
-   * Takes a worker's inventory on the home: the fields it reports of each robot, a note on each robot it started since the
-   * last reconnect whose branch another robot in that clone works on, a dormant record for each robot placed there that it no
-   * longer holds, and a forget for each it holds that the home has closed.
+   * Takes a worker's inventory on the home: its reports, a note on each robot it started since that shares a branch in its clone,
+   * a dormant record for each robot placed there that it no longer holds, and a forget for each it holds that the home closed.
    */
   async reconcileWorker(inv: Inventory, machine: MachineId): Promise<void> {
     const { links } = this.o;
@@ -105,7 +104,7 @@ export class Router {
       const other = Object.values(robots).find((r) => r.id !== id && r.repo?.branch === branch && root(r) === root(c));
       if (other) shared.set(id, sharesBranch(branch, other.name));
     }
-    if (shared.size) this.o.store.update((d) => { for (const [id, line] of shared) addLine(d.robots[id], line); });
+    if (shared.size) this.o.store.update((d) => { for (const [id, line] of shared) d.robots[id].note = withLine(d.robots[id].note, line); });
     const held = new Set(inv.robots.map((r) => r.robotId));
     const name = this.o.store.state.machines?.[machine]?.name ?? machine;
     const note = `${name} no longer has this robot's window`;

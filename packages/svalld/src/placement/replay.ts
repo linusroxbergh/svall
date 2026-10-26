@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { Mutation, UPDATE_FIELDS, cellKey, isLand, methods, type ContextItem, type FleetState, type Island, type MachineId, type ParsedParams, type Robot } from '@svall/protocol';
 import { settleItems } from '../context/items.js';
 import { removeDocs } from '../docs.js';
-import { setNote, type Fleet } from '../fleet.js';
-import { blockedCells, occupiedCells, placeOnIsland, uniqueName } from '../layout.js';
+import { setNote } from '../fleet.js';
+import { addIsland } from '../islands.js';
+import { blockedCells, occupiedCells, placeOnIsland, unfold, uniqueName } from '../layout.js';
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
@@ -14,10 +15,13 @@ export const notApplied = (worker: string, what: string, why: string) => `${work
 export const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
 export const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
 
-/** Adds a line to a robot's note, once. */
-export function addLine(c: Robot, line: string): void {
-  if (!c.note.includes(line)) c.note = c.note ? `${c.note}\n${line}` : line;
-}
+/** A note with `line` added, once. */
+export const withLine = (note: string, line: string): string => (note.includes(line) ? note : note ? `${note}\n${line}` : line);
+
+// a line the replay writes is the user's, so the scribe leaves the note as it stands
+const addLine = (c: Robot, line: string): void => setNote(c, withLine(c.note, line));
+// a reason on one line, as a note keeps it
+const oneLine = (e: unknown): string => (e instanceof z.ZodError ? z.prettifyError(e) : (e as Error).message).replace(/\s*\n\s*/g, ' ');
 
 const DID: Record<Mutation['method'], string> = {
   'robot.create': 'started this robot', 'robot.update': 'changed this robot', 'robot.close': 'closed this robot', 'robot.run': 'sent this robot a prompt',
@@ -26,6 +30,12 @@ const Id = z.object({ id: z.string() });
 // a context as this Mac stores it, and the refs of the paths it does not have
 type Settled = { items: ContextItem[]; missing: string[] };
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+// where a worker's robots go when their island is gone or full here, made in the write that places the first
+function recovered(d: FleetState, worker: string): Island {
+  const name = RECOVERED(worker);
+  return Object.values(d.islands).find((i) => i.name.toLowerCase() === name.toLowerCase()) ?? addIsland(d, { name });
+}
 
 // whether an island gives a robot a cell without overlapping a neighbour it could not push clear
 function gives(state: FleetState, islandId: string): boolean {
@@ -40,7 +50,7 @@ export class Replay {
   // the robots each worker's mutations started here that no reconnect has checked yet
   private made = new Map<MachineId, string[]>();
 
-  constructor(private o: { store: Store; fleet: Pick<Fleet, 'createIsland'>; paths: Pick<Paths, 'docs'>; log: Logger }) {}
+  constructor(private o: { store: Store; paths: Pick<Paths, 'docs'>; log: Logger }) {}
 
   /** Reads from disk what a mutation needs. Neither step throws: a mutation that does not parse is logged and skipped, one that
    *  cannot apply is logged and its robot's note says why. `change` writes the store alone; logs and removed docs wait for `after`. */
@@ -68,7 +78,7 @@ export class Replay {
           }
           // a run was typed on the worker at the time; its mutation is the record of it
         } catch (e) {
-          const why = (e as Error).message;
+          const why = oneLine(e);
           log.error(`${worker}: ${m.method} ${m.id} not applied: ${why}`);
           const id = m.method === 'robot.create' ? m.robot?.id : Id.safeParse(m.params).data?.id;
           if (id && Object.hasOwn(this.o.store.state.robots, id)) this.o.store.update((d) => addLine(d.robots[id], notApplied(worker, DID[m.method], why)));
@@ -95,14 +105,15 @@ export class Replay {
   private create(m: Mutation, machine: MachineId, worker: string, log: Logger): void {
     const r = m.robot;
     if (!r) throw new Error('it carries no robot');
-    const { state } = this.o.store;
-    if (Object.hasOwn(state.robots, r.id)) return;
-    const own = Object.hasOwn(state.islands, r.islandId) ? state.islands[r.islandId] : undefined;
-    const kept = own && isLand(own, r.cell) && !occupiedCells(state, own.id).has(cellKey(r.cell)) && !blockedCells(state, own.id).has(cellKey(r.cell));
-    const island = own && (kept || gives(state, own.id)) ? own : this.recovered(worker);
+    if (Object.hasOwn(this.o.store.state.robots, r.id)) return;
     this.o.store.update((d) => {
-      // the recovered island grows to take the robot whatever its neighbours
+      const own = Object.hasOwn(d.islands, r.islandId) ? d.islands[r.islandId] : undefined;
+      const kept = own && isLand(own, r.cell) && !occupiedCells(d, own.id).has(cellKey(r.cell)) && !blockedCells(d, own.id).has(cellKey(r.cell));
+      const island = own && (kept || gives(d, own.id)) ? own : recovered(d, worker);
+      // forced, the recovered island takes the robot whatever its neighbours; its own island was probed to give a cell without
       const cell = kept ? r.cell : placeOnIsland(d, island.id, undefined, log, true);
+      // a folded island comes back to take it, as one given a robot's cell does
+      if (kept && island.collapsed) unfold(d, island.id, log);
       const c: Robot = { ...structuredClone(r), machine, islandId: island.id, cell, name: uniqueName(Object.values(d.robots).map((o) => o.name), r.name) };
       // a placed robot's board column is the home's
       delete c.column;
@@ -164,11 +175,5 @@ export class Replay {
     if (robots[id].machine !== machine) throw new Error(`it no longer runs on ${worker}`);
     this.o.store.update((d) => { delete d.robots[id]; });
     return id;
-  }
-
-  // where a worker's robots go when their island is gone or full here
-  private recovered(worker: string): Island {
-    const name = RECOVERED(worker);
-    return Object.values(this.o.store.state.islands).find((i) => i.name.toLowerCase() === name.toLowerCase()) ?? this.o.fleet.createIsland({ name });
   }
 }

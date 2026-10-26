@@ -1,4 +1,4 @@
-import { DEFAULT_SIZE, byIslandOrder, landCells, type Cell, type ContextItem, type Island, type Size } from '@svall/protocol';
+import { DEFAULT_SIZE, byIslandOrder, landCells, type Cell, type ContextItem, type FleetState, type Island, type Size } from '@svall/protocol';
 import { settleItems } from './context/items.js';
 import { removeDocs } from './docs.js';
 import { Invalid, NotFound } from './errors.js';
@@ -19,18 +19,25 @@ function setDescription(i: Island, description: string): void {
 }
 
 export function createIsland({ store }: Deps, p: NewIsland): Island {
-  const state = store.state;
+  let island!: Island;
+  store.update((d) => { island = addIsland(d, p); });
+  return island;
+}
+
+/** Adds an island to the draft where it clears every other. */
+export function addIsland(draft: FleetState, p: NewIsland): Island {
   const size = p.size ?? DEFAULT_SIZE;
-  const wanted = p.position ?? defaultPosition(state);
+  const wanted = p.position ?? defaultPosition(draft);
   const island: Island = {
-    id: newId('i'), name: uniqueName(Object.values(state.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
+    id: newId('i'), name: uniqueName(Object.values(draft.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
     position: wanted, size, seed: p.seed ?? randomSeed(),
   };
   setDescription(island, island.description);
-  island.position = freePosition(state, island);
-  if (!placementOk(state, island)) throw new Invalid(`island ${p.name} would overlap another island`);
+  island.position = freePosition(draft, island);
+  if (!placementOk(draft, island)) throw new Invalid(`island ${p.name} would overlap another island`);
   // an island joining or leaving is where mission control takes its place again; between those it holds its row
-  store.update((d) => { d.islands[island.id] = island; settleHome(d); });
+  draft.islands[island.id] = island;
+  settleHome(draft);
   return island;
 }
 

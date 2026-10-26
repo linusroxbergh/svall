@@ -130,6 +130,26 @@ describe('the home replaying what a worker did while it slept', () => {
     expect(logged).toEqual([]);
   });
 
+  it('a mutation that cannot apply here says why in one line of its robot\'s note, and a line the replay writes is the user\'s', async () => {
+    const { w, logged } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_2: placed({ id: 'c_2', note: 'the scribe\'s' }) } } });
+    await w.home.replay.apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', name: 5 }, base: { name: 'c_1' }, snapshotVersion: 0, at: 1 }, W);
+    expect(w.home.store.state.robots.c_1.note).toMatch(/^w1 changed this robot while this Mac slept; it could not be applied here: \S.*expected string/);
+    expect(w.home.store.state.robots.c_1.note).not.toContain('\n');
+    expect(w.home.store.state.robots.c_1.noteSource).toBe('manual');
+    expect(logged).toHaveLength(1);
+    // the scribe leaves a lost value where it was written
+    await w.home.replay.apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 }, W);
+    expect(w.home.store.state.robots.c_2).toMatchObject({ note: 'the scribe\'s\nw1 set note to "mine" while this Mac slept; it had changed here since', noteSource: 'manual' });
+  });
+
+  it('a robot that keeps its cell on an island folded here unfolds it', async () => {
+    const { w, create } = setup({ home: { islands: { i_1: { ...island, collapsed: true } } } });
+    const { id } = await create();
+    await w.link();
+    await until(() => expect(w.home.store.state.robots[id]).toBeDefined());
+    expect(w.home.store.state.islands.i_1.collapsed).toBeUndefined();
+  });
+
   it('a robot whose cell was taken meanwhile is re-placed on the same island', async () => {
     const { w, create, journaled } = setup();
     const { id } = await create();
@@ -144,18 +164,28 @@ describe('the home replaying what a worker did while it slept', () => {
     expect(blockedCells(state, 'i_1', id).has(cellKey(at))).toBe(false);
   });
 
-  it('a robot whose island the home deleted lands on "recovered from w1", worktree and transcript untouched', async () => {
+  it('robots whose island the home deleted land on one "recovered from w1", worktree and transcript untouched', async () => {
     const { w, clone, create, killed } = setup({ home: { islands: { i_2: { ...island, id: 'i_2', name: 'b' } }, robots: { c_1: placed({ id: 'c_1', islandId: 'i_2' }) } } });
     const wt = path.join(clone, '.claude', 'worktrees', 'kb');
     git(clone, 'worktree', 'add', '-q', '-b', 'kb', wt);
     const made = await create({ cwd: wt });
+    const second = await create();
+    // the island comes in the same write as the robot it is made for
+    let bare = false;
+    w.home.store.subscribe(() => {
+      const r = Object.values(w.home.store.state.islands).find((i) => i.name === 'recovered from w1');
+      if (r && !Object.values(w.home.store.state.robots).some((c) => c.islandId === r.id)) bare = true;
+    });
     await w.link();
-    await until(() => expect(w.home.store.state.robots[made.id]).toBeDefined());
+    await until(() => expect(w.home.store.state.robots[second.id]).toBeDefined());
     const { islands, robots } = w.home.store.state;
     const recovered = Object.values(islands).filter((i) => i.name === 'recovered from w1');
     expect(recovered).toHaveLength(1);
     expect(robots[made.id]).toMatchObject({ islandId: recovered[0].id, machine: W, cwd: wt, tmux: made.tmux });
-    expect(isLand(recovered[0], robots[made.id].cell)).toBe(true);
+    expect(robots[second.id]).toMatchObject({ islandId: recovered[0].id, machine: W });
+    expect(isLand(recovered[0], robots[made.id].cell) && isLand(recovered[0], robots[second.id].cell)).toBe(true);
+    expect(cellKey(robots[made.id].cell)).not.toBe(cellKey(robots[second.id].cell));
+    expect(bare).toBe(false);
     // the worker keeps the robot, its window and its worktree
     await until(() => expect(w.worker.store.state.robots[made.id]?.islandId).toBe(recovered[0].id));
     expect(killed).toEqual([]);
