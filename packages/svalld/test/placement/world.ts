@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import net from 'node:net';
 import path from 'node:path';
 import { vi } from 'vitest';
-import { MachineId, emptyState, type Event, type FleetState, type Island, type Robot } from '@svall/protocol';
+import { MachineId, emptyState, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { answer, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
@@ -116,10 +116,10 @@ export function world(o: {
     },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
     onCall: (method, params) => answer(method, params, homeCtx),
-    onNotify: (kind, data) => {
+    onNotify: (kind, data, machine) => {
       if (kind !== 'viewer') return;
       const { key, ev } = ViewerNotice.parse(data);
-      remoteWatches.farEvent(key, ev as Event);
+      remoteWatches.farEvent(key, ev, machine);
     },
     onSynced: (machine) => { void remoteWatches.reopen(machine); },
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes, home: '/Users/ada' }),

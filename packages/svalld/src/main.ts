@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { MachineId, OwnerRecord, type Event, type ParsedParams, type Robot } from '@svall/protocol';
+import { MachineId, OwnerRecord, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -258,10 +258,10 @@ async function start(opts: Options): Promise<Daemon> {
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
-    onNotify: (kind, data) => {
+    onNotify: (kind, data, machine) => {
       if (kind !== 'viewer') return;
       const { key, ev } = ViewerNotice.parse(data);
-      remoteWatches?.farEvent(key, ev as Event);
+      remoteWatches?.farEvent(key, ev, machine);
     },
     // a worker linked anew holds none of the home's watches
     onSynced: (machine) => { void remoteWatches?.reopen(machine); },

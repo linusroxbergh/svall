@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MachineId, emptyState, farRootId, type Event, type ResourceSource } from '@svall/protocol';
+import { ApiError, MachineId, emptyState, farRootId, type Event, type ResourceSource } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { docsDir, repoSlug } from '../../src/docs.js';
 import { relocate } from '../../src/handover/relocate.js';
 import type { HomeLinks } from '../../src/link/home.js';
 import { silentLogger } from '../../src/log.js';
 import { resolvePaths } from '../../src/paths.js';
-import { FarViewers } from '../../src/placement/far-viewers.js';
+import { FarViewers, RemoteWatches, ViewerNotice, viewerKey } from '../../src/placement/far-viewers.js';
 import { Router } from '../../src/placement/router.js';
 import { mergeSources } from '../../src/resources/merge.js';
 import { Store } from '../../src/store.js';
@@ -171,6 +171,49 @@ describe('clones at one path on two workers', () => {
     expect(merged.map((s) => s.rootId)).toEqual([farRootId(W, root), farRootId(W2, root)]);
     expect(merged.map((s) => s.groups[0].items[0].open?.rootId)).toEqual([farRootId(W, root), farRootId(W2, root)]);
     expect(new Set(merged.map((s) => s.groups[0].items[0].id)).size).toBe(2);
+  });
+});
+
+describe('the home\'s watches on a worker', () => {
+  const W2 = MachineId.parse('0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f');
+  // c_1 on W; each forward answers as `answer` says
+  function watches(answer: () => Promise<unknown>) {
+    const asked: unknown[] = [];
+    const links = { call: (machine: MachineId, method: string, params: unknown) => { asked.push([machine, method, params]); return answer(); } };
+    const router = { rootPlacedAt: (id: string) => (id === 'c_1' ? W : undefined) };
+    const got: Event[] = [];
+    const viewer: Viewer = { kind: 'app', send: (ev) => got.push(ev), backlog: () => 0 };
+    return { rw: new RemoteWatches({ links: links as unknown as Pick<HomeLinks, 'call'>, router }), asked, got, viewer };
+  }
+  const changed = (id: string) => ({ event: 'repo.changed' as const, data: { id } });
+
+  it('a worker away takes the watch once it links: the watch answers, and the relink forwards it', async () => {
+    const { rw, asked, viewer } = watches(() => Promise.reject(new ApiError('not_reachable', 'w1 is not reachable')));
+    await expect(rw.watch('c_1', viewer)).resolves.toBeUndefined();
+    await rw.reopen(W);
+    expect(asked).toHaveLength(2);
+  });
+
+  it('a watch the worker refuses is let go: the refusal answers, no relink forwards it, and a new watch asks again', async () => {
+    const { rw, asked, viewer } = watches(() => Promise.reject(new ApiError('invalid', 'a resource root is not watched')));
+    await expect(rw.watch('c_1', viewer)).rejects.toMatchObject({ code: 'invalid' });
+    await rw.reopen(W);
+    expect(asked).toHaveLength(1);
+    await expect(rw.watch('c_1', viewer)).rejects.toMatchObject({ code: 'invalid' });
+    expect(asked).toHaveLength(2);
+  });
+
+  it('takes from a worker only a file change of a robot the viewer watches there', async () => {
+    const { rw, got, viewer } = watches(() => Promise.resolve({}));
+    await rw.watch('c_1', viewer);
+    const key = viewerKey(viewer);
+    rw.farEvent(key, changed('c_1'), W2);
+    rw.farEvent(key, changed('c_2'), W);
+    rw.farEvent('another', changed('c_1'), W);
+    expect(got).toEqual([]);
+    rw.farEvent(key, changed('c_1'), W);
+    expect(got).toEqual([changed('c_1')]);
+    expect(ViewerNotice.safeParse({ key, ev: { event: 'state.patch', data: { ops: [] } } }).success).toBe(false);
   });
 });
 

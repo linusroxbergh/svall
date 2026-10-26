@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import type { Event, MachineId } from '@svall/protocol';
+import { ApiError, type Event, type MachineId } from '@svall/protocol';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Viewer } from '../terminals.js';
@@ -10,8 +10,8 @@ import type { Router } from './router.js';
 const BEHIND = 1024 * 1024;
 const LOOK_AGAIN_MS = 100;
 
-/** What a worker sends a viewer on the home: the viewer's key and the event. */
-export const ViewerNotice = z.object({ key: z.string(), ev: z.object({ event: z.string(), data: z.unknown() }) });
+/** What a worker sends a viewer on the home: the viewer's key and a file change. */
+export const ViewerNotice = z.object({ key: z.string(), ev: z.object({ event: z.literal('repo.changed'), data: z.object({ id: z.string() }) }) });
 
 const keys = new WeakMap<Viewer, string>();
 
@@ -90,7 +90,7 @@ export class RemoteWatches {
 
   constructor(private o: { links: Pick<HomeLinks, 'call'>; router: Pick<Router, 'rootPlacedAt'> }) {}
 
-  /** Watches on the robot's machine, once per viewer; a worker away takes the watch once it is back. */
+  /** Watches on the robot's machine, once per viewer; a worker away takes the watch once it is back, and one the worker refuses is let go. */
   async watch(id: string, viewer: Viewer): Promise<void> {
     const machine = this.o.router.rootPlacedAt(id);
     if (!machine) return;
@@ -101,7 +101,11 @@ export class RemoteWatches {
     const seen = this.viewers.get(key) ?? { viewer, machines: new Set<MachineId>() };
     seen.machines.add(machine);
     this.viewers.set(key, seen);
-    await this.forward(w);
+    await this.forward(w).catch((e: unknown) => {
+      if (e instanceof ApiError && e.code === 'not_reachable') return;
+      if (this.watches.get(`${key}\0${id}`) === w) this.watches.delete(`${key}\0${id}`);
+      throw e;
+    });
   }
 
   // a worker away has let every viewer go already
@@ -123,9 +127,9 @@ export class RemoteWatches {
     for (const machine of seen.machines) this.o.links.call(machine, 'far.viewer.gone', { viewer: key }).catch(() => {});
   }
 
-  /** An event a worker sent for one of this home's viewers. */
-  farEvent(key: string, ev: Event): void {
-    this.viewers.get(key)?.viewer.send(ev);
+  /** A file change `machine` sent for one of this home's viewers, taken only for a robot the viewer watches there. */
+  farEvent(key: string, ev: Extract<Event, { event: 'repo.changed' }>, machine: MachineId): void {
+    if (this.watches.get(`${key}\0${ev.data.id}`)?.machine === machine) this.viewers.get(key)?.viewer.send(ev);
   }
 
   /** Forwards every watch on `machine` again, as after it linked anew; one whose robot no longer runs there is let go. Never rejects. */
