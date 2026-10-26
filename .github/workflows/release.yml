@@ -1,8 +1,9 @@
 name: release
 
 # A tag builds the Mac controller and both Linux companions, installs, upgrades and rolls back a clean machine of each
-# architecture with them, and publishes them only once all of that passed. Without the SVALL_RELEASE_KEY secret the tag is a dry run: everything is built and tested, nothing is
-# signed or uploaded. A tag with a `-` in it, such as v1.0.0-test1, is a dry run too, signed when the secret is there.
+# architecture with them, and publishes them only once all of that passed. Without the SVALL_RELEASE_KEY secret the
+# tag is a dry run: everything is built and tested, nothing is signed or uploaded. A tag with a `-` in it, such as
+# v1.0.0-test1, is a dry run too, signed when the secret is there.
 # The key never reaches the build: the build packs every archive unsigned, and a job of its own signs them.
 # See docs/integration.md.
 on:

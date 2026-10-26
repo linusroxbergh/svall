@@ -287,7 +287,7 @@ function hostAdd(a) {
   check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
-  // "fresh needs 3 things before robots can move there": the three installs
+  // the JSON actions are the three installs, what the text line "fresh needs 3 things ..." counts
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
     && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',

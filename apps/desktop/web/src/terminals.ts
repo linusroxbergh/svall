@@ -67,10 +67,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // svalld refused, or left it unanswered on a link still online: the user decides when to try again. svalld away, a daemon
-      // the fleet has left or one frozen for a handover: retried once the connection is back, which for a moved fleet is its
-      // new owner, or the fleet runs again; the robot's machine away: once its link is back. A closed socket reports offline
-      // before its calls fail
+      // refused, or unanswered while online: the user retries; svalld, a handover or the robot's machine away: retried
+      // once the connection or link is back (a closed socket reports offline before its calls fail)
       if (e instanceof ApiError ? !RETRIED.has(e.code) : state().status === 'online') state().termFailed(id, (e as Error).message);
       else retry.set(id, { rect, opacity });
       throw e;

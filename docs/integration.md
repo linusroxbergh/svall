@@ -6,6 +6,7 @@ integration run below drives it on real machines: two Linux containers with real
 ## Fleet handover between two machines
 
 `scripts/integration/fleet-handover.sh` hands a fleet between two Ubuntu 24.04 containers and checks every step.
+It is retiring with the fleet handover and does not run on this release: its provisioning calls `svall host enable`.
 
 ### Run it
 
@@ -193,8 +194,9 @@ Without `--release`, the script builds the checkout twice with `scripts/release-
 name, carrying its companions as Svall.app does, and as that name with `-next`, pinning its companions on a free
 loopback port, so `host add` takes the app's route and `host upgrade` downloads. The machine runs on the Docker host's
 own architecture, as the handover run's do. It exits 0 when every check passed, and prints `PASS` or its `FAIL` lines
-per step, like the handover run. The output folder holds `run.log`, the NDJSON of `host add` and `host upgrade`, the JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with what the checks
-read on the machine, `served.log` with each download, and `machine.log` with the units' logs.
+per step, like the handover run. The output folder holds `run.log`, the NDJSON of `host add` and `host upgrade`, the
+JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with what the checks read on the machine,
+`served.log` with each download, and `machine.log` with the units' logs.
 
 ### What it checks
 
@@ -225,8 +227,8 @@ read on the machine, `served.log` with each download, and `machine.log` with the
      linger step turns lingering on, and the tmux step finds the release's own.
    - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
      first, as Svall's first start does.
-   - The result lists exactly three things to do, the three installs: `fresh needs 3 things before robots can move
-     there`.
+   - The JSON result's `actions` are exactly the three installs, the things the text line `fresh needs 3 things
+     before robots can move there` counts.
 4. **A restart with no login.**
    - The private fleet's svalld unit, which runs the worker, is active and enabled.
    - It runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.
@@ -244,13 +246,13 @@ read on the machine, `served.log` with each download, and `machine.log` with the
 
 ### x86-64 on an Apple Silicon Mac
 
-Neither run works under Docker's user-mode emulation (see above). A full-system x86-64 VM runs both, slowly:
+The fresh-install run does not work under Docker's user-mode emulation (see above). A full-system x86-64 VM runs it,
+slowly:
 
 ```sh
 brew install qemu lima-additional-guestagents
 colima start -p x64 --arch x86_64 --vm-type qemu --cpus 8 --memory 8
 DOCKER_CONTEXT=colima-x64 scripts/integration/fresh-install.sh --out /tmp/fresh-install-x64
-DOCKER_CONTEXT=colima-x64 scripts/integration/fleet-handover.sh --scenarios kill --out /tmp/fleet-handover-x64
 colima delete -p x64
 ```
 
