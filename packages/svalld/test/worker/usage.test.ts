@@ -48,12 +48,15 @@ describe('usage across machines', () => {
       .toMatchObject({ result: { available: true, windows: [{ key: 'session', pct: 10 }, { key: 'codex:primary', pct: 40 }] } });
   });
 
-  it('merges plan limits as available when any machine\'s are, idle when every machine is, and names the home\'s login', () => {
+  it('merges plan limits as available when a running machine\'s are, idle when every machine is, and names the home\'s login', () => {
     const idle: UsageSnapshot = { available: true, idle: true, windows: [] };
     const codex = [{ key: 'codex:primary', label: 'Codex', pct: 40 }];
     expect(mergeUsage(idle, [idle])).toEqual(idle);
     expect(mergeUsage({ ...session, account: 'a@x.io' }, [idle])).toEqual({ ...session, account: 'a@x.io' });
     expect(mergeUsage({ available: false, windows: [] }, [{ available: true, account: 'b@x.io', windows: codex }])).toEqual({ available: true, windows: codex });
+    // an idle machine asks no plan, so it says nothing of whether plan limits apply
+    expect(mergeUsage({ available: false, windows: [] }, [idle])).toEqual({ available: false, windows: [] });
+    expect(mergeUsage(idle, [{ available: false, windows: [] }])).toEqual({ available: false, windows: [] });
   });
 
   it('a worker that does not answer leaves the home\'s windows standing', async () => {
