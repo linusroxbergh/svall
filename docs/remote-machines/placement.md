@@ -142,7 +142,8 @@ the worker:
   again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
   `svall robot close` and `svall robot run` and `read` reach the robots on it.
-- `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it.
+- `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it, with the worker's
+  changes this Mac has yet to take over it.
 
 Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": new
 islands, moves, browser tabs, a robot's figure or island, and calls about robots on other machines.
@@ -158,6 +159,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   transcript left as they are.
 - A field changed here since keeps this Mac's value, and the note names the worker's: "linus-vault set note to
   "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile.
+- A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
+  "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
 - A change this Mac cannot apply is skipped, and the robot's note says why.
 - A robot started on a branch another robot works on in the same clone says so in its note: "shares branch kb with
   board".
