@@ -294,6 +294,24 @@ describe('a doc changed on both machines', () => {
     expect(read(path.join(home, kept.kept))).toBe('theirs, again\n');
   });
 
+  it('a conflict copy edited here is left as it is, and the next change there starts another, named in the note too', async () => {
+    const { home, note, events, next } = await journaling('v1\n');
+    put(path.join(home, NOTE), 'ours\n');
+    const docs = new HomeDocs(home, silentLogger, () => 'w1');
+    const store = homeStore();
+    await next(() => put(note, 'theirs\n'));
+    const first = docs.apply(events[0].kind, events[0].data, W)!;
+    noteConflict(store, W, first, '/Users/ada');
+    put(path.join(home, first.kept!), 'theirs, merged by hand\n');
+    await next(() => put(note, 'theirs, again\n'));
+    const second = docs.apply(events[1].kind, events[1].data, W)!;
+    noteConflict(store, W, second, '/Users/ada');
+    expect(second.kept).toBe(`robots/c_1/notes.w1.${(events[1].data as { id: string }).id}.conflict.md`);
+    expect(read(path.join(home, first.kept!))).toBe('theirs, merged by hand\n');
+    expect(read(path.join(home, second.kept!))).toBe('theirs, again\n');
+    expect(store.state.robots.c_1.note.split('\n')).toEqual([first, second].map((c) => `robots/c_1/notes.md changed on both w1 and this Mac; w1's version is kept as ${path.basename(c.kept!)}`));
+  });
+
   it('a change made on the worker\'s last one is kept beside a note this Mac deleted or set back to the base text since', async () => {
     const { home, note, events, next } = await journaling('v1\n');
     const plan = path.join(path.dirname(note), 'plan.md');
