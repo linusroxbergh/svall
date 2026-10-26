@@ -21,7 +21,7 @@ export const withLine = (note: string, line: string): string => (note.includes(l
 // a line the replay writes is the user's, so the scribe leaves the note as it stands
 const addLine = (c: Robot, line: string): void => setNote(c, withLine(c.note, line));
 // a reason on one line, as a note keeps it
-const oneLine = (e: unknown): string => (e instanceof z.ZodError ? z.prettifyError(e) : (e as Error).message).replace(/\s*\n\s*/g, ' ');
+const oneLine = (e: unknown): string => (e instanceof z.ZodError ? z.prettifyError(e) : e instanceof Error ? e.message : String(e)).replace(/\s*\n\s*/g, ' ');
 
 const DID: Record<Mutation['method'], string> = {
   'robot.create': 'started this robot', 'robot.update': 'changed this robot', 'robot.close': 'closed this robot', 'robot.run': 'sent this robot a prompt',
@@ -110,7 +110,7 @@ export class Replay {
       const own = Object.hasOwn(d.islands, r.islandId) ? d.islands[r.islandId] : undefined;
       const kept = own && isLand(own, r.cell) && !occupiedCells(d, own.id).has(cellKey(r.cell)) && !blockedCells(d, own.id).has(cellKey(r.cell));
       const island = own && (kept || gives(d, own.id)) ? own : recovered(d, worker);
-      // forced, the recovered island takes the robot whatever its neighbours; its own island was probed to give a cell without
+      // forced, the recovered island takes the robot whatever its neighbours; its own island only when it gives a cell unforced
       const cell = kept ? r.cell : placeOnIsland(d, island.id, undefined, log, true);
       // a folded island comes back to take it, as one given a robot's cell does
       if (kept && island.collapsed) unfold(d, island.id, log);
