@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { z } from 'zod';
-import { AgentKind, ApiError, Sha256, type MachineId } from '@svall/protocol';
+import { AgentKind, ApiError, REPORT_MS, Sha256, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '../handover/durable.js';
 import { sha256Hex } from '../handover/hash.js';
 import { clean, holds } from '../handover/portable-path.js';
@@ -22,6 +22,7 @@ import {
   withoutCredentials, type McpServer, type Place, type Scope, type Secret,
 } from './mirror-config.js';
 import { CONFIG_ITEMS, itemKey, pluginKey, preview, readConsent, setConsent, tickedFields } from './mirror-consent.js';
+import { ConfigReport, configReport, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
 import { fileSha, unpack } from './move.js';
 
 export const MIRROR_FILE_MAX = 5 * 1024 * 1024;
@@ -39,12 +40,13 @@ const OPENCODE_FILES = ['opencode.json', 'opencode.jsonc'] as const;
 
 /**
  * An MCP server as the mirror carries it: `entry` with each secret not ticked emptied, `bare` with every one emptied;
- * `doc` and `place` where it lies, a plugin's naming no doc as it travels in its plugin's file.
+ * `preview` each secret masked, or the field names of one whose fields the mirror does not know; `doc` and `place` where
+ * it lies, a plugin's naming no doc but the `file` on the Mac it travels in.
  */
 export type MirroredServer = {
   key: string; agent: AgentKind; name: string; scope: Scope; entry: Record<string, unknown>; bare: Record<string, unknown>; needs: string[];
   secretFields: string[]; ticked: string[]; preview: string[]; known: boolean; oauth?: { run: string; forward?: number }; runtimes: string[];
-  doc?: DocName; place: string[];
+  doc?: DocName; file?: string; place: string[];
 };
 
 /** Each file by where it lands: `to` starts with its home (`claude`, `codex`, `home`, `profiles` or `opencode`) and goes on under it. */
@@ -213,7 +215,8 @@ function mirrored(s: McpServer, consent: ReadonlySet<string>): MirroredServer {
   const doc: DocName | undefined = plugin ? undefined : s.agent === 'claude' ? '.claude.json' : s.agent === 'codex' ? 'config.toml' : (path.basename(s.file ?? '') as DocName);
   return {
     key, agent: s.agent, name: s.name, scope: s.scope, entry, bare: s.known ? redacted(s, new Set()) : entry, needs: needsOf(s), secretFields, ticked,
-    preview: preview(secrets), known: s.known, ...(isOAuth(s) && { oauth: oauthLogin(s) }), runtimes: runtimesOf(s), ...(doc && { doc }), place: s.place ?? [],
+    preview: s.known ? preview(secrets) : Object.keys(s.raw), known: s.known, ...(isOAuth(s) && { oauth: oauthLogin(s) }), runtimes: runtimesOf(s),
+    ...(doc ? { doc } : s.file && { file: s.file }), place: s.place ?? [],
   };
 }
 
@@ -541,6 +544,27 @@ function readDocFile(file: string, parse: (text: string) => unknown): Doc | unde
 const overlay = (a: unknown, b: unknown): unknown =>
   isDoc(a) && isDoc(b) ? { ...a, ...Object.fromEntries(Object.entries(b).map(([k, v]) => [k, overlay(a[k], v)])) } : b;
 
+// `override` merged over `doc`: its servers by name, and its other keys whole unless it takes servers only
+function overrideOver(d: DocSpec, doc: Doc, override: Doc | undefined): void {
+  for (const [k, v] of Object.entries(override ?? {})) {
+    if (k === d.servers) doc[k] = overlay(doc[k], v);
+    else if (!d.serversOnly) doc[k] = v;
+  }
+}
+
+/** Config file `name` of this machine with its override merged over it; undefined where either cannot be parsed. */
+export function docWithOverride(name: DocName, o: Homes & { overrides: string }): Doc | undefined {
+  const d = DOCS.find((x) => x.name === name);
+  if (!d) return undefined;
+  try {
+    const doc = readDocFile(d.at(o), d.parse) ?? {};
+    overrideOver(d, doc, readDocFile(path.join(o.overrides, d.override), d.parse));
+    return doc;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * A secret value's place in a doc: `want` the Mac's when its field is ticked, `bare` what stands there when not, none for
  * nothing; `named` when the place names the value itself rather than a url or arg holding it, `remerged` when the doc
@@ -764,10 +788,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     if (typeof v === 'string' && sha256Hex(v) === h) setLeaf(doc, l, l.bare);
   }
 
-  for (const [k, v] of Object.entries(override ?? {})) {
-    if (k === d.servers) doc[k] = overlay(doc[k], v);
-    else if (!d.serversOnly) doc[k] = v;
-  }
+  overrideOver(d, doc, override);
   return JSON.stringify(doc) === before ? undefined : doc;
 }
 
@@ -790,9 +811,35 @@ export class Mirror {
     setConsent(this.o.consent, machine, item, fields, on);
   }
 
+  /**
+   * The setup rows of the mirror to `machine`, named `o.name`: what its next push carries by its consent, and what the
+   * worker holds and runs, asked over `link` while it is linked.
+   */
+  async report(link: Pick<WorkerLink, 'call' | 'connected' | 'mismatch'> | undefined, machine: MachineId, o: { name: string; fleetFlag: string }): Promise<SetupRow[]> {
+    // the worker's answer; none while it is not linked, or when it does not answer
+    const ask = async <T>(method: string, params: unknown, schema: z.ZodType<T>): Promise<T | undefined> => {
+      if (!link?.connected()) return undefined;
+      try {
+        return schema.parse(await link.call(method, params, { timeoutMs: REPORT_MS }));
+      } catch (e) {
+        this.o.log.error(`mirror: ${o.name} did not answer ${method}: ${(e as Error).message}`);
+        return undefined;
+      }
+    };
+    const facts = await ask('config.state', { homedir: this.o.homedir, projects: this.projects() }, WorkerFacts);
+    const plan = mirrorPlan(this.o, readConsent(this.o.consent, machine), facts);
+    const report = await ask('config.report', reportAsk(plan), ConfigReport);
+    const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
+    return setupRows(plan, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked });
+  }
+
+  // the Mac's project folders that hold servers
+  private projects(): string[] {
+    return [...new Set(readServers(this.o, []).servers.flatMap((s) => (typeof s.scope === 'object' && 'project' in s.scope ? [s.scope.project] : [])))];
+  }
+
   private async pushNow(link: Pick<WorkerLink, 'call' | 'sendBlob' | 'machine'>): Promise<{ sent: number }> {
-    const projects = [...new Set(readServers(this.o, []).servers.flatMap((s) => (typeof s.scope === 'object' && 'project' in s.scope ? [s.scope.project] : [])))];
-    const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects }));
+    const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects: this.projects() }));
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, link.machine), facts);
     for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on this Mac`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-mirror-'));
@@ -817,12 +864,12 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
 };
 
 /**
- * A worker's side: `config.state` answers with its record and which of the Mac's projects it has, `config.blob` takes the
- * blob's id before the home sends a byte of it, and `config.apply` applies it once it has arrived as it left, answering
- * with the files written and removed.
+ * A worker's side: `config.state` answers with its record and which of the Mac's projects it has, `config.report` with
+ * what it holds and runs of what the home asks, `config.blob` takes the blob's id before the home sends a byte of it,
+ * and `config.apply` applies it once it has arrived as it left, answering with the files written and removed.
  */
 export function mirrorCalls(o: MirrorHomes & {
-  overrides: string; stage: string; stateFile: string; varsFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger;
+  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger;
 }): Record<string, (raw: unknown) => Promise<unknown>> {
   const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }> }>();
   const drop = (id: string): void => {
@@ -832,6 +879,7 @@ export function mirrorCalls(o: MirrorHomes & {
   };
   return {
     'config.state': async (raw) => configState(parse(StateAsk, raw), o),
+    'config.report': async (raw) => configReport(parse(ReportAsk, raw), o),
     'config.blob': async (raw) => {
       const { id, sha256 } = parse(Offer, raw);
       fs.mkdirSync(o.stage, { recursive: true });

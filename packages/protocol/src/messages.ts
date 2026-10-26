@@ -109,6 +109,8 @@ const MOVE_TIMEOUT_MS = 15 * 60_000;
 const MOVE_CHECK_TIMEOUT_MS = 3 * 60_000;
 // a retry waits for the worker to take the snapshot (60 s), to start the robot (two minutes) and for the release
 const MOVE_RETRY_TIMEOUT_MS = 5 * 60_000;
+// how long the home waits for each of a worker's answers about its agent configuration while it builds the setup rows
+export const REPORT_MS = 10_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {

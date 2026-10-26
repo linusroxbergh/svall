@@ -317,7 +317,7 @@ async function start(opts: Options): Promise<Daemon> {
     const mirror = mirrorCalls({
       claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
       agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
-      stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, connection, log,
+      stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, mirror, workerDocs.handlers);
   }

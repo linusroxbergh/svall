@@ -196,7 +196,7 @@ export function world(o: {
       ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
     }, workerDocs?.handlers,
-    o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, connection, log: silentLogger }),
+    o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger }),
   );
   const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace });
 
