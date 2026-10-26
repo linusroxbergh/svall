@@ -22,6 +22,10 @@ export class ScreenTails {
     lines?: number; everyMs?: number;
   }) {}
 
+  private get every(): number {
+    return this.o.everyMs ?? 5000;
+  }
+
   start(): void {
     this.o.fleet.on('hook', this.onHook);
   }
@@ -34,7 +38,7 @@ export class ScreenTails {
 
   private hooked(id: string): void {
     if (this.due.has(id)) return;
-    const wait = (this.sent.get(id) ?? -Infinity) + (this.o.everyMs ?? 5000) - Date.now();
+    const wait = (this.sent.get(id) ?? -Infinity) + this.every - Date.now();
     if (wait <= 0) { void this.send(id); return; }
     this.due.set(id, setTimeout(() => { this.due.delete(id); void this.send(id); }, wait).unref());
   }
@@ -43,6 +47,8 @@ export class ScreenTails {
     const c = this.o.store.state.robots[id];
     if (!c?.tmux || c.machine !== this.o.me) return;
     const at = Date.now();
+    // a send longer ago than the window holds nothing back
+    for (const [k, t] of this.sent) if (at - t >= this.every) this.sent.delete(k);
     this.sent.set(id, at);
     try {
       const text = (await this.o.tmux.capture(c.tmux.paneId, this.o.lines ?? 40)).toString('utf8');

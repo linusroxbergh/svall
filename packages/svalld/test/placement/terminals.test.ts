@@ -202,6 +202,26 @@ describe('the terminal of a robot on a worker', () => {
     expect(await dispatch({ id: 3, method: 'term.lastScreen', params: { id: 'c_2' } }, w.home.ctx)).toEqual({ id: 3, result: { text: '' } });
   });
 
+  it('the home lets go of a robot\'s last screen once its placement changes or it is closed', () => {
+    const w = world({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
+    worlds.push(w);
+    const { terminals, store } = w.home;
+    terminals.sawScreen('c_1', 'first stint', 1, W);
+    expect(terminals.lastScreen('c_1')).toEqual({ text: 'first stint', at: 1 });
+    // a screen from before a move home and out again is not this stint's, even once the generation reads as it did
+    store.update((d) => { d.robots.c_1.placement = { generation: 2 }; });
+    store.update((d) => { d.robots.c_1.placement = { generation: 1 }; });
+    expect(terminals.lastScreen('c_1')).toBeUndefined();
+    terminals.sawScreen('c_1', 'on w1', 2, W);
+    store.update((d) => { delete d.robots.c_1.machine; });
+    store.update((d) => { d.robots.c_1.machine = W; });
+    expect(terminals.lastScreen('c_1')).toBeUndefined();
+    terminals.sawScreen('c_1', 'on w1', 3, W);
+    store.update((d) => { delete d.robots.c_1; });
+    store.update((d) => { d.robots.c_1 = placed({ id: 'c_1' }); });
+    expect(terminals.lastScreen('c_1')).toBeUndefined();
+  });
+
   it('the link going down resyncs each viewer of that worker\'s robots with the last screen, and coming back reopens their terminals', async () => {
     const { w, phone, sockets } = await linked();
     let opens = 0;

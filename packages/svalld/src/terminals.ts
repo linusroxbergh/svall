@@ -34,6 +34,8 @@ const fit = (screen: Buffer, max = Infinity): Buffer => {
   return screen.subarray(nl < 0 ? screen.length - max : nl + 1);
 };
 
+type Seen = { text: string; at: number; machine: MachineId; generation?: number };
+
 /** On the home: which robots run on a worker, and the links that reach each one. */
 type Remote = { router: Pick<Router, 'placedAt' | 'forward'>; links: Pick<HomeLinks, 'for' | 'call'> };
 
@@ -48,12 +50,14 @@ export class TerminalHub {
   private closed = new WeakMap<Viewer, Map<string, number>>();
   // viewers whose socket held DRAIN_LIMIT unsent and has not drained to REJOIN_AT, and the terminals they missed output of
   private behind = new Map<Viewer, Set<string>>();
-  // on the home: the terminals viewers here hold on placed robots, and the last lines each robot's worker sent of its pane
+  // on the home: the terminals viewers here hold on placed robots, and the last lines each robot's worker sent of its
+  // pane, kept while the robot stays placed as it was then
   private far?: FarTerminals;
-  private screens = new Map<string, { text: string; at: number }>();
+  private screens = new Map<string, Seen>();
 
   constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger, private remote?: Remote) {
     this.far = remote && new FarTerminals({ links: remote.links, router: remote.router, log });
+    if (remote) store.subscribe(() => { for (const [id, s] of this.screens) if (!this.placedAsSeen(id, s)) this.screens.delete(id); });
     fleet.on('output', (id, data) => this.stream(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
     fleet.on('pause', (id) => this.resumeWhenDrained(id));
     fleet.on('continue', (id) => { this.resync(id).catch((e) => log.error(`resync ${id}: ${String(e)}`)); });
@@ -189,11 +193,17 @@ export class TerminalHub {
 
   /** The last lines of a placed robot's pane, as the worker it runs on sends them after a hook. */
   sawScreen(id: string, text: string, at: number, machine: MachineId): void {
-    if (this.remote?.router.placedAt(id) === machine) this.screens.set(id, { text, at });
+    if (this.remote?.router.placedAt(id) === machine) this.screens.set(id, { text, at, machine, generation: this.store.state.robots[id].placement?.generation });
   }
 
   lastScreen(id: string): { text: string; at: number } | undefined {
-    return this.screens.get(id);
+    const s = this.screens.get(id);
+    return s && { text: s.text, at: s.at };
+  }
+
+  // the robot still runs where the screen came from, in the same placement
+  private placedAsSeen(id: string, s: Seen): boolean {
+    return this.remote?.router.placedAt(id) === s.machine && this.store.state.robots[id].placement?.generation === s.generation;
   }
 
   /** `machine` is out of reach: each viewer of a terminal there gets the last screen it sent, which stands until it is back. */
