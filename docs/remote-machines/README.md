@@ -1,17 +1,15 @@
 # Remote machines
 
-Svall can move a fleet from your Mac to an always-on Linux machine and back: its islands, robots, the
-repositories and worktrees they work in, and each Claude Code, Codex or OpenCode conversation. On the Linux machine
-the fleet keeps working while the Mac sleeps, and the app on the Mac reaches it over ssh. Only one of the two runs
-the fleet at a time; the Linux machine, as the fleet's gateway, keeps the record of which.
-
-The app shows it once you turn it on for a fleet, with `"handover": { "enabled": true }` in that fleet's `fleet.json`.
-The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
+Svall can move a robot from your Mac to an always-on Linux machine, a **worker** of your fleet, and back: its
+Claude Code, Codex or OpenCode conversation, its branch, its commits and its uncommitted changes. On the worker the
+robot keeps working while the Mac sleeps, and the app on the Mac reaches it over ssh. The fleet stays on the Mac;
+robots on different machines share its islands, cards and map.
 
 | Page | What it covers |
 | --- | --- |
-| [Setting up a Linux machine](setup.md) | Supported machines, home paths, turning it on, adding the machine, making it the gateway, upgrading and removing it |
-| [Moving a fleet](handover.md) | Handing over from the app or `svall handover`, what moves and what stays, agents and their versions, what restarts, recovery and known limitations |
+| [Setting up a Linux machine](setup.md) | Supported machines, home paths, adding the machine as a worker, turning a gateway into a worker, upgrading and removing it |
+| [Moving a robot](placement.md) | Moving a robot there and back, the checks, what travels and what stays, the return, what goes wrong, and limitations |
+| [Moving a fleet](handover.md) | The whole-fleet handover of a fleet that names a gateway, which a later release removes |
 | [Blockers, warnings and errors](errors.md) | Every code a handover or `svall host` reports, what it means and what to do |
 | [Upgrading and downgrading](migration.md) | What the upgrade changes in your fleet homes, and how to go back |
 | [Release notes](release-notes.md) | What this release adds |
@@ -19,16 +17,10 @@ The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` co
 ## In short
 
 1. Reach an account on the Linux machine with `ssh`; its home need not be your Mac's ([home paths](setup.md#home-paths)).
-2. Turn on Settings → The fleet → **remote machines (experimental)**.
-3. Settings → Machines → **Add machine**, then **Make it this fleet's gateway**. Or from a terminal:
-
-   ```sh
-   svall host add studio --ssh ada@studio
-   svall host enable studio --fleet private
-   ```
-
-4. **Handover** at the foot of the sidebar moves the fleet there, and **This Mac** brings it back. Or
-   `svall handover studio` and `svall handover local`.
+2. Settings → Machines → **Add machine**, or from a terminal `svall host add studio --ssh ada@studio`. It ends with
+   "studio is ready. Robots you move there keep working while this Mac sleeps.", or with what is left to do.
+3. **Move to studio** on a robot's card moves it there, and **Move to this Mac** brings it back. Or
+   `svall robot move <id> --machine studio` and `--machine local`.
 
 ## How it is distributed
 

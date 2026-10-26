@@ -351,15 +351,13 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
 
 ## Remote machines
 
-A fleet can also run on an always-on Linux machine, and move between it and
-the Mac with its repositories, worktrees and agent conversations. The app
-shows it once a fleet turns it on with `"handover": { "enabled": true }` in its
-`fleet.json`; the `svall host`, `svall handover`, `svall gateway` and
-`svall fleet recover` commands work either way.
-[docs/remote-machines](docs/remote-machines/README.md) covers the
-machine it needs (Ubuntu, at any account you reach with ssh), adding it with
-`svall host add`, moving the fleet with `svall handover`, and what to do when a
-handover stops part way.
+A robot can also run on an always-on Linux machine, a worker of your fleet,
+and keep working there while the Mac sleeps: **Move to** the machine on its
+card, or `svall robot move <id> --machine <name>`, carries its conversation,
+branch, commits and uncommitted changes there and back.
+[docs/remote-machines](docs/remote-machines/README.md) covers the machine it
+needs (Ubuntu, at any account you reach with ssh), adding it with
+`svall host add`, and moving robots.
 
 ## Configuration
 
@@ -499,8 +497,9 @@ send:
   `gh auth status`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
   svall.dev your IP address and the version you run. Svall Dev doesn't.
-- A handover copies the fleet's folders and agent sessions over ssh to the
-  Linux machine you added.
+- A move copies a robot's agent session, branch and changes, and your agent
+  configuration without its secrets, over ssh to the Linux machine you added;
+  a handover copies the fleet's folders and agent sessions there.
 - Push notifications go through your phone's push service: Apple's, Google's
   or Mozilla's. The robot's name and prompt are encrypted for your phone;
   the service sees when a push is sent, and the page's address unless

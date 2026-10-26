@@ -60,7 +60,7 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine or the gateway answered with another machine id, the gateway holds no record of this fleet, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin from a machine that does not own the fleet, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: `svall host enable <host> --fleet <fleet>`. Another fleet on the destination: the same command gives it a copy of this one. A machine set up again, with a new machine id, or a gateway with no record of the fleet: [A gateway set up again](handover.md#a-gateway-set-up-again). Run handovers from the Mac. |
+| `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine or the gateway answered with another machine id, the gateway holds no record of this fleet, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin from a machine that does not own the fleet, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: no machine can be handed the fleet; `svall host upgrade <host>` makes the machine this fleet's worker, and its robots [move there one at a time](placement.md). A machine set up again, with a new machine id, or a gateway with no record of the fleet: [A gateway set up again](handover.md#a-gateway-set-up-again). Run handovers from the Mac. |
 | `generation_mismatch` | blocks | The source's copy of the ownership record and the gateway's name different generations: another handover or a recovery moved the fleet since the source last heard, or the gateway's record was made again. | `svall handover status`. With nothing open and the gateway ahead, restart the source's daemon: it takes a record with a higher generation as it starts, never a lower one. One naming another machine it also takes within five minutes while it runs. A gateway behind the source, as one [set up again](handover.md#a-gateway-set-up-again) is, needs `svall fleet recover --force-owner <machine>` naming the machine that runs the fleet (`local` for this Mac), which writes a record above both. |
 | `transaction_open` | blocks | A handover of this fleet is already open: at the gateway (also when Begin finds another handover there, this one driven by another machine's controller, which the message names, or past preparing), as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `svall handover status`, then `svall handover --resume` or `--abort`, whichever it says is safe. The sheet reads that status itself for this blocker, `generation_mismatch` and `identity_mismatch`, and when its status finds one open, offers Resume, Abort or Forget in place of a new start. |
 | `incompatible_release` | blocks | The two machines run different Svall releases. A handover needs the same release on both. | `svall host upgrade <host>` installs this Mac's release there. If the host is newer, update Svall on the Mac first. |
@@ -85,7 +85,6 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `robot_pinned` | blocks | A robot is marked Keep on this machine. | Turn it off on the robot's card, or `svall robot update <id> --no-keep-here`. |
 | `shell_busy` | blocks | A terminal's shell is running a command in the foreground: a build, a server, a REPL. Also raised for a command or an agent suspended with ctrl+z, and when that command outlives Terminate and carry. | Let it finish or stop it, or bring a suspended one back with `fg`, after which an agent is waited for as usual; or choose Terminate and carry (`--terminate-shells`), which ends it; the shell reopens in its folder on the destination. |
 | `agent_working` | blocks | An agent is still in its turn after resting waited three minutes. | Continue waiting, or Interrupt and carry (`--interrupt-after <duration>`), which sends Escape; the agent resumes from its transcript. |
 | `agent_blocked` | blocks | An agent is waiting on an answer, such as a permission prompt. | Answer it in its terminal and try again, or Interrupt and carry. |
@@ -161,11 +160,11 @@ What a machine's daemon answers when it will not do a call. A run shows them in 
 ## Gateway answers
 
 What the gateway's ownership authority answers. They appear in handover messages ("the gateway would not …"), in
-`svall host enable`, `svall fleet recover` and `svall gateway owner`.
+`svall fleet recover` and `svall gateway owner`.
 
 | Code | What it means | What to do |
 | --- | --- | --- |
-| `not_found` | The gateway holds no record of this fleet. | `svall host enable <host> --fleet <fleet>` creates it. |
+| `not_found` | The gateway holds no record of this fleet. | The fleet moves robot by robot instead: `svall host upgrade <host>` makes the machine its worker ([Moving a robot](placement.md)). |
 | `already_exists` | The gateway already holds this fleet for another machine or at a later generation. | `svall handover status`; bring the fleet back with `svall handover local` if that is what you meant. |
 | `not_owner` | The handover names a source that does not own the fleet. | `svall handover status`. |
 | `generation_mismatch` | The fleet is at another generation than the request expects. | `svall handover status`. |

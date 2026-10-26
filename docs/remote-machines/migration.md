@@ -16,7 +16,7 @@ fleet's `config.json` in two:
 2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `agentsOff` and
    `mobile.httpsPort`.
 3. `fleet.json` gets every other key it knows and a new fleet `id`. It has no `handover` block, so handover stays off
-   until you [turn it on](setup.md#turning-it-on).
+   until you turn it on with `svall handover on`.
 4. A key neither file knows stays only in `config.json.bak`.
 
 The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on

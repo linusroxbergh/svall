@@ -1,5 +1,9 @@
 # Moving a fleet
 
+> This page describes the whole-fleet handover of a fleet that names a gateway, which a later release removes. A robot
+> moves to another machine on its own: see [Moving a robot](placement.md). `svall host upgrade <name>` makes a fleet's
+> gateway its worker, and the handover moves no fleet while any of its robots runs on a worker.
+
 A handover moves a whole fleet between this Mac and its gateway machine: every island and robot, the folders and
 Git repositories they work in, and each agent's conversation. It moves no running process: agents resume from their
 transcripts and shells reopen in their folders. One machine runs the fleet at a time, and a handover that fails part

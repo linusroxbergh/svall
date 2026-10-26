@@ -1,19 +1,19 @@
 # Release notes: remote machines
 
-This release lets a fleet run on an always-on Linux machine as well as on your Mac, and move between the two. The
-app's controls for it are off by default: each fleet turns them on with `"handover": { "enabled": true }` in its
-`fleet.json`. The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or
-not `handover.enabled` is on.
+This release lets a robot run on an always-on Linux machine as well as on your Mac, and move between the two. The
+fleet stays on the Mac; the Linux machine is its worker.
 
 ## New
 
 - **Add a Linux machine** from Settings → Machines, or with `svall host add <name> --ssh <destination>`. Svall
-  checks the machine, installs its own companion there over ssh (with its own Node, no clone or build tools), sets up
-  systemd user services and lists anything left for you to do, such as logging the agents in. `svall host doctor`,
-  `upgrade` and `remove` look after it, and `svall host upgrade <name> --rollback` puts it back on the release
-  before.
-- **Make it a fleet's gateway** with `svall host enable <name> --fleet <fleet>`. The gateway keeps the record of which
-  machine owns the fleet, so only one ever runs it.
+  checks the machine, installs its own companion there over ssh (with its own Node, no clone or build tools), makes it
+  a worker of the fleet with a systemd user service, and ends with one line: ready, or what is left for you to do,
+  such as logging the agents in. `svall host doctor`, `upgrade` and `remove` look after it, and
+  `svall host upgrade <name> --rollback` puts it back on the release before.
+- **Move a robot** there from its card, or with `svall robot move <id> --machine <name>`, and back with **Move to
+  this Mac** or `--machine local`. It keeps its conversation, its branch, its commits and its uncommitted changes, and
+  keeps working while the Mac sleeps. See [Moving a robot](placement.md).
+- **A machine that was a fleet's gateway** becomes its worker with `svall host upgrade <name>`.
 - **Hand the fleet over** with the Handover button or `svall handover <name>`, and back with **This Mac** or
   `svall handover local`. Robots, islands, notes, browser tab URLs, entity docs and agent profiles move; so do the
   repositories the robots work in, with their worktrees, staged and unstaged changes, untracked files and
@@ -27,8 +27,6 @@ not `handover.enabled` is on.
   left running for it. A dropped link or a killed process leaves it where it stopped, and the sheet or
   `svall handover status` says whether Resume or Abort is safe. Before the commit an abort gives the fleet back; after
   it, only the new machine goes on.
-- **Keep a robot on this machine** from its card, or `svall robot update <id> --keep-here`, and a handover waits
-  for it.
 - **Disaster recovery**: `svall fleet recover --force-owner <machine>` writes a new ownership record when the gateway
   is lost for good, after showing everything each machine holds.
 
@@ -63,6 +61,6 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 ## Not yet
 
 - A stable phone URL that follows the fleet between machines, and forwarding a remote dev server's ports to the Mac.
-- More than one Linux machine per fleet, and moving a single robot or island.
+- Moving a whole island at once.
 
-Known limitations are listed in [Moving a fleet](handover.md#known-limitations).
+Known limitations are listed in [Moving a robot](placement.md#limitations) and [Moving a fleet](handover.md#known-limitations).
