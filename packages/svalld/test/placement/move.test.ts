@@ -333,13 +333,34 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.lines.at(-1)?.text).toMatch(new RegExp(`^opencode .*-s ${OSID}$`));
   });
 
-  it('a return refuses an OpenCode session this Mac went on with meanwhile, and its copy stays', async () => {
+  it('a return refuses an OpenCode session this Mac went on with meanwhile before it touches the Mac worktree, and its copy stays', async () => {
+    const w = open({ opencode: true });
+    const home = await w.start();
+    const out = await home.placement.start('c_1', W);
+    const before = state(w, w.wt);
+    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    w.opencode.mac.sessions.get(OSID)!.messages.push({ id: 'msg_here' });
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
+      code: 'refused', message: `OpenCode went on with session ${OSID} on this Mac since the move; save it with opencode session export, then delete it`,
+    });
+    expect(w.opencode.mac.sessions.get(OSID)?.messages.at(-1)).toEqual({ id: 'msg_here' });
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    // the Mac worktree keeps the changes it held, locked as the robot left it
+    expect(state(w, w.wt)).toEqual(before);
+    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${out}` });
+    expect(home.store.state.robots.c_1.left?.fingerprint).toBe(fingerprint);
+  });
+
+  it('a return whose OpenCode import fails puts back the copy this Mac held, and keeps no other', async () => {
     const w = open({ opencode: true });
     const home = await w.start();
     await home.placement.start('c_1', W);
-    w.opencode.mac.sessions.get(OSID)!.messages.push({ id: 'msg_here' });
-    await expect(home.placement.start('c_1', H)).rejects.toThrow(`the destination's OpenCode went on with session ${OSID} past the copy coming in`);
-    expect(w.opencode.mac.sessions.get(OSID)?.messages.at(-1)).toEqual({ id: 'msg_here' });
+    w.opencode.far.sessions.get(OSID)!.messages.push({ id: 'msg_3' });
+    w.opencode.mac.failImports = 1;
+    await expect(home.placement.start('c_1', H)).rejects.toThrow(`OpenCode did not import session ${OSID}: Error: database is locked`);
+    expect(w.opencode.mac.sessions.get(OSID)).toEqual({ directory: w.wt, messages: [{ id: 'msg_1' }, { id: 'msg_2' }] });
+    expect(fs.existsSync(path.join(w.homePaths.moves, 'held', 'opencode', `${OSID}.json`))).toBe(false);
     expect(home.store.state.robots.c_1.machine).toBe(W);
   });
 

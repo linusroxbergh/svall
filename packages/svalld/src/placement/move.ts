@@ -8,6 +8,7 @@ import {
   ApiError, MachineId, MoveId, MovePhase, ObjectName, Robot, TransferSession, WORKER_OWNED,
   type FleetId, type LeftBehind, type MoveSheet, type Refusal, type SystemInfo,
 } from '@svall/protocol';
+import { AGENTS } from '../agents.js';
 import { Invalid, NotFound } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { DurableJson } from '../handover/durable.js';
@@ -20,7 +21,7 @@ import { ProcessTable } from '../handover/processes.js';
 import { relocate } from '../handover/relocate.js';
 import { classifyTerminals, restTerminals, type RestChoices, type RestDeps } from '../handover/rest.js';
 import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../handover/sessions/registry.js';
-import type { CliRun, SessionAdapter } from '../handover/sessions/types.js';
+import { SessionError, type CliRun, type SessionAdapter } from '../handover/sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import type { GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
@@ -180,6 +181,25 @@ export function placeSessions(sessions: readonly TransferSession[], staged: stri
   sessions.forEach((s, n) => installSession(s, path.join(staged, String(n))));
 }
 
+// the folder a carried session resumes in on this machine
+const sessionCwd = (s: TransferSession, paths: MovePlan['paths']): string => (s.term === 2 ? paths.second : undefined) ?? paths.cwd;
+
+/**
+ * Refuses, changing nothing, while this machine's copy of a carried session a CLI keeps in a database of its own went on
+ * past the one staged under `staged/<n>`; `where` names this machine.
+ */
+export async function checkSessions(sessions: readonly TransferSession[], staged: string, paths: MovePlan['paths'], run: CliRun, where: string): Promise<void> {
+  for (const [n, s] of sessions.entries()) {
+    const adapter = sessionAdapter(s.agent, s.adapter);
+    if (!adapter.exportFile || !adapter.checkSession) continue;
+    try { await adapter.checkSession(s.sessionId, path.join(staged, String(n), adapter.exportFile(s.sessionId)), sessionCwd(s, paths), run); } catch (e) {
+      if (!(e instanceof SessionError && e.code === 'destination_diverged')) throw e;
+      const { label, bin } = AGENTS[s.agent];
+      throw refused({ reason: `${label} went on with session ${s.sessionId} ${where} since the move`, action: `save it with ${bin} session export, then delete it` });
+    }
+  }
+}
+
 /**
  * Reads each carried session a CLI keeps in a database of its own into this machine's from its staged export, to resume
  * at the plan's folder, in place of the copy held here, which waits in `held` and comes back if the import fails.
@@ -189,11 +209,14 @@ export async function importSessions(sessions: readonly TransferSession[], stage
     const adapter = sessionAdapter(s.agent, s.adapter);
     if (!adapter.exportFile || !adapter.dropSession || !adapter.importSession || !adapter.restoreSession) continue;
     const file = path.join(staged, String(n), adapter.exportFile(s.sessionId));
-    const cwd = (s.term === 2 ? paths.second : undefined) ?? paths.cwd;
+    const cwd = sessionCwd(s, paths);
     const keep = path.join(held, s.agent, `${s.sessionId}.json`);
     await adapter.dropSession(s.sessionId, file, cwd, run, keep);
     try { await adapter.importSession(s.sessionId, file, cwd, run); } catch (e) {
-      if (fs.existsSync(keep)) await adapter.restoreSession(s.sessionId, keep, run);
+      if (fs.existsSync(keep)) {
+        await adapter.restoreSession(s.sessionId, keep, run);
+        fs.rmSync(keep, { force: true });
+      }
       throw e;
     }
     fs.rmSync(keep, { force: true });
@@ -688,27 +711,32 @@ export class Placement {
     return MoveJournal.parse({ ...j, robot: r.robot, manifest: r.manifest, branchSha: r.branchSha, sessions: r.sessions ?? [], rest: r.rest });
   }
 
-  // the worktree the robot left here, as it was then, takes what comes back: reset to its base, cleaned, applied
+  // the worktree the robot left here, as it was then, takes what comes back: reset to its base, cleaned, applied, once
+  // all that comes is checked
   private async prepareHere(j: MoveJournal): Promise<MoveJournal> {
     const c = this.robot(j.robotId);
     const stage = this.files.stage(j.id);
     const { left } = c;
     const m = j.manifest;
+    const [dir, sessions] = [path.join(stage, 'bundle'), path.join(stage, 'session')];
+    const run = this.d.cli ?? cliRunner();
     if (left && !m) throw new Error(`${c.name} comes back without the worktree it left`);
     if (left && m) {
       const changed = await changedSince(left, 'on this Mac', this.d.git);
       if (changed) throw refused(changed);
-      const dir = path.join(stage, 'bundle');
       await unpack(path.join(stage, 'bundle.tar'), dir);
       await verifyBundle(dir, m);
+    }
+    await unpack(path.join(stage, 'session.tar'), sessions);
+    await checkSessions(j.sessions ?? [], sessions, j.plan.paths, run, 'on this Mac');
+    if (left && m) {
       j = { ...j, made: { unlocked: true } };
       this.save(j);
       await takeBack(left.path, left.branchSha, this.d.git);
       await applyBundle(left.path, dir, m, this.d.git);
     }
-    await unpack(path.join(stage, 'session.tar'), path.join(stage, 'session'));
-    placeSessions(j.sessions ?? [], path.join(stage, 'session'));
-    await importSessions(j.sessions ?? [], path.join(stage, 'session'), j.plan.paths, path.join(this.files.dir, 'held'), this.d.cli ?? cliRunner());
+    placeSessions(j.sessions ?? [], sessions);
+    await importSessions(j.sessions ?? [], sessions, j.plan.paths, path.join(this.files.dir, 'held'), run);
     fs.rmSync(stage, { recursive: true, force: true });
     return j;
   }

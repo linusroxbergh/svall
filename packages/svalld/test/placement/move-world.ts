@@ -128,11 +128,17 @@ type Held = { directory: string; messages: { id: string }[] };
 /** A machine's OpenCode: the sessions its database holds, as `opencode session export|import|delete --standalone` reads and writes them. */
 export class FakeOpencode {
   sessions = new Map<string, Held>();
+  /** how many imports to come fail */
+  failImports = 0;
   readonly run: CliRun = async (cmd, args, o = {}) => {
     const no = (stderr: string) => ({ code: 1, stdout: '', stderr });
     if (cmd !== 'opencode' || args[0] !== 'session' || args[2] !== '--standalone') return no(`${args.join(' ')} is not faked`);
     const verb = args[1];
     const id = args.at(-1)!;
+    if (verb === 'import' && this.failImports > 0) {
+      this.failImports--;
+      return no('Error: database is locked');
+    }
     if (verb === 'import') {
       const { info, messages } = JSON.parse(fs.readFileSync(id, 'utf8')) as { info: { id: string }; messages: Held['messages'] };
       if (this.sessions.has(info.id)) return { code: 0, stdout: '', stderr: '' };

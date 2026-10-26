@@ -19,7 +19,7 @@ import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, fileSha, importSessions, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
 } from './move.js';
 import { seedTrust } from './trust.js';
 
@@ -185,11 +185,14 @@ export class PrepareService {
     const [bundle, session] = await receipts;
     if (bundle?.sha256 !== blobs.bundle || session.sha256 !== blobs.session) throw new Error(`the files of move ${id} did not arrive as they left`);
     const stage = this.files.stage(id);
+    const run = this.d.cli ?? cliRunner();
     return this.repoLock(j.plan.clone, async () => {
       let cur = j;
       const made = (m: Made): void => { cur = { ...cur, made: { ...cur.made, ...m } }; this.save(cur); };
       const m = j.manifest;
       const { clone, paths } = j.plan;
+      await unpack(path.join(stage, 'session.tar'), path.join(stage, 'session'));
+      await checkSessions(j.sessions ?? [], path.join(stage, 'session'), paths, run, `on ${this.name}`);
       if (m) {
         const dir = path.join(stage, 'bundle');
         await unpack(path.join(stage, 'bundle.tar'), dir);
@@ -200,12 +203,11 @@ export class PrepareService {
           await applyBundle(paths.root, dir, m, this.d.git);
         });
       }
-      await unpack(path.join(stage, 'session.tar'), path.join(stage, 'session'));
       boundary('worker.prepare.session', () => {
         made({ files: (j.sessions ?? []).flatMap((s) => s.files.map((f) => path.join(s.destinationHome!, f.path))).filter((f) => !fs.existsSync(f)) });
         placeSessions(j.sessions ?? [], path.join(stage, 'session'));
       });
-      await importSessions(j.sessions ?? [], path.join(stage, 'session'), paths, path.join(this.files.dir, 'held'), this.d.cli ?? cliRunner());
+      await importSessions(j.sessions ?? [], path.join(stage, 'session'), paths, path.join(this.files.dir, 'held'), run);
       // the robot is here at the move's generation, marked as this machine's own record until the commit's snapshot
       // replaces it, which keeps what this machine holds of it
       boundary('worker.prepare.journal', () => {
