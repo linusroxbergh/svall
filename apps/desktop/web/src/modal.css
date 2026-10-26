@@ -7,7 +7,6 @@
 .lp button:hover { color: var(--ink); }
 .lp[data-pinned="true"] .lg { color: var(--sel); }
 .side .lp, .hover-card .lp { max-width: 100%; box-sizing: border-box; }
-.lp button[title] { font-size: var(--text-2xs); }
 .sdot { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--shell); display: inline-block; flex: none; }
 .sdot[data-status="working"] { background: var(--working); color: var(--working); }
 .sdot[data-status="idle"] { background: var(--idle); color: var(--idle); }

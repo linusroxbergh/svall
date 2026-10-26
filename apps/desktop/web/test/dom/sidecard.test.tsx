@@ -163,6 +163,16 @@ test('a quit saves the draft before it answers', async () => {
   stop();
 });
 
+test('a link the scribe added is taken off by its ×', () => {
+  const f = fleet();
+  const doc = { kind: 'other' as const, ref: 'https://doc', label: 'doc', source: 'scribe' as const };
+  f.robots.c0 = { ...f.robots.c0, context: [doc] };
+  store.getState().setFleet(f);
+  render(<Side />);
+  fireEvent.click(screen.getByTestId('context-remove'));
+  expect(updates()).toEqual([['robot.update', { id: 'c0', context: [], removed: ['https://doc'] }]]);
+});
+
 test('a link half typed for one robot is not offered to the next', () => {
   render(<Side />);
   fireEvent.change(screen.getByTestId('context-ref'), { target: { value: 'https://example.com/for-c0' } });

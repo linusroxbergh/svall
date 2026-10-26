@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { MAX_REF, prFirst, settleItems } from '../src/context/items.js';
+import { MAX_REF, prFirst, setContext, settleItems } from '../src/context/items.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -70,5 +70,26 @@ describe('prFirst', () => {
   it('leaves a PR the user added where they put it', () => {
     const typed = link('manual', 'pr', 'https://github.com/o/r/pull/3');
     expect(prFirst([doc, typed])).toEqual([doc, typed]);
+  });
+});
+
+describe('setContext', () => {
+  const item = (source: ContextItem['source'], ref: string): ContextItem => ({ kind: 'other', ref, label: '', source });
+  it('remembers a scribe or branch link named as removed, not a manual one, until it is added again', () => {
+    const holder: { context: ContextItem[]; removedLinks?: string[] } = { context: [item('scribe', 'https://Doc/'), item('auto', 'https://repo'), item('manual', 'https://mine')] };
+    setContext(holder, [item('auto', 'https://repo')], ['https://Doc/', 'https://mine']);
+    expect(holder.removedLinks).toEqual(['doc/']);
+    setContext(holder, [], ['https://repo']);
+    expect(holder.removedLinks).toEqual(['doc/', 'repo/']);
+    setContext(holder, [item('manual', 'https://doc'), item('manual', 'https://repo')]);
+    expect(holder).toEqual({ context: [item('manual', 'https://doc'), item('manual', 'https://repo')] });
+  });
+  // a list sent before a scribe or branch write landed leaves that link out without anyone taking it off
+  it('records nothing for a link the list only leaves out', () => {
+    const holder: { context: ContextItem[]; removedLinks?: string[] } = { context: [item('auto', 'https://github.com/o/r/pull/5')] };
+    setContext(holder, [item('manual', 'https://mine')]);
+    expect(holder.removedLinks).toBeUndefined();
+    setContext(holder, [], ['https://github.com/o/r/pull/5/files']);
+    expect(holder.removedLinks).toBeUndefined();
   });
 });

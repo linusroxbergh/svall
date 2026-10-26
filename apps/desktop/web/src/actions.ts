@@ -309,8 +309,8 @@ export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.u
 };
 
 // a context write carries the whole list, so a failed one is only reported: sent again later it could drop items added meanwhile
-export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[]): void => {
-  d.api.call('robot.update', { id, context }).catch(toast(d));
+export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
+  d.api.call('robot.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
 };
 
 export const reviveRobot = (d: ActionDeps, id: string): Promise<boolean> =>
@@ -342,8 +342,8 @@ export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island
   d.api.call('island.update', { id, ...patch }).catch(unsent(d, () => saveIsland(d, id, patch)));
 };
 
-export const saveIslandContext = (d: ActionDeps, id: string, context: ContextItem[]): void => {
-  d.api.call('island.update', { id, context }).catch(toast(d));
+export const saveIslandContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
+  d.api.call('island.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
 };
 
 // the island goes and the card that showed it goes with it; a refused delete leaves both
