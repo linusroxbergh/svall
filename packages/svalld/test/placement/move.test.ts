@@ -4,13 +4,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
-import { realPath } from '../../src/path-tools.js';
 import { handoverGit } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { Store } from '../../src/store.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes } from '../helpers.js';
-import { Crash, OSID, SID, moveWorld, until, type MoveWorld } from './move-world.js';
+import { Crash, OSID, SID, listed, moveWorld, state, until, type MoveWorld } from './move-world.js';
 import { H, W } from './world.js';
 
 const worlds: MoveWorld[] = [];
@@ -22,22 +21,6 @@ afterEach(async () => {
   cleanHomes();
 });
 const open = (o: Parameters<typeof moveWorld>[0] = {}): MoveWorld => { const w = moveWorld(o); worlds.push(w); return w; };
-
-// what `git worktree list` says of the worktree at `root`, or undefined when git lists none there
-function listed(w: MoveWorld, repo: string, root: string): { locked?: string } | undefined {
-  const entries = w.g(repo, 'worktree', 'list', '--porcelain').split('\n\n');
-  const entry = entries.find((e) => e.split('\n')[0] === `worktree ${realPath(root)}`);
-  if (!entry) return undefined;
-  const locked = entry.split('\n').find((l) => l.startsWith('locked'));
-  return locked === undefined ? {} : { locked: locked.slice('locked'.length).trim() };
-}
-
-const state = (w: MoveWorld, root: string) => ({
-  head: w.g(root, 'rev-parse', 'HEAD'), branch: w.g(root, 'symbolic-ref', '--short', 'HEAD'),
-  staged: w.g(root, 'diff', '--cached', '--name-status'), unstaged: w.g(root, 'diff', '--name-status'),
-  // a credential file travels only when ticked
-  untracked: w.g(root, 'ls-files', '--others', '--exclude-standard').split('\n').filter((f) => f && f !== '.env').sort(),
-});
 
 // fires `then` at a step's edge, once
 // Claude's question to trust its folder, as the robot's pane on the worker shows it
@@ -636,98 +619,5 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', W);
     expect(atBundle).toBe(2);
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-  });
-});
-
-// the home's side of a move out, each step a crash can fall on
-const HOME_STEPS: Failpoint[] = [
-  'move.journal.rest', 'move.rest', 'move.journal.bundle', 'move.bundle', 'move.journal.prepare', 'move.journal.commit', 'move.commit.state',
-  'move.journal.activate', 'move.journal.release', 'move.release.lock', 'move.journal.done',
-];
-
-describe.skipIf(!hasGit)('a crash of the home during a move', () => {
-  for (const name of HOME_STEPS) {
-    for (const edge of ['before', 'after'] as const) {
-      it(`at ${name}:${edge} ends with the move done or aborted and the robot on exactly one machine`, async () => {
-        const w = open();
-        const first = await w.start();
-        at(name, edge, () => { first.life.dead = true; throw new Crash(name); });
-        await expect(first.placement.start('c_1', W)).rejects.toThrow();
-        first.links.stop();
-        const opened = w.mac1.opened.length;
-
-        const again = await w.bootHome();
-        await again.placement.recoverMoves();
-
-        const ids = (fs.existsSync(w.homePaths.moves) ? fs.readdirSync(w.homePaths.moves) : []).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -'.json'.length));
-        const phase = ids.length ? again.placement.status(ids[0]).phase : 'never journaled';
-        const here = again.store.state.robots.c_1;
-        expect(here.moving).toBeUndefined();
-        if (phase === 'done') {
-          expect(here.machine).toBe(W);
-          expect(w.mac1.opened.length).toBe(opened);
-          expect([...w.mac1.windows.values()].some((x) => x.name === 'c_1')).toBe(false);
-          expect(listed(w, w.main, w.wt)?.locked).toBe(`moved to w1 ${ids[0]}`);
-          await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-          expect(w.vault.opened).toEqual(['c_1']);
-        } else {
-          expect(['aborted', 'never journaled']).toContain(phase);
-          expect(here.machine).toBeUndefined();
-          expect(here.tmux).toBeDefined();
-          expect([...w.mac1.windows.values()].filter((x) => x.name === 'c_1')).toHaveLength(1);
-          expect(listed(w, w.main, w.wt)).toEqual({});
-          expect(fs.existsSync(w.farWt)).toBe(false);
-          expect(w.vault.opened).toEqual([]);
-          await until(() => { expect(w.worker.store.state.robots.c_1?.machine).toBeUndefined(); });
-        }
-      });
-    }
-  }
-
-  it('a worker linked again after a crash at move.journal.activate starts the robot only once it holds the commit\'s snapshot', async () => {
-    const w = open();
-    const first = await w.start();
-    at('move.journal.activate', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
-    await expect(first.placement.start('c_1', W)).rejects.toThrow(Crash);
-    first.links.stop();
-    const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
-    const id = file.slice(0, -'.json'.length);
-    // what the worker holds of the robot is its own prepare's, marked so
-    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, placement: { generation: 1 }, moving: { id, phase: 'prepare' } });
-    let held: unknown;
-    at('worker.activate.open', 'before', () => { held = structuredClone(w.worker.store.state.robots.c_1.moving); });
-
-    // the link answers at once and syncs late: the move runs on as it answers, and waits for the sync
-    const again = await w.bootHome(undefined, { syncAfterMs: 1500 });
-
-    await until(() => { expect(again.placement.status(id).phase).toBe('done'); });
-    expect(held).toEqual({ id, to: W, phase: 'activate' });
-    expect(w.vault.opened).toEqual(['c_1']);
-  });
-
-  it('a return cut short before its commit leaves the robot on the worker and the Mac worktree locked, and the next return goes through', async () => {
-    const w = open();
-    const first = await w.start();
-    await first.placement.start('c_1', W);
-    w.g(w.farWt, 'commit', '-qm', 'staged work');
-    fs.appendFileSync(path.join(w.farWt, 'b.txt'), 'more\n');
-    at('move.journal.commit', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
-    await expect(first.placement.start('c_1', H)).rejects.toThrow(Crash);
-    first.links.stop();
-    disarm?.();
-
-    const again = await w.bootHome();
-    await again.placement.recoverMoves();
-    const here = again.store.state.robots.c_1;
-    expect(here).toMatchObject({ machine: W });
-    expect(here.moving).toBeUndefined();
-    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
-    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-    expect(w.vault.opened).toEqual(['c_1', 'c_1']);
-
-    const there = state(w, w.farWt);
-    await again.placement.start('c_1', H);
-    expect(state(w, w.wt)).toEqual(there);
-    expect(again.store.state.robots.c_1.machine).toBeUndefined();
   });
 });

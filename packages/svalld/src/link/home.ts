@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
 import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LinkFrame, type MachineLink, type MethodName, type Result } from '@svall/protocol';
+import { boundary } from '../failpoints.js';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
@@ -348,7 +349,7 @@ export class WorkerLink {
             else if (staged) staged.change();
             this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
           });
-          const written = await this.o.store.flush();
+          const written = await boundary('home.event.applied', () => this.o.store.flush());
           if (staged) staged.after?.();
           if (!written) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream

@@ -42,6 +42,7 @@ export type PrepareDeps = {
   agents: AgentProber;
   processes?: RestDeps['processes'];
   kill?: RestDeps['kill'];
+  clock?: RestDeps['clock'];
   agentRunning?: (kind: AgentKind) => Promise<boolean>;
   log: Logger;
   moves?: MoveFiles;
@@ -340,10 +341,10 @@ export class PrepareService {
     const c = this.d.store.state.robots[j.robotId];
     if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? j.robotId} does not run on ${this.name}`);
     this.save({ ...j, phase: 'rest' });
-    const { store, tmux, viewers, processes, kill } = this.d;
+    const { store, tmux, viewers, processes, kill, clock } = this.d;
     const { interruptAfterMs } = j.plan;
     try {
-      const rested = await restRobot({ store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }) }, j, (x) => this.save(x), this.d.fleetId,
+      const rested = await restRobot({ store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) }, j, (x) => this.save(x), this.d.fleetId,
         interruptAfterMs === undefined ? {} : { interruptAfterMs, terminate: true });
       this.save({ ...rested, phase: 'bundle' });
       return { ok: true };

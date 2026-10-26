@@ -11,9 +11,9 @@ afterEach(cleanHomes);
 
 const REPO = path.join(import.meta.dirname, '../../../..');
 const ALL = Object.keys(FAILPOINTS) as Failpoint[];
-// a move's own steps are crashed in test/placement
-type HandoverPoint = Exclude<Failpoint, `move.${string}` | `worker.${string}`>;
-const NAMES = ALL.filter((n): n is HandoverPoint => !/^(move|worker)\./.test(n));
+// the steps of a move and of the worker's journal are crashed in test/placement
+type HandoverPoint = Exclude<Failpoint, `move.${string}` | `worker.${string}` | `home.${string}`>;
+const NAMES = ALL.filter((n): n is HandoverPoint => !/^(move|worker|home)\./.test(n));
 
 describe('the failpoint registry', () => {
   it('runs a step as it is while nothing arms it', async () => {

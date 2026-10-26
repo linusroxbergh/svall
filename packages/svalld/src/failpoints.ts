@@ -103,6 +103,11 @@ export const FAILPOINTS = {
   'worker.activate.open': 'destination',
   'worker.activate.trust': 'destination',
   'worker.abort.remove': 'destination',
+  // the worker's outbox, and the home's write of each event it applies from it
+  'worker.outbox.append': 'destination',
+  'worker.outbox.acked': 'destination',
+  'worker.outbox.trim': 'destination',
+  'home.event.applied': 'source',
 } as const satisfies Record<string, FailSide>;
 
 export type Failpoint = keyof typeof FAILPOINTS;

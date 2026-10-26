@@ -4,7 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { vi } from 'vitest';
-import { emptyState, type AgentAdapter, type FleetState, type Robot } from '@svall/protocol';
+import { emptyState, type AgentAdapter, type FleetState, type Mutation, type Robot } from '@svall/protocol';
 import { answer, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
@@ -17,16 +17,20 @@ import { handoverGit, type GitRunner } from '../../src/links/git.js';
 import { silentLogger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
+import { realPath } from '../../src/path-tools.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { FarViewers } from '../../src/placement/far-viewers.js';
 import type { Mirror } from '../../src/placement/mirror.js';
 import { MoveFiles, Placement } from '../../src/placement/move.js';
 import { PrepareService } from '../../src/placement/prepare.js';
-import { Router, workerCalls } from '../../src/placement/router.js';
+import { Replay } from '../../src/placement/replay.js';
+import type { Clock } from '../../src/placement/rest.js';
+import { Router, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import type { Screen, Tmux } from '../../src/tmux/tmux.js';
+import { WorkerMutations } from '../../src/worker/mutations.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
 import { git } from '../git-fixture.js';
@@ -63,7 +67,11 @@ const mortalGit = (g: GitRunner, life: Life): GitRunner => (args, cwd) => {
   return g(args, cwd);
 };
 
-type Win = { windowId: string; paneId: string; pid: number; name: string; path: string; job?: string };
+type Win = { windowId: string; paneId: string; pid: number; name: string; path: string; job?: string; holdsOn?: true };
+
+const runsOpencode = (w: Win): boolean => /^opencode\b/.test(w.job ?? '');
+// an OpenCode TUI's private server, in a group of its own off the terminal
+const serverOf = (w: Win): Proc => ({ pid: w.pid + 60, ppid: w.pid + 1, pgid: w.pid + 60, tpgid: 0, stat: 'Ss', args: 'opencode serve --stdio' });
 
 /** A machine's tmux server and processes, which outlive its daemon. */
 export class Box {
@@ -77,6 +85,9 @@ export class Box {
   screens = new Map<string, string[]>();
   /** what an agent started by a line does: by default it reports its SessionStart */
   started?: (robotId: string, sessionId: string) => void;
+  /** whether each OpenCode TUI runs a private server that outlives its window until SIGKILL, as one stuck shutting down does */
+  lingers = false;
+  private left: Proc[] = [];
   private next = 1;
 
   constructor(readonly name: string) {}
@@ -110,7 +121,11 @@ export class Box {
       setImmediate(() => this.started?.(w.name, resumed[1]));
     },
     sendBytes: async (paneId: string, bytes: Buffer) => { this.keys.push({ paneId, text: bytes.toString('latin1') }); },
-    killWindow: async (windowId: string) => { this.windows.delete(windowId); },
+    killWindow: async (windowId: string) => {
+      const w = this.windows.get(windowId);
+      if (w && this.lingers && runsOpencode(w)) this.left.push({ ...serverOf(w), ppid: 1 });
+      this.windows.delete(windowId);
+    },
     screen: async (paneId: string): Promise<Screen> => ({ rows: this.screens.get(paneId) ?? [], cursor: 0, shown: true, command: '' }),
     capture: async () => Buffer.from(''),
     detachClients: async () => {},
@@ -120,8 +135,15 @@ export class Box {
   readonly processes = async (): Promise<ProcessTable> => new ProcessTable([...this.windows.values()].flatMap((w): Proc[] => {
     const group = w.job ? w.pid + 1 : w.pid;
     const shell = { pid: w.pid, ppid: 1, pgid: w.pid, tpgid: group, stat: 'Ss', args: '-zsh' };
-    return w.job ? [shell, { pid: group, ppid: w.pid, pgid: group, tpgid: group, stat: 'S+', args: w.job }] : [shell];
-  }));
+    if (!w.job) return [shell];
+    return [shell, { pid: group, ppid: w.pid, pgid: group, tpgid: group, stat: 'S+', args: w.job }, ...(this.lingers && runsOpencode(w) ? [serverOf(w)] : [])];
+  }).concat(this.left));
+
+  /** Signals a group: a job ends on SIGTERM unless it holds on, and on SIGKILL, as does a server a closed window left. */
+  readonly kill = (group: number, signal: NodeJS.Signals): void => {
+    for (const w of this.windows.values()) if (w.job && w.pid + 1 === group && (signal === 'SIGKILL' || !w.holdsOn)) delete w.job;
+    if (signal === 'SIGKILL') this.left = this.left.filter((p) => p.pgid !== group);
+  };
 }
 
 type Held = { directory: string; messages: { id: string }[] };
@@ -172,10 +194,11 @@ const put = (file: string, data: string): void => {
  * A Mac under `base/Users/ada` holding robot c_1 in worktree kanban of code/app, with commits past origin, a staged, an
  * unstaged and an untracked change and a .env, and its Claude session; and worker w1, whose user home is this test's
  * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
- * agent configuration.
+ * agent configuration. A rest's waits pass at once.
  */
 export function moveWorld(o: {
   agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean; agentRunsThere?: boolean;
+  busy?: boolean;
 } = {}) {
   const base = fs.realpathSync(makeHome());
   fs.writeFileSync(path.join(base, 'gitconfig'), '');
@@ -253,6 +276,13 @@ export function moveWorld(o: {
       tmux: { windowId: w2.windowId, paneId: w2.paneId },
     };
   }
+  // or c_1 with a second terminal whose job holds on through a SIGTERM, and OpenCode servers that outlive their windows
+  if (o.busy) {
+    const job = mac1.window('c_1-2', cwd, 'npm run dev');
+    job.holdsOn = true;
+    c1.second = { cwd, unread: false, tmux: { windowId: job.windowId, paneId: job.paneId } };
+    mac1.lingers = vault.lingers = true;
+  }
 
   const config = Config.parse({});
   const { mirror } = o;
@@ -276,42 +306,78 @@ export function moveWorld(o: {
   const farAdapter: AgentAdapter = { kind: macProbe.kind, version: macProbe.version, adapter: 1, home: farHome, loggedIn: true, hooks: true };
   const viewers = { detach: async () => {} };
   const stops: (() => unknown)[] = [];
+  let skew = 0;
+  const clock: Clock = {
+    now: () => Date.now() + skew,
+    sleep: (ms, signal) => new Promise((resolve) => {
+      const next = setImmediate(() => { skew += Math.max(0, ms); resolve(); });
+      signal?.addEventListener('abort', () => clearImmediate(next), { once: true });
+    }),
+  };
+  /** what each home took from the worker's outbox, in order: a report by its robot, a mutation by its method and robot */
+  const applied: string[] = [];
 
-  // the worker's daemon: it runs for the whole test
-  const workerStore = Store.load(workerPaths.state, () => {});
-  const workerOwnership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
-  const handlers: Record<string, (p: unknown) => Promise<unknown>> = {};
-  const connection = new HomeConnection({
-    paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store: workerStore, outbox: Outbox.open(workerPaths),
-    log: silentLogger, release: RELEASE, bootId: 'boot-1', handlers,
-  });
-  const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
-  const workerFleet = new Fleet({
-    store: workerStore, tmux: vault.tmux as unknown as Tmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
-    report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [],
-  });
-  vault.started = (id, sid) => workerFleet.emit('session-start', id, undefined, sid);
-  const prepare = new PrepareService({
-    store: workerStore, fleet: workerFleet, tmux: vault.tmux as unknown as Tmux, viewers, connection, me: W, fleetId: config.id, homeName: 'mac', paths: workerPaths,
-    git: handoverGit, cloneGit: handoverGit, agents: async () => [{ ...macProbe, home: farHome }], processes: vault.processes,
-    agentRunning: async () => !!o.agentRunsThere, log: silentLogger, watchMs: 5000, cli: opencode.far.run,
-  });
-  const terminals = new TerminalHub(workerFleet, vault.tmux as unknown as Tmux, workerStore, silentLogger);
-  Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: new FarViewers({ connection }) }), prepare.handlers, {
-    'system.info': async () => ({ agentAdapters: [farAdapter] }),
-  });
-  stops.push(() => connection.stop());
+  // the worker's daemon, started again after a crash from what it left on disk
+  let boots = 0;
+  let worker: Awaited<ReturnType<typeof bootWorker>> | undefined;
+  const bootWorker = async (life: Life = { dead: false }) => {
+    const store = Store.load(workerPaths.state, () => {});
+    const ownership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
+    const outbox = Outbox.open(workerPaths);
+    const tmux = mortal(vault.tmux, life) as unknown as Tmux;
+    const handlers: Record<string, (p: unknown) => Promise<unknown>> = {};
+    const connection = new HomeConnection({
+      paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store, outbox: mortal(outbox, life),
+      log: silentLogger, release: RELEASE, bootId: `boot-${++boots}`, handlers, onAcked: (dropped) => mutations.acked(dropped),
+    });
+    const router = new Router({ store, me: W, log: silentLogger, home: { id: H, connection } });
+    const fleet = new Fleet({
+      store, tmux, paths: workerPaths, config, log: silentLogger, ownership, remote: router,
+      report: (r) => connection.report(r), created: (c, p) => mutations.created(c, p), readProcs: async () => [], processes: async () => [],
+    });
+    const mutations = new WorkerMutations({
+      store: mortal(store, life), fleet: mortal(fleet, life), connection: mortal(connection, life), outbox: mortal(outbox, life), me: W, paths: workerPaths, log: silentLogger,
+      forget: (id) => forgetRobot({ fleet: mortal(fleet, life), store: mortal(store, life), me: W, log: silentLogger }, id),
+    });
+    vault.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
+    const box = mortal(vault, life);
+    const prepare = new PrepareService({
+      store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, fleetId: config.id, homeName: 'mac', paths: workerPaths,
+      git: mortalGit(handoverGit, life), cloneGit: mortalGit(handoverGit, life), agents: async () => [{ ...macProbe, home: farHome }], processes: box.processes, kill: box.kill, clock,
+      agentRunning: async () => !!o.agentRunsThere, log: silentLogger, moves: mortal(new MoveFiles(workerPaths.moves), life), watchMs: 5000, cli: opencode.far.run,
+    });
+    const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
+    Object.assign(handlers, workerCalls({ fleet, store, me: W, log: silentLogger, terminals, viewers: new FarViewers({ connection }) }), prepare.handlers, {
+      'system.info': async () => ({ agentAdapters: [farAdapter] }),
+    });
+    await fleet.reconcileNow();
+    await connection.start();
+    stops.push(() => connection.stop());
+    const daemon = { store, fleet, connection, prepare, handlers, outbox, mutations, life };
+    worker = daemon;
+    return daemon;
+  };
 
   // the home's daemon, started again after a crash from what it left on disk; `syncAfterMs` holds off each link's sync
+  let home: Awaited<ReturnType<typeof bootHome>> | undefined;
   const bootHome = async (life: Life = { dead: false }, o: { syncAfterMs?: number } = {}) => {
     const store = Store.load(homePaths.state, () => {});
     const ownership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
     let version = Date.now();
     let ctx: Ctx | undefined;
+    const replay = new Replay({ store, paths: homePaths, log: silentLogger, synced: (m) => links.for(m)?.synced === true, homedir: mac });
     const links: HomeLinks = new HomeLinks({
       paths: homePaths, store, log: silentLogger, release: RELEASE, machines: () => [entry], connect: socketTo(workerPaths.linkSock),
-      onReport: (r, machine) => { applyReport(store, r, machine); },
-      onEvent: (kind) => Promise.reject(new Error(`no ${kind}`)),
+      onReport: (r, machine) => {
+        applied.push(`robot.sync ${r.robotId}`);
+        applyReport(store, r, machine);
+      },
+      onEvent: async (kind, data, machine) => {
+        if (kind !== 'mutation') throw new Error(`no ${kind}`);
+        const m = data as Mutation;
+        const staged = await replay.prepare(data, machine);
+        return { ...staged, change: () => { applied.push(`${m.method} ${m.robot?.id ?? (m.params as { id: string }).id}`); staged.change(); } };
+      },
       onInventory: async (inv, machine) => {
         if (o.syncAfterMs) await new Promise((resolve) => setTimeout(resolve, o.syncAfterMs));
         return router.reconcileWorker(inv, machine);
@@ -327,13 +393,17 @@ export function moveWorld(o: {
     const placement = new Placement({
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, fleetId: config.id, paths: homePaths,
       git: mortalGit(handoverGit, life), agents: async () => [macProbe], gateway: () => undefined, release: RELEASE, homedir: mac,
-      tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, log: silentLogger,
+      tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, kill: mortal(mac1, life).kill, clock, log: silentLogger,
       moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run,
     });
+    await fleet.reconcileNow();
     links.start();
     stops.push(() => placement.stop(), () => links.stop());
-    await until(() => { if (!links.for(W)?.synced) throw new Error('w1 is not synced yet'); });
-    return { store, fleet, links, router, placement, life };
+    const daemon = { store, fleet, links, router, placement, life };
+    home = daemon;
+    // one that dies on the way waits no longer
+    await until(() => { if (!life.dead && !links.for(W)?.synced) throw new Error('w1 is not synced yet'); });
+    return daemon;
   };
 
   return {
@@ -341,12 +411,23 @@ export function moveWorld(o: {
     /** where the worker's clone and the robot's worktree land */
     clone: path.join(far, 'code/app'),
     farWt: path.join(far, 'code/app/.claude/worktrees/kanban'),
-    worker: { store: workerStore, fleet: workerFleet, connection, prepare, handlers },
+    applied,
+    /** the worker's daemon booted last */
+    get worker() {
+      if (!worker) throw new Error('no worker has booted');
+      return worker;
+    },
+    /** the home's daemon booted last */
+    get home() {
+      if (!home) throw new Error('no home has booted');
+      return home;
+    },
     async start() {
-      await connection.start();
+      await bootWorker();
       return bootHome();
     },
     bootHome,
+    bootWorker,
     async stop(): Promise<void> {
       for (const s of stops.splice(0).reverse()) await s();
       for (const f of ['code', '.claude', '.claude.json', '.svall']) fs.rmSync(path.join(far, f), { recursive: true, force: true });
@@ -354,3 +435,19 @@ export function moveWorld(o: {
   };
 }
 export type MoveWorld = ReturnType<typeof moveWorld>;
+
+// what `git worktree list` says of the worktree at `root`, or undefined when git lists none there
+export function listed(w: MoveWorld, repo: string, root: string): { locked?: string } | undefined {
+  const entries = w.g(repo, 'worktree', 'list', '--porcelain').split('\n\n');
+  const entry = entries.find((e) => e.split('\n')[0] === `worktree ${realPath(root)}`);
+  if (!entry) return undefined;
+  const locked = entry.split('\n').find((l) => l.startsWith('locked'));
+  return locked === undefined ? {} : { locked: locked.slice('locked'.length).trim() };
+}
+
+export const state = (w: MoveWorld, root: string) => ({
+  head: w.g(root, 'rev-parse', 'HEAD'), branch: w.g(root, 'symbolic-ref', '--short', 'HEAD'),
+  staged: w.g(root, 'diff', '--cached', '--name-status'), unstaged: w.g(root, 'diff', '--name-status'),
+  // a credential file travels only when ticked
+  untracked: w.g(root, 'ls-files', '--others', '--exclude-standard').split('\n').filter((f) => f && f !== '.env').sort(),
+});

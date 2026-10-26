@@ -412,6 +412,7 @@ export type PlacementDeps = {
   viewers: RestDeps['viewers'];
   processes?: RestDeps['processes'];
   kill?: RestDeps['kill'];
+  clock?: RestDeps['clock'];
   log: Logger;
   moves?: MoveFiles;
   watchMs?: number;
@@ -586,8 +587,8 @@ export class Placement {
   }
 
   private restDeps(): RestSide {
-    const { store, tmux, viewers, processes, kill } = this.d;
-    return { store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }) };
+    const { store, tmux, viewers, processes, kill, clock } = this.d;
+    return { store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) };
   }
 
   // ---- out: from this Mac to a worker
