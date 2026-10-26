@@ -214,7 +214,7 @@ function until(machine, fn, seconds = 120, light = true) {
   return s;
 }
 
-/** A turn typed into a robot's pane on remote, as someone at that machine would, and its record there once it is done. */
+/** A turn typed into a robot's pane on remote, as someone at that machine would, waited on until the worker records it done. */
 function turnOn(id, text) {
   const pane = robotIn(snap(R, true), id)?.tmux?.paneId;
   sh(R, `T=~/.local/share/svall/current/bin/tmux; $T -S ~/.svall/tmux.sock send-keys -t '${pane}' -l '${text}' && $T -S ~/.svall/tmux.sock send-keys -t '${pane}' Enter`);
@@ -454,7 +454,7 @@ function reviewerAsleep(ids, fx) {
   sh(L, `systemctl --user stop ${UNIT}`);
   const away = until(R, (s) => s.machines[ids.local]?.reachable === false, 60);
   check('worker sees the Mac away', away.machines[ids.local]?.reachable === false, () => brief(away.machines));
-  // what kanban's agent does from its pane on the worker: a turn, a reviewer in its own worktree, four on main, a sixth
+  // what kanban's agent would do on the worker: a turn, a reviewer in its own worktree, four on main, a sixth
   const texts = ['a turn while the Mac sleeps', 'a turn after the reviewer started'];
   turnOn(id, texts[0]);
   const made = [JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ${HOMES[R]}/src/app/.claude/worktrees/review --name reviewer --claude --run 'review it'`).stdout).id];
