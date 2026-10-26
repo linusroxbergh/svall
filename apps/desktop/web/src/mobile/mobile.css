@@ -108,6 +108,10 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .stage { position: relative; flex: 1; min-height: 0; display: flex; }
 .screen { flex: 1; min-height: 0; padding: var(--sp-xs) var(--sp-2xs) 0 var(--sp-sm); touch-action: none; }
 .screen .xterm-viewport { overscroll-behavior: contain; }
+.unreachable {
+  position: absolute; top: 0; left: 0; right: 0; margin: 0; padding: var(--sp-md) var(--sp-xl);
+  text-align: center; color: var(--ink-2); background: var(--surface-2); border-bottom: 1px solid var(--unknown);
+}
 
 .failed {
   position: absolute; inset: 0; display: flex;

@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MutationId } from '@svall/protocol';
 import { Config, configuredMainAgent, fleetMainAgent, keptPorts, loadConfig, patchFleetConfig, peekConfig, saveConfig, saveMainAgent, setGateway } from '../src/config.js';
-import { newId } from '../src/ids.js';
+import { newId, newMutationId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -62,6 +63,7 @@ describe('config and paths', () => {
   it('makes prefixed ids', () => {
     expect(newId('c')).toMatch(/^c_[a-z0-9]{6}$/);
     expect(newId('i')).not.toBe(newId('i'));
+    expect(MutationId.safeParse(newMutationId()).success).toBe(true);
   });
 });
 

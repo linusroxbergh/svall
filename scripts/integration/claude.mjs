@@ -23,7 +23,8 @@ if (args[0] === 'auth' && args[1] === 'status') {
   process.stdout.write(`${JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' })}\n`);
   process.exit(0);
 }
-// print mode and the usage control request (scribe, usage.get): answer get_usage, anything else quietly
+// print mode and the usage control request (scribe, usage.get): answer get_usage, a scribe pass with a note naming this
+// machine, anything else quietly
 if (args.includes('-p') || args.includes('--print') || args.includes('--input-format') || !process.stdin.isTTY) {
   if (args.includes('--input-format')) {
     for await (const line of readline.createInterface({ input: process.stdin })) {
@@ -32,6 +33,9 @@ if (args.includes('-p') || args.includes('--print') || args.includes('--input-fo
       if (msg?.request?.subtype !== 'get_usage') continue;
       process.stdout.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: msg.request_id, response: { subscription_type: 'max', rate_limits_available: false } } })}\n`);
     }
+  } else if (args.includes('--output-format') && args[args.indexOf('--output-format') + 1] === 'json') {
+    await new Promise((resolve) => { process.stdin.on('end', resolve).resume(); });
+    process.stdout.write(`${JSON.stringify({ type: 'result', is_error: false, result: JSON.stringify({ note: `noted on ${os.hostname()}` }) })}\n`);
   }
   process.exit(0);
 }

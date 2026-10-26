@@ -56,8 +56,12 @@ export type Moving = z.infer<typeof Moving>;
 export const LeftBehind = z.object({ moveId: MoveId, machine: MachineId, path: MachinePath, branch: z.string(), branchSha: ObjectName, fingerprint: Sha256 });
 export type LeftBehind = z.infer<typeof LeftBehind>;
 
-// mismatch: linked on a state schema or link protocol this home cannot read, so nothing but pings passes
-export const MachineLink = z.object({ name: z.string(), reachable: z.boolean(), since: z.number(), release: z.string().optional(), mismatch: z.literal(true).optional() });
+// mismatch: linked on a state schema or link protocol this home cannot read, so nothing but pings passes; home: the machine's
+// user folder; replayed: the last of its outbox the home applied; snapshot: on a worker, the home's snapshot it last took
+export const MachineLink = z.object({
+  name: z.string(), reachable: z.boolean(), since: z.number(), release: z.string().optional(), mismatch: z.literal(true).optional(), home: z.string().optional(),
+  replayed: z.object({ epoch: z.string(), seq: z.number().int().nonnegative() }).optional(), snapshot: z.object({ version: z.number().int(), at: z.number() }).optional(),
+});
 export type MachineLink = z.infer<typeof MachineLink>;
 
 /** The robot fields only the machine running the robot writes. */

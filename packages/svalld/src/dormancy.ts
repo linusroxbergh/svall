@@ -303,7 +303,7 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
     }
   });
   // written now: what the quit has left to do can take seconds, and the daemon may not outlive them
-  o.store.flush();
+  await o.store.flush();
   await o.tmux.killServer();
   // a resume opened right after must not write to a session still ending
   await Promise.all(pids.map((pid) => exited(pid, 5000)));

@@ -14,6 +14,9 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
   const markdown = /\.(md|markdown)$/i.test(path);
   const [preview, setPreview] = useState(false);
   const [text, setText] = useState(() => getBuffer(id, path)?.state.doc.toString() ?? '');
+  // a worker's file is edited in the robot's terminal there
+  const on = getBuffer(id, path)?.on;
+  const cue = on && <span className="editor-far" data-testid="editor-read-only">read-only · on {on}</span>;
 
   useEffect(() => markdown ? subscribeBuffer(id, path, setText) : undefined, [id, path, markdown]);
 
@@ -31,7 +34,9 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
       {markdown && <div className="editor-mode" role="group" aria-label="Markdown view">
         <button type="button" data-active={!preview} aria-pressed={!preview} onClick={() => setPreview(false)}>Text</button>
         <button type="button" data-active={preview} aria-pressed={preview} onClick={() => { setText(getBuffer(id, path)?.state.doc.toString() ?? ''); setPreview(true); }}>Preview</button>
+        {cue}
       </div>}
+      {!markdown && cue && <div className="editor-mode">{cue}</div>}
       {conflict && (
         <div className="ide-banner" data-testid="conflict-banner">
           <span>{path} changed on disk.</span>

@@ -401,6 +401,15 @@ describe('the agent profile in the brief', () => {
     ]);
   });
 
+  it('stays right under the heading beside the "context as of" line, which comes and goes as a line of its own', () => {
+    const line = 'context as of 2026-10-26T06:12:00.000Z; ada-mac is not reachable';
+    const stale = renderBrief(island(), robot(), [], reviewer, false, { at: Date.parse('2026-10-26T06:12:00.000Z'), home: 'ada-mac' });
+    expect(stale.split('\n').slice(0, reviewerBlock.length + 2)).toEqual(['# Svall context', ...reviewerBlock, line]);
+    const fresh = renderBrief(island(), robot(), [], reviewer);
+    expect(briefDiff(fresh, stale)).toBe(`# Svall context changed\n+ ${line}`);
+    expect(briefDiff(stale, fresh)).toBe(`# Svall context changed\n- ${line}`);
+  });
+
   it('is enough on its own to say something, and never reaches an island’s own brief', () => {
     expect(renderBrief(island(), robot(), [], reviewer)).toContain('Agent profile: reviewer');
     expect(renderBrief(island(), undefined, [], reviewer)).toBe('');

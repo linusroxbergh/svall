@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
-import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineLink } from '@svall/protocol';
+import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LinkFrame, type MachineLink, type MethodName, type Result } from '@svall/protocol';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
 import type { HomeDocs } from '../placement/docs-sync.js';
 import type { Mirror } from '../placement/mirror.js';
+import type { Staged } from '../placement/replay.js';
 import { tokenFor } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
@@ -23,6 +24,8 @@ const LAST_RETRY_MS = 60_000;
 const PUSH_AFTER_MS = 250;
 // how often a worker in mismatch is greeted again
 const REHELLO_MS = 5 * 60_000;
+// how long each worker has to answer what the home asks them all
+const ASK_MS = 5_000;
 
 export type Via = { ssh: string; controlSocket: string };
 export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via: Via }>;
@@ -45,10 +48,18 @@ type Options = {
   log: Logger;
   release: string;
   onReport(r: RobotSync, machine: MachineId): void;
-  onEvent(kind: string, data: unknown, machine: MachineId): Promise<void>;
+  /** Any event but a report: it reads the disk before the event's hold, the `change` it answers writes the store inside it
+   *  and never throws, and `after` runs once the write is tried. */
+  onEvent(kind: string, data: unknown, machine: MachineId): Promise<Staged | void>;
   onInventory(inv: Inventory, machine: MachineId): Promise<void>;
   /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
   onCall?(method: string, params: unknown): Promise<unknown>;
+  /** A notification from a linked worker, never journaled nor acked. */
+  onNotify?(kind: string, data: unknown, machine: MachineId): void;
+  /** A worker's inventory and the outbox past it are taken, and snapshots go to it. */
+  onSynced?(machine: MachineId): void;
+  /** A worker's stream closed. */
+  onLost?(machine: MachineId): void;
   snapshot: () => Snapshot;
   /** The home's agent configuration, which a worker takes once linked and before a move. */
   mirror?: Pick<Mirror, 'push'>;
@@ -196,6 +207,11 @@ export class WorkerLink {
     return new Promise((done) => this.takers.push({ version, done }));
   }
 
+  // what a hook throws is logged, and the link goes on
+  private hook(failed: string, run: () => void): void {
+    try { run(); } catch (e) { this.o.log.error(`${this.name}: ${failed}: ${(e as Error).message}`); }
+  }
+
   private unreachable(): ApiError {
     return new ApiError('not_reachable', `${this.name} is not reachable`);
   }
@@ -269,6 +285,9 @@ export class WorkerLink {
       case 'call':
         void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params)));
         return;
+      case 'notify':
+        this.hook(`a ${f.kind} notification not taken`, () => this.o.onNotify?.(f.kind, f.data, this.machine));
+        return;
       default:
         this.o.log.error(`${this.name}: ${f.t} from a worker is not taken`);
     }
@@ -295,34 +314,48 @@ export class WorkerLink {
     }
     this.odd = undefined;
     this.peer = h;
-    this.mark({ name: this.name, reachable: true, since: Date.now(), release: h.release });
+    this.mark({ name: this.name, reachable: true, since: Date.now(), release: h.release, home: h.home, mismatch: undefined });
     this.o.log.info(`${this.name}: linked, release ${h.release}`);
   }
 
-  // the inventory, then the outbox the worker replays from the home's ack, each event applied and on disk before its ack
+  // the inventory, then the outbox the worker replays from the home's ack, each event applied once and on disk, with the
+  // epoch and seq it was applied at, before its ack
   private async apply(stream: LinkStream, f: Extract<LinkFrame, { t: 'inventory' | 'event' }>): Promise<void> {
     if (stream !== this.stream) return;
     try {
       if (f.t === 'inventory') {
         const inv = Inventory.parse(f);
+        const replayed = this.o.store.state.machines?.[this.machine]?.replayed;
         this.inventory = inv;
-        this.acked = inv.acked;
+        // past the worker's acked seq lie the events the home took whose ack was lost, none past the worker's last; a new
+        // epoch is a journal begun afresh
+        this.acked = replayed && replayed.epoch === inv.epoch ? Math.min(Math.max(inv.acked, replayed.seq), inv.last) : inv.acked;
         this.last = inv.last;
-        stream.send({ t: 'ack', seq: inv.acked });
+        // the events past the worker's acked seq reach the disk before they are acked
+        if (this.acked > inv.acked && !(await this.o.store.flush())) throw new Error('state.json was not written');
+        stream.send({ t: 'ack', seq: this.acked });
       } else {
+        const { inventory } = this;
+        if (!inventory) throw new Error('an event came before the inventory');
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
-          if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
-          else {
-            await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
-              if (!(e instanceof UnknownEvent)) throw e;
-              this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
-            });
-          }
-          if (!this.o.store.flush()) throw new Error('state.json was not written');
+          const staged = f.kind === 'robot.sync' ? undefined : await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
+            if (!(e instanceof UnknownEvent)) throw e;
+            this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
+          });
+          await this.o.store.withheld(async () => {
+            if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
+            else if (staged) staged.change();
+            this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
+          });
+          const written = await this.o.store.flush();
+          if (staged) staged.after?.();
+          if (!written) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
           this.acked = f.seq;
+          // what the home made of a docs change, a refused delete included, reaches the worker in docs packed past this seq
+          if (staged && staged.docs) this.pushDocs();
         }
         stream.send({ t: 'ack', seq: this.acked });
       }
@@ -330,6 +363,7 @@ export class WorkerLink {
         await this.o.onInventory(this.inventory, this.machine);
         if (stream !== this.stream) return;
         this.synced = true;
+        this.hook('onSynced failed', () => this.o.onSynced?.(this.machine));
         this.pushSoon();
         void this.pushMirror();
         this.pushDocs();
@@ -347,12 +381,13 @@ export class WorkerLink {
     this.synced = false;
     for (const w of this.waiting.splice(0)) w.done();
     this.lost(err?.message ?? 'the link closed');
+    this.hook('onLost failed', () => this.o.onLost?.(this.machine));
   }
 
   private lost(why: string, again = true): void {
     if (this.stopped) return;
     const held = this.o.store.state.machines?.[this.machine];
-    if (held?.reachable !== false) this.mark({ name: this.name, reachable: false, since: Date.now(), ...(held?.release !== undefined && { release: held.release }) });
+    if (held?.reachable !== false || held.mismatch) this.mark({ name: this.name, reachable: false, since: Date.now(), mismatch: undefined });
     if (!again) return;
     if (why !== this.lastWhy) this.o.log.error(`${this.name} is not reachable: ${why}; trying again`);
     this.lastWhy = why;
@@ -360,8 +395,13 @@ export class WorkerLink {
     this.retryMs = Math.min(this.retryMs * 2, LAST_RETRY_MS);
   }
 
-  private mark(link: MachineLink): void {
-    this.o.store.update((d) => { (d.machines ??= {})[this.machine] = link; });
+  // over what the entry holds; a key the patch sets to undefined goes
+  private mark(patch: Partial<MachineLink> & Pick<MachineLink, 'name'>): void {
+    this.o.store.update((d) => {
+      const next: Record<string, unknown> = { ...d.machines?.[this.machine], ...patch };
+      for (const [k, v] of Object.entries(next)) if (v === undefined) delete next[k];
+      (d.machines ??= {})[this.machine] = next as MachineLink;
+    });
   }
 }
 
@@ -419,6 +459,11 @@ export class HomeLinks {
     return this.links.get(machine);
   }
 
+  /** The workers a call reaches now. */
+  connectedWorkers(): MachineId[] {
+    return [...this.links.values()].filter((l) => l.connected()).map((l) => l.machine);
+  }
+
   /** Sends `machine` the home's agent configuration, as before a move; resolves whether or not it went. */
   pushMirror(machine: MachineId): Promise<void> {
     return this.links.get(machine)?.pushMirror() ?? Promise.resolve();
@@ -463,4 +508,16 @@ export class HomeLinks {
     await Promise.all([...this.links.values()].map((l) => l.push(snap)));
     return snap.version;
   }
+}
+
+/** What every connected worker answers `method` with, each asked at once with no params; one that fails, takes
+ *  longer than ASK_MS or answers what the method's result is not is left out. */
+export async function askWorkers<M extends MethodName>(links: Pick<HomeLinks, 'call' | 'connectedWorkers'>, method: M): Promise<{ machine: MachineId; answer: Result<M> }[]> {
+  const result: z.ZodType = methods[method].result;
+  const answers = await Promise.all(links.connectedWorkers().map((machine) =>
+    links.call<unknown>(machine, method, {}, { timeoutMs: ASK_MS }).then((raw) => {
+      const answer = result.safeParse(raw);
+      return answer.success ? { machine, answer: answer.data as Result<M> } : undefined;
+    }, () => undefined)));
+  return answers.filter((a) => a !== undefined);
 }

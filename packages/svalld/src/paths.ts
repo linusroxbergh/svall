@@ -83,7 +83,8 @@ export function resolvePaths(home: string = svallHome()) {
     opencodeConfig: path.join(home, 'opencode-config'),
     opencodeReplaced: path.join(home, 'opencode-config-replaced'),
     zdotdir: path.join(home, 'zsh'),
-    // a worker's: the home it serves, that home's last snapshot, the outbox and the seq the home last acknowledged, the link's socket
+    // a worker's: the home it serves, that home's last snapshot, the outbox, its epoch and the seq the home last acknowledged,
+    // the log of mutations the home applied, the link's socket
     workerFile: path.join(home, 'worker.json'),
     cache: path.join(home, 'cache'),
     snapshotFile: path.join(home, 'cache', 'snapshot.json'),
@@ -91,6 +92,8 @@ export function resolvePaths(home: string = svallHome()) {
     docsSynced: path.join(home, 'cache', 'docs-synced.json'),
     outbox: path.join(home, 'journal', 'outbox.ndjson'),
     acked: path.join(home, 'journal', 'acked'),
+    epoch: path.join(home, 'journal', 'epoch'),
+    applied: path.join(home, 'journal', 'applied.ndjson'),
     linkSock: path.join(home, 'link.sock'),
     // each robot move's journal, on either side of it
     moves: path.join(home, 'journal', 'moves'),

@@ -160,7 +160,7 @@ export function SideCard({ id }: { id: string }) {
           <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}
             onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
         )}
-        {!placed && <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />}
+        <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
       </div>
       <div className="acts">
         <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>

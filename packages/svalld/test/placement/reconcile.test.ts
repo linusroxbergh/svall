@@ -1,9 +1,14 @@
 import { execFileSync } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { Robot } from '@svall/protocol';
+import { dispatch } from '../../src/api/methods.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { placed, until, world } from './world.js';
+import { W, placed, robot, until, world } from './world.js';
 
 const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
@@ -54,5 +59,41 @@ describe('reconciling a worker on reconnect', () => {
     // the next snapshot gives the worker the dormant record of the robot it lost
     await until(() => { if (w.worker.store.state.robots.c_lost?.revive === undefined) throw new Error('no snapshot yet'); });
     expect(w.worker.store.state.robots.c_lost.tmux).toBeUndefined();
+  });
+
+  it('robots started on a worker while linked are checked for a shared branch as their repo is reported, and not again at its next reconnect', async () => {
+    // a clone in the worker's user folder and the same clone in this Mac's
+    const repo = (home: string, branch: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch, isWorktree: false });
+    const sockets: net.Socket[] = [];
+    let sock = '';
+    const w = world({
+      home: { robots: { board: robot({ id: 'board', repo: repo('/Users/ada', 'main') }) } },
+      tmux: { newWindow: async (id: string) => ({ windowId: `@${id}`, paneId: `%${id}` }), killWindow: async () => {}, listWindows: async () => [], serverPid: async () => undefined },
+      connect: async () => {
+        const s = net.connect(sock);
+        await once(s, 'connect');
+        sockets.push(s);
+        return { stream: s, via: { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' } };
+      },
+    });
+    sock = w.worker.paths.linkSock;
+    worlds.push(w);
+    await w.link();
+    // a create takes the offline path until the worker has read the home's first ack
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
+    const start = async () => (await dispatch({ id: 1, method: 'robot.create', params: { islandId: 'i_1', cwd: os.tmpdir() } }, w.worker.ctx) as { result: Robot }).result.id;
+    const kb = await start();
+    const solo = await start();
+    w.worker.store.update((d) => { d.robots[kb].repo = repo(os.homedir(), 'main'); d.robots[solo].repo = repo(os.homedir(), 'solo'); });
+    await until(() => expect(w.home.store.state.robots[solo]?.repo?.branch).toBe('solo'));
+    await until(() => expect(w.home.store.state.robots[kb].note).toBe('shares branch main with board'));
+    expect(w.home.store.state.robots[solo].note).toBe('');
+    // board takes solo before w1 links again
+    w.home.store.update((d) => { d.robots.board.repo = repo('/Users/ada', 'solo'); });
+    sockets.at(-1)!.destroy();
+    await until(() => expect(sockets).toHaveLength(2));
+    await until(() => { if (!w.home.links.for(W)?.synced) throw new Error('w1 is not synced again yet'); });
+    expect(w.home.store.state.robots[solo].note).toBe('');
+    expect(w.home.store.state.robots.board.note).toBe('');
   });
 });

@@ -168,8 +168,11 @@ x86-64 Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Sil
 Ubuntu 24.04 containers, a home and the worker `svall host add` makes of the other, with three Claude robots over a
 bare remote both reach. It moves them out and back, restarts the worker, stops the home while the worker's agent
 works, and kills the home's daemon or drops the link at each phase of a move, checking on both machines the branch,
-index, files, locks and journals, the one agent resumed on its session, and the remote untouched. `--steps`,
-`--scenarios`, `--keep` and `--prefix` work as in the handover run; it exits 1 at the first step with a failed check.
+index, files, locks and journals, the one agent resumed on its session, and the remote untouched. Then, from `kanban`
+on the worker, it starts a reviewer and four more robots while the home is stopped, sweeps the scribe over them,
+changes kanban's notes on both machines apart, reads its files from the home, and closes the reviewer while the
+worker is stopped. `--steps`, `--scenarios`, `--keep` and `--prefix` work as in the handover run; it exits 1 at the
+first step with a failed check.
 
 ## Fresh installs
 

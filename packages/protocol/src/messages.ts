@@ -23,12 +23,14 @@ const Url = z.string().max(MAX_URL);
 export const INSTRUCTIONS_MAX = 2_000;
 const Instructions = z.string().max(INSTRUCTIONS_MAX);
 
-// one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by
+// one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by;
+// at is when the agent reported a window read off its transcript, in ms, and a window read live has none
 export const UsageWindow = z.object({
   key: z.string(),
   label: z.string(),
   pct: z.number(),
   resetsAt: z.string().optional(),
+  at: z.number().optional(),
 });
 export type UsageWindow = z.infer<typeof UsageWindow>;
 
@@ -169,6 +171,16 @@ export const ResourceSource = z.object({
   islandIds: z.array(z.string()), robotIds: z.array(z.string()), groups: z.array(ResourceGroup),
 });
 export type ResourceSource = z.infer<typeof ResourceSource>;
+
+/** A worker clone's root id on the home's shelf: the worker and the folder on its disk, as two workers may hold one path. */
+export const farRootId = (machine: MachineId, root: string): string => `r:${machine}:${root}`;
+const FAR_ROOT = /^r:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+)$/i;
+/** The worker and folder a root id names, undefined for a root on this machine. */
+export function farRootOf(id: string): { machine: MachineId; root: string } | undefined {
+  const m = FAR_ROOT.exec(id);
+  const machine = m ? MachineId.safeParse(m[1]) : undefined;
+  return m && machine?.success ? { machine: machine.data, root: m[2] } : undefined;
+}
 
 // a fleet on this Mac: windowOpen when an app instance shows it
 export const FleetEntry = z.object({ home: z.string(), name: z.string(), current: z.boolean(), windowOpen: z.boolean() });
@@ -327,6 +339,8 @@ export const methods = {
   'term.input': { params: z.object({ id: z.string(), data: z.string().base64() }), result: z.object({}) },
   'term.resize': { params: Id.merge(TermSize), result: z.object({}) },
   'term.close': { params: Id, result: z.object({}) },
+  // the last lines a placed robot's worker sent of its pane, and when; empty for one the home has none of
+  'term.lastScreen': { params: Id, result: z.object({ text: z.string(), at: z.number().optional() }) },
   // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there; `via`, for a robot
   // placed on another machine, the ssh destination and master socket that reach it
   'term.attach': {
@@ -472,4 +486,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 31;
+export const PROTOCOL_VERSION = 32;

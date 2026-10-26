@@ -40,6 +40,7 @@
 .res-list h4 .n{margin-left:auto;font-weight:var(--w-medium);letter-spacing:0;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .res-item{display:block;width:100%;padding:var(--sp-sm) var(--sp-md);border-radius:var(--r-sm);border:0;background:none;text-align:left;font-family:inherit;color:inherit;cursor:pointer;min-width:0}
 .res-item:hover{background:var(--fill-1)}.res-item[data-off="true"] b{color:var(--ink-3)}
+.res-item[aria-disabled="true"]{cursor:default}.res-item[aria-disabled="true"] b{color:var(--ink-3)}
 .res-item b{display:flex;align-items:center;gap:var(--sp-sm);font-size:var(--text-md);font-weight:var(--w-medium)}
 .res-item b em{font-style:normal;font-size:var(--text-2xs);font-weight:var(--w-semibold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3);border:1px solid var(--line);border-radius:var(--r-xs);padding:0 var(--sp-xs)}
 /* the agent folder a row came from, and a memory row's own word: both sit in the row's right column */

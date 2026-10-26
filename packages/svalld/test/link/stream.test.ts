@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LinkFrame } from '@svall/protocol';
-import { LinkStream } from '../../src/link/stream.js';
+import { answerCall, LinkStream, MAX_LINE, PART_REPLY, PART_SLICE } from '../../src/link/stream.js';
 
 function pair() {
   const a = new PassThrough();
@@ -21,6 +21,19 @@ function ends(maxLine?: number) {
   const a = mk(da, () => {});
   const b = mk(db, (f) => got.push(f));
   return { a, b, got, closed, da, db };
+}
+
+// two ends, b answering each call with `run`, and every line either writes
+function served(run: (params: unknown) => Promise<unknown>) {
+  const [da, db] = pair();
+  const linesSeen: string[] = [];
+  for (const d of [da, db]) {
+    const write = d.write.bind(d) as (line: string) => boolean;
+    d.write = ((line: string) => { linesSeen.push(line.slice(0, -1)); return write(line); }) as Duplex['write'];
+  }
+  const a = new LinkStream(da, { onFrame: () => {}, onClose: () => {} });
+  const b: LinkStream = new LinkStream(db, { onFrame: (f) => { if (f.t === 'call') void answerCall(b, f, run); }, onClose: () => {} });
+  return { a, linesSeen };
 }
 
 const tmp: string[] = [];
@@ -95,5 +108,89 @@ describe('LinkStream', () => {
     void a.sendBlob('b1', Buffer.alloc(10), 10).catch(() => {});
     await failed;
     await vi.waitFor(() => expect(closed.length).toBeGreaterThan(0));
+  });
+
+  it('replies whole up to 1 MiB of JSON, in parts past it, on lines of at most 2 MiB', async () => {
+    expect([PART_REPLY, PART_SLICE, MAX_LINE]).toEqual([1024 * 1024, 768 * 1024, 2 * 1024 * 1024]);
+    // {"text":"…"} is 11 bytes around the text
+    const whole = served(async () => ({ text: 'x'.repeat(1024 * 1024 - 11) }));
+    await whole.a.call('big', {});
+    expect(whole.linesSeen.filter((l) => l.includes('"link.part"'))).toEqual([]);
+    const parted = served(async () => ({ text: 'x'.repeat(1024 * 1024 - 10) }));
+    await parted.a.call('big', {});
+    expect(parted.linesSeen.filter((l) => l.includes('"link.part"'))).toHaveLength(2);
+  });
+
+  it('a reply over PART_REPLY arrives whole through link.part, in 768 KiB slices', async () => {
+    const text = 'x'.repeat(3 * 1024 * 1024 - 64);
+    const { a, linesSeen } = served(async () => ({ text }));
+    expect(await a.call('big', {})).toEqual({ text });
+    expect(linesSeen.filter((l) => l.includes('"link.part"'))).toHaveLength(4);
+  });
+
+  it('a 2 MiB reply of JSON text with many escapes travels, every line under MAX_LINE', async () => {
+    const text = '"\\'.repeat(512 * 1024);
+    const { a, linesSeen } = served(async () => ({ text }));
+    expect(await a.call('big', {})).toEqual({ text });
+    expect(linesSeen.every((l) => Buffer.byteLength(l) <= MAX_LINE)).toBe(true);
+  });
+
+  it('lets a reply in parts go once its last part is asked, or a minute after a part was last served', async () => {
+    const { a } = served(async () => ({ text: 'x'.repeat(PART_REPLY) }));
+    await a.call('big', {});
+    await expect(a.call('link.part', { id: '1', index: 0 })).rejects.toMatchObject({ code: 'not_found' });
+
+    vi.useFakeTimers();
+    const s = new LinkStream(pair()[0], { onFrame: () => {}, onClose: () => {} });
+    const { __parts } = s.fitReply({ text: 'x'.repeat(PART_REPLY) }) as { __parts: { id: string; count: number } };
+    expect(__parts.count).toBe(2);
+    vi.advanceTimersByTime(59_999);
+    // the base64 of 768 KiB, and a minute more for the rest
+    expect(s.replyPart({ id: __parts.id, index: 0 }).data).toHaveLength(1024 * 1024);
+    vi.advanceTimersByTime(59_999);
+    expect(s.replyPart({ id: __parts.id, index: 0 }).data).toHaveLength(1024 * 1024);
+    vi.advanceTimersByTime(60_000);
+    expect(() => s.replyPart({ id: __parts.id, index: 1 })).toThrow('part 1 of reply 1 is not held');
+  });
+
+  it("a reply in parts keeps its call's one deadline, and one whose parts expired between two says so", async () => {
+    vi.useFakeTimers();
+    // b answers each link.part `late` ms after it is asked
+    const slow = (late: number) => {
+      const [da, db] = pair();
+      const b: LinkStream = new LinkStream(db, {
+        onFrame: (f) => {
+          if (f.t !== 'call') return;
+          if (f.method === 'link.part') setTimeout(() => void answerCall(b, f), late);
+          else void answerCall(b, f, async () => ({ text: 'x'.repeat(3 * 1024 * 1024) }));
+        },
+        onClose: () => {},
+      });
+      return new LinkStream(da, { onFrame: () => {}, onClose: () => {} });
+    };
+    const failure = (p: Promise<unknown>) => {
+      const got: { e?: unknown } = {};
+      p.catch((e: unknown) => { got.e = e; });
+      return got;
+    };
+    const timed = failure(slow(20_000).call('big', {}, { timeoutMs: 30_000 }));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(timed.e).toMatchObject({ code: 'timeout', message: 'big got no reply in 30000 ms' });
+
+    const expired = failure(slow(60_001).call('big', {}, { timeoutMs: 120_000 }));
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(expired.e).toMatchObject({ code: 'timeout', message: "big's reply expired before it all arrived; try again" });
+  });
+
+  it('backlog reports the bytes not yet written to the duplex', async () => {
+    const [da, db] = pair();
+    const a = new LinkStream(da, { onFrame: () => {}, onClose: () => {} });
+    expect(a.backlog()).toBe(0);
+    const answered = a.call('echo', 'x'.repeat(100_000));
+    expect(a.backlog()).toBeGreaterThan(0);
+    // the peer starts reading only now
+    const b: LinkStream = new LinkStream(db, { onFrame: (f) => { if (f.t === 'call') void answerCall(b, f, async (p) => p); }, onClose: () => {} });
+    expect(await answered).toHaveLength(100_000);
+    await vi.waitFor(() => expect(a.backlog()).toBe(0));
   });
 });

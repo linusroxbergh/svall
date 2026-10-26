@@ -7,8 +7,9 @@ export const BACKSTOP_BYTES = 20 * 1024;
 // Svall's OpenCode log holds only what was said and each tool call, clipped: a turn adds a sixteenth of a transcript's bytes
 const SMALLER: Partial<Record<AgentKind, number>> = { opencode: 16 };
 
-// what the scribe remembers of its last pass on a robot; retryAt holds off a robot whose last `failures` passes failed
-export type Seen = { lastPassAt: number; path: string; bytes: number; retryAt?: number; failures?: number };
+// what the scribe remembers of its last pass on a robot; retryAt holds off a robot whose last `failures` passes failed.
+// A robot on another machine, whose bytes are not measured here, keeps the agent's last activity its last pass saw
+export type Seen = { lastPassAt: number; path: string; bytes: number; retryAt?: number; failures?: number; activityAt?: number };
 
 // bytes is the transcript's size now; a new session's transcript starts with nothing seen
 export function eligible(c: Robot, seen: Seen | undefined, bytes: number, now: number): boolean {

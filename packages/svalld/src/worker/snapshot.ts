@@ -1,13 +1,14 @@
 import jsonpatch from 'fast-json-patch';
 import { z } from 'zod';
-import { FleetState, Robot, WORKER_OWNED, type MachineId } from '@svall/protocol';
+import { FleetState, Robot, UPDATE_FIELDS, WORKER_OWNED, type MachineId, type Mutation } from '@svall/protocol';
 import type { Store } from '../store.js';
 
-/** The fleet as the home holds it, and the home's Claude, Codex and OpenCode config folders that paths in it may name. */
+/** The fleet as the home holds it, and the home's user folder and Claude, Codex and OpenCode config folders that paths in it may name. */
 export const Snapshot = z.object({
   version: z.number().int(),
   state: FleetState,
   agentHomes: z.object({ claude: z.string(), codex: z.string(), opencode: z.string() }),
+  home: z.string(),
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 
@@ -21,8 +22,8 @@ export const RobotSync = z.object({
 });
 export type RobotSync = z.infer<typeof RobotSync>;
 
-/** What a worker holds as the link opens: its robots, and how far the home has acknowledged its outbox. */
-export const Inventory = z.object({ robots: z.array(RobotSync), last: z.number().int().nonnegative(), acked: z.number().int().nonnegative() });
+/** What a worker holds as the link opens: its robots, and how far the home has acknowledged its outbox in the outbox's epoch. */
+export const Inventory = z.object({ robots: z.array(RobotSync), last: z.number().int().nonnegative(), acked: z.number().int().nonnegative(), epoch: z.string() });
 export type Inventory = z.infer<typeof Inventory>;
 
 const generation = (r: Robot): number => r.placement?.generation ?? 0;
@@ -37,22 +38,42 @@ function withOwned(to: Robot, from: Pick<Robot, Owned>): Robot {
   return next as Robot;
 }
 
-/**
- * Takes the home's snapshot into a worker's store: every field is the home's but the scribe switch and, for a robot
- * placed here at the same placement, the worker-owned ones. A robot placed here that the snapshot lacks stays until the
- * home forgets it; any other it lacks goes.
- */
-export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId): void {
+// what the mutations the home has yet to take changed here: the fields an update named, and a robot a close took away
+function keepPending(robots: Record<string, Robot>, held: Record<string, Robot>, pending: Mutation[]): void {
+  for (const m of pending) {
+    const p = m.params as Record<string, unknown>;
+    if (typeof p?.id !== 'string') continue;
+    if (m.method === 'robot.close') delete robots[p.id];
+    if (m.method !== 'robot.update' || !Object.hasOwn(held, p.id) || !Object.hasOwn(robots, p.id)) continue;
+    const named: string[] = UPDATE_FIELDS.filter((k) => p[k] !== undefined);
+    const to = robots[p.id] as Record<string, unknown>;
+    const from = held[p.id] as Record<string, unknown>;
+    for (const k of named.includes('note') ? [...named, 'noteSource'] : named) {
+      if (from[k] === undefined) delete to[k];
+      else to[k] = from[k];
+    }
+  }
+}
+
+/** Takes the home's snapshot into a worker's store but the scribe switch, the worker-owned fields of a robot placed here at that
+ *  placement, a robot placed here it lacks, until the home forgets it, and what the `pending` mutations changed here; `home`
+ *  gets its entry with this snapshot's version. */
+export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId, home?: { id: MachineId; name: string; reachable: boolean }, pending: Mutation[] = []): void {
   store.update((d) => {
+    const held = home && d.machines?.[home.id];
     const incoming = structuredClone(snap.state);
     const robots = Object.fromEntries(Object.entries(d.robots).filter(([, r]) => r.machine === me));
     for (const [id, r] of Object.entries(incoming.robots)) {
       const held = d.robots[id];
       robots[id] = held?.machine === me && r.machine === me && generation(held) === generation(r) ? withOwned(r, held) : r;
     }
+    keepPending(robots, d.robots, pending);
     const { scribeOff } = d;
     for (const k of Object.keys(d)) delete (d as Record<string, unknown>)[k];
     Object.assign(d, incoming, { robots }, scribeOff && { scribeOff });
+    if (!home) return;
+    const since = held && held.reachable === home.reachable ? held.since : Date.now();
+    (d.machines ??= {})[home.id] = { ...held, name: home.name, reachable: home.reachable, since, home: snap.home, snapshot: { version: snap.version, at: Date.now() } };
   });
 }
 

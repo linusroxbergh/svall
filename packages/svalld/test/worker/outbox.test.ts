@@ -71,6 +71,67 @@ describe('Outbox', () => {
     expect([reopened.acked(), seqs(reopened).length, reopened.append('robot.sync', { n: 5 }, 'r_1')]).toEqual([4, 0, 5]);
   });
 
+  it('keeps one epoch per journal, and ack records the entries it drops before the file is trimmed', () => {
+    const paths = resolvePaths(makeHome());
+    const a = Outbox.open(paths);
+    a.append('x', 1);
+    a.append('x', 2);
+    expect(Outbox.open(paths).epoch()).toBe(a.epoch());
+    const dropped: number[] = [];
+    a.ack(1, (entries) => {
+      dropped.push(...entries.map((e) => e.seq));
+      expect(fs.readFileSync(paths.outbox, 'utf8').split('\n').filter(Boolean)).toHaveLength(2);
+      expect(fs.readFileSync(paths.acked, 'utf8').trim()).toBe('0');
+    });
+    expect(dropped).toEqual([1]);
+    expect(a.after(0).map((e) => e.seq)).toEqual([2]);
+    a.ack(2);
+    expect(Outbox.open(paths).epoch()).toBe(a.epoch());
+  });
+
+  it('a journal that lost its epoch keeps only the entries past the acked seq it had', () => {
+    const paths = resolvePaths(makeHome());
+    const o = Outbox.open(paths);
+    for (const n of [1, 2, 3]) o.append('x', n);
+    const untrimmed = fs.readFileSync(paths.outbox);
+    o.ack(2);
+    // a crash between writing acked and trimming the file
+    fs.writeFileSync(paths.outbox, untrimmed);
+    fs.rmSync(paths.epoch);
+    const after = Outbox.open(paths);
+    expect(after.epoch()).not.toBe(o.epoch());
+    expect([after.acked(), ...seqs(after)]).toEqual([0, 3]);
+    expect(seqs(Outbox.open(paths))).toEqual([3]);
+  });
+
+  it('a journal that lost acked or outbox.ndjson gets a new epoch with acked 0', () => {
+    const paths = resolvePaths(makeHome());
+    const fresh = Outbox.open(paths);
+    expect([fs.readFileSync(paths.epoch, 'utf8').trim(), fs.readFileSync(paths.acked, 'utf8').trim(), fs.readFileSync(paths.outbox, 'utf8')]).toEqual([fresh.epoch(), '0', '']);
+    fresh.append('x', 1);
+    fresh.append('x', 2);
+    fresh.ack(1);
+
+    fs.rmSync(paths.acked);
+    const noAcked = Outbox.open(paths);
+    expect(noAcked.epoch()).not.toBe(fresh.epoch());
+    expect([noAcked.acked(), ...seqs(noAcked)]).toEqual([0, 2]);
+    expect(fs.readFileSync(paths.acked, 'utf8').trim()).toBe('0');
+
+    fs.rmSync(paths.outbox);
+    const noOutbox = Outbox.open(paths);
+    expect(noOutbox.epoch()).not.toBe(noAcked.epoch());
+    expect([noOutbox.acked(), noOutbox.last(), fs.readFileSync(paths.outbox, 'utf8')]).toEqual([0, 0, '']);
+
+    // a journal without an epoch, as an older release leaves one, keeps its entries
+    noOutbox.append('x', 3);
+    fs.rmSync(paths.epoch);
+    const noEpoch = Outbox.open(paths);
+    expect(noEpoch.epoch()).not.toBe(noOutbox.epoch());
+    expect([noEpoch.acked(), ...seqs(noEpoch)]).toEqual([0, 1]);
+    expect(Outbox.open(paths).epoch()).toBe(noEpoch.epoch());
+  });
+
   it('drops a last line a crash cut short, and the next append starts on a line of its own', () => {
     const paths = resolvePaths(makeHome());
     Outbox.open(paths).append('robot.sync', { n: 1 });

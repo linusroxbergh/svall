@@ -834,7 +834,7 @@ export class Placement {
     const back = j.to === this.d.me;
     try {
       if (j.phase === 'commit') {
-        this.commit(j);
+        await this.commit(j);
         j = this.enter(j, 'activate');
       }
       if (j.phase === 'activate') {
@@ -850,7 +850,7 @@ export class Placement {
   }
 
   // the robot is the destination's: where it runs, at the next generation, its paths there and what it left
-  private commit(j: MoveJournal): void {
+  private async commit(j: MoveJournal): Promise<void> {
     const back = j.to === this.d.me;
     const c = this.robot(j.robotId);
     if (c.placement?.generation !== j.generation || (c.machine ?? this.d.me) !== j.to) {
@@ -871,7 +871,7 @@ export class Placement {
         d.robots[j.robotId] = next;
       }));
     }
-    if (!this.d.store.flush()) throw new Error('state.json was not written');
+    if (!(await this.d.store.flush())) throw new Error('state.json was not written');
   }
 
   // the worker holds this Mac's record of the move before it is asked to start the robot: a snapshot built after the

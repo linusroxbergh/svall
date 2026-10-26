@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { MachineId, OwnerRecord } from '@svall/protocol';
+import { MachineId, OwnerRecord, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -34,17 +34,20 @@ import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
 import { Placement } from './placement/move.js';
-import { HomeDocs, WorkerDocs } from './placement/docs-sync.js';
+import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
+import { FarViewers, RemoteWatches, ViewerNotice } from './placement/far-viewers.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PrepareService } from './placement/prepare.js';
-import { Router, workerCalls } from './placement/router.js';
+import { homeRootOf } from './placement/repo-key.js';
+import { Replay } from './placement/replay.js';
+import { Router, fileCalls, forgetRobot, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { releaseVersion } from './release.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
-import { workspaceRoot } from './resources/scan.js';
+import { repoSources, rootHere, workspaceRoot } from './resources/scan.js';
 import { readOrUndefined } from './settings-file.js';
 import { installHookScripts } from './setup.js';
 import { Store } from './store.js';
@@ -55,7 +58,9 @@ import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { workerOptions, workerStubs, type Off } from './worker/mode.js';
+import { WorkerMutations } from './worker/mutations.js';
 import { Outbox } from './worker/outbox.js';
+import { ScreenNotice, ScreenTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
 
@@ -240,31 +245,69 @@ async function start(opts: Options): Promise<Daemon> {
   let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
-  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log);
+  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(store.state.robots, id));
+  // what a worker did while this Mac slept, applied once each
+  const replay = worker ? undefined : new Replay({ store, paths, log, synced: (m): boolean => links?.for(m)?.synced === true, homedir: os.homedir() });
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
-    onReport: (r, machine) => { applyReport(store, r, machine); },
+    onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
+      if (replay && kind === 'mutation') return replay.prepare(data, machine);
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();
-      homeDocs.apply(kind, data, machine);
+      const conflict = homeDocs.apply(kind, data, machine);
+      return conflict && { change: () => noteConflict(store, machine, conflict, os.homedir()), docs: true as const };
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
-    snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
+    onNotify: (kind, data, machine) => {
+      if (kind === 'screen') {
+        const s = ScreenNotice.parse(data);
+        return terminals.sawScreen(s.id, s.text, s.at, machine);
+      }
+      if (kind !== 'viewer') return;
+      const { key, ev } = ViewerNotice.parse(data);
+      if (ev.event === 'repo.changed') remoteWatches?.farEvent(key, ev, machine);
+      else terminals.farEvent(key, ev, machine);
+    },
+    // a worker linked anew holds none of the home's watches and terminals
+    onSynced: (machine) => {
+      for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
+    },
+    onLost: (machine) => terminals.lostMachine(machine),
+    snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: new Mirror({ claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, log }),
     ...(homeDocs && { docs: homeDocs }),
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
-  const connection = worker && new HomeConnection({
-    paths, worker: worker.worker, me, store, outbox: Outbox.open(paths), log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+  const outbox = worker && Outbox.open(paths);
+  const connection = worker && outbox && new HomeConnection({
+    paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
+    onAcked: (dropped) => mutations?.acked(dropped),
+    // the home's viewers watch and hold terminals here only while it is linked
+    onLink: (live) => { if (!live) for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); } },
   });
+  const farViewers = connection && new FarViewers({ connection });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  const router = new Router({ store, me, log, links, ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }) });
-  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound, remote: router, ...(connection && { report: (r: RobotSync) => connection.report(r) }) });
+  const router = new Router({
+    store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }),
+  });
+  const remoteWatches = links && new RemoteWatches({ links, router });
+  // a worker names a clone as the home does once a snapshot has said where the home's user folder is
+  const docsRoot = (c: Robot) => homeRootOf(c, store.state.machines, worker ? store.state.machines?.[worker.worker.homeMachineId]?.home : os.homedir());
+  const fleet = new Fleet({
+    store, tmux, paths, config, log, ownership, agentsFound, remote: router, repoRoot: docsRoot,
+    ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
+  });
+  // what the CLI in a worker's panes starts there, and changes there while its home is away
+  const mutations = connection && outbox && new WorkerMutations({
+    store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
+  });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
+  // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
+  const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
   // what each machine's agent CLIs are: a handover and a move read them
   const agents = agentProber(realProbeDeps(paths.env));
-  if (connection && worker && workerDocs) {
+  if (connection && worker && workerDocs && farViewers) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
@@ -272,7 +315,7 @@ async function start(opts: Options): Promise<Daemon> {
       claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
       stage: paths.cache, connection, log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals }), prepare.handlers, mirror, workerDocs.handlers);
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, mirror, workerDocs.handlers);
   }
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const gatewayNow = (): MachineId | undefined => {
@@ -315,7 +358,10 @@ async function start(opts: Options): Promise<Daemon> {
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c)), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
+  // a robot's folders are on the machine it runs on
+  const rootOf = rootHere((c) => router.runsHere(c));
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
+  if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, terminals, resources: () => repoSources(store.state, claude, paths.docs, rootOf) }));
   const phones = new Phones();
   const mobile = off.has('mobile') ? workerStubs.mobile : mobileControl(realDeps(), {
     home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
@@ -324,7 +370,9 @@ async function start(opts: Options): Promise<Daemon> {
       try { saveConfig(paths, { mobile: { httpsPort } }, log.info); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
     },
   });
-  const usage = off.has('usage') ? workerStubs.usage : fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
+  const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS), runsHere: (c) => router.runsHere(c) });
+  // the home's usage panel counts a worker's robots as the worker reads them
+  if (connection) calls['usage.get'] = () => usage();
 
   const load = new LoadSampler({
     read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),
@@ -347,7 +395,8 @@ async function start(opts: Options): Promise<Daemon> {
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
-      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links,
+      fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
+      ...(mutations && { mutations }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
@@ -371,6 +420,10 @@ async function start(opts: Options): Promise<Daemon> {
     if (connection) {
       await connection.start();
       teardown.push(() => connection.stop());
+    }
+    if (screens) {
+      screens.start();
+      teardown.push(() => screens.stop());
     }
     if (workerDocs) {
       workerDocs.start();

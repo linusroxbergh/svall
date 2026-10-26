@@ -68,6 +68,16 @@ test('a placed robot shows its machine badge, Move to this Mac, and a not-reacha
   await expect(page.getByTestId(`token-machine-${id}`)).toHaveText('linus-vault');
 });
 
+test('a placed robot\'s Files and Changes say its machine is not reachable while the link is down', async ({ page, svall }) => {
+  const id = await seed(svall, false, (c) => { c.machine = VAULT; });
+  await svall.open();
+  await page.getByTestId(`kc-${id}`).dblclick();
+  for (const kind of ['files', 'changes']) {
+    await page.getByTestId(`pane-left-${kind}`).click();
+    await expect(page.getByTestId('pane-elsewhere')).toHaveText('linus-vault is not reachable');
+  }
+});
+
 test('the card greys while moving and shows Retry on an activate error', async ({ page, svall }) => {
   const id = await seed(svall, true, (c) => {
     c.machine = VAULT;
@@ -106,4 +116,11 @@ test('mission control has no move button; a refusal shows one sentence and one b
   await expect(sheet.getByTestId('move-reason')).toHaveText('linus-vault is not reachable');
   await expect(sheet.locator('.acts button')).toHaveCount(1);
   await expect(sheet.getByTestId('move-go')).toHaveCount(0);
+});
+
+test('a placed robot keeps its Resources button', async ({ page, svall }) => {
+  const id = await seed(svall, true, (c) => { c.machine = VAULT; });
+  await svall.open();
+  await page.getByTestId(`sb-robot-${id}`).click();
+  await expect(page.getByTestId('side-resources')).toBeVisible();
 });

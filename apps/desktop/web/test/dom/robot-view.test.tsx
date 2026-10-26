@@ -18,11 +18,12 @@ vi.mock('../../src/mobile/boot.js', () => ({
 // xterm measures a real screen; the pane under test is the ask, not the terminal
 const open = vi.fn(() => Promise.resolve());
 const input = vi.fn();
+const resize = vi.fn();
 vi.mock('../../src/mobile/term.js', () => ({
-  linkTerminal: () => ({ input: (d: string) => input(d), resize: () => {}, open: () => open(), close: () => {} }),
+  linkTerminal: () => ({ input: (d: string) => input(d), resize: () => resize(), open: () => open(), close: () => {} }),
 }));
-// the last terminal the view made, on the alternate screen of an app tracking the mouse
-let xterm: { element: HTMLElement; typed(d: string): void };
+// the last terminal the view made, on the alternate screen of an app tracking the mouse, and what was painted on it
+let xterm: { element: HTMLElement; typed(d: string): void; painted: string[] };
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
@@ -32,7 +33,10 @@ vi.mock('@xterm/xterm', () => ({
     modes = { mouseTrackingMode: 'any' };
     element = document.createElement('div');
     typed: (d: string) => void = () => {};
+    painted: string[] = [];
     constructor() { xterm = this; }
+    reset(): void { this.painted = []; }
+    write(d: string): void { this.painted.push(d); }
     loadAddon(): void {}
     open(host: HTMLElement): void { host.append(this.element); }
     onData(h: (d: string) => void): void { this.typed = h; }
@@ -59,6 +63,7 @@ beforeEach(() => {
   fire.mockClear();
   open.mockClear();
   input.mockClear();
+  resize.mockClear();
   sessionStorage.clear();
   store = createAppStore();
   setAppStore(store);
@@ -256,6 +261,77 @@ test('the header says unknown for a robot on a worker out of reach', () => {
   const { container } = render(<RobotView id="c2" onBack={() => {}} />);
   expect(container.querySelector('.conn')?.textContent).toBe('unknown');
   expect(container.querySelector('.conn')?.getAttribute('data-status')).toBe('unknown');
+});
+
+const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+const onVault = (reachable: boolean, mismatch?: true) => {
+  const f = fleet();
+  f.machines = { [vault]: { name: 'linus-vault', reachable, since: 0, ...(mismatch && { mismatch }) } };
+  f.robots.c2.machine = vault;
+  return f;
+};
+
+test('the phone shows "<machine> is not reachable" over a placed robot\'s terminal while the home has lost it', () => {
+  store.getState().setFleet(onVault(false));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  expect(screen.getByRole('status').textContent).toBe('linus-vault is not reachable');
+  act(() => store.getState().setFleet(onVault(true)));
+  expect(screen.queryByTestId('phone-unreachable')).toBeNull();
+});
+
+test('a phone opening a placed robot while its worker is away shows the last screen the home saw under the sentence, and opens the terminal once it is back', async () => {
+  store.getState().setFleet(onVault(false));
+  store.getState().setStatus('online');
+  call.mockResolvedValueOnce({ text: '$ make test\r\nok', at: 1 });
+  const { container } = render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(call).toHaveBeenCalledWith('term.lastScreen', { id: 'c2' });
+  expect(xterm.painted).toEqual(['$ make test\r\nok']);
+  expect(open).not.toHaveBeenCalled();
+  expect(container.querySelector('.failed')).toBeNull();
+  expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault is not reachable');
+  await act(async () => { store.getState().setFleet(onVault(true)); });
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+test('a robot that lands on another machine while open streams again once its window is up there', async () => {
+  store.getState().setFleet(fleet());
+  store.getState().setStatus('online');
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(open).toHaveBeenCalledTimes(1);
+  // the move rests it here and lands it on linus-vault, dormant until it starts there
+  const landed = onVault(true);
+  delete landed.robots.c2.tmux;
+  act(() => store.getState().setFleet(landed));
+  expect(open).toHaveBeenCalledTimes(1);
+  const started = onVault(true);
+  started.robots.c2.tmux = { windowId: '@7', paneId: '%7' };
+  await act(async () => { store.getState().setFleet(started); });
+  expect(open).toHaveBeenCalledTimes(2);
+  expect(call).not.toHaveBeenCalledWith('robot.revive', { id: 'c2' });
+  expect(screen.queryByText('The terminal closed.')).toBeNull();
+});
+
+test('the key row and the terminal\'s size go nowhere while its worker is away, and go again once it is back', () => {
+  store.getState().setFleet(onVault(false));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  const esc = screen.getByRole('button', { name: 'esc' }) as HTMLButtonElement;
+  expect(esc.disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'A+' }));
+  expect(resize).not.toHaveBeenCalled();
+  act(() => store.getState().setFleet(onVault(true)));
+  expect(esc.disabled).toBe(false);
+  fireEvent.click(esc);
+  expect(input).toHaveBeenCalledWith('\x1b');
+  fireEvent.click(screen.getByRole('button', { name: 'A−' }));
+  expect(resize).toHaveBeenCalledTimes(1);
+});
+
+test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {
+  store.getState().setFleet(onVault(false, true));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault runs a different build; upgrade it under Machines');
 });
 
 test('a robot closed while it is open takes its view back to the list', () => {

@@ -9,6 +9,8 @@ export const LinkFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('reply'), id: z.number(), result: z.unknown().optional(), error: ErrorFrame.optional() }),
   z.object({ t: z.literal('event'), seq: z.number(), kind: z.string(), data: z.unknown() }),
   z.object({ t: z.literal('ack'), seq: z.number() }),
+  // worker to home, never journaled: one sent while the link is down is dropped
+  z.object({ t: z.literal('notify'), kind: z.string(), data: z.unknown() }),
   z.object({ t: z.literal('snapshot'), version: z.number(), data: z.unknown() }),
   z.object({ t: z.literal('snapshot.ack'), version: z.number() }),
   z.object({ t: z.literal('blob'), id: z.string(), index: z.number().int().nonnegative(), count: z.number().int().positive(), data: z.string() }),

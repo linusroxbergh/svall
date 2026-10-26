@@ -88,6 +88,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'term.resize': 'mutation',
   // letting go of a terminal takes nothing from the fleet, so a replica may close what it opened
   'term.close': 'read',
+  'term.lastScreen': 'read',
   'term.attach': 'terminal',
   'system.info': 'read',
   'ownership.get': 'read',

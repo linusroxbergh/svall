@@ -3,9 +3,10 @@
 //
 //   snap [--gateway <fleetId>] [--light]  one JSON document: this machine's view of the fleet, its repos, sessions,
 //                                         terminals, agent processes and OpenCode servers, worktree locks, move
-//                                         journals and outbox (and, on the gateway, its record); --light leaves out
-//                                         repos, trees and sessions
+//                                         journals, outbox and its epoch, applied mutations and docs conflict copies
+//                                         (and, on the gateway, its record); --light leaves out repos, trees and sessions
 //   machines                              the links the fleet's state holds, by machine id
+//   call <method> [<params json>]         one call to this machine's daemon: its answer, or its error, as one JSON document
 //   drive <host|local> [--fault kill|drop --at begin|transfer|ready|commit|activate] --log <file> [--cap <s>]
 //                                         runs `svall handover <host|local> --json`, injects the fault at that boundary,
 //                                         and prints what happened as one JSON document
@@ -159,11 +160,30 @@ function outbox() {
   const file = path.join(FLEET, 'journal', 'outbox.ndjson');
   const entries = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
   const acked = Number((fs.existsSync(path.join(FLEET, 'journal', 'acked')) ? fs.readFileSync(path.join(FLEET, 'journal', 'acked'), 'utf8') : '0').trim());
+  const epoch = path.join(FLEET, 'journal', 'epoch');
   return {
     acked,
     last: entries.at(-1)?.seq ?? acked,
-    entries: entries.map((e) => ({ seq: e.seq, kind: e.kind, robotId: e.data?.robotId, ...(e.data?.fields && { agent: agentOf(e.data.fields) }) })),
+    epoch: fs.existsSync(epoch) ? fs.readFileSync(epoch, 'utf8').trim() : null,
+    entries: entries.map((e) => ({
+      seq: e.seq, kind: e.kind, robotId: e.data?.robotId ?? e.data?.robot?.id ?? e.data?.params?.id,
+      ...(e.kind === 'mutation' && { method: e.data?.method }), ...(e.data?.fields && { agent: agentOf(e.data.fields) }),
+    })),
   };
+}
+
+/** The mutations the home acknowledged, as a worker's applied log keeps them. */
+function applied() {
+  const file = path.join(FLEET, 'journal', 'applied.ndjson');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+}
+
+/** Each conflict copy under the fleet's docs, a worker's copy of them included, with its text, by its path there. */
+function conflicts() {
+  const dir = fs.existsSync(path.join(FLEET, 'worker.json')) ? path.join(FLEET, 'cache', 'docs') : path.join(FLEET, 'docs');
+  if (!fs.existsSync(dir)) return {};
+  return Object.fromEntries(fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.conflict.md')).sort()
+    .map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
 }
 
 // the agent fields a status change shows
@@ -243,6 +263,8 @@ async function snap(o) {
     worker: (({ token, ...w }) => w)(readJson(path.join(FLEET, 'worker.json')) ?? {}),
     locks: locks(),
     outbox: outbox(),
+    applied: applied(),
+    conflicts: conflicts(),
     moves: moves(),
   };
   if (o.gateway) {
@@ -495,6 +517,7 @@ function serveLink(port) {
 const [cmd, ...rest] = process.argv.slice(2);
 const o = flags(rest);
 if (cmd === 'machines') process.stdout.write(`${JSON.stringify((await settled(() => rpc('state.get'))).machines ?? {})}\n`);
+else if (cmd === 'call') process.stdout.write(`${JSON.stringify(await settled(() => rpc(o._[0], o._[1] === undefined ? {} : JSON.parse(o._[1]))))}\n`);
 else if (cmd === 'snap') await snap(o);
 else if (cmd === 'drive' && ['move', 'return'].includes(o._[0])) await driveMove(o);
 else if (cmd === 'drive') await drive(o);

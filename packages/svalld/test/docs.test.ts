@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
 import { docFolders, docsDir, liftRobotDocs, listDocs, removeDocs, repoRootOf, repoSlug } from '../src/docs.js';
 import { resolvePaths } from '../src/paths.js';
+import { homeRootOf } from '../src/placement/repo-key.js';
 import { cleanHomes, makeHome } from './helpers.js';
+import { W, placed } from './placement/world.js';
 
 const put = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
 const doc = (description: string, name = 'ignored') => `---\nname: ${name}\ndescription: ${description}\n---\n# body\n`;
@@ -112,6 +114,13 @@ describe('docFolders', () => {
   });
   it('is the fleet and the island alone without a robot', () => {
     expect(docFolders('/d', island('i1')).map((f) => f.tier)).toEqual(['fleet', 'island']);
+  });
+  it('a placed robot\'s repo docs hang off the home\'s main root, not the clone path, on both machines', () => {
+    const c = placed({ id: 'c_1', repo: { root: '/home/ada/code/app/.claude/worktrees/kb', mainRoot: '/home/ada/code/app', branch: 'kb', isWorktree: true } });
+    expect(homeRootOf(c, { [W]: { name: 'w1', reachable: true, since: 1, home: '/home/ada' } }, '/Users/ada')).toBe('/Users/ada/code/app');
+    // a worker before its first snapshot names the clone's
+    expect(homeRootOf(c, { [W]: { name: 'w1', reachable: true, since: 1, home: '/home/ada' } }, undefined)).toBe('/home/ada/code/app');
+    expect(docFolders('/d', island('i_1'), c, '/Users/ada/code/app')[1].dir).toBe(`/d/repos/${repoSlug('/Users/ada/code/app')}`);
   });
 });
 

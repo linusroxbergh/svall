@@ -8,8 +8,11 @@ and nothing else, and keeps its own clone of each repository its robots work in.
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker shows
 a machine badge on its card, token and board card, and keeps its board column; `svall robot run`, `read`, `wait` and
 `revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
-Changes and Resources stay hidden, as its files are on the worker's disk; **Terminal there** opens a terminal in its
-folder.
+Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**
+opens a terminal in its folder. The Usage panel counts the robots on each worker too, read on the worker where their
+transcripts are; a worker that does not answer within 5 seconds is left out, and this Mac's own limits still show. The
+scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: this Mac asks, the
+worker reads the transcript, and this Mac writes the answer.
 
 ## Moving one
 
@@ -130,6 +133,48 @@ Otherwise the worktree is reset to the commit it was left at, unlocked, and the 
 applied to it: its commits, its staged and unstaged changes and its untracked files. The worktree it leaves on the
 worker is then locked the same way, and the next move there takes it back by the same rules.
 
+## While this Mac sleeps
+
+A robot on a worker keeps working while this Mac sleeps or is out of reach, and `svall` in its terminal answers from
+the worker:
+
+- `svall robot new` starts the robot on the same worker, awake Mac or not; mission control is refused: "mission
+  control stays on this Mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
+  worker has ("/home/ada/notes is not inside a clone on linus-vault; start it in one"), the robot's note says
+  "started on linus-vault while this Mac slept", and the worker starts at most five robots until this Mac answers
+  again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
+- `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
+  `svall robot close` and `svall robot run` and `read` reach the robots on it.
+- `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it, with the worker's
+  changes this Mac has yet to take over it.
+
+Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": new
+islands, moves, browser tabs, a robot's figure or island, and calls about robots on other machines.
+
+The worker journals each change in order until this Mac takes it; `journal/applied.ndjson` in its Svall home lists
+the last 500 this Mac has acknowledged, with what each changed. Once the fleet it last sent is an hour old, a robot's
+brief there says so under its heading: "context as of 2026-10-26T06:12:00.000Z; ada-mac is not reachable".
+
+Once this Mac answers, what the worker did lands here once each, in the order it was done:
+
+- A robot started there keeps its cell, or stands elsewhere on its island when another robot took that cell meanwhile.
+  One whose island was deleted here, or is full, stands on the island "recovered from linus-vault", its worktree and
+  transcript left as they are.
+- A field changed here since keeps this Mac's value, and the note names the worker's: "linus-vault set note to
+  "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile:
+  "linus-vault set name to "kb2" while this Mac slept; another robot has that name here".
+- A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
+  "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
+- A doc changed both there and here, such as a robot's `notes.md`, keeps this Mac's text. The worker's lands beside
+  it as `<name>.<machine>.<id>.conflict.md`, and the note of each robot on the worker it concerns names it:
+  "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as
+  notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has this
+  Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
+  here since; it stays".
+- A change this Mac cannot apply is skipped, and the robot's note says why.
+- A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:
+  "shares branch kb with board".
+
 ## When something goes wrong
 
 - **Before the robot is the destination's** (a failed check of the files, a lost connection, a crash), the robot
@@ -140,8 +185,12 @@ worker is then locked the same way, and the next move there takes it back by the
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.
 - **A worker this Mac cannot reach**: its robots show the status unknown, and their terminals "linus-vault is not
-  reachable". They keep running there, and are never marked dormant for being out of reach. Once the worker answers
-  again, what they did meanwhile comes home in order and the terminals attach again.
+  reachable" with the screen the worker last sent after the robot's turn under it; a worker on another build shows
+  that screen under its own sentence. The phone reaches a robot on a worker through this Mac, its terminal and
+  questions included; while this Mac has lost the worker, the phone shows that screen under the same sentence:
+  "linus-vault is not reachable", or "linus-vault runs a different build; upgrade it under Machines". The robots keep
+  running there, and are never marked dormant for being out of reach. Once the worker answers again, what they did
+  meanwhile comes home in order and the terminals attach again.
 - **A worker that reboots**: its robots come back dormant, as on a Mac, and revive from their cards. Restarting its
   Svall service alone leaves them running.
 
@@ -157,8 +206,8 @@ linus-vault; move every robot back first".
 - The phone cannot see the server's robots while the Mac sleeps.
 - No replica divergence protection, because there are no replicas: the only shared thing is a branch, and git owns it.
 - A worker that disappears for good: its robots stay unknown until you close them.
-- The scribe reads the transcripts of robots on this Mac alone: a robot on a worker keeps its name, note and board
-  column until you change them.
+- The scribe passes a robot on a worker only while this Mac is awake to ask for it.
+- A restart of this Mac's daemon forgets the last screen a worker sent until the worker is back.
 - A question an agent had open does not survive a move: the agent resumes idle and asks again.
 - The conversation travels whole: anything the agent pasted or printed in it, a key included, is in the transcript
   on both machines.

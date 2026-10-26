@@ -7,6 +7,12 @@ import { call, freshStore, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 vi.mock('../../src/TerminalArea.js', () => ({ TerminalArea: () => null }));
+// each mount of the Files view, which watches the robot's folder where it runs
+const mounts = vi.hoisted(() => [] as string[]);
+vi.mock('../../src/ide/FilesArea.js', async () => {
+  const { useEffect } = await import('react');
+  return { FilesArea: ({ id }: { id: string }) => { useEffect(() => { mounts.push(id); }, [id]); return null; } };
+});
 
 const { RobotPanes } = await import('../../src/RobotPanes.js');
 
@@ -19,16 +25,36 @@ beforeEach(() => {
   store.getState().setFleet(f);
 });
 
-test("a robot on a worker offers no Files or Changes pane, and one open from before says its files are there, reading nothing of this Mac's disk", () => {
+test('a robot on a worker offers Files and Changes, and while its machine is unreachable they say so, asking it nothing', () => {
   act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  const { unmount } = render(<RobotPanes id="c0" />);
+  expect(screen.getByTestId('pane-left-files')).toBeTruthy();
+  expect(screen.getByTestId('pane-left-changes')).toBeTruthy();
+  unmount();
+
+  act(() => store.getState().applyPatch([{ op: 'replace', path: `/machines/${VAULT}/reachable`, value: false }]));
   act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
   render(<RobotPanes id="c0" />);
-  expect(screen.queryByTestId('pane-left-files')).toBeNull();
-  expect(screen.queryByTestId('pane-left-changes')).toBeNull();
-  expect(screen.getByTestId('pane-left-terminal')).toBeTruthy();
-  expect(screen.queryByTestId('files')).toBeNull();
-  expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(["Its files are on linus-vault", "Its files are on linus-vault"]);
+  expect(screen.getByTestId('pane-left-files')).toBeTruthy();
+  expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault is not reachable', 'linus-vault is not reachable']);
   expect(call.mock.calls.map(([m]) => m).filter((m) => /^(fs|repo)\./.test(m))).toEqual([]);
+});
+
+test('while its machine runs a different build, Files and Changes say so as the terminal does', () => {
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: `/machines/${VAULT}`, value: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } }]));
+  act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
+  render(<RobotPanes id="c0" />);
+  expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault runs a different build; upgrade it under Machines', 'linus-vault runs a different build; upgrade it under Machines']);
+});
+
+test('a move mounts the Files view anew, to watch the folder on the machine the robot runs on now', () => {
+  mounts.length = 0;
+  act(() => store.getState().setPanes('c0', { left: 'files' }));
+  render(<RobotPanes id="c0" />);
+  expect(mounts).toEqual(['c0']);
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  expect(mounts).toEqual(['c0', 'c0']);
 });
 
 test('a robot on this Mac keeps its Files and Changes panes', () => {

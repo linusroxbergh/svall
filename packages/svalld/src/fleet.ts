@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -42,7 +42,7 @@ import { reconcile, secondName, snapshot, type Carried } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
-import { Scribe, type SweepOptions } from './scribe/scribe.js';
+import { Scribe, type FarPass, type Only, type SweepOptions } from './scribe/scribe.js';
 import { fullWake } from './scribe/wake.js';
 import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
@@ -51,10 +51,11 @@ import type { LiveWindow, Tmux } from './tmux/tmux.js';
 import { appPid } from './uninstall.js';
 import { watchOwned, type RobotSync } from './worker/snapshot.js';
 
-type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string] };
+// `hook`: a hook of a robot here, once the fleet has taken it
+type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string]; hook: [robotId: string, name: string] };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
-function setNote(c: Robot, note: string): void {
+export function setNote(c: Robot, note: string): void {
   c.note = note;
   if (note) c.noteSource = 'manual'; else delete c.noteSource;
 }
@@ -66,7 +67,14 @@ type Deps = {
   endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[]; platform?: NodeJS.Platform;
   // the machines robots placed elsewhere run on; on a worker, what it tells its home of each change to a robot placed here
   remote?: Router; report?: (r: RobotSync) => void;
+  // a robot made here and the params createRobot was given, once its record is written and its start line sent
+  created?: (c: Robot, p: ParsedParams<'robot.create'>) => void;
+  // the main root a robot's repository docs hang off, as the home names it
+  repoRoot?: (c: Robot) => string | undefined;
 };
+// a note given at the start is the user's
+type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string };
+const STALE_SNAPSHOT_MS = 3_600_000;
 type LiveRobot = Robot & { tmux: NonNullable<Robot['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
 type Revived = Robot & { delivery?: Delivery };
@@ -101,10 +109,11 @@ export class Fleet extends EventEmitter<Events> {
 
   constructor(private deps: Deps) {
     super();
-    const { store, log, config } = deps;
+    const { store, log, config, remote } = deps;
     const run = deps.runScribe ?? perPass(() => this.scribeRunner());
     const runsHere = (c: Robot) => this.runsHere(c);
-    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere });
+    const far = remote && ((id: string, only?: Only, columns?: Column[], sweep?: true) => remote.scribe(id, only, columns, sweep));
+    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere, far });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending, runsHere };
     const writable = () => this.writable();
     const track = (work: Promise<unknown>, what: string) => this.track(work, what);
@@ -183,7 +192,7 @@ export class Fleet extends EventEmitter<Events> {
     const inFlight = () => [...this.background, ...this.creating, ...this.reviving.values(), ...this.openingSecond.values()];
     while (inFlight().length) await Promise.allSettled(inFlight());
     await this.scribe.settled();
-    this.deps.store.flush();
+    await this.deps.store.flush();
   }
 
   // the links a robot's cwd implies, rebuilt off the critical path
@@ -199,7 +208,7 @@ export class Fleet extends EventEmitter<Events> {
     this.prompts.stop();
     await this.link.stop();
     await this.poll.stop();
-    this.deps.store.flush();
+    await this.deps.store.flush();
   }
 
   robot(id: string): Robot {
@@ -217,7 +226,16 @@ export class Fleet extends EventEmitter<Events> {
   // a profile that is missing or cannot be used is left out, and the side card says why
   private render(island: Island, c?: Robot): string {
     const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
-    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !this.deps.store.state.worktreesOff);
+    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c, c && this.deps.repoRoot?.(c)), p && !('error' in p) ? p : undefined, !this.deps.store.state.worktreesOff, this.asOf());
+  }
+
+  // on a worker whose home is away, the snapshot the brief is rendered from, once it is over an hour old
+  private asOf(): { at: number; home: string } | undefined {
+    const { remote } = this.deps;
+    if (!remote?.onWorker || remote.homeConnected) return undefined;
+    const home = this.deps.store.state.machines?.[remote.homeId!];
+    const at = home?.snapshot?.at;
+    return home && at !== undefined && Date.now() - at > STALE_SNAPSHOT_MS ? { at, home: home.name } : undefined;
   }
 
   // a profile given by name must be one that can be used now; one that goes later is shown as missing
@@ -403,7 +421,8 @@ export class Fleet extends EventEmitter<Events> {
     const { paths, store } = this.deps;
     const agent = store.state.scribeAgent ?? 'claude';
     const cwd = path.join(paths.home, 'scribe');
-    const model = this.model('scribe', agent);
+    // a worker passes its robots for its home, on the home's model
+    const model = this.deps.remote?.onWorker ? store.state.scribeModel : this.model('scribe', agent);
     if (agent === 'claude') return claudeRunner({ model: model!, cwd, envFile: paths.env });
     return agent === 'codex' ? codexRunner({ model, cwd }) : opencodeRunner({ model, cwd });
   }
@@ -464,6 +483,11 @@ export class Fleet extends EventEmitter<Events> {
     return this.scribe.sweep(o);
   }
 
+  /** The pass a robot's home asked for over its transcript here, which writes nothing. */
+  scribeRead(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
+    return this.scribe.readRobot(id, only, columns, sweep);
+  }
+
   setScribe(enabled: boolean): void {
     this.deps.store.update((d) => { delete d.scribeAsk; if (enabled) delete d.scribeOff; else d.scribeOff = true; });
   }
@@ -492,7 +516,7 @@ export class Fleet extends EventEmitter<Events> {
     deleteIsland(this.deps, id);
   }
 
-  async createRobot(p: { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }): Promise<Robot & { runSent?: boolean }> {
+  async createRobot(p: NewRobot): Promise<Robot & { runSent?: boolean }> {
     if (p.run && !p.command) throw new Invalid('run needs a command to start the agent');
     this.island(p.islandId);
     if (p.agentProfile) this.checkAgentProfile(p.agentProfile);
@@ -545,9 +569,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // the window, the record and the start command of a new robot; neither an orphan window nor a half-made robot outlives a failure
-  private async openRobot(
-    id: string, cwd: string, panePath: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }, prompt: string | undefined,
-  ): Promise<void> {
+  private async openRobot(id: string, cwd: string, panePath: string, p: NewRobot, prompt: string | undefined): Promise<void> {
     const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id), this.robotKeys());
     try {
       this.deps.store.update((d) => {
@@ -557,14 +579,17 @@ export class Fleet extends EventEmitter<Events> {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.robots).map((c) => c.portrait))),
-          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
+          note: p.note ?? '', ...(p.note && { noteSource: 'manual' as const }), instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
+          // on a worker the robot is its own from the first write, so its first hook is answered here
+          ...(this.deps.remote?.onWorker && { machine: this.deps.remote.me, placement: { generation: 0 } }),
         };
         // a hidden island comes back to take the robot, as one placed there for it does
         if (p.cell && d.islands[p.islandId].collapsed) unfold(d, p.islandId, this.deps.log);
       });
       if (p.command) await this.deps.tmux.sendLine(w.paneId, this.launchLine(id, withAddDirs(p.command, this.deps.store.state.islands[p.islandId].context), prompt), true);
+      this.deps.created?.(this.deps.store.state.robots[id], p);
     } catch (e) {
       // the island filled up while the window was being created, or the start command never reached the
       // pane: neither an orphan window nor a half-created robot survives
@@ -1122,7 +1147,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
-    return this.prompts.answer(id, answer, promptId);
+    return this.deps.remote?.forward(id, 'robot.answer', { id, answer, promptId })?.then(() => {}) ?? this.prompts.answer(id, answer, promptId);
   }
 
   typedAnswer(id: string, data: Buffer, asked: string | undefined): void {
@@ -1166,6 +1191,7 @@ export class Fleet extends EventEmitter<Events> {
     const target = this.deps.store.state.robots[('hook' in e ? e.hook : e.status).robotId];
     if (target && !this.runsHere(target)) return undefined;
     const reply = await this.agentEvents.apply(e);
+    if ('hook' in e && target) this.emit('hook', e.hook.robotId, e.hook.name);
     if ('hook' in e && e.hook.name === 'SessionStart') {
       const { robotId, term, sessionId, pid } = e.hook;
       this.resuming.delete(term === 2 ? secondName(robotId) : robotId);

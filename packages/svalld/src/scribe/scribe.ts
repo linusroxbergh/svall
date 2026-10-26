@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { bareUrl, columnOf, placingOn, type Robot, type ContextItem, type Island } from '@svall/protocol';
+import { z } from 'zod';
+import { ApiError, bareUrl, columnOf, placingOn, type Column, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { condenseTurns, readTail } from '../agent/transcript.js';
 import { carryBrief } from '../context/brief.js';
 import { prFirst } from '../context/items.js';
@@ -7,7 +8,7 @@ import { Invalid } from '../errors.js';
 import type { Logger } from '../log.js';
 import { pool } from '../pool.js';
 import type { Store } from '../store.js';
-import { eligible, type Seen } from './eligible.js';
+import { eligible, REST_MS, type Seen } from './eligible.js';
 import {
   RobotAnswer, DESCRIPTION_MAX, IslandAnswer, NOTE_MAX, SYSTEM_ROBOT, SYSTEM_ISLAND,
   acceptLine, acceptLinks, acceptName, robotPrompt, islandPrompt, parseAnswer, prEvidence,
@@ -33,11 +34,16 @@ type Deps = {
   brief: (island: Island, robot: Robot) => string;
   // a robot whose transcript is on this machine; absent, every robot's is
   runsHere?: (c: Robot) => boolean;
+  // the pass the machine a robot runs on makes over its transcript, when that is another one; undefined when it made none
+  far?: (id: string, only?: Only, columns?: Column[], sweep?: true) => Promise<FarPass | undefined>;
 };
 type Job = { kind: 'robot' | 'island'; id: string };
 export type SweepOptions = { names?: boolean; columns?: boolean; islands?: boolean };
 // what a sweep's robot pass writes, when not all of it
-type Only = 'names' | 'columns';
+export type Only = 'names' | 'columns';
+/** A pass over a robot's transcript: the model's answer, and the transcript and PR lines it was given. */
+export const FarPass = z.object({ answer: RobotAnswer, evidence: z.string() });
+export type FarPass = z.infer<typeof FarPass>;
 
 // a path no file can have, too long or with a name too long, holds nothing
 const transcriptSize = (c: Robot): number => {
@@ -63,6 +69,8 @@ export class Scribe {
   private active = new Set<string>();
   private current?: Promise<unknown>;
   private lastStart = -Infinity;
+  // whether the automatic pass running is one the robot's machine did not make
+  private unmade = false;
   // the last sweep asked for, which runs after any before it
   private sweeping?: { key: string; done: Promise<string[]> };
   private stopped = false;
@@ -94,9 +102,17 @@ export class Scribe {
     return this.queue.some((j) => j.kind === job.kind && j.id === job.id);
   }
 
+  private here(c: Robot): boolean {
+    return this.deps.runsHere?.(c) ?? true;
+  }
+
   private due(id: string, now: number): boolean {
     const c = this.deps.store.state.robots[id];
-    return !!c && (this.deps.runsHere?.(c) ?? true) && eligible(c, this.seen.get(id), transcriptSize(c), now);
+    if (!c) return false;
+    const seen = this.seen.get(id);
+    // a transcript on another machine is measured there: its robot is due once the agent has done something since its last pass
+    if (!this.here(c)) return !!this.deps.far && seen?.activityAt !== c.agent?.lastActivityAt && eligible(c, seen, Number.MAX_SAFE_INTEGER, now);
+    return eligible(c, seen, transcriptSize(c), now);
   }
 
   // called on every fleet poll: queue what is due, and start the next pass once the last one is done and spaced
@@ -117,8 +133,14 @@ export class Scribe {
     let job = this.queue.shift();
     while (job?.kind === 'robot' && !this.due(job.id, now)) job = this.queue.shift();
     if (!job) return;
+    const last = this.lastStart;
     this.lastStart = now;
-    this.current = this.start(job).finally(() => { this.current = undefined; });
+    this.unmade = false;
+    this.current = this.start(job).finally(() => {
+      // a pass the robot's machine did not make leaves the minute to the next one
+      if (this.unmade) this.lastStart = last;
+      this.current = undefined;
+    });
   }
 
   // a pass started in a Mac's dark wake is cut off by its sleep; the job waits for a full wake
@@ -155,11 +177,11 @@ export class Scribe {
     const lines: string[] = [];
     const only: Only | undefined = o.names ? 'names' : o.columns ? 'columns' : undefined;
     if (!o.islands) {
-      // a robot placed by hand stays where it is; a dormant one is placed from the transcript it left
-      const ids = Object.values(state.robots).filter((c) => (only === 'columns' ? transcriptSize(c) > 0 : c.tmux) && c.agent?.transcriptPath &&
-        c.agent.status !== 'blocked' && (this.deps.runsHere?.(c) ?? true) && !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
+      // a robot placed by hand stays where it is; a dormant one here is placed from the transcript it left
+      const ids = Object.values(state.robots).filter((c) => (only === 'columns' && this.here(c) ? transcriptSize(c) > 0 : c.tmux) && c.agent?.transcriptPath &&
+        c.agent.status !== 'blocked' && !(only === 'columns' && c.columnSource === 'manual')).map((c) => c.id);
       this.queue = this.queue.filter((j) => j.kind !== 'robot');
-      lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, only))).flat());
+      lines.push(...(await pool(ids, SWEEP_WIDTH, (id) => this.safe({ kind: 'robot', id }, only, true))).flat());
     }
     if (!only) {
       const ids = Object.values(this.deps.store.state.islands).filter((i) => i.kind !== 'home').map((i) => i.id);
@@ -176,11 +198,11 @@ export class Scribe {
     return !!(scribeOff || scribeAsk);
   }
 
-  private async safe(job: Job, only?: Only): Promise<string[]> {
+  private async safe(job: Job, only?: Only, sweep?: true): Promise<string[]> {
     if (this.stopped || this.off()) return [];
     if (job.kind === 'robot') this.active.add(job.id);
     try {
-      return job.kind === 'robot' ? await this.passRobot(job.id, only) : await this.passIsland(job.id);
+      return job.kind === 'robot' ? await this.passRobot(job.id, only, sweep) : await this.passIsland(job.id);
     } catch (e) {
       if (this.stopped) return [];
       const what = job.kind === 'robot' ? this.deps.store.state.robots[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
@@ -199,45 +221,94 @@ export class Scribe {
     const text = await this.deps.run(system, prompt, this.aborter.signal);
     // an answer that came as the fleet stopped is not written, nor is the pass's failure
     if (this.stopped) throw new Error('the scribe has stopped');
-    if (this.deps.store.state.scribeError) this.deps.store.update((d) => { delete d.scribeError; });
     return text;
   }
 
-  private async passRobot(id: string, only?: Only): Promise<string[]> {
+  private answered(): void {
+    if (this.deps.store.state.scribeError) this.deps.store.update((d) => { delete d.scribeError; });
+  }
+
+  private failed(id: string, path: string): void {
+    const last = this.seen.get(id) ?? { lastPassAt: 0, path, bytes: 0 };
+    const failures = (last.failures ?? 0) + 1;
+    this.seen.set(id, { ...last, failures, retryAt: this.now() + Math.min(RETRY_MS * 2 ** (failures - 1), MAX_RETRY_MS) });
+  }
+
+  private async passRobot(id: string, only?: Only, sweep?: true): Promise<string[]> {
     const state = this.deps.store.state;
     const c = state.robots[id];
     if (!c?.agent?.transcriptPath) return [];
-    const path = c.agent.transcriptPath;
+    const columns = only === 'columns' || placingOn(state) ? state.columns : undefined;
+    const pass = this.here(c) ? await this.read(c, only, columns) : await this.readFar(c, only, columns, sweep);
+    if (!pass) return [];
+    this.answered();
+    // a column answered without the board in the prompt places nothing
+    return this.writeRobot(c, columns ? pass.answer : { ...pass.answer, column: undefined }, pass.evidence, only);
+  }
+
+  /** The pass a robot's home asked for over its transcript here, which writes nothing: one at rest and grown, or any in a sweep. */
+  async readRobot(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
+    const c = this.deps.store.state.robots[id];
+    if (!c?.agent?.transcriptPath || !this.here(c)) return undefined;
+    if (!sweep && !eligible(c, this.seen.get(id), transcriptSize(c), this.now())) return undefined;
+    return this.read(c, only, columns);
+  }
+
+  // undefined for a transcript that holds nothing to pass
+  private async read(c: Robot, only?: Only, columns?: Column[]): Promise<FarPass | undefined> {
+    const path = c.agent!.transcriptPath!;
     const bytes = transcriptSize(c);
     const tail = readTail(path);
-    const transcript = condenseTurns(c.agent.kind, tail, TURNS, { toolLinks: true }).slice(-TRANSCRIPT_MAX);
-    if (!transcript.trim()) { this.seen.set(id, { lastPassAt: this.now(), path, bytes }); return []; }
-    const others = Object.values(state.robots).filter((o) => o.id !== id).map((o) => o.name);
+    const transcript = condenseTurns(c.agent!.kind, tail, TURNS, { toolLinks: true }).slice(-TRANSCRIPT_MAX);
+    if (!transcript.trim()) { this.seen.set(c.id, { lastPassAt: this.now(), path, bytes }); return undefined; }
+    const others = Object.values(this.deps.store.state.robots).filter((o) => o.id !== c.id).map((o) => o.name);
     const prLinks = prEvidence(c, transcript, tail);
-    const columns = only === 'columns' || placingOn(state) ? state.columns : undefined;
     let answer: RobotAnswer;
     try {
       answer = parseAnswer(RobotAnswer, await this.ask(SYSTEM_ROBOT, robotPrompt(c, transcript, others, prLinks, columns)));
     } catch (e) {
-      const last = this.seen.get(id) ?? { lastPassAt: 0, path, bytes: 0 };
-      const failures = (last.failures ?? 0) + 1;
-      this.seen.set(id, { ...last, failures, retryAt: this.now() + Math.min(RETRY_MS * 2 ** (failures - 1), MAX_RETRY_MS) });
+      this.failed(c.id, path);
       throw e;
     }
     // a pass that writes only names or columns leaves this transcript's note and links to the next pass
-    if (!only) this.seen.set(id, { lastPassAt: this.now(), path, bytes });
-    // a column answered without the board in the prompt places nothing
-    return this.writeRobot(c, columns ? answer : { ...answer, column: undefined }, [transcript, ...prLinks].join('\n'), only);
+    if (!only) this.seen.set(c.id, { lastPassAt: this.now(), path, bytes });
+    return { answer, evidence: [transcript, ...prLinks].join('\n') };
   }
 
-  // each field is written only if nobody changed it while the model was thinking
+  // a machine away is asked again once a robot at rest would be; one that made no pass, once the agent has done something
+  private async readFar(c: Robot, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
+    const path = c.agent!.transcriptPath!;
+    const activityAt = c.agent!.lastActivityAt;
+    const seen = () => this.seen.get(c.id) ?? { lastPassAt: 0, path, bytes: 0 };
+    let pass: FarPass | undefined;
+    try {
+      pass = await this.deps.far?.(c.id, only, columns, sweep);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === 'not_reachable')) {
+        this.failed(c.id, path);
+        throw e;
+      }
+      this.seen.set(c.id, { ...seen(), retryAt: this.now() + REST_MS });
+      this.unmade = true;
+      return undefined;
+    }
+    if (this.stopped) throw new Error('the scribe has stopped');
+    if (!pass) {
+      this.seen.set(c.id, { ...seen(), activityAt });
+      this.unmade = true;
+    } else if (!only) this.seen.set(c.id, { lastPassAt: this.now(), path, bytes: 0, activityAt });
+    return pass;
+  }
+
+  // each field is written only if nobody changed it while the model was thinking; a robot's delivered brief is its machine's
   private writeRobot(before: Robot, a: RobotAnswer, transcript: string, only?: Only): string[] {
     const lines: string[] = [];
     this.deps.store.update((d) => {
       const cur = d.robots[before.id];
       if (!cur) return;
+      const here = this.here(cur);
       const island = d.islands[cur.islandId];
-      const prevBrief = island ? this.deps.brief(island, cur) : '';
+      const prevBrief = island && here ? this.deps.brief(island, cur) : '';
       const taken = new Set(Object.values(d.robots).filter((o) => o.id !== cur.id).map((o) => o.name));
       const name = only !== 'columns' && cur.name === before.name ? acceptName(cur.name, a.name, taken) : undefined;
       if (name) { lines.push(`${cur.name} → ${name}`); cur.name = name; }
@@ -261,7 +332,7 @@ export class Scribe {
         }
       }
       if (lines.length && island) {
-        carry(cur, prevBrief, this.deps.brief(island, cur));
+        if (here) carry(cur, prevBrief, this.deps.brief(island, cur));
         if (island.kind !== 'home') this.dirty.set(island.id, this.now());
       }
       // no brief or island prompt holds the column; a hand move made meanwhile wins
@@ -282,6 +353,7 @@ export class Scribe {
     const members = Object.values(state.robots).filter((c) => c.islandId === id);
     if (!members.length) return [];
     const a = parseAnswer(IslandAnswer, await this.ask(SYSTEM_ISLAND, islandPrompt(i, members)));
+    this.answered();
     const description = acceptLine(a.description, DESCRIPTION_MAX);
     // an island's links come from its members' links, never from a transcript
     const refs = members.flatMap((c) => c.context.map((it) => it.ref)).join('\n');

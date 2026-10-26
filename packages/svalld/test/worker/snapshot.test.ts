@@ -16,7 +16,7 @@ const robot = (id: string, o: Partial<Robot> = {}): Robot => ({
 });
 const fleet = (robots: Robot[], o: Partial<FleetState> = {}): FleetState =>
   ({ ...emptyState(), islands: { i_1: island }, robots: Object.fromEntries(robots.map((r) => [r.id, r])), ...o });
-const snapshot = (state: FleetState): Snapshot => ({ version: 1, state, agentHomes });
+const snapshot = (state: FleetState): Snapshot => ({ version: 1, state, agentHomes, home: '/Users/ada' });
 
 function storeWith(state: FleetState): { store: Store; file: string } {
   const file = path.join(makeHome(), 'state.json');
@@ -65,6 +65,23 @@ describe('mergeSnapshot', () => {
     expect(store.state.robots.r_here).toEqual(here);
   });
 
+  it('keeps what a pending mutation changed here: the fields an update named, and a robot a close took away', () => {
+    const placed = (id: string, o: Partial<Robot> = {}) => robot(id, { machine: me, placement: { generation: 1 }, ...o });
+    const { store } = storeWith(fleet([placed('r_a', { name: 'mine', note: '' })]));
+    const pending = [
+      { id: 'mu_0000000001', method: 'robot.update' as const, params: { id: 'r_a', name: 'mine', note: '' }, snapshotVersion: 1, at: 1 },
+      { id: 'mu_0000000002', method: 'robot.close' as const, params: { id: 'r_b' }, snapshotVersion: 1, at: 2 },
+    ];
+
+    mergeSnapshot(store, snapshot(fleet([
+      placed('r_a', { name: 'theirs', note: 'theirs', noteSource: 'manual', instructions: 'theirs' }), placed('r_b'),
+    ])), me, undefined, pending);
+
+    expect(Object.keys(store.state.robots)).toEqual(['r_a']);
+    expect(store.state.robots.r_a).toMatchObject({ name: 'mine', note: '', instructions: 'theirs' });
+    expect(store.state.robots.r_a).not.toHaveProperty('noteSource');
+  });
+
   it('takes the whole record from the snapshot for a robot that left this machine or came back at a new placement', () => {
     const { store } = storeWith(fleet([
       robot('r_left', { machine: me, placement: { generation: 1 }, cwd: '/home/ada/app' }),
@@ -78,6 +95,22 @@ describe('mergeSnapshot', () => {
 
     expect(store.state.robots.r_left).toEqual(robot('r_left', { placement: { generation: 2 }, cwd: '/Users/ada/app' }));
     expect(store.state.robots.r_back).toEqual(robot('r_back', { machine: me, placement: { generation: 3 }, cwd: '/home/ada/new' }));
+  });
+
+  it('a snapshot taken on a worker records the home under its id: reachable, its user home and the snapshot version', () => {
+    const { store } = storeWith(fleet([]));
+    const home = { id: other, name: 'mac', reachable: true };
+    mergeSnapshot(store, { ...snapshot(fleet([])), version: 7 }, me, home);
+    expect(store.state.machines?.[other]).toMatchObject({ name: 'mac', reachable: true, home: '/Users/ada', snapshot: { version: 7, at: expect.any(Number) } });
+
+    // what else the worker holds of the home stays, and since moves only when reachable does
+    store.update((d) => { d.machines![other] = { ...d.machines![other], reachable: false, since: 1, release: '1.2.3' }; });
+    mergeSnapshot(store, { ...snapshot(fleet([])), version: 8 }, me, home);
+    const back = store.state.machines![other];
+    expect(back).toMatchObject({ reachable: true, release: '1.2.3', snapshot: { version: 8 } });
+    expect(back.since).toBeGreaterThan(1);
+    mergeSnapshot(store, { ...snapshot(fleet([])), version: 9 }, me, home);
+    expect(store.state.machines![other]).toMatchObject({ since: back.since, snapshot: { version: 9 } });
   });
 });
 

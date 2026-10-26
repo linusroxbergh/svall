@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Operation } from 'fast-json-patch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_CWD, type MachineId } from '@svall/protocol';
 import { createLogger } from '../src/log.js';
-import { Store } from '../src/store.js';
+import { FlushInsideHold, Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => {
@@ -19,18 +20,18 @@ describe('Store', () => {
   });
 
   // prompts, notes and tab urls are in it; a file written before stays readable to the group until the first write
-  it('writes state.json for the user alone, whatever it was before', () => {
+  it('writes state.json for the user alone, whatever it was before', async () => {
     const file = path.join(makeHome(), 'state.json');
     fs.writeFileSync(file, JSON.stringify({ version: 7, islands: {}, characters: {} }), { mode: 0o644 });
     const s = Store.load(file, () => {});
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     fs.chmodSync(file, 0o644);
     s.update((d) => { d.name = 'x'; });
-    s.flush();
+    await s.flush();
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   });
 
-  it('persists updates atomically and emits patch ops', () => {
+  it('persists updates atomically and emits patch ops', async () => {
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
     const seen: unknown[] = [];
@@ -38,7 +39,7 @@ describe('Store', () => {
     const ops = s.update((d) => { d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }; });
     expect(ops[0]).toMatchObject({ op: 'add', path: '/islands/i_1' });
     expect(seen).toHaveLength(1);
-    s.flush();
+    await s.flush();
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).islands.i_1.name).toBe('a');
     expect(fs.existsSync(file + '.tmp')).toBe(false);
   });
@@ -57,17 +58,17 @@ describe('Store', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).dormantAfterHours).toBe(5);
   });
 
-  it('writes a change still waiting at once when flushed, and only once', () => {
+  it('writes a change still waiting at once when flushed, and only once', async () => {
     vi.useFakeTimers();
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
     s.batchWritesWhile(() => true);
     const renames = vi.spyOn(fs, 'renameSync');
     s.update((d) => { d.scribeOff = true; });
-    s.flush();
+    await s.flush();
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).scribeOff).toBe(true);
     vi.advanceTimersByTime(1000);
-    s.flush();
+    await s.flush();
     expect(renames).toHaveBeenCalledTimes(1);
   });
 
@@ -81,6 +82,65 @@ describe('Store', () => {
     batch = false;
     s.update((d) => { d.dormantAfterHours = 3; });
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ scribeOff: true, dormantAfterHours: 3 });
+  });
+
+  it('withheld holds every write while fn runs, batching off, and the next flush writes its updates as one', async () => {
+    vi.useFakeTimers();
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.batchWritesWhile(() => false);
+    s.update((d) => { d.name = 'seed'; });
+    const renames = vi.spyOn(fs, 'renameSync');
+    await s.withheld(async () => {
+      s.update((d) => { d.name = 'a'; });
+      s.update((d) => { d.defaultCwd = '/a'; });
+      vi.advanceTimersByTime(1000);
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ name: 'seed', defaultCwd: DEFAULT_CWD });
+    });
+    expect(renames).not.toHaveBeenCalled();
+    expect(await s.flush()).toBe(true);
+    expect(renames).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ name: 'a', defaultCwd: '/a' });
+  });
+
+  it('a flush called while a hold runs waits for it, then writes what it changed in one write', async () => {
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.batchWritesWhile(() => true);
+    const id = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    // a listener runs outside the hold, so a flush it starts waits too
+    const started: Promise<boolean>[] = [];
+    s.subscribe(() => { if (!started.length) started.push(s.flush()); });
+    const held = s.withheld(async () => {
+      s.update((d) => { d.name = 'changed'; });
+      await gate;
+      s.update((d) => { d.machines = { [id]: { name: 'w1', reachable: true, since: 1, replayed: { epoch: 'e', seq: 1 } } }; });
+    });
+    let flushed: boolean | undefined;
+    const flushing = s.flush().then((ok) => { flushed = ok; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect([flushed, fs.existsSync(file)]).toEqual([undefined, false]);
+    const renames = vi.spyOn(fs, 'renameSync');
+    release();
+    await held;
+    await flushing;
+    expect([flushed, await started[0]]).toEqual([true, true]);
+    expect(renames).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ name: 'changed', machines: { [id]: { replayed: { epoch: 'e', seq: 1 } } } });
+  });
+
+  it('refuses a flush from inside the hold it would wait on, and lets the hold go', async () => {
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.update((d) => { d.name = 'seed'; });
+    await expect(s.withheld(async () => {
+      s.update((d) => { d.name = 'held'; });
+      await s.flush();
+    })).rejects.toBeInstanceOf(FlushInsideHold);
+    expect(await s.flush()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).name).toBe('held');
   });
 
   it('logs a write that fails while it batches, keeps the change, and writes it at the next flush or change', () => {
@@ -119,13 +179,13 @@ describe('Store', () => {
     expect(s.state.defaultCwd).not.toBe('/elsewhere');
   });
 
-  it('does not make a fleet home that is gone again, nor fail on the log gone with it', () => {
+  it('does not make a fleet home that is gone again, nor fail on the log gone with it', async () => {
     const home = makeHome();
     const s = Store.load(path.join(home, 'state.json'), createLogger(path.join(home, 'svalld.log')).error);
     s.batchWritesWhile(() => true);
     s.update((d) => { d.scribeOff = true; });
     fs.rmSync(home, { recursive: true });
-    expect(() => s.flush()).not.toThrow();
+    expect(await s.flush()).toBe(false);
     expect(fs.existsSync(home)).toBe(false);
   });
 

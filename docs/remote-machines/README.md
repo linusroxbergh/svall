@@ -8,7 +8,7 @@ robots on different machines share its islands, cards and map.
 | Page | What it covers |
 | --- | --- |
 | [Setting up a Linux machine](setup.md) | Supported machines, home paths, adding the machine as a worker, turning a gateway into a worker, upgrading and removing it |
-| [Moving a robot](placement.md) | Moving a robot there and back, the checks, what travels and what stays, the return, what goes wrong, and limitations |
+| [Moving a robot](placement.md) | Moving a robot there and back, the checks, what travels and what stays, the return, what a robot does while this Mac sleeps, what goes wrong, and limitations |
 | [Moving a fleet](handover.md) | The whole-fleet handover of a fleet that names a gateway, which a later release removes |
 | [Blockers, warnings and errors](errors.md) | Every code a handover or `svall host` reports, what it means and what to do |
 | [Upgrading and downgrading](migration.md) | What the upgrade changes in your fleet homes, and how to go back |

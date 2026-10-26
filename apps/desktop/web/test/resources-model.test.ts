@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { contextKind, type ContextItem, type FleetState, type ResourceSource } from '@svall/protocol';
+import { contextKind, farRootId, type ContextItem, type FleetState, type MachineId, type ResourceSource } from '@svall/protocol';
 import { badgeOf, chainOf, countOf, docSlug, docsOf, isDoc, kindRows, qualifierOf, shelfSource, sourceOfRoot, tierWhere, visible, whereGroups, whereTier, withCard } from '../src/resources/model.js';
 
+const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+const STUDIO = '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId;
 const item = (name: string, detail?: string) => ({ id: `x:${name}`, name, ...(detail && { detail }), reveal: `/x/${name}`, target: 'file' as const });
 const user: ResourceSource = {
   rootId: 'r:/h/.claude', root: '/h/.claude', name: 'Claude', tier: 'global', islandIds: [], robotIds: [],
@@ -33,6 +35,12 @@ describe('resources model', () => {
     expect(sourceOfRoot([user, app], '/r/app')).toBe(app);
     expect(sourceOfRoot([user, app], '/nope')).toBeUndefined();
     expect(sourceOfRoot([user, app], undefined)).toBeUndefined();
+  });
+  it('finds a worker\'s clone by its root and the machine it is on, and one here by its root alone', () => {
+    const at = (m?: MachineId): ResourceSource => ({ ...app, root: '/srv/app', rootId: m ? farRootId(m, '/srv/app') : 'r:/srv/app' });
+    const here = at(), one = at(VAULT), two = at(STUDIO);
+    expect(sourceOfRoot([one, two, here], '/srv/app', STUDIO)).toBe(two);
+    expect(sourceOfRoot([one, two, here], '/srv/app')).toBe(here);
   });
 });
 
@@ -124,6 +132,10 @@ describe('qualifierOf', () => {
   });
   it('says the fleet holds for this window alone', () => {
     expect(qualifierOf(ours, f)).toBe('this window only');
+  });
+  it('names the worker a clone is on', () => {
+    const onVault = { ...f, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
+    expect(qualifierOf(src('repo', 'app', '/home/ada/app', { rootId: farRootId(VAULT, '/home/ada/app') }), onVault)).toBe('~/app on linus-vault');
   });
 });
 
@@ -227,6 +239,12 @@ describe('chainOf', () => {
   it('is nothing for a global or a repository source', () => {
     expect(chainOf(all, f, claude)).toBeUndefined();
     expect(chainOf(all, f, repoA)).toBeUndefined();
+  });
+  it('takes a placed robot\'s repository from the worker it is on, though this Mac has a clone at the same path', () => {
+    const placed = { ...f, robots: { ...f.robots, c1: { ...f.robots.c1, machine: STUDIO } } } as unknown as FleetState;
+    const far = src('repo', 'atlas', '/Users/l/code/atlas', { rootId: farRootId(STUDIO, '/Users/l/code/atlas'), islandIds: ['i1'], robotIds: ['c1'] });
+    expect(chainOf([...all, far], placed, all[9])?.chips[1].rootIds).toEqual([far.rootId]);
+    expect(chainOf([...all, far], placed, all[5])?.chips[1].rootIds).toEqual([far.rootId, repoA.rootId]);
   });
   it('names the global source the robot’s own agent reads', () => {
     const onCodex = { ...f, robots: { ...f.robots, c1: { ...f.robots.c1, agent: { kind: 'codex' } } } } as unknown as FleetState;

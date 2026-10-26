@@ -1,4 +1,4 @@
-import { deletable, type ResourceItem } from '@svall/protocol';
+import { deletable, farRootOf, type ResourceItem } from '@svall/protocol';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { AS_TYPED } from '../Field.js';
@@ -8,6 +8,7 @@ import { Tree } from '../ide/Tree.js';
 import { followLink } from '../LinkAsk.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { shortPath } from '../paths.js';
+import { machineName } from '../placement.js';
 import { createDoc, deleteDoc, deleteResource, renameDoc } from './docs.js';
 import { chooseResource } from './choose.js';
 import { openedItself } from './keys.js';
@@ -68,8 +69,11 @@ function CardRow({ kind, item }: { kind: Kind; item: CardItem }) {
   );
 }
 
-function FileRow({ kind, item }: { kind: Kind; item: ResourceItem }) {
+// a worker's clone, `far` the worker's name, is read there: its rows are neither shown in Finder nor deleted from here, and
+// one with no file of its own does nothing
+function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: string }) {
   const o = item.open;
+  const idle = far !== undefined && !o;
   const dirty = useApp((s) => (o ? s.ide[o.rootId]?.dirty ?? NONE : NONE));
   const chosen = useChosen(item.id);
   const [renaming, setRenaming] = useState(false);
@@ -80,9 +84,10 @@ function FileRow({ kind, item }: { kind: Kind; item: ResourceItem }) {
     <>
       <div className="res-row" data-doc={isDoc}>
         <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-dirty={unsaved} data-off={item.off ?? false} data-opens={opensItself(item)}
-          title={o ? item.reveal : `${item.reveal} (opens in Finder)`} onClick={() => { void chooseResource(deps(), item); }}>
+          aria-disabled={idle || undefined} title={idle ? `${item.reveal} (on ${far})` : o || far ? item.reveal : `${item.reveal} (opens in Finder)`}
+          onClick={() => { void chooseResource(deps(), item, far !== undefined); }}>
           <b>
-            {item.name}{unsaved && <i className="res-unsaved" aria-label="unsaved" />}{item.off && <em>off</em>}{!o && <em>Finder</em>}
+            {item.name}{unsaved && <i className="res-unsaved" aria-label="unsaved" />}{item.off && <em>off</em>}{!o && !far && <em>Finder</em>}
             {item.tag && <em className="res-tag" data-testid={`resources-tag-${kind}-${item.name}`}>{item.tag}</em>}
             {badge && <em className="res-bdg" data-kind={badge} data-testid={`resources-badge-${kind}-${item.name}`}>{badge}</em>}
           </b>
@@ -95,7 +100,7 @@ function FileRow({ kind, item }: { kind: Kind; item: ResourceItem }) {
             <button data-testid={`resources-doc-delete-${item.name}`} title={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}>×</button>
           </span>
         )}
-        {o && deletable(kind, item) && (
+        {o && !far && deletable(kind, item) && (
           <span className="res-doc-acts">
             <button data-testid={`resources-delete-${kind}-${item.name}`} title={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}>×</button>
           </span>
@@ -162,6 +167,8 @@ export function List() {
   const tier = whereTier(resourcesWhere);
   const source = shelfSource({ resources: sources, resourcesWhere, fleet });
   const groups = visible(source, what, query);
+  const farAt = source && farRootOf(source.rootId);
+  const far = farAt ? machineName(fleet, farAt.machine) : undefined;
   // a new agent profile is made where the list shows them; a new doc wherever else docs show
   const profile = what === 'agentProfiles';
   const addTo = profile ? source?.agentProfiles : what === 'all' || what === 'docs' ? source?.docs : undefined;
@@ -191,7 +198,7 @@ export function List() {
                     {badge && <em className="res-bdg" data-kind={badge} data-testid={`resources-kind-badge-${g.kind}`}>{badge}</em>}
                     <span className="n">{g.items.length}</span>
                   </h4>
-                  {g.items.map((i) => (isCard(i) ? <CardRow key={i.id} kind={g.kind} item={i} /> : <FileRow key={i.id} kind={g.kind} item={i} />))}
+                  {g.items.map((i) => (isCard(i) ? <CardRow key={i.id} kind={g.kind} item={i} /> : <FileRow key={i.id} kind={g.kind} item={i} far={far} />))}
                 </section>
               );
             })}

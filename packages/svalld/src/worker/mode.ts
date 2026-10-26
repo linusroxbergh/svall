@@ -4,10 +4,9 @@ import { InvalidConfig, parseConfig } from '../config.js';
 import type { Fleets } from '../fleets.js';
 import type { mobileControl } from '../mobile.js';
 import type { Paths } from '../paths.js';
-import type { FetchUsage } from '../usage/usage.js';
 
 /** What `svalld --worker` leaves to the home. */
-const OFF = ['mobile', 'push', 'usage', 'scribe', 'gateway', 'fleets'] as const;
+const OFF = ['mobile', 'push', 'scribe', 'gateway', 'fleets'] as const;
 export type Off = (typeof OFF)[number];
 
 export const isWorker = (paths: Paths): boolean => fs.existsSync(paths.workerFile);
@@ -26,9 +25,8 @@ export const workerOptions = (paths: Paths): { worker: WorkerFile; off: typeof O
 
 const refuse = (): Promise<never> => Promise.reject(new ApiError('not_on_worker', 'not on a worker'));
 
-/** What answers on a worker in place of the phone link, the plan's usage and the fleets beside this one. */
+/** What answers on a worker in place of the phone link and the fleets beside this one. */
 export const workerStubs = {
   mobile: { get: refuse, set: refuse, logins: (): string[] => [], served: (): string | undefined => undefined } satisfies ReturnType<typeof mobileControl>,
-  usage: (() => Promise.resolve({ available: false, windows: [] })) satisfies FetchUsage,
   fleets: { list: refuse, create: refuse, start: refuse } satisfies Fleets,
 };

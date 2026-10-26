@@ -46,7 +46,7 @@ describe('worker.json', () => {
     expect(isWorker(paths)).toBe(true);
     expect(() => readWorkerFile(paths)).toThrow(new RegExp(`${paths.workerFile}.*token`));
     fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
-    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'usage', 'scribe', 'gateway', 'fleets'] });
+    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'gateway', 'fleets'] });
   });
 });
 
@@ -85,7 +85,7 @@ runIf('svalld --worker', () => {
       expect(Store.load(paths.state, () => {}).state.scribeOff).toBe(true);
       expect(await api.call('state.get')).toMatchObject({ result: { version: 12 } });
       expect(await api.call('mobile.get')).toMatchObject({ error: { code: 'not_on_worker', message: 'not on a worker' } });
-      expect(await api.call('usage.get')).toMatchObject({ result: { available: false, windows: [] } });
+      expect(await api.call('usage.get')).toMatchObject({ result: { available: true, idle: true, windows: [] } });
       expect(await api.call('fleets.list')).toMatchObject({ error: { code: process.platform === 'darwin' ? 'not_on_worker' : 'forbidden' } });
       // a change is the home's to make, and no home has linked
       expect(await api.call('island.create', { name: 'x' })).toMatchObject({ error: { code: 'not_reachable', message: expect.stringMatching(/ cannot reach this Mac right now; try again when it is awake$/) } });

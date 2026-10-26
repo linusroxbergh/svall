@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
 import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
 import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
-import { destinationName, isPlaced, unreachableOf } from './placement.js';
+import { awayLine, destinationName } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
 
@@ -26,9 +26,23 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
   // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
   const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to); });
-  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && unreachableOf(s.fleet, r); });
-  const mismatch = useApp((s) => { const r = s.fleet.robots[id]; return !!r && isPlaced(r) && s.fleet.machines?.[r.machine]?.mismatch === true; });
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r); });
   const away = !!movingTo || !!unreachable;
+  // the last lines this Mac saw of the robot's pane there, asked once each time its worker is lost
+  const lost = !!unreachable && !second;
+  const [lastScreen, setLastScreen] = useState('');
+  useEffect(() => {
+    if (!lost) return;
+    let left = false;
+    app.api().call('term.lastScreen', { id }).then((r) => { if (!left) setLastScreen(r.text); }, () => {});
+    return () => { left = true; setLastScreen(''); };
+  }, [id, lost]);
+  // the capture runs from the scrollback down to the screen, which is what shows
+  const screenRef = useRef<HTMLPreElement>(null);
+  useLayoutEffect(() => {
+    const el = screenRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lastScreen]);
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
   const ref = useRef<HTMLDivElement>(null);
@@ -92,7 +106,14 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
       </div>
     );
   }
-  if (unreachable) return <div className="revive" data-testid="terminal-unreachable">{unreachable} {mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}</div>;
+  if (unreachable) {
+    return (
+      <div className="revive away">
+        <span data-testid="terminal-unreachable">{unreachable}</span>
+        {lastScreen && <pre ref={screenRef} tabIndex={0} aria-label="Last screen the worker sent" data-testid="terminal-last-screen">{lastScreen.replace(/\r/g, '')}</pre>}
+      </div>
+    );
+  }
   if (error) {
     return (
       <div className="revive" data-testid="terminal-error">

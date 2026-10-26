@@ -3,11 +3,11 @@ import { once } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { Duplex, PassThrough } from 'node:stream';
+import { Duplex, PassThrough, Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState, type FleetState, type LinkFrame, type Robot } from '@svall/protocol';
 import { HEARTBEAT_MS, HomeLinks, UnknownEvent, type Transport } from '../../src/link/home.js';
-import { LinkStream, MAX_LINE } from '../../src/link/stream.js';
+import { LinkStream, MAX_LINE, PART_REPLY } from '../../src/link/stream.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
@@ -65,7 +65,7 @@ const HELLO = { release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOC
 // A home and a worker, each with a store of its own, and the worker's outbox; the home holds r_1 placed on the worker.
 // `versions`: the state schema and link protocol the worker says it speaks.
 function world(o: {
-  handlers?: Record<string, (p: unknown) => Promise<unknown>>; log?: Logger; versions?: { schema: number; protocol: number }; onEvent?: (kind: string) => Promise<void>;
+  handlers?: Record<string, (p: unknown) => Promise<unknown>>; log?: Logger; workerLog?: Logger; versions?: { schema: number; protocol: number }; onEvent?: (kind: string) => Promise<void>;
 } = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
@@ -73,28 +73,46 @@ function world(o: {
   const home = storeWith(homePaths.home, fleet(robot({ name: 'named at home' })));
   const store = storeWith(workerPaths.home, fleet(robot({ name: 'stale', cwd: '/w/now', tmux: { windowId: '@1', paneId: '%1' } })));
   const outbox = Outbox.open(workerPaths);
-  const worker = new HomeConnection({
-    paths: workerPaths, worker: { homeMachineId: H, fleetId: FleetId.parse(crypto.randomUUID()), token, homeName: 'mac' }, me: W, store, outbox,
-    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: o.handlers ?? {}, ...(o.versions && { versions: o.versions }),
-  });
-  stops.push(() => worker.stop());
+  const fleetId = FleetId.parse(crypto.randomUUID());
+  // what the worker's onLink and the home's onNotify, onSynced and onLost were called with
+  const linked: boolean[] = [];
+  const notified: [string, unknown, MachineId][] = [];
+  const synced: MachineId[] = [];
+  const lost: MachineId[] = [];
+  // the worker's daemon over `journal`, as it starts again over a journal that was wiped or lost a file
+  const workerOn = (journal: Outbox) => {
+    const connection = new HomeConnection({
+      paths: workerPaths, worker: { homeMachineId: H, fleetId, token, homeName: 'mac' }, me: W, store, outbox: journal,
+      log: o.workerLog ?? silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: o.handlers ?? {}, ...(o.versions && { versions: o.versions }),
+      onLink: (live) => linked.push(live),
+    });
+    stops.push(() => connection.stop());
+    return connection;
+  };
+  const worker = workerOn(outbox);
   // what the home took, in the order it took it
   const seen: string[] = [];
   const reports: string[] = [];
   let version = 100;
   let snapshots = 0;
-  const links = (connect: Transport = socketTo(workerPaths.linkSock)) => {
+  // `hooks` in place of the ones that record
+  type Hooks = Pick<ConstructorParameters<typeof HomeLinks>[0], 'onNotify' | 'onSynced' | 'onLost'>;
+  const links = (connect: Transport = socketTo(workerPaths.linkSock), hooks: Hooks = {}) => {
     const l = new HomeLinks({
       paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: () => [entry, spare], connect,
       onReport: (r, machine) => { seen.push(`report ${r.fields.cwd}`); reports.push(r.fields.cwd); applyReport(home, r, machine); },
       onEvent: async (kind) => { await o.onEvent?.(kind); seen.push(`event ${kind}`); },
       onInventory: async (inv, machine) => { seen.push(`inventory ${machine === W ? 'from vault' : machine} last ${inv.last} acked ${inv.acked} robots ${inv.robots.map((r) => r.fields.cwd).join(',')}`); },
-      snapshot: () => { snapshots++; return { version: ++version, state: home.state, agentHomes }; },
+      snapshot: () => { snapshots++; return { version: ++version, state: home.state, agentHomes, home: '/Users/ada' }; },
+      onNotify: (kind, data, machine) => notified.push([kind, data, machine]),
+      onSynced: (machine) => synced.push(machine),
+      onLost: (machine) => lost.push(machine),
+      ...hooks,
     });
     stops.push(() => l.stop());
     return l;
   };
-  return { homePaths, workerPaths, home, store, outbox, worker, links, seen, reports, snapshots: () => snapshots };
+  return { homePaths, workerPaths, home, store, outbox, worker, workerOn, links, seen, reports, snapshots: () => snapshots, linked, notified, synced, lost };
 }
 
 describe('workers.json', () => {
@@ -147,7 +165,7 @@ describe('the link', () => {
     const stream = new LinkStream(sock, { onFrame: (f) => got.push(f), onClose: () => {} });
     stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
     await until(() => expect(got).toHaveLength(2));
-    expect(got[1]).toEqual({ t: 'inventory', robots: [ownedReport(w.store.state.robots.r_1)], last: 2, acked: 0 });
+    expect(got[1]).toEqual({ t: 'inventory', robots: [ownedReport(w.store.state.robots.r_1)], last: 2, acked: 0, epoch: w.outbox.epoch() });
     // a report while the home has not said where to start is journaled, and sent with the rest
     w.worker.report(report('/w/3'));
     expect(w.worker.connected()).toBe(false);
@@ -372,7 +390,8 @@ describe('the link', () => {
   });
 
   it('acks no event whose change did not reach the disk, and takes it once it does', async () => {
-    const w = world();
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
     // the home batches its writes, as the daemon's store does
     w.home.batchWritesWhile(() => true);
     await w.worker.start();
@@ -386,11 +405,149 @@ describe('the link', () => {
       await until(() => expect(w.worker.connected()).toBe(false));
       expect(w.outbox.acked()).toBe(0);
       expect(Outbox.open(w.workerPaths).after(0)).toHaveLength(1);
+      // the next stream finds the event taken but not on disk, and acks it only once it is
+      await until(() => expect(logged).toContain('vault: the inventory not taken, closing the link: state.json was not written'));
+      expect(w.outbox.acked()).toBe(0);
     } finally {
       fs.chmodSync(w.homePaths.home, 0o700);
     }
     await until(() => expect(w.outbox.acked()).toBe(1));
     expect(Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.robots.r_1.cwd).toBe('/w/unwritten');
+  });
+
+  it('an event the home took whose ack was lost is acked and not applied again', async () => {
+    const w = world();
+    w.worker.journal('x', {});
+    w.worker.journal('x', {});
+    await w.worker.start();
+    let first = true;
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      if (!first) return r;
+      first = false;
+      const sock = r.stream as net.Socket;
+      // the home's ack of seq 2 is lost with the stream
+      const out = new Writable({
+        write(chunk: Buffer, _enc, done) {
+          if (String(chunk).includes('{"t":"ack","seq":2}')) { sock.destroy(); done(); return; }
+          sock.write(chunk, done);
+        },
+      });
+      return { stream: Duplex.from({ readable: sock, writable: out }), via };
+    });
+    links.start();
+    await until(() => expect(w.outbox.acked()).toBe(2));
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    expect(first).toBe(false);
+    expect(w.seen.filter((s) => s === 'event x')).toHaveLength(2);
+    expect(w.home.state.machines?.[W]?.replayed).toEqual({ epoch: w.outbox.epoch(), seq: 2 });
+  });
+
+  it('a journal restored behind what the home replayed of its epoch has its next seqs applied', async () => {
+    const w = world();
+    w.outbox.append('x', {});
+    w.outbox.append('x', {});
+    w.outbox.ack(2);
+    // the home took seqs 3 to 5 of this epoch before the worker's journal went back to a copy of it at seq 2
+    w.home.update((d) => { d.machines = { [W]: { name: 'vault', reachable: false, since: 1, replayed: { epoch: w.outbox.epoch(), seq: 5 } } }; });
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    for (let n = 0; n < 3; n++) w.worker.journal('restored', {});
+    await until(() => expect(w.outbox.acked()).toBe(5));
+    expect(w.seen.filter((s) => s === 'event restored')).toHaveLength(3);
+    expect(links.for(W)?.outboxDrained()).toBe(true);
+    expect(w.home.state.machines?.[W]?.replayed).toEqual({ epoch: w.outbox.epoch(), seq: 5 });
+  });
+
+  it('a link drop keeps replayed and home on the machine entry, and a matching hello after a mismatch clears mismatch', async () => {
+    const versions = { schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
+    const w = world({ versions });
+    w.worker.journal('x', {});
+    await w.worker.start();
+    vi.stubEnv('HOME', '/home/ada');
+    const sockets: net.Socket[] = [];
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    });
+    const machine = () => w.home.state.machines?.[W];
+    links.start();
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    const replayed = { epoch: w.outbox.epoch(), seq: 1 };
+    expect(machine()).toMatchObject({ reachable: true, release: '1.2.3', home: '/home/ada', replayed });
+    // and the worker's entry for the home
+    const mac = () => w.store.state.machines?.[H];
+    await until(() => expect(w.worker.snapshotVersion()).toBeGreaterThan(100));
+    expect(mac()).toMatchObject({ name: 'mac', reachable: true, home: '/Users/ada', snapshot: { version: w.worker.snapshotVersion() } });
+
+    versions.schema = STATE_SCHEMA_VERSION + 1;
+    sockets.at(-1)!.destroy();
+    await until(() => expect(machine()?.reachable).toBe(false));
+    expect(machine()).toMatchObject({ release: '1.2.3', home: '/home/ada', replayed });
+    await until(() => expect(mac()?.reachable).toBe(false));
+    expect(mac()).toMatchObject({ name: 'mac', home: '/Users/ada', snapshot: { version: w.worker.snapshotVersion() } });
+    await until(() => expect(machine()?.mismatch).toBe(true));
+    expect(machine()).toMatchObject({ reachable: false, home: '/home/ada', replayed });
+
+    versions.schema = STATE_SCHEMA_VERSION;
+    links.refresh();
+    await until(() => expect(machine()?.reachable).toBe(true));
+    expect(machine()?.mismatch).toBeUndefined();
+    expect(machine()).toMatchObject({ home: '/home/ada', replayed });
+    expect(Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.machines?.[W]).toEqual(machine());
+  });
+
+  it('a worker in mismatch whose link drops is marked not reachable, its mismatch gone', async () => {
+    const w = world({ versions: { schema: STATE_SCHEMA_VERSION + 1, protocol: PROTOCOL_VERSION } });
+    await w.worker.start();
+    const sockets: net.Socket[] = [];
+    const links = w.links(async (e) => {
+      // the worker is off once its link drops
+      if (sockets.length) throw new Error('connection refused');
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    });
+    const machine = () => w.home.state.machines?.[W];
+    links.start();
+    await until(() => expect(machine()).toMatchObject({ reachable: false, mismatch: true }));
+    sockets[0].destroy();
+    await until(() => expect(machine()?.mismatch).toBeUndefined());
+    expect(machine()?.reachable).toBe(false);
+  });
+
+  it("a new epoch starts the home over from the worker's acked seq, whether the journal was wiped or lost its outbox or acked", async () => {
+    const w = world();
+    const count = (kind: string) => w.seen.filter((s) => s === `event ${kind}`).length;
+    const replayed = () => w.home.state.machines?.[W]?.replayed;
+    // two events on `journal`, the home linked until it has taken them, then both daemons stopped
+    const round = async (connection: HomeConnection, journal: Outbox, kind: string) => {
+      connection.journal(kind, {});
+      connection.journal(kind, {});
+      await connection.start();
+      const links = w.links();
+      links.start();
+      await until(() => expect(journal.acked()).toBe(2));
+      links.stop();
+      await connection.stop();
+      expect([count(kind), replayed()]).toEqual([2, { epoch: journal.epoch(), seq: 2 }]);
+    };
+    await round(w.worker, w.outbox, 'before');
+    // the worker starts again over its journal with `files` gone
+    const afresh = async (before: Outbox, files: string[], kind: string) => {
+      for (const f of files) fs.rmSync(f, { recursive: true });
+      const journal = Outbox.open(w.workerPaths);
+      expect(journal.epoch()).not.toBe(before.epoch());
+      await round(w.workerOn(journal), journal, kind);
+      return journal;
+    };
+    const wiped = await afresh(w.outbox, [path.dirname(w.workerPaths.outbox)], 'wiped');
+    const lost = await afresh(wiped, [w.workerPaths.outbox, w.workerPaths.acked], 'lost');
+    const noAcked = await afresh(lost, [w.workerPaths.acked], 'noAcked');
+    await afresh(noAcked, [w.workerPaths.outbox], 'noOutbox');
   });
 
   it('the worker acks no snapshot it could not write, and closes the link instead', async () => {
@@ -413,6 +570,16 @@ describe('the link', () => {
       fs.chmodSync(w.workerPaths.home, 0o700);
     }
     await until(() => expect(Store.load(path.join(w.workerPaths.home, 'state.json'), () => {}).state.robots.r_1.name).toBe('renamed'));
+  });
+
+  it("the worker's entry for its home says unreachable from the worker's start until a snapshot comes", async () => {
+    const w = world();
+    w.store.update((d) => { d.machines = { [H]: { name: 'mac', reachable: true, since: 1, home: '/Users/ada', snapshot: { version: 7, at: 1 } } }; });
+    await w.worker.start();
+    expect(w.store.state.machines?.[H]).toMatchObject({ name: 'mac', reachable: false, home: '/Users/ada', snapshot: { version: 7 } });
+    expect(w.store.state.machines![H]!.since).toBeGreaterThan(1);
+    w.links().start();
+    await until(() => expect(w.store.state.machines?.[H]?.reachable).toBe(true));
   });
 
   it('sends no snapshot over the line limit: the push fails, says so once, and the link stays up', async () => {
@@ -543,6 +710,130 @@ describe('the link', () => {
     expect(links.for(W)?.connected()).toBe(true);
     expect(w.reports).toEqual(['/w/after']);
     expect(logged).toEqual(['vault: event 1 (future.kind) is not one this svalld takes; skipped']);
+  });
+
+  it('a notify frame reaches onNotify with its machine and is never acked', async () => {
+    const w = world();
+    await w.worker.start();
+    // dropped: the home is not linked
+    w.worker.notify('screen', { early: true });
+    const acks: string[] = [];
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      const sock = r.stream as net.Socket;
+      const out = new Writable({
+        write(chunk: Buffer, _enc, done) {
+          if (String(chunk).startsWith('{"t":"ack"')) acks.push(String(chunk));
+          sock.write(chunk, done);
+        },
+      });
+      return { stream: Duplex.from({ readable: sock, writable: out }), via };
+    });
+    links.start();
+    await until(() => expect(w.worker.connected()).toBe(true));
+    const before = acks.length;
+    w.worker.notify('screen', { id: 'r_1', text: 'hi', at: 1 });
+    // an event after it is the one acked
+    w.worker.journal('x', {});
+    await until(() => expect(w.outbox.acked()).toBe(1));
+    expect(w.notified).toEqual([['screen', { id: 'r_1', text: 'hi', at: 1 }, W]]);
+    expect(acks.slice(before)).toEqual(['{"t":"ack","seq":1}\n']);
+  });
+
+  it('a notify frame over PART_REPLY arrives cut to its tail, and the cut is logged once until one of its kind fits', async () => {
+    const logged: string[] = [];
+    const w = world({ workerLog: { info() {}, error: (m) => logged.push(m) } });
+    await w.worker.start();
+    w.links().start();
+    await until(() => expect(w.worker.connected()).toBe(true));
+    const big = { id: 'c_1', text: 'a'.repeat(PART_REPLY) + 'END', at: 1 };
+    w.worker.notify('screen', big);
+    await until(() => expect(w.notified).toHaveLength(1));
+    const [kind, data] = w.notified[0]!;
+    const { text } = data as { text: string };
+    expect(text.endsWith('END')).toBe(true);
+    expect(data).toMatchObject({ id: 'c_1', at: 1 });
+    // cut no further than it must
+    expect(Buffer.byteLength(JSON.stringify({ t: 'notify', kind, data }))).toBe(PART_REPLY);
+    expect(logged).toEqual([expect.stringContaining('screen')]);
+
+    w.worker.notify('screen', big);
+    await until(() => expect(w.notified).toHaveLength(2));
+    expect(logged).toHaveLength(1);
+    // one that fits, and the next cut is said again
+    w.worker.notify('screen', { id: 'c_1', text: 'small', at: 2 });
+    w.worker.notify('screen', big);
+    await until(() => expect(w.notified).toHaveLength(4));
+    expect(logged).toEqual([expect.stringContaining('screen'), expect.stringContaining('screen')]);
+  });
+
+  it('onSynced fires once the inventory is taken and onLost when the stream dies; onLink on the worker mirrors them', async () => {
+    const w = world();
+    await w.worker.start();
+    const sockets: net.Socket[] = [];
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    });
+    links.start();
+    await until(() => expect(w.synced).toEqual([W]));
+    expect(w.seen).toEqual(['inventory from vault last 0 acked 0 robots /w/now']);
+    await until(() => expect(w.linked).toEqual([true]));
+    expect(w.lost).toEqual([]);
+
+    sockets[0]!.destroy();
+    await until(() => expect(w.lost).toEqual([W]));
+    await until(() => expect(w.linked).toEqual([true, false]));
+    // and the link the home makes again a second later
+    await until(() => expect(w.synced).toEqual([W, W]));
+    await until(() => expect(w.linked).toEqual([true, false, true]));
+    expect(w.lost).toEqual([W]);
+  });
+
+  it("the worker's backlog is 0 until the home is linked, and the bytes waiting once it is", async () => {
+    let called!: () => void;
+    const answering = new Promise<void>((r) => { called = r; });
+    const w = world({ handlers: { big: async () => { called(); return 'x'.repeat(900_000); } } });
+    await w.worker.start();
+    // a home that greets and calls, and never reads
+    const sock = net.connect(w.workerPaths.linkSock);
+    await once(sock, 'connect');
+    const send = (f: LinkFrame) => sock.write(`${JSON.stringify(f)}\n`);
+    send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
+    send({ t: 'call', id: 1, method: 'big', params: {} });
+    await answering;
+    await new Promise((r) => setImmediate(r));
+    expect(w.worker.backlog()).toBe(0);
+    send({ t: 'ack', seq: 0 });
+    await until(() => expect(w.worker.connected()).toBe(true));
+    expect(w.worker.backlog()).toBeGreaterThan(0);
+    sock.destroy();
+  });
+
+  it('a hook that throws is logged and the link goes on', async () => {
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
+    await w.worker.start();
+    const sockets: net.Socket[] = [];
+    const boom = () => { throw new Error('boom'); };
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    }, { onNotify: boom, onSynced: boom, onLost: boom });
+    links.start();
+    await until(() => expect(w.worker.connected()).toBe(true));
+    w.worker.notify('screen', {});
+    w.worker.journal('x', {});
+    await until(() => expect(w.outbox.acked()).toBe(1));
+    expect(logged).toEqual(['vault: onSynced failed: boom', 'vault: a screen notification not taken: boom']);
+    expect([sockets.length, links.for(W)?.connected()]).toEqual([1, true]);
+
+    sockets[0]!.destroy();
+    await until(() => expect(logged).toContain('vault: onLost failed: boom'));
+    await until(() => expect(sockets).toHaveLength(2));
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
   });
 
   it('refresh links a machine that has a token now, and leaves the links it holds as they are', async () => {

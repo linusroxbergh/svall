@@ -2,6 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { useApp } from '../hooks.js';
+import { awayLine } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { RobotMenu } from './RobotMenu.js';
@@ -40,6 +41,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const robot = useApp((s) => s.fleet.robots[id]);
   const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet) : undefined));
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
+  // what stands over the terminal while the home has lost the worker it runs on; the terminal holds the last screen the home saw
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r); });
   const status = useApp((s) => s.status);
   const online = status === 'online';
   const host = useRef<HTMLDivElement>(null);
@@ -50,6 +53,9 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const [fontSize, setFontSize] = useState(readSize);
   const sizeRef = useRef(fontSize);
   sizeRef.current = fontSize;
+  // a worker out of reach takes no keys and no size
+  const awayRef = useRef(!!unreachable);
+  awayRef.current = !!unreachable;
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const [prompt, setPrompt] = useState(() => { try { return sessionStorage.getItem(DRAFT + id) ?? ''; } catch { return ''; } });
@@ -76,11 +82,11 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     // the wheel steps of one drag move go as one input
     let typed = '';
     term.onData((d) => {
-      if (!typed) queueMicrotask(() => { const data = withoutClicks(typed); typed = ''; if (data) l.input(data); });
+      if (!typed) queueMicrotask(() => { const data = withoutClicks(typed); typed = ''; if (data && !awayRef.current) l.input(data); });
       typed += d;
     });
 
-    const resize = () => { refit.current(); l.resize(); };
+    const resize = () => { refit.current(); if (!awayRef.current) l.resize(); };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host.current!);
@@ -100,27 +106,45 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     if (!term) return;
     term.options.fontSize = fontSize;
     refit.current();
-    link.current?.resize();
+    if (!awayRef.current) link.current?.resize();
   }, [fontSize]);
 
-  // Safari drops the socket on lock and discards backgrounded tabs; every return repaints the pane
+  // Safari drops the socket on lock and discards backgrounded tabs; every return repaints the pane. A worker out of
+  // reach shows the last screen the home saw of the pane, and the terminal opens once it is back
+  const away = !!unreachable;
+  // the machine the terminal was last opened on
+  const openedOn = useRef(robot?.machine);
   useEffect(() => {
     if (!online) return;
     let left = false;
     setFailed(undefined);
     setSendError(undefined);
-    // opening a dormant robot wakes it, as on the desktop
-    const woken = robot && !robot.tmux ? phone.api().call('robot.revive', { id }) : Promise.resolve();
-    woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
+    if (away) {
+      phone.api().call('term.lastScreen', { id }).then((r) => {
+        if (left || !r.text) return;
+        xterm.current?.reset();
+        xterm.current?.write(r.text);
+      }, () => {});
+    } else {
+      // opening a dormant robot wakes it, as on the desktop
+      const woken = robot && !robot.tmux ? phone.api().call('robot.revive', { id }) : Promise.resolve();
+      openedOn.current = robot?.machine;
+      woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
+    }
     phone.api().fire('robot.seen', { id });
     return () => { left = true; };
-  }, [id, online, attempt]);
+  }, [id, online, attempt, away]);
 
-  // a window lost while the view is open waits for revive, as on the desktop; one that comes back clears it
+  // a window lost while the view is open waits for revive, as on the desktop; one that comes back clears it, and one on
+  // another machine, as a move lands, is opened there
   const windowId = robot?.tmux?.windowId;
   useEffect(() => {
     if (!windowId) return;
     setFailed(undefined);
+    if (online && !away && robot?.machine !== openedOn.current) {
+      openedOn.current = robot?.machine;
+      link.current?.open().catch((e: Error) => setFailed(e.message));
+    }
     return () => setFailed('The terminal closed.');
   }, [windowId]);
 
@@ -189,6 +213,9 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       </header>
       <div className="stage">
         <div className="screen" ref={host} />
+        {unreachable && (
+          <p className="unreachable" role="status" data-testid="phone-unreachable">{unreachable}</p>
+        )}
         {failed && (
           <div className="failed">
             <p>{failed}</p>
@@ -213,7 +240,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       )}
       <div className="keys">
         {KEYS.map(([label, seq]) => (
-          <button key={label} onClick={() => { xterm.current?.scrollToBottom(); link.current?.input(seq); }}>{label}</button>
+          <button key={label} disabled={away} onClick={() => { xterm.current?.scrollToBottom(); link.current?.input(seq); }}>{label}</button>
         ))}
         <button onClick={() => size(-1)}>A−</button>
         <button onClick={() => size(1)}>A+</button>

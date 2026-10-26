@@ -150,8 +150,13 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 31 with a robot moved to another machine, the machines it can go to, and the route a terminal attaches over', () => {
-    expect(PROTOCOL_VERSION).toBe(31);
+  it("is 32 with a worker's outbox epoch and the home's user folder on the link, and each machine's user folder, last replayed event and last snapshot in the fleet", () => {
+    expect(PROTOCOL_VERSION).toBe(32);
+    const link = { name: 'linus-vault', reachable: false, since: 1, home: '/home/linus', replayed: { epoch: 'e', seq: 2 }, snapshot: { version: 7, at: 3 } };
+    expect(FleetState.parse({ ...emptyState(), machines: { [UUID_A]: link } }).machines).toEqual({ [UUID_A]: link });
+  });
+
+  it('was 31 with a robot moved to another machine, the machines it can go to, and the route a terminal attaches over', () => {
     const sheet = {
       sessionBytes: 4_000_000, branch: 'kanban', commits: 2, changedFiles: 3, untrackedFiles: 0, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
       interrupts: false, question: false, notInRepo: false,

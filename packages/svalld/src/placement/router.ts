@@ -1,19 +1,25 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type Result, type Robot } from '@svall/protocol';
+import { ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import { handoverGit } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { FarPass, type Only } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
+import type { Workspace } from '../workspace/workspace.js';
 import { probeRepo, RepoProbeParams } from './checks.js';
+import type { FarViewers } from './far-viewers.js';
+import { sharedBranch, withLine, type Replay } from './replay.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
 const callMs = (method: MethodName, params: unknown): number => 30_000 + serverWait(method, params);
+const SCRIBE_MS = 10 * 60_000;
+const ScribeRun = z.object({ id: z.string(), only: z.enum(['names', 'columns']).optional(), columns: z.array(Column).optional(), sweep: z.literal(true).optional() });
 
 type Options = {
   store: Store;
@@ -23,6 +29,9 @@ type Options = {
   links?: Pick<HomeLinks, 'call'>;
   /** On a worker: the home worker.json names, and the link to it. */
   home?: { id: MachineId; connection: Pick<HomeConnection, 'call' | 'connected'> };
+  /** On the home: the robots each worker's replay started, and the user folder a worker's paths are compared in. */
+  replay?: Pick<Replay, 'created'>;
+  homedir?: string;
 };
 
 /** Which machine answers a call about a robot: the one it runs on. */
@@ -32,6 +41,20 @@ export class Router {
   /** Whether this daemon serves its home's fleet as a worker. */
   get onWorker(): boolean {
     return this.o.home !== undefined;
+  }
+
+  get me(): MachineId {
+    return this.o.me;
+  }
+
+  /** On a worker, the home it serves. */
+  get homeId(): MachineId | undefined {
+    return this.o.home?.id;
+  }
+
+  /** On a worker, whether its home is linked; the home is its own. */
+  get homeConnected(): boolean {
+    return this.o.home?.connection.connected() ?? true;
   }
 
   /** Whether a robot runs on this machine; one that names none runs on the home. */
@@ -46,6 +69,26 @@ export class Router {
     return robots[robotId].machine ?? this.o.home?.id;
   }
 
+  /** The machine a workspace id's folder is on, when that is another one: a placed robot's, or the worker a clone's root id names. */
+  rootPlacedAt(id: string): MachineId | undefined {
+    if (!id.startsWith('r:')) return this.placedAt(id);
+    const far = farRootOf(id);
+    return far && far.machine !== this.o.me ? far.machine : undefined;
+  }
+
+  /** The answer of the machine a workspace id's folder is on to a call about it, a clone named by its path there; undefined for a folder here. */
+  forwardRoot<M extends MethodName>(id: string, method: M, params: Params<M>, signal?: AbortSignal): Promise<Result<M>> | undefined {
+    const at = this.rootPlacedAt(id);
+    if (!at || !this.o.links) return undefined;
+    const far = farRootOf(id);
+    return this.o.links.call<Result<M>>(at, method, far ? { ...params, id: `r:${far.root}` } : params, { timeoutMs: callMs(method, params), signal });
+  }
+
+  /** On the home, the user folder a worker's paths are named from here. */
+  get homedir(): string | undefined {
+    return this.o.homedir;
+  }
+
   /** The answer of the machine a robot runs on to a call about it; undefined for a robot here. */
   forward<M extends MethodName>(robotId: string, method: M, params: Params<M>, signal?: AbortSignal): Promise<Result<M>> | undefined {
     const at = this.placedAt(robotId);
@@ -53,6 +96,19 @@ export class Router {
     // a worker is linked to its home alone, which sends the call on
     if (!this.o.links) return this.toHome(method, params, signal) as Promise<Result<M>>;
     return this.o.links.call<Result<M>>(at, method, params, { timeoutMs: callMs(method, params), signal });
+  }
+
+  /** On the home: the scribe's pass over a placed robot's transcript, made on its machine; undefined when that machine made none. */
+  async scribe(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
+    const at = this.placedAt(id);
+    if (!at || !this.o.links) return undefined;
+    const raw = await this.o.links.call(at, 'scribe.run', { id, only, columns, sweep }, { timeoutMs: SCRIBE_MS }).catch((e: unknown) => {
+      const cause = e instanceof ApiError ? e.data?.cause : undefined;
+      throw typeof cause === 'string' ? new Error((e as ApiError).message, { cause }) : e;
+    });
+    // a pass skipped there, and an answer this Mac cannot read, wait for the robot's next turn
+    const r = FarPass.safeParse(raw);
+    return r.success ? r.data : undefined;
   }
 
   /** A worker's call to its home, refused while the home cannot be reached. */
@@ -67,13 +123,20 @@ export class Router {
   }
 
   /**
-   * Takes a worker's inventory on the home: the fields it reports of each robot, a dormant record for each robot placed
-   * there that it no longer holds, and a forget for each it holds that the home has closed.
+   * Takes a worker's inventory on the home: its reports, a note on each robot the replay before it started that shares a branch
+   * of its repository, a dormant record for each robot placed there it no longer holds, and a forget for each the home closed.
    */
   async reconcileWorker(inv: Inventory, machine: MachineId): Promise<void> {
     const { links } = this.o;
     if (!links) throw new Error(`${machine}: only the home reconciles a worker`);
     for (const r of inv.robots) applyReport(this.o.store, r, machine);
+    // by the repo each robot's report brings
+    const shared = new Map<string, string>();
+    for (const id of this.o.replay?.created(machine) ?? []) {
+      const line = sharedBranch(this.o.store.state, id, this.o.homedir);
+      if (line) shared.set(id, line);
+    }
+    if (shared.size) this.o.store.update((d) => { for (const [id, line] of shared) d.robots[id].note = withLine(d.robots[id].note, line); });
     const held = new Set(inv.robots.map((r) => r.robotId));
     const name = this.o.store.state.machines?.[machine]?.name ?? machine;
     const note = `${name} no longer has this robot's window`;
@@ -94,30 +157,45 @@ export class Router {
   // the name the home's registry gives this worker, which its snapshot carries
   private unreachable(): ApiError {
     const name = this.o.store.state.machines?.[this.o.me]?.name ?? os.hostname().split('.')[0];
-    return new ApiError('not_reachable', `${name} cannot reach this Mac right now; try again when it is awake`);
+    return new ApiError('not_reachable', unreachableLine(name));
   }
 }
 
+export const unreachableLine = (worker: string) => `${worker} cannot reach this Mac right now; try again when it is awake`;
+
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
 
-/** What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change does. */
-export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach'> }): Handlers {
-  const { fleet, store, me, terminals } = o;
+/** Ends a robot placed here, its windows and what it started; its worktree stays, locked, for the session it may yet resume. */
+export async function forgetRobot(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger }, id: string): Promise<void> {
+  const c = o.store.state.robots[id];
+  if (!Object.hasOwn(o.store.state.robots, id) || c.machine !== o.me) return;
+  await o.fleet.closeRobot(id);
+  if (c.repo?.isWorktree) {
+    const r = await handoverGit(['worktree', 'lock', '--reason', `closed robot ${id}`, c.repo.root], c.repo.mainRoot);
+    if (r.code !== 0) o.log.error(`${id}: ${c.repo.root} was not locked: ${r.stderr.trim()}`);
+  }
+}
+
+const FarViewer = z.object({ key: z.string(), kind: z.enum(['app', 'phone']) });
+const FarOpen = methods['term.open'].params.extend({ viewer: FarViewer });
+const FarResize = methods['term.resize'].params.extend({ viewer: z.string() });
+const FarClose = z.object({ id: z.string(), viewer: z.string() });
+
+/**
+ * What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change
+ * does. A home viewer's terminal here is one of `viewers`.
+ */
+export function workerCalls(o: {
+  fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach' | 'open' | 'input' | 'resize' | 'close'>; viewers: FarViewers;
+}): Handlers {
+  const { fleet, terminals, viewers } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
     const p = methods[method].params.safeParse(raw);
     if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
     return run(p.data as ParsedParams<M>);
   };
-  // the robot's windows and what it started end, and its worktree stays, locked, for the session it may yet resume
   const forget = async (raw: unknown) => {
-    const { id } = z.object({ id: z.string() }).parse(raw);
-    const c = store.state.robots[id];
-    if (!Object.hasOwn(store.state.robots, id) || c.machine !== me) return {};
-    await fleet.closeRobot(id);
-    if (c.repo?.isWorktree) {
-      const r = await handoverGit(['worktree', 'lock', '--reason', `closed robot ${id}`, c.repo.root], c.repo.mainRoot);
-      if (r.code !== 0) o.log.error(`${id}: ${c.repo.root} was not locked: ${r.stderr.trim()}`);
-    }
+    await forgetRobot(o, z.object({ id: z.string() }).parse(raw).id);
     return {};
   };
   return {
@@ -129,13 +207,82 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
     'robot.second': on('robot.second', (p) => fleet.openSecond(p.id)),
     'robot.sleep': on('robot.sleep', async (p) => { await fleet.sleepRobot(p.id); return {}; }),
     'robot.seen': on('robot.seen', async (p) => fleet.markSeen(p.id, p.term)),
+    'robot.prompts': on('robot.prompts', async (p) => ({ prompts: fleet.readPrompts(p.id, p.limit) })),
+    'robot.answer': on('robot.answer', async (p) => { await fleet.answerPrompt(p.id, p.answer, p.promptId); return {}; }),
     'term.attach': on('term.attach', (p) => terminals.attach(p.id, p.term)),
+    'far.term.open': async (raw) => {
+      const p = parse(FarOpen, raw);
+      return { screen: await terminals.open(p.id, p.cols, p.rows, p.lines, viewers.get(p.viewer.key, p.viewer.kind)) };
+    },
+    'far.term.input': on('term.input', async (p) => { await terminals.input(p.id, Buffer.from(p.data, 'base64')); return {}; }),
+    'far.term.resize': async (raw) => {
+      const p = parse(FarResize, raw);
+      const v = viewers.find(p.viewer);
+      if (v) await terminals.resize(p.id, p.cols, p.rows, v);
+      return {};
+    },
+    'far.term.close': async (raw) => {
+      const p = parse(FarClose, raw);
+      const v = viewers.find(p.viewer);
+      if (v) terminals.close(p.id, v);
+      return {};
+    },
     'robot.close': forget,
     'robot.forget': forget,
+    'scribe.run': async (raw) => {
+      const p = ScribeRun.safeParse(raw);
+      if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+      try {
+        return (await fleet.scribeRead(p.data.id, p.data.only, p.data.columns, p.data.sweep)) ?? { skipped: true };
+      } catch (e) {
+        // the end of what a failed child printed goes home as its cause, which the scribe shows and keeps out of the log
+        const { message, cause } = e as Error;
+        throw typeof cause === 'string' ? new ApiError('internal', message, { cause: cause.slice(-500) }) : e;
+      }
+    },
     'repo.probe': async (raw) => {
       const p = RepoProbeParams.safeParse(raw);
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
       return probeRepo(p.data, handoverGit);
     },
   };
+}
+
+const FarWatch = z.object({ id: z.string(), viewer: FarViewer });
+const FarUnwatch = z.object({ id: z.string(), viewer: z.string() });
+const FarGone = z.object({ viewer: z.string() });
+
+/** What a worker answers the home's file views of its robots with, read from its own disk, and the watches the home's viewers keep there. */
+export function fileCalls(o: { workspace: Workspace; viewers: FarViewers; terminals: Pick<TerminalHub, 'closeAll'>; resources: () => ResourceSource[] }): Handlers {
+  const { workspace, viewers, terminals } = o;
+  const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Result<M> | Promise<Result<M>>) => async (raw: unknown) => run(parse(methods[method].params, raw) as ParsedParams<M>);
+  return {
+    'fs.list': on('fs.list', async (p) => ({ entries: await workspace.list(p.id, p.path) })),
+    'fs.read': on('fs.read', (p) => workspace.read(p.id, p.path)),
+    'repo.status': on('repo.status', (p) => workspace.status(p.id, p.base)),
+    'repo.file': on('repo.file', (p) => workspace.file(p.id, p.path, p.base, p.from)),
+    'resources.get': on('resources.get', () => ({ sources: o.resources() })),
+    'far.repo.watch': async (raw) => {
+      const p = parse(FarWatch, raw);
+      workspace.watch(p.id, viewers.get(p.viewer.key, p.viewer.kind));
+      return {};
+    },
+    'far.repo.unwatch': async (raw) => {
+      const p = parse(FarUnwatch, raw);
+      const v = viewers.find(p.viewer);
+      if (v) workspace.unwatch(p.id, v);
+      return {};
+    },
+    'far.viewer.gone': async (raw) => {
+      const v = viewers.drop(parse(FarGone, raw).viewer);
+      if (v) { workspace.unwatchAll(v); terminals.closeAll(v); }
+      return {};
+    },
+  };
+}
+
+function parse<S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> {
+  const p = schema.safeParse(raw);
+  if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+  return p.data;
 }

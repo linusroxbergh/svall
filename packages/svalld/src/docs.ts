@@ -76,12 +76,11 @@ export function listDocs(dir: string): DocEntry[] {
   });
 }
 
-/** The doc folders in scope, broad to narrow: the fleet, a robot's repository, its island, itself; an island has the fleet's and its own. */
-export function docFolders(docs: string, island: Island, robot?: Robot): DocFolder[] {
+/** The doc folders in scope, broad to narrow: the fleet, a robot's repository at `repoRoot`, its island, itself; an island has the fleet's and its own. */
+export function docFolders(docs: string, island: Island, robot?: Robot, repoRoot = robot && repoRootOf(robot)): DocFolder[] {
   const at = (tier: EntityTier, id: string): DocFolder => { const dir = docsDir(docs, tier, id); return { tier, dir, docs: listDocs(dir) }; };
-  const repo = robot && repoRootOf(robot);
   const fleet: DocFolder = { tier: 'fleet', dir: fleetDir(docs), docs: listDocs(fleetDir(docs)) };
-  return [fleet, ...(repo ? [at('repo', repoSlug(repo))] : []), at('island', island.id), ...(robot ? [at('robot', robot.id)] : [])];
+  return [fleet, ...(repoRoot ? [at('repo', repoSlug(repoRoot))] : []), at('island', island.id), ...(robot ? [at('robot', robot.id)] : [])];
 }
 
 /** Removes a deleted entity's docs. A failure is logged and goes no further: a locked file must not keep an island from being deleted. */

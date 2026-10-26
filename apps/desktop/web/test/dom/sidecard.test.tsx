@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { MachineId, Robot } from '@svall/protocol';
+import { farRootId, type MachineId, type ResourceSource, type Robot } from '@svall/protocol';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
 import { figureOf, figureUrl, stepFigure } from '../../src/portraits.js';
@@ -428,7 +428,11 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(screen.getByTestId('side-machine').textContent).toBe('linus-vault');
   expect(moves()).toEqual(['Move to this Mac']);
   expect(screen.queryByTestId('side-cpu')).toBeNull();
-  expect(screen.queryByTestId('side-resources')).toBeNull();
+  // this Mac has a clone at the same path, and the button opens the worker's
+  const repo = (rootId: string): ResourceSource => ({ rootId, root: '/home/ada/svall', name: 'svall', tier: 'repo', islandIds: [], robotIds: ['c0'], groups: [] });
+  act(() => store.getState().setResources([repo('r:/home/ada/svall'), repo(farRootId(VAULT, '/home/ada/svall'))]));
+  fireEvent.click(screen.getByTestId('side-resources'));
+  expect(store.getState().resourcesWhere).toBe(farRootId(VAULT, '/home/ada/svall'));
   expect(screen.getByTestId('side-cwd').title).toBe('Copy linus-vault:/home/ada/svall');
   bridge.present = true;
   try { fireEvent.click(screen.getByTestId('side-cwd')); } finally { bridge.present = false; }
