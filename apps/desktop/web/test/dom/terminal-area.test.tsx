@@ -152,7 +152,20 @@ test('a robot on a worker out of reach says so in place of its terminal, and att
   act(() => { vi.advanceTimersByTime(5000); });
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
   expect(screen.queryByTestId('surface')).toBeNull();
-  expect(call).not.toHaveBeenCalled();
+  expect(call.mock.calls).toEqual([['term.lastScreen', { id: 'c1' }]]);
+});
+
+test('an unreachable robot shows the sentence and the last screen term.lastScreen answers', async () => {
+  call.mockResolvedValueOnce({ text: '$ make test\nok', at: 1 });
+  placed(false);
+  render(<TerminalArea id="c1" />);
+  await act(async () => {});
+  expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
+  expect(screen.getByTestId('terminal-last-screen').textContent).toBe('$ make test\nok');
+  // back in reach, the terminal stands in for it
+  placed(true);
+  expect(screen.queryByTestId('terminal-last-screen')).toBeNull();
+  expect(call.mock.calls).toEqual([['term.lastScreen', { id: 'c1' }]]);
 });
 
 test('a robot on a worker linked on another build names the upgrade in place of its terminal', () => {

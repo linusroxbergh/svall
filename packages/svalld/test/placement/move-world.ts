@@ -18,6 +18,7 @@ import { silentLogger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
+import { FarViewers } from '../../src/placement/far-viewers.js';
 import type { Mirror } from '../../src/placement/mirror.js';
 import { MoveFiles, Placement } from '../../src/placement/move.js';
 import { PrepareService } from '../../src/placement/prepare.js';
@@ -296,7 +297,7 @@ export function moveWorld(o: {
     agentRunning: async () => !!o.agentRunsThere, log: silentLogger, watchMs: 5000, cli: opencode.far.run,
   });
   const terminals = new TerminalHub(workerFleet, vault.tmux as unknown as Tmux, workerStore, silentLogger);
-  Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), prepare.handlers, {
+  Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: new FarViewers({ connection }) }), prepare.handlers, {
     'system.info': async () => ({ agentAdapters: [farAdapter] }),
   });
   stops.push(() => connection.stop());

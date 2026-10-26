@@ -51,7 +51,8 @@ import type { LiveWindow, Tmux } from './tmux/tmux.js';
 import { appPid } from './uninstall.js';
 import { watchOwned, type RobotSync } from './worker/snapshot.js';
 
-type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string] };
+// `hook`: a hook of a robot here, once the fleet has taken it
+type Events = PaneEvents & { stopped: []; 'session-start': [robotId: string, term: 2 | undefined, sessionId: string]; hook: [robotId: string, name: string] };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
 export function setNote(c: Robot, note: string): void {
@@ -1146,7 +1147,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
-    return this.prompts.answer(id, answer, promptId);
+    return this.deps.remote?.forward(id, 'robot.answer', { id, answer, promptId })?.then(() => {}) ?? this.prompts.answer(id, answer, promptId);
   }
 
   typedAnswer(id: string, data: Buffer, asked: string | undefined): void {
@@ -1190,6 +1191,7 @@ export class Fleet extends EventEmitter<Events> {
     const target = this.deps.store.state.robots[('hook' in e ? e.hook : e.status).robotId];
     if (target && !this.runsHere(target)) return undefined;
     const reply = await this.agentEvents.apply(e);
+    if ('hook' in e && target) this.emit('hook', e.hook.robotId, e.hook.name);
     if ('hook' in e && e.hook.name === 'SessionStart') {
       const { robotId, term, sessionId, pid } = e.hook;
       this.resuming.delete(term === 2 ? secondName(robotId) : robotId);

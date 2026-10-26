@@ -336,6 +336,8 @@ export const methods = {
   'term.input': { params: z.object({ id: z.string(), data: z.string().base64() }), result: z.object({}) },
   'term.resize': { params: Id.merge(TermSize), result: z.object({}) },
   'term.close': { params: Id, result: z.object({}) },
+  // the last lines a placed robot's worker sent of its pane, and when; empty for one the home has none of
+  'term.lastScreen': { params: Id, result: z.object({ text: z.string(), at: z.number().optional() }) },
   // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there; `via`, for a robot
   // placed on another machine, the ssh destination and master socket that reach it
   'term.attach': {

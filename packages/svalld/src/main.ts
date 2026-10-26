@@ -60,6 +60,7 @@ import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { workerOptions, workerStubs, type Off } from './worker/mode.js';
 import { WorkerMutations } from './worker/mutations.js';
 import { Outbox } from './worker/outbox.js';
+import { ScreenNotice, ScreenTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
 
@@ -259,12 +260,20 @@ async function start(opts: Options): Promise<Daemon> {
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
     onNotify: (kind, data, machine) => {
+      if (kind === 'screen') {
+        const s = ScreenNotice.parse(data);
+        return terminals.sawScreen(s.id, s.text, s.at, machine);
+      }
       if (kind !== 'viewer') return;
       const { key, ev } = ViewerNotice.parse(data);
-      remoteWatches?.farEvent(key, ev, machine);
+      if (ev.event === 'repo.changed') remoteWatches?.farEvent(key, ev, machine);
+      else terminals.farEvent(key, ev, machine);
     },
-    // a worker linked anew holds none of the home's watches
-    onSynced: (machine) => { void remoteWatches?.reopen(machine); },
+    // a worker linked anew holds none of the home's watches and terminals
+    onSynced: (machine) => {
+      for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
+    },
+    onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: new Mirror({ claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, log }),
     ...(homeDocs && { docs: homeDocs }),
@@ -274,8 +283,8 @@ async function start(opts: Options): Promise<Daemon> {
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),
-    // the home's viewers watch here only while it is linked
-    onLink: (live) => { if (!live) for (const v of farViewers?.dropAll() ?? []) workspace.unwatchAll(v); },
+    // the home's viewers watch and hold terminals here only while it is linked
+    onLink: (live) => { if (!live) for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); } },
   });
   const farViewers = connection && new FarViewers({ connection });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
@@ -294,9 +303,11 @@ async function start(opts: Options): Promise<Daemon> {
     store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
   });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
+  // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
+  const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
   // what each machine's agent CLIs are: a handover and a move read them
   const agents = agentProber(realProbeDeps(paths.env));
-  if (connection && worker && workerDocs) {
+  if (connection && worker && workerDocs && farViewers) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
@@ -304,7 +315,7 @@ async function start(opts: Options): Promise<Daemon> {
       claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
       stage: paths.cache, connection, log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals }), prepare.handlers, mirror, workerDocs.handlers);
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, mirror, workerDocs.handlers);
   }
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const gatewayNow = (): MachineId | undefined => {
@@ -350,7 +361,7 @@ async function start(opts: Options): Promise<Daemon> {
   // a robot's folders are on the machine it runs on
   const rootOf = rootHere((c) => router.runsHere(c));
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
-  if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, resources: () => repoSources(store.state, claude, paths.docs, rootOf) }));
+  if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, terminals, resources: () => repoSources(store.state, claude, paths.docs, rootOf) }));
   const phones = new Phones();
   const mobile = off.has('mobile') ? workerStubs.mobile : mobileControl(realDeps(), {
     home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
@@ -409,6 +420,10 @@ async function start(opts: Options): Promise<Daemon> {
     if (connection) {
       await connection.start();
       teardown.push(() => connection.stop());
+    }
+    if (screens) {
+      screens.start();
+      teardown.push(() => screens.stop());
     }
     if (workerDocs) {
       workerDocs.start();

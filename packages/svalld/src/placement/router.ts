@@ -182,9 +182,19 @@ export async function forgetRobot(o: { fleet: Fleet; store: Store; me: MachineId
   }
 }
 
-/** What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change does. */
-export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach'> }): Handlers {
-  const { fleet, terminals } = o;
+const FarViewer = z.object({ key: z.string(), kind: z.enum(['app', 'phone']) });
+const FarOpen = methods['term.open'].params.extend({ viewer: FarViewer });
+const FarResize = methods['term.resize'].params.extend({ viewer: z.string() });
+const FarClose = z.object({ id: z.string(), viewer: z.string() });
+
+/**
+ * What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change
+ * does. A home viewer's terminal here is one of `viewers`.
+ */
+export function workerCalls(o: {
+  fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach' | 'open' | 'input' | 'resize' | 'close'>; viewers: FarViewers;
+}): Handlers {
+  const { fleet, terminals, viewers } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
     const p = methods[method].params.safeParse(raw);
     if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
@@ -203,7 +213,26 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
     'robot.second': on('robot.second', (p) => fleet.openSecond(p.id)),
     'robot.sleep': on('robot.sleep', async (p) => { await fleet.sleepRobot(p.id); return {}; }),
     'robot.seen': on('robot.seen', async (p) => fleet.markSeen(p.id, p.term)),
+    'robot.prompts': on('robot.prompts', async (p) => ({ prompts: fleet.readPrompts(p.id, p.limit) })),
+    'robot.answer': on('robot.answer', async (p) => { await fleet.answerPrompt(p.id, p.answer, p.promptId); return {}; }),
     'term.attach': on('term.attach', (p) => terminals.attach(p.id, p.term)),
+    'far.term.open': async (raw) => {
+      const p = parse(FarOpen, raw);
+      return { screen: await terminals.open(p.id, p.cols, p.rows, p.lines, viewers.get(p.viewer.key, p.viewer.kind)) };
+    },
+    'far.term.input': on('term.input', async (p) => { await terminals.input(p.id, Buffer.from(p.data, 'base64')); return {}; }),
+    'far.term.resize': async (raw) => {
+      const p = parse(FarResize, raw);
+      const v = viewers.find(p.viewer);
+      if (v) await terminals.resize(p.id, p.cols, p.rows, v);
+      return {};
+    },
+    'far.term.close': async (raw) => {
+      const p = parse(FarClose, raw);
+      const v = viewers.find(p.viewer);
+      if (v) terminals.close(p.id, v);
+      return {};
+    },
     'robot.close': forget,
     'robot.forget': forget,
     'scribe.run': async (raw) => {
@@ -225,13 +254,13 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
   };
 }
 
-const FarWatch = z.object({ id: z.string(), viewer: z.object({ key: z.string(), kind: z.enum(['app', 'phone']) }) });
+const FarWatch = z.object({ id: z.string(), viewer: FarViewer });
 const FarUnwatch = z.object({ id: z.string(), viewer: z.string() });
 const FarGone = z.object({ viewer: z.string() });
 
 /** What a worker answers the home's file views of its robots with, read from its own disk, and the watches the home's viewers keep there. */
-export function fileCalls(o: { workspace: Workspace; viewers: FarViewers; resources: () => ResourceSource[] }): Handlers {
-  const { workspace, viewers } = o;
+export function fileCalls(o: { workspace: Workspace; viewers: FarViewers; terminals: Pick<TerminalHub, 'closeAll'>; resources: () => ResourceSource[] }): Handlers {
+  const { workspace, viewers, terminals } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Result<M> | Promise<Result<M>>) => async (raw: unknown) => run(parse(methods[method].params, raw) as ParsedParams<M>);
   return {
     'fs.list': on('fs.list', async (p) => ({ entries: await workspace.list(p.id, p.path) })),
@@ -252,7 +281,7 @@ export function fileCalls(o: { workspace: Workspace; viewers: FarViewers; resour
     },
     'far.viewer.gone': async (raw) => {
       const v = viewers.drop(parse(FarGone, raw).viewer);
-      if (v) workspace.unwatchAll(v);
+      if (v) { workspace.unwatchAll(v); terminals.closeAll(v); }
       return {};
     },
   };

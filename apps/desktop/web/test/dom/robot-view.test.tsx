@@ -258,6 +258,21 @@ test('the header says unknown for a robot on a worker out of reach', () => {
   expect(container.querySelector('.conn')?.getAttribute('data-status')).toBe('unknown');
 });
 
+test('the phone shows "<machine> is not reachable" over a placed robot\'s terminal while the home has lost it', () => {
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  const on = (reachable: boolean) => {
+    const f = fleet();
+    f.machines = { [vault]: { name: 'linus-vault', reachable, since: 0 } };
+    f.robots.c2.machine = vault;
+    return f;
+  };
+  store.getState().setFleet(on(false));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault is not reachable');
+  act(() => store.getState().setFleet(on(true)));
+  expect(screen.queryByTestId('phone-unreachable')).toBeNull();
+});
+
 test('a robot closed while it is open takes its view back to the list', () => {
   history.replaceState(null, '', '/robot/c0');
   store.getState().setFleet(fleet());

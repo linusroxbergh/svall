@@ -9,9 +9,18 @@ import type { Router } from './router.js';
 // past this much unsent the link is behind, and a file change waits rather than add to what the heartbeat waits behind
 const BEHIND = 1024 * 1024;
 const LOOK_AGAIN_MS = 100;
+/** The most scrollback a home viewer's screen carries over the link. */
+export const REMOTE_LINES = 500;
 
-/** What a worker sends a viewer on the home: the viewer's key and a file change. */
-export const ViewerNotice = z.object({ key: z.string(), ev: z.object({ event: z.literal('repo.changed'), data: z.object({ id: z.string() }) }) });
+/** What a worker sends a viewer on the home: the viewer's key, and a file change or what a terminal shows. */
+export const ViewerNotice = z.object({
+  key: z.string(),
+  ev: z.discriminatedUnion('event', [
+    z.object({ event: z.literal('repo.changed'), data: z.object({ id: z.string() }) }),
+    z.object({ event: z.literal('term.output'), data: z.object({ id: z.string(), data: z.string() }) }),
+    z.object({ event: z.literal('term.resync'), data: z.object({ id: z.string(), screen: z.string() }) }),
+  ]),
+});
 
 const keys = new WeakMap<Viewer, string>();
 
@@ -34,7 +43,7 @@ export class FarViewers {
   get(key: string, kind: Viewer['kind']): Viewer {
     let v = this.viewers.get(key);
     if (!v) {
-      v = { kind, send: (ev) => this.send(key, ev), backlog: () => this.o.connection.backlog() };
+      v = { kind, lines: REMOTE_LINES, send: (ev) => this.send(key, ev), backlog: () => this.o.connection.backlog() };
       this.viewers.set(key, v);
     }
     return v;
@@ -144,5 +153,89 @@ export class RemoteWatches {
 
   private forward(w: Watch): Promise<unknown> {
     return this.o.links.call(w.machine, 'far.repo.watch', { id: w.id, viewer: { key: viewerKey(w.viewer), kind: w.viewer.kind } });
+  }
+}
+
+export type FarTerm = { id: string; viewer: Viewer; machine: MachineId; cols: number; rows: number; lines: number };
+
+/** On the home: the terminals its viewers hold open on robots placed on a worker, each viewer one of that worker's FarViewers. */
+export class FarTerminals {
+  // by viewer key and robot id
+  private terms = new Map<string, FarTerm>();
+
+  constructor(private o: { links: Pick<HomeLinks, 'call'>; router: Pick<Router, 'placedAt'> }) {}
+
+  /** The robot's screen on `machine`, sized for the viewer, whose output streams to it from then on. */
+  async open(machine: MachineId, id: string, cols: number, rows: number, lines: number, viewer: Viewer): Promise<string> {
+    const t: FarTerm = { id, viewer, machine, cols, rows, lines };
+    this.terms.set(`${viewerKey(viewer)}\0${id}`, t);
+    try {
+      return await this.screen(t);
+    } catch (e) {
+      this.drop(t);
+      throw e;
+    }
+  }
+
+  async input(machine: MachineId, id: string, data: Buffer): Promise<void> {
+    await this.o.links.call(machine, 'far.term.input', { id, data: data.toString('base64') });
+  }
+
+  async resize(id: string, cols: number, rows: number, viewer: Viewer): Promise<void> {
+    const t = this.held(viewerKey(viewer), id);
+    if (!t) return;
+    Object.assign(t, { cols, rows });
+    await this.o.links.call(t.machine, 'far.term.resize', { id, cols, rows, viewer: viewerKey(viewer) });
+  }
+
+  // a worker away has let every viewer go already
+  close(id: string, viewer: Viewer): void {
+    const t = this.held(viewerKey(viewer), id);
+    if (!t) return;
+    this.drop(t);
+    this.o.links.call(t.machine, 'far.term.close', { id, viewer: viewerKey(viewer) }).catch(() => {});
+  }
+
+  /** The viewer is gone: each worker it held a terminal on lets it go. */
+  closeAll(viewer: Viewer): void {
+    const machines = new Set<MachineId>();
+    for (const t of [...this.terms.values()]) if (t.viewer === viewer) { this.drop(t); machines.add(t.machine); }
+    for (const machine of machines) this.o.links.call(machine, 'far.viewer.gone', { viewer: viewerKey(viewer) }).catch(() => {});
+  }
+
+  /** The terminal of robot `id` the viewer `key` holds open. */
+  held(key: string, id: string): FarTerm | undefined {
+    return this.terms.get(`${key}\0${id}`);
+  }
+
+  on(machine: MachineId): FarTerm[] {
+    return [...this.terms.values()].filter((t) => t.machine === machine);
+  }
+
+  /** The screen afresh from the worker, for a viewer that missed output; a worker away sends it once it is back. */
+  async resync(t: FarTerm): Promise<void> {
+    const screen = await this.screen(t).catch((e: unknown) => {
+      if (e instanceof ApiError && e.code === 'not_reachable') return undefined;
+      throw e;
+    });
+    if (screen !== undefined && this.held(viewerKey(t.viewer), t.id) === t) t.viewer.send({ event: 'term.resync', data: { id: t.id, screen } });
+  }
+
+  /** Opens and resyncs every terminal held on `machine`, as after it linked anew; one that no longer opens there is let go. Never rejects. */
+  async reopen(machine: MachineId): Promise<void> {
+    await Promise.all(this.on(machine).map((t) => {
+      if (this.o.router.placedAt(t.id) !== machine) return this.drop(t);
+      return this.resync(t).catch(() => this.drop(t));
+    }));
+  }
+
+  private screen(t: FarTerm): Promise<string> {
+    const { id, cols, rows, lines, viewer } = t;
+    return this.o.links.call<{ screen: string }>(t.machine, 'far.term.open', { id, cols, rows, lines, viewer: { key: viewerKey(viewer), kind: viewer.kind } }).then((r) => r.screen);
+  }
+
+  private drop(t: FarTerm): void {
+    const k = `${viewerKey(t.viewer)}\0${t.id}`;
+    if (this.terms.get(k) === t) this.terms.delete(k);
   }
 }

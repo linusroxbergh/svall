@@ -83,7 +83,7 @@ export const handlers: Handlers = {
   'robot.read': async (p, { fleet, router }) => router?.forward(p.id, 'robot.read', p) ?? {
     text: p.source === 'screen' ? await fleet.readScreen(p.id, p.lines, p.term) : fleet.readTranscript(p.id, p.lines, p.term),
   },
-  'robot.prompts': (p, { fleet }) => ({ prompts: fleet.readPrompts(p.id, p.limit) }),
+  'robot.prompts': (p, { fleet, router }) => router?.forward(p.id, 'robot.prompts', p) ?? { prompts: fleet.readPrompts(p.id, p.limit) },
   'robot.show': (p, { fleet }) => ({ text: fleet.brief(p.id) }),
   'robot.wait': async (p, { fleet, signal }) => ({ status: await fleet.waitFor(p.id, p.until, p.timeoutMs, signal, p.term) }),
   'robot.answer': async (p, { fleet }) => { await fleet.answerPrompt(p.id, p.answer, p.promptId); return {}; },
@@ -177,6 +177,7 @@ export const handlers: Handlers = {
   'term.input': async (p, { terminals }) => { await terminals.input(p.id, Buffer.from(p.data, 'base64')); return {}; },
   'term.resize': async (p, { terminals, viewer }) => { await terminals.resize(p.id, p.cols, p.rows, viewer); return {}; },
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
+  'term.lastScreen': (p, { terminals }) => terminals.lastScreen(p.id) ?? { text: '' },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
   'system.info': (_p, ctx) => systemInfo(ctx),
   'ownership.get': (_p, { handover }) => handover.ownershipInfo(),
