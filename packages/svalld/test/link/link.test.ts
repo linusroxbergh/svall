@@ -378,7 +378,8 @@ describe('the link', () => {
   });
 
   it('acks no event whose change did not reach the disk, and takes it once it does', async () => {
-    const w = world();
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
     // the home batches its writes, as the daemon's store does
     w.home.batchWritesWhile(() => true);
     await w.worker.start();
@@ -392,8 +393,9 @@ describe('the link', () => {
       await until(() => expect(w.worker.connected()).toBe(false));
       expect(w.outbox.acked()).toBe(0);
       expect(Outbox.open(w.workerPaths).after(0)).toHaveLength(1);
-      // past the write the link's loss tries, so nothing but the next stream writes the event's change
-      await new Promise((r) => setTimeout(r, 500));
+      // the next stream finds the event taken but not on disk, and acks it only once it is
+      await until(() => expect(logged).toContain('vault: the inventory not taken, closing the link: state.json was not written'));
+      expect(w.outbox.acked()).toBe(0);
     } finally {
       fs.chmodSync(w.homePaths.home, 0o700);
     }
@@ -503,17 +505,18 @@ describe('the link', () => {
       expect([count(kind), replayed()]).toEqual([2, { epoch: journal.epoch(), seq: 2 }]);
     };
     await round(w.worker, w.outbox, 'before');
-
-    fs.rmSync(path.dirname(w.workerPaths.outbox), { recursive: true });
-    const wiped = Outbox.open(w.workerPaths);
-    expect(wiped.epoch()).not.toBe(w.outbox.epoch());
-    await round(w.workerOn(wiped), wiped, 'wiped');
-
-    fs.rmSync(w.workerPaths.outbox);
-    fs.rmSync(w.workerPaths.acked);
-    const lost = Outbox.open(w.workerPaths);
-    expect(lost.epoch()).not.toBe(wiped.epoch());
-    await round(w.workerOn(lost), lost, 'lost');
+    // the worker starts again over its journal with `files` gone
+    const afresh = async (before: Outbox, files: string[], kind: string) => {
+      for (const f of files) fs.rmSync(f, { recursive: true });
+      const journal = Outbox.open(w.workerPaths);
+      expect(journal.epoch()).not.toBe(before.epoch());
+      await round(w.workerOn(journal), journal, kind);
+      return journal;
+    };
+    const wiped = await afresh(w.outbox, [path.dirname(w.workerPaths.outbox)], 'wiped');
+    const lost = await afresh(wiped, [w.workerPaths.outbox, w.workerPaths.acked], 'lost');
+    const noAcked = await afresh(lost, [w.workerPaths.acked], 'noAcked');
+    await afresh(noAcked, [w.workerPaths.outbox], 'noOutbox');
   });
 
   it('the worker acks no snapshot it could not write, and closes the link instead', async () => {

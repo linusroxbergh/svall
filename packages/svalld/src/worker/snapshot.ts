@@ -38,12 +38,8 @@ function withOwned(to: Robot, from: Pick<Robot, Owned>): Robot {
   return next as Robot;
 }
 
-/**
- * Takes the home's snapshot into a worker's store: every field is the home's but the scribe switch and, for a robot
- * placed here at the same placement, the worker-owned ones. A robot placed here that the snapshot lacks stays until the
- * home forgets it; any other it lacks goes. With `home`, the home's entry among the machines takes its reachability, its user
- * folder and this snapshot's version, keeping the rest the worker held.
- */
+/** Takes the home's snapshot into a worker's store but the scribe switch, the worker-owned fields of a robot placed here at that
+ *  placement and a robot placed here it lacks, until the home forgets it; `home` gets its entry with this snapshot's version. */
 export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId, home?: { id: MachineId; name: string; reachable: boolean }): void {
   store.update((d) => {
     const held = home && d.machines?.[home.id];
