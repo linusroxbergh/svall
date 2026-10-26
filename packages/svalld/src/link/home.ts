@@ -295,30 +295,40 @@ export class WorkerLink {
     }
     this.odd = undefined;
     this.peer = h;
-    this.mark({ name: this.name, reachable: true, since: Date.now(), release: h.release });
+    this.mark({ name: this.name, reachable: true, since: Date.now(), release: h.release, home: h.home, mismatch: undefined });
     this.o.log.info(`${this.name}: linked, release ${h.release}`);
   }
 
-  // the inventory, then the outbox the worker replays from the home's ack, each event applied and on disk before its ack
+  // the inventory, then the outbox the worker replays from the home's ack, each event applied once and on disk, with the
+  // epoch and seq it was applied at, before its ack
   private async apply(stream: LinkStream, f: Extract<LinkFrame, { t: 'inventory' | 'event' }>): Promise<void> {
     if (stream !== this.stream) return;
     try {
       if (f.t === 'inventory') {
         const inv = Inventory.parse(f);
+        const replayed = this.o.store.state.machines?.[this.machine]?.replayed;
         this.inventory = inv;
-        this.acked = inv.acked;
+        // past the worker's acked seq lie the events the home took whose ack was lost; a new epoch is a journal begun afresh
+        this.acked = replayed && replayed.epoch === inv.epoch ? Math.max(inv.acked, replayed.seq) : inv.acked;
         this.last = inv.last;
-        stream.send({ t: 'ack', seq: inv.acked });
+        // as after a write that failed: those events are on disk before they are acked
+        if (this.acked > inv.acked && !this.o.store.flush()) throw new Error('state.json was not written');
+        stream.send({ t: 'ack', seq: this.acked });
       } else {
+        const { inventory } = this;
+        if (!inventory) throw new Error('an event came before the inventory');
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
-          if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
-          else {
-            await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
-              if (!(e instanceof UnknownEvent)) throw e;
-              this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
-            });
-          }
+          await this.o.store.withheld(async () => {
+            if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
+            else {
+              await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
+                if (!(e instanceof UnknownEvent)) throw e;
+                this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
+              });
+            }
+            this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
+          });
           if (!this.o.store.flush()) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
@@ -352,7 +362,7 @@ export class WorkerLink {
   private lost(why: string, again = true): void {
     if (this.stopped) return;
     const held = this.o.store.state.machines?.[this.machine];
-    if (held?.reachable !== false) this.mark({ name: this.name, reachable: false, since: Date.now(), ...(held?.release !== undefined && { release: held.release }) });
+    if (held?.reachable !== false) this.mark({ name: this.name, reachable: false, since: Date.now() });
     if (!again) return;
     if (why !== this.lastWhy) this.o.log.error(`${this.name} is not reachable: ${why}; trying again`);
     this.lastWhy = why;
@@ -360,8 +370,13 @@ export class WorkerLink {
     this.retryMs = Math.min(this.retryMs * 2, LAST_RETRY_MS);
   }
 
-  private mark(link: MachineLink): void {
-    this.o.store.update((d) => { (d.machines ??= {})[this.machine] = link; });
+  // over what the entry holds; a key the patch sets to undefined goes
+  private mark(patch: Partial<MachineLink> & Pick<MachineLink, 'name'>): void {
+    this.o.store.update((d) => {
+      const next: Record<string, unknown> = { ...d.machines?.[this.machine], ...patch };
+      for (const [k, v] of Object.entries(next)) if (v === undefined) delete next[k];
+      (d.machines ??= {})[this.machine] = next as MachineLink;
+    });
   }
 }
 

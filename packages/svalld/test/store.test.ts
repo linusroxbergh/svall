@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Operation } from 'fast-json-patch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_CWD } from '@svall/protocol';
 import { createLogger } from '../src/log.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -81,6 +82,25 @@ describe('Store', () => {
     batch = false;
     s.update((d) => { d.dormantAfterHours = 3; });
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ scribeOff: true, dormantAfterHours: 3 });
+  });
+
+  it('withheld holds every write while fn runs, batching off, and the next flush writes its updates as one', async () => {
+    vi.useFakeTimers();
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.batchWritesWhile(() => false);
+    s.update((d) => { d.name = 'seed'; });
+    const renames = vi.spyOn(fs, 'renameSync');
+    await s.withheld(async () => {
+      s.update((d) => { d.name = 'a'; });
+      s.update((d) => { d.defaultCwd = '/a'; });
+      vi.advanceTimersByTime(1000);
+      expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ name: 'seed', defaultCwd: DEFAULT_CWD });
+    });
+    expect(renames).not.toHaveBeenCalled();
+    expect(s.flush()).toBe(true);
+    expect(renames).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ name: 'a', defaultCwd: '/a' });
   });
 
   it('logs a write that fails while it batches, keeps the change, and writes it at the next flush or change', () => {

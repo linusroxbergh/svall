@@ -317,7 +317,7 @@ export function moveWorld(o: {
         return router.reconcileWorker(inv, machine);
       },
       onCall: (method, params) => answer(method, params, ctx!),
-      snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: macClaude, codex: path.join(mac, '.codex'), opencode: path.join(mac, '.config/opencode') } }),
+      snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: macClaude, codex: path.join(mac, '.codex'), opencode: path.join(mac, '.config/opencode') }, home: mac }),
       ...(mirror && { mirror }),
     });
     const router = new Router({ store, me: H, log: silentLogger, links });

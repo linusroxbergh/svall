@@ -250,7 +250,7 @@ async function start(opts: Options): Promise<Daemon> {
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
-    snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir } }),
+    snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: new Mirror({ claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, log }),
     ...(homeDocs && { docs: homeDocs }),
   });

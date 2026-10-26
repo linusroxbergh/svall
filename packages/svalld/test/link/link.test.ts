@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { Duplex, PassThrough } from 'node:stream';
+import { Duplex, PassThrough, Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState, type FleetState, type LinkFrame, type Robot } from '@svall/protocol';
 import { HEARTBEAT_MS, HomeLinks, UnknownEvent, type Transport } from '../../src/link/home.js';
@@ -73,11 +73,17 @@ function world(o: {
   const home = storeWith(homePaths.home, fleet(robot({ name: 'named at home' })));
   const store = storeWith(workerPaths.home, fleet(robot({ name: 'stale', cwd: '/w/now', tmux: { windowId: '@1', paneId: '%1' } })));
   const outbox = Outbox.open(workerPaths);
-  const worker = new HomeConnection({
-    paths: workerPaths, worker: { homeMachineId: H, fleetId: FleetId.parse(crypto.randomUUID()), token, homeName: 'mac' }, me: W, store, outbox,
-    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: o.handlers ?? {}, ...(o.versions && { versions: o.versions }),
-  });
-  stops.push(() => worker.stop());
+  const fleetId = FleetId.parse(crypto.randomUUID());
+  // the worker's daemon over `journal`, as it starts again over a journal that was wiped or lost a file
+  const workerOn = (journal: Outbox) => {
+    const connection = new HomeConnection({
+      paths: workerPaths, worker: { homeMachineId: H, fleetId, token, homeName: 'mac' }, me: W, store, outbox: journal,
+      log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: o.handlers ?? {}, ...(o.versions && { versions: o.versions }),
+    });
+    stops.push(() => connection.stop());
+    return connection;
+  };
+  const worker = workerOn(outbox);
   // what the home took, in the order it took it
   const seen: string[] = [];
   const reports: string[] = [];
@@ -89,12 +95,12 @@ function world(o: {
       onReport: (r, machine) => { seen.push(`report ${r.fields.cwd}`); reports.push(r.fields.cwd); applyReport(home, r, machine); },
       onEvent: async (kind) => { await o.onEvent?.(kind); seen.push(`event ${kind}`); },
       onInventory: async (inv, machine) => { seen.push(`inventory ${machine === W ? 'from vault' : machine} last ${inv.last} acked ${inv.acked} robots ${inv.robots.map((r) => r.fields.cwd).join(',')}`); },
-      snapshot: () => { snapshots++; return { version: ++version, state: home.state, agentHomes }; },
+      snapshot: () => { snapshots++; return { version: ++version, state: home.state, agentHomes, home: '/Users/ada' }; },
     });
     stops.push(() => l.stop());
     return l;
   };
-  return { homePaths, workerPaths, home, store, outbox, worker, links, seen, reports, snapshots: () => snapshots };
+  return { homePaths, workerPaths, home, store, outbox, worker, workerOn, links, seen, reports, snapshots: () => snapshots };
 }
 
 describe('workers.json', () => {
@@ -147,7 +153,7 @@ describe('the link', () => {
     const stream = new LinkStream(sock, { onFrame: (f) => got.push(f), onClose: () => {} });
     stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
     await until(() => expect(got).toHaveLength(2));
-    expect(got[1]).toEqual({ t: 'inventory', robots: [ownedReport(w.store.state.robots.r_1)], last: 2, acked: 0 });
+    expect(got[1]).toEqual({ t: 'inventory', robots: [ownedReport(w.store.state.robots.r_1)], last: 2, acked: 0, epoch: w.outbox.epoch() });
     // a report while the home has not said where to start is journaled, and sent with the rest
     w.worker.report(report('/w/3'));
     expect(w.worker.connected()).toBe(false);
@@ -386,11 +392,110 @@ describe('the link', () => {
       await until(() => expect(w.worker.connected()).toBe(false));
       expect(w.outbox.acked()).toBe(0);
       expect(Outbox.open(w.workerPaths).after(0)).toHaveLength(1);
+      // past the write the link's loss tries, so nothing but the next stream writes the event's change
+      await new Promise((r) => setTimeout(r, 500));
     } finally {
       fs.chmodSync(w.homePaths.home, 0o700);
     }
     await until(() => expect(w.outbox.acked()).toBe(1));
     expect(Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.robots.r_1.cwd).toBe('/w/unwritten');
+  });
+
+  it('an event the home took whose ack was lost is acked and not applied again', async () => {
+    const w = world();
+    w.worker.journal('x', {});
+    w.worker.journal('x', {});
+    await w.worker.start();
+    let first = true;
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      if (!first) return r;
+      first = false;
+      const sock = r.stream as net.Socket;
+      // the home's ack of seq 2 is lost with the stream
+      const out = new Writable({
+        write(chunk: Buffer, _enc, done) {
+          if (String(chunk).includes('{"t":"ack","seq":2}')) { sock.destroy(); done(); return; }
+          sock.write(chunk, done);
+        },
+      });
+      return { stream: Duplex.from({ readable: sock, writable: out }), via };
+    });
+    links.start();
+    await until(() => expect(w.outbox.acked()).toBe(2));
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    expect(first).toBe(false);
+    expect(w.seen.filter((s) => s === 'event x')).toHaveLength(2);
+    expect(w.home.state.machines?.[W]?.replayed).toEqual({ epoch: w.outbox.epoch(), seq: 2 });
+  });
+
+  it('a link drop keeps replayed and home on the machine entry, and a matching hello after a mismatch clears mismatch', async () => {
+    const versions = { schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
+    const w = world({ versions });
+    w.worker.journal('x', {});
+    await w.worker.start();
+    vi.stubEnv('HOME', '/home/ada');
+    const sockets: net.Socket[] = [];
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    });
+    const machine = () => w.home.state.machines?.[W];
+    links.start();
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    const replayed = { epoch: w.outbox.epoch(), seq: 1 };
+    expect(machine()).toMatchObject({ reachable: true, release: '1.2.3', home: '/home/ada', replayed });
+    // and the worker's entry for the home
+    const mac = () => w.store.state.machines?.[H];
+    await until(() => expect(w.worker.snapshotVersion()).toBeGreaterThan(100));
+    expect(mac()).toMatchObject({ name: 'mac', reachable: true, home: '/Users/ada', snapshot: { version: w.worker.snapshotVersion() } });
+
+    versions.schema = STATE_SCHEMA_VERSION + 1;
+    sockets.at(-1)!.destroy();
+    await until(() => expect(machine()?.reachable).toBe(false));
+    expect(machine()).toMatchObject({ release: '1.2.3', home: '/home/ada', replayed });
+    await until(() => expect(mac()?.reachable).toBe(false));
+    expect(mac()).toMatchObject({ name: 'mac', home: '/Users/ada', snapshot: { version: w.worker.snapshotVersion() } });
+    await until(() => expect(machine()?.mismatch).toBe(true));
+    expect(machine()).toMatchObject({ reachable: false, home: '/home/ada', replayed });
+
+    versions.schema = STATE_SCHEMA_VERSION;
+    links.refresh();
+    await until(() => expect(machine()?.reachable).toBe(true));
+    expect(machine()?.mismatch).toBeUndefined();
+    expect(machine()).toMatchObject({ home: '/home/ada', replayed });
+    expect(Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.machines?.[W]).toEqual(machine());
+  });
+
+  it("a new epoch starts the home over from the worker's acked seq, whether the journal was wiped or lost its outbox or acked", async () => {
+    const w = world();
+    const count = (kind: string) => w.seen.filter((s) => s === `event ${kind}`).length;
+    const replayed = () => w.home.state.machines?.[W]?.replayed;
+    // two events on `journal`, the home linked until it has taken them, then both daemons stopped
+    const round = async (connection: HomeConnection, journal: Outbox, kind: string) => {
+      connection.journal(kind, {});
+      connection.journal(kind, {});
+      await connection.start();
+      const links = w.links();
+      links.start();
+      await until(() => expect(journal.acked()).toBe(2));
+      links.stop();
+      await connection.stop();
+      expect([count(kind), replayed()]).toEqual([2, { epoch: journal.epoch(), seq: 2 }]);
+    };
+    await round(w.worker, w.outbox, 'before');
+
+    fs.rmSync(path.dirname(w.workerPaths.outbox), { recursive: true });
+    const wiped = Outbox.open(w.workerPaths);
+    expect(wiped.epoch()).not.toBe(w.outbox.epoch());
+    await round(w.workerOn(wiped), wiped, 'wiped');
+
+    fs.rmSync(w.workerPaths.outbox);
+    fs.rmSync(w.workerPaths.acked);
+    const lost = Outbox.open(w.workerPaths);
+    expect(lost.epoch()).not.toBe(wiped.epoch());
+    await round(w.workerOn(lost), lost, 'lost');
   });
 
   it('the worker acks no snapshot it could not write, and closes the link instead', async () => {

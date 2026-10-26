@@ -26,6 +26,8 @@ export class Store {
   // a change not yet on disk
   private dirty = false;
   private batching: () => boolean = () => false;
+  // the `withheld` calls under way
+  private holds = 0;
 
   private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
 
@@ -78,13 +80,13 @@ export class Store {
       const bad = next.robots[id] && Robot.safeParse(next.robots[id]).error;
       if (bad) throw new Error(`robot ${id} would not be valid: ${bad.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
     }
-    if (!this.batching()) {
+    if (!this.batching() && !this.holds) {
       this.commit(next, ops);
       return ops;
     }
     // taken at once and written soon after: a crash loses at most the last WRITE_EVERY_MS of changes
     this.dirty = true;
-    this.writing ??= setTimeout(() => this.flush(), WRITE_EVERY_MS);
+    if (!this.holds) this.writing ??= setTimeout(() => this.flush(), WRITE_EVERY_MS);
     this.notify(next, ops);
     return ops;
   }
@@ -92,6 +94,16 @@ export class Store {
   /** Batches the writes while `when` holds, as for a fleet no handover is moving; otherwise each change is on disk before it is taken. */
   batchWritesWhile(when: () => boolean): void {
     this.batching = when;
+  }
+
+  /** Writes nothing while `fn` runs, whatever `batchWritesWhile` says, so what it changes reaches the disk in one write at the next flush. */
+  async withheld<T>(fn: () => Promise<T>): Promise<T> {
+    this.holds++;
+    try {
+      return await fn();
+    } finally {
+      this.holds--;
+    }
   }
 
   /** Validates a prepared snapshot without making it the active state. */
@@ -122,11 +134,12 @@ export class Store {
   }
 
   /** Writes what has changed since the last write that went through, and says whether all of it is on disk; a write
-   *  that fails is logged and tried again by the next change or flush. */
+   *  that fails is logged and tried again by the next change or flush, and none is made while a `withheld` runs. */
   flush(): boolean {
     clearTimeout(this.writing);
     this.writing = undefined;
     if (!this.dirty) return true;
+    if (this.holds) return false;
     // a fleet home that is gone stays gone
     try {
       if (!fs.existsSync(path.dirname(this.file))) throw new Error(`${path.dirname(this.file)} is gone`);

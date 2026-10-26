@@ -9,7 +9,7 @@ import type { Logger } from '../log.js';
 import { opencodePaths } from '../opencode/install.js';
 import { claudePaths, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
-import type { Outbox } from '../worker/outbox.js';
+import type { Entry, Outbox } from '../worker/outbox.js';
 import { mergeSnapshot, ownedReport, Snapshot, type Inventory, type RobotSync } from '../worker/snapshot.js';
 import { answerCall, LinkStream } from './stream.js';
 
@@ -36,6 +36,8 @@ export class HomeConnection {
     paths: Paths; worker: WorkerFile; me: MachineId; store: Store; outbox: Outbox; log: Logger; release: string; bootId: string; handlers: Handlers;
     /** The state schema and link protocol this worker speaks, this build's unless named. */
     versions?: { schema: number; protocol: number };
+    /** The outbox entries the home has acknowledged, before they are trimmed. */
+    onAcked?(dropped: Entry[]): void;
   }) {}
 
   async start(): Promise<void> {
@@ -61,6 +63,11 @@ export class HomeConnection {
 
   connected(): boolean {
     return this.link?.live ?? false;
+  }
+
+  /** The version of the home's snapshot this worker last took, 0 before its first. */
+  snapshotVersion(): number {
+    return this.o.store.state.machines?.[this.o.worker.homeMachineId]?.snapshot?.version ?? 0;
   }
 
   call<T>(method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {
@@ -107,7 +114,11 @@ export class HomeConnection {
       onFrame: (f) => { if (this.link?.stream === stream) this.take(this.link, f); else this.greet(stream, f); },
       onClose: () => {
         this.streams.delete(stream);
-        if (this.link?.stream === stream) this.link = undefined;
+        if (this.link?.stream !== stream) return;
+        this.link = undefined;
+        const homeId = this.o.worker.homeMachineId;
+        const held = this.o.store.state.machines?.[homeId];
+        if (held?.reachable) this.o.store.update((d) => { d.machines![homeId] = { ...held, reachable: false, since: Date.now() }; });
       },
     });
     this.streams.add(stream);
@@ -139,6 +150,7 @@ export class HomeConnection {
       robots: Object.values(this.o.store.state.robots).filter((r) => r.machine === this.o.me).map(ownedReport),
       last: this.o.outbox.last(),
       acked: this.o.outbox.acked(),
+      epoch: this.o.outbox.epoch(),
     };
     stream.send({ t: 'inventory', ...inventory });
   }
@@ -152,7 +164,7 @@ export class HomeConnection {
     }
     switch (f.t) {
       case 'ack':
-        this.o.outbox.ack(f.seq);
+        this.o.outbox.ack(f.seq, (dropped) => this.o.onAcked?.(dropped));
         // the first ack says where the home's copy ends, and the outbox past it goes out in sequence
         if (!link.live) {
           for (const e of this.o.outbox.after(f.seq)) stream.send({ t: 'event', seq: e.seq, kind: e.kind, data: e.data });
@@ -161,7 +173,7 @@ export class HomeConnection {
         return;
       case 'snapshot':
         try {
-          mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me);
+          mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me, { id: this.o.worker.homeMachineId, name: this.o.worker.homeName, reachable: true });
           if (!this.o.store.flush()) throw new Error('state.json was not written');
         } catch (e) {
           this.o.log.error(`link: snapshot ${f.version} not taken, closing: ${(e as Error).message}`);

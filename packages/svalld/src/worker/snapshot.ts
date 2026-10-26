@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { FleetState, Robot, WORKER_OWNED, type MachineId } from '@svall/protocol';
 import type { Store } from '../store.js';
 
-/** The fleet as the home holds it, and the home's Claude, Codex and OpenCode config folders that paths in it may name. */
+/** The fleet as the home holds it, and the home's user folder and Claude, Codex and OpenCode config folders that paths in it may name. */
 export const Snapshot = z.object({
   version: z.number().int(),
   state: FleetState,
   agentHomes: z.object({ claude: z.string(), codex: z.string(), opencode: z.string() }),
+  home: z.string(),
 });
 export type Snapshot = z.infer<typeof Snapshot>;
 
@@ -21,8 +22,8 @@ export const RobotSync = z.object({
 });
 export type RobotSync = z.infer<typeof RobotSync>;
 
-/** What a worker holds as the link opens: its robots, and how far the home has acknowledged its outbox. */
-export const Inventory = z.object({ robots: z.array(RobotSync), last: z.number().int().nonnegative(), acked: z.number().int().nonnegative() });
+/** What a worker holds as the link opens: its robots, and how far the home has acknowledged its outbox in the outbox's epoch. */
+export const Inventory = z.object({ robots: z.array(RobotSync), last: z.number().int().nonnegative(), acked: z.number().int().nonnegative(), epoch: z.string() });
 export type Inventory = z.infer<typeof Inventory>;
 
 const generation = (r: Robot): number => r.placement?.generation ?? 0;
@@ -40,10 +41,12 @@ function withOwned(to: Robot, from: Pick<Robot, Owned>): Robot {
 /**
  * Takes the home's snapshot into a worker's store: every field is the home's but the scribe switch and, for a robot
  * placed here at the same placement, the worker-owned ones. A robot placed here that the snapshot lacks stays until the
- * home forgets it; any other it lacks goes.
+ * home forgets it; any other it lacks goes. With `home`, the home's entry among the machines takes its reachability, its user
+ * folder and this snapshot's version, keeping the rest the worker held.
  */
-export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId): void {
+export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId, home?: { id: MachineId; name: string; reachable: boolean }): void {
   store.update((d) => {
+    const held = home && d.machines?.[home.id];
     const incoming = structuredClone(snap.state);
     const robots = Object.fromEntries(Object.entries(d.robots).filter(([, r]) => r.machine === me));
     for (const [id, r] of Object.entries(incoming.robots)) {
@@ -53,6 +56,9 @@ export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId): void
     const { scribeOff } = d;
     for (const k of Object.keys(d)) delete (d as Record<string, unknown>)[k];
     Object.assign(d, incoming, { robots }, scribeOff && { scribeOff });
+    if (!home) return;
+    const since = held && held.reachable === home.reachable ? held.since : Date.now();
+    (d.machines ??= {})[home.id] = { ...held, name: home.name, reachable: home.reachable, since, home: snap.home, snapshot: { version: snap.version, at: Date.now() } };
   });
 }
 

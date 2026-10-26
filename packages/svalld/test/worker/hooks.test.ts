@@ -36,7 +36,7 @@ function worker() {
   const paths = resolvePaths(makeHome());
   const store = Store.load(paths.state, () => {});
   store.update((d) => { Object.assign(d, { ...emptyState(), islands: { i_1: island('') }, robots: { c_w: robot({ tmux: { windowId: '@1', paneId: '%1' }, agent: agent() }) } }); });
-  const snapshot = (instructions: string) => mergeSnapshot(store, { version: 1, state: homeState(instructions), agentHomes }, W);
+  const snapshot = (instructions: string) => mergeSnapshot(store, { version: 1, state: homeState(instructions), agentHomes, home: '/Users/ada' }, W);
   snapshot('ship the board');
   // a note the docs mirror holds on this machine
   const notes = docsDir(paths.docs, 'island', 'i_1');

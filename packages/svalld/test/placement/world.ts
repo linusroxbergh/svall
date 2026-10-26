@@ -90,7 +90,7 @@ export function world(o: {
     },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
     onCall: (method, params) => answer(method, params, homeCtx),
-    snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes }),
+    snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes, home: '/Users/ada' }),
     ...(homeDocs && { docs: homeDocs }),
     ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
   });

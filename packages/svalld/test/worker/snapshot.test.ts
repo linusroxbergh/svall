@@ -16,7 +16,7 @@ const robot = (id: string, o: Partial<Robot> = {}): Robot => ({
 });
 const fleet = (robots: Robot[], o: Partial<FleetState> = {}): FleetState =>
   ({ ...emptyState(), islands: { i_1: island }, robots: Object.fromEntries(robots.map((r) => [r.id, r])), ...o });
-const snapshot = (state: FleetState): Snapshot => ({ version: 1, state, agentHomes });
+const snapshot = (state: FleetState): Snapshot => ({ version: 1, state, agentHomes, home: '/Users/ada' });
 
 function storeWith(state: FleetState): { store: Store; file: string } {
   const file = path.join(makeHome(), 'state.json');
@@ -78,6 +78,22 @@ describe('mergeSnapshot', () => {
 
     expect(store.state.robots.r_left).toEqual(robot('r_left', { placement: { generation: 2 }, cwd: '/Users/ada/app' }));
     expect(store.state.robots.r_back).toEqual(robot('r_back', { machine: me, placement: { generation: 3 }, cwd: '/home/ada/new' }));
+  });
+
+  it('a snapshot taken on a worker records the home under its id: reachable, its user home and the snapshot version', () => {
+    const { store } = storeWith(fleet([]));
+    const home = { id: other, name: 'mac', reachable: true };
+    mergeSnapshot(store, { ...snapshot(fleet([])), version: 7 }, me, home);
+    expect(store.state.machines?.[other]).toMatchObject({ name: 'mac', reachable: true, home: '/Users/ada', snapshot: { version: 7, at: expect.any(Number) } });
+
+    // what else the worker holds of the home stays, and since moves only when reachable does
+    store.update((d) => { d.machines![other] = { ...d.machines![other], reachable: false, since: 1, release: '1.2.3' }; });
+    mergeSnapshot(store, { ...snapshot(fleet([])), version: 8 }, me, home);
+    const back = store.state.machines![other];
+    expect(back).toMatchObject({ reachable: true, release: '1.2.3', snapshot: { version: 8 } });
+    expect(back.since).toBeGreaterThan(1);
+    mergeSnapshot(store, { ...snapshot(fleet([])), version: 9 }, me, home);
+    expect(store.state.machines![other]).toMatchObject({ since: back.since, snapshot: { version: 9 } });
   });
 });
 
