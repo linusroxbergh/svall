@@ -94,11 +94,18 @@ describe('a worker serving its robots while the home is away', () => {
   });
 
   it('the quota opens again once the home has acked', async () => {
-    const { w, create } = setup();
-    for (let i = 0; i < 5; i++) await create();
-    await expect(create()).resolves.toMatchObject({ error: { code: 'invalid' } });
-    w.worker.outbox.ack(w.worker.outbox.last());
-    expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while this Mac slept' } });
+    const { w, create } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
+    const quota = { error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } };
+    for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W } });
+    expect(await create()).toMatchObject(quota);
+    // the Mac wakes and acks the five over the link, then sleeps again
+    await w.link();
+    await drained(w);
+    expect(w.home.received).toHaveLength(5);
+    w.home.links.stop();
+    await until(() => { if (w.worker.connection.connected()) throw new Error('still linked'); });
+    for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while this Mac slept' } });
+    expect(await create()).toMatchObject(quota);
   });
 
   it('robot.update of name, note, context and instructions is served with their base; figure is refused with the one sentence', async () => {
