@@ -958,10 +958,35 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   };
 }
 
+/** Refuses while a robot of a fleet here runs on the machine or is moving to it, which an uninstall there would strand. */
+function placedOn(entry: Registered, d: HostDeps): void {
+  const homes = [d.fleet.home, ...fleetHomes(d.homedir).filter((home) => home !== d.fleet.home)];
+  const found = homes.flatMap((home) => {
+    const file = resolvePaths(home).state;
+    if (!fs.existsSync(file)) return [];
+    let state: FleetState;
+    try { state = migrateState(JSON.parse(fs.readFileSync(file, 'utf8'))).state; } catch (err) {
+      throw new StepError(`${file} cannot be read (${(err as Error).message}); start this fleet's daemon first, which reads it or sets it aside`);
+    }
+    return Object.values(state.robots).filter((r) => r.machine === entry.id || r.moving?.to === entry.id).map((r) => ({ home, robot: r }));
+  });
+  if (!found.length) return;
+  const n = found.length;
+  const action = [...new Set(found.map((f) => f.home))].map((home) => {
+    const there = found.filter((f) => f.home === home);
+    return there.length === 1 ? svallAt(home, d, `robot move ${there[0].robot.id} --machine local`) : `${svallAt(home, d, 'robot move <id> --machine local')} for each`;
+  }).join('; ');
+  throw new StepError(`${n} ${n === 1 ? 'robot is' : 'robots are'} on ${entry.record.name}: ${found.map((f) => f.robot.name).join(', ')}; move ${n === 1 ? 'it' : 'them'} back first`, action);
+}
+
 /** `svall host remove`: the remote uninstall first, and the route only after it, or only on --forget. */
 export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
-    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
+    const entry = await run.step('machine', () => {
+      const out = machineOutcome(d.registry, name);
+      if (!o.forget) placedOn(out.value, d);
+      return Promise.resolve(out);
+    });
     const fleets = await run.step('fleet', () => Promise.resolve(gatewayFleets(entry, d)));
     // never --purge from here: the fleets and their tmux servers are the far machine's to delete
     const uninstalled = await run.step('uninstall', async () => {

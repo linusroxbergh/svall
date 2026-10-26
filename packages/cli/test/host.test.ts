@@ -2121,6 +2121,32 @@ describe('host remove', () => {
     expect(registry.get('trift')).toBeUndefined();
   });
 
+  it('uninstalls nothing while a robot of a fleet here is on the machine or moving to it, and names them; --forget still drops the route', async () => {
+    const ada = {
+      id: 'c_ada', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [], shell: { lastOutputAt: 0 }, unread: false,
+      machine: REMOTE, placement: { generation: 1 },
+    };
+    const bo = { ...ada, id: 'c_bo', name: 'bo', cell: { x: 1, y: 0 }, machine: undefined, placement: undefined, moving: { id: 'mv_0123456789', to: REMOTE, phase: 'bundle' } };
+    const cy = { ...ada, id: 'c_cy', name: 'cy', cell: { x: 2, y: 0 }, machine: undefined, placement: undefined };
+    const state = (robots: object) => fs.writeFileSync(path.join(fleet, 'state.json'), JSON.stringify({ ...emptyState(), robots }));
+    ssh.reply(['uninstall'], { stdout: 'removed\n' });
+    const registry = registered('trift.test');
+
+    state({ c_ada: ada, c_bo: bo, c_cy: cy });
+    const many = await removeHost('trift', {}, deps({ registry }));
+    expect(many).toEqual({ result: 'actions', stopped: 'machine', actions: ['svall robot move <id> --machine local for each'] });
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: '2 robots are on trift: ada, bo; move them back first' });
+    state({ c_ada: ada, c_cy: cy });
+    events = [];
+    expect(await removeHost('trift', {}, deps({ registry, fleet: { home: fleet, profile: 'work' } }))).toMatchObject({ actions: ['svall -p work robot move c_ada --machine local'] });
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: '1 robot is on trift: ada; move it back first' });
+    expect(ssh.remoteCalls()).toEqual([]);
+    expect(registry.get('trift')).toBeDefined();
+
+    expect((await removeHost('trift', { forget: true }, deps({ registry }))).result).toBe('ready');
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
   it('names the machine on the line the far uninstall ends with, whose rm -rf is for that machine', async () => {
     ssh.reply(['uninstall'], { stdout: `removed ${BASE}/current\nkept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them\n` });
     await removeHost('trift', {}, deps({ registry: registered('trift.test') }));
