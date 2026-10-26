@@ -2,7 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { useApp } from '../hooks.js';
-import { unreachableOf } from '../placement.js';
+import { isPlaced, unreachableOf } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { RobotMenu } from './RobotMenu.js';
@@ -43,6 +43,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
   // the worker it runs on, while the home has lost it: the terminal holds the last screen the home saw
   const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && unreachableOf(s.fleet, r); });
+  const mismatch = useApp((s) => { const r = s.fleet.robots[id]; return !!r && isPlaced(r) && s.fleet.machines?.[r.machine]?.mismatch === true; });
   const status = useApp((s) => s.status);
   const online = status === 'online';
   const host = useRef<HTMLDivElement>(null);
@@ -192,7 +193,11 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       </header>
       <div className="stage">
         <div className="screen" ref={host} />
-        {unreachable && <p className="unreachable" data-testid="phone-unreachable">{unreachable} is not reachable</p>}
+        {unreachable && (
+          <p className="unreachable" data-testid="phone-unreachable">
+            {unreachable} {mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}
+          </p>
+        )}
         {failed && (
           <div className="failed">
             <p>{failed}</p>

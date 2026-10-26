@@ -185,7 +185,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - **A worker this Mac cannot reach**: its robots show the status unknown, and their terminals "linus-vault is not
   reachable" with the last screen this Mac saw of each under it; a worker on another build shows that screen under its
   own sentence. The phone reaches a robot on a worker through this Mac, its terminal and questions included, and says
-  "linus-vault is not reachable" over the terminal while this Mac has lost the worker. The robots keep running there,
+  the same sentence over the terminal while this Mac has lost the worker: "linus-vault is not reachable", or
+  "linus-vault runs a different build; upgrade it under Machines". The robots keep running there,
   and are never marked dormant for being out of reach. Once the worker answers again, what they did meanwhile comes
   home in order and the terminals attach again.
 - **A worker that reboots**: its robots come back dormant, as on a Mac, and revive from their cards. Restarting its
