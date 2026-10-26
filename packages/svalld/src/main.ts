@@ -37,6 +37,7 @@ import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
 import { FarViewers, RemoteWatches, ViewerNotice } from './placement/far-viewers.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
+import { readMirrorVars } from './placement/mirror-config.js';
 import { PrepareService } from './placement/prepare.js';
 import { homeRootOf } from './placement/repo-key.js';
 import { Replay } from './placement/replay.js';
@@ -299,6 +300,7 @@ async function start(opts: Options): Promise<Daemon> {
   const docsRoot = (c: Robot) => homeRootOf(c, store.state.machines, worker ? store.state.machines?.[worker.worker.homeMachineId]?.home : os.homedir());
   const fleet = new Fleet({
     store, tmux, paths, config, log, ownership, agentsFound, remote: router, repoRoot: docsRoot,
+    ...(worker && { extraKeys: () => readMirrorVars(paths.mirrorVars) }),
     ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
   });
   // what the CLI in a worker's panes starts there, and changes there while its home is away

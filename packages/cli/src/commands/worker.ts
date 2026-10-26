@@ -1,5 +1,8 @@
+import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
+import readline from 'node:readline';
+import { Writable } from 'node:stream';
 import { Command } from 'commander';
 import { z } from 'zod';
 import { WorkerFile } from '@svall/protocol';
@@ -39,6 +42,17 @@ async function readAll(input: NodeJS.ReadableStream): Promise<string> {
   return text;
 }
 
+// the value read without echo from a terminal, or whole from a pipe with one trailing newline trimmed
+async function readSecret(name: string): Promise<string> {
+  if (process.stdin.isTTY !== true) return (await readAll(process.stdin)).replace(/\n$/, '');
+  const muted = new Writable({ write: (_c, _e, done) => done() });
+  process.stderr.write(`value for ${name} (not shown): `);
+  const rl = readline.createInterface({ input: process.stdin, output: muted, terminal: true });
+  try {
+    return await new Promise<string>((resolve) => { rl.once('line', resolve); rl.once('close', () => resolve('')); });
+  } finally { rl.close(); process.stderr.write('\n'); }
+}
+
 /** What the home runs on a worker it links to: the link itself, and the enrolment that names the home. */
 export function workerCommands(target: () => Target): Command {
   const cmd = new Command('worker').description('this machine as a worker of a home\'s fleet');
@@ -62,6 +76,21 @@ export function workerCommands(target: () => Target): Command {
       if (!await daemonRuns(releaseVersion(), () => Client.connect(t.home))) {
         throw new Error(`${svalldUnitName(t.name)} did not answer after its restart; svall doctor says why`);
       }
+    });
+  cmd.command('env').description('set a variable for this fleet\'s robots on this machine, its value read from stdin')
+    .argument('<VAR>', 'the variable\'s name')
+    .action(async (name: string) => {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) throw new Error(`${name} is not a variable name`);
+      const value = await readSecret(name);
+      if (!value) throw new Error('no value given');
+      const file = resolvePaths(target().home).env;
+      const old = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+      const lines = old.split('\n').filter((l, i, all) => l !== '' || i < all.length - 1);
+      const line = `${name}=${value}`;
+      const at = lines.findIndex((l) => new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`).test(l));
+      if (at < 0) lines.push(line); else lines[at] = line;
+      writeDurable(file, Buffer.from(`${lines.join('\n')}\n`), { mode: 0o600 });
+      process.stdout.write(`${name} is set for this fleet's robots on this machine\n`);
     });
   return cmd;
 }

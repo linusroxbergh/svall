@@ -23,10 +23,10 @@ export function readEnvFile(file: string): Record<string, string> {
 }
 
 // A robot is a general-purpose shell. Only agent credentials cross from the fleet's
-// .env into it; other values in that file belong to headless daemon tasks.
-export function robotKeyEnv(file: string): Record<string, string> {
+// .env into it, plus the variables a mirrored server needs; other values in that file belong to headless daemon tasks.
+export function robotKeyEnv(file: string, extra: readonly string[] = []): Record<string, string> {
   const values = readEnvFile(file);
-  return Object.fromEntries(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']
+  return Object.fromEntries(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', ...extra]
     .filter((key) => values[key])
     .map((key) => [key, values[key]]));
 }

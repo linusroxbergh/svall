@@ -68,4 +68,20 @@ describe('svall worker', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ homeMachineId: ids.home, fleetId: ids.fleet, token, homeName: 'linus-mbp' });
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   });
+
+  it('env writes VAR=value into the fleet .env, mode 600, replacing an earlier line and keeping the others', async () => {
+    const home = makeHome();
+    fs.writeFileSync(resolvePaths(home).env, 'A=1\nGAMMA_TOKEN=old\n');
+    const r = svall(home, 'worker', 'env', 'GAMMA_TOKEN'); r.child.stdin.end('xyz\n');
+    expect(await r.done).toMatchObject({ code: 0, stdout: "GAMMA_TOKEN is set for this fleet's robots on this machine\n" });
+    expect(fs.readFileSync(resolvePaths(home).env, 'utf8')).toBe('A=1\nGAMMA_TOKEN=xyz\n');
+    expect(fs.statSync(resolvePaths(home).env).mode & 0o777).toBe(0o600);
+  });
+
+  it('env refuses a name that is not a variable, and an empty value', async () => {
+    const bad = svall(makeHome(), 'worker', 'env', 'lower'); bad.child.stdin.end('x');
+    expect(await bad.done).toMatchObject({ code: 1, stderr: expect.stringContaining('lower is not a variable name') });
+    const empty = svall(makeHome(), 'worker', 'env', 'GAMMA_TOKEN'); empty.child.stdin.end('\n');
+    expect(await empty.done).toMatchObject({ code: 1, stderr: expect.stringContaining('no value given') });
+  });
 });
