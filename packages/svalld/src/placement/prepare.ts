@@ -288,13 +288,14 @@ export class PrepareService {
   // the way back the robot reopens here as it was. A worktree the robot left here is left again, with its fingerprint
   private async abort(id: string): Promise<{ fingerprint?: string }> {
     const j = this.files.read(id);
-    if (!j || j.phase === 'aborted') return {};
+    if (!j) return {};
+    if (j.phase === 'aborted') return j.fingerprint ? { fingerprint: j.fingerprint } : {};
     if (j.from === this.d.me) return this.reopen(j);
     if (j.phase === 'activate' || j.phase === 'done') throw new ApiError('invalid', `${j.robot?.name ?? j.robotId} already runs on ${this.name}`);
     this.receipts.delete(id);
     const fingerprint = await this.repoLock(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
     fs.rmSync(this.files.stage(id), { recursive: true, force: true });
-    this.save({ ...j, phase: 'aborted' });
+    this.save({ ...j, phase: 'aborted', ...(fingerprint && { fingerprint }) });
     return fingerprint ? { fingerprint } : {};
   }
 

@@ -66,6 +66,8 @@ export const MoveJournal = z.object({
     // the session files that were not here
     files: z.array(z.string()).optional(),
   }).optional(),
+  // the fingerprint of the worktree an abort left again here, which an abort asked again answers
+  fingerprint: z.string().optional(),
   error: z.string().optional(),
   updatedAt: z.number(),
 });

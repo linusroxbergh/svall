@@ -406,6 +406,30 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.vault.opened).toEqual(['c_1', 'c_1']);
   });
 
+  it('an abort the worker answers again holds the fingerprint of the worktree it left again, so the next move there passes its checks', async () => {
+    const w = open();
+    const first = await w.start();
+    await first.placement.start('c_1', W);
+    await first.placement.start('c_1', H);
+    // the prepare there fails, and the home dies before it takes the worker's answer to the abort
+    disarm = armFailpoints((n, e) => {
+      if (n === 'worker.prepare.journal' && e === 'before') throw new Error('the disk is full');
+      if (n === 'worker.abort.remove' && e === 'after') first.life.dead = true;
+    });
+    await expect(first.placement.start('c_1', W)).rejects.toThrow();
+    disarm();
+    disarm = undefined;
+    first.links.stop();
+    const fingerprint = await fingerprintOf(w.farWt, handoverGit);
+
+    const again = await w.bootHome();
+    await again.placement.recoverMoves();
+    expect(again.store.state.robots.c_1.left).toMatchObject({ machine: W, path: w.farWt, fingerprint });
+    const id = await again.placement.start('c_1', W);
+    expect(again.placement.status(id).phase).toBe('done');
+    expect(again.store.state.robots.c_1.machine).toBe(W);
+  });
+
   it('an abort after a worktree in the way leaves that worktree and its branch on the worker as they were', async () => {
     const w = open();
     w.g(w.base, 'clone', '-q', w.origin, w.clone);
