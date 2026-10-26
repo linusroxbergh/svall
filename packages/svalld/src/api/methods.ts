@@ -1,3 +1,4 @@
+import os from 'node:os';
 import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
 import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
@@ -11,9 +12,11 @@ import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import { errorFrame } from '../errors.js';
 import type { ClaudePaths } from '../paths.js';
-import { listsDeletable, rootIdOf, scanResources } from '../resources/scan.js';
+import { mergeSources } from '../resources/merge.js';
+import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/scan.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { classification, guardMethod } from '../ownership/guard.js';
+import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Placement } from '../placement/move.js';
 import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
@@ -25,7 +28,7 @@ import type { WorkerMutations } from '../worker/mutations.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -39,6 +42,15 @@ const placementOf = ({ placement }: Ctx): Placement => {
   if (!placement) throw new ApiError('not_on_worker', 'not on a worker');
   return placement;
 };
+
+// the folders a scan here lists are those of the robots that run here
+const roots = ({ router }: Pick<Ctx, 'router'>) => router && rootHere((c) => router.runsHere(c));
+
+// a placed robot's files are read where it runs and changed in its terminal there
+function refuseRemote({ router, store }: Pick<Ctx, 'router' | 'store'>, id: string, rel: string): void {
+  const at = router?.rootPlacedAt(id);
+  if (at) throw new ApiError('read_only', `${rel} is on ${store.state.machines?.[at]?.name ?? at}; edit it in the robot's terminal`);
+}
 
 // svalld runs on the two platforms a handover can compare; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
@@ -119,10 +131,17 @@ export const handlers: Handlers = {
     if (!p.enabled) push.clear();
     return status;
   },
-  'resources.get': (_p, { store, claude, codex, docs, agentProfiles }) => ({ sources: scanResources(store.state, claude, codex, docs, agentProfiles) }),
-  'fs.list': async (p, { workspace }) => ({ entries: await workspace.list(p.id, p.path) }),
-  'fs.read': (p, { workspace }) => workspace.read(p.id, p.path),
-  'fs.write': (p, { workspace }) => workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root),
+  // each worker lists the clones its robots work in, read there
+  'resources.get': async (_p, ctx) => {
+    const { store, claude, codex, docs, agentProfiles, links, router } = ctx;
+    const sources = scanResources(store.state, claude, codex, docs, agentProfiles, roots(ctx));
+    if (!links || docs === undefined) return { sources };
+    const far = (await askWorkers(links, 'resources.get')).map((w) => ({ machine: w.machine, sources: w.answer.sources }));
+    return { sources: mergeSources(sources, far, { docs, machines: store.state.machines, homedir: router?.homedir ?? os.homedir() }) };
+  },
+  'fs.list': async (p, { workspace, router }) => router?.forwardRoot(p.id, 'fs.list', p) ?? { entries: await workspace.list(p.id, p.path) },
+  'fs.read': (p, { workspace, router }) => router?.forwardRoot(p.id, 'fs.read', p) ?? workspace.read(p.id, p.path),
+  'fs.write': (p, ctx) => { refuseRemote(ctx, p.id, p.path); return ctx.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root); },
   'docs.create': (p, { workspace }) => workspace.create(p.id, p.path, p.text),
   'docs.rename': (p, { workspace, fleet, agentProfiles }) => {
     workspace.rename(p.id, p.path, p.to);
@@ -130,15 +149,22 @@ export const handlers: Handlers = {
     return {};
   },
   'docs.delete': (p, { workspace }) => { workspace.remove(p.id, p.path); return {}; },
-  'resources.delete': (p, { store, claude, codex, docs, agentProfiles, workspace }) => {
-    if (!listsDeletable(scanResources(store.state, claude, codex, docs, agentProfiles), p.id, p.path)) throw new WorkspaceError('invalid', `${p.path} is not a skill, agent, command or memory file the shelf lists`);
+  'resources.delete': (p, ctx) => {
+    const { store, claude, codex, docs, agentProfiles, workspace } = ctx;
+    refuseRemote(ctx, p.id, p.path);
+    if (!listsDeletable(scanResources(store.state, claude, codex, docs, agentProfiles, roots(ctx)), p.id, p.path)) throw new WorkspaceError('invalid', `${p.path} is not a skill, agent, command or memory file the shelf lists`);
     return { token: workspace.setAside(p.id, p.path) };
   },
   'resources.restore': (p, { workspace }) => { workspace.putBack(p.token); return {}; },
-  'repo.status': (p, { workspace }) => workspace.status(p.id, p.base),
-  'repo.file': (p, { workspace }) => workspace.file(p.id, p.path, p.base, p.from),
-  'repo.watch': (p, { workspace, viewer }) => { workspace.watch(p.id, viewer); return {}; },
-  'repo.unwatch': (p, { workspace, viewer }) => { workspace.unwatch(p.id, viewer); return {}; },
+  'repo.status': (p, { workspace, router }) => router?.forwardRoot(p.id, 'repo.status', p) ?? workspace.status(p.id, p.base),
+  'repo.file': (p, { workspace, router }) => router?.forwardRoot(p.id, 'repo.file', p) ?? workspace.file(p.id, p.path, p.base, p.from),
+  'repo.watch': async (p, { workspace, viewer, router, remoteWatches }) => {
+    if (remoteWatches && router?.rootPlacedAt(p.id)) await remoteWatches.watch(p.id, viewer);
+    else workspace.watch(p.id, viewer);
+    return {};
+  },
+  // a robot moved since its watch began may hold it on either side
+  'repo.unwatch': async (p, { workspace, viewer, remoteWatches }) => { workspace.unwatch(p.id, viewer); await remoteWatches?.unwatch(p.id, viewer); return {}; },
   'push.key': (_p, { vapidPublicKey }) => ({ publicKey: vapidPublicKey }),
   'push.subscribe': (p, { push, viewer }) => { push.upsert({ ...p, login: viewer.login ?? 'local', addedAt: Date.now() }); return {}; },
   'push.unsubscribe': (p, { push }) => { push.remove(p.endpoint); return {}; },

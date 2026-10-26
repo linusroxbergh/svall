@@ -8,8 +8,8 @@ and nothing else, and keeps its own clone of each repository its robots work in.
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker shows
 a machine badge on its card, token and board card, and keeps its board column; `svall robot run`, `read`, `wait` and
 `revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
-Changes and Resources stay hidden, as its files are on the worker's disk; **Terminal there** opens a terminal in its
-folder. The Usage panel counts the robots on each worker too, read on the worker where their transcripts are; a worker
+Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**
+opens a terminal in its folder. The Usage panel counts the robots on each worker too, read on the worker where their transcripts are; a worker
 that does not answer within 5 seconds is left out, and this Mac's own limits still show. The scribe names, notes and
 links a robot on a worker, and places it on the board, as it does one here: this Mac asks, the worker reads the
 transcript, and this Mac writes the answer.

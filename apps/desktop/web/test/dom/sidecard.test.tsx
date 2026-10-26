@@ -418,7 +418,7 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(screen.getByTestId('side-machine').textContent).toBe('linus-vault');
   expect(moves()).toEqual(['Move to this Mac']);
   expect(screen.queryByTestId('side-cpu')).toBeNull();
-  expect(screen.queryByTestId('side-resources')).toBeNull();
+  expect(screen.getByTestId('side-resources')).toBeTruthy();
   expect(screen.getByTestId('side-cwd').title).toBe('Copy linus-vault:/home/ada/svall');
   bridge.present = true;
   try { fireEvent.click(screen.getByTestId('side-cwd')); } finally { bridge.present = false; }

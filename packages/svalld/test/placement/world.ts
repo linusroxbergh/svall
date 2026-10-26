@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import net from 'node:net';
 import path from 'node:path';
 import { vi } from 'vitest';
-import { MachineId, emptyState, type FleetState, type Island, type Robot } from '@svall/protocol';
+import { MachineId, emptyState, type Event, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { answer, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
@@ -14,17 +14,20 @@ import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { HomeDocs, WorkerDocs, noteConflict } from '../../src/placement/docs-sync.js';
+import { FarViewers, RemoteWatches, ViewerNotice } from '../../src/placement/far-viewers.js';
 import { Mirror, mirrorCalls, type MirrorHomes } from '../../src/placement/mirror.js';
 import { homeRootOf } from '../../src/placement/repo-key.js';
 import { Replay } from '../../src/placement/replay.js';
-import { Router, forgetRobot, workerCalls } from '../../src/placement/router.js';
+import { Router, fileCalls, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import type { RunScribe } from '../../src/scribe/run.js';
+import { rootHere, scanResources, workspaceRoot } from '../../src/resources/scan.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
 import { fleetUsage, type FetchUsage } from '../../src/usage/usage.js';
 import { WorkerMutations } from '../../src/worker/mutations.js';
+import { Workspace } from '../../src/workspace/workspace.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
 import { makeHome } from '../helpers.js';
@@ -73,7 +76,8 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
  * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
  * and the home's replay, router and docs log to `homeLog`; each side reads its robots' usage as main.ts does, its
  * Claude login answering with `usage.claude` and each rollout with its text in `usage.tails`; `scribe` answers each
- * side's scribe passes, and the worker's scribe is off as main.ts has it.
+ * side's scribe passes, and the worker's scribe is off as main.ts has it. Each side reads its own robots' files, the
+ * home a placed robot's through the worker, and each has a Claude dir of its own under its home.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
@@ -89,6 +93,7 @@ export function world(o: {
 
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
+  workerPaths.docs = path.join(workerPaths.cache, 'docs');
   const token = issueToken(homePaths, W);
   const homeStore = storeWith(homePaths, o.home ?? {});
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
@@ -111,6 +116,12 @@ export function world(o: {
     },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
     onCall: (method, params) => answer(method, params, homeCtx),
+    onNotify: (kind, data) => {
+      if (kind !== 'viewer') return;
+      const { key, ev } = ViewerNotice.parse(data);
+      remoteWatches.farEvent(key, ev as Event);
+    },
+    onSynced: (machine) => { void remoteWatches.reopen(machine); },
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes, home: '/Users/ada' }),
     ...(homeDocs && { docs: homeDocs }),
     ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
@@ -122,7 +133,13 @@ export function world(o: {
     repoRoot: (c) => homeRootOf(c, homeStore.state.machines, '/Users/ada'), runScribe: o.scribe?.home,
   });
   const homeUsage = usageOf(homeStore, homeRouter);
-  const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, { usage: homeUsage, links });
+  const homeClaude = { dir: path.join(homePaths.home, 'claude'), json: path.join(homePaths.home, 'claude.json') };
+  const homeRoots = rootHere((c) => homeRouter.runsHere(c));
+  const homeWorkspace = new Workspace((id) => workspaceRoot(id, homeStore.state, homeClaude, undefined, homePaths.docs, homePaths.agentProfiles, (c) => homeRouter.runsHere(c), homeRoots), silentLogger);
+  const remoteWatches = new RemoteWatches({ links, router: homeRouter });
+  const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, {
+    usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
+  });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
   workerStore.update((d) => { d.scribeOff = true; });
@@ -132,7 +149,9 @@ export function world(o: {
   const connection = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store: workerStore, outbox,
     log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers, onAcked: (dropped) => mutations.acked(dropped),
+    onLink: (live) => { if (!live) for (const v of farViewers.dropAll()) workerWorkspace.unwatchAll(v); },
   });
+  const farViewers = new FarViewers({ connection });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
   const workerTmux = { ...o.tmux } as Tmux;
   const workerFleet = new Fleet({
@@ -145,15 +164,23 @@ export function world(o: {
   const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
   const workerUsage = usageOf(workerStore, workerRouter);
+  const workerClaude = { dir: path.join(workerPaths.home, 'claude'), json: path.join(workerPaths.home, 'claude.json') };
+  const workerRoots = rootHere((c) => workerRouter.runsHere(c));
+  const workerWorkspace = new Workspace((id) => workspaceRoot(id, workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, (c) => workerRouter.runsHere(c), workerRoots), silentLogger);
+  const workerResources = () => scanResources(workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, workerRoots);
   const workerDocs = o.docs && new WorkerDocs({
-    dir: path.join(workerPaths.cache, 'docs'), file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
+    dir: workerPaths.docs, file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
   });
   Object.assign(
-    handlers, o.far ?? { ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), 'usage.get': () => workerUsage() }, workerDocs?.handlers,
+    handlers, o.far ?? {
+      ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }),
+      ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, resources: workerResources }), 'usage.get': () => workerUsage(),
+    }, workerDocs?.handlers,
     o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, connection, log: silentLogger }),
   );
-  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, { mutations, usage: workerUsage });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace });
 
+  for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop());
   return {
     home: {

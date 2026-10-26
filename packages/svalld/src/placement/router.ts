@@ -1,6 +1,7 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, Column, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type Result, type Robot } from '@svall/protocol';
+import { ApiError, Column, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
+import { repoRootOf } from '../docs.js';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
@@ -11,7 +12,9 @@ import { FarPass, type Only } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { applyReport, type Inventory } from '../worker/snapshot.js';
+import type { Workspace } from '../workspace/workspace.js';
 import { probeRepo, RepoProbeParams } from './checks.js';
+import type { FarViewers } from './far-viewers.js';
 import { sharesBranch, withLine, type Replay } from './replay.js';
 import { homeRootOf } from './repo-key.js';
 
@@ -66,6 +69,26 @@ export class Router {
     const { robots } = this.o.store.state;
     if (!Object.hasOwn(robots, robotId) || this.runsHere(robots[robotId])) return undefined;
     return robots[robotId].machine ?? this.o.home?.id;
+  }
+
+  /** The machine a workspace id's folder is on, when that is another one: a robot's, or the clone robots placed there work in. */
+  rootPlacedAt(id: string): MachineId | undefined {
+    if (!id.startsWith('r:')) return this.placedAt(id);
+    const working = Object.values(this.o.store.state.robots).filter((c) => repoRootOf(c) === id.slice(2));
+    // a folder a robot here works in is this machine's
+    return working.some((c) => this.runsHere(c)) || !working.length ? undefined : this.placedAt(working[0].id);
+  }
+
+  /** The answer of the machine a workspace id's folder is on to a call about it; undefined for a folder here. */
+  forwardRoot<M extends MethodName>(id: string, method: M, params: Params<M>): Promise<Result<M>> | undefined {
+    const at = this.rootPlacedAt(id);
+    if (!at || !this.o.links) return undefined;
+    return this.o.links.call<Result<M>>(at, method, params, { timeoutMs: callMs(method, params) });
+  }
+
+  /** On the home, the user folder a worker's paths are named from here. */
+  get homedir(): string | undefined {
+    return this.o.homedir;
   }
 
   /** The answer of the machine a robot runs on to a call about it; undefined for a robot here. */
@@ -201,4 +224,43 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
       return probeRepo(p.data, handoverGit);
     },
   };
+}
+
+const FarWatch = z.object({ id: z.string(), viewer: z.object({ key: z.string(), kind: z.enum(['app', 'phone']) }) });
+const FarUnwatch = z.object({ id: z.string(), viewer: z.string() });
+const FarGone = z.object({ viewer: z.string() });
+
+/** What a worker answers the home's file views of its robots with, read from its own disk, and the watches the home's viewers keep there. */
+export function fileCalls(o: { workspace: Workspace; viewers: FarViewers; resources: () => ResourceSource[] }): Handlers {
+  const { workspace, viewers } = o;
+  const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Result<M> | Promise<Result<M>>) => async (raw: unknown) => run(parse(methods[method].params, raw) as ParsedParams<M>);
+  return {
+    'fs.list': on('fs.list', async (p) => ({ entries: await workspace.list(p.id, p.path) })),
+    'fs.read': on('fs.read', (p) => workspace.read(p.id, p.path)),
+    'repo.status': on('repo.status', (p) => workspace.status(p.id, p.base)),
+    'repo.file': on('repo.file', (p) => workspace.file(p.id, p.path, p.base, p.from)),
+    'resources.get': on('resources.get', () => ({ sources: o.resources() })),
+    'far.repo.watch': async (raw) => {
+      const p = parse(FarWatch, raw);
+      workspace.watch(p.id, viewers.get(p.viewer.key, p.viewer.kind));
+      return {};
+    },
+    'far.repo.unwatch': async (raw) => {
+      const p = parse(FarUnwatch, raw);
+      const v = viewers.find(p.viewer);
+      if (v) workspace.unwatch(p.id, v);
+      return {};
+    },
+    'far.viewer.gone': async (raw) => {
+      const v = viewers.drop(parse(FarGone, raw).viewer);
+      if (v) workspace.unwatchAll(v);
+      return {};
+    },
+  };
+}
+
+function parse<S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> {
+  const p = schema.safeParse(raw);
+  if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+  return p.data;
 }

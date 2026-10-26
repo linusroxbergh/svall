@@ -1,0 +1,144 @@
+import crypto from 'node:crypto';
+import { z } from 'zod';
+import type { Event, MachineId } from '@svall/protocol';
+import type { HomeLinks } from '../link/home.js';
+import type { HomeConnection } from '../link/worker.js';
+import type { Viewer } from '../terminals.js';
+import type { Router } from './router.js';
+
+// past this much unsent the link is behind, and a file change waits rather than add to what the heartbeat waits behind
+const BEHIND = 1024 * 1024;
+const LOOK_AGAIN_MS = 100;
+
+/** What a worker sends a viewer on the home: the viewer's key and the event. */
+export const ViewerNotice = z.object({ key: z.string(), ev: z.object({ event: z.string(), data: z.unknown() }) });
+
+const keys = new WeakMap<Viewer, string>();
+
+/** The name a viewer of the home goes by on its workers. */
+export function viewerKey(viewer: Viewer): string {
+  let key = keys.get(viewer);
+  if (!key) { key = crypto.randomUUID(); keys.set(viewer, key); }
+  return key;
+}
+
+/** On a worker: the home's viewers, each a viewer here whose events go home in a `viewer` notification. */
+export class FarViewers {
+  private viewers = new Map<string, Viewer>();
+  // the robots whose file change waits, per viewer, for the link to catch up
+  private held = new Map<string, Set<string>>();
+  private timer?: NodeJS.Timeout;
+
+  constructor(private o: { connection: Pick<HomeConnection, 'notify' | 'backlog'> }) {}
+
+  get(key: string, kind: Viewer['kind']): Viewer {
+    let v = this.viewers.get(key);
+    if (!v) {
+      v = { kind, send: (ev) => this.send(key, ev), backlog: () => this.o.connection.backlog() };
+      this.viewers.set(key, v);
+    }
+    return v;
+  }
+
+  find(key: string): Viewer | undefined {
+    return this.viewers.get(key);
+  }
+
+  drop(key: string): Viewer | undefined {
+    const v = this.viewers.get(key);
+    this.viewers.delete(key);
+    this.held.delete(key);
+    return v;
+  }
+
+  dropAll(): Viewer[] {
+    const all = [...this.viewers.values()];
+    this.viewers.clear();
+    this.held.clear();
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    return all;
+  }
+
+  private send(key: string, ev: Event): void {
+    if (!this.viewers.has(key)) return;
+    if (ev.event !== 'repo.changed' || this.o.connection.backlog() <= BEHIND) return this.o.connection.notify('viewer', { key, ev });
+    // a file change only says to look again, so one per robot waits
+    let ids = this.held.get(key);
+    if (!ids) this.held.set(key, (ids = new Set()));
+    ids.add(ev.data.id);
+    this.timer ??= setTimeout(() => this.release(), LOOK_AGAIN_MS).unref();
+  }
+
+  private release(): void {
+    this.timer = undefined;
+    if (this.o.connection.backlog() > BEHIND) { this.timer = setTimeout(() => this.release(), LOOK_AGAIN_MS).unref(); return; }
+    const held = [...this.held];
+    this.held.clear();
+    for (const [key, ids] of held) for (const id of ids) this.o.connection.notify('viewer', { key, ev: { event: 'repo.changed', data: { id } } });
+  }
+}
+
+type Watch = { id: string; viewer: Viewer; machine: MachineId };
+
+/** On the home: the watches its viewers keep on robots placed on a worker, held there by that worker's FarViewers. */
+export class RemoteWatches {
+  // by viewer key and robot id
+  private watches = new Map<string, Watch>();
+  // each viewer that watches on a worker, by its key, with the workers it reached
+  private viewers = new Map<string, { viewer: Viewer; machines: Set<MachineId> }>();
+
+  constructor(private o: { links: Pick<HomeLinks, 'call'>; router: Pick<Router, 'rootPlacedAt'> }) {}
+
+  /** Watches on the robot's machine, once per viewer; a worker away takes the watch once it is back. */
+  async watch(id: string, viewer: Viewer): Promise<void> {
+    const machine = this.o.router.rootPlacedAt(id);
+    if (!machine) return;
+    const key = viewerKey(viewer);
+    if (this.watches.has(`${key}\0${id}`)) return;
+    const w: Watch = { id, viewer, machine };
+    this.watches.set(`${key}\0${id}`, w);
+    const seen = this.viewers.get(key) ?? { viewer, machines: new Set<MachineId>() };
+    seen.machines.add(machine);
+    this.viewers.set(key, seen);
+    await this.forward(w);
+  }
+
+  // a worker away has let every viewer go already
+  async unwatch(id: string, viewer: Viewer): Promise<void> {
+    const key = viewerKey(viewer);
+    const w = this.watches.get(`${key}\0${id}`);
+    if (!w) return;
+    this.watches.delete(`${key}\0${id}`);
+    await this.o.links.call(w.machine, 'far.repo.unwatch', { id, viewer: key }).catch(() => {});
+  }
+
+  /** The viewer is gone: each worker it watched on lets it go. */
+  unwatchAll(viewer: Viewer): void {
+    const key = viewerKey(viewer);
+    const seen = this.viewers.get(key);
+    if (!seen) return;
+    this.viewers.delete(key);
+    for (const [k, w] of this.watches) if (w.viewer === viewer) this.watches.delete(k);
+    for (const machine of seen.machines) this.o.links.call(machine, 'far.viewer.gone', { viewer: key }).catch(() => {});
+  }
+
+  /** An event a worker sent for one of this home's viewers. */
+  farEvent(key: string, ev: Event): void {
+    this.viewers.get(key)?.viewer.send(ev);
+  }
+
+  /** Forwards every watch on `machine` again, as after it linked anew; one whose robot no longer runs there is let go. Never rejects. */
+  async reopen(machine: MachineId): Promise<void> {
+    const again = [...this.watches].filter(([, w]) => w.machine === machine);
+    await Promise.all(again.map(([k, w]) => {
+      if (this.o.router.rootPlacedAt(w.id) === machine) return this.forward(w).catch(() => {});
+      this.watches.delete(k);
+      return undefined;
+    }));
+  }
+
+  private forward(w: Watch): Promise<unknown> {
+    return this.o.links.call(w.machine, 'far.repo.watch', { id: w.id, viewer: { key: viewerKey(w.viewer), kind: w.viewer.kind } });
+  }
+}

@@ -7,7 +7,7 @@ import { Changes } from './ide/Changes.js';
 import { FilesArea } from './ide/FilesArea.js';
 import { keyTip, type ActionId } from './keys.js';
 import { closeSide, isTerminal, kindOf, pick, shows, snapRatio, split, type Kind, type Panes, type Side, type Surface } from './panes.js';
-import { isPlaced, machineName } from './placement.js';
+import { unreachableOf } from './placement.js';
 import { panesOf, slotStatus } from './selectors.js';
 import { TerminalArea } from './TerminalArea.js';
 
@@ -51,9 +51,8 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
   const host = useRef<HTMLDivElement>(null);
   if (!c) return null;
   const two = panes.right !== undefined;
-  // the files of a robot on a worker are on its disk, which these panes do not read yet
-  const placed = isPlaced(c) ? machineName({ machines }, c.machine) : undefined;
-  const kinds = placed ? KINDS.filter((k) => k.kind !== 'files' && k.kind !== 'changes') : KINDS;
+  // the files of a robot on a worker are read there, so they wait while it is out of reach
+  const away = unreachableOf({ machines }, c);
 
   const set = (next: Panes) => {
     if (shows(next, 'terminal2') && !c.second?.tmux) openSecondTerminal(deps(), id);
@@ -68,10 +67,12 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
   const body = (surface: Surface, side: Side) => {
     // in a split only the left pane takes the keyboard
     const aside = two && side === 'right';
-    if (placed && (surface === 'files' || surface === 'changes')) return <div className="ide-empty" data-testid="pane-elsewhere">Its files are on {placed}</div>;
+    if (away && (surface === 'files' || surface === 'changes')) return <div className="ide-empty" data-testid="pane-elsewhere">{away} is not reachable</div>;
+    // a move takes the files to another machine, and the views mount anew to watch them there
+    const at = `${id}@${c.machine ?? ''}`;
     return surface === 'browser' ? <BrowserArea key={id} id={id} aside={aside} />
-      : surface === 'files' ? <FilesArea key={id} id={id} />
-      : surface === 'changes' ? <Changes key={id} id={id} />
+      : surface === 'files' ? <FilesArea key={at} id={id} />
+      : surface === 'changes' ? <Changes key={at} id={id} />
       // the side is in the key so a terminal moved across remounts and takes or leaves the keyboard anew
       : <TerminalArea key={`${id}:${surface}:${side}`} id={id} second={surface === 'terminal2'} aside={aside} opacity={opacity} />;
   };
@@ -81,7 +82,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
       <div className="phead" onPointerDown={(e) => e.stopPropagation()}>
         {side === 'left' && lead}
         <span className="tseg" role="tablist">
-          {kinds.map(({ kind, label, action }) => (
+          {KINDS.map(({ kind, label, action }) => (
             <button key={kind} className="tbtn" role="tab" data-testid={`pane-${side}-${kind}`} data-active={kindOf(surface) === kind}
               title={side === 'left' ? keyTip(label, action, bindings) : label} onClick={() => set(pick(panes, side, kind))}>
               {kind === 'terminal' && c.second && isTerminal(surface) && <i className="sdot" data-status={slotStatus(c, surface === 'terminal2' ? 2 : 1)} />}

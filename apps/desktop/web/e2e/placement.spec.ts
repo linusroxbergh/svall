@@ -107,3 +107,10 @@ test('mission control has no move button; a refusal shows one sentence and one b
   await expect(sheet.locator('.acts button')).toHaveCount(1);
   await expect(sheet.getByTestId('move-go')).toHaveCount(0);
 });
+
+test('a placed robot keeps its Resources button', async ({ page, svall }) => {
+  const id = await seed(svall, true, (c) => { c.machine = VAULT; });
+  await svall.open();
+  await page.getByTestId(`sb-robot-${id}`).click();
+  await expect(page.getByTestId('side-resources')).toBeVisible();
+});

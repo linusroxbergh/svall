@@ -15,11 +15,11 @@ export const rootIdOf = (root: string): string => `r:${root}`;
 
 type FleetRoot = { root: string; islandIds: string[]; robotIds: string[] };
 
-/** The folders the fleet works in, a worktree counted as its repository, mission control left out. */
-export function fleetRoots(state: FleetState): FleetRoot[] {
+/** The folders the fleet works in, a worktree counted as its repository, mission control left out; `rootOf` names a robot's, or none. */
+export function fleetRoots(state: FleetState, rootOf: (c: Robot) => string | undefined = repoRootOf): FleetRoot[] {
   const by = new Map<string, FleetRoot>();
   for (const c of Object.values(state.robots)) {
-    const root = repoRootOf(c);
+    const root = rootOf(c);
     if (root === undefined) continue;
     const r = by.get(root) ?? { root, islandIds: [], robotIds: [] };
     if (!r.islandIds.includes(c.islandId)) r.islandIds.push(c.islandId);
@@ -44,11 +44,16 @@ function isDocsRoot(root: string, state: FleetState, docs: string): boolean {
   return real !== undefined && realDocs !== undefined && within(real, realDocs);
 }
 
+/** The folders on this machine of the robots `here` says run on it; a robot that runs elsewhere has none. */
+export const rootHere = (here: (c: Robot) => boolean) => (c: Robot): string | undefined => (here(c) ? repoRootOf(c) : undefined);
+
 /** The folder a resource root id names, when it is the Claude dir, the Codex dir, a folder the fleet works in now, a docs folder or the agent profiles. */
-export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): string | undefined {
+export function resourceRoot(
+  id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, rootOf?: (c: Robot) => string | undefined,
+): string | undefined {
   if (!id.startsWith('r:')) return undefined;
   const root = id.slice(2);
-  if (root === claude.dir || root === codex?.dir || root === agentProfiles || fleetRoots(state).some((r) => r.root === root)) return root;
+  if (root === claude.dir || root === codex?.dir || root === agentProfiles || fleetRoots(state, rootOf).some((r) => r.root === root)) return root;
   return docs !== undefined && isDocsRoot(root, state, docs) ? root : undefined;
 }
 
@@ -56,8 +61,9 @@ export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths,
 // `here` says runs on another machine, as that folder is on its disk.
 export function workspaceRoot(
   id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, here?: (c: Robot) => boolean,
+  rootOf?: (c: Robot) => string | undefined,
 ): string {
-  const res = resourceRoot(id, state, claude, codex, docs, agentProfiles);
+  const res = resourceRoot(id, state, claude, codex, docs, agentProfiles, rootOf);
   if (res) return res;
   if (!Object.hasOwn(state.robots, id)) throw new NotFound(`no robot ${id}`);
   const c = state.robots[id];
@@ -150,6 +156,9 @@ function docRows(dir: string): Row[] {
   return listDocs(dir).map((d) => ({ ...fileItem(b, path.basename(d.path), { name: d.name, detail: d.description }), ...(d.error && { error: d.error }) }));
 }
 
+/** The docs group of a docs folder, none when it holds no doc. */
+export const docsGroups = (dir: string): ResourceGroup[] => groupsOf([['docs', docRows(dir)]]);
+
 function agentProfileRows(dir: string): Row[] {
   const b: Base = { rootId: rootIdOf(dir), root: dir };
   return listAgentProfiles(dir).map((p) => ({ ...fileItem(b, `${p.name}.md`, { name: p.name, detail: 'description' in p ? p.description : undefined }), ...('error' in p && { error: p.error }) }));
@@ -217,7 +226,7 @@ const slugOf = (root: string): string => root.replace(/[^A-Za-z0-9]/g, '-');
 export const listsDeletable = (sources: ResourceSource[], id: string, rel: string): boolean =>
   sources.some((s) => s.groups.some((g) => g.items.some((i) => deletable(g.kind, i) && i.open!.rootId === id && (i.open!.folder ?? i.open!.path) === rel)));
 
-export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): ResourceSource[] {
+export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, rootOf?: (c: Robot) => string | undefined): ResourceSource[] {
   const user: Base = { rootId: rootIdOf(claude.dir), root: claude.dir };
   const cj = readClaudeJson(claude.json);
   const claudeJson = cj && !(cj instanceof Error) ? cj : {};
@@ -237,7 +246,7 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
     ]),
   };
 
-  const roots = fleetRoots(state);
+  const roots = fleetRoots(state, rootOf);
   const repos = roots.map((r): ResourceSource => {
     const b: Base = { rootId: rootIdOf(r.root), root: r.root };
     const memory = `projects/${slugOf(r.root)}/memory`;
