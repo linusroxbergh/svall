@@ -72,6 +72,11 @@ describe('files of a robot on a worker', () => {
     // the path alone names a folder on this Mac, where no robot works in it
     expect(await dispatch({ id: 3, method: 'fs.read', params: { id: `r:${main}`, path: 'a.txt' } }, w.home.ctx)).toMatchObject({ error: { code: 'not_found' } });
     expect(await dispatch({ id: 4, method: 'fs.list', params: { id: 'c_1', path: '' } }, w.home.ctx)).toEqual({ id: 4, result: { entries: [{ name: 'a.txt', kind: 'file' }] } });
+    // with the worker gone, nothing answers from this Mac's disk
+    w.home.links.stop();
+    for (const id of ['c_1', farRootId(W, main)]) {
+      expect(await dispatch({ id: 5, method: 'fs.read', params: { id, path: 'a.txt' } }, w.home.ctx)).toEqual({ id: 5, error: { code: 'not_reachable', message: 'w1 is not reachable' } });
+    }
   });
 
   it('a 1.5 MB file reads whole over the link', async () => {
@@ -109,6 +114,7 @@ describe('files of a robot on a worker', () => {
     got.length = 0;
     fs.writeFileSync(path.join(tree, 'c.txt'), 'newer\n');
     await until(() => expect(got).toContainEqual({ event: 'repo.changed', data: { id: 'c_1' } }));
+    expect(calls).toBe(2);
   });
 
   it('resources.get at home lists the worker\'s repo source with the home\'s docs folder, and none of its global or docs sources', async () => {
