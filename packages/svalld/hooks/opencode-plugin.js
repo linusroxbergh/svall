@@ -41,6 +41,8 @@ const commandLine = () => {
 const monitors = new Map();
 // a command that ends at once can exit before its tool call has returned
 const exited = new Set();
+// child sessions with a run under way, each by its top-level session; a child keeps its folder when its parent moves
+const running = new Map();
 
 async function setup(ctx) {
   // a session an older svalld started carries SVALL_CHAR_ID
@@ -122,8 +124,9 @@ async function setup(ctx) {
   // questions open anywhere in the session tree, each with what it asks; a tool another subagent runs meanwhile does not
   // answer them
   const asking = new Map();
-  // the TUI shows one, permissions before questions, each by session and then by when it was asked, and Enter answers it
-  const rank = ([id, a]) => `${a.question ? 1 : 0} ${a.session} ${id}`;
+  // the TUI shows one, permissions before questions and a session's questions before an MCP server's, each by session and
+  // then by when it was asked, and Enter answers it
+  const rank = ([id, a]) => `${a.question ? 1 : 0}${a.mcp ? 1 : 0} ${a.session} ${id}`;
   // the card shows the same one a moment late, so a question the TUI answers by itself, as with --auto, never blocks it
   let shown;
   let showing;
@@ -139,9 +142,10 @@ async function setup(ctx) {
       else void hook('PreToolUse', await rootOf(last.session));
     }, SHOW_MS);
   };
-  const ask = (id, session, fields, question = false) => { asking.set(id, { session, fields, question }); show(); };
-  // OpenCode forgets the questions of a run that stops before they are answered, and says nothing of it
-  const drop = (session) => { for (const [id, a] of asking) if (a.session === session && asking.delete(id)) show(); };
+  const ask = (id, session, fields, question = false, mcp = false) => { asking.set(id, { session, fields, question, mcp }); show(); };
+  // OpenCode forgets the questions of a run that stops before they are answered, and says nothing of it; an MCP server's
+  // form, which may wait on any session's call, it always answers or cancels
+  const drop = (session) => { for (const [id, a] of asking) if (a.session === session && !a.mcp && asking.delete(id)) show(); };
 
   // a top-level session reports in once per process, and its log exists from then on
   const start = (id) => {
@@ -193,12 +197,10 @@ async function setup(ctx) {
     void send({ robotId, term, status: { sessionId: id, contextPct: Math.round((used / max) * 100), model: model.id } });
   };
 
-  // child sessions with a run under way, each by its top-level session
-  const running = new Map();
   const watching = (root) => ({
     background_tasks: [
       ...[...monitors].flatMap(([shell, r]) => (r === root ? [{ type: 'shell', id: shell }] : [])),
-      ...[...running].flatMap(([child, r]) => (r === root ? [{ type: 'subagent', id: child }] : [])),
+      ...[...running].flatMap(([child, run]) => (run.root === root ? [{ type: 'subagent', id: child }] : [])),
     ],
   });
   // a child session's runs report as a subagent's under the top-level session; one can run again and outlive its parent's turn.
@@ -206,7 +208,7 @@ async function setup(ctx) {
   const subagent = async (id, name) => {
     if (!(await parentOf(id))) return;
     const root = await rootOf(id);
-    if (name === 'SubagentStart') running.set(id, root); else running.delete(id);
+    if (name === 'SubagentStart') running.set(id, { root }); else running.delete(id);
     void hook(name, root, { agent_id: id, ...(name === 'SubagentStop' && watching(root)) });
   };
   // a run OpenCode starts by itself, as a background shell or subagent ending wakes the session, passes no prompt hook
@@ -214,7 +216,7 @@ async function setup(ctx) {
     if (await parentOf(id)) return subagent(id, 'SubagentStart');
     if (turns.has(id)) return;
     turns.set(id, ++prompts);
-    void hook('PreToolUse', id);
+    if (!asking.size) void hook('PreToolUse', id);
   };
   const end = async (id, name, fields) => {
     if (await parentOf(id)) {
@@ -254,9 +256,10 @@ async function setup(ctx) {
       case 'form.created': {
         // an MCP tool call waits on its server's form, which names no session
         const kind = p.form?.metadata?.kind;
-        const session = kind === 'mcp-elicitation' ? current() : (kind === 'question' || kind === 'websearch.provider') && p.form.sessionID;
+        const mcp = kind === 'mcp-elicitation';
+        const session = mcp ? current() : (kind === 'question' || kind === 'websearch.provider') && p.form.sessionID;
         if (!session) return;
-        return ask(p.form.id, session, { message: clip(p.form.metadata.message ?? p.form.fields?.[0]?.description ?? 'a question', 500) }, true);
+        return ask(p.form.id, session, { message: clip(p.form.metadata.message ?? p.form.fields?.[0]?.description ?? 'a question', 500) }, true, mcp);
       }
       case 'permission.replied':
         if (asking.delete(p.requestID)) show();
@@ -296,11 +299,11 @@ async function setup(ctx) {
   let heard;
   // what a new subscription can't hear, read once it has started: a turn that ended, and permissions asked or answered;
   // forms and shells have no list, so a shell that may have exited meanwhile is let go. A turn idle now ends a moment late,
-  // unless the stream ends it or a new prompt starts first; an idle subagent is let go
+  // unless the stream ends it or a new prompt starts first; a subagent idle now ends, unless it has started again
   const resync = async () => {
     await later(0);
     monitors.clear();
-    for (const id of running.keys()) void idle(id).then((now) => now && running.delete(id));
+    for (const [id, run] of running) void idle(id).then((now) => { if (now && running.get(id) === run && !quit.signal.aborted) return end(id, 'Stop'); });
     for (const [id, n] of turns) {
       void Promise.race([idle(id), later(IDLE_MS, false)]).then((now) => now && later(SHOW_MS, true))
         .then((now) => { if (now && turns.get(id) === n) return end(id, 'Stop'); }, () => {});

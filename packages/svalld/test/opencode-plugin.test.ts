@@ -93,6 +93,8 @@ const system = async (h: Record<string, Hook>, sessionID: string) => {
 const shown = () => new Promise((r) => setTimeout(r, 700));
 
 beforeEach(async () => {
+  // what the plugin keeps for every instance in a process starts empty for each test
+  vi.resetModules();
   home = makeHome();
   got = [];
   brief = 'BRIEF';
@@ -369,7 +371,7 @@ describe('the OpenCode plugin', () => {
   it("blocks the robot on an MCP server's form, which names no session, under the session running a turn, else the last one started", async () => {
     const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
     const { hooks: h, emit } = await load();
-    const form = (id: string) => emit('form.created', { form: { id, sessionID: 'global', title: 'github is requesting input', metadata: { kind: 'mcp-elicitation', server: 'github', message: 'Which repository?' }, fields: [{ key: 'repo', type: 'string', title: 'Repository' }] } });
+    const form = (id: string) => emit('form.created', { form: { id, sessionID: 'global', title: 'github is requesting input', metadata: { kind: 'mcp-elicitation', server: 'github', message: 'Which repository?' }, fields: [{ key: 'repo', type: 'string', title: 'Repository', description: 'Owner and name' }] } });
     await emit('session.created', { sessionID: SID });
     await emit('session.created', { sessionID: OTHER });
     await prompt(h, SID);
@@ -455,6 +457,29 @@ describe('the OpenCode plugin', () => {
     await shown();
     expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'Interrupt', 'UserPromptSubmit', 'SubagentStart', 'PermissionRequest', 'Stop', 'PermissionRequest']);
     expect(card()).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+    // a run OpenCode starts by itself meanwhile leaves it up
+    await emit('session.execution.started', { sessionID: SID });
+    await shown();
+    expect(card()).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+  });
+
+  it("keeps an MCP server's form up through the turn end of the session it went to, behind a session's own question", async () => {
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await emit('session.execution.started', { sessionID: SID });
+    await emit('session.execution.started', { sessionID: CHILD });
+    await emit('form.created', { form: { id: 'frm_m', sessionID: 'global', title: 'github is requesting input', metadata: { kind: 'mcp-elicitation', server: 'github', message: 'Which repository?' }, fields: [] } });
+    await emit('form.created', { form: { id: 'frm_q', sessionID: CHILD, title: 'Question', metadata: { kind: 'question' }, fields: [{ key: 'q', type: 'string', description: 'Which file?' }] } });
+    await shown();
+    expect(card()).toMatchObject({ status: 'blocked', prompt: 'Which file?' });
+    await emit('session.execution.succeeded', { sessionID: SID });
+    await emit('form.replied', { id: 'frm_q', sessionID: CHILD, answer: { q: 'a.ts' } });
+    await shown();
+    expect(card()).toMatchObject({ status: 'blocked', prompt: 'Which repository?' });
+    await emit('form.replied', { id: 'frm_m', sessionID: 'global', answer: { repo: 'svall' } });
+    await shown();
+    expect(card()).toMatchObject({ status: 'working' });
   });
 
   it("lists a subagent still running at its parent's turn end, so the robot works on until it is done", async () => {
@@ -477,7 +502,7 @@ describe('the OpenCode plugin', () => {
     expect(card()).toMatchObject({ status: 'done' });
   });
 
-  it('lets go of a subagent whose run ended while the event stream was down', async () => {
+  it('ends a subagent whose run ended while the event stream was down, and its question with it', async () => {
     const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
     const f = fakeContext({ [CHILD]: SID, [OTHER]: SID });
     f.ctx.session.wait.mockImplementation(({ sessionID }) => (sessionID === OTHER ? new Promise<void>(() => {}) : Promise.resolve()));
@@ -486,9 +511,26 @@ describe('the OpenCode plugin', () => {
     await prompt(h, SID);
     await emit('session.execution.started', { sessionID: CHILD });
     await emit('session.execution.started', { sessionID: OTHER });
+    await emit('form.created', { form: { id: 'frm_1', sessionID: CHILD, title: 'Question', metadata: { kind: 'question' }, fields: [{ key: 'q', type: 'string', description: 'Which file?' }] } });
+    await shown();
     await fail();
     await waitFor(() => names().includes('Stop'));
-    expect((got.at(-1) as { hook: Record<string, unknown> }).hook).toMatchObject({ name: 'Stop', backgroundTasks: 1, backgroundAgentIds: [OTHER] });
+    await shown();
+    expect(got.flatMap((e) => ('hook' in e && e.hook.name === 'SubagentStop' ? [e.hook.agentId] : []))).toEqual([CHILD]);
+    expect(got.flatMap((e) => ('hook' in e && e.hook.name === 'Stop' ? [e.hook] : []))).toMatchObject([{ backgroundTasks: 1, backgroundAgentIds: [OTHER] }]);
+    expect(card()).toMatchObject({ status: 'working', background: true });
+  });
+
+  it('lists a subagent the other instance of a moved session heard start', async () => {
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
+    const { emit: emitMoved } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await emit('session.execution.started', { sessionID: SID });
+    await emitMoved('session.execution.started', { sessionID: CHILD });
+    await emit('session.execution.succeeded', { sessionID: SID });
+    await waitFor(() => names().includes('Stop'));
+    expect(got.flatMap((e) => ('hook' in e && e.hook.name === 'Stop' ? [e.hook] : []))).toMatchObject([{ backgroundTasks: 1, backgroundAgentIds: [CHILD] }]);
   });
 
   it('reports a run OpenCode starts by itself, as when a background shell exits, which passes no prompt', async () => {
