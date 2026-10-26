@@ -143,6 +143,15 @@ describe('a worker serving its robots while the home is away', () => {
     ]);
   });
 
+  it('robot.seen of a robot here is taken here with the home away, and goes home as its report, not a mutation', async () => {
+    const { w, call, mutations } = setup();
+    w.worker.store.update((d) => { d.robots.c_1.unread = true; });
+    expect(await call('robot.seen', { id: 'c_1' })).toMatchObject({ result: { id: 'c_1', unread: false } });
+    expect(w.worker.store.state.robots.c_1.unread).toBe(false);
+    expect(mutations()).toEqual([]);
+    expect(w.worker.outbox.after(w.worker.outbox.acked()).at(-1)).toMatchObject({ kind: 'robot.sync', data: { robotId: 'c_1', fields: { unread: false } } });
+  });
+
   it('island.create and robot.update of a home robot are still refused with the one sentence', async () => {
     const { w, call, mutations } = setup();
     w.worker.store.update((d) => { d.robots.c_home = robot({ id: 'c_home', cell: { x: 3, y: 0 } }); });
