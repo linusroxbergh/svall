@@ -85,6 +85,23 @@ describe('Outbox', () => {
     });
     expect(dropped).toEqual([1]);
     expect(a.after(0).map((e) => e.seq)).toEqual([2]);
+    a.ack(2);
+    expect(Outbox.open(paths).epoch()).toBe(a.epoch());
+  });
+
+  it('a journal that lost its epoch keeps only the entries past the acked seq it had', () => {
+    const paths = resolvePaths(makeHome());
+    const o = Outbox.open(paths);
+    for (const n of [1, 2, 3]) o.append('x', n);
+    const untrimmed = fs.readFileSync(paths.outbox);
+    o.ack(2);
+    // a crash between writing acked and trimming the file
+    fs.writeFileSync(paths.outbox, untrimmed);
+    fs.rmSync(paths.epoch);
+    const after = Outbox.open(paths);
+    expect(after.epoch()).not.toBe(o.epoch());
+    expect([after.acked(), ...seqs(after)]).toEqual([0, 3]);
+    expect(seqs(Outbox.open(paths))).toEqual([3]);
   });
 
   it('a journal that lost acked or outbox.ndjson gets a new epoch with acked 0', () => {
