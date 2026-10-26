@@ -9,6 +9,7 @@ import { blockedCells, occupiedCells, placeOnIsland, unfold, uniqueName } from '
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
+import { homeRootOf } from './repo-key.js';
 
 export const RECOVERED = (worker: string) => `recovered from ${worker}`;
 export const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while this Mac slept; it had changed here since`;
@@ -18,6 +19,16 @@ export const notHere = (worker: string, ref: string) => `${worker} added ${ref} 
 
 /** A note with `line` added, once. */
 export const withLine = (note: string, line: string): string => (note.includes(line) ? note : note ? `${note}\n${line}` : line);
+
+/** The line a robot's note gets when another robot is on its branch of its repository, the clones named as on the home. */
+export function sharedBranch(state: FleetState, id: string, homedir: string | undefined): string | undefined {
+  const c = Object.hasOwn(state.robots, id) ? state.robots[id] : undefined;
+  const branch = c?.repo?.branch;
+  if (!c || !branch) return undefined;
+  const root = (r: Robot) => homeRootOf(r, state.machines, homedir);
+  const other = Object.values(state.robots).find((r) => r.id !== id && r.repo?.branch === branch && root(r) === root(c));
+  return other && sharesBranch(branch, other.name);
+}
 
 // a line the replay writes is the user's, so the scribe leaves the note as it stands
 const addLine = (c: Robot, line: string): void => setNote(c, withLine(c.note, line));
@@ -50,10 +61,12 @@ export type Staged = { change(): void; after?(): void; docs?: true };
 /** What a worker did while this Mac slept, in the order the worker did it: the link applies each mutation once by its outbox
  *  epoch and seq, and each kind here is idempotent by content, not by mutation id. */
 export class Replay {
-  // the robots each worker's mutations started here that no reconnect has checked yet
+  // the robots each worker's mutations started here before its link was synced, for its reconnect to check
   private made = new Map<MachineId, string[]>();
+  // the robots a synced worker's mutations started here, checked once a report brings their repo
+  private fresh = new Set<string>();
 
-  constructor(private o: { store: Store; paths: Pick<Paths, 'docs'>; log: Logger }) {}
+  constructor(private o: { store: Store; paths: Pick<Paths, 'docs'>; log: Logger; synced: (machine: MachineId) => boolean; homedir: string }) {}
 
   /** Reads from disk what a mutation needs. Neither step throws: a mutation that does not parse is logged and skipped, one that
    *  cannot apply is logged and its robot's note says why. `change` writes the store alone; logs and removed docs wait for `after`. */
@@ -91,11 +104,19 @@ export class Replay {
     };
   }
 
-  /** The robots `machine` started here since the last call. */
+  /** The robots `machine` started here before its link was synced, since the last call. */
   created(machine: MachineId): string[] {
     const ids = this.made.get(machine) ?? [];
     this.made.delete(machine);
     return ids;
+  }
+
+  /** Notes the branch a robot a synced worker started shares with another, once a report has brought its repo. */
+  reported(id: string): void {
+    if (!this.fresh.has(id) || !this.o.store.state.robots[id]?.repo) return;
+    this.fresh.delete(id);
+    const line = sharedBranch(this.o.store.state, id, this.o.homedir);
+    if (line) this.o.store.update((d) => { d.robots[id].note = withLine(d.robots[id].note, line); });
   }
 
   private create(m: Mutation, machine: MachineId, worker: string, log: Logger): void {
@@ -117,7 +138,8 @@ export class Replay {
       delete c.columnSource;
       d.robots[r.id] = c;
     });
-    this.made.set(machine, [...(this.made.get(machine) ?? []), r.id]);
+    if (this.o.synced(machine)) this.fresh.add(r.id);
+    else this.made.set(machine, [...(this.made.get(machine) ?? []), r.id]);
   }
 
   // each item of an update's context as this Mac stores it, read before the hold; a path this Mac lacks is left out

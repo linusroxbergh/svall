@@ -247,10 +247,10 @@ async function start(opts: Options): Promise<Daemon> {
   let version = Date.now();
   const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(store.state.robots, id));
   // what a worker did while this Mac slept, applied once each
-  const replay = worker ? undefined : new Replay({ store, paths, log });
+  const replay = worker ? undefined : new Replay({ store, paths, log, synced: (m): boolean => links?.for(m)?.synced === true, homedir: os.homedir() });
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
-    onReport: (r, machine) => { applyReport(store, r, machine); },
+    onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (replay && kind === 'mutation') return replay.prepare(data, machine);
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();

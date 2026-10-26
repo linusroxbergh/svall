@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { placed, robot, until, world } from './world.js';
+import { W, placed, robot, until, world } from './world.js';
 
 const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
@@ -61,7 +61,7 @@ describe('reconciling a worker on reconnect', () => {
     expect(w.worker.store.state.robots.c_lost.tmux).toBeUndefined();
   });
 
-  it('robots started on a worker while linked are checked for a shared branch at its next reconnect, and flagged only when shared then', async () => {
+  it('robots started on a worker while linked are checked for a shared branch as their repo is reported, and not again at its next reconnect', async () => {
     // a clone in the worker's user folder and the same clone in this Mac's
     const repo = (home: string, branch: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch, isWorktree: false });
     const sockets: net.Socket[] = [];
@@ -84,13 +84,15 @@ describe('reconciling a worker on reconnect', () => {
     const start = async () => (await dispatch({ id: 1, method: 'robot.create', params: { islandId: 'i_1', cwd: os.tmpdir() } }, w.worker.ctx) as { result: Robot }).result.id;
     const kb = await start();
     const solo = await start();
-    w.worker.store.update((d) => { d.robots[kb].repo = repo(os.homedir(), 'kb'); d.robots[solo].repo = repo(os.homedir(), 'solo'); });
+    w.worker.store.update((d) => { d.robots[kb].repo = repo(os.homedir(), 'main'); d.robots[solo].repo = repo(os.homedir(), 'solo'); });
     await until(() => expect(w.home.store.state.robots[solo]?.repo?.branch).toBe('solo'));
-    expect(w.home.store.state.robots[kb].note).toBe('');
-    // board takes kb before w1 links again
-    w.home.store.update((d) => { d.robots.board.repo = repo('/Users/ada', 'kb'); });
+    await until(() => expect(w.home.store.state.robots[kb].note).toBe('shares branch main with board'));
+    expect(w.home.store.state.robots[solo].note).toBe('');
+    // board takes solo before w1 links again
+    w.home.store.update((d) => { d.robots.board.repo = repo('/Users/ada', 'solo'); });
     sockets.at(-1)!.destroy();
-    await until(() => expect(w.home.store.state.robots[kb].note).toBe('shares branch kb with board'));
+    await until(() => expect(sockets).toHaveLength(2));
+    await until(() => { if (!w.home.links.for(W)?.synced) throw new Error('w1 is not synced again yet'); });
     expect(w.home.store.state.robots[solo].note).toBe('');
     expect(w.home.store.state.robots.board.note).toBe('');
   });

@@ -14,8 +14,7 @@ import { applyReport, type Inventory } from '../worker/snapshot.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { probeRepo, RepoProbeParams } from './checks.js';
 import type { FarViewers } from './far-viewers.js';
-import { sharesBranch, withLine, type Replay } from './replay.js';
-import { homeRootOf } from './repo-key.js';
+import { sharedBranch, withLine, type Replay } from './replay.js';
 
 // a call over the link waits as a client's call to the daemon does: the call's own wait, and 30 s beside it
 const callMs = (method: MethodName, params: unknown): number => 30_000 + serverWait(method, params);
@@ -124,23 +123,18 @@ export class Router {
   }
 
   /**
-   * Takes a worker's inventory on the home: its reports, a note on each robot started there since the last reconnect that shares
-   * a branch in its clone, a dormant record for each robot placed there it no longer holds, and a forget for each the home closed.
+   * Takes a worker's inventory on the home: its reports, a note on each robot the replay before it started that shares a branch
+   * of its repository, a dormant record for each robot placed there it no longer holds, and a forget for each the home closed.
    */
   async reconcileWorker(inv: Inventory, machine: MachineId): Promise<void> {
     const { links } = this.o;
     if (!links) throw new Error(`${machine}: only the home reconciles a worker`);
     for (const r of inv.robots) applyReport(this.o.store, r, machine);
-    // the repo each robot's report brings, its clone named as on the home
-    const { robots, machines } = this.o.store.state;
-    const root = (c: Robot) => homeRootOf(c, machines, this.o.homedir);
+    // by the repo each robot's report brings
     const shared = new Map<string, string>();
     for (const id of this.o.replay?.created(machine) ?? []) {
-      const c = Object.hasOwn(robots, id) ? robots[id] : undefined;
-      const branch = c?.repo?.branch;
-      if (!c || !branch) continue;
-      const other = Object.values(robots).find((r) => r.id !== id && r.repo?.branch === branch && root(r) === root(c));
-      if (other) shared.set(id, sharesBranch(branch, other.name));
+      const line = sharedBranch(this.o.store.state, id, this.o.homedir);
+      if (line) shared.set(id, line);
     }
     if (shared.size) this.o.store.update((d) => { for (const [id, line] of shared) d.robots[id].note = withLine(d.robots[id].note, line); });
     const held = new Set(inv.robots.map((r) => r.robotId));

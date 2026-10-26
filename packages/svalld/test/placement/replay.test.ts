@@ -26,6 +26,7 @@ afterEach(async () => {
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' });
 const via = { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' };
 const SLEPT = 'started on w1 while this Mac slept';
+const kanban = (home: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch: 'kb', isWorktree: false });
 
 // a link onto w1's link.sock that loses the home's first ack of seq `lost()`, and the stream with it
 function losing(sock: () => string, lost: () => number): Transport {
@@ -357,7 +358,6 @@ describe('the home replaying what a worker did while it slept', () => {
   });
 
   it('a robot created offline on a branch another robot holds is flagged in its note at reconnect', async () => {
-    const kanban = (home: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch: 'kb', isWorktree: false });
     const { w, create } = setup({ home: { robots: { board: robot({ id: 'board', repo: kanban('/Users/ada') }) } } });
     const { id } = await create();
     // the worker's own clone, in its user folder as board's is in this Mac's
@@ -365,5 +365,14 @@ describe('the home replaying what a worker did while it slept', () => {
     await w.link();
     expect(w.home.store.state.robots[id].note).toBe(`${SLEPT}\nshares branch kb with board`);
     expect(w.home.store.state.robots.board.note).toBe('');
+  });
+
+  it('a robot created while linked on a branch another robot holds is flagged once its repo is reported, and left to the next reconnect no more', async () => {
+    const { w, create } = setup({ home: { robots: { board: robot({ id: 'board', repo: kanban('/Users/ada') }) } } });
+    await w.link();
+    const { id } = await create();
+    w.worker.store.update((d) => { d.robots[id].repo = kanban(os.homedir()); });
+    await until(() => expect(w.home.store.state.robots[id]?.note).toBe('shares branch kb with board'));
+    expect(w.home.replay.created(W)).toEqual([]);
   });
 });

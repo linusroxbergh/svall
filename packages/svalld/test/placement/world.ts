@@ -106,7 +106,7 @@ export function world(o: {
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
-    onReport: (r, machine) => { applyReport(homeStore, r, machine); },
+    onReport: (r, machine) => { if (applyReport(homeStore, r, machine) === 'applied') replay.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (kind === 'mutation') {
         await held;
@@ -134,7 +134,7 @@ export function world(o: {
     ...(homeDocs && { docs: homeDocs }),
     ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
   });
-  const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog });
+  const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog, synced: (m) => links.for(m)?.synced === true, homedir: '/Users/ada' });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
   const homeDocsRoot = (c: Robot) => homeRootOf(c, homeStore.state.machines, '/Users/ada');
   const homeFleet = new Fleet({
