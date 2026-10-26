@@ -139,6 +139,7 @@ export function Board() {
   const sections = useApp((s) => s.sections);
   const dropHover = useApp((s) => s.dropHover);
   const placing = useApp((s) => scribePlaces(s.fleet));
+  const placingNow = useApp((s) => s.placingNow);
   const toastShown = useApp((s) => s.settings.boardToastShown);
   const [filter, setFilter] = useState<Filter>({ needsYou: false });
   const [renaming, setRenaming] = useState<string>();
@@ -312,9 +313,9 @@ export function Board() {
             () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id }))))}
         </div>
         <span className="kb-gap" />
-        <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} aria-haspopup="menu"
+        <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
-          <PlaceGlyph />Auto-place: {placing ? 'scribe' : 'off'} ▾
+          <PlaceGlyph />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'} ▾
         </button>
         <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'kb-red tnum' : 'kb-n tnum'}>{needs}</span>

@@ -520,6 +520,16 @@ describe('Scribe, swept', () => {
     expect(w.calls[0].prompt).toContain('Columns, left to right: To do · In progress · In review · Done\nColumn: To do\n');
   });
 
+  it('places a dormant robot from its transcript with columns, and passes it over otherwise', async () => {
+    const w = world(answer({ name: { value: 'docs plan', reason: 'generated' }, note: 'n', column: 'In review' }));
+    w.island('i1');
+    w.robot('asleep', { tmux: undefined, revive: { command: 'claude --resume s' } });
+    expect(await w.scribe.sweep({ columns: true })).toEqual(['golden heron  column: In review']);
+    expect(w.store.state.robots.asleep).toMatchObject({ name: 'golden heron', note: '', column: 'review', tmux: undefined });
+    expect(await w.scribe.sweep()).toEqual([]);
+    expect(w.calls.filter((c) => !c.system.includes('island'))).toHaveLength(1);
+  });
+
   it('leaves the note to the next automatic pass after a names-only sweep', async () => {
     const w = world(answer({ name: { value: 'docs plan', reason: 'generated' }, note: 'n' }));
     w.island('i1');

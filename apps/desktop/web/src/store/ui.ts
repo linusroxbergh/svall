@@ -56,6 +56,8 @@ export type UiState = {
   // ⌘⇧A asks for an arrange, and a return from the board for an automatic one; the map, which knows the room
   // the fleet has, clears the request
   arrangeAsk: 'key' | 'auto' | false;
+  // a Place now pass is running, which the board's Auto-place chip shows
+  placingNow: boolean;
   toast?: Toast;
   linkAsk?: LinkAsk;
   menu?: PageMenu;
@@ -119,6 +121,7 @@ export type UiActions = {
   addressFocused(): void;
   askArrange(): void;
   arranged(): void;
+  setPlacingNow(busy: boolean): void;
   showToast(message: string, tone?: Toast['tone'], action?: Toast['action'], dismiss?: boolean): void;
   runToastAction(): void;
   clearToast(): void;
@@ -185,6 +188,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     webviews: {},
     addressFocus: false,
     arrangeAsk: false,
+    placingNow: false,
     toast: undefined,
     linkAsk: undefined,
     menu: undefined,
@@ -247,6 +251,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     addressFocused: () => set({ addressFocus: false }),
     askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
+    setPlacingNow: (placingNow) => set({ placingNow }),
     showToast: (message, tone = 'error', action, dismiss) => set({ toast: { text: message, tone, ...(action && { action }), ...(dismiss && { dismiss }) } }),
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },
     clearToast: () => set({ toast: undefined }),

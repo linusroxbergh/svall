@@ -555,6 +555,7 @@ test('the Auto-place chip says who places robots and switches it, and places the
   await chip.click();
   await menu.getByTestId('menu-place now').click();
   await expect(page.getByTestId('toast')).toContainText('Every robot is in its column');
+  await expect(chip).toHaveAttribute('data-busy', 'false');
 
   await chip.click();
   await menu.getByTestId('menu-scribe settings…').click();
