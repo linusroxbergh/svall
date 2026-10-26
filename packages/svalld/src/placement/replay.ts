@@ -46,7 +46,8 @@ function gives(state: FleetState, islandId: string): boolean {
  *  when the worker is to have the fleet's docs once the event is acked. */
 export type Staged = { change(): void; after?(): void; docs?: true };
 
-/** What a worker did while this Mac slept, applied here once each, in the order the worker did it. */
+/** What a worker did while this Mac slept, in the order the worker did it: the link applies each mutation once by its outbox
+ *  epoch and seq, and each kind here is idempotent by content, not by mutation id. */
 export class Replay {
   // the robots each worker's mutations started here that no reconnect has checked yet
   private made = new Map<MachineId, string[]>();
