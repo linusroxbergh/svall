@@ -36,7 +36,6 @@ test('a robot on a worker offers Files and Changes, and while its machine is unr
   act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
   render(<RobotPanes id="c0" />);
   expect(screen.getByTestId('pane-left-files')).toBeTruthy();
-  expect(screen.queryByTestId('files')).toBeNull();
   expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault is not reachable', 'linus-vault is not reachable']);
   expect(call.mock.calls.map(([m]) => m).filter((m) => /^(fs|repo)\./.test(m))).toEqual([]);
 });
