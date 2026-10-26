@@ -76,4 +76,10 @@ describe('usage across machines', () => {
     expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx)).toEqual({ id: 1, result: session });
     expect(Date.now() - asked).toBeLessThan(6_000);
   }, 15_000);
+
+  it('a worker whose answer is not a usage reading is left out, and the home\'s windows answer', async () => {
+    const w = open({ home: { robots: fleet }, worker: { robots: fleet }, far: { 'usage.get': async () => ({ available: true }) }, usage: { claude: async () => session, tails } });
+    await linked(w);
+    expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx)).toEqual({ id: 1, result: session });
+  });
 });

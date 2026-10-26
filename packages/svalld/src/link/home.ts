@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
-import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineLink, type MethodName } from '@svall/protocol';
+import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LinkFrame, type MachineLink, type MethodName, type Result } from '@svall/protocol';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
@@ -510,10 +510,14 @@ export class HomeLinks {
   }
 }
 
-/** What every connected worker answers `method` with, each asked at once with no params; one that fails or takes
- *  longer than ASK_MS is left out. */
-export async function askWorkers<T>(links: Pick<HomeLinks, 'call' | 'connectedWorkers'>, method: MethodName): Promise<{ machine: MachineId; answer: T }[]> {
+/** What every connected worker answers `method` with, each asked at once with no params; one that fails, takes
+ *  longer than ASK_MS or answers what the method's result is not is left out. */
+export async function askWorkers<M extends MethodName>(links: Pick<HomeLinks, 'call' | 'connectedWorkers'>, method: M): Promise<{ machine: MachineId; answer: Result<M> }[]> {
+  const result: z.ZodType = methods[method].result;
   const answers = await Promise.all(links.connectedWorkers().map((machine) =>
-    links.call<T>(machine, method, {}, { timeoutMs: ASK_MS }).then((answer) => ({ machine, answer }), () => undefined)));
+    links.call<unknown>(machine, method, {}, { timeoutMs: ASK_MS }).then((raw) => {
+      const answer = result.safeParse(raw);
+      return answer.success ? { machine, answer: answer.data as Result<M> } : undefined;
+    }, () => undefined)));
   return answers.filter((a) => a !== undefined);
 }

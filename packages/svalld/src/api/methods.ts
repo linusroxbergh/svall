@@ -1,6 +1,6 @@
 import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo, type UsageSnapshot } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../handover/git-extensions.js';
@@ -108,7 +108,7 @@ export const handlers: Handlers = {
   // each worker reads its own robots' usage, where their transcripts are
   'usage.get': async (_p, { usage, links }) => {
     if (!links) return usage();
-    const [home, workers] = await Promise.all([usage(), askWorkers<UsageSnapshot>(links, 'usage.get')]);
+    const [home, workers] = await Promise.all([usage(), askWorkers(links, 'usage.get')]);
     return mergeUsage(home, workers.map((w) => w.answer));
   },
   'load.get': (_p, { load }) => load(),
