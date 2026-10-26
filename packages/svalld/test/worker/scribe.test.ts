@@ -133,6 +133,19 @@ describe('the scribe on a placed robot', () => {
     expect(far).toHaveBeenCalledTimes(2);
   });
 
+  it('a pass that fails on the worker shows the end of what its child printed in the home\'s scribe error', async () => {
+    const dir = makeHome();
+    const robots = { c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }) };
+    const stderr = `${'x'.repeat(600)}Invalid API key`;
+    const fail: RunScribe = async () => { throw new Error('claude -p exited 1', { cause: stderr }); };
+    const { w, scribe } = await open({ home: { robots }, worker: { robots }, scribe: { worker: fail } });
+    grow(path.join(dir, 'c_1.jsonl'), 4000);
+
+    scribe.tick();
+    await scribe.settled();
+    expect(w.home.store.state.scribeError?.message).toBe(`claude -p exited 1: ${stderr.slice(-500)}`);
+  });
+
   it('the worker runs no pass of its own and never an island', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const dir = makeHome();

@@ -81,7 +81,10 @@ export class Router {
   async scribe(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
     const at = this.placedAt(id);
     if (!at || !this.o.links) return undefined;
-    const raw = await this.o.links.call(at, 'scribe.run', { id, only, columns, sweep }, { timeoutMs: SCRIBE_MS });
+    const raw = await this.o.links.call(at, 'scribe.run', { id, only, columns, sweep }, { timeoutMs: SCRIBE_MS }).catch((e: unknown) => {
+      const cause = e instanceof ApiError ? e.data?.cause : undefined;
+      throw typeof cause === 'string' ? new Error((e as ApiError).message, { cause }) : e;
+    });
     // a pass skipped there, and an answer this Mac cannot read, wait for the robot's next turn
     const r = FarPass.safeParse(raw);
     return r.success ? r.data : undefined;
@@ -184,7 +187,13 @@ export function workerCalls(o: { fleet: Fleet; store: Store; me: MachineId; log:
     'scribe.run': async (raw) => {
       const p = ScribeRun.safeParse(raw);
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
-      return (await fleet.scribeRead(p.data.id, p.data.only, p.data.columns, p.data.sweep)) ?? { skipped: true };
+      try {
+        return (await fleet.scribeRead(p.data.id, p.data.only, p.data.columns, p.data.sweep)) ?? { skipped: true };
+      } catch (e) {
+        // the end of what a failed child printed goes home as its cause, which the scribe shows and keeps out of the log
+        const { message, cause } = e as Error;
+        throw typeof cause === 'string' ? new ApiError('internal', message, { cause: cause.slice(-500) }) : e;
+      }
     },
     'repo.probe': async (raw) => {
       const p = RepoProbeParams.safeParse(raw);
