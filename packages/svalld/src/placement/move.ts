@@ -378,13 +378,20 @@ function watchTrust(w: Wake, j: MoveJournal, name: string, pane: string, adapter
 /**
  * Opens the terminals the move's rest closed, resuming the robot's agent, and watches for `watchMs` for its session to
  * start, answering its trust question if `trust` and it asks. Answers the resume's error, or undefined once the robot
- * is up or still coming up; a robot an earlier activation opened is up.
+ * is up or still coming up; a robot an earlier activation opened is up, and gets the second terminal that one may not have reached.
  */
 export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined> {
   const id = j.robotId;
   const c = w.store.state.robots[id];
   if (!c) return `no robot ${id}`;
-  if (c.tmux) return undefined;
+  const second = async () => {
+    if (!j.rest?.stoppedTerminals.some((t) => t.term === 2)) return;
+    await w.fleet.openSecond(id, undefined, j.id).catch((e: Error) => w.log.error(`move ${j.id}: ${c.name}'s second terminal did not open: ${e.message}`));
+  };
+  if (c.tmux) {
+    await second();
+    return undefined;
+  }
   const agent = c.revive?.command ? c.agent : undefined;
   let heard!: () => void;
   const started = new Promise<undefined>((resolve) => { heard = () => resolve(undefined); });
@@ -399,9 +406,7 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
   try {
     const open = () => w.fleet.reviveRobot(id, undefined, undefined, j.id);
     try { await (w.open ? boundary(w.open, open) : open()); } catch (e) { return (e as Error).message; }
-    if (j.rest?.stoppedTerminals.some((t) => t.term === 2)) {
-      await w.fleet.openSecond(id, undefined, j.id).catch((e: Error) => w.log.error(`move ${j.id}: ${c.name}'s second terminal did not open: ${e.message}`));
-    }
+    await second();
     const pane = w.store.state.robots[id]?.tmux?.paneId;
     const adapter = agent && sessionAdapter(agent.kind);
     if (!adapter || !pane) return undefined;
