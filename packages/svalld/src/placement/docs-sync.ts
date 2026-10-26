@@ -143,8 +143,6 @@ export function noteConflict(store: Store, machine: MachineId, c: Conflict, home
 export class HomeDocs {
   // what each path holds by a worker's last event there, so a write it made is not sent back to it
   private applied = new Map<string, { sha256?: string; machine: MachineId }>();
-  // each doc's sha in the last docs each worker was sent: the base of a change an older release journaled without one
-  private sent = new Map<MachineId, Record<string, string | undefined>>();
   private oversize = false;
 
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private quietMs = DOCS_QUIET_MS) {}
@@ -174,9 +172,8 @@ export class HomeDocs {
       if (bytes && sha256Hex(bytes) !== e.sha256) throw new Error(`${e.path} did not arrive as it left`);
       const file = inside(this.dir, e.path);
       if (!e.id) this.log.info(`docs: ${kind} of ${e.path} from ${this.nameOf(machine)} carries no id, as an older release journaled it`);
-      const base = e.base ?? (e.id ? undefined : this.sent.get(machine)?.[path.relative(this.dir, file)]);
       // past the worker's own last change, the home holds `base` only by a change made here since
-      const made = e.prev === undefined ? base : e.prev ?? undefined;
+      const made = e.prev === undefined ? e.base : e.prev ?? undefined;
       return { file, bytes, sha256: e.sha256, id: e.id ?? newMutationId(), made, prev: e.prev };
     } catch (e) {
       this.log.error(`docs: ${kind} from ${machine} dropped: ${(e as Error).message}`);
@@ -214,8 +211,7 @@ export class HomeDocs {
   }
 
   /** Sends the docs to `link`, packed once its events up to `seq` are applied here; one tar over the limit is said once and not sent. */
-  async push(link: Pick<WorkerLink, 'machine' | 'call' | 'sendBlob'>, seq: number): Promise<void> {
-    const shas = Object.fromEntries(filesIn(this.dir).map((rel) => [rel, shaOf(path.join(this.dir, rel))]));
+  async push(link: Pick<WorkerLink, 'call' | 'sendBlob'>, seq: number): Promise<void> {
     const tar = await docsTar(this.dir);
     if (tar.length > DOCS_MAX) {
       if (!this.oversize) this.log.error(`docs: ${this.dir} packs to ${(tar.length / 2 ** 20).toFixed(1)} MB, over the ${DOCS_MAX / 2 ** 20} MB a worker takes; no worker gets it`);
@@ -226,7 +222,6 @@ export class HomeDocs {
     const id = `docs_${crypto.randomUUID()}`;
     await link.call('docs.blob', { id, sha256: sha256Hex(tar), seq });
     await link.sendBlob(id, tar);
-    this.sent.set(link.machine, shas);
   }
 }
 

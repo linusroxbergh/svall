@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, type FleetState } from '@svall/protocol';
 import { repoSlug } from '../../src/docs.js';
 import { sha256Hex } from '../../src/handover/hash.js';
-import type { WorkerLink } from '../../src/link/home.js';
 import { silentLogger } from '../../src/log.js';
 import { resolvePaths } from '../../src/paths.js';
 import { concerns, docsTar, HomeDocs, noteConflict, WorkerDocs } from '../../src/placement/docs-sync.js';
@@ -267,26 +266,27 @@ describe('a doc changed on both machines', () => {
     expect(errors).toEqual([]);
   });
 
-  it('a change an older release journaled, with no id or base, is judged on what this Mac last sent that worker', async () => {
+  it('an older release\'s change, with no id or base, to a doc this Mac has is kept as a copy or refused, and said in the log and the note', () => {
     const home = path.join(makeHome(), 'docs');
-    for (const [rel, text] of [[NOTE, 'v1\n'], ['robots/c_1/plan.md', 'plan\n'], ['robots/c_1/todo.md', 'todo\n']]) put(path.join(home, rel), text);
+    put(path.join(home, NOTE), 'here\n');
+    put(path.join(home, 'robots/c_1/plan.md'), 'plan\n');
     const infos: string[] = [];
     const docs = new HomeDocs(home, { info: (m) => { infos.push(m); }, error: () => {} }, () => 'w1');
+    const store = homeStore();
     const old = (text: string) => ({ data: Buffer.from(text).toString('base64'), sha256: sha256Hex(Buffer.from(text)) });
-    // before this Mac has sent that worker any docs, a doc here counts as changed here since
-    expect(docs.apply('docs.delete', { path: 'robots/c_1/todo.md' }, W)).toEqual({ file: 'robots/c_1/todo.md' });
-    await docs.push({ machine: W, call: async () => ({}), sendBlob: async () => {} } as unknown as WorkerLink, 0);
-    put(path.join(home, NOTE), 'v2, changed here\n');
-    // unchanged here since it was sent: the delete and the write apply
-    expect(docs.apply('docs.delete', { path: 'robots/c_1/plan.md' }, W)).toBeUndefined();
-    expect(docs.apply('docs.write', { path: 'robots/c_1/todo.md', ...old('todo, done\n') }, W)).toBeUndefined();
-    // changed here since: the delete is refused and the write kept beside
-    expect(docs.apply('docs.delete', { path: NOTE }, W)).toEqual({ file: NOTE });
-    expect(docs.apply('docs.write', { path: NOTE, ...old('old\n') }, W)).toEqual({ file: NOTE, kept: expect.stringMatching(/^robots\/c_1\/notes\.w1\.mu_[0-9a-z]{10}\.conflict\.md$/) });
-    expect(fs.existsSync(path.join(home, 'robots/c_1/plan.md'))).toBe(false);
-    expect(read(path.join(home, 'robots/c_1/todo.md'))).toBe('todo, done\n');
-    expect(read(path.join(home, NOTE))).toBe('v2, changed here\n');
-    expect(infos.filter((l) => l.endsWith('carries no id, as an older release journaled it'))).toHaveLength(5);
+    const written = docs.apply('docs.write', { path: NOTE, ...old('old\n') }, W)!;
+    expect(written).toEqual({ file: NOTE, kept: expect.stringMatching(/^robots\/c_1\/notes\.w1\.mu_[0-9a-z]{10}\.conflict\.md$/) });
+    const deleted = docs.apply('docs.delete', { path: 'robots/c_1/plan.md' }, W)!;
+    expect(deleted).toEqual({ file: 'robots/c_1/plan.md' });
+    for (const c of [written, deleted]) noteConflict(store, W, c, '/Users/ada');
+    expect(read(path.join(home, NOTE))).toBe('here\n');
+    expect(read(path.join(home, written.kept!))).toBe('old\n');
+    expect(read(path.join(home, 'robots/c_1/plan.md'))).toBe('plan\n');
+    expect(store.state.robots.c_1.note).toBe([
+      `robots/c_1/notes.md changed on both w1 and this Mac; w1's version is kept as ${path.basename(written.kept!)}`,
+      'w1 deleted robots/c_1/plan.md, which changed here since; it stays',
+    ].join('\n'));
+    expect(infos.filter((l) => l.endsWith('carries no id, as an older release journaled it'))).toHaveLength(2);
   });
 
   it('changes made one after another on the worker apply at home in turn, across restarts of the home, a delete and a new file at that path included', async () => {
