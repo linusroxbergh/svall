@@ -166,6 +166,8 @@ test('an unreachable robot shows the sentence and the last screen term.lastScree
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
   expect(screen.getByTestId('terminal-last-screen').textContent).toBe('$ make test\nok');
   expect(screen.getByTestId('terminal-last-screen').scrollTop).toBe(900);
+  // a scroller the keyboard reaches, as WKWebView does not make one focusable
+  expect(screen.getByLabelText('Last screen the worker sent').tabIndex).toBe(0);
   // back in reach, the terminal stands in for it
   placed(true);
   expect(screen.queryByTestId('terminal-last-screen')).toBeNull();

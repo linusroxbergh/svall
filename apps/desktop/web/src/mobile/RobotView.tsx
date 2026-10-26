@@ -203,7 +203,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       <div className="stage">
         <div className="screen" ref={host} />
         {unreachable && (
-          <p className="unreachable" data-testid="phone-unreachable">{unreachable}</p>
+          <p className="unreachable" role="status" data-testid="phone-unreachable">{unreachable}</p>
         )}
         {failed && (
           <div className="failed">

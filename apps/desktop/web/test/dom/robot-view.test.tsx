@@ -272,7 +272,7 @@ const onVault = (reachable: boolean, mismatch?: true) => {
 test('the phone shows "<machine> is not reachable" over a placed robot\'s terminal while the home has lost it', () => {
   store.getState().setFleet(onVault(false));
   render(<RobotView id="c2" onBack={() => {}} />);
-  expect(screen.getByTestId('phone-unreachable').textContent).toBe('linus-vault is not reachable');
+  expect(screen.getByRole('status').textContent).toBe('linus-vault is not reachable');
   act(() => store.getState().setFleet(onVault(true)));
   expect(screen.queryByTestId('phone-unreachable')).toBeNull();
 });
