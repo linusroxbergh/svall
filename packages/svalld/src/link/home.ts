@@ -7,6 +7,7 @@ import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
 import type { HomeDocs } from '../placement/docs-sync.js';
 import type { Mirror } from '../placement/mirror.js';
+import type { Staged } from '../placement/replay.js';
 import { tokenFor } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
@@ -45,11 +46,9 @@ type Options = {
   log: Logger;
   release: string;
   onReport(r: RobotSync, machine: MachineId): void;
-  /** Any other event, taken before the event's hold, as a mutation is; the `change` it answers writes the store inside it. */
-  onEvent(kind: string, data: unknown, machine: MachineId): Promise<{ change(): void } | void>;
-  /** A worker's mutation: it reads the disk before the event's hold, `change` writes the store inside it and never throws,
-   *  and `after` runs once the write is tried. */
-  onMutation?(data: unknown, machine: MachineId): Promise<{ change(): void; after(): void }>;
+  /** Any event but a report: it reads the disk before the event's hold, the `change` it answers writes the store inside it
+   *  and never throws, and `after` runs once the write is tried. */
+  onEvent(kind: string, data: unknown, machine: MachineId): Promise<Staged | void>;
   onInventory(inv: Inventory, machine: MachineId): Promise<void>;
   /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
   onCall?(method: string, params: unknown): Promise<unknown>;
@@ -338,19 +337,17 @@ export class WorkerLink {
         if (!inventory) throw new Error('an event came before the inventory');
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
-          const mutation = f.kind === 'mutation' && this.o.onMutation ? await this.o.onMutation(f.data, this.machine) : undefined;
-          const event = f.kind === 'robot.sync' || mutation ? undefined : await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
+          const staged = f.kind === 'robot.sync' ? undefined : await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
             if (!(e instanceof UnknownEvent)) throw e;
             this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
           });
           await this.o.store.withheld(async () => {
             if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
-            else if (mutation) mutation.change();
-            else if (event) event.change();
+            else if (staged) staged.change();
             this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
           });
           const written = await this.o.store.flush();
-          mutation?.after();
+          if (staged) staged.after?.();
           if (!written) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
