@@ -207,7 +207,7 @@ linus-vault; move every robot back first".
 - No replica divergence protection, because there are no replicas: the only shared thing is a branch, and git owns it.
 - A worker that disappears for good: its robots stay unknown until you close them.
 - The scribe passes a robot on a worker only while this Mac is awake to ask for it.
-- A restart of this Mac's daemon forgets that screen until the worker is back.
+- A restart of this Mac's daemon forgets the last screen a worker sent until the worker is back.
 - A question an agent had open does not survive a move: the agent resumes idle and asks again.
 - The conversation travels whole: anything the agent pasted or printed in it, a key included, is in the transcript
   on both machines.

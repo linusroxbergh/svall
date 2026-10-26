@@ -82,7 +82,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     // the wheel steps of one drag move go as one input
     let typed = '';
     term.onData((d) => {
-      if (!typed) queueMicrotask(() => { const data = withoutClicks(typed); typed = ''; if (data) l.input(data); });
+      if (!typed) queueMicrotask(() => { const data = withoutClicks(typed); typed = ''; if (data && !awayRef.current) l.input(data); });
       typed += d;
     });
 

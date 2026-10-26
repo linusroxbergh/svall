@@ -3,6 +3,7 @@ import { basename } from '../paths.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
 import { readsOn } from '../placement.js';
+import { EditorView } from '@codemirror/view';
 import { editorExtensions, languageFor, readOnlyExtensions } from './codemirror.js';
 
 type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
@@ -24,7 +25,7 @@ export async function openFile(d: FilesDeps, id: string, path: string): Promise<
     try {
       const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
       const on = readsOn(d.store.getState().fleet, id);
-      const shown = on ? readOnlyExtensions() : editorExtensions(() => { void saveFile(d, id, path); });
+      const shown = on ? [readOnlyExtensions(), EditorView.lineWrapping] : editorExtensions(() => { void saveFile(d, id, path); });
       Object.assign(loadBuffer(id, path, text, mtimeMs, [shown, lang ?? []]), { root, on });
     } catch (e) {
       d.store.getState().showToast(`${path}: ${(e as Error).message}`);

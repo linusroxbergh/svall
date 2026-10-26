@@ -59,7 +59,7 @@ export const editorExtensions = (onSave: () => void): Extension => [
 
 /** A file shown, not edited: a diff, or a file on a worker. */
 export const readOnlyExtensions = (): Extension => [
-  lineNumbers(), drawSelection(), highlightSelectionMatches(), EditorView.lineWrapping, keymap.of(searchKeymap),
+  lineNumbers(), drawSelection(), highlightSelectionMatches(), keymap.of(searchKeymap),
   EditorState.readOnly.of(true), EditorView.editable.of(false), editorTheme,
 ];
 
