@@ -20,6 +20,8 @@ const variantOf = (h) => {
 const WAIT_MS = 1500;
 const SHOW_MS = 500;
 const IDLE_MS = 1000;
+// the TUI kills its server 3 s after asking it to stop
+const LEAVE_MS = 2000;
 const MAX_PROMPT = 4000;
 const MAX_TOOL = 2000;
 const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
@@ -44,12 +46,46 @@ const exited = new Set();
 // child sessions with a run under way, each by its top-level session; a child keeps its folder when its parent moves
 const running = new Map();
 
+// the top-level sessions the shared service has had a prompt for; OpenCode imports the plugin again for each location
+// and after each change to it, so the set is kept on the process
+const prompted = (globalThis[Symbol.for(`svall.prompted.${VARIANT}`)] ??= new Set());
+
+// the shared service, as it starts, resumes every turn a server's end cut short, a robot's included, and wakes a session
+// whose background job it recovers; a robot's session it runs unprompted is running outside Svall, so it is interrupted
+async function serve(ctx) {
+  const roots = new Map();
+  const rootOf = async (id) => {
+    if (!roots.has(id)) {
+      const parent = (await ctx.session.get({ sessionID: id }).catch(() => undefined))?.parentID;
+      roots.set(id, parent ? await rootOf(parent) : id);
+    }
+    return roots.get(id);
+  };
+  // a robot's session is one this build's plugin logged in a fleet home
+  const robots = (id) => {
+    let homes = [];
+    try { homes = fs.readdirSync(os.homedir()).filter((f) => /^\.svall(-[a-z][a-z0-9-]*)?$/.test(f) && variantOf(f) === VARIANT); } catch {}
+    return homes.some((h) => fs.existsSync(path.join(os.homedir(), h, 'transcripts', 'opencode', `${id}.jsonl`)));
+  };
+  const guard = async (e) => {
+    const root = await rootOf(e.sessionID);
+    if (prompted.has(root) || !robots(root)) return;
+    process.stderr.write(`svall: interrupted ${e.sessionID}, a Svall robot's session that OpenCode's service ran unprompted\n`);
+    await ctx.session.interrupt({ sessionID: e.sessionID }).catch(() => {});
+  };
+  await ctx.session.hook('prompt', async (e) => { prompted.add(await rootOf(e.sessionID)); });
+  // a compaction due at a run's first step asks the model before the context hook runs
+  await ctx.session.hook('compaction', guard);
+  await ctx.session.hook('context', guard);
+}
+
 async function setup(ctx) {
+  // the shared background service serves every session of the user, whatever pane started it
+  if (process.argv.includes('--service')) return serve(ctx);
   // a session an older svalld started carries SVALL_CHAR_ID
   const robotId = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
   const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
-  // the shared background service serves every session of the user, whatever pane started it
-  if (!robotId || variantOf(home) !== VARIANT || process.argv.includes('--service')) return;
+  if (!robotId || variantOf(home) !== VARIANT) return;
   // worktree_create puts a worktree in OpenCode's data folder, away from the repository; without it the agent makes
   // one inside the main checkout, as its brief says. An OpenCode that refuses keeps the tool, and the hooks below still go on
   try {
@@ -379,8 +415,31 @@ async function setup(ctx) {
     if (!asking.size) void hook('PostToolUse', root, { tool_name: e.tool, ...(watcher && { task_id: shellID }) });
   });
 
+  // the TUI stops its server with SIGTERM or by closing its stdin, where a reload only sets the plugin up again; the shared
+  // service would resume a turn the stop cuts short, so each is interrupted first
+  let left;
+  const leave = () => { left ??= Date.now(); };
+  process.on('SIGTERM', leave);
+  process.stdin.once('end', leave);
+
   // a quit TUI takes its server with it, so svalld learns the agent has gone from the pane's shell
-  return () => { quit.abort(); clearTimeout(showing); conn?.end(); };
+  return async () => {
+    quit.abort(); clearTimeout(showing); conn?.end();
+    process.off('SIGTERM', leave);
+    process.stdin.off('end', leave);
+    // OpenCode's teardown can begin inside the signal or EOF before this plugin's listener has run
+    await null;
+    if (process.stdin.readableEnded || process.stdin.destroyed) leave();
+    if (left === undefined) return;
+    const stop = (ids, by) => Promise.race([
+      Promise.all(ids.map((id) => ctx.session.interrupt({ sessionID: id }).then(() => ctx.session.wait({ sessionID: id })).catch(() => {}))),
+      sleep(Math.max(0, by - Date.now()), undefined, { ref: false }),
+    ]);
+    // a subagent's end wakes its parent, so subagents stop first, within half the time, and top-level sessions after
+    const ids = [...parents.keys()];
+    await stop(ids.filter((id) => parents.get(id)), left + LEAVE_MS / 2);
+    await stop(ids.filter((id) => !parents.get(id)), left + LEAVE_MS);
+  };
 }
 
 // OpenCode keeps only the first of two plugins with one id, so each build has its own
