@@ -202,6 +202,11 @@ export class WorkerLink {
     return new Promise((done) => this.takers.push({ version, done }));
   }
 
+  // what a hook throws is logged, and the link goes on
+  private hook(failed: string, run: () => void): void {
+    try { run(); } catch (e) { this.o.log.error(`${this.name}: ${failed}: ${(e as Error).message}`); }
+  }
+
   private unreachable(): ApiError {
     return new ApiError('not_reachable', `${this.name} is not reachable`);
   }
@@ -276,8 +281,7 @@ export class WorkerLink {
         void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params)));
         return;
       case 'notify':
-        // a notification is lost alone, never the link
-        try { this.o.onNotify?.(f.kind, f.data, this.machine); } catch (e) { this.o.log.error(`${this.name}: a ${f.kind} notification not taken: ${(e as Error).message}`); }
+        this.hook(`a ${f.kind} notification not taken`, () => this.o.onNotify?.(f.kind, f.data, this.machine));
         return;
       default:
         this.o.log.error(`${this.name}: ${f.t} from a worker is not taken`);
@@ -351,7 +355,7 @@ export class WorkerLink {
         await this.o.onInventory(this.inventory, this.machine);
         if (stream !== this.stream) return;
         this.synced = true;
-        this.o.onSynced?.(this.machine);
+        this.hook('onSynced failed', () => this.o.onSynced?.(this.machine));
         this.pushSoon();
         void this.pushMirror();
         this.pushDocs();
@@ -369,7 +373,7 @@ export class WorkerLink {
     this.synced = false;
     for (const w of this.waiting.splice(0)) w.done();
     this.lost(err?.message ?? 'the link closed');
-    this.o.onLost?.(this.machine);
+    this.hook('onLost failed', () => this.o.onLost?.(this.machine));
   }
 
   private lost(why: string, again = true): void {

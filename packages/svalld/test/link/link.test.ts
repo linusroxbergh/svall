@@ -95,7 +95,9 @@ function world(o: {
   const reports: string[] = [];
   let version = 100;
   let snapshots = 0;
-  const links = (connect: Transport = socketTo(workerPaths.linkSock)) => {
+  // `hooks` in place of the ones that record
+  type Hooks = Pick<ConstructorParameters<typeof HomeLinks>[0], 'onNotify' | 'onSynced' | 'onLost'>;
+  const links = (connect: Transport = socketTo(workerPaths.linkSock), hooks: Hooks = {}) => {
     const l = new HomeLinks({
       paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: () => [entry, spare], connect,
       onReport: (r, machine) => { seen.push(`report ${r.fields.cwd}`); reports.push(r.fields.cwd); applyReport(home, r, machine); },
@@ -105,6 +107,7 @@ function world(o: {
       onNotify: (kind, data, machine) => notified.push([kind, data, machine]),
       onSynced: (machine) => synced.push(machine),
       onLost: (machine) => lost.push(machine),
+      ...hooks,
     });
     stops.push(() => l.stop());
     return l;
@@ -767,6 +770,31 @@ describe('the link', () => {
     await until(() => expect(w.synced).toEqual([W, W]));
     await until(() => expect(w.linked).toEqual([true, false, true]));
     expect(w.lost).toEqual([W]);
+  });
+
+  it('a hook that throws is logged and the link goes on', async () => {
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
+    await w.worker.start();
+    const sockets: net.Socket[] = [];
+    const boom = () => { throw new Error('boom'); };
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    }, { onNotify: boom, onSynced: boom, onLost: boom });
+    links.start();
+    await until(() => expect(w.worker.connected()).toBe(true));
+    w.worker.notify('screen', {});
+    w.worker.journal('x', {});
+    await until(() => expect(w.outbox.acked()).toBe(1));
+    expect(logged).toEqual(['vault: onSynced failed: boom', 'vault: a screen notification not taken: boom']);
+    expect([sockets.length, links.for(W)?.connected()]).toEqual([1, true]);
+
+    sockets[0]!.destroy();
+    await until(() => expect(logged).toContain('vault: onLost failed: boom'));
+    await until(() => expect(sockets).toHaveLength(2));
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
   });
 
   it('refresh links a machine that has a token now, and leaves the links it holds as they are', async () => {
