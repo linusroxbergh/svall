@@ -292,6 +292,25 @@ test('a phone opening a placed robot while its worker is away shows the last scr
   expect(open).toHaveBeenCalledTimes(1);
 });
 
+test('a robot that lands on another machine while open streams again once its window is up there', async () => {
+  store.getState().setFleet(fleet());
+  store.getState().setStatus('online');
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(open).toHaveBeenCalledTimes(1);
+  // the move rests it here and lands it on linus-vault, dormant until it starts there
+  const landed = onVault(true);
+  delete landed.robots.c2.tmux;
+  act(() => store.getState().setFleet(landed));
+  expect(open).toHaveBeenCalledTimes(1);
+  const started = onVault(true);
+  started.robots.c2.tmux = { windowId: '@7', paneId: '%7' };
+  await act(async () => { store.getState().setFleet(started); });
+  expect(open).toHaveBeenCalledTimes(2);
+  expect(call).not.toHaveBeenCalledWith('robot.revive', { id: 'c2' });
+  expect(screen.queryByText('The terminal closed.')).toBeNull();
+});
+
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {
   store.getState().setFleet(onVault(false, true));
   render(<RobotView id="c2" onBack={() => {}} />);
