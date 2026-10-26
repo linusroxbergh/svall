@@ -18,8 +18,9 @@ vi.mock('../../src/mobile/boot.js', () => ({
 // xterm measures a real screen; the pane under test is the ask, not the terminal
 const open = vi.fn(() => Promise.resolve());
 const input = vi.fn();
+const resize = vi.fn();
 vi.mock('../../src/mobile/term.js', () => ({
-  linkTerminal: () => ({ input: (d: string) => input(d), resize: () => {}, open: () => open(), close: () => {} }),
+  linkTerminal: () => ({ input: (d: string) => input(d), resize: () => resize(), open: () => open(), close: () => {} }),
 }));
 // the last terminal the view made, on the alternate screen of an app tracking the mouse, and what was painted on it
 let xterm: { element: HTMLElement; typed(d: string): void; painted: string[] };
@@ -62,6 +63,7 @@ beforeEach(() => {
   fire.mockClear();
   open.mockClear();
   input.mockClear();
+  resize.mockClear();
   sessionStorage.clear();
   store = createAppStore();
   setAppStore(store);
@@ -309,6 +311,21 @@ test('a robot that lands on another machine while open streams again once its wi
   expect(open).toHaveBeenCalledTimes(2);
   expect(call).not.toHaveBeenCalledWith('robot.revive', { id: 'c2' });
   expect(screen.queryByText('The terminal closed.')).toBeNull();
+});
+
+test('the key row and the terminal\'s size go nowhere while its worker is away, and go again once it is back', () => {
+  store.getState().setFleet(onVault(false));
+  render(<RobotView id="c2" onBack={() => {}} />);
+  const esc = screen.getByRole('button', { name: 'esc' }) as HTMLButtonElement;
+  expect(esc.disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'A+' }));
+  expect(resize).not.toHaveBeenCalled();
+  act(() => store.getState().setFleet(onVault(true)));
+  expect(esc.disabled).toBe(false);
+  fireEvent.click(esc);
+  expect(input).toHaveBeenCalledWith('\x1b');
+  fireEvent.click(screen.getByRole('button', { name: 'A−' }));
+  expect(resize).toHaveBeenCalledTimes(1);
 });
 
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {

@@ -53,6 +53,9 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const [fontSize, setFontSize] = useState(readSize);
   const sizeRef = useRef(fontSize);
   sizeRef.current = fontSize;
+  // a worker out of reach takes no keys and no size
+  const awayRef = useRef(!!unreachable);
+  awayRef.current = !!unreachable;
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const [prompt, setPrompt] = useState(() => { try { return sessionStorage.getItem(DRAFT + id) ?? ''; } catch { return ''; } });
@@ -83,7 +86,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       typed += d;
     });
 
-    const resize = () => { refit.current(); l.resize(); };
+    const resize = () => { refit.current(); if (!awayRef.current) l.resize(); };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host.current!);
@@ -103,7 +106,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     if (!term) return;
     term.options.fontSize = fontSize;
     refit.current();
-    link.current?.resize();
+    if (!awayRef.current) link.current?.resize();
   }, [fontSize]);
 
   // Safari drops the socket on lock and discards backgrounded tabs; every return repaints the pane. A worker out of
@@ -237,7 +240,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       )}
       <div className="keys">
         {KEYS.map(([label, seq]) => (
-          <button key={label} onClick={() => { xterm.current?.scrollToBottom(); link.current?.input(seq); }}>{label}</button>
+          <button key={label} disabled={away} onClick={() => { xterm.current?.scrollToBottom(); link.current?.input(seq); }}>{label}</button>
         ))}
         <button onClick={() => size(-1)}>A−</button>
         <button onClick={() => size(1)}>A+</button>
