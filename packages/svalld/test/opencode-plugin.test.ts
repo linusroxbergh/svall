@@ -335,10 +335,14 @@ describe('the OpenCode plugin', () => {
     await emit('permission.replied', { sessionID: OTHER, requestID: 'per_2', reply: 'once' });
     await shown();
     await emit('form.cancelled', { id: 'frm_1', sessionID: OTHER });
-    await waitFor(() => names().length >= 5);
-    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
-    expect(got.slice(1, 4).map((e) => (e as { hook: { sessionId: string; message: string } }).hook))
-      .toMatchObject([{ sessionId: SID, message: '/etc/*', toolName: 'external_directory' }, { sessionId: SID, message: 'ls' }, { sessionId: SID, message: 'which file?' }]);
+    await waitFor(() => names().length >= 6);
+    // each by its subagent, one answered once the next is up
+    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PreToolUse', 'PermissionRequest', 'PreToolUse']);
+    expect(got.slice(1).map((e) => (e as { hook: Record<string, unknown> }).hook)).toMatchObject([
+      { sessionId: SID, agentId: CHILD, message: '/etc/*', toolName: 'external_directory' }, { sessionId: SID, agentId: OTHER, message: 'ls' },
+      { agentId: CHILD }, { sessionId: SID, agentId: OTHER, message: 'which file?' }, { agentId: OTHER },
+    ]);
+    expect(card()).toMatchObject({ status: 'working' });
   });
 
   it('leaves the robot working through a question OpenCode answers at once, as with --auto, and a refusal that answers several', async () => {
@@ -455,10 +459,14 @@ describe('the OpenCode plugin', () => {
     await shown();
     await emit('session.execution.succeeded', { sessionID: SID });
     await shown();
-    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'Interrupt', 'UserPromptSubmit', 'SubagentStart', 'PermissionRequest', 'Stop', 'PermissionRequest']);
-    expect(card()).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
-    // a run OpenCode starts by itself meanwhile leaves it up
+    // svalld holds the card on it through the Stop, so it is announced once
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'Interrupt', 'UserPromptSubmit', 'SubagentStart', 'PermissionRequest', 'Stop']);
+    expect(card()).toMatchObject({ status: 'blocked', prompt: 'rm -rf build', background: true });
+    // a run OpenCode starts by itself meanwhile leaves it up, and an Esc that ends that run shows it again
     await emit('session.execution.started', { sessionID: SID });
+    await shown();
+    expect(card()).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+    await emit('session.execution.interrupted', { sessionID: SID, reason: 'user' });
     await shown();
     expect(card()).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
   });

@@ -136,10 +136,16 @@ async function setup(ctx) {
       const [id, a] = [...asking].sort((x, y) => (rank(x) < rank(y) ? -1 : 1))[0] ?? [];
       if (id === shown?.id) return;
       const last = shown;
-      shown = id && { id, session: a.session };
+      // a subagent's question goes by its id, which svalld holds the card on through its parent's turn end. Another subagent's
+      // shown before is answered after the next is asked, or before one of no subagent's, which svalld shows only then
+      const agent = id && (await parentOf(a.session)) ? a.session : undefined;
+      shown = id && { id, session: a.session, agent };
+      const was = last?.agent && last.agent !== agent ? await rootOf(last.session) : undefined;
+      if (was && !agent) void hook('PreToolUse', was, { agent_id: last.agent });
       // the last answer sets the agent going again: the tool runs, or a refusal ends the turn
-      if (id) void hook('PermissionRequest', await rootOf(a.session), a.fields);
-      else void hook('PreToolUse', await rootOf(last.session));
+      if (id) void hook('PermissionRequest', await rootOf(a.session), { ...a.fields, ...(agent && { agent_id: agent }) });
+      else if (!last.agent) void hook('PreToolUse', await rootOf(last.session));
+      if (was && agent) void hook('PreToolUse', was, { agent_id: last.agent });
     }, SHOW_MS);
   };
   const ask = (id, session, fields, question = false, mcp = false) => { asking.set(id, { session, fields, question, mcp }); show(); };
@@ -225,8 +231,10 @@ async function setup(ctx) {
     }
     turns.delete(id);
     drop(id);
-    // the turn's end settles the card, so a question a subagent still has open shows again
-    shown = undefined;
+    // the turn's end settles the card, so a question still open shows again, unless svalld holds the card on a subagent's
+    // while one runs on
+    const held = name !== 'Interrupt' && shown?.agent && [...running.values()].some((run) => run.root === id);
+    if (!held) shown = undefined;
     void hook(name, id, { ...fields, ...watching(id) });
     show();
   };
