@@ -1717,6 +1717,30 @@ esac
     expect(MachineRegistry.load(path.join(work, 'config')).get('trift')?.record.gateway).toBe(false);
   });
 
+  it('keeps the gateway unit while the gateway there holds the record of a fleet of another Mac, and drops it over records of this Mac\'s fleets', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+    const systemctl = farSystemctl();
+    const { units } = oldGateway();
+    const records = path.join(far.base, 'gateway', 'fleets');
+    fs.mkdirSync(records, { recursive: true });
+    fs.writeFileSync(path.join(records, `${FLEET}.json`), '{}');
+    fs.writeFileSync(path.join(records, `${OTHER_FLEET}.json`), '{}');
+
+    const first = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    expect(first).toEqual({ result: 'ready', actions: [] });
+    expect(step('gateway').at(-1)).toEqual({ step: 'gateway', status: 'warn', detail: 'svall-gateway.service keeps running there for a fleet of another Mac' });
+    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
+    expect(fs.existsSync(systemctl)).toBe(false);
+
+    fs.rmSync(path.join(records, `${OTHER_FLEET}.json`));
+    events = [];
+    pinSigners(far.base);
+    const second = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(second).toEqual({ result: 'ready', actions: [] });
+    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
+  });
+
   it('drops this fleet\'s gateway before its unit goes, and a run again after the unit would not stop finishes the move', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
     const broken = path.join(work, 'systemctl-broken');

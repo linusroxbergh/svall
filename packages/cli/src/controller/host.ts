@@ -682,9 +682,10 @@ async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<Ss
   return { value: opened, detail: `connected to ${entry.record.ssh}` };
 }
 
-// $1 the units folder there, $2 the gateway's unit, $3 the fleet's, $4 the fleet's replicas folder: whether the gateway's
-// is there, whether the fleet's runs it as a worker, and whether an earlier handover left records in the replicas folder
-const UNITS = '[ -f "$1/$2" ] && echo gateway; if [ -f "$1/$3" ]; then if grep -q -- --worker "$1/$3"; then echo worker; else echo plain; fi; fi; for f in "$4"/*/*.json; do [ -f "$f" ] && echo replicas && break; done; exit 0';
+// $1 the units folder there, $2 the gateway's unit, $3 the fleet's, $4 the fleet's replicas folder, $5 the gateway's fleet
+// records: whether the gateway's unit is there, whether the fleet's runs it as a worker, whether an earlier handover left
+// records in the replicas folder, and the id of each fleet the gateway keeps a record of
+const UNITS = '[ -f "$1/$2" ] && echo gateway; if [ -f "$1/$3" ]; then if grep -q -- --worker "$1/$3"; then echo worker; else echo plain; fi; fi; for f in "$4"/*/*.json; do [ -f "$f" ] && echo replicas && break; done; for f in "$5"/*.json; do [ -f "$f" ] && echo "held $(basename "$f" .json)"; done; exit 0';
 // $1 the gateway's unit file
 const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload';
 // $1 the fleet's replicas folder: each record an earlier handover left in it, ended by a NUL
@@ -794,8 +795,9 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
   const unitDir = unitDirOf(entry.record.home);
   const replicas = path.posix.join(profileHome(d.fleet.profile ?? PRIVATE, entry.record.home), 'replicas');
   const found = await run.step('enrol', async () => {
-    const said = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE), replicas), 'the units there')).split('\n');
-    const at = { gateway: said.includes('gateway'), replicas: said.includes('replicas'), enrolled: false };
+    const said = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE), replicas, gatewayPaths(entry.record.svallBase).fleets), 'the units there')).split('\n');
+    const held = said.flatMap((line) => (line.startsWith('held ') ? [line.slice('held '.length)] : []));
+    const at = { gateway: said.includes('gateway'), replicas: said.includes('replicas'), held, enrolled: false };
     const far = await farHome(master, entry.record.svallBase, d);
     const refused = notOurs(far, name, d);
     if (refused) throw refused;
@@ -828,6 +830,11 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
           detail: `${GATEWAY_UNIT} keeps running there for ${others.join(', ')}, which ${others.length > 1 ? 'name' : 'names'} ${name} as gateway`,
           action: others.map((home) => svallAt(home, d, `host upgrade ${name}`)).join('; '),
         };
+      }
+      // as `svall uninstall` there refuses to strand them, a fleet whose record no fleet home here holds is another Mac's
+      const mine = new Set<string>([d.fleet.home, ...fleetHomes(d.homedir)].map((home) => readFleet(resolvePaths(home).fleetConfig).id));
+      if (found.held.some((id) => !mine.has(id))) {
+        return { value: undefined, status: 'warn' as const, detail: `${GATEWAY_UNIT} keeps running there for a fleet of another Mac` };
       }
       await probe(master, sh('svall-gateway-off', GATEWAY_OFF, path.posix.join(unitDir, GATEWAY_UNIT)), `systemctl --user disable --now ${GATEWAY_UNIT}`);
       return { value: undefined, detail: `${GATEWAY_UNIT} is stopped and removed there` };
