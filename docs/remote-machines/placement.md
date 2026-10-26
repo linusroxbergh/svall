@@ -165,14 +165,15 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   "linus-vault set name to "kb2" while this Mac slept; another robot has that name here".
 - A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
   "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
-- A note changed both there and here keeps this Mac's text. The worker's lands beside it as
-  `<name>.<machine>.<id>.conflict.md`, and the robot's note names it: "robots/c_4f2k9a/notes.md changed on both
-  linus-vault and this Mac; linus-vault's version is kept as notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next
-  changes there go into that copy until the worker has this Mac's text. A note deleted there and changed here stays:
-  "linus-vault deleted robots/c_4f2k9a/notes.md, which changed here since; it stays".
+- A doc changed both there and here, such as a robot's `notes.md`, keeps this Mac's text. The worker's lands beside
+  it as `<name>.<machine>.<id>.conflict.md`, and the note of each robot on the worker it concerns names it:
+  "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as
+  notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has this
+  Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
+  here since; it stays".
 - A change this Mac cannot apply is skipped, and the robot's note says why.
-- A robot started on a branch another robot works on in the same clone says so in its note: "shares branch kb with
-  board".
+- A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:
+  "shares branch kb with board".
 
 ## When something goes wrong
 
@@ -184,12 +185,12 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.
 - **A worker this Mac cannot reach**: its robots show the status unknown, and their terminals "linus-vault is not
-  reachable" with the last screen this Mac saw of each under it; a worker on another build shows that screen under its
-  own sentence. The phone reaches a robot on a worker through this Mac, its terminal and questions included; while
-  this Mac has lost the worker, the phone shows that last screen under the same sentence: "linus-vault is not
-  reachable", or "linus-vault runs a different build; upgrade it under Machines". The robots keep running there,
-  and are never marked dormant for being out of reach. Once the worker answers again, what they did meanwhile comes
-  home in order and the terminals attach again.
+  reachable" with the screen the worker last sent after the robot's turn under it; a worker on another build shows
+  that screen under its own sentence. The phone reaches a robot on a worker through this Mac, its terminal and
+  questions included; while this Mac has lost the worker, the phone shows that screen under the same sentence:
+  "linus-vault is not reachable", or "linus-vault runs a different build; upgrade it under Machines". The robots keep
+  running there, and are never marked dormant for being out of reach. Once the worker answers again, what they did
+  meanwhile comes home in order and the terminals attach again.
 - **A worker that reboots**: its robots come back dormant, as on a Mac, and revive from their cards. Restarting its
   Svall service alone leaves them running.
 
@@ -206,6 +207,7 @@ linus-vault; move every robot back first".
 - No replica divergence protection, because there are no replicas: the only shared thing is a branch, and git owns it.
 - A worker that disappears for good: its robots stay unknown until you close them.
 - The scribe passes a robot on a worker only while this Mac is awake to ask for it.
+- A restart of this Mac's daemon forgets that screen until the worker is back.
 - A question an agent had open does not survive a move: the agent resumes idle and asks again.
 - The conversation travels whole: anything the agent pasted or printed in it, a key included, is in the transcript
   on both machines.
