@@ -397,7 +397,7 @@ describe('host add', () => {
     const action = 'ssh trift.test, then claude update, then codex update; on this Mac, run opencode upgrade';
     expect(step('versions').at(-1)).toEqual({
       step: 'versions', status: 'warn',
-      detail: 'claude 2.1.280 there, behind 2.1.310 on this Mac; codex 0.162.1-alpha.2 there, behind 0.162.1 on this Mac; opencode 2.0.26 there, ahead of 2.0.22 on this Mac: a handover there and back needs the same release on both',
+      detail: 'claude 2.1.280 there, behind 2.1.310 on this Mac; codex 0.162.1-alpha.2 there, behind 0.162.1 on this Mac; opencode 2.0.26 there, ahead of 2.0.22 on this Mac: a move there and back needs the same release on both',
       action, run: 'claude update && codex update',
     });
     expect(out).toEqual({ result: 'actions', actions: [action] });
@@ -411,7 +411,7 @@ describe('host add', () => {
     await d.close();
     expect(step('versions').at(-1)).toEqual({
       step: 'versions', status: 'warn',
-      detail: 'claude 2.1.278 there, ahead of 2.1.270 on this Mac: a handover there and back needs the same release on both', action: 'on this Mac, run claude update',
+      detail: 'claude 2.1.278 there, ahead of 2.1.270 on this Mac: a move there and back needs the same release on both', action: 'on this Mac, run claude update',
     });
   });
 
@@ -1036,7 +1036,7 @@ describe('host doctor', () => {
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.find((c) => c.name === 'versions')).toEqual({
       name: 'versions', status: 'warn',
-      detail: 'claude 2.1.250 there, behind 2.1.278 on this Mac: a handover there and back needs the same release on both; ssh trift.test, then claude update',
+      detail: 'claude 2.1.250 there, behind 2.1.278 on this Mac: a move there and back needs the same release on both; ssh trift.test, then claude update',
       run: 'claude update',
     });
     // a check only reads

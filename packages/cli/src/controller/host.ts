@@ -333,8 +333,8 @@ async function farVersions(call: AgentCall): Promise<FarVersions> {
 }
 
 /**
- * Each agent CLI on both machines at the same release: a handover goes only to a machine whose release of each agent the
- * fleet runs is at least the source's, so there and back needs the same. The side behind is named with its update.
+ * Each agent CLI on both machines at the same release: a move goes only to a machine whose release of the robot's agent
+ * is at least the source's, so there and back needs the same. The side behind is named with its update.
  */
 function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: string }[] | Error, destination: string): Outcome<void> {
   if (mine instanceof Error) return { value: undefined, status: 'skip', detail: `not compared: ${mine.message}` };
@@ -349,7 +349,7 @@ function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: st
   const [there, here] = [updates(-1), updates(1)];
   return {
     value: undefined, status: 'warn',
-    detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on this Mac`).join('; ')}: a handover there and back needs the same release on both`,
+    detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on this Mac`).join('; ')}: a move there and back needs the same release on both`,
     action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`on this Mac, run ${here.join(', then ')}`] : [])].join('; '),
     ...(there.length > 0 && { run: there.join(' && ') }),
   };
