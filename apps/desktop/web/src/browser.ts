@@ -1,6 +1,7 @@
 import { robotOfKey, toUrl, type ContextItem } from '@svall/protocol';
 import type { Api } from './api.js';
 import { openUrl, webUrl, type Bridge, type Rect } from './bridge.js';
+import { openPath } from './ide/files.js';
 import { showBrowser } from './panes.js';
 import { panesOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
@@ -47,9 +48,10 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
   };
 
   // a link followed in a terminal asks whether it opens beside it, as a tab of that robot; anything the
-  // browser cannot hold, and a robot that is not there, goes straight out to the user's own browser
+  // browser cannot hold, and a robot that is not there, goes straight out to the user's own browser; a path opens in the robot's Files
   const fromTerminal = (key: string, url: string, x: number, y: number) => {
     const id = robotOfKey(key);
+    if (state().fleet.robots[id] && !/^[a-z][a-z0-9+.-]*:/i.test(url)) { void openPath({ api, store, bridge }, id, url, key === id ? 'terminal' : 'terminal2'); return; }
     if (!state().fleet.robots[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
     state().askLink({ url, robotId: id, x, y, surface: key });
   };

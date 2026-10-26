@@ -47,6 +47,7 @@ const opencodeFiles = (): Files => ({
   'packages/plugin/src/promise/event.ts': 'Pick<EventApi, "subscribe">',
   'packages/core/src/tool/plugin/shell.ts': 'metadata: { status: output.status, shellID: output.shellID } status: "running"',
   'packages/core/src/tool/plugin/opencode.ts': 'name: "worktree_create" options: { namespace: "opencode" }',
+  'packages/core/src/mcp/index.ts': 'metadata: { kind: "mcp-elicitation", server: input.server, message: params.message }',
   'packages/cli/src/commands/handlers/session/export.ts': 'process.stdout.write(JSON.stringify(data, null, 2) + EOL)',
   'packages/cli/src/commands/handlers/session/import.ts': 'stderr.write(`Session already exists${EOL}`) stdout.write(`Imported session: ${imported.data.id}${EOL}`)',
   'packages/server/src/handlers/session-error.ts': 'message: `Session not found: ${error.sessionID}`',

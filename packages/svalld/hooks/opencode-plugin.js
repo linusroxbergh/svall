@@ -20,6 +20,8 @@ const variantOf = (h) => {
 const WAIT_MS = 1500;
 const SHOW_MS = 500;
 const IDLE_MS = 1000;
+// the TUI kills its server 3 s after asking it to stop
+const LEAVE_MS = 2000;
 const MAX_PROMPT = 4000;
 const MAX_TOOL = 2000;
 const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
@@ -41,13 +43,49 @@ const commandLine = () => {
 const monitors = new Map();
 // a command that ends at once can exit before its tool call has returned
 const exited = new Set();
+// child sessions with a run under way, each by its top-level session; a child keeps its folder when its parent moves
+const running = new Map();
+
+// the top-level sessions the shared service has had a prompt for; OpenCode imports the plugin again for each location
+// and after each change to it, so the set is kept on the process
+const prompted = (globalThis[Symbol.for(`svall.prompted.${VARIANT}`)] ??= new Set());
+
+// the shared service, as it starts, resumes every turn a server's end cut short, a robot's included, and wakes a session
+// whose background job it recovers; a robot's session it runs unprompted is running outside Svall, so it is interrupted
+async function serve(ctx) {
+  const roots = new Map();
+  const rootOf = async (id) => {
+    if (!roots.has(id)) {
+      const parent = (await ctx.session.get({ sessionID: id }).catch(() => undefined))?.parentID;
+      roots.set(id, parent ? await rootOf(parent) : id);
+    }
+    return roots.get(id);
+  };
+  // a robot's session is one this build's plugin logged in a fleet home
+  const robots = (id) => {
+    let homes = [];
+    try { homes = fs.readdirSync(os.homedir()).filter((f) => /^\.svall(-[a-z][a-z0-9-]*)?$/.test(f) && variantOf(f) === VARIANT); } catch {}
+    return homes.some((h) => fs.existsSync(path.join(os.homedir(), h, 'transcripts', 'opencode', `${id}.jsonl`)));
+  };
+  const guard = async (e) => {
+    const root = await rootOf(e.sessionID);
+    if (prompted.has(root) || !robots(root)) return;
+    process.stderr.write(`svall: interrupted ${e.sessionID}, a Svall robot's session that OpenCode's service ran unprompted\n`);
+    await ctx.session.interrupt({ sessionID: e.sessionID }).catch(() => {});
+  };
+  await ctx.session.hook('prompt', async (e) => { prompted.add(await rootOf(e.sessionID)); });
+  // a compaction due at a run's first step asks the model before the context hook runs
+  await ctx.session.hook('compaction', guard);
+  await ctx.session.hook('context', guard);
+}
 
 async function setup(ctx) {
+  // the shared background service serves every session of the user, whatever pane started it
+  if (process.argv.includes('--service')) return serve(ctx);
   // a session an older svalld started carries SVALL_CHAR_ID
   const robotId = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
   const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
-  // the shared background service serves every session of the user, whatever pane started it
-  if (!robotId || variantOf(home) !== VARIANT || process.argv.includes('--service')) return;
+  if (!robotId || variantOf(home) !== VARIANT) return;
   // worktree_create puts a worktree in OpenCode's data folder, away from the repository; without it the agent makes
   // one inside the main checkout, as its brief says. An OpenCode that refuses keeps the tool, and the hooks below still go on
   try {
@@ -122,8 +160,9 @@ async function setup(ctx) {
   // questions open anywhere in the session tree, each with what it asks; a tool another subagent runs meanwhile does not
   // answer them
   const asking = new Map();
-  // the TUI shows one, permissions before questions, each by session and then by when it was asked, and Enter answers it
-  const rank = ([id, a]) => `${a.question ? 1 : 0} ${a.session} ${id}`;
+  // the TUI shows one, permissions before questions and a session's questions before an MCP server's, each by session and
+  // then by when it was asked, and Enter answers it
+  const rank = ([id, a]) => `${a.question ? 1 : 0}${a.mcp ? 1 : 0} ${a.session} ${id}`;
   // the card shows the same one a moment late, so a question the TUI answers by itself, as with --auto, never blocks it
   let shown;
   let showing;
@@ -133,15 +172,22 @@ async function setup(ctx) {
       const [id, a] = [...asking].sort((x, y) => (rank(x) < rank(y) ? -1 : 1))[0] ?? [];
       if (id === shown?.id) return;
       const last = shown;
-      shown = id && { id, session: a.session };
+      // a subagent's question goes by its id, which svalld holds the card on through its parent's turn end. Another subagent's
+      // shown before is answered after the next is asked, or before one of no subagent's, which svalld shows only then
+      const agent = id && (await parentOf(a.session)) ? a.session : undefined;
+      shown = id && { id, session: a.session, agent };
+      const was = last?.agent && last.agent !== agent ? await rootOf(last.session) : undefined;
+      if (was && !agent) void hook('PreToolUse', was, { agent_id: last.agent });
       // the last answer sets the agent going again: the tool runs, or a refusal ends the turn
-      if (id) void hook('PermissionRequest', await rootOf(a.session), a.fields);
-      else void hook('PreToolUse', await rootOf(last.session));
+      if (id) void hook('PermissionRequest', await rootOf(a.session), { ...a.fields, ...(agent && { agent_id: agent }) });
+      else if (!last.agent) void hook('PreToolUse', await rootOf(last.session));
+      if (was && agent) void hook('PreToolUse', was, { agent_id: last.agent });
     }, SHOW_MS);
   };
-  const ask = (id, session, fields, question = false) => { asking.set(id, { session, fields, question }); show(); };
-  // OpenCode forgets the questions of a run that stops before they are answered, and says nothing of it
-  const drop = (session) => { for (const [id, a] of asking) if (a.session === session && asking.delete(id)) show(); };
+  const ask = (id, session, fields, question = false, mcp = false) => { asking.set(id, { session, fields, question, mcp }); show(); };
+  // OpenCode forgets the questions of a run that stops before they are answered, and says nothing of it; an MCP server's
+  // form, which may wait on any session's call, it always answers or cancels
+  const drop = (session) => { for (const [id, a] of asking) if (a.session === session && !a.mcp && asking.delete(id)) show(); };
 
   // a top-level session reports in once per process, and its log exists from then on
   const start = (id) => {
@@ -193,13 +239,26 @@ async function setup(ctx) {
     void send({ robotId, term, status: { sessionId: id, contextPct: Math.round((used / max) * 100), model: model.id } });
   };
 
-  const watching = (root) => ({ background_tasks: [...monitors].flatMap(([shell, r]) => (r === root ? [{ type: 'shell', id: shell }] : [])) });
+  const watching = (root) => ({
+    background_tasks: [
+      ...[...monitors].flatMap(([shell, r]) => (r === root ? [{ type: 'shell', id: shell }] : [])),
+      ...[...running].flatMap(([child, run]) => (run.root === root ? [{ type: 'subagent', id: child }] : [])),
+    ],
+  });
   // a child session's runs report as a subagent's under the top-level session; one can run again and outlive its parent's turn.
   // A shell wakes the session that started it, so a subagent's run ends with the shells listed too
   const subagent = async (id, name) => {
     if (!(await parentOf(id))) return;
     const root = await rootOf(id);
+    if (name === 'SubagentStart') running.set(id, { root }); else running.delete(id);
     void hook(name, root, { agent_id: id, ...(name === 'SubagentStop' && watching(root)) });
+  };
+  // a run OpenCode starts by itself, as a background shell or subagent ending wakes the session, passes no prompt hook
+  const begin = async (id) => {
+    if (await parentOf(id)) return subagent(id, 'SubagentStart');
+    if (turns.has(id)) return;
+    turns.set(id, ++prompts);
+    if (!asking.size) void hook('PreToolUse', id);
   };
   const end = async (id, name, fields) => {
     if (await parentOf(id)) {
@@ -207,11 +266,16 @@ async function setup(ctx) {
       return subagent(id, 'SubagentStop');
     }
     turns.delete(id);
-    asking.clear();
-    clearTimeout(showing);
-    shown = undefined;
+    drop(id);
+    // the turn's end settles the card, so a question still open shows again, unless svalld holds the card on a subagent's
+    // while one runs on
+    const held = name !== 'Interrupt' && shown?.agent && [...running.values()].some((run) => run.root === id);
+    if (!held) shown = undefined;
     void hook(name, id, { ...fields, ...watching(id) });
+    show();
   };
+  // a robot's server serves its own TUI alone, whose session is the one running a turn, else the last to report in
+  const current =() => [...turns].sort(([, a], [, b]) => b - a)[0]?.[0] ?? [...started.keys()].at(-1);
   const on = (type, p) => {
     if (type === 'permission.asked' || type === 'permission.replied') heard?.add(p.id ?? p.requestID);
     switch (type) {
@@ -227,16 +291,20 @@ async function setup(ctx) {
       case 'session.step.ended':
         return context(p.sessionID, p.tokens);
       case 'session.execution.started':
-        return subagent(p.sessionID, 'SubagentStart');
+        return begin(p.sessionID);
       case 'session.text.ended':
         if (started.has(p.sessionID) && p.text?.trim()) log(p.sessionID, { kind: 'agent', text: p.text.trim() });
         return;
       case 'permission.asked':
         return ask(p.id, p.sessionID, { tool_name: p.action, message: clip(p.resources?.join(' ') || p.action, 500) });
-      case 'form.created':
-        // an MCP server's form belongs to no session
-        if (p.form?.metadata?.kind !== 'question' && p.form?.metadata?.kind !== 'websearch.provider') return;
-        return ask(p.form.id, p.form.sessionID, { message: clip(p.form.fields?.[0]?.description ?? 'a question', 500) }, true);
+      case 'form.created': {
+        // an MCP tool call waits on its server's form, which names no session
+        const kind = p.form?.metadata?.kind;
+        const mcp = kind === 'mcp-elicitation';
+        const session = mcp ? current() : (kind === 'question' || kind === 'websearch.provider') && p.form.sessionID;
+        if (!session) return;
+        return ask(p.form.id, session, { message: clip(p.form.metadata.message ?? p.form.fields?.[0]?.description ?? 'a question', 500) }, true, mcp);
+      }
       case 'permission.replied':
         if (asking.delete(p.requestID)) show();
         return;
@@ -275,10 +343,11 @@ async function setup(ctx) {
   let heard;
   // what a new subscription can't hear, read once it has started: a turn that ended, and permissions asked or answered;
   // forms and shells have no list, so a shell that may have exited meanwhile is let go. A turn idle now ends a moment late,
-  // unless the stream ends it or a new prompt starts first
+  // unless the stream ends it or a new prompt starts first; a subagent idle now ends, unless it has started again
   const resync = async () => {
     await later(0);
     monitors.clear();
+    for (const [id, run] of running) void idle(id).then((now) => { if (now && running.get(id) === run && !quit.signal.aborted) return end(id, 'Stop'); });
     for (const [id, n] of turns) {
       void Promise.race([idle(id), later(IDLE_MS, false)]).then((now) => now && later(SHOW_MS, true))
         .then((now) => { if (now && turns.get(id) === n) return end(id, 'Stop'); }, () => {});
@@ -346,8 +415,31 @@ async function setup(ctx) {
     if (!asking.size) void hook('PostToolUse', root, { tool_name: e.tool, ...(watcher && { task_id: shellID }) });
   });
 
+  // the TUI stops its server with SIGTERM or by closing its stdin, where a reload only sets the plugin up again; the shared
+  // service would resume a turn the stop cuts short, so each is interrupted first
+  let left;
+  const leave = () => { left ??= Date.now(); };
+  process.on('SIGTERM', leave);
+  process.stdin.once('end', leave);
+
   // a quit TUI takes its server with it, so svalld learns the agent has gone from the pane's shell
-  return () => { quit.abort(); clearTimeout(showing); conn?.end(); };
+  return async () => {
+    quit.abort(); clearTimeout(showing); conn?.end();
+    process.off('SIGTERM', leave);
+    process.stdin.off('end', leave);
+    // OpenCode's teardown can begin inside the signal or EOF before this plugin's listener has run
+    await null;
+    if (process.stdin.readableEnded || process.stdin.destroyed) leave();
+    if (left === undefined) return;
+    const stop = (ids, by) => Promise.race([
+      Promise.all(ids.map((id) => ctx.session.interrupt({ sessionID: id }).then(() => ctx.session.wait({ sessionID: id })).catch(() => {}))),
+      sleep(Math.max(0, by - Date.now()), undefined, { ref: false }),
+    ]);
+    // a subagent's end wakes its parent, so subagents stop first, within half the time, and top-level sessions after
+    const ids = [...parents.keys()];
+    await stop(ids.filter((id) => parents.get(id)), left + LEAVE_MS / 2);
+    await stop(ids.filter((id) => !parents.get(id)), left + LEAVE_MS);
+  };
 }
 
 // OpenCode keeps only the first of two plugins with one id, so each build has its own

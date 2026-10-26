@@ -107,7 +107,7 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
         )}
       </div>
       {chosen && o?.folder && (
-        <div className="res-files"><Tree id={o.rootId} dir={o.folder} depth={0} tick={0} onOpen={(p) => { void openFile(deps(), o.rootId, p); }} /></div>
+        <div className="res-files"><Tree id={o.rootId} root={o.rootId.slice(2)} dir={o.folder} depth={0} tick={0} onOpen={(p) => { void openFile(deps(), o.rootId, p); }} /></div>
       )}
     </>
   );

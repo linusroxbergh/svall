@@ -105,6 +105,10 @@ describe('acceptLinks', () => {
       .toEqual([{ kind: 'pr', ref: pr.ref, label: '#5', source: 'scribe', pinned: true }]);
   });
 
+  it('takes no link a person took off, though the transcript names it', () => {
+    expect(acceptLinks([{ url: 'https://docs.example/a', label: 'design doc' }], transcript, [], ['docs.example/a/'])).toEqual([]);
+  });
+
   it("keeps a held PR the branch's lookup still reads, whatever the answer says", () => {
     const own: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'scribe', prState: 'open' };
     const old: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/4', label: '#4', source: 'scribe' };

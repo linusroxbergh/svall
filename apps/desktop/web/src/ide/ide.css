@@ -1,6 +1,16 @@
 .ide { position: absolute; inset: 0; display: flex; min-height: 0; }
 .ide-side { width: clamp(140px, 30%, 240px); flex: none; overflow: hidden auto; border-right: 1px solid var(--line-soft); background: var(--surface-1); padding: var(--sp-sm) 0 var(--sp-xl); }
 .ide-root { padding: var(--sp-sm) var(--sp-xl) var(--sp-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the tree's folder: the folders above it, which scroll to keep the last in view, and the way back to the robot's root */
+.ide-where { display: flex; align-items: center; gap: var(--sp-xs); padding-right: var(--sp-md); }
+.ide-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; text-overflow: clip; }
+.ide-crumbs::-webkit-scrollbar { display: none; }
+.ide-crumb { flex: none; padding: var(--sp-2xs) var(--sp-xs); border-radius: var(--r-sm); background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
+.ide-crumb:hover { background: var(--fill-2); color: var(--ink); }
+.ide-crumb[aria-current="true"] { background: none; color: var(--ink); cursor: default; }
+.ide-sep { flex: none; padding: 0 var(--sp-2xs); }
+.ide-back { flex: 0 1 auto; max-width: 50%; margin-top: calc(-1 * var(--sp-2xs)); padding: var(--sp-2xs) var(--sp-md); border-radius: var(--r-pill); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-robot { flex: none; width: var(--dot-sm); height: var(--dot-sm); border-radius: 50%; background: var(--done); }
 .ide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 /* the Files tree takes the width it was dragged to and always leaves the editor room; undragged it is as wide as the Changes list */
 .ide-files { --tree: clamp(140px, var(--tree-w, min(30%, 240px)), 100% - 240px); }

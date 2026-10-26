@@ -80,8 +80,9 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     agent.promptId = crypto.randomUUID();
     if (e.message) agent.prompt = e.message; else delete agent.prompt;
   };
-  // a subagent's events count it and track its question: Claude Code's notification blocks, Codex's request does at once
-  // and a later event on that thread answers. One can stop and start again under its id, when a shell it left running ends
+  // a subagent's events count it and track its question: Claude Code's notification blocks, Codex's and OpenCode's request
+  // does at once and a later event on that thread answers. One can stop and start again under its id, when a shell it left
+  // running ends
   if (e.agentId) {
     const counted = agent.subagents ?? [];
     const was = counted.includes(e.agentId);
@@ -98,7 +99,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     const others = (agent.asking ?? []).filter((a) => a !== e.agentId);
     const asking = asks ? [...others, e.agentId] : others;
     if (asking.length) agent.asking = asking; else delete agent.asking;
-    if (asks && e.backend === 'codex') ask();
+    if (asks && (e.backend === 'codex' || e.backend === 'opencode')) ask();
     // the main thread's own question stays up; the poll clears a stale one
     else if (!asking.length && agent.status === 'blocked' && !(e.backend === 'codex' && agent.askedTool)) {
       agent.status = 'working';

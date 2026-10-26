@@ -261,6 +261,9 @@ final class ShellRouter {
         case .reveal(let path):
             guard isHere(path) else { return }
             ExternalURL.reveal(path)
+        case .openFile(let path):
+            guard isHere(path) else { return }
+            ExternalURL.openFile(path)
         case .setupPlan:
             AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
         case .folderPick(let start):

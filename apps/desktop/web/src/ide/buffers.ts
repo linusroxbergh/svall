@@ -121,7 +121,8 @@ export function mountView(id: string, path: string, parent: HTMLElement, onChang
   const b = buffers.get(k);
   if (!b) throw new Error(`no buffer for ${path}`);
   const view = new EditorView({
-    state: b.state, parent,
+    // the view opens on its cursor, which a path followed to a line placed before it was shown
+    state: b.state, parent, scrollTo: EditorView.scrollIntoView(b.state.selection.main.head, { y: 'center' }),
     dispatchTransactions: (trs, v) => { v.update(trs); if (trs.some((tr) => tr.docChanged)) onChange(setState(id, path, v.state)); else setState(id, path, v.state); },
   });
   views.get(k)?.destroy();

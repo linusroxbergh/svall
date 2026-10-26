@@ -105,6 +105,8 @@ export type Size = z.infer<typeof Size>;
 
 export const Island = z.object({
   id: z.string(), name: z.string(), description: z.string(), instructions: z.string(), context: z.array(ContextItem),
+  // the bare urls of scribe links a person took off, which the scribe leaves off until one is added by hand
+  removedLinks: z.array(z.string()).optional(),
   position: Cell, size: Size, seed: z.number().int(),
   // a folded island is off the map and holds no ground; a folded mission control keeps its row
   collapsed: z.boolean().optional(),
@@ -183,6 +185,8 @@ export const Robot = TerminalSlot.extend({
   panePath: z.string().optional(),
   repo: Repo.optional(),
   context: z.array(ContextItem),
+  // the bare urls of scribe and branch links a person took off, which neither adds back until one is added by hand
+  removedLinks: z.array(z.string()).optional(),
   // the pane's last output, kept current only while the robot has no agent
   shell: z.object({ lastOutputAt: z.number() }),
   // the window runs codex and no hook has come from it: codex skips a hook until it is trusted, without a word

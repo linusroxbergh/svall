@@ -30,7 +30,10 @@ describe('normalizeHook', () => {
     expect(oc({ hook_event_name: 'Notification' })).toBeUndefined();
     expect(oc({ hook_event_name: 'SubagentStart', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toMatchObject({ name: 'SubagentStart', agentId: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' });
     expect(oc({ hook_event_name: 'SubagentStop', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toMatchObject({ name: 'SubagentStop', agentId: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' });
-    expect(oc({ hook_event_name: 'PreToolUse', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toBeUndefined();
+    // a subagent's question and its answer, and nothing else of it
+    expect(oc({ hook_event_name: 'PermissionRequest', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toMatchObject({ name: 'PermissionRequest', agentId: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' });
+    expect(oc({ hook_event_name: 'PreToolUse', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toMatchObject({ name: 'PreToolUse', agentId: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' });
+    expect(oc({ hook_event_name: 'PostToolUse', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toBeUndefined();
   });
 
   it('reads the charId an OpenCode plugin loaded by an older svalld sends as the robot id', () => {

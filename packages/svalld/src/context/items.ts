@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { isPathRef, itemUrl, type ContextItem } from '@svall/protocol';
+import { bareUrl, isPathRef, itemUrl, type ContextItem } from '@svall/protocol';
 import { Invalid } from '../errors.js';
 import { expandHome } from '../paths.js';
 
@@ -23,6 +23,16 @@ export function settleItems(items: ContextItem[], current: ContextItem[] = []): 
     try { dir = fs.statSync(ref).isDirectory(); } catch { throw new Invalid(`no such file or folder: ${it.ref}`); }
     return { ...it, ref, kind: dir ? 'folder' : 'file' };
   });
+}
+
+// a scribe or branch link a person names as removed is remembered, so neither adds it back until it is added by hand
+export function setContext(holder: { context: ContextItem[]; removedLinks?: string[] }, next: ContextItem[], removed: string[] = []): void {
+  const kept = new Set(next.map((it) => bareUrl(it.ref)));
+  const named = new Set(removed.map((ref) => bareUrl(itemUrl(ref))));
+  const gone = holder.context.filter((it) => it.source !== 'manual' && named.has(bareUrl(it.ref))).map((it) => bareUrl(it.ref));
+  const all = [...new Set([...(holder.removedLinks ?? []), ...gone])].filter((ref) => !kept.has(ref));
+  holder.context = next;
+  if (all.length) holder.removedLinks = all; else delete holder.removedLinks;
 }
 
 // the PR the work is on leads a robot's links: the branch's own, as the lookup shows it or the scribe holds it (the

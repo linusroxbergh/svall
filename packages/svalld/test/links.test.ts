@@ -188,6 +188,20 @@ describe('refreshLinks', () => {
     expect(c.context.map((l) => l.label)).toEqual(['keep', 'ENG-1907']);
   });
 
+  it('adds back no branch link a person took off', async () => {
+    const { wt } = makeRepo();
+    const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
+    store.update((d) => {
+      d.robots.c_a = {
+        id: 'c_a', islandId: 'i', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: wt,
+        context: [], removedLinks: ['linear.app/acme/issue/eng-1907/'], shell: { lastOutputAt: 0 }, unread: false,
+      };
+    });
+    const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'auto' as const };
+    await refreshLinks(store, Config.parse({ linear: { workspace: 'acme', teamKeys: ['ENG'] } }), 'c_a', { lookupPr: async () => pr });
+    expect(store.state.robots.c_a.context).toEqual([pr]);
+  });
+
   it('keeps the links the scribe found in the transcript', async () => {
     const { wt } = makeRepo();
     const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
