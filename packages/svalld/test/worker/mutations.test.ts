@@ -93,6 +93,16 @@ describe('a worker serving its robots while the home is away', () => {
     expect(opened).toHaveLength(5);
   });
 
+  it('two creates at once for the fifth place start one robot, and the other is refused with the quota sentence', async () => {
+    const { create, opened, mutations } = setup();
+    for (let i = 0; i < 4; i++) await create();
+    const both = await Promise.all([create(), create()]);
+    expect(both.filter((r) => 'result' in r)).toHaveLength(1);
+    expect(both.filter((r) => 'error' in r)).toMatchObject([{ error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } }]);
+    expect(opened).toHaveLength(5);
+    expect(mutations()).toHaveLength(5);
+  });
+
   it('the quota opens again once the home has acked', async () => {
     const { w, create } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
     const quota = { error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } };

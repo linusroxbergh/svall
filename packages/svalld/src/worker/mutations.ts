@@ -43,6 +43,8 @@ export class WorkerMutations {
     // `unread` is this machine's, which its report carries
     'robot.seen': async (p) => this.o.fleet.markSeen(p.id, p.term),
   };
+  // the starts the quota let through that are not journaled yet, by the params the fleet hands back to `created`
+  private starting = new Set<object>();
 
   constructor(private o: {
     store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
@@ -76,12 +78,14 @@ export class WorkerMutations {
 
   /** Journals a robot made here, as the fleet has written it. */
   created(c: Robot, p: ParsedParams<'robot.create'>): void {
+    this.starting.delete(p);
     this.journal({ method: 'robot.create', params: p, robot: c });
   }
 
-  /** The robots started here that the home has yet to acknowledge. */
+  /** The robots started here, or being started, that the home has yet to acknowledge. */
   started(): number {
-    return this.o.outbox.after(this.o.outbox.acked()).filter((e) => e.kind === 'mutation' && (e.data as Mutation).method === 'robot.create').length;
+    const journaled = this.o.outbox.after(this.o.outbox.acked()).filter((e) => e.kind === 'mutation' && (e.data as Mutation).method === 'robot.create');
+    return journaled.length + this.starting.size;
   }
 
   /** Records each mutation the home acknowledged, with what it changed, before the outbox drops it. */
@@ -109,8 +113,14 @@ export class WorkerMutations {
     // the quota, the clone and the note are for a robot started while the home cannot be reached
     if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
     if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA));
-    if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(this.name, p.cwd));
-    return this.o.fleet.createRobot({ ...p, note: SLEPT_NOTE(this.name) });
+    const q = { ...p, note: SLEPT_NOTE(this.name) };
+    this.starting.add(q);
+    try {
+      if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(this.name, p.cwd));
+      return await this.o.fleet.createRobot(q);
+    } finally {
+      this.starting.delete(q);
+    }
   }
 
   private async update(p: ParsedParams<'robot.update'>): Promise<Result<'robot.update'>> {

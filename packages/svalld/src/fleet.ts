@@ -66,7 +66,7 @@ type Deps = {
   endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[]; platform?: NodeJS.Platform;
   // the machines robots placed elsewhere run on; on a worker, what it tells its home of each change to a robot placed here
   remote?: Router; report?: (r: RobotSync) => void;
-  // a robot made here, once its record is written and its start line sent
+  // a robot made here and the params createRobot was given, once its record is written and its start line sent
   created?: (c: Robot, p: ParsedParams<'robot.create'>) => void;
 };
 // a note given at the start is the user's
