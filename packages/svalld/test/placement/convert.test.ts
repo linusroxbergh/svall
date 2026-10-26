@@ -83,6 +83,25 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(stashes(g, main)).toBe(stash);
   });
 
+  it('one that fails once its worktree is made takes the worktree and its branch away again, and main keeps every change', async () => {
+    const { main, g } = mainCheckout();
+    put(main, 'a.txt', 'one\nstaged\n');
+    g(main, 'add', 'a.txt');
+    put(main, 'b.txt', 'two\nunstaged\n');
+    put(main, 'notes.md', 'untracked\n');
+    const before = [g(main, 'diff', '--cached'), g(main, 'diff'), g(main, 'status', '--porcelain')];
+    // a patch that will not apply there, as under an LFS or eol filter
+    const failing: typeof handoverGit = async (args, cwd) => (args[0] === 'apply' && args.includes('--index')
+      ? { code: 1, stdout: '', stderr: 'error: patch failed: a.txt:1' } : handoverGit(args, cwd));
+
+    await expect(convertMainCheckout(main, { git: failing, slug: 'kanban' })).rejects.toThrow('patch failed');
+
+    expect(fs.existsSync(path.join(main, '.claude/worktrees/kanban'))).toBe(false);
+    expect(g(main, 'worktree', 'list', '--porcelain')).not.toContain('kanban');
+    expect(g(main, 'branch', '--list', 'kanban')).toBe('');
+    expect([g(main, 'diff', '--cached'), g(main, 'diff'), g(main, 'status', '--porcelain')]).toEqual(before);
+  });
+
   it('a submodule\'s own uncommitted edits stay in main even when the config says submodule.recurse', async () => {
     const { base, main, g } = mainCheckout();
     const lib = path.join(base, 'lib');

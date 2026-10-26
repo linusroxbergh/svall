@@ -40,6 +40,7 @@ function remove(root: string, rel: string): void {
 /**
  * Moves what the main checkout holds beyond its HEAD into a new worktree on a new branch `slug`, through the bundle's
  * patches and tar so staged and unstaged stay apart, and leaves main clean on its branch. The stash list is never touched.
+ * A failure before main is reset takes the worktree and its branch away again, so the folder stands only for a conversion.
  */
 export async function convertMainCheckout(main: string, o: { git: GitRunner; slug: string }): Promise<{ root: string; branch: string }> {
   const { git, slug } = o;
@@ -52,9 +53,18 @@ export async function convertMainCheckout(main: string, o: { git: GitRunner; slu
     const carry = (await untrackedFiles(main, git)).filter(isCredential);
     const manifest = await buildBundle(main, { git, into, have: [head], carry });
     await must(git, ['worktree', 'add', '-q', '-b', slug, root, head], main);
-    await applyBundle(root, into, { ...manifest, branch: slug }, git);
-    // main is reset only while it still holds exactly what the worktree now does
-    for (const at of [root, main]) if (await fingerprintOf(at, git) !== manifest.fingerprint) throw new Error(`${at} does not match the changes carried from ${main}`);
+    try {
+      await applyBundle(root, into, { ...manifest, branch: slug }, git);
+      // main is reset only while it still holds exactly what the worktree now does
+      for (const at of [root, main]) if (await fingerprintOf(at, git) !== manifest.fingerprint) throw new Error(`${at} does not match the changes carried from ${main}`);
+    } catch (e) {
+      if ((await git(['worktree', 'remove', '--force', root], main)).code !== 0) {
+        fs.rmSync(root, { recursive: true, force: true });
+        await git(['worktree', 'prune'], main);
+      }
+      await git(['branch', '-q', '-D', slug], main);
+      throw e;
+    }
     // index and tracked files back to HEAD at once, staged new files included; submodule checkouts are left as they are
     await must(git, ['reset', '-q', '--hard', '--no-recurse-submodules', head], main);
     for (const u of manifest.untracked) remove(main, u.path);
