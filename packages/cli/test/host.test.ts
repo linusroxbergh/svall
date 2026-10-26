@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, OLDEST_STATE_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState } from '@svall/protocol';
+import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { shq } from '@svall/svalld/text';
@@ -28,6 +29,8 @@ const OTHER_FLEET = FleetId.parse('0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70');
 // a machine an earlier release made this fleet's gateway
 const MILL = MachineId.parse('55555555-6666-7777-8888-999999999999');
 const TOKEN = 'remote-token-never-printed';
+// the fleet home there as a worker of this Mac's fleet, as its `svall version --json` names it
+const SERVES = { homeMachineId: MAC, homeName: 'mac', fleetId: FLEET };
 // the far account's home is the Mac's, as the registry's own record names it
 const HOME = os.homedir();
 // a home no runner of these tests has
@@ -121,7 +124,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['svall-tmux-version'], o.tmux ?? { stdout: OWN_TMUX });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
   ssh.reply(['worker', 'enroll'], { stdout: `systemd unit -> ${home}/.config/systemd/user/svall-svalld@private.service\nsystemctl --user restart svall-svalld@private.service\n` });
-  ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: true }, null, 2) });
+  ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }, null, 2) });
   ssh.reply(['svall-tmux'], {});
   if (o.agents === false) return;
   const PATH = UNIT_PATH.replaceAll(HOME, home);
@@ -182,7 +185,7 @@ describe('host add', () => {
     ]);
     expect(order.slice(7)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
-      'sh -c', 'svall doctor', 'svall version', 'svall worker',
+      'sh -c', 'svall doctor', 'svall version', 'svall version', 'svall worker',
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall version', 'sh -c',
     ]);
@@ -257,6 +260,40 @@ describe('host add', () => {
       expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(said) });
       expect(registry.get('trift')).toBeUndefined();
     }
+  });
+
+  it('enrols nothing over a fleet home there that serves another Mac as a worker or runs a fleet a handover moved there, and registers nothing', async () => {
+    for (const [far, detail, action] of [
+      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
+      [{ handedOver: { fleetId: FLEET } }, 'trift runs this fleet since a handover; take it back first', 'svall handover local'],
+      [{ handedOver: { fleetId: OTHER_FLEET } }, "trift runs another Mac's fleet since a handover; take it back to that Mac first", 'on that Mac, run svall handover local'],
+    ] as const) {
+      ssh.clearReplies();
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...far }) });
+      healthy();
+      const d = await daemon();
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+      events = [];
+      const registry = MachineRegistry.load(path.join(work, 'config'));
+      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+      await d.close();
+      expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
+      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail, action });
+      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
+      expect(registry.get('trift')).toBeUndefined();
+    }
+  });
+
+  it('enrols a fleet home there that already serves this Mac as a worker again, with a new token', async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(ssh.remoteCalls().filter((w) => w.includes('enroll'))).toHaveLength(1);
+    expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeDefined();
   });
 
   it('fails the probe on a daemon that answers from another release than the one installed, and registers nothing', async () => {
@@ -1003,10 +1040,25 @@ describe('host doctor', () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: true }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     const named = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' } }));
     expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' });
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
+  });
+
+  it("fails a machine whose fleet home serves another Mac as a worker, or runs a fleet a handover moved there, with that row's action", async () => {
+    for (const [far, detail] of [
+      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first; on bea-mbp, run svall host remove trift'],
+      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, 'this fleet does not run there as a worker: svall host upgrade trift makes it one'],
+      [{ handedOver: { fleetId: FLEET } }, 'trift runs this fleet since a handover; take it back first; svall handover local'],
+    ] as const) {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['svall-space'], { stdout: DF });
+      ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...far }) });
+      expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail });
+    }
   });
 
   it('fails while this fleet names a gateway, naming the upgrade that makes it this fleet\'s worker', async () => {
@@ -1014,7 +1066,7 @@ describe('host doctor', () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: true }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     expect((await doctorHost('trift', deps({ registry: registered() }))).checks.map((c) => c.name)).not.toContain('fleet');
     fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE }));
     const report = await doctorHost('trift', deps({ registry: registered() }));
@@ -1057,11 +1109,11 @@ describe('host doctor', () => {
   });
 
   it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {
+    const config = path.join(work, 'config');
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off for linus' }) });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: true }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: { ...SERVES, homeMachineId: machineId(config) } }) });
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
-    const config = path.join(work, 'config');
     registered().save();
     const { hostCommands, lastChecks } = await import('../src/commands/host.js');
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -1241,9 +1293,11 @@ describe('host upgrade', () => {
     const svall = (version: string, protocol: number, schema: number | null = STATE_SCHEMA_VERSION) => `#!/bin/sh
 base='${base}'
 now() { basename "$(readlink "$base/current")"; }
+[ "$1" = -p ] && shift 2
 case "$1" in
   connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
-  version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2)}' ;;
+  version) x=; for k in worker handedOver; do [ -f '${home}/.svall/'$k ] && x="$x,\\"$k\\":$(cat '${home}/.svall/'$k)"; done
+    printf '%s%s\\n}\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2).slice(0, -2)}' "$x" ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
   setup)
@@ -1270,10 +1324,11 @@ esac
       fs.copyFileSync(o.pins ?? signer.signers, `${base}/releases/${version}/release/allowed_signers`);
     }
     fs.symlinkSync(`${base}/releases/${o.releases.at(-1)![0]}`, `${base}/current`);
-    // the fleet's unit there, which runs it as this fleet's worker
+    // the fleet's unit there, which runs it as this fleet's worker, as its worker.json says
     const units = path.join(home, '.config', 'systemd', 'user');
     fs.mkdirSync(units, { recursive: true });
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${base}/current/bin/svalld" "--worker"\n`);
+    serves(SERVES);
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: base, gateway: o.gateway ?? false }, REMOTE);
     ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
@@ -1594,8 +1649,19 @@ esac
     expect(refreshed).toBe(1);
   });
 
-  /** The machine as an earlier release left it: its gateway unit, a fleet unit without --worker, and fleet.json naming it. */
+  /** What the far fleet home serves, as its `svall version --json` names it: the home it is a worker of, none, or a fleet a handover moved there. */
+  const serves = (worker?: object, handedOver?: object): void => {
+    fs.mkdirSync(path.join(work, 'far', '.svall'), { recursive: true });
+    for (const [file, value] of [['worker', worker], ['handedOver', handedOver]] as const) {
+      const at = path.join(work, 'far', '.svall', file);
+      if (value) fs.writeFileSync(at, JSON.stringify(value));
+      else fs.rmSync(at, { force: true });
+    }
+  };
+
+  /** The machine as an earlier release left it: its gateway unit, a fleet unit without --worker, fleet.json naming it, and no worker.json there. */
   const oldGateway = (): { units: string } => {
+    serves();
     const units = path.join(work, 'far', '.config', 'systemd', 'user');
     fs.writeFileSync(path.join(units, 'svall-gateway.service'), '[Service]\n');
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${work}/far/.local/share/svall/current/bin/svalld"\n`);
@@ -1680,7 +1746,8 @@ esac
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
     const systemctl = farSystemctl();
     const { units } = oldGateway();
-    // the enrolment rewrote the fleet's unit with --worker
+    // the enrolment wrote worker.json and rewrote the fleet's unit with --worker
+    serves(SERVES);
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${far.base}/current/bin/svalld" "--worker"\n`);
     const kept = copiedThere();
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
@@ -1725,6 +1792,37 @@ esac
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(fs.existsSync(systemctl)).toBe(false);
     expect(events.map((e) => e.step)).not.toContain('replicas');
+  });
+
+  it('enrols nothing over a fleet home there that serves another Mac as a worker or runs a fleet a handover moved there, and keeps the gateway', async () => {
+    for (const [worker, handedOver, detail, action] of [
+      [{ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET }, undefined, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
+      [undefined, { fleetId: FLEET }, 'trift runs this fleet since a handover; take it back first', 'svall handover local'],
+    ] as const) {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+      const systemctl = farSystemctl();
+      const { units } = oldGateway();
+      serves(worker, handedOver);
+      events = [];
+      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+      await far.close();
+      expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
+      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail, action });
+      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+      expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
+      expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
+      expect(fs.existsSync(systemctl)).toBe(false);
+      fs.rmSync(path.join(work, 'far'), { recursive: true, force: true });
+    }
+  });
+
+  it('enrols a worker unit there whose worker.json names another fleet of this Mac', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    serves({ ...SERVES, fleetId: OTHER_FLEET });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(ssh.remoteCalls().filter((w) => w.includes('enroll'))).toHaveLength(1);
   });
 
   it('names the add that enrols a machine running no unit of this fleet', async () => {
@@ -1815,7 +1913,7 @@ esac
     fs.writeFileSync(`${far.base}/releases/1.2.3/bin/tmux`, `#!/bin/sh\ncat '${served}'\n`, { mode: 0o755 });
     fs.mkdirSync(path.join(work, 'far', '.local', 'bin'), { recursive: true });
     fs.writeFileSync(path.join(work, 'far', '.local', 'bin', 'tmux'), '#!/bin/sh\necho "tmux 3.4"\n', { mode: 0o755 });
-    fs.mkdirSync(path.join(work, 'far', '.svall'));
+    fs.mkdirSync(path.join(work, 'far', '.svall'), { recursive: true });
     const sock = path.join(work, 'far', '.svall', 'tmux.sock');
     const server = net.createServer().listen(sock);
     await once(server, 'listening');
@@ -1923,6 +2021,7 @@ esac
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off' }).replace('"tmux 3.4"}', '"tmux 3.4"},{"name":"hooks","status":"fail","detail":"not installed"}'), code: 1 });
     ssh.reply(['svall-units'], { stdout: 'worker\n' });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }, null, 2) });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));

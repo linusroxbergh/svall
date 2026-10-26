@@ -220,7 +220,10 @@ async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[
 
 // daemonEnv: the agent homes the login shell there sets, which setup hands the daemon; a doctor from before it says none
 type RemoteDoctor = { checks: Check[]; daemonEnv?: Record<string, string> };
-type RemoteVersion = { release: string; protocol: number; machineId: string; signed?: boolean; worker?: true };
+type RemoteVersion = {
+  release: string; protocol: number; machineId: string; signed?: boolean;
+  worker?: { homeMachineId: string; homeName: string; fleetId: string }; handedOver?: { fleetId: string };
+};
 
 function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<RemoteDoctor> {
   const named = (name: string) => report.checks.find((c) => c.name === name);
@@ -377,10 +380,11 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyPr
 const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/svall-probe-$$"; tmux -S "$sock" new-session -d -s svall-probe sleep 30 && tmux -S "$sock" list-windows -t svall-probe >/dev/null; r=$?; tmux -S "$sock" kill-server 2>/dev/null; rm -f "$sock"; exit $r';
 
 /** Add Machine's end-to-end probe: the daemon over its tunnel from `release`, this fleet there as a worker, and a tmux window on the PATH its units run with. */
-async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string; fleet: HostDeps['fleet'] }): Promise<Outcome<void>> {
+async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string }, d: HostDeps): Promise<Outcome<void>> {
   await endToEnd(master, entry, { release: o.release });
-  const v = await remoteJson<RemoteVersion>(master, entry.record.svallBase, [...farFleet(o.fleet), 'version', '--json'], 'svall version --json');
-  if (v.worker !== true) throw new StepError(`${entry.record.name} does not serve this fleet as a worker: its fleet home there holds no worker.json`);
+  if (!servesUs(await farHome(master, entry.record.svallBase, d), d)) {
+    throw new StepError(`${entry.record.name} does not serve this fleet as a worker: its fleet home there holds no worker.json naming it`);
+  }
   const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, entry.record.svallBase)}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
   if (r.code !== 0) throw new StepError(`tmux could not open a window there (exit ${r.code}): ${r.stderr.trim().slice(0, 200) || 'no output'}`);
   return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, serves this fleet as a worker, and tmux opens and closes a window there` };
@@ -389,8 +393,29 @@ async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: strin
 // the far `svall` flag for the fleet's profile there
 const farFleet = (fleet: HostDeps['fleet']): string[] => (fleet.profile ? ['-p', shq(fleet.profile)] : []);
 
+/** What this fleet's fleet home there serves, as its own `svall version --json` reads it. */
+const farHome = (master: SshMaster, svallBase: string, d: HostDeps): Promise<RemoteVersion> =>
+  remoteJson<RemoteVersion>(master, svallBase, [...farFleet(d.fleet), 'version', '--json'], 'svall version --json');
+
+const servesUs = (v: RemoteVersion, d: HostDeps): boolean =>
+  v.worker?.homeMachineId === d.machineId() && v.worker.fleetId === readFleet(resolvePaths(d.fleet.home).fleetConfig).id;
+
+/** Why the fleet home there is not this fleet's to enrol: it serves another Mac as a worker, or a handover moved a fleet there. */
+function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undefined {
+  if (v.worker && v.worker.homeMachineId !== d.machineId()) {
+    const home = v.worker.homeName || v.worker.homeMachineId;
+    return new StepError(`${name} already serves ${home} as a worker; remove it from that Mac first`, `on ${home}, run svall host remove ${name}`);
+  }
+  if (!v.handedOver) return undefined;
+  return v.handedOver.fleetId === readFleet(resolvePaths(d.fleet.home).fleetConfig).id
+    ? new StepError(`${name} runs this fleet since a handover; take it back first`, svallAt(d.fleet.home, d, 'handover local'))
+    : new StepError(`${name} runs another Mac's fleet since a handover; take it back to that Mac first`, 'on that Mac, run svall handover local');
+}
+
 /** The machine made a worker of this fleet: a new token here, the far `svall worker enroll` with it, which restarts the fleet there with --worker. */
-async function enrol(master: SshMaster, o: { name: string; machine: MachineId; svallBase: string }, d: HostDeps): Promise<Outcome<void>> {
+async function enrol(master: SshMaster, o: { name: string; machine: MachineId; svallBase: string }, d: HostDeps, far?: RemoteVersion): Promise<Outcome<void>> {
+  const refused = notOurs(far ?? await farHome(master, o.svallBase, d), o.name, d);
+  if (refused) throw refused;
   const paths = resolvePaths(d.fleet.home);
   const fleetId = readFleet(paths.fleetConfig).id;
   const home = d.registry.localMachine().name;
@@ -545,7 +570,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
         svallBase: remote.svallBase, gateway: held?.record.gateway ?? false,
       };
-      await run.step('probe', () => addProbe(master, { id: machine, record }, { home, release: companion.version, fleet: d.fleet }));
+      await run.step('probe', () => addProbe(master, { id: machine, record }, { home, release: companion.version }, d));
       await run.step('registry', () => {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
@@ -603,15 +628,17 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       checks.push(...report.checks);
     } catch (err) { checks.push(failed('doctor', err)); }
     try {
-      const v = await remoteJson<RemoteVersion>(master, base, [...farFleet(d.fleet), 'version', '--json'], 'svall version --json');
+      const v = await farHome(master, base, d);
       release = v.release;
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
       checks.push({
         name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
         detail: `${v.release} (${signedWord(v.signed)}), protocol ${v.protocol}; this controller runs ${d.controller.release} (${signedWord(d.controller.signed)}), protocol ${d.controller.protocol}`,
       });
-      checks.push(v.worker === true ? { name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' }
-        : { name: 'worker', status: 'fail', detail: `this fleet does not run there as a worker: svall host upgrade ${entry.record.name} makes it one` });
+      const refused = notOurs(v, entry.record.name, d);
+      checks.push(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }
+        : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' }
+          : { name: 'worker', status: 'fail', detail: `this fleet does not run there as a worker: svall host upgrade ${entry.record.name} makes it one` });
     } catch (err) { checks.push(failed('release', err)); }
     const left = gatewayLeft(d);
     if (left) checks.push({ name: 'fleet', status: 'fail', detail: `${left.detail}; ${left.action}` });
@@ -769,11 +796,14 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
   const found = await run.step('enrol', async () => {
     const said = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE), replicas), 'the units there')).split('\n');
     const at = { gateway: said.includes('gateway'), replicas: said.includes('replicas'), enrolled: false };
-    if (said.includes('worker')) return { value: at, status: 'skip' as const, detail: `${name} serves this fleet as a worker` };
-    if (!at.gateway && !said.includes('plain')) {
+    const far = await farHome(master, entry.record.svallBase, d);
+    const refused = notOurs(far, name, d);
+    if (refused) throw refused;
+    if (said.includes('worker') && servesUs(far, d)) return { value: at, status: 'skip' as const, detail: `${name} serves this fleet as a worker` };
+    if (!at.gateway && !said.includes('plain') && !said.includes('worker')) {
       return { value: at, status: 'warn' as const, detail: `no unit of this fleet runs on ${name}`, action: `svall host add ${name} --ssh ${entry.record.ssh} again makes it this fleet's worker` };
     }
-    const enrolled = await enrol(master, { name, machine: entry.id, svallBase: entry.record.svallBase }, d);
+    const enrolled = await enrol(master, { name, machine: entry.id, svallBase: entry.record.svallBase }, d, far);
     return { ...enrolled, value: { ...at, enrolled: true } };
   });
   // before the gateway unit goes, so a run stopped past here leaves a fleet with no gateway, not one naming a worker
