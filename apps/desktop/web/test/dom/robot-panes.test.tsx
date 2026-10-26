@@ -41,6 +41,14 @@ test('a robot on a worker offers Files and Changes, and while its machine is unr
   expect(call.mock.calls.map(([m]) => m).filter((m) => /^(fs|repo)\./.test(m))).toEqual([]);
 });
 
+test('while its machine runs a different build, Files and Changes say so as the terminal does', () => {
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  act(() => store.getState().applyPatch([{ op: 'replace', path: `/machines/${VAULT}`, value: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } }]));
+  act(() => store.getState().setPanes('c0', { left: 'files', right: 'changes' }));
+  render(<RobotPanes id="c0" />);
+  expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault runs a different build; upgrade it under Machines', 'linus-vault runs a different build; upgrade it under Machines']);
+});
+
 test('a move mounts the Files view anew, to watch the folder on the machine the robot runs on now', () => {
   mounts.length = 0;
   act(() => store.getState().setPanes('c0', { left: 'files' }));
