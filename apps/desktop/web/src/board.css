@@ -6,9 +6,13 @@
 .kb-seg button[aria-pressed="true"] { background: var(--fill-3); color: var(--ink); cursor: default; }
 .kb-sep { flex: none; width: 1px; height: 20px; background: var(--line); }
 /* the island chips give way first in a narrow window, and scroll sideways rather than wrap */
-.kb-chips { flex: 0 1 auto; min-width: 0; display: flex; gap: var(--sp-lg); overflow-x: auto; scrollbar-width: none; }
+.kb-chips { position: relative; flex: 0 1 auto; min-width: 0; display: flex; gap: var(--sp-lg); overflow-x: auto; scrollbar-width: none; }
 .kb-chips::-webkit-scrollbar { display: none; }
 .kb-chips[data-more="true"] { mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); -webkit-mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); }
+.kb-page { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: var(--r-pill); color: var(--ink-2); background: var(--fill-1); border: 1px solid var(--line-soft); }
+.kb-page:hover:not(:disabled) { background: var(--fill-2); color: var(--ink); }
+.kb-page:disabled:hover { background: var(--fill-1); }
+.kb-page svg { width: 12px; height: 12px; }
 .kb-gap { flex: 1; }
 .kb-chip { flex: none; display: inline-flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: var(--w-medium); color: var(--ink-2); background: var(--fill-1); border: 1px solid var(--line-soft); white-space: nowrap; }
 .kb-chip:hover { background: var(--fill-2); color: var(--ink); }
