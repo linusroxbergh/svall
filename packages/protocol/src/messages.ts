@@ -23,12 +23,14 @@ const Url = z.string().max(MAX_URL);
 export const INSTRUCTIONS_MAX = 2_000;
 const Instructions = z.string().max(INSTRUCTIONS_MAX);
 
-// one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by
+// one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by;
+// at is when the agent reported a window read off its transcript, in ms, and a window read live has none
 export const UsageWindow = z.object({
   key: z.string(),
   label: z.string(),
   pct: z.number(),
   resetsAt: z.string().optional(),
+  at: z.number().optional(),
 });
 export type UsageWindow = z.infer<typeof UsageWindow>;
 

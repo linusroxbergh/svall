@@ -162,7 +162,7 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
       .flatMap((a) => (a.kind === 'codex' && a.transcriptPath ? [lastTokenCount(tail(a.transcriptPath))] : []))
       .flatMap((t) => (t?.limits ? [{ at: t.at, limits: t.limits }] : []))
       .sort((a, b) => b.at - a.at)[0];
-    const codex = newest ? codexWindows(newest.limits) : [];
+    const codex = newest ? codexWindows(newest.limits).map((w) => ({ ...w, at: newest.at })) : [];
     if (!agents.length) return { available: true, idle: true, windows: [] };
     // OpenCode runs on any provider and reports no plan's limits
     if (agents.every((a) => a.kind === 'opencode')) return { available: false, windows: [] };

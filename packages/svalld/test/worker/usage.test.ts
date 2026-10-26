@@ -36,7 +36,17 @@ describe('usage across machines', () => {
   it('a worker reads codex windows off its own robots\' rollouts and leaves the home\'s robots alone', async () => {
     const w = open({ worker: { robots: { c_1: running(placed, 'c_1', 'codex', '/w1/c_1.jsonl'), c_h: running(robot, 'c_h', 'codex', '/mac/c_h.jsonl') } }, usage: { tails } });
     const usage = w.worker.usage;
-    expect(await usage()).toMatchObject({ available: true, windows: [{ key: 'codex:primary', pct: 40 }] });
+    expect(await usage()).toMatchObject({ available: true, windows: [{ key: 'codex:primary', pct: 40, at: Date.parse('2026-10-25T12:00:00.000Z') }] });
+  });
+
+  it('a window more than one machine reads off a transcript shows the newest reading, in the home\'s place', () => {
+    const codex = (pct: number, at?: number) => ({ key: 'codex:primary', label: 'Codex 5 hours', pct, ...(at && { at }) });
+    const home: UsageSnapshot = { available: true, windows: [{ key: 'session', label: 'Session', pct: 10 }, codex(5, 1_000)] };
+    expect(mergeUsage(home, [{ available: true, windows: [codex(40, 3_000)] }, { available: true, windows: [codex(60, 2_000)] }]).windows)
+      .toEqual([{ key: 'session', label: 'Session', pct: 10 }, codex(40, 3_000)]);
+    expect(mergeUsage(home, [{ available: true, windows: [codex(40, 500)] }]).windows).toEqual(home.windows);
+    // a window read live was read as the panel asked, so the home's stands
+    expect(mergeUsage({ available: true, windows: [codex(5)] }, [{ available: true, windows: [codex(40, 3_000)] }]).windows).toEqual([codex(5)]);
   });
 
   it('the home\'s usage.get carries a worker\'s codex window beside its own claude windows, home first where keys meet', async () => {
