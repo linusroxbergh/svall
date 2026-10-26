@@ -79,6 +79,8 @@ describe('reconciling a worker on reconnect', () => {
     sock = w.worker.paths.linkSock;
     worlds.push(w);
     await w.link();
+    // a create takes the offline path until the worker has read the home's first ack
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
     const start = async () => (await dispatch({ id: 1, method: 'robot.create', params: { islandId: 'i_1', cwd: os.tmpdir() } }, w.worker.ctx) as { result: Robot }).result.id;
     const kb = await start();
     const solo = await start();
