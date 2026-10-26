@@ -6,7 +6,7 @@ import {
   TransferRoot, Warning,
 } from './handover.js';
 import { MoveId, MoveSheet, Refusal } from './placement.js';
-import { AgentKind, AgentStatus, BrowserTab, Cell, Robot, ContextItem, FleetState, Island, Size } from './state.js';
+import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
 const TermSize = z.object({ cols: z.number().int().min(2), rows: z.number().int().min(1) });
@@ -211,6 +211,9 @@ export const methods = {
   // without a target the robot goes first among the starred
   'robot.star': { params: z.object({ id: z.string(), targetId: z.string().optional(), after: z.boolean().optional() }), result: Robot },
   'robot.unstar': { params: Id, result: Robot },
+  // a robot placed by hand stays in its column until robot.release lets the scribe place it again
+  'robot.place': { params: z.object({ id: z.string(), columnId: z.string() }), result: Robot },
+  'robot.release': { params: Id, result: Robot },
   'robot.close': { params: Id, result: z.object({}) },
   'robot.sleep': { params: Id, result: z.object({}) },
   'robot.revive': { params: Id, result: Robot },
@@ -252,12 +255,19 @@ export const methods = {
   },
   // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran
   'machines.refresh': { params: z.object({}), result: z.object({}) },
-  // names writes only names; islands runs only the island descriptions
+  // each answers the board's columns, left to right. A name is trimmed and unlike every other column's in any case;
+  // without afterId the column goes last, and a deleted column's robots go to moveTo
+  'column.add': { params: z.object({ name: z.string(), afterId: z.string().optional() }), result: z.array(Column) },
+  'column.rename': { params: z.object({ id: z.string(), name: z.string() }), result: z.array(Column) },
+  'column.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: z.array(Column) },
+  'column.delete': { params: z.object({ id: z.string(), moveTo: z.string() }), result: z.array(Column) },
+  // names writes only names; columns only moves robots to their columns, Auto-place on or off; islands runs only the island descriptions
   'scribe.sweep': {
-    params: z.object({ names: z.boolean().optional(), islands: z.boolean().optional() }),
+    params: z.object({ names: z.boolean().optional(), columns: z.boolean().optional(), islands: z.boolean().optional() }),
     result: z.object({ lines: z.array(z.string()) }),
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+  'placing.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'worktrees.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
@@ -459,4 +469,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 31;

@@ -62,7 +62,6 @@ function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' 
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const fleet = useApp((s) => s.fleet);
-  const onBoard = useApp((s) => s.view === 'board');
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
@@ -163,7 +162,7 @@ export function SideCard({ id }: { id: string }) {
         {!placed && <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />}
       </div>
       <div className="acts">
-        {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
+        <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         {movable && (placed
           ? <button className="btn" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
           : workers.map(([m, w]) => (

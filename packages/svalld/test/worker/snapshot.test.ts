@@ -105,4 +105,18 @@ describe('applyReport', () => {
     expect(home.state.robots.r_1).toEqual({ ...there, name: 'kept' });
     expect(applyReport(home, { ...report, robotId: 'r_gone' }, me)).toBe('unknown');
   });
+
+  it("leaves a robot's board column to the home: a report keeps it, and a snapshot brings the home's", () => {
+    const at = { machine: me, placement: { generation: 1 } };
+    const { store: home } = storeWith(fleet([robot('r_1', { ...at, column: 'review', columnSource: 'manual' })]));
+    const report = ownedReport(robot('r_1', { ...at, unread: true }));
+    expect(applyReport(home, { ...report, fields: { ...report.fields, column: 'todo' } as RobotSync['fields'] }, me)).toBe('applied');
+    expect(home.state.robots.r_1).toMatchObject({ column: 'review', columnSource: 'manual', unread: true });
+
+    const { store: worker } = storeWith(fleet([robot('r_1', { ...at, column: 'todo', unread: true })]));
+    const columns = [{ id: 'todo', name: 'Backlog' }, { id: 'review', name: 'Review' }];
+    mergeSnapshot(worker, snapshot({ ...home.state, columns }), me);
+    expect(worker.state.columns).toEqual(columns);
+    expect(worker.state.robots.r_1).toMatchObject({ column: 'review', columnSource: 'manual', unread: true });
+  });
 });

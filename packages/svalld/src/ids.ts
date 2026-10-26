@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-export function newId(prefix: 'c' | 'i' | 't'): string {
+export function newId(prefix: 'c' | 'i' | 't' | 'k'): string {
   const bytes = crypto.randomBytes(6);
   let s = '';
   for (const b of bytes) s += ALPHABET[b % ALPHABET.length];

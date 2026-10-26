@@ -6,7 +6,7 @@ import type { DropTarget } from './drop.js';
 import { memoByValue, stop, useApp } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
-import { boardIsland, boardViewed, robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
+import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
 const attentionIn = (robots: Robot[], f: Pick<FleetState, 'machines'>): number => robots.filter((c) => wantsUser(c, f)).length;
@@ -64,11 +64,11 @@ export function Caret({ open }: { open: boolean }) {
   );
 }
 
-// the board shows the terminal it selects; on the map that takes a card, so a click reads and a click on the
-// row already selected opens — as does any click once a card is open, which the selection then moves to
+// a click reads and a click on the row already selected opens the card — as does any click once a card is open,
+// which the selection then moves to
 const pick = (id: string, starred = false) => {
   const s = app.store.getState();
-  if (s.view === 'board' || s.card || s.selectedId === id) s.focus(id); else s.select(id);
+  if (s.card || s.selectedId === id) s.focus(id); else s.select(id);
   s.setStarredRow(starred ? id : undefined);
 };
 
@@ -92,16 +92,13 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
   i: Island; robots: Robot[]; editing: boolean; setEditing(id?: string): void; dragging: boolean; setDragging(id?: string): void;
 }) {
   const status = useApp((s) => islandStatus(s.fleet, i.id));
-  const onBoard = useApp((s) => s.view === 'board');
-  const selected = useApp((s) => (s.view === 'board' ? boardIsland(s)?.id === i.id : s.selectedIslandId === i.id));
+  const selected = useApp((s) => s.selectedIslandId === i.id);
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === i.id);
   const open = !i.collapsed;
   const attention = useApp((s) => attentionIn(robots, s.fleet));
-  // on the board an island is a place to work, so it opens a robot; on the map it is a thing to read
   const select = () => {
-    const s = app.store.getState();
     if (!open) toggleIsland(deps(), i.id);
-    if (onBoard && robots[0]) s.focus(robots[0].id); else s.selectIsland(i.id);
+    app.store.getState().selectIsland(i.id);
   };
   // the rename field keeps the text menu
   const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, robots.length === 0, () => setEditing(i.id));
@@ -143,7 +140,7 @@ function Marks({ c }: { c: Robot }) {
 }
 
 const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; editing: boolean; setEditing(id?: string): void }) {
-  const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
+  const selected = useApp((s) => s.selectedId === c.id);
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id);
   const reorderHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
   const hoverAfter = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after);
@@ -184,7 +181,7 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
 type StarHover = { id?: string; after: boolean };
 
 function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
-  const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
+  const selected = useApp((s) => s.selectedId === c.id);
   const island = useApp((s) => s.fleet.islands[c.islandId]?.name);
   // a Finder file over this robot; a reorder over its tree row carries `after` and leaves this row be
   const fileHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after === undefined);

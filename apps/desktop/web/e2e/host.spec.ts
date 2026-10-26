@@ -269,7 +269,7 @@ test('the corner names the machine the fleet runs on, and the fleet stays on the
   await expect(page.getByTestId('owner-badge')).toHaveAttribute('data-state', 'error');
   // the fleet the page already holds is still there, robots and all
   await expect(page.getByTestId('board')).toBeVisible();
-  await expect(page.getByTestId(`tab-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
 
   // a login ssh was refused names the one ssh to run in Terminal
   await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'auth', message: 'Permission denied (publickey)', machine: 'studio', destination: 'linus@studio' });

@@ -147,6 +147,15 @@ test('ahead fails without a Ghostty checkout, as in a fresh clone', () => {
   expect(run(root, ['ahead']).status).toBe(1);
 });
 
+test('current and ahead fail for a kit ghostty-build.sh built from uncommitted Ghostty changes', () => {
+  const root = repo();
+  const [first, second] = checkout(root);
+  write(root, 'vendor/ghostty-kit/version', `${version(first)}-dirty\n`);
+  expect(run(root, ['current']).status).toBe(1);
+  write(root, 'vendor/ghostty-kit/version', `${version(second)}-dirty\n`);
+  expect(run(root, ['ahead']).status).toBe(1);
+});
+
 test('fetch installs the kit for the recorded Ghostty commit from the public release', () => {
   const root = repo();
   const zip = kitZip(version(A));

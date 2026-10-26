@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -468,6 +468,10 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { delete d.scribeAsk; if (enabled) delete d.scribeOff; else d.scribeOff = true; });
   }
 
+  setPlacing(enabled: boolean): void {
+    this.deps.store.update((d) => { delete d.placingAsk; if (enabled) delete d.placingOff; else d.placingOff = true; });
+  }
+
   createIsland(p: NewIsland): Island {
     return createIsland(this.deps, p);
   }
@@ -544,7 +548,7 @@ export class Fleet extends EventEmitter<Events> {
   private async openRobot(
     id: string, cwd: string, panePath: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }, prompt: string | undefined,
   ): Promise<void> {
-    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id));
+    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id), this.robotKeys());
     try {
       this.deps.store.update((d) => {
         // a name asked for twice, as a button pressed twice does, gets a number
@@ -572,7 +576,11 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private robotEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { ...robotKeyEnv(this.deps.paths.env), ...rendererEnv(userPaths().claudeSettings), SVALL_ROBOT_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
+    return { ...rendererEnv(userPaths().claudeSettings), SVALL_ROBOT_ID: id, SVALL_HOME: this.deps.paths.home, ...this.codexEnv(), ...this.opencodeEnv(), ...extra };
+  }
+
+  private robotKeys(): Record<string, string> {
+    return robotKeyEnv(this.deps.paths.env);
   }
 
   private codexEnv(): Record<string, string> {
@@ -718,6 +726,86 @@ export class Fleet extends EventEmitter<Events> {
     return this.robot(id);
   }
 
+  // a hand move holds until releaseRobot; the agent is told nothing of either
+  placeRobot(id: string, columnId: string): Robot {
+    this.robot(id);
+    this.column(columnId);
+    this.deps.store.update((d) => {
+      const c = d.robots[id];
+      c.column = columnId;
+      c.columnSource = 'manual';
+    });
+    return this.robot(id);
+  }
+
+  releaseRobot(id: string): Robot {
+    this.robot(id);
+    this.deps.store.update((d) => { delete d.robots[id].columnSource; });
+    return this.robot(id);
+  }
+
+  private column(id: string): Column {
+    const k = this.deps.store.state.columns.find((x) => x.id === id);
+    if (!k) throw new NotFound(`no column ${id}`);
+    return k;
+  }
+
+  // the scribe matches a column by name in any case, so a twin would leave it unable to tell them apart
+  private columnName(name: string, id?: string): string {
+    const n = name.trim();
+    if (!n) throw new Invalid('a column needs a name');
+    const clash = this.deps.store.state.columns.find((k) => k.id !== id && k.name.toLowerCase() === n.toLowerCase());
+    if (clash) throw new Invalid(`another column is already called ${clash.name}`);
+    return n;
+  }
+
+  addColumn(name: string, afterId?: string): Column[] {
+    const n = this.columnName(name);
+    if (afterId !== undefined) this.column(afterId);
+    this.deps.store.update((d) => {
+      const at = afterId === undefined ? d.columns.length : d.columns.findIndex((k) => k.id === afterId) + 1;
+      d.columns.splice(at, 0, { id: newId('k'), name: n });
+    });
+    return this.deps.store.state.columns;
+  }
+
+  renameColumn(id: string, name: string): Column[] {
+    this.column(id);
+    const n = this.columnName(name, id);
+    this.deps.store.update((d) => { d.columns.find((k) => k.id === id)!.name = n; });
+    return this.deps.store.state.columns;
+  }
+
+  // a robot with no column of its own sits in the first, so each one is given the column it sits in before another can become first
+  reorderColumn(id: string, targetId: string, after: boolean): Column[] {
+    const moving = this.column(id);
+    this.column(targetId);
+    if (id === targetId) return this.deps.store.state.columns;
+    this.deps.store.update((d) => {
+      for (const c of Object.values(d.robots)) c.column = columnOf(d, c).id;
+      const order = d.columns.filter((k) => k.id !== id);
+      order.splice(order.findIndex((k) => k.id === targetId) + Number(after), 0, moving);
+      d.columns = order;
+    });
+    return this.deps.store.state.columns;
+  }
+
+  deleteColumn(id: string, moveTo: string): Column[] {
+    if (this.deps.store.state.columns.length === 1) throw new Invalid('the board keeps its last column');
+    this.column(id);
+    this.column(moveTo);
+    if (id === moveTo) throw new Invalid("a column's robots have to move to another column");
+    // as in reorderColumn, every other robot is given the column it sits in
+    this.deps.store.update((d) => {
+      for (const c of Object.values(d.robots)) {
+        const k = columnOf(d, c).id;
+        c.column = k === id ? moveTo : k;
+      }
+      d.columns = d.columns.filter((k) => k.id !== id);
+    });
+    return this.deps.store.state.columns;
+  }
+
   async closeRobot(id: string): Promise<void> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.robot(id);
@@ -844,7 +932,7 @@ export class Fleet extends EventEmitter<Events> {
       return { ...this.robot(id), ...(delivery && { delivery }) };
     }
     const cwd = this.reviveCwd(c);
-    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id));
+    const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id), this.robotKeys());
     if (!this.deps.store.state.robots[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no robot ${id}`);
@@ -961,7 +1049,7 @@ export class Fleet extends EventEmitter<Events> {
     const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
     const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
-    const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }));
+    const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }), this.robotKeys());
     if (!this.deps.store.state.robots[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no robot ${id}`);

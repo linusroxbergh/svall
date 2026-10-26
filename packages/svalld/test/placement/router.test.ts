@@ -83,7 +83,7 @@ describe('routing calls for placed robots', () => {
   it('the home takes from a worker only calls about its robots, islands and tabs, and the worker only the params it can read', async () => {
     const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
-    for (const method of ['handover.abort', 'ownership.adopt', 'fleets.create', 'fleet.stop', 'mobile.set', 'fs.write']) {
+    for (const method of ['handover.abort', 'ownership.adopt', 'fleets.create', 'fleet.stop', 'mobile.set', 'fs.write', 'column.add', 'placing.set']) {
       await expect(w.worker.connection.call(method, {})).rejects.toMatchObject({ code: 'unauthorized', message: `${method} is not taken from a worker` });
     }
     await expect(w.home.links.call(W, 'robot.run', { id: 'c_1' })).rejects.toMatchObject({ code: 'invalid_params' });

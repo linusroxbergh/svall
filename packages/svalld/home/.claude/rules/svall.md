@@ -60,11 +60,11 @@ turns, and is dropped if the terminal or its agent session ends. Text sent with
 2, refused, while the agent waits on a permission or a question, which is the
 user's to answer.
 
-A new agent that stays `shell`, or whose id comes back with `(prompt not sent)`,
-is most often asking whether to trust a folder it has not seen.
+A new agent that stays `shell`, or whose `robot new --run` exits 2 with
+`prompt not sent`, is most often asking whether to trust a folder it has not seen.
 `svall robot read <id>` shows the question, which is the user's to answer. A
-claude or codex takes its `--run` prompt once it is answered; only an id that came back
-with `(prompt not sent)` needs `svall robot run <id> "<prompt>"` after that.
+claude or codex takes its `--run` prompt once it is answered; only a `robot new`
+that exited 2 needs `svall robot run <id> "<prompt>"` after that.
 
 `--instructions` is text only the agent reads. `--context` takes a url, a file
 or a folder and replaces the manual list, so re-pass the items worth keeping.

@@ -47,10 +47,10 @@ function cwdOf(kind: AgentKind, line: string): string | undefined {
   return typeof cwd === 'string' && cwd.startsWith('/') ? cwd : undefined;
 }
 
-/** The folder a Claude or Codex transcript last records its session working in, read from its end; OpenCode records none. */
+/** The folder a Claude or Codex transcript last records its session working in, read from its last 8 MB; OpenCode records none. */
 export function recordedCwd(kind: AgentKind, file: string): string | undefined {
   if (kind === 'opencode') return undefined;
-  for (const maxBytes of [512 * 1024, Infinity]) {
+  for (const maxBytes of [512 * 1024, 8 * 1024 * 1024]) {
     const text = readTail(file, maxBytes);
     const lines = text.split('\n');
     for (let i = lines.length - 1; i >= 0; i--) {

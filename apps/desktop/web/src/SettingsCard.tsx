@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, type PushStatus } from '@svall/protocol';
-import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setScribe, setWorktrees } from './actions.js';
+import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, placingOn, type PushStatus } from '@svall/protocol';
+import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setPlacing, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
 import { holdCutout } from './cutout.js';
@@ -200,6 +200,7 @@ function Scribe() {
   const error = useApp((s) => s.fleet.scribeError);
   const scribeAgent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
   const flip = () => setScribe(deps(), !on);
+  const placing = useApp((s) => placingOn(s.fleet));
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
   return (
     <>
@@ -210,6 +211,12 @@ function Scribe() {
         <div className="row">
           <span>scribe<Info id="scribe">Updates names, notes and links after an agent stops. Each pass is a headless {AGENT_LABEL[scribeAgent]} call and may cost API credits.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-scribe" onClick={flip}>{on ? 'on' : 'off'}</button></b>
+        </div>
+        <div className="row" data-testid="set-placing-row" data-dim={!on}>
+          <span>board placing<Info id="placing">Each scribe pass also chooses the robot&apos;s board column from your column names. A robot moved by hand is left alone. Needs the scribe.</Info></span>
+          <b>{on
+            ? <button className="set-switch" role="switch" aria-checked={placing} data-testid="set-placing" onClick={() => setPlacing(deps(), !placing)}>{placing ? 'on' : 'off'}</button>
+            : 'needs the scribe'}</b>
         </div>
         <ScribeModel />
         {error && (
@@ -393,7 +400,6 @@ const PANES = [
   ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['machines', 'Machines', Machines],
   ['updates', 'Updates', Update],
 ] as const;
-type Pane = (typeof PANES)[number][0];
 
 // a window of its own over the middle of the app, so the terminals its sliders change stay in sight around it
 export function SettingsCard() {
@@ -404,7 +410,9 @@ export function SettingsCard() {
   // the Machines panel covers it, and a terminal that panel shows must not give up the window's rect
   const covered = useApp((s) => s.hostOpen);
   useEffect(() => (box.current && !covered ? holdCutout(app.bridge, box.current) : undefined), [covered]);
-  const [picked, pick] = useState<Pane>('machine');
+  const ask = useApp((s) => s.settingsAsk);
+  const [picked, pick] = useState<string>(ask?.pane ?? 'machine');
+  useEffect(() => { if (ask) pick(ask.pane); }, [ask]);
   // banners need the shell, and Updates stands only while one waits; a pane that goes leaves the first in its place
   const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentProps } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ComponentProps } from 'react';
 
 // a name, path, url or ssh destination is kept as typed: macOS may not capitalise, correct or complete it
 export const AS_TYPED = { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'off' } as const;
@@ -13,12 +13,19 @@ function useFollow<T extends HTMLInputElement | HTMLTextAreaElement>({ value, on
   const latest = useRef(value);
   const start = useRef(value);
   const sent = useRef<string>(undefined);
+  const save = useRef(onSave);
   latest.current = value;
+  save.current = onSave;
   useEffect(() => {
     if (value === sent.current) sent.current = undefined;
     const el = ref.current;
     if (el && el !== document.activeElement) el.value = value;
   }, [value]);
+  // a field removed while focused hears no blur, so its edit is saved here, while it is still in the page
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    return () => { if (el === document.activeElement && el.value !== start.current) save.current(el.value); };
+  }, []);
   return {
     ref, defaultValue: value,
     onFocus: () => { const v = ref.current!.value; start.current = v === sent.current ? latest.current : v; },

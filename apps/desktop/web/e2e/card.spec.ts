@@ -91,9 +91,13 @@ test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips t
   await page.mouse.click(pa2.x, pa2.y);
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('board')).toBeVisible();
+  // the selection goes along, and Enter opens its card over the board as over the map
+  await expect(page.getByTestId(`kc-${a.id}`)).toHaveAttribute('data-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(card).toHaveAttribute('data-robot', a.id);
   await page.keyboard.press('Meta+m');
   await expect(page.getByTestId('map')).toBeVisible();
-  // the board's robot comes back in its card
+  // and the card comes back to the map with it
   await expect(card).toHaveAttribute('data-robot', a.id);
 
   await page.keyboard.press('Meta+t');

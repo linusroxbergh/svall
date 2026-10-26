@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Robot, ContextItem } from '@svall/protocol';
+import { defaultColumns, type Robot, type ContextItem } from '@svall/protocol';
 import { RobotAnswer, IslandAnswer, acceptLine, acceptLinks, acceptName, robotPrompt, islandPrompt, parseAnswer, prEvidence } from '../src/scribe/prompt.js';
 
 const robot = (extra: Partial<Robot> = {}): Robot => ({
@@ -140,6 +140,13 @@ describe('robotPrompt', () => {
     expect(p).toContain('must not repeat: deploy web');
     expect(p).toContain('<transcript>\nUSER: hi\n</transcript>');
     expect(robotPrompt(robot({ name: 'robin review', note: 'x' }), '', [])).toContain('Name: robin review\n');
+  });
+
+  it("lists the board and the robot's column after its links while the scribe places robots, and marks one placed by hand", () => {
+    expect(robotPrompt(robot({ column: 'review' }), '', [], [], defaultColumns()))
+      .toContain('Links: (none)\nColumns, left to right: To do · In progress · In review · Done\nColumn: In review\n');
+    expect(robotPrompt(robot({ column: 'gone', columnSource: 'manual' }), '', [], [], defaultColumns())).toContain('\nColumn (placed by hand): To do\n');
+    expect(robotPrompt(robot({ column: 'review' }), '', [])).not.toContain('Column');
   });
 });
 

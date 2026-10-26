@@ -324,6 +324,81 @@ describe('applyHook for the subagents running', () => {
   });
 });
 
+describe("applyHook for a Codex subagent's question", () => {
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'codex', name: 'PreToolUse', sessionId: 's', toolName: 'Bash', ...o });
+  const codex = (): Robot => ({ ...base(), agent: { kind: 'codex', sessionId: 's', status: 'working', lastActivityAt: 1 } });
+  const asked = (by = 'a1', from = codex()) =>
+    applyHook(applyHook(from, ev({ name: 'SubagentStart', agentId: by }), 2), ev({ name: 'PermissionRequest', agentId: by, message: 'mkdir probe' }), 3);
+
+  it('blocks at once, naming the subagent, and stays blocked while other threads run tools', () => {
+    let c = asked();
+    expect(c.agent).toMatchObject({ status: 'blocked', prompt: 'mkdir probe', promptId: expect.any(String), asking: ['a1'], subagents: ['a1'] });
+    const others = [ev({ agentId: 'a2' }), ev({ name: 'PostToolUse', agentId: 'a2' }), ev({ toolName: 'collaborationwait_agent' }),
+      ev({ name: 'PostToolUse', toolName: 'collaborationwait_agent' }), ev({ agentId: 'a1' })];
+    for (const e of others) {
+      c = applyHook(c, e, 4);
+      expect(c.agent).toMatchObject({ status: 'blocked', prompt: 'mkdir probe', asking: ['a1'] });
+    }
+  });
+  it("is working again once the asked tool has run on the subagent's thread, or the subagent stops", () => {
+    expect(asked().agent?.status).toBe('blocked');
+    const ran = applyHook(asked(), ev({ name: 'PostToolUse', agentId: 'a1' }), 4).agent!;
+    expect(ran.status).toBe('working');
+    expect(ran).not.toHaveProperty('asking');
+    expect(ran).not.toHaveProperty('prompt');
+    expect(ran).not.toHaveProperty('promptId');
+    const stopped = applyHook(asked(), ev({ name: 'SubagentStop', agentId: 'a1' }), 4).agent!;
+    expect(stopped.status).toBe('working');
+    expect(stopped).not.toHaveProperty('asking');
+    expect(stopped).not.toHaveProperty('subagents');
+  });
+  it('stays blocked while a second subagent still asks', () => {
+    const both = asked('a2', asked('a1'));
+    expect(both.agent?.asking).toEqual(['a1', 'a2']);
+    const one = applyHook(both, ev({ name: 'PostToolUse', agentId: 'a1' }), 4);
+    expect(one.agent).toMatchObject({ status: 'blocked', asking: ['a2'] });
+    expect(applyHook(one, ev({ name: 'PostToolUse', agentId: 'a2' }), 5).agent?.status).toBe('working');
+  });
+  it('ends with the turn, an Esc or a prompt the user typed', () => {
+    const done = applyHook(asked(), ev({ name: 'Stop' }), 4).agent!;
+    expect(done.status).toBe('done');
+    expect(done).not.toHaveProperty('asking');
+    expect(applyHook(asked(), ev({ name: 'Interrupt' }), 4).agent).toMatchObject({ status: 'idle' });
+    const typed = applyHook(asked(), ev({ name: 'UserPromptSubmit', prompt: { id: 't2', text: 'skip it' } }), 4).agent!;
+    expect(typed.status).toBe('working');
+    expect(typed).not.toHaveProperty('asking');
+  });
+  it('asks for a subagent that outlived the turn too', () => {
+    const c = asked('a1', applyHook(codex(), ev({ name: 'Stop' }), 1));
+    expect(c.agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
+  });
+  it("keeps the main thread's own question through a subagent's tool run", () => {
+    const main = applyHook(codex(), ev({ name: 'PermissionRequest', message: 'rm -rf build' }), 2);
+    expect(main.agent).toMatchObject({ status: 'blocked', askedTool: 'Bash' });
+    expect(applyHook(main, ev({ name: 'PostToolUse', agentId: 'a1' }), 3).agent?.status).toBe('blocked');
+    expect(applyHook(main, ev({ name: 'PostToolUse', toolName: 'collaborationwait_agent' }), 3).agent?.status).toBe('blocked');
+    expect(applyHook(main, ev({ name: 'PostToolUse' }), 3).agent?.status).toBe('working');
+  });
+  it("keeps the main thread's question open with a subagent's, whichever came first, until its own tool runs", () => {
+    const main = applyHook(codex(), ev({ name: 'PermissionRequest', message: 'rm -rf build' }), 2);
+    const both = asked('a1', main);
+    expect(applyHook(both, ev({ name: 'PostToolUse', agentId: 'a1' }), 4).agent).toMatchObject({ status: 'blocked', askedTool: 'Bash' });
+    const mainRan = applyHook(both, ev({ name: 'PostToolUse' }), 4);
+    expect(mainRan.agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
+    expect(mainRan.agent).not.toHaveProperty('askedTool');
+    expect(applyHook(mainRan, ev({ name: 'PostToolUse', agentId: 'a1' }), 5).agent?.status).toBe('working');
+    const after = applyHook(asked(), ev({ name: 'PermissionRequest', message: 'rm -rf build' }), 4);
+    expect(after.agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build', askedTool: 'Bash', asking: ['a1'] });
+    const subRan = applyHook(after, ev({ name: 'PostToolUse', agentId: 'a1' }), 5);
+    expect(subRan.agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+    expect(applyHook(subRan, ev({ name: 'PostToolUse' }), 6).agent?.status).toBe('working');
+    const question = applyHook(asked(), ev({ toolName: 'request_user_input' }), 4);
+    expect(question.agent).toMatchObject({ status: 'blocked', askedTool: 'request_user_input' });
+    expect(applyHook(question, ev({ name: 'PostToolUse', agentId: 'a1' }), 5).agent?.status).toBe('blocked');
+    expect(applyHook(question, ev({ name: 'PostToolUse', toolName: 'request_user_input' }), 5).agent?.status).toBe('blocked');
+  });
+});
+
 describe('applyHook for codex', () => {
   const ev = (o: Partial<HookEvent>): HookEvent => ({ robotId: 'c_a', backend: 'codex', name: 'Stop', sessionId: 's1', ...o });
   const started = () => applyHook(base(), ev({ name: 'SessionStart' }), 100);
@@ -378,6 +453,10 @@ describe('applyHook for opencode', () => {
   it('works again once the question is answered, and rests after an Esc', () => {
     const asked = applyHook(at('working'), ev({ name: 'PermissionRequest' }), 5);
     expect(applyHook(asked, ev({ name: 'PreToolUse' }), 6).agent?.status).toBe('working');
+    // the permission is named, not the tool whose run follows the answer
+    const named = applyHook(at('working'), ev({ name: 'PermissionRequest', toolName: 'external_directory' }), 5);
+    expect(named.agent).not.toHaveProperty('askedTool');
+    expect(applyHook(named, ev({ name: 'PostToolUse', toolName: 'read' }), 6).agent?.status).toBe('working');
     expect(applyHook(at('working'), ev({ name: 'Interrupt' }), 6).agent?.status).toBe('idle');
   });
   it('finishes a turn that leaves a background shell watching, keeps its subagents through the list, and forgets the shell once a turn end lists none', () => {

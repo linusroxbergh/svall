@@ -2,8 +2,8 @@ import { ApiError, robotOfKey } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
 import { holdsTerminals } from './handover.js';
-import { boardViewed, panesOf, type BoardSelection } from './selectors.js';
-import type { AppStore, View } from './store/index.js';
+import { panesOf } from './selectors.js';
+import type { AppStore } from './store/index.js';
 
 export type TerminalManager = {
   show(id: string, rect: Rect, opacity?: number, takeFocus?: boolean): Promise<void>;
@@ -15,9 +15,8 @@ type Opts = { reshowDelayMs?: number };
 
 const RETRIED = new Set(['not_owner', 'frozen', 'not_reachable']);
 
-// the map shows the robot in the card; the board shows the one it has selected
-export const viewedId = (s: BoardSelection & { view: View; card?: string }): string | undefined =>
-  s.view === 'map' ? s.card : boardViewed(s);
+// the robot whose terminal is up: the one in the card, on the map and on the board
+export const viewedId = (s: { card?: string }): string | undefined => s.card;
 
 // a second terminal's surface; the shell treats surface ids as opaque
 export { secondKey } from '@svall/protocol';
@@ -68,10 +67,12 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // svalld refused: the user decides when to try again. svalld away, a daemon the fleet has left or one frozen
-      // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again;
-      // the robot's machine away: once its link is back
-      if (e instanceof ApiError && !RETRIED.has(e.code)) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
+      // svalld refused, or left it unanswered on a link still online: the user decides when to try again. svalld away, a daemon
+      // the fleet has left or one frozen for a handover: retried once the connection is back, which for a moved fleet is its
+      // new owner, or the fleet runs again; the robot's machine away: once its link is back. A closed socket reports offline
+      // before its calls fail
+      if (e instanceof ApiError ? !RETRIED.has(e.code) : state().status === 'online') state().termFailed(id, (e as Error).message);
+      else retry.set(id, { rect, opacity });
       throw e;
     }
     // the freeze began while the attach was on its way, and rests the window it names

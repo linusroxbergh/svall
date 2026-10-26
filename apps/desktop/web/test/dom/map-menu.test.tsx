@@ -31,9 +31,9 @@ const pick = () => fireEvent.click(screen.getByTestId('menu-delete'));
 const entries = () => screen.getAllByRole('menuitem').map((el) => [el.textContent, el.getAttribute('aria-disabled') !== 'true']);
 const menu = (deletable: boolean) => [['Delete', deletable], ['Reload', true]];
 
-test('a robot on the map offers Star and Delete, which opens the delete confirmation', () => {
+test('a robot on the map offers Open terminal, Star and Delete, which opens the delete confirmation', () => {
   expect(rightClick('token-c0')).toBe(true);
-  expect(entries()).toEqual([['Star', true], ...menu(true)]);
+  expect(entries()).toEqual([['Open terminal', true], ['Star', true], ...menu(true)]);
   pick();
   expect(store.getState().closingRobot).toBe('c0');
   expect(call).not.toHaveBeenCalled();

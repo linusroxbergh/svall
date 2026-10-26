@@ -159,21 +159,21 @@ describe('Store', () => {
   it('refuses a file from a newer svalld and leaves it in place', () => {
     const home = makeHome();
     const file = path.join(home, 'state.json');
-    const newer = JSON.stringify({ version: 12, islands: {}, robots: {} });
+    const newer = JSON.stringify({ version: 13, islands: {}, robots: {} });
     fs.writeFileSync(file, newer);
-    expect(() => Store.load(file, () => {})).toThrow(/version 12.*newer.*update svall/);
+    expect(() => Store.load(file, () => {})).toThrow(/version 13.*newer.*update svall/);
     expect(fs.readdirSync(home)).toEqual(['state.json']);
     expect(fs.readFileSync(file, 'utf8')).toBe(newer);
   });
 
-  it('lifts a version 7, 8 or 9 file to 11, keeping the file as read beside it', () => {
-    for (const version of [7, 8, 9]) {
+  it('lifts a version 7, 8, 9, 10 or 11 file to 12, keeping the file as read beside it', () => {
+    for (const version of [7, 8, 9, 10, 11]) {
       const home = makeHome();
       const file = path.join(home, 'state.json');
-      const before = JSON.stringify({ version, islands: {}, characters: {} });
+      const before = JSON.stringify({ version, islands: {}, [version >= 10 ? 'robots' : 'characters']: {} });
       fs.writeFileSync(file, before);
-      expect(Store.load(file, () => {}).state.version).toBe(11);
-      expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(11);
+      expect(Store.load(file, () => {}).state.version).toBe(12);
+      expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(12);
       const kept = fs.readdirSync(home).find((f) => f.startsWith(`state.json.v${version}-`));
       expect(fs.readFileSync(path.join(home, kept!), 'utf8')).toBe(before);
     }
@@ -196,7 +196,7 @@ describe('Store', () => {
     fs.writeFileSync(file, before);
     const logs: string[] = [];
     Store.load(file, (m) => logs.push(m));
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(11);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(12);
     expect(logs[0]).toMatch(/migrated/);
     const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.v7-'));
     expect(kept).toBeDefined();
@@ -208,7 +208,7 @@ describe('Store', () => {
     const file = path.join(home, 'state.json');
     const island = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
     const robot = (id: string) => ({ id, islandId: 'i_1', cell: { x: 1, y: 1 }, name: id, portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false });
-    const before = JSON.stringify({ version: 11, islands: { i_1: island }, robots: { c_good: robot('c_good'), c_bad: { ...robot('c_bad'), agent: { kind: 'gemini' } } } });
+    const before = JSON.stringify({ version: 12, islands: { i_1: island }, robots: { c_good: robot('c_good'), c_bad: { ...robot('c_bad'), agent: { kind: 'gemini' } } } });
     fs.writeFileSync(file, before);
     const logs: string[] = [];
     const s = Store.load(file, (m) => logs.push(m));

@@ -56,7 +56,7 @@ function hostAdded(f: Far, o: { robots?: Record<string, unknown>; owner?: Record
   fs.writeFileSync(f.paths.fleetConfig, JSON.stringify({ id: OTHER, home: { cwd: '~/.svall/home' } }));
   fs.writeFileSync(f.paths.nodeConfig, JSON.stringify({ host: '127.0.0.1', port: 47800 }));
   fs.writeFileSync(f.paths.owner, JSON.stringify({ fleetId: OTHER, generation: 0, ownerMachineId: HERE, ...o.owner }));
-  fs.writeFileSync(f.paths.state, JSON.stringify({ version: 11, islands: {}, robots: o.robots ?? {} }));
+  fs.writeFileSync(f.paths.state, JSON.stringify({ version: 12, islands: {}, robots: o.robots ?? {} }));
   if (o.journal) {
     fs.mkdirSync(f.paths.handoverDir, { recursive: true });
     fs.writeFileSync(f.paths.journal, JSON.stringify({ role: 'destination', transactionId: 'tx-1' }));

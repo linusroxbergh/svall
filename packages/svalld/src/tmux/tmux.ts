@@ -140,14 +140,15 @@ export class Tmux {
 
   // a signal that aborts ends the tmux client this call started. Without -u, a client outside a UTF-8 locale is
   // sent a tab or a letter outside ASCII as _
-  private async call(args: string[], signal?: AbortSignal): Promise<string> {
-    const { stdout } = await exec(this.binary, ['-u', '-S', this.socket, '-f', this.conf, ...args], {
+  private async call(args: string[], signal?: AbortSignal, input?: string): Promise<string> {
+    const p = exec(this.binary, ['-u', '-S', this.socket, '-f', this.conf, ...args], {
       ...CALL,
       maxBuffer: 64 * 1024 * 1024,
       env: paneEnv(),
       signal,
     });
-    return stdout;
+    if (input) p.child.stdin!.on('error', () => {}).end(input);
+    return (await p).stdout;
   }
 
   async serverPid(): Promise<number | undefined> {
@@ -226,14 +227,22 @@ export class Tmux {
     return new ControlClient({ binary: this.binary, socket: this.socket, conf: this.conf, session: SESSION });
   }
 
-  async newWindow(name: string, cwd: string, env: Record<string, string>): Promise<{ windowId: string; paneId: string }> {
+  // `secret` goes through the session's environment, set on stdin as ps shows every argument, and unset once the
+  // window's shell holds it
+  async newWindow(name: string, cwd: string, env: Record<string, string>, secret: Record<string, string> = {}): Promise<{ windowId: string; paneId: string }> {
     const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
     // tmux expands -c as a format, and reads an argument ending in ; as the end of the command
     const dir = cwd.replaceAll('#', '##').replace(/;$/, '\\;');
-    const out = await this.run(
+    const set = Object.entries(secret).map(([k, v]) => `set-environment -t ${SESSION} ${k} '${v.replaceAll("'", "'\\''")}'\n`).join('');
+    const unset = Object.keys(secret).flatMap((k) => [';', 'set-environment', '-t', SESSION, '-u', k]);
+    const out = await this.call([
+      ...(set ? ['source-file', '-', ';'] : []),
       'new-window', '-d', '-P', '-F', '#{window_id} #{pane_id}', '-a', '-t', `${SESSION}:`,
       '-n', name, '-c', dir, ...envArgs,
-    );
+      ...unset,
+    ], undefined, set)
+      // a new-window that failed ends the sequence before the unset
+      .catch(async (e) => { if (set) await this.run(...unset.slice(1)).catch(() => {}); throw e; });
     const [windowId, paneId] = out.trim().split(' ');
     if (!windowId || !paneId) throw new Error(`tmux new-window returned ${JSON.stringify(out)}`);
     return { windowId, paneId };

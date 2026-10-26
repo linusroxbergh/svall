@@ -1,5 +1,6 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { deleteIsland, sleepRobot } from './actions.js';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { columnOf } from '@svall/protocol';
+import { deleteColumn, deleteIsland, sleepRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
@@ -76,5 +77,48 @@ export function ConfirmDeleteIsland() {
     <Confirm id={id} testid="confirm-delete-island" title="Delete island" name={name} act="Delete" note="Its docs go with it."
       onCancel={() => app.store.getState().setDeletingIsland(undefined)}
       onConfirm={(id) => deleteIsland(deps(), id)} />
+  );
+}
+
+// a column's robots go to the column picked here, its left neighbour unless the user picks another
+export function ConfirmDeleteColumn() {
+  const id = useApp((s) => s.deletingColumn);
+  return id ? <DeleteColumn key={id} id={id} /> : null;
+}
+
+function DeleteColumn({ id }: { id: string }) {
+  const fleet = useApp((s) => s.fleet);
+  const [picked, setPicked] = useState<string>();
+  const pick = useRef<HTMLSelectElement>(null);
+  useEffect(() => { pick.current?.focus(); }, []);
+  const at = fleet.columns.findIndex((k) => k.id === id);
+  const others = fleet.columns.filter((k) => k.id !== id);
+  const moveTo = others.find((k) => k.id === picked)?.id ?? (fleet.columns[at - 1] ?? fleet.columns[at + 1])?.id;
+  if (at < 0 || !moveTo) return null;
+  const n = Object.values(fleet.robots).filter((c) => columnOf(fleet, c).id === id).length;
+  const cancel = () => app.store.getState().setDeletingColumn(undefined);
+  return (
+    <div className="modal-back" data-testid="confirm-delete-column" onPointerDown={cancel}>
+      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.stopPropagation();
+          if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
+        }}>
+        <div className="kicker">Delete column<CloseX onClose={cancel} testid="confirm-delete-column-close" /></div>
+        <div className="modal-name">{fleet.columns[at].name}</div>
+        <label className="modal-note modal-pick">
+          Its {n} {n === 1 ? 'robot moves' : 'robots move'} to
+          <select ref={pick} className="fld" data-testid="confirm-delete-column-to" value={moveTo} onChange={(e) => setPicked(e.target.value)}>
+            {others.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+          </select>
+        </label>
+        <div className="modal-note">Their agents keep running.</div>
+        <div className="acts">
+          <button className="btn dan" data-testid="confirm-delete-column-delete"
+            onClick={(e) => { if (e.detail < 2) { cancel(); deleteColumn(deps(), id, moveTo); } }}>Delete column</button>
+          <button className="btn" data-testid="confirm-delete-column-cancel" onClick={cancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
   );
 }

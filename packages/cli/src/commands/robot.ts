@@ -64,7 +64,7 @@ export function robotCommands(connect: () => Promise<Client>, json: () => boolea
     .addOption(new Option('--codex', 'the same as --agent codex').conflicts(['opencode', 'command']))
     .addOption(new Option('--opencode', 'the same as --agent opencode').conflicts('command'))
     .option('--command <cmd>').option('--cell <x,y>')
-    .option('--run <text>', 'type text and Enter once the agent has started; starts the main agent unless --agent or --command says otherwise')
+    .option('--run <text>', 'type text and Enter once the agent has started; starts the main agent unless --agent or --command says otherwise; exits 2 when it could not be sent')
     .option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder, e.g. reviewer')
     .addHelpText('after', `
 Handing work to a new robot:
@@ -87,7 +87,11 @@ Handing work to a new robot:
         const ch = await c.call('robot.create', {
           islandId: islandId(state, o.island), cwd: path.resolve(expandHome(o.cwd)), name: o.name, command: agent ?? o.command, cell, run: o.run, agentProfile: o.agentProfile,
         });
-        printResult(ch, json(), () => (ch.runSent === false ? `${ch.id} (prompt not sent)` : ch.id));
+        printResult(ch, json(), () => ch.id);
+        if (ch.runSent === false) {
+          process.stderr.write(`prompt not sent; svall robot run ${ch.id} "<prompt>" sends it\n`);
+          process.exitCode = 2;
+        }
       });
     });
 

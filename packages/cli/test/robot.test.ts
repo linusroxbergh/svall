@@ -71,10 +71,41 @@ describe('robot new', () => {
   });
 });
 
+describe('robot new --run', () => {
+  afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); });
+  const create = async (runSent: boolean, json = false) => {
+    let out = '';
+    let err = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
+    vi.spyOn(process.stderr, 'write').mockImplementation((s) => { err += String(s); return true; });
+    const client = { call: async (m: string) => (m === 'state.get' ? { islands: { i_1: { id: 'i_1', name: 'home' } }, robots: {} } : { ...base, id: 'c_new', runSent }), close() {} };
+    await robotCommands(async () => client as unknown as Client, () => json).parseAsync(['new', '--island', 'i_1', '--cwd', '/tmp', '--run', 'go'], { from: 'user' });
+    return { out, err };
+  };
+
+  it('prints the bare id, says on stderr the prompt was not sent, and exits 2', async () => {
+    const { out, err } = await create(false);
+    expect(out).toBe('c_new\n');
+    expect(err).toBe('prompt not sent; svall robot run c_new "<prompt>" sends it\n');
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('keeps the JSON, which carries runSent, and exits 2 with --json', async () => {
+    const { out } = await create(false, true);
+    expect(JSON.parse(out)).toMatchObject({ id: 'c_new', runSent: false });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('exits 0 once the prompt is sent', async () => {
+    expect(await create(true)).toEqual({ out: 'c_new\n', err: '' });
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+});
+
 describe('a robot command that stops on an error', () => {
   it('closes its connection to the fleet', async () => {
     const close = vi.fn();
-    const client = { call: async () => ({ version: 11, islands: {}, robots: { c_a: base } }), close };
+    const client = { call: async () => ({ version: 12, islands: {}, robots: { c_a: base } }), close };
     await expect(robotCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'robot', 'show', 'nobody'])).rejects.toThrow('no robot "nobody"');
     expect(close).toHaveBeenCalledOnce();
   });
@@ -85,7 +116,7 @@ describe('robot wait', () => {
   const wait = async (ref: string, robots: Record<string, Robot>, flags: string[] = []) => {
     vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const calls: string[] = [];
-    const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 11, islands: {}, robots } : { status: 'gone' }; }, close() {} };
+    const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 12, islands: {}, robots } : { status: 'gone' }; }, close() {} };
     await robotCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'robot', 'wait', ref, '--until', 'idle', ...flags]);
     return calls;
   };
@@ -185,7 +216,7 @@ describe('robot move to a machine', () => {
     ...base, id: 'c_1', name: 'kanban',
     repo: { root: '/Users/ada/code/svall/.claude/worktrees/kanban-board', mainRoot: '/Users/ada/code/svall', branch: 'kanban-board', isWorktree: true },
   };
-  const state = { version: 11, islands: { i_1: { id: 'i_1', name: 'work' } }, robots: { c_1: kanban }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
+  const state = { version: 12, islands: { i_1: { id: 'i_1', name: 'work' } }, robots: { c_1: kanban }, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
   const sheet: MoveSheet = {
     sessionBytes: 4_200_000, branch: 'kanban-board', commits: 2, changedFiles: 2, untrackedFiles: 1, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
     interrupts: false, question: false, notInRepo: false,

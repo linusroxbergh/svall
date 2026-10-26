@@ -93,19 +93,28 @@ runIf('Fleet', () => {
     fleet.deleteIsland(island.id);
   });
 
-  it('loads fleet API keys into new and second robot shells', async () => {
-    const { fleet, tmux, home } = await boot();
-    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=first\nOTHER_SECRET=hidden\n');
+  it('loads fleet API keys into new, revived and second robot shells, off every tmux command line', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const call = vi.spyOn(tmux as unknown as { call: (args: string[]) => Promise<string> }, 'call');
+    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-first\nOTHER_SECRET=hidden\n');
     const island = fleet.createIsland({ name: 'keys' });
     const c = await fleet.createRobot({ islandId: island.id, cwd: '/tmp' });
     await tmux.sendLine(c.tmux!.paneId, 'echo key:$ANTHROPIC_API_KEY other:${OTHER_SECRET:-none}', true);
-    await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('key:first other:none'));
+    await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('key:sk-first other:none'));
 
-    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=second\n');
+    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-second\n');
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.robots[c.id].tmux === undefined);
+    const revived = await fleet.reviveRobot(c.id);
+    await tmux.sendLine(revived.tmux!.paneId, 'echo key:$ANTHROPIC_API_KEY', true);
+    await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('key:sk-second'));
+
+    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-third\n');
     await fleet.openSecond(c.id);
     const second = fleet.robot(c.id).second!.tmux!.paneId;
     await tmux.sendLine(second, 'echo key:$ANTHROPIC_API_KEY', true);
-    await waitFor(async () => (await tmux.capture(second, 20)).toString().includes('key:second'));
+    await waitFor(async () => (await tmux.capture(second, 20)).toString().includes('key:sk-third'));
+    expect(call.mock.calls.flatMap(([args]) => args).join(' ')).not.toMatch(/sk-(first|second|third)/);
     await fleet.closeRobot(c.id);
   });
 
@@ -601,6 +610,37 @@ runIf('Fleet', () => {
     await hook({ notificationType: 'elicitation_dialog', message: 'fill this in' });
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent?.status).toBe('blocked');
+  });
+
+  it("takes a Codex agent's question for answered once its empty prompt line is back, a subagent's too", async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'codex', name: 'PreToolUse', sessionId: 'sess', toolName: 'Bash', ...h } });
+    await hook({ name: 'SessionStart' });
+    await hook({ name: 'PermissionRequest', agentId: 'a1', message: 'mkdir probe' });
+    // the hook lands before the dialog is drawn, so one empty read is not yet the dialog gone
+    const screen = vi.spyOn(tmux, 'screen').mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    screen.mockResolvedValue(pane('codex-approval'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
+    // an Esc dismisses a subagent's dialog with no hook
+    screen.mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', asking: ['a1'] });
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent?.status).toBe('working');
+    expect(store.state.robots[c.id].agent).not.toHaveProperty('asking');
+    expect(store.state.robots[c.id].agent).not.toHaveProperty('prompt');
+    await hook({ name: 'PermissionRequest', message: 'rm -rf build' });
+    screen.mockResolvedValue(pane('codex-approval'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'blocked', askedTool: 'Bash' });
+    screen.mockResolvedValue(pane('codex-working'));
+    await fleet['poll']['tick']();
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'working', askedTool: 'Bash' });
   });
 
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {

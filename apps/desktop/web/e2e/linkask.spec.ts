@@ -6,6 +6,7 @@ test('a link asks where it should open, and opening it here puts it in the robot
   const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'reader' });
   await svall.api.call('robot.update', { id: c.id, context: [{ kind: 'other', ref: 'https://example.com/docs', label: 'docs', source: 'manual' }] });
   await svall.open();
+  await page.getByTestId(`kc-${c.id}`).click();
 
   // a folder has one place to go, so only a web link raises the prompt
   await expect(page.getByTestId('link-ask')).toHaveCount(0);

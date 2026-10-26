@@ -36,3 +36,11 @@ export function EyeGlyph() {
     </svg>
   );
 }
+
+export function HandGlyph() {
+  return (
+    <svg className="ind-glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6.6V2.7a.8.8 0 0 1 1.6 0V6M5.6 5.6V1.9a.8.8 0 0 1 1.6 0v3.7M7.2 5.6V2.7a.8.8 0 0 1 1.6 0V7c0 2.2-1.4 3.6-3.3 3.6-1.2 0-2-.6-2.6-1.6L1.8 7.4a.75.75 0 0 1 1.2-.9L4 7.5" />
+    </svg>
+  );
+}

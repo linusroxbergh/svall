@@ -115,9 +115,12 @@ export function Tour() {
     return () => cancelAnimationFrame(raf);
   }, [selector]);
 
-  // the tour starts on the robot, selected so Enter opens it and with its side card open for the second step
+  // the tour starts on the robot, selected so Enter opens it and with its side card open for the second step;
+  // only once, so a robot picked since keeps the selection when a sheet or the settings close
+  const started = useRef(false);
   useEffect(() => {
-    if (!ready || !first || step > 0) return;
+    if (!ready || !first || step > 0 || started.current) return;
+    started.current = true;
     const s = app.store.getState();
     s.select(first);
     s.toggleSideCard(true);

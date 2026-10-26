@@ -14,6 +14,7 @@ final class QuitFlow {
     private let confirm: (_ message: String, _ detail: String) -> Bool
     private let kill: (@escaping () -> Void) -> Void
     private let holdStarts: () -> Void
+    private let terminate: (_ quietly: Bool) -> Void
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
     private var quitTimeout: Timer?
@@ -32,7 +33,8 @@ final class QuitFlow {
          elsewhere: @escaping () -> Bool = { false }, handoverOpen: @escaping () -> Bool = { false }, handoverFollowed: @escaping () -> Bool = { false },
          handoverRunning: @escaping () -> Bool = { false },
          confirm: @escaping (_ message: String, _ detail: String) -> Bool = QuitFlow.alert,
-         kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill, holdStarts: @escaping () -> Void = FleetDaemon.holdStarts) {
+         kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill, holdStarts: @escaping () -> Void = FleetDaemon.holdStarts,
+         terminate: @escaping (_ quietly: Bool) -> Void = { NSApplication.quietQuit = $0; NSApp.terminate(nil) }) {
         self.send = send
         self.isListening = isListening
         self.hideWindow = hideWindow
@@ -43,10 +45,16 @@ final class QuitFlow {
         self.confirm = confirm
         self.kill = kill
         self.holdStarts = holdStarts
+        self.terminate = terminate
     }
 
     /// Whether a quit waits on the page, the user or the fleet.
-    var pending: Bool { quitAnswer != nil }
+    var pending: Bool { quitAnswer != nil || confirming }
+
+    /// Quits, quietly for the app's own quits, unless a quit already waits: AppKit takes a second terminate as a yes to the first.
+    func quit(quietly: Bool) {
+        if !pending { terminate(quietly) }
+    }
 
     /// Asks the page to save its docs and name the files a quit would drop, then the user when `confirm` or a file would be lost,
     /// then stops the fleet: every robot sleeps until it is opened again.
@@ -54,7 +62,10 @@ final class QuitFlow {
         guard quitAnswer == nil else { return .terminateNow }
         // a page that is not up has nothing to save and no daemon to ask
         guard isListening() else {
-            guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
+            confirming = confirm
+            let ok = !confirm || confirmQuit(unsaved: [], working: 0)
+            confirming = false
+            guard ok else { return .terminateCancel }
             if handoverOpen() { return .terminateNow }
             quitAnswer = answer
             fleetStopped(ok: false)

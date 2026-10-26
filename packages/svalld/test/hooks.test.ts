@@ -53,10 +53,13 @@ describe('normalizeHook', () => {
     const e = normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 't1' } });
     expect(e?.prompt).toEqual({ id: 't1', text: 'go' });
   });
-  it('lets a codex subagent work, ask for permission, start and stop, and nothing else of a subagent', () => {
+  it('lets a codex subagent work, ask for permission, start and stop, named by the subagent, and nothing else of a subagent', () => {
     const codex = (hook: Record<string, unknown>) => normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { session_id: SID, agent_id: 'a1', ...hook } });
-    expect(codex({ hook_event_name: 'PermissionRequest', message: 'remove the build folder' })).toMatchObject({ name: 'PermissionRequest', message: 'remove the build folder' });
-    expect(codex({ hook_event_name: 'PreToolUse' })?.name).toBe('PreToolUse');
+    expect(codex({ hook_event_name: 'PermissionRequest', message: 'remove the build folder', tool_name: 'Bash' }))
+      .toMatchObject({ name: 'PermissionRequest', agentId: 'a1', message: 'remove the build folder', toolName: 'Bash' });
+    expect(codex({ hook_event_name: 'PreToolUse' })).toMatchObject({ name: 'PreToolUse', agentId: 'a1' });
+    expect(codex({ hook_event_name: 'PostToolUse', tool_name: 'Bash' })).toMatchObject({ name: 'PostToolUse', agentId: 'a1', toolName: 'Bash' });
+    expect(codex({ hook_event_name: 'PreToolUse', agent_id: 'a 1' })).toBeUndefined();
     expect(codex({ hook_event_name: 'SubagentStart' })).toMatchObject({ name: 'SubagentStart', agentId: 'a1', sessionId: SID });
     expect(codex({ hook_event_name: 'SubagentStop' })).toMatchObject({ name: 'SubagentStop', agentId: 'a1' });
     expect(codex({ hook_event_name: 'UserPromptSubmit', prompt: 'p', turn_id: 't' })).toBeUndefined();
@@ -79,9 +82,9 @@ describe('normalizeHook', () => {
     expect(sub({ hook_event_name: 'UserPromptSubmit', prompt: 'p', prompt_id: 'p1' })).toBeUndefined();
     expect(sub({ hook_event_name: 'PreToolUse', agent_id: 'x'.repeat(300) })).toBeUndefined();
   });
-  it("names no subagent on a claude main-thread event or a codex subagent's", () => {
+  it('names no subagent on a main-thread event', () => {
     expect(normalizeHook({ robotId: 'c_1', hook: { hook_event_name: 'PermissionRequest' } })?.agentId).toBeUndefined();
-    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PreToolUse', agent_id: 'a1' } })?.agentId).toBeUndefined();
+    expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PreToolUse' } })?.agentId).toBeUndefined();
   });
   it('knows no event a backend does not send', () => {
     expect(normalizeHook({ robotId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();

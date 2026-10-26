@@ -132,7 +132,7 @@ runIf('API', () => {
     const good = await TestClient.connect(api.port, 'secret');
     const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; robots: Record<string, unknown>; home: { command: string } } };
     expect(snap.id).toBe(1);
-    expect(snap.result.version).toBe(11);
+    expect(snap.result.version).toBe(12);
     // the shell a new fleet opens with
     expect(Object.keys(snap.result.robots)).toHaveLength(1);
     expect(snap.result.islands.home.kind).toBe('home');
@@ -174,8 +174,8 @@ runIf('API', () => {
     for (let index = 0; index < count; index++) {
       c.ws.send(JSON.stringify({ part: { id: 7, index, count, data: bytes.subarray(index * PART_BYTES, (index + 1) * PART_BYTES).toString('base64') } }));
     }
-    expect(await answered).toMatchObject({ id: 7, result: { version: 11 } });
-    expect(await c.call('state.get')).toMatchObject({ result: { version: 11 } });
+    expect(await answered).toMatchObject({ id: 7, result: { version: 12 } });
+    expect(await c.call('state.get')).toMatchObject({ result: { version: 12 } });
     c.ws.close();
   });
 

@@ -83,7 +83,7 @@ runIf('svalld --worker', () => {
     try {
       expect(d.store.state.scribeOff).toBe(true);
       expect(Store.load(paths.state, () => {}).state.scribeOff).toBe(true);
-      expect(await api.call('state.get')).toMatchObject({ result: { version: 11 } });
+      expect(await api.call('state.get')).toMatchObject({ result: { version: 12 } });
       expect(await api.call('mobile.get')).toMatchObject({ error: { code: 'not_on_worker', message: 'not on a worker' } });
       expect(await api.call('usage.get')).toMatchObject({ result: { available: false, windows: [] } });
       expect(await api.call('fleets.list')).toMatchObject({ error: { code: process.platform === 'darwin' ? 'not_on_worker' : 'forbidden' } });

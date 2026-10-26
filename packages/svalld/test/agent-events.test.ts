@@ -15,7 +15,7 @@ const SID = '019eefb3-8d5c-7b00-ad02-80c4930f7426';
 const SERVER = 900_001;
 
 // the events of a fleet that is never started land in the store alone, with ps as the test lists it at the time
-function events(procs: Proc[], delayMs = 20) {
+function events(procs: Proc[], delayMs = 20, failures = 0) {
   const store = Store.load(resolvePaths(makeHome()).state, () => {});
   const c: Robot = {
     id: 'c_a', islandId: 'home', cell: { x: 1, y: 1 }, name: 'a', portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [],
@@ -25,7 +25,13 @@ function events(procs: Proc[], delayMs = 20) {
   const log = { info: (m: string) => said.push(m), error: () => {} };
   const said: string[] = [];
   let reads = 0;
-  const processes = async () => { reads++; const listed = [...procs]; await new Promise((r) => setTimeout(r, delayMs)); return listed; };
+  const processes = async () => {
+    reads++;
+    const listed = [...procs];
+    await new Promise((r) => setTimeout(r, delayMs));
+    if (failures-- > 0) throw new Error('ps timed out');
+    return listed;
+  };
   const ev = new AgentEvents({
     store, config: Config.parse({}), log, render: () => '', processes, refreshLinks: async () => {}, writable: () => true, frozen: () => false, track: () => {},
   });
@@ -69,6 +75,14 @@ describe('AgentEvents and the shared codex server', () => {
     await Promise.all([started, ended]);
     expect(reads()).toBe(2);
     expect(store.state.robots.c_a.agent).toMatchObject({ sessionId: SID, pid: 300, contextPct: 42, lastPrompt: { text: 'go' } });
+  });
+
+  it('asks ps again after a read that failed, rather than drop the pid\'s events until the verdict would expire', async () => {
+    const { store, hook, reads } = events([{ pid: 500, ppid: 1, pgid: 500, args: 'codex --no-daemon' }], 20, 1);
+    await expect(hook('SessionStart', 500)).rejects.toThrow('ps timed out');
+    await hook('SessionStart', 500);
+    expect(reads()).toBe(2);
+    expect(store.state.robots.c_a.agent).toMatchObject({ kind: 'codex', sessionId: SID, pid: 500 });
   });
 
   it('hears a codex on a server of its own, and spends no read on an event without a pid', async () => {

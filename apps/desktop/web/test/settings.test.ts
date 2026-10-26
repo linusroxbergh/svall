@@ -27,10 +27,10 @@ describe('settings', () => {
   it('reads stored settings back, and falls back to the defaults', () => {
     expect(readSettings(undefined)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings({ cardOpacity: 0.5, fullOpacity: 0.9, zoom: 1.1, onePassword: true, usageTab: false, autoArrange: false, robotMotion: false, bindings: {} }))
-      .toEqual({ cardOpacity: 0.5, fullOpacity: 0.9, zoom: 1.1, onePassword: true, usageTab: false, autoArrange: false, cardLinks: false, robotMotion: false, bindings: {}, notifications: DEFAULT_SETTINGS.notifications, keepAwake: 'needs' });
+      .toEqual({ cardOpacity: 0.5, fullOpacity: 0.9, zoom: 1.1, onePassword: true, usageTab: false, autoArrange: false, cardLinks: false, robotMotion: false, bindings: {}, notifications: DEFAULT_SETTINGS.notifications, keepAwake: 'needs', boardToastShown: false });
     // out of range, the wrong type, or off the ladder
     expect(readSettings({ cardOpacity: 4, fullOpacity: 'x', zoom: 1.12, onePassword: 'yes', bindings: {} }))
-      .toEqual({ cardOpacity: 1, fullOpacity: 1, zoom: 1.1, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {}, notifications: DEFAULT_SETTINGS.notifications, keepAwake: 'needs' });
+      .toEqual({ cardOpacity: 1, fullOpacity: 1, zoom: 1.1, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {}, notifications: DEFAULT_SETTINGS.notifications, keepAwake: 'needs', boardToastShown: false });
   });
   it('starts a fresh install at 90% and keeps a stored zoom of 100%', () => {
     expect(readSettings(undefined).zoom).toBe(0.9);
@@ -40,6 +40,11 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.autoArrange).toBe(true);
     expect(readSettings({ zoom: 1.1 }).autoArrange).toBe(true);
     expect(readSettings({ autoArrange: false }).autoArrange).toBe(false);
+  });
+  it('remembers the board toast has shown once it has', () => {
+    expect(DEFAULT_SETTINGS.boardToastShown).toBe(false);
+    expect(readSettings({ boardToastShown: true }).boardToastShown).toBe(true);
+    expect(readSettings({ boardToastShown: 'yes' }).boardToastShown).toBe(false);
   });
   it('hides the links on the cards until the machine shows them', () => {
     expect(DEFAULT_SETTINGS.cardLinks).toBe(false);

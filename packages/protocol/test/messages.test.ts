@@ -52,7 +52,7 @@ describe('messages', () => {
     }
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 12, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
@@ -67,7 +67,7 @@ describe('messages', () => {
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
     expect(methods['robot.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
     const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 11, islands: { i: island }, robots: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 12, islands: { i: island }, robots: {} }).success).toBe(true);
   });
   // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
   it('waits a whole number of milliseconds a timer can hold', () => {
@@ -150,8 +150,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 29 with a robot moved to another machine, the machines it can go to, and the route a terminal attaches over', () => {
-    expect(PROTOCOL_VERSION).toBe(29);
+  it('is 31 with a robot moved to another machine, the machines it can go to, and the route a terminal attaches over', () => {
+    expect(PROTOCOL_VERSION).toBe(31);
     const sheet = {
       sessionBytes: 4_000_000, branch: 'kanban', commits: 2, changedFiles: 3, untrackedFiles: 0, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
       interrupts: false, question: false, notInRepo: false,
@@ -165,6 +165,15 @@ describe('protocol version', () => {
     expect(methods['machines.refresh'].result.parse({})).toEqual({});
     const via = { ssh: 'linus-vault', controlSocket: '/tmp/svall-501/1-abc' };
     expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', via }).via).toEqual(via);
+  });
+
+  it("was 30 with the board's columns, robots placed by hand or let go, placing.set, and a sweep of columns alone", () => {
+    expect(methods['scribe.sweep'].params.parse({ columns: true })).toEqual({ columns: true });
+    expect(methods['robot.place'].params.safeParse({ id: 'c_a', columnId: 'todo' }).success).toBe(true);
+    expect(methods['column.delete'].params.safeParse({ id: 'todo' }).success).toBe(false);
+    expect(methods['column.reorder'].params.safeParse({ id: 'todo', targetId: 'done' }).success).toBe(false);
+    expect(methods['column.add'].result.parse(emptyState().columns)).toEqual(emptyState().columns);
+    expect(methods['placing.set'].params.safeParse({ enabled: false }).success).toBe(true);
   });
 
   it("was 28 with robot.* methods, the fleet's robots and each one's figure", () => {

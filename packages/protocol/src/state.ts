@@ -66,11 +66,11 @@ export const Agent = z.object({
   // task ids of the monitors the session started (Claude Code's Monitor, OpenCode's background shells), which are listed as
   // background shells but watch on without a turn
   monitors: z.array(z.string()).optional(),
-  // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
+  // subagents with a permission request open; Claude Code's notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
   // the subagents running, by id
   subagents: z.array(z.string()).optional(),
-  // the tool Claude Code's main thread last asked permission for, whose run alone answers the question
+  // the tool the main thread last asked permission for, whose run alone answers the question
   askedTool: z.string().optional(),
   // the newest prompt Claude Code accepted, as its UserPromptSubmit hook reported it. The transcript
   // is written after that hook, so this is what the last command reads until the entry lands.
@@ -170,6 +170,10 @@ export const Robot = TerminalSlot.extend({
   // set by a person's edit; absent, the scribe may rewrite it
   noteSource: z.literal('manual').optional(),
   portrait: Portrait,
+  // the id of its board column; absent, or naming a column since deleted, it sits in the first
+  column: z.string().optional(),
+  // set by a hand move; absent, the scribe may place it
+  columnSource: z.literal('manual').optional(),
   // the number of its robot-NN.svg in the desktop app's public/robots; absent, its portrait picks one
   figure: z.number().int().min(1).optional(),
   instructions: z.string(),
@@ -197,8 +201,16 @@ export const Robot = TerminalSlot.extend({
 });
 export type Robot = z.infer<typeof Robot>;
 
+// a column of the board the whole fleet shares; its id outlives a rename
+export const Column = z.object({ id: z.string().min(1), name: z.string().min(1) });
+export type Column = z.infer<typeof Column>;
+
+export const defaultColumns = (): Column[] => [
+  { id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'In review' }, { id: 'done', name: 'Done' },
+];
+
 /** The state.json schema this release reads and writes, which both machines of a handover have to share. */
-export const STATE_SCHEMA_VERSION = 11;
+export const STATE_SCHEMA_VERSION = 12;
 
 export const FleetState = z.object({
   version: z.literal(STATE_SCHEMA_VERSION),
@@ -213,6 +225,12 @@ export const FleetState = z.object({
   scribeOff: z.literal(true).optional(),
   // a new fleet's automatic passes wait until the user turns the scribe on or off
   scribeAsk: z.literal(true).optional(),
+  // the board's columns, left to right; never empty
+  columns: z.array(Column).min(1).default(defaultColumns),
+  // the scribe's passes place no robot on the board
+  placingOff: z.literal(true).optional(),
+  // a fleet's passes place no robot until the user turns placing on or off
+  placingAsk: z.literal(true).optional(),
   // the last automatic or swept pass that failed, cleared by the next one that succeeds
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
   // no robot is told to work in a worktree
@@ -234,6 +252,13 @@ export type FleetState = z.infer<typeof FleetState>;
 export const starredOf = (f: FleetState): Robot[] =>
   Object.values(f.robots).filter((c) => c.star !== undefined).sort((a, b) => a.star! - b.star!);
 
+// the column a robot sits in
+export const columnOf = (f: Pick<FleetState, 'columns'>, c: Pick<Robot, 'column'>): Column =>
+  f.columns.find((k) => k.id === c.column) ?? f.columns[0];
+
+// placing rides the scribe's passes and, like the scribe, waits on the user's first answer
+export const placingOn = (f: Pick<FleetState, 'placingOff' | 'placingAsk'>): boolean => !f.placingOff && !f.placingAsk;
+
 export const DORMANT_AFTER_HOURS = 12;
 
-export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, robots: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });
+export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, robots: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true, columns: defaultColumns(), placingAsk: true });

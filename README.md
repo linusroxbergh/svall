@@ -11,7 +11,8 @@ waiting on you or done.
 
 ![A robot's Claude Code session on the left and its browser on a GitHub issue on the right](assets/svall_browser.jpg)
 
-- Islands group your robots, say one per project, on a map or a board.
+- Islands group your robots, say one per project, on a map, and a board
+  sorts them into columns by stage.
   Each card shows its agent's status, context use, model and links such as its
   PR and ticket.
 - Each terminal is a tmux window. Quitting a fleet's window stops its
@@ -243,7 +244,9 @@ The first build takes several minutes and about 1.5 GB of disk.
   island's description. Notes you wrote stay, and a name you gave only gains a PR or
   ticket id. Passes start at most once a minute, so a busy fleet can run 60 an
   hour, and each costs money on an API key. A new fleet asks before turning the
-  scribe on, and you can turn it off in Settings.
+  scribe on, and you can turn it off in Settings. With board placing on, the
+  same pass also moves the robot to the board column that fits, unless you
+  placed it by hand.
 
 ## The desktop app
 
@@ -252,10 +255,15 @@ The first build takes several minutes and about 1.5 GB of disk.
   swap them, or onto water to make a new island. Drag an island's label to move
   it and its corner to resize it. On mission control, `arrange` packs the fleet
   into the window, and `update info` and `status` start a helper agent.
-- **Board** (Cmd+M): islands as a folder tree, with the selected robot's
-  terminal beside it. Drag robots and islands to move or reorder them.
-  A starred robot also stands in Starred at the top, newest first; drag
-  there to star one at a spot or to reorder.
+- **Board** (Cmd+M, or the Map/Board switch at the top left): every robot as a
+  card in a column: To do, In progress, In review and Done until you rename,
+  reorder, add or delete them. Drag a card, or right-click → Move to, to place
+  it; its agent is told nothing. A card names its island, and the bar filters
+  by island and by robots that need you; its Auto-place chip says whether the
+  scribe places robots, and its Place now has the scribe place them at once.
+- **Sidebar**: islands as a folder tree. Drag robots and islands to move or
+  reorder them. A starred robot also stands in Starred at the top, newest
+  first; drag there to star one at a spot or to reorder.
 - **Side card** (Cmd+I): the robot's note, agent profile, instructions,
   context, docs, last prompts, model, directory and context use.
 - **Browser** (Cmd+2): tabs survive a relaunch, and the agent sees their
@@ -555,9 +563,5 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). There is no CLA.
 
 ## License
 
-GPL-3.0-or-later, see [`LICENSE`](LICENSE). Copyright (c) 2026 Linus Roxbergh.
-The fonts are OFL; their folder has the licence file. The third-party software
-the app and the controller carry is listed in
-[`apps/desktop/mac/NOTICE`](apps/desktop/mac/NOTICE) and the release's
-`licenses/NOTICE`. The name and icon are not covered by the licence, see
-[`TRADEMARK.md`](TRADEMARK.md).
+GPL-3.0-or-later, see [`LICENSE`](LICENSE). The name and icon are not covered by
+the licence, see [`TRADEMARK.md`](TRADEMARK.md).

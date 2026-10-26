@@ -3,7 +3,6 @@ import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
 import { declineTaken, type ActionId } from '../keys.js';
-import { boardViewed } from '../selectors.js';
 import { DEFAULT_SETTINGS, type Settings } from '../settings.js';
 import type { App } from './index.js';
 import { clampSides, clampTree, DEFAULT_HALF_CARD, DEFAULT_SIDE_WIDTHS, type AppStorage, type FilesTree, type HalfCard, type Section, type Sections, type SideWidths } from './persist.js';
@@ -13,13 +12,16 @@ export type CardSize = 'half' | 'full';
 export type Terminal = { id: string; rect: Rect };
 // one native browser view the shell holds for a tab, and what it last reported about the page
 export type Webview = { tab: string; rect: Rect; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string };
-// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back
-export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void } };
+// a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back,
+// and dismiss puts a Dismiss beside it
+export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void }; dismiss?: boolean };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
-// a right-click's menu, by the pointer that asked for it; an entry without run shows greyed out
-export type MenuEntry = { title: string; run?: () => void; danger?: boolean };
-export type PageMenu = { x: number; y: number; items: MenuEntry[] };
+// a right-click's menu, by the pointer that asked for it; an entry with items opens them beside it, one with neither
+// run nor items to pick shows greyed out, a checked one carries a tick, a note sits small at its right, and sep rules it off from those above
+export type MenuEntry = { title: string; run?: () => void; danger?: boolean; items?: MenuEntry[]; checked?: boolean; note?: string; sep?: boolean };
+// a button's own menu, bare, leaves out the page's Reload
+export type PageMenu = { x: number; y: number; items: MenuEntry[]; bare?: boolean };
 export type MoveAsk = { id: string; to?: MachineId };
 
 export type UiState = {
@@ -39,6 +41,8 @@ export type UiState = {
   // the robot the move sheet is about, and the worker it goes to: none is this Mac
   moveSheet?: MoveAsk;
   deletingIsland?: string;
+  // a board column with robots in it, whose delete waits on where they go
+  deletingColumn?: string;
   // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it
   fleetPicker?: 'bare' | 'menu';
   card?: string;
@@ -61,6 +65,8 @@ export type UiState = {
   // the sides ⌘⇧S hid, so the next press brings back those and no others
   hiddenSides?: { sidebar: boolean; card: boolean };
   settingsOpen: boolean;
+  // the pane a control elsewhere opened the settings on, a new object each ask so a repeated one turns back to it
+  settingsAsk?: { pane: string };
   // the action whose chord the settings' Keyboard pane is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
   usageOpen: boolean;
@@ -98,6 +104,7 @@ export type UiActions = {
   setSleepingRobot(id?: string): void;
   setMoveSheet(ask?: MoveAsk): void;
   setDeletingIsland(id?: string): void;
+  setDeletingColumn(id?: string): void;
   setFleetPicker(mode?: 'bare' | 'menu'): void;
   termOpened(id: string, rect: Rect): void;
   termMoved(id: string, rect: Rect): void;
@@ -112,7 +119,7 @@ export type UiActions = {
   addressFocused(): void;
   askArrange(): void;
   arranged(): void;
-  showToast(message: string, tone?: Toast['tone'], action?: Toast['action']): void;
+  showToast(message: string, tone?: Toast['tone'], action?: Toast['action'], dismiss?: boolean): void;
   runToastAction(): void;
   clearToast(): void;
   askLink(ask: LinkAsk): void;
@@ -126,7 +133,7 @@ export type UiActions = {
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
   toggleSides(): void;
-  toggleSettings(open?: boolean): void;
+  toggleSettings(open?: boolean, pane?: string): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
@@ -161,8 +168,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     focusedId: storage?.getFocus(),
     selectedId: undefined,
     selectedIslandId: undefined,
-    // the board reads a robot and its card together; the map opens the card on demand
-    sideCardOpen: view === 'board',
+    sideCardOpen: false,
     sideCardCollapsed: false,
     namingRobot: false,
     missionPrompt: false,
@@ -170,6 +176,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     sleepingRobot: undefined,
     moveSheet: undefined,
     deletingIsland: undefined,
+    deletingColumn: undefined,
     card: undefined,
     cardSize: 'half',
     active: true,
@@ -186,6 +193,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     update: undefined,
     sidebarOpen: storage?.getSidebarOpen() ?? true,
     settingsOpen: firstRun,
+    settingsAsk: undefined,
     capturingKey: undefined,
     usageOpen: false,
     mobileOpen: false,
@@ -199,25 +207,20 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     sections: storage?.getSections() ?? {},
     dropHover: undefined,
     setActive: (active) => set({ active }),
-    // the board's robot comes to the map in its card
+    // the card goes along to the other view
     setView: (v) => {
       storage?.setView(v);
       const s = get();
-      const carried = v === 'map' && s.view === 'board' ? boardViewed(s) : undefined;
       // the shelf lies on the map and is mounted with it, so a view that leaves takes it along
-      set({ view: v, card: v === 'map' ? s.card : undefined, sideCardOpen: v === 'board' ? !s.sideCardCollapsed : s.sideCardOpen, resourcesOpen: v === 'map' && s.resourcesOpen,
+      set({ view: v, resourcesOpen: v === 'map' && s.resourcesOpen,
         ...(v === 'map' && s.view === 'board' && s.settings.autoArrange && { arrangeAsk: 'auto' as const }) });
-      if (!carried) return;
-      get().focus(carried);
     },
     select: (id, card) => set((s) => ({ selectedId: id, selectedIslandId: undefined, sideCardOpen: (card ?? id !== undefined) && !s.sideCardCollapsed })),
     selectIsland: (id) => set((s) => ({ selectedIslandId: id, selectedId: undefined, sideCardOpen: id !== undefined && !s.sideCardCollapsed })),
-    // on the map a robot's terminal is its card; on the board it is the terminal the board already shows
+    // a robot's terminal is its card
     focus: (id) => {
       storage?.setFocus(id);
-      set((s) => s.view === 'board'
-        ? { focusedId: id, selectedId: id, selectedIslandId: undefined }
-        : { card: id, focusedId: id, selectedId: id, selectedIslandId: undefined });
+      set({ card: id, focusedId: id, selectedId: id, selectedIslandId: undefined });
     },
     setStarredRow: (id) => set({ starredRow: id }),
     closeCard: () => set({ card: undefined }),
@@ -228,6 +231,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setSleepingRobot: (id) => set({ sleepingRobot: id }),
     setMoveSheet: (ask) => set({ moveSheet: ask }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
+    setDeletingColumn: (id) => set({ deletingColumn: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
     toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),
     termOpened: (id, rect) => set((s) => ({ terminals: { ...s.terminals, [id]: { id, rect } } })),
@@ -243,7 +247,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     addressFocused: () => set({ addressFocus: false }),
     askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
-    showToast: (message, tone = 'error', action) => set({ toast: { text: message, tone, ...(action && { action }) } }),
+    showToast: (message, tone = 'error', action, dismiss) => set({ toast: { text: message, tone, ...(action && { action }), ...(dismiss && { dismiss }) } }),
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },
     clearToast: () => set({ toast: undefined }),
     askLink: (linkAsk) => set({ linkAsk }),
@@ -269,13 +273,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       if (back.card) s.toggleSideCard(!hide);
       set({ hiddenSides: hide ? open : undefined });
     },
-    toggleSettings: (open) => set((s) => {
+    toggleSettings: (open, pane) => set((s) => {
       const next = open ?? !s.settingsOpen;
       // a window that closes has been answered, and what it leaves behind is this machine's settings;
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening
-      return { settingsOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
+      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
         keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen) ? true : s.keepPageFocus,
         capturingKey: next ? s.capturingKey : undefined };
     }),

@@ -383,7 +383,7 @@ runIf('an inactive replica', () => {
     const transcript = path.join(home, 'transcript.jsonl');
     fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', message: { role: 'user', content: 'imported turn' } })}\n`);
     fs.writeFileSync(paths.state, JSON.stringify({
-      version: 11, islands: { i1: { id: 'i1', name: 'isle', description: 'an imported isle', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 6 }, seed: 1 } },
+      version: 12, islands: { i1: { id: 'i1', name: 'isle', description: 'an imported isle', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 6 }, seed: 1 } },
       robots: {
         c1: {
           id: 'c1', islandId: 'i1', cell: { x: 1, y: 1 }, name: 'ada', note: '', portrait: 'owl', instructions: '', cwd: repo, context: [],

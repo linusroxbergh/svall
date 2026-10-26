@@ -7,6 +7,9 @@
 .map::after { content: ""; position: absolute; inset: 0; pointer-events: none;
   box-shadow: inset 0 0 200px 50px color-mix(in srgb, var(--shade-1) 70%, var(--shade-2)); }
 .map-overlay { position: absolute; inset: 0; pointer-events: none; }
+/* the view switch stands where the board's bar holds it, so switching moves it nowhere */
+.map-view { position: absolute; top: 0; left: 0; z-index: var(--z-furniture); height: 52px; box-sizing: border-box; border-bottom: 1px solid transparent; padding: 0 var(--sp-2xl); display: flex; align-items: center; }
+.map-view .kb-seg { pointer-events: auto; background: var(--glass); backdrop-filter: blur(var(--blur)); }
 .map-grain { position: absolute; inset: 0; pointer-events: none;
   background: url('../assets/map-grain.png') repeat, radial-gradient(125% 95% at 50% 8%, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%);
   background-size: 128px 128px, auto; background-blend-mode: soft-light, normal; opacity: .46; }
@@ -38,6 +41,9 @@
 .toast[data-corner^="bottom"] { bottom: var(--map-inset); }
 .toast:has(.toast-act) { pointer-events: auto; }
 .toast-act { margin-left: var(--sp-xl); padding: 0; background: none; border: 0; font: inherit; font-weight: var(--w-semibold); color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* a toast with two buttons keeps them on its one line */
+.toast:has(.toast-dismiss) { max-width: none; white-space: nowrap; }
+.toast-dismiss { font-weight: var(--w-medium); text-decoration: none; color: color-mix(in srgb, currentColor 65%, transparent); }
 .terminal-card { position: absolute; z-index: var(--z-card); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; opacity: .94;
   transition: left var(--dur) var(--ease), top var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease); }
 /* the link prompt sits where the pointer left it, over everything the map and the board draw */
@@ -46,7 +52,11 @@
 .linkask-ref { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .linkask .btn { padding: var(--sp-md) var(--sp-lg); font-size: var(--text-md); }
 .ctx-menu { position: fixed; z-index: var(--z-ask); min-width: 148px; padding: var(--sp-xs); font-size: var(--text-md); color: var(--ink); user-select: none; }
-.ctx-item { padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); cursor: default; }
+.ctx-item { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); cursor: default; }
+.ctx-mark { margin-left: auto; color: var(--ink-3); }
+.ctx-check { color: var(--sel); }
+.ctx-note { font-size: var(--text-xs); }
+.ctx-note + .ctx-check { margin-left: 0; }
 .ctx-item[data-active="true"] { background: var(--fill-2); }
 .ctx-item[data-danger] { color: var(--danger); }
 .ctx-item[aria-disabled="true"] { opacity: var(--disabled); }
