@@ -682,9 +682,8 @@ async function checkedMaster(d: HostDeps, entry: Registered): Promise<Outcome<Ss
   return { value: opened, detail: `connected to ${entry.record.ssh}` };
 }
 
-// $1 the units folder there, $2 the gateway's unit, $3 the fleet's, $4 the fleet's replicas folder, $5 the gateway's fleet
-// records: whether the gateway's unit is there, whether the fleet's runs it as a worker, whether an earlier handover left
-// records in the replicas folder, and the id of each fleet the gateway keeps a record of
+// $1 units folder, $2 gateway unit, $3 fleet unit, $4 replicas folder, $5 gateway fleet records: which units are there,
+// whether the fleet's runs as a worker, whether an earlier handover left replica records, and each fleet the gateway holds
 const UNITS = '[ -f "$1/$2" ] && echo gateway; if [ -f "$1/$3" ]; then if grep -q -- --worker "$1/$3"; then echo worker; else echo plain; fi; fi; for f in "$4"/*/*.json; do [ -f "$f" ] && echo replicas && break; done; for f in "$5"/*.json; do [ -f "$f" ] && echo "held $(basename "$f" .json)"; done; exit 0';
 // $1 the gateway's unit file
 const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload';
