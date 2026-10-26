@@ -5,12 +5,11 @@ import type { SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../handover/hash.js';
-import { clean, holds } from '../handover/portable-path.js';
-import { relocate } from '../handover/relocate.js';
-import { realPath } from '../paths.js';
-import { configNeeds, configPlace, configRedacted, fieldPlace, getAt } from './mirror-config.js';
+import { configNeeds, configPlace, configRedacted, fieldPlace, getAt, relocatedServer } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
-import { docWithOverride, readState, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan } from './mirror.js';
+import {
+  DOC_NAMES, docWithOverride, mover, placedIn, readState, recordKey, relocated, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan,
+} from './mirror.js';
 
 // how a Linux worker gets the runtime a server's command names
 const INSTALL_RUN: Record<string, string> = {
@@ -18,48 +17,60 @@ const INSTALL_RUN: Record<string, string> = {
   uvx: 'curl -LsSf https://astral.sh/uv/install.sh | sh', uv: 'curl -LsSf https://astral.sh/uv/install.sh | sh', docker: 'sudo apt install docker.io', python3: 'sudo apt install python3',
 };
 
+const Place = z.array(z.union([z.string(), z.number()]));
+// where an item lies on the worker: in config file `doc`, or in the file the mirror writes whole landing at `file`, at
+// `place` as the Mac holds it; lazy, as mirror.ts, which names the docs, imports this module
+const Where = { doc: z.lazy(() => z.enum(DOC_NAMES)).optional(), file: z.string().optional(), place: Place };
+/** An item with keys: `bare` what the mirror carries at its place with every key emptied, and each secret field's leaf under it. */
+const Keyed = z.object({ item: z.string(), ...Where, bare: z.record(z.string(), z.unknown()), fields: z.array(z.object({ field: z.string(), leaf: Place })) });
+/** An item the mirror carries whole once ticked, and the fields it holds at its place. */
+const Whole = z.object({ item: z.string(), ...Where, fields: z.array(z.string()) });
+type Keyed = z.infer<typeof Keyed>;
+type Whole = z.infer<typeof Whole>;
 /**
- * A secret field of `item` by where the worker holds its value: config file `doc`, or the file the mirror writes whole
- * landing at `file`, at `place` as the Mac holds it; `bare` what the mirror leaves there without the key. No value travels.
+ * What the home asks a worker, with no secret value in it: the Mac's homes, the commands and variables its servers need,
+ * the ticked items it carries whole, each item with keys, and Claude's OAuth servers.
  */
-const SecretAt = z.object({
-  item: z.string(), field: z.string(), doc: z.enum(['settings.json', '.claude.json', 'config.toml', 'opencode.json', 'opencode.jsonc']).optional(),
-  file: z.string().optional(), place: z.array(z.union([z.string(), z.number()])), bare: z.string().optional(),
-});
-type SecretAt = z.infer<typeof SecretAt>;
-/** What the home asks a worker: the Mac's homes, the commands and variables its servers need, its secret fields and Claude's OAuth servers. */
 export const ReportAsk = z.object({
-  homedir: z.string(), claudeDir: z.string(), commands: z.array(z.string()), vars: z.array(z.string()), secrets: z.array(SecretAt),
+  homedir: z.string(), claudeDir: z.string(), commands: z.array(z.string()), vars: z.array(z.string()), secrets: z.array(Keyed), whole: z.array(Whole),
   oauth: z.array(z.object({ item: z.string(), name: z.string() })),
 });
 export type ReportAsk = z.infer<typeof ReportAsk>;
 /**
  * What a worker holds and runs: each command found, each variable its daemon has, each secret field non-empty there by
- * its field key, as the copy the mirror wrote or its own, and each Claude OAuth server it is logged in to, by item.
+ * its field key, as the copy the mirror wrote or its own, each item carried whole that lies there, and each Claude OAuth
+ * server it is logged in to, by item.
  */
 export const ConfigReport = z.object({
-  commands: z.record(z.string(), z.boolean()), vars: z.record(z.string(), z.boolean()),
-  secrets: z.record(z.string(), z.enum(['copied', 'own'])), oauth: z.record(z.string(), z.boolean()),
+  commands: z.record(z.string(), z.boolean()), vars: z.record(z.string(), z.boolean()), secrets: z.record(z.string(), z.enum(['copied', 'own'])),
+  whole: z.record(z.string(), z.boolean()), oauth: z.record(z.string(), z.boolean()),
 });
 export type ConfigReport = z.infer<typeof ConfigReport>;
 
 type Doc = Record<string, unknown>;
 const isDoc = (v: unknown): v is Doc => typeof v === 'object' && v !== null && !Array.isArray(v);
-const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
 // the servers the mirror carries: an unknown one only once ticked whole
 const carried = (plan: MirrorPlan): MirroredServer[] => plan.servers.filter((s) => Object.keys(s.entry).length > 0);
 
 /** What to ask a worker about `plan`. */
 export function reportAsk(plan: MirrorPlan): ReportAsk {
-  const secrets: SecretAt[] = [];
-  for (const s of plan.servers.filter((x) => x.known)) {
-    // a plugin's server travels in its plugin's server file
-    const file = s.doc ? undefined : plan.files.find((f) => f.from === s.file && f.data !== undefined)?.to;
-    if (!s.doc && !file) continue;
-    for (const field of s.secretFields) {
-      const leaf = fieldPlace(s.agent, s.entry, field);
-      secrets.push({ item: s.key, field, ...(s.doc ? { doc: s.doc } : { file }), place: [...s.place, ...leaf], bare: text(getAt(s.bare, leaf)) });
+  // a server's doc, or else the plugin server file it travels in, by where that lands
+  const where = (s: MirroredServer): { doc: DocName } | { file: string } | undefined => {
+    if (s.doc) return { doc: s.doc };
+    const to = plan.files.find((f) => f.from === s.file && f.data !== undefined)?.to;
+    return to === undefined ? undefined : { file: to };
+  };
+  const secrets: Keyed[] = [];
+  const whole: Whole[] = [];
+  for (const s of plan.servers) {
+    const at = where(s);
+    if (!at) continue;
+    if (s.known && s.secretFields.length) {
+      secrets.push({ item: s.key, ...at, place: s.place, bare: s.bare, fields: s.secretFields.map((field) => ({ field, leaf: fieldPlace(s.agent, s.entry, field) })) });
+    } else if (!s.known && Object.keys(s.entry).length) {
+      // an unknown server's preview names its fields
+      whole.push({ item: s.key, ...at, place: s.place, fields: s.preview });
     }
   }
   // each config file's own fields; Claude's env lies apart from the settings the mirror merges
@@ -71,65 +82,80 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
   for (const c of plan.configs) {
     for (const f of files.filter((x) => x.item === c.key)) {
       const fields = f.fields ?? c.fields;
-      const bare = configRedacted(f.at, fields);
-      for (const field of fields) {
-        const place = f.doc === 'settings.json' && field.startsWith('env.') ? ['env', field.slice('env.'.length)] : configPlace(f.at, field);
-        if (place) secrets.push({ item: c.key, field, doc: f.doc, place, bare: text(getAt(bare, place)) });
-      }
+      const leaves = fields.flatMap((field) => {
+        const leaf = f.doc === 'settings.json' && field.startsWith('env.') ? ['env', field.slice('env.'.length)] : configPlace(f.at, field);
+        return leaf ? [{ field, leaf }] : [];
+      });
+      secrets.push({ item: c.key, doc: f.doc, place: [], bare: configRedacted(f.at, fields), fields: leaves });
+    }
+  }
+  // a plugin config travels as its file
+  for (const p of plan.plugins.filter((x) => x.ticked)) {
+    for (const file of p.files) {
+      const to = plan.files.find((f) => f.from === file)?.to;
+      if (to !== undefined) whole.push({ item: p.key, file: to, place: [], fields: [] });
     }
   }
   return {
-    homedir: plan.homes.homedir, claudeDir: plan.homes.claudeDir, commands: [...new Set(carried(plan).flatMap((s) => s.runtimes))], vars: plan.vars, secrets,
+    homedir: plan.homes.homedir, claudeDir: plan.homes.claudeDir, commands: [...new Set(carried(plan).flatMap((s) => s.runtimes))], vars: plan.vars, secrets, whole,
     oauth: carried(plan).filter((s) => s.agent === 'claude' && s.oauth).map((s) => ({ item: s.key, name: s.name })),
   };
 }
 
 /**
  * A worker's answer to `ask`: each command on its daemon's PATH, or at an absolute one moved into this home as the
- * mirror moves it; each variable in its daemon's environment or its .env; each secret field where the mirror writes it
- * here, overrides merged, unless empty or bare; each Claude server with a login in its credentials.
+ * mirror moves it; each variable non-empty in its daemon's environment or its .env; each secret field where the mirror
+ * writes it here, overrides merged, unless empty or as the mirror leaves it bare; each item carried whole that lies where
+ * the mirror puts it, as its record says; each Claude server with a login in its credentials.
  */
 export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: string; envFile: string; stateFile: string }): ConfigReport {
-  const claude = { from: ask.claudeDir, to: o.claudeDir };
-  const move = (p: string): string => relocate(p, holds(clean(claude.from), clean(p)) ? claude : { from: ask.homedir, to: o.homedir });
+  const move = mover(ask, o);
   const env = readEnvFile(o.envFile);
   const state = readState(o.stateFile);
   const docs = new Map<DocName, Doc | undefined>();
-  // the value at `s` here, and whether the mirror's record holds it as the copy it wrote
-  const held = (s: SecretAt): { value: unknown; copied: boolean } => {
-    if (s.doc) {
-      if (!docs.has(s.doc)) docs.set(s.doc, docWithOverride(s.doc, o));
-      // a Claude project's servers lie under this home's own path of it
-      const place = s.doc === '.claude.json' && s.place[0] === 'projects' ? ['projects', realPath(move(String(s.place[1]))).normalize('NFC'), ...s.place.slice(2)] : s.place;
-      const value = getAt(docs.get(s.doc), place);
-      return { value, copied: typeof value === 'string' && state.secrets[JSON.stringify([s.doc, ...s.place])] === sha256Hex(value) };
-    }
-    if (!s.file?.startsWith('claude/')) return { value: undefined, copied: false };
-    // a file the mirror writes whole is the copy while it is as the mirror wrote it; an override stands in for it
-    const override = path.join(o.overrides, s.file);
-    const own = fs.existsSync(override);
-    let bytes: Buffer;
-    let doc: unknown;
-    try {
-      bytes = fs.readFileSync(own ? override : path.join(o.claudeDir, s.file.slice('claude/'.length)));
-      doc = JSON.parse(bytes.toString('utf8'));
-    } catch {
-      return { value: undefined, copied: false };
-    }
-    return { value: getAt(doc, s.place), copied: !own && sha256Hex(bytes) === state.files[s.file] };
+  const docHere = (name: DocName): Doc | undefined => {
+    if (!docs.has(name)) docs.set(name, docWithOverride(name, o));
+    return docs.get(name);
   };
+  // a file the mirror writes whole as it stands here, its override standing in for it, and whether it is as the mirror wrote it
+  const fileHere = (to: string): { doc: unknown; copied: boolean } => {
+    if (!to.startsWith('claude/')) return { doc: undefined, copied: false };
+    const override = path.join(o.overrides, to);
+    const own = fs.existsSync(override);
+    try {
+      const bytes = fs.readFileSync(own ? override : path.join(o.claudeDir, to.slice('claude/'.length)));
+      return { doc: JSON.parse(bytes.toString('utf8')), copied: !own && sha256Hex(bytes) === state.files[to] };
+    } catch {
+      return { doc: undefined, copied: false };
+    }
+  };
+
   const secrets: ConfigReport['secrets'] = {};
-  for (const s of ask.secrets) {
-    const { value, copied } = held(s);
-    if (typeof value === 'string' && value !== '' && value !== s.bare) secrets[fieldKey(s.item, s.field)] = copied ? 'copied' : 'own';
+  for (const k of ask.secrets) {
+    // what the mirror leaves there without keys, moved as apply moves it: a server's command, args and cwd, a config
+    // file's path keys, a plugin's server file not at all
+    const bare = k.file !== undefined ? k.bare : k.place.length ? relocatedServer(k.bare, move) : relocated(k.bare, move);
+    const file = k.file !== undefined ? fileHere(k.file) : undefined;
+    for (const { field, leaf } of k.fields) {
+      const value = k.doc ? getAt(docHere(k.doc), [...placedIn(k.doc, k.place, move), ...leaf]) : getAt(file?.doc, [...k.place, ...leaf]);
+      if (typeof value !== 'string' || value === '' || value === getAt(bare, leaf)) continue;
+      const copied = k.doc ? state.secrets[recordKey(k.doc, [...k.place, ...leaf])] === sha256Hex(value) : file?.copied === true;
+      secrets[fieldKey(k.item, field)] = copied ? 'copied' : 'own';
+    }
+  }
+  const whole: ConfigReport['whole'] = {};
+  for (const w of ask.whole) {
+    const v = w.doc ? getAt(docHere(w.doc), placedIn(w.doc, w.place, move)) : w.file !== undefined ? getAt(fileHere(w.file).doc, w.place) : undefined;
+    const recorded = w.doc ? state.servers[recordKey(w.doc, w.place)] : w.file !== undefined ? state.files[w.file] : undefined;
+    whole[w.item] = (whole[w.item] ?? true) && recorded !== undefined && isDoc(v) && w.fields.every((f) => Object.hasOwn(v, f));
   }
   let credentials: unknown;
   try { credentials = JSON.parse(fs.readFileSync(path.join(o.claudeDir, '.credentials.json'), 'utf8')); } catch { /* no login */ }
   const logins = isDoc(credentials) && isDoc(credentials.mcpOAuth) ? Object.keys(credentials.mcpOAuth) : [];
   return {
     commands: Object.fromEntries(ask.commands.map((c) => [c, path.posix.isAbsolute(c) ? isExecutable(move(c)) : onPath(c, process.env.PATH ?? '') !== undefined])),
-    vars: Object.fromEntries(ask.vars.map((v) => [v, Boolean(process.env[v] ?? env[v])])),
-    secrets,
+    vars: Object.fromEntries(ask.vars.map((v) => [v, Boolean(process.env[v] || env[v])])),
+    secrets, whole,
     oauth: Object.fromEntries(ask.oauth.map((a) => [a.item, logins.some((k) => k.startsWith(`${a.name}|`))])),
   };
 }
@@ -143,20 +169,23 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
 export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
-  // an item's keys: ticked, once the worker holds each as the copy; unticked, once it holds each of its own
+  // a ticked item the worker does not hold yet, or was not asked about
+  const notYet = (tick: NonNullable<SetupRow['tick']>): SetupRow =>
+    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : o.unchecked, tick });
+  // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own
   const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[]): SetupRow => {
     const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview };
-    const all = (held: 'copied' | 'own'): boolean => fields.every((f) => report?.secrets[fieldKey(item, f)] === held);
-    if (tick.on && all('copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
-    if (tick.on) return { key: item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : o.unchecked, tick };
-    if (all('own')) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
+    const held = (f: string) => report?.secrets[fieldKey(item, f)];
+    if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
+    if (fields.every((f) => (tick.on ? held(f) : held(f) === 'own'))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
+    if (tick.on) return notYet(tick);
     return { key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: `mirrored without ${preview.join(', ')}; or set them in ~/.svall/mirror-overrides on ${m}`, tick };
   };
   // a server or plugin config whose fields Svall does not know, which travels whole once each is ticked
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
-    return on ? { key: item, status: 'ok', detail: `copied whole to ${m}`, tick }
-      : { key: item, status: 'warn', action: `copy ${name} whole to ${m}`, detail: `${name} has fields Svall does not know; it is not mirrored until you tick it`, tick };
+    if (!on) return { key: item, status: 'warn', action: `copy ${name} whole to ${m}`, detail: `${name} has fields Svall does not know; it is not mirrored until you tick it`, tick };
+    return report?.whole[item] ? { key: item, status: 'ok', detail: `copied whole to ${m}`, tick } : notYet(tick);
   };
   // an unknown server's preview names its fields
   for (const s of plan.servers) {

@@ -367,7 +367,7 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     tick('claude:mcp:odd', ['command'], true); await push();
     const plan = mirrorPlan(mac, readConsent(w.home.paths.mirrorConsent, W));
     expect(plan.servers.find((s) => s.name === 'odd')).toMatchObject({ known: false, secretFields: [], ticked: ['command'], entry: {} });
-    expect(plan.plugins).toEqual([{ key: 'claude:plugin:acme', name: 'acme', fields: ['env'], ticked: false }]);
+    expect(plan.plugins).toEqual([{ key: 'claude:plugin:acme', name: 'acme', fields: ['env'], ticked: false, files: [path.join(mac.claudeDir, acmeSettings)] }]);
     expect(workerJson().mcpServers).not.toHaveProperty('odd');
     expect(fs.existsSync(path.join(worker.claudeDir, acmeSettings))).toBe(false);
     tick('claude:mcp:odd', ['sandbox'], true); tick('claude:plugin:acme', ['env'], true); await push();

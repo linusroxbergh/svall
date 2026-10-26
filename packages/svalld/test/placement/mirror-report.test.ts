@@ -3,8 +3,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SetupRow } from '@svall/protocol';
 import { silentLogger } from '../../src/log.js';
-import { fieldKey, setConsent } from '../../src/placement/mirror-consent.js';
-import { setupRows, type ConfigReport } from '../../src/placement/mirror-report.js';
+import { fieldKey, readConsent, setConsent } from '../../src/placement/mirror-consent.js';
+import { configReport, reportAsk, setupRows, type ConfigReport } from '../../src/placement/mirror-report.js';
 import { Mirror, mirrorPlan } from '../../src/placement/mirror.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { editJson, farHome, macHome, put } from './mirror-homes.js';
@@ -19,16 +19,17 @@ afterEach(async () => {
 
 const O = { machine: 'w1', fleetFlag: '', unchecked: 'not checked: w1 is not reachable' };
 const byKey = (key: string) => (r: SetupRow) => r.key === key;
-const report = (o: Partial<ConfigReport> = {}): ConfigReport => ({ commands: {}, vars: {}, secrets: {}, oauth: {}, ...o });
+const report = (o: Partial<ConfigReport> = {}): ConfigReport => ({ commands: {}, vars: {}, secrets: {}, whole: {}, oauth: {}, ...o });
 const executable = (file: string) => { put(file, '#!/bin/sh\n'); fs.chmodSync(file, 0o755); };
 
 describe('the setup rows of the mirror', () => {
   let mac: ReturnType<typeof macHome>;
   beforeEach(() => { mac = macHome(); });
   const rows = (r: ConfigReport | undefined, consent = new Set<string>(), o = O) => setupRows(mirrorPlan(mac, consent), r, o);
-  // the row of `key` with every field of its item ticked, or none
-  const row = (key: string, o: { ticked: boolean; secrets?: ConfigReport['secrets'] }, r: ConfigReport | undefined = report({ secrets: o.secrets ?? {} })) => {
+  // the row of `key` with every field of its item ticked, or none, by a report or, `unchecked`, none
+  const row = (key: string, o: { ticked: boolean; secrets?: ConfigReport['secrets']; whole?: ConfigReport['whole']; unchecked?: true }) => {
     const fields = rows(undefined).find(byKey(key))!.tick!.fields;
+    const r = o.unchecked ? undefined : report({ secrets: o.secrets ?? {}, whole: o.whole ?? {} });
     return rows(r, new Set(o.ticked ? fields.map((f) => fieldKey(key, f)) : [])).find(byKey(key));
   };
 
@@ -40,8 +41,9 @@ describe('the setup rows of the mirror', () => {
     expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
   });
 
-  it('a ticked server not yet copied says pushed, not yet on w1', () => {
+  it('a ticked server not yet copied says pushed, not yet on w1; one whose keys the worker holds as its own is ok', () => {
     expect(row('claude:mcp:linear', { ticked: true, secrets: {} })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
+    expect(row('claude:mcp:linear', { ticked: true, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
   });
 
   it('a ${VAR} the worker lacks is "set VAR on w1" with svall worker env VAR, under the fleet\'s flag; one it has is ok', () => {
@@ -85,12 +87,16 @@ describe('the setup rows of the mirror', () => {
       key: 'claude:mcp:odd', status: 'warn', action: 'copy odd whole to w1', detail: 'odd has fields Svall does not know; it is not mirrored until you tick it',
       tick: { item: 'claude:mcp:odd', fields: ['command', 'env', 'sandbox'], on: false, preview: ['command', 'env', 'sandbox'] },
     }]);
-    expect(row('claude:mcp:odd', { ticked: true })).toMatchObject({ status: 'ok', detail: 'copied whole to w1', tick: { on: true } });
+    expect(row('claude:mcp:odd', { ticked: true, whole: { 'claude:mcp:odd': true } })).toMatchObject({ status: 'ok', detail: 'copied whole to w1', tick: { on: true } });
+    expect(row('claude:mcp:odd', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1', tick: { on: true } });
+    expect(row('claude:mcp:odd', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
     expect(all.find(byKey('claude:plugin:acme'))).toEqual({
       key: 'claude:plugin:acme', status: 'warn', action: "copy acme's config whole to w1", detail: "acme's config has fields Svall does not know; it is not mirrored until you tick it",
       tick: { item: 'claude:plugin:acme', fields: ['env'], on: false, preview: ['env'] },
     });
-    expect(row('claude:plugin:acme', { ticked: true })).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
+    expect(row('claude:plugin:acme', { ticked: true, whole: { 'claude:plugin:acme': true } })).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
+    expect(row('claude:plugin:acme', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
+    expect(row('claude:plugin:acme', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
     expect(all.filter((r) => r.key.startsWith('unreadable:')))
       .toEqual([{ key: `unreadable:${toml}`, status: 'warn', detail: `${toml} cannot be read as JSON or TOML; set it up on w1 by hand` }]);
     expect(all.find(byKey('codex:mcp:github'))).toBeUndefined();
@@ -109,7 +115,7 @@ describe('the setup rows of the mirror', () => {
     for (const key of ['claude:mcp:linear', 'var:REMOTE_TOKEN']) expect(odd.find(byKey(key))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
   });
 
-  it('Mirror.report reads no link as not reachable and one in mismatch as another release; a call that fails is logged and the rows come unchecked', async () => {
+  it('Mirror.report reads no link as not reachable and one in mismatch as another release; a worker that does not answer is asked once, logged, and the rows come unchecked', async () => {
     const errors: string[] = [];
     const mirror = new Mirror({ ...mac, consent: path.join(makeHome(), 'mirror-consent.json'), log: { ...silentLogger, error: (m) => errors.push(m) } });
     const remote = async (link: Parameters<Mirror['report']>[0]) => (await mirror.report(link, W, { name: 'w1', fleetFlag: '' })).find(byKey('var:REMOTE_TOKEN'));
@@ -118,7 +124,7 @@ describe('the setup rows of the mirror', () => {
     expect(await remote({ connected: () => false, mismatch: () => ({}) as never, call })).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
     expect(errors).toEqual([]);
     expect(await remote({ connected: () => true, mismatch: () => undefined, call })).toMatchObject({ action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
-    expect(errors).toEqual(['mirror: w1 did not answer config.state: timed out', 'mirror: w1 did not answer config.report: timed out']);
+    expect(errors).toEqual(['mirror: w1 did not answer config.state: timed out']);
   });
 });
 
@@ -148,11 +154,14 @@ describe('the worker\'s report over the link', () => {
     for (const b of ['node', 'npx']) executable(path.join(bin, b));
     vi.stubEnv('PATH', bin);
     vi.stubEnv('E', 'from-the-daemon');
+    // empty in the daemon's environment, set in .env
+    vi.stubEnv('REMOTE_TOKEN', '');
     const again = await setup();
     expect(again.filter((r) => r.key.startsWith('runtime:'))).toEqual([
       { key: 'runtime:bun', status: 'warn', action: 'install bun on w1', run: 'curl -fsSL https://bun.sh/install | bash', detail: 'ctx need it' },
     ]);
     expect(again.find(byKey('var:E'))).toMatchObject({ status: 'ok' });
+    expect(again.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok' });
   });
 
   it('config.state names the projects the worker has; a command under the Mac\'s home is looked for under the worker\'s; a project server\'s key is read under the worker\'s path of it', async () => {
@@ -191,10 +200,13 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('claude:plugin:acme:mcp:pdf')).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
   });
 
-  it('a key in the worker\'s overrides or its own settings env is its own before the next push; a Claude login is read from its credentials', async () => {
+  it('a key in the worker\'s overrides or its own settings env is its own before the next push, and ticked after it; a Claude login is read from its credentials', async () => {
     expect(await rowOf('codex:mcp:github')).toMatchObject({ status: 'warn', action: "copy github's keys to w1" });
     put(path.join(worker.overrides, 'codex/config.toml'), '[mcp_servers.github.env]\nGITHUB_TOKEN = "worker-own"\n');
     expect(await rowOf('codex:mcp:github')).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
+    tick('codex:mcp:github', ['env.GITHUB_TOKEN'], true);
+    await push();
+    expect(await rowOf('codex:mcp:github')).toMatchObject({ status: 'ok', detail: 'w1 has its own keys', tick: { on: true } });
     expect(await rowOf('claude:settings')).toMatchObject({ status: 'warn', action: "copy settings.json's keys to w1" });
     editJson(path.join(worker.claudeDir, 'settings.json'), (j) => { j.env.ANTHROPIC_API_KEY = 'sk-worker'; });
     expect(await rowOf('claude:settings')).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
@@ -202,5 +214,35 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('oauth:claude:mcp:notion')).toMatchObject({ status: 'warn', action: 'log in once on w1' });
     put(path.join(worker.claudeDir, '.credentials.json'), JSON.stringify({ mcpOAuth: { 'notion|4f1c': { accessToken: 'x' } } }));
     expect(await rowOf('oauth:claude:mcp:notion')).toMatchObject({ status: 'ok', detail: 'logged in on w1' });
+  });
+
+  it('a key in an arg under the Mac\'s home, unticked, reads as the mirror left it there, moved, and not as the worker\'s own', async () => {
+    editJson(mac.claudeJson, (j) => { j.mcpServers.run = { command: 'sh', args: ['-c', `${mac.homedir}/run.sh https://u:pw_1234567890@host.test/x`] }; });
+    await push();
+    expect(await rowOf('claude:mcp:run')).toMatchObject({ status: 'warn', action: "copy run's keys to w1" });
+  });
+
+  it('with every item ticked no secret value is in the ask, the answer or the rows; once pushed, each item reads as the worker holds it', async () => {
+    editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } }; });
+    put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json'), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
+    const ticks = setupRows(mirrorPlan(mac), undefined, O).flatMap((r) => (r.tick ? [r.tick] : []));
+    expect(ticks.map((t) => t.item).sort()).toEqual([
+      'claude:mcp:linear', 'claude:mcp:odd', 'claude:plugin:acme', 'claude:plugin:acme:mcp:pdf', 'claude:settings', 'codex:config', 'codex:mcp:github', 'opencode:config',
+    ]);
+    for (const t of ticks) tick(t.item, t.fields, true);
+    expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', detail: 'pushed; not yet on w1' });
+    expect(await rowOf('claude:plugin:acme')).toMatchObject({ status: 'warn', detail: 'pushed; not yet on w1' });
+    await push();
+    const rows = (await setup()).filter((r) => r.tick);
+    const whole = ['claude:mcp:odd', 'claude:plugin:acme'];
+    expect(rows.map((r) => [r.key, r.status, r.detail.split(':')[0]])).toEqual(ticks.map((t) => [t.item, 'ok', whole.includes(t.item) ? 'copied whole to w1' : 'keys copied to w1']));
+    const plan = mirrorPlan(mac, readConsent(w.home.paths.mirrorConsent, W));
+    const ask = reportAsk(plan);
+    const answer = configReport(ask, { ...worker, envFile: w.worker.paths.env, stateFile: w.worker.paths.mirrorState });
+    expect(Object.values(answer.secrets)).toEqual(Object.values(answer.secrets).map(() => 'copied'));
+    const said = JSON.stringify([ask, answer, setupRows(plan, answer, O)]);
+    for (const secret of [
+      'lin_api_1234567890', 'pdf_key_1234567890', 'ghp_1234567890abcdef', 'acme_key_1234567890', 'sk-oc-1234567890', 'sk-mac', 'odd_token_1234567890', 'acme_1234567890abcd',
+    ]) expect(said).not.toContain(secret);
   });
 });

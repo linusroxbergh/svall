@@ -34,8 +34,9 @@ const APPLY_MS = 2 * 60_000;
 export type MirrorHomes = { claudeDir: string; codexDir: string; homedir: string; claudeJson: string; opencodeDir: string; agentProfiles?: string };
 type Homes = Pick<MirrorHomes, 'homedir' | 'claudeDir' | 'claudeJson' | 'codexDir' | 'opencodeDir'>;
 
-/** An agent config file the mirror merges by key rather than carries whole. */
-export type DocName = 'settings.json' | '.claude.json' | 'config.toml' | 'opencode.json' | 'opencode.jsonc';
+/** The agent config files the mirror merges by key rather than carries whole. */
+export const DOC_NAMES = ['settings.json', '.claude.json', 'config.toml', 'opencode.json', 'opencode.jsonc'] as const;
+export type DocName = (typeof DOC_NAMES)[number];
 const OPENCODE_FILES = ['opencode.json', 'opencode.jsonc'] as const;
 
 /**
@@ -59,7 +60,8 @@ export type MirrorPlan = {
   configs: { key: string; agent: AgentKind; file: string; fields: string[]; preview: string[]; ticked: string[] }[];
   settingsEnv: Record<string, string>;
   settings: Record<string, unknown>;
-  plugins: { key: string; name: string; fields: string[]; ticked: boolean }[];
+  /** Each plugin config whose fields the mirror does not know, by its consent item, with its settings files. */
+  plugins: { key: string; name: string; fields: string[]; ticked: boolean; files: string[] }[];
   codex?: Record<string, unknown>;
   /** Each OpenCode config file, and the secret fields of its own. */
   opencode: { file: (typeof OPENCODE_FILES)[number]; doc: Record<string, unknown>; fields: string[] }[];
@@ -114,7 +116,7 @@ const Manifest = z.object({
   homes: z.object({ homedir: z.string(), claudeDir: z.string(), claudeJson: z.string(), codexDir: z.string(), opencodeDir: z.string() }),
   servers: z.array(z.object({
     agent: AgentKind, entry: Doc, bare: Doc, secretFields: z.array(z.string()), ticked: z.array(z.string()),
-    doc: z.enum(['settings.json', '.claude.json', 'config.toml', ...OPENCODE_FILES]).optional(), place: z.array(z.string()),
+    doc: z.enum(DOC_NAMES).optional(), place: z.array(z.string()),
   })),
   configs: z.array(z.object({ key: z.string(), fields: z.array(z.string()), ticked: z.array(z.string()) })),
   settings: Doc,
@@ -347,8 +349,8 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     const ticked = c.fields.length > 0 && tickedFields(consent, key, c.fields).length === c.fields.length;
     if (!ticked) hold(c.file);
     const row = pluginRows.find((r) => r.key === key);
-    if (!row) pluginRows.push({ key, name: c.name, fields: c.fields, ticked });
-    else Object.assign(row, { fields: [...new Set([...row.fields, ...c.fields])], ticked: row.ticked && ticked });
+    if (!row) pluginRows.push({ key, name: c.name, fields: c.fields, ticked, files: [c.file] });
+    else Object.assign(row, { fields: [...new Set([...row.fields, ...c.fields])], ticked: row.ticked && ticked, files: [...row.files, c.file] });
   }
   const keep = (file: string): boolean => {
     const real = realPath(file);
@@ -503,6 +505,19 @@ export function configState(ask: z.infer<typeof StateAsk>, o: { stateFile: strin
   return { state: readState(o.stateFile), projects: Object.fromEntries(ask.projects.map((p) => [p, fs.existsSync(relocate(p, r))])) };
 }
 
+/** How the mirror moves a path from the Mac's homes into this machine's: one under Claude's folder into this one's, else by home. */
+export function mover(mac: { homedir: string; claudeDir: string }, here: { homedir: string; claudeDir: string }): (p: string) => string {
+  const claude = { from: mac.claudeDir, to: here.claudeDir };
+  return (p) => relocate(p, holds(clean(claude.from), clean(p)) ? claude : { from: mac.homedir, to: here.homedir });
+}
+
+/** Where `place` in doc `name` lies on this machine: a Claude project's under this machine's own path of it. */
+export const placedIn = (name: DocName, place: Place, move: (p: string) => string): Place =>
+  (name === '.claude.json' && place[0] === 'projects' ? ['projects', realPath(move(String(place[1]))).normalize('NFC'), ...place.slice(2)] : place);
+
+/** The record's key for what lies at `place` in doc `name`, `place` as the Mac holds it. */
+export const recordKey = (name: DocName, place: Place): string => JSON.stringify([name, ...place]);
+
 const asJson = (doc: Doc): string => `${JSON.stringify(doc, null, 2)}\n`;
 type DocSpec = {
   name: DocName; at: (h: Homes) => string; parse: (text: string) => unknown; format: (doc: Doc) => string;
@@ -623,8 +638,7 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
   const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {} };
   const written: string[] = [];
   const removed: string[] = [];
-  const claude = { from: m.homes.claudeDir, to: o.claudeDir };
-  const move = (p: string): string => relocate(p, holds(clean(claude.from), clean(p)) ? claude : { from: m.homes.homedir, to: o.homedir });
+  const move = mover(m.homes, o);
   // read before anything is written: a config file or override that cannot be parsed stops the mirror rather than be replaced
   const current = DOCS.map((d) => ({ doc: readDocFile(d.at(o), d.parse), override: readDocFile(path.join(o.overrides, d.override), d.parse) }));
   DOCS.forEach((d, i) => {
@@ -726,7 +740,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     next.docs[d.name] = shas;
     for (const g of leavesOf(fields, (f) => configPlace(ticked, f))) {
       leaves.push({
-        record: JSON.stringify([d.name, ...g.place]), place: g.place, want: g.fields.some((f) => config?.ticked.includes(f)) ? getAt(ticked, g.place) as string : undefined,
+        record: recordKey(d.name, g.place), place: g.place, want: g.fields.some((f) => config?.ticked.includes(f)) ? getAt(ticked, g.place) as string : undefined,
         bare: getAt(bare, g.place) as string, named: !g.fields.some((f) => f.endsWith('.userinfo')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true,
       });
     }
@@ -737,17 +751,17 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
       if (!f.startsWith('env.')) continue;
       const k = f.slice('env.'.length);
       leaves.push({
-        record: JSON.stringify([d.name, 'env', k]), place: ['env', k], want: config?.ticked.includes(f) ? m.settingsEnv[k] : undefined, named: true, remerged: false, overOwn: false,
+        record: recordKey(d.name, ['env', k]), place: ['env', k], want: config?.ticked.includes(f) ? m.settingsEnv[k] : undefined, named: true, remerged: false, overOwn: false,
       });
     }
   }
 
   // its servers, each in its own place, a Claude project's under the worker's own path of it
-  const placed = (place: Place): Place => (d.name === '.claude.json' && place[0] === 'projects' ? ['projects', realPath(move(String(place[1]))).normalize('NFC'), ...place.slice(2)] : place);
+  const placed = (place: Place): Place => placedIn(d.name, place, move);
   const servers: Record<string, string> = {};
   const carried: { place: string[]; at: Place; bare: Doc; codex: boolean }[] = [];
   for (const s of m.servers.filter((x) => x.doc === d.name && Object.keys(x.entry).length)) {
-    const rk = JSON.stringify([d.name, ...s.place]);
+    const rk = recordKey(d.name, s.place);
     const at = placed(s.place);
     const entry = relocatedServer(s.entry, move);
     const bare = relocatedServer(s.bare, move);
@@ -757,7 +771,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     if (remerged) setAt(doc, at, structuredClone(bare));
     for (const g of leavesOf(s.secretFields, (f) => fieldPlace(s.agent, s.entry, f))) {
       leaves.push({
-        record: JSON.stringify([d.name, ...s.place, ...g.place]), place: [...at, ...g.place],
+        record: recordKey(d.name, [...s.place, ...g.place]), place: [...at, ...g.place],
         want: g.fields.some((f) => s.ticked.includes(f)) ? getAt(entry, g.place) as string : undefined, bare: getAt(bare, g.place) as string | undefined,
         named: !g.fields.some((f) => f.startsWith('url') || f.startsWith('args[')), remerged, overOwn: true,
         ...(s.agent === 'codex' && g.place[0] === 'env' && { server: at }),
@@ -828,7 +842,8 @@ export class Mirror {
     };
     const facts = await ask('config.state', { homedir: this.o.homedir, projects: this.projects() }, WorkerFacts);
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, machine), facts);
-    const report = await ask('config.report', reportAsk(plan), ConfigReport);
+    // a worker that did not answer the first is not asked again
+    const report = facts && await ask('config.report', reportAsk(plan), ConfigReport);
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
     return setupRows(plan, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked });
   }
