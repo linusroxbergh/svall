@@ -29,7 +29,7 @@ import { installedScripts, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
 import { applyBundle, BundleManifest, buildBundle, CREDENTIAL_PATTERNS, fingerprintOf, verifyBundle } from './bundle.js';
-import { converted, homesOf, MovePlan, moveChecks, refusalOf, restCheck, type Carried, type CheckDeps, type CheckResult } from './checks.js';
+import { converted, homesOf, MovePlan, moveChecks, reach, refusalOf, restCheck, type Carried, type CheckDeps, type CheckResult } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths, sessionLanding } from './paths.js';
 import { answerTrustPrompt } from './trust.js';
@@ -788,9 +788,9 @@ export class Placement {
     const from = c.machine;
     if (!from || from === this.d.me) throw new Invalid(`${c.name} runs on this Mac`);
     const fail = (f: Failure): CheckResult => ({ ok: false, refusal: { ...f, details: [] } });
-    const link = this.d.links.for(from);
-    const hello = link?.connected() ? link.hello() : undefined;
-    if (!hello) return fail({ reason: `${this.name(from)} is not reachable`, action: 'try again when it is awake' });
+    const reached = reach(this.d.links.for(from), this.name(from), this.d.release);
+    if ('failure' in reached) return fail(reached.failure);
+    const { hello } = reached;
     if (c.moving) return fail({ reason: `moving to ${this.name(c.moving.to)}`, action: 'wait for the move to finish' });
     if (c.repo && !c.left) throw new Invalid(`${c.name} left no worktree on this Mac to come back to`);
     if (c.left) {

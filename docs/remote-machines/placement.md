@@ -39,7 +39,10 @@ behind **details**.
 
 1. **The worker is reachable and runs this release.** "linus-vault is not reachable; try again when it is awake".
    "linus-vault runs X, this Mac Y; upgrade it under Machines", or "update svall on this Mac" when the worker's is
-   the newer.
+   the newer. A worker whose state schema or link protocol is not this Mac's stays linked, with its ssh connection
+   and the terminals on it, but nothing else passes until it is upgraded, and its robots show unknown; two builds of
+   one release that differ so say "linus-vault runs a different build; upgrade it under Machines". This Mac greets
+   it again every 5 minutes and after `svall host upgrade`.
 2. **The robot's agent is installed and logged in there, at the same version or newer.** "claude is not installed on
    linus-vault", "linus-vault runs claude 2.1.299, this Mac 2.1.300; update claude on linus-vault", "claude is not
    logged in on linus-vault; log claude in there", each with the terminal button. An OpenCode logged in on neither

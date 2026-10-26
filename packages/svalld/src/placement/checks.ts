@@ -11,7 +11,7 @@ import { relocate } from '../handover/relocate.js';
 import type { Classified } from '../handover/rest.js';
 import { cliRunner, sessionAdapter, type AgentProbe, type AgentProber } from '../handover/sessions/registry.js';
 import type { CliRun } from '../handover/sessions/types.js';
-import type { HomeLinks, WorkerLink } from '../link/home.js';
+import type { HomeLinks, WorkerHello, WorkerLink } from '../link/home.js';
 import { remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
 import { branchAhead, BundleTooLarge, buildBundle, holdsWhole, trackedCredentials, type BundleManifest } from './bundle.js';
@@ -52,7 +52,7 @@ export const RepoProbeParams = z.object({ path: z.string().startsWith('/'), remo
 export type CheckDeps = {
   store: Pick<Store, 'state'>;
   me: MachineId;
-  links: { for(machine: MachineId): Pick<WorkerLink, 'connected' | 'hello'> | undefined; call: HomeLinks['call'] };
+  links: { for(machine: MachineId): Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'> | undefined; call: HomeLinks['call'] };
   git: GitRunner;
   agents: AgentProber;
   /** The gateway fleet.json names now, which `svall host upgrade` can change while the daemon runs. */
@@ -66,6 +66,18 @@ export type CheckDeps = {
 };
 
 type Failure = Omit<Refusal, 'details'> & { details?: string[] };
+
+const releaseFailure = (name: string, theirs: string, mine: string): Failure =>
+  ({ reason: `${name} runs ${theirs}, this Mac ${mine}`, action: compareVersions(theirs, mine) === 1 ? 'update svall on this Mac' : 'upgrade it under Machines' });
+
+/** A worker's hello while it is linked, or why it is not: out of reach, or on a build whose state or link this Mac cannot read. */
+export function reach(link: Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'> | undefined, name: string, release: string): { hello: WorkerHello } | { failure: Failure } {
+  const hello = link?.connected() ? link.hello() : undefined;
+  if (hello) return { hello };
+  const odd = link?.mismatch();
+  if (!odd) return { failure: { reason: `${name} is not reachable`, action: 'try again when it is awake' } };
+  return { failure: odd.release === release ? { reason: `${name} runs a different build`, action: 'upgrade it under Machines' } : releaseFailure(name, odd.release, release) };
+}
 
 const originOf = async (dir: string, git: GitRunner): Promise<string | undefined> => {
   const r = await git(['remote', 'get-url', 'origin'], dir);
@@ -244,14 +256,10 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
 
   // 1: reachable, on this release
-  const link = d.links.for(to);
-  const hello = link?.connected() ? link.hello() : undefined;
-  if (!hello) fail({ reason: `${name} is not reachable`, action: 'try again when it is awake' });
-  else if (hello.release !== d.release) {
-    const action = compareVersions(hello.release, d.release) === 1 ? 'update svall on this Mac' : 'upgrade it under Machines';
-    fail({ reason: `${name} runs ${hello.release}, this Mac ${d.release}`, action });
-  }
-  const linked = hello?.release === d.release ? hello : undefined;
+  const reached = reach(d.links.for(to), name, d.release);
+  if ('failure' in reached) fail(reached.failure);
+  else if (reached.hello.release !== d.release) fail(releaseFailure(name, reached.hello.release, d.release));
+  const linked = 'hello' in reached && reached.hello.release === d.release ? reached.hello : undefined;
 
   // 2: the robot's agents installed and logged in there, none older
   const local = await d.agents();

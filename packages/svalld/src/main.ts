@@ -22,7 +22,7 @@ import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
 import type { Authority } from './handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
-import { HomeLinks, sshTransport } from './link/home.js';
+import { HomeLinks, sshTransport, UnknownEvent } from './link/home.js';
 import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { handoverGit } from './links/git.js';
@@ -245,7 +245,7 @@ async function start(opts: Options): Promise<Daemon> {
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },
     onEvent: async (kind, data, machine) => {
-      if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`${machine} sent ${kind}, which this svalld does not take`);
+      if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();
       homeDocs.apply(kind, data, machine);
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),

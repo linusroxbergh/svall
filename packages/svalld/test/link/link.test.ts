@@ -5,8 +5,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FleetId, MachineId, emptyState, type FleetState, type LinkFrame, type Robot } from '@svall/protocol';
-import { HEARTBEAT_MS, HomeLinks, type Transport } from '../../src/link/home.js';
+import { FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState, type FleetState, type LinkFrame, type Robot } from '@svall/protocol';
+import { HEARTBEAT_MS, HomeLinks, UnknownEvent, type Transport } from '../../src/link/home.js';
 import { LinkStream, MAX_LINE } from '../../src/link/stream.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
@@ -59,8 +59,16 @@ const socketTo = (sock: string): Transport => async () => {
   return { stream, via };
 };
 
-/** A home and a worker, each with a store of its own, and the worker's outbox; the home holds r_1 placed on the worker. */
-function world(o: { handlers?: Record<string, (p: unknown) => Promise<unknown>>; log?: Logger } = {}) {
+// the versions a home on this build greets a worker with
+const HELLO = { release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
+
+/**
+ * A home and a worker, each with a store of its own, and the worker's outbox; the home holds r_1 placed on the worker.
+ * `versions`: the state schema and link protocol the worker says it speaks.
+ */
+function world(o: {
+  handlers?: Record<string, (p: unknown) => Promise<unknown>>; log?: Logger; versions?: { schema: number; protocol: number }; onEvent?: (kind: string) => Promise<void>;
+} = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
@@ -69,7 +77,7 @@ function world(o: { handlers?: Record<string, (p: unknown) => Promise<unknown>>;
   const outbox = Outbox.open(workerPaths);
   const worker = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: FleetId.parse(crypto.randomUUID()), token, homeName: 'mac' }, me: W, store, outbox,
-    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: o.handlers ?? {},
+    log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: o.handlers ?? {}, ...(o.versions && { versions: o.versions }),
   });
   stops.push(() => worker.stop());
   // what the home took, in the order it took it
@@ -81,7 +89,7 @@ function world(o: { handlers?: Record<string, (p: unknown) => Promise<unknown>>;
     const l = new HomeLinks({
       paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: () => [entry, spare], connect,
       onReport: (r, machine) => { seen.push(`report ${r.fields.cwd}`); reports.push(r.fields.cwd); applyReport(home, r, machine); },
-      onEvent: async (kind) => { seen.push(`event ${kind}`); },
+      onEvent: async (kind) => { await o.onEvent?.(kind); seen.push(`event ${kind}`); },
       onInventory: async (inv, machine) => { seen.push(`inventory ${machine === W ? 'from vault' : machine} last ${inv.last} acked ${inv.acked} robots ${inv.robots.map((r) => r.fields.cwd).join(',')}`); },
       snapshot: () => { snapshots++; return { version: ++version, state: home.state, agentHomes }; },
     });
@@ -125,7 +133,7 @@ describe('the link', () => {
       expect(w.worker.connected()).toBe(false);
     }
     // the token worker.json holds is answered
-    const { got, stream } = await open({ t: 'hello', token: tokenFor(w.homePaths, W)! });
+    const { got, stream } = await open({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
     await until(() => expect(got.map((f) => f.t)).toEqual(['hello', 'inventory']));
     stream.close();
   });
@@ -139,7 +147,7 @@ describe('the link', () => {
     await once(sock, 'connect');
     const got: LinkFrame[] = [];
     const stream = new LinkStream(sock, { onFrame: (f) => got.push(f), onClose: () => {} });
-    stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)! });
+    stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
     await until(() => expect(got).toHaveLength(2));
     expect(got[1]).toEqual({ t: 'inventory', robots: [ownedReport(w.store.state.robots.r_1)], last: 2, acked: 0 });
     // a report while the home has not said where to start is journaled, and sent with the rest
@@ -181,7 +189,7 @@ describe('the link', () => {
     ]);
     const link = links.for(W)!;
     expect(link.hello()).toEqual({
-      t: 'hello', workerMachineId: W, bootId: 'boot-1', release: '1.2.3', home: '/home/ada lovelace/Åsa',
+      t: 'hello', workerMachineId: W, bootId: 'boot-1', release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION, home: '/home/ada lovelace/Åsa',
       agentHomes: { claude: '/home/ada lovelace/Åsa/.claude', codex: '/home/ada lovelace/Åsa/.codex', opencode: '/home/ada lovelace/Åsa/.config/opencode' },
     });
     expect(link.via()).toEqual(via);
@@ -251,7 +259,7 @@ describe('the link', () => {
       await once(sock, 'connect');
       const got: LinkFrame[] = [];
       const stream = new LinkStream(sock, { onFrame: (f) => got.push(f), onClose: () => {} });
-      stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)! });
+      stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
       await until(() => expect(got).toHaveLength(2));
       stream.send({ t: 'ack', seq: 0 });
       await until(() => expect(w.worker.connected()).toBe(true));
@@ -427,6 +435,116 @@ describe('the link', () => {
     w.home.update((d) => { d.robots.r_1.note = 'short'; });
     await links.pushSnapshot();
     expect(w.store.state.robots.r_1.note).toBe('short');
+  });
+
+  it('a worker on another state schema or link protocol stays linked as a mismatch, its stream open and nothing but pings passing, until a refresh finds it matching', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const versions = { schema: STATE_SCHEMA_VERSION + 1, protocol: PROTOCOL_VERSION };
+    const w = world({ versions });
+    w.outbox.append('robot.sync', report('/w/1'));
+    await w.worker.start();
+    // the stream the far `svall worker link` runs over, whose end would take the ssh master and every terminal on it along
+    const tap = { connects: 0, closes: 0, pongs: 0 };
+    const links = w.links(async (e) => {
+      tap.connects++;
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      r.stream.on('data', (c: Buffer) => { tap.pongs += String(c).split('"t":"pong"').length - 1; });
+      r.stream.once('close', () => { tap.closes++; });
+      return r;
+    });
+    const machine = () => w.home.state.machines?.[W];
+    links.start();
+    await until(() => expect(machine()).toMatchObject({ name: 'vault', reachable: false, mismatch: true, release: '1.2.3' }), 1);
+    const link = links.for(W)!;
+    expect(link.mismatch()).toMatchObject({ release: '1.2.3', schema: STATE_SCHEMA_VERSION + 1, protocol: PROTOCOL_VERSION });
+    for (let beat = 1; beat <= 4; beat++) {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await until(() => expect(tap.pongs).toBe(beat), 1);
+    }
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+    expect(tap).toMatchObject({ connects: 1, closes: 0 });
+    expect(link.connected()).toBe(false);
+    await expect(links.call(W, 'echo', {})).rejects.toMatchObject({ code: 'not_reachable', message: 'vault is not reachable' });
+    expect(w.seen).toEqual([]);
+    expect(w.outbox.acked()).toBe(0);
+    expect(w.store.state.robots.r_1.name).toBe('stale');
+    expect(w.worker.connected()).toBe(false);
+
+    // upgraded, as far as its hello says, and greeted again on the same stream
+    versions.schema = STATE_SCHEMA_VERSION;
+    links.refresh();
+    await until(() => expect(w.store.state.robots.r_1.name).toBe('named at home'), 50);
+    expect(machine()).toMatchObject({ reachable: true, release: '1.2.3' });
+    expect(machine()?.mismatch).toBeUndefined();
+    expect(link.mismatch()).toBeUndefined();
+    expect(w.reports).toEqual(['/w/1']);
+    expect(tap).toMatchObject({ connects: 1, closes: 0 });
+  });
+
+  it('greets a worker in mismatch again every 5 minutes, and links it once it matches', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const versions = { schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION + 1 };
+    const w = world({ versions });
+    await w.worker.start();
+    let pongs = 0;
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      r.stream.on('data', (c: Buffer) => { pongs += String(c).split('"t":"pong"').length - 1; });
+      return r;
+    });
+    const machine = () => w.home.state.machines?.[W];
+    links.start();
+    await until(() => expect(machine()?.mismatch).toBe(true), 1);
+    versions.protocol = PROTOCOL_VERSION;
+    for (let beat = 1; beat < 20; beat++) {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await until(() => expect(pongs).toBe(beat), 1);
+      expect(machine()?.mismatch).toBe(true);
+    }
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+    await until(() => expect(machine()).toMatchObject({ reachable: true }), 50);
+    expect(machine()?.mismatch).toBeUndefined();
+  });
+
+  it('the worker answers a home on another state schema or link protocol with its hello alone and takes nothing but pings, until it greets it matching', async () => {
+    const w = world();
+    await w.worker.start();
+    const sock = net.connect(w.workerPaths.linkSock);
+    await once(sock, 'connect');
+    const got: LinkFrame[] = [];
+    let closed = false;
+    const stream = new LinkStream(sock, { onFrame: (f) => got.push(f), onClose: () => { closed = true; } });
+    const token = tokenFor(w.homePaths, W)!;
+    stream.send({ t: 'hello', token, ...HELLO, schema: STATE_SCHEMA_VERSION + 1 });
+    await until(() => expect(got.map((f) => f.t)).toEqual(['hello']));
+    expect(got[0]).toMatchObject({ release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION });
+    stream.send({ t: 'snapshot', version: 1, data: { unread: 'by this build' } });
+    stream.send({ t: 'ack', seq: 0 });
+    stream.send({ t: 'ping' });
+    await until(() => expect(got.map((f) => f.t)).toEqual(['hello', 'pong']));
+    expect(closed).toBe(false);
+    expect(w.worker.connected()).toBe(false);
+    expect(w.store.state.robots.r_1.name).toBe('stale');
+
+    stream.send({ t: 'hello', token, ...HELLO });
+    await until(() => expect(got.map((f) => f.t)).toEqual(['hello', 'pong', 'hello', 'inventory']));
+    stream.send({ t: 'ack', seq: 0 });
+    await until(() => expect(w.worker.connected()).toBe(true));
+    stream.close();
+  });
+
+  it('skips an event of a kind this svalld does not take, saying so, and the link goes on with the next', async () => {
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) }, onEvent: async (kind) => { if (kind === 'future.kind') throw new UnknownEvent(); } });
+    w.outbox.append('future.kind', { from: 'a newer worker' });
+    w.outbox.append('robot.sync', report('/w/after'));
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(w.outbox.acked()).toBe(2));
+    expect(links.for(W)?.connected()).toBe(true);
+    expect(w.reports).toEqual(['/w/after']);
+    expect(logged).toEqual(['vault: event 1 (future.kind) is not one this svalld takes; skipped']);
   });
 
   it('refresh links a machine that has a token now, and leaves the links it holds as they are', async () => {

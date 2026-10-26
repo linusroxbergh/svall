@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
-import { ApiError, MachineId, type LinkFrame, type MachineLink } from '@svall/protocol';
+import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineLink } from '@svall/protocol';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
@@ -21,15 +21,21 @@ export const HEARTBEAT_MS = 15_000;
 const FIRST_RETRY_MS = 1_000;
 const LAST_RETRY_MS = 60_000;
 const PUSH_AFTER_MS = 250;
+// how often a worker in mismatch is greeted again
+const REHELLO_MS = 5 * 60_000;
 
 export type Via = { ssh: string; controlSocket: string };
 export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via: Via }>;
 
-/** What a worker says of itself once it has taken the home's token. */
+/** What a worker says of itself once it has taken the home's token; one that names no schema or protocol reads as another build. */
 const WorkerHello = z.object({
-  t: z.literal('hello'), workerMachineId: MachineId, bootId: z.string(), release: z.string(), agentHomes: Snapshot.shape.agentHomes, home: z.string(),
+  t: z.literal('hello'), workerMachineId: MachineId, bootId: z.string(), release: z.string(), schema: z.number().optional(), protocol: z.number().optional(),
+  agentHomes: Snapshot.shape.agentHomes, home: z.string(),
 });
 export type WorkerHello = z.infer<typeof WorkerHello>;
+
+/** What `onEvent` throws for a kind of event it does not take, which the link skips. */
+export class UnknownEvent extends Error {}
 
 type Options = {
   paths: Paths;
@@ -73,6 +79,10 @@ export class WorkerLink {
   private stream?: LinkStream;
   private route?: Via;
   private peer?: WorkerHello;
+  // the hello of a worker on a state schema or link protocol this home cannot read, greeted again until it matches
+  private odd?: WorkerHello;
+  private rehello?: NodeJS.Timeout;
+  private token?: string;
   private inventory?: Inventory;
   private acked = 0;
   private last = 0;
@@ -104,6 +114,15 @@ export class WorkerLink {
     return this.peer;
   }
 
+  mismatch(): WorkerHello | undefined {
+    return this.odd;
+  }
+
+  /** Greets a worker in mismatch again on its stream, as after its upgrade. */
+  greetAgain(): void {
+    if (this.odd && this.stream) this.greet(this.stream);
+  }
+
   via(): Via {
     if (!this.peer || !this.route) throw this.unreachable();
     return this.route;
@@ -120,6 +139,7 @@ export class WorkerLink {
   stop(): void {
     this.stopped = true;
     clearTimeout(this.retry);
+    clearTimeout(this.rehello);
     this.stream?.close();
   }
 
@@ -199,6 +219,7 @@ export class WorkerLink {
     if (this.stopped) return stream.close();
     this.stream = stream;
     this.route = conn.via;
+    this.token = token;
     this.answered = true;
     this.heartbeat = setInterval(() => {
       if (!this.answered) {
@@ -209,11 +230,19 @@ export class WorkerLink {
       this.answered = false;
       stream.send({ t: 'ping' });
     }, HEARTBEAT_MS);
-    stream.send({ t: 'hello', token, release: this.o.release });
+    this.greet(stream);
+  }
+
+  private greet(stream: LinkStream): void {
+    stream.send({ t: 'hello', token: this.token, release: this.o.release, schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION });
   }
 
   private take(stream: LinkStream, f: LinkFrame): void {
     if (f.t === 'hello') return this.greeted(stream, f);
+    if (this.odd) {
+      if (f.t === 'pong') this.answered = true;
+      return;
+    }
     if (!this.peer) {
       this.o.log.error(`${this.name}: ${f.t} before hello, closing the link`);
       stream.close();
@@ -252,9 +281,22 @@ export class WorkerLink {
       stream.close();
       return;
     }
-    this.peer = hello.data;
-    this.mark({ name: this.name, reachable: true, since: Date.now(), release: hello.data.release });
-    this.o.log.info(`${this.name}: linked, release ${hello.data.release}`);
+    const h = hello.data;
+    clearTimeout(this.rehello);
+    // the stream and the ssh master under it stay up, with every terminal on that master
+    if (h.schema !== STATE_SCHEMA_VERSION || h.protocol !== PROTOCOL_VERSION) {
+      if (!this.odd) {
+        this.o.log.error(`${this.name}: runs release ${h.release} on state schema ${h.schema ?? '?'} and link protocol ${h.protocol ?? '?'}, where this svalld reads ${STATE_SCHEMA_VERSION} and ${PROTOCOL_VERSION}; nothing passes until it is upgraded`);
+        this.mark({ name: this.name, reachable: false, since: Date.now(), release: h.release, mismatch: true });
+      }
+      this.odd = h;
+      this.rehello = setTimeout(() => this.greetAgain(), REHELLO_MS);
+      return;
+    }
+    this.odd = undefined;
+    this.peer = h;
+    this.mark({ name: this.name, reachable: true, since: Date.now(), release: h.release });
+    this.o.log.info(`${this.name}: linked, release ${h.release}`);
   }
 
   // the inventory, then the outbox the worker replays from the home's ack, each event applied and on disk before its ack
@@ -271,7 +313,12 @@ export class WorkerLink {
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
           if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
-          else await this.o.onEvent(f.kind, f.data, this.machine);
+          else {
+            await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
+              if (!(e instanceof UnknownEvent)) throw e;
+              this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
+            });
+          }
           if (!this.o.store.flush()) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
@@ -295,7 +342,8 @@ export class WorkerLink {
 
   private closed(err?: Error): void {
     clearInterval(this.heartbeat);
-    this.stream = this.route = this.peer = this.inventory = undefined;
+    clearTimeout(this.rehello);
+    this.stream = this.route = this.peer = this.odd = this.inventory = undefined;
     this.synced = false;
     for (const w of this.waiting.splice(0)) w.done();
     this.lost(err?.message ?? 'the link closed');
@@ -342,10 +390,11 @@ export class HomeLinks {
     this.unwatchDocs = this.o.docs?.watch((except) => { for (const l of this.links.values()) if (l.machine !== except) l.pushDocs(); });
   }
 
-  /** Links each machine in the registry that holds a token of this fleet's and is not linked yet. */
+  /** Links each machine in the registry that holds a token of this fleet's and is not linked yet, and greets each in mismatch again. */
   refresh(): void {
     const pushSoon = this.pushSoon;
     if (!pushSoon) return;
+    for (const link of this.links.values()) link.greetAgain();
     try {
       for (const entry of this.o.machines()) {
         if (this.links.has(entry.id) || !tokenFor(this.o.paths, entry.id)) continue;

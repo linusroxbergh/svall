@@ -56,7 +56,7 @@ function machines() {
 type Machines = ReturnType<typeof machines>;
 
 type Opts = {
-  gateway?: boolean; reachable?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
+  gateway?: boolean; reachable?: boolean; mismatch?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
   probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>; cli?: CliRun;
 };
 
@@ -86,7 +86,10 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     terminals: async () => o.terminals ?? [],
     ...(o.cli && { cli: o.cli }),
     links: {
-      for: (m) => (m === W && o.reachable !== false ? { connected: () => true, hello: () => hello } : undefined),
+      for: (m) => {
+        if (m !== W || o.reachable === false) return undefined;
+        return o.mismatch ? { connected: () => false, hello: () => undefined, mismatch: () => hello } : { connected: () => true, hello: () => hello, mismatch: () => undefined };
+      },
       call: async <T>(_m: MachineId, method: string, params: unknown): Promise<T> => {
         asked.push({ method, params });
         if (method === 'system.info') return { agentAdapters: far } as T;
@@ -449,6 +452,13 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const r = await refusal(depsOf(t, [c]));
     expect(r.reason).toContain('101.0 MB, over the 100 MB a move carries');
     expect(r.action).toBe('push its commits or ignore its large files first');
+  });
+
+  it('check 1: a worker linked on a build whose state or link this Mac cannot read names its release, or a different build of the same one', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    expect(await refusal(depsOf(t, [on(root)], { mismatch: true, release: '0.16.0' }))).toMatchObject({ reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'upgrade it under Machines' });
+    expect(await refusal(depsOf(t, [on(root)], { mismatch: true }))).toMatchObject({ reason: 'linus-vault runs a different build', action: 'upgrade it under Machines' });
   });
 
   it('check 7: refuses a working agent or a running command unless interrupt is chosen, and an idle robot moves as it is', async () => {
