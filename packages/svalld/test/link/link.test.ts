@@ -429,6 +429,24 @@ describe('the link', () => {
     expect(w.home.state.machines?.[W]?.replayed).toEqual({ epoch: w.outbox.epoch(), seq: 2 });
   });
 
+  it('a journal restored behind what the home replayed of its epoch has its next seqs applied', async () => {
+    const w = world();
+    w.outbox.append('x', {});
+    w.outbox.append('x', {});
+    w.outbox.ack(2);
+    // the home took seqs 3 to 5 of this epoch before the worker's journal went back to a copy of it at seq 2
+    w.home.update((d) => { d.machines = { [W]: { name: 'vault', reachable: false, since: 1, replayed: { epoch: w.outbox.epoch(), seq: 5 } } }; });
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(links.for(W)?.outboxDrained()).toBe(true));
+    for (let n = 0; n < 3; n++) w.worker.journal('restored', {});
+    await until(() => expect(w.outbox.acked()).toBe(5));
+    expect(w.seen.filter((s) => s === 'event restored')).toHaveLength(3);
+    expect(links.for(W)?.outboxDrained()).toBe(true);
+    expect(w.home.state.machines?.[W]?.replayed).toEqual({ epoch: w.outbox.epoch(), seq: 5 });
+  });
+
   it('a link drop keeps replayed and home on the machine entry, and a matching hello after a mismatch clears mismatch', async () => {
     const versions = { schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION };
     const w = world({ versions });

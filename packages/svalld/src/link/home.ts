@@ -308,8 +308,9 @@ export class WorkerLink {
         const inv = Inventory.parse(f);
         const replayed = this.o.store.state.machines?.[this.machine]?.replayed;
         this.inventory = inv;
-        // past the worker's acked seq lie the events the home took whose ack was lost; a new epoch is a journal begun afresh
-        this.acked = replayed && replayed.epoch === inv.epoch ? Math.max(inv.acked, replayed.seq) : inv.acked;
+        // past the worker's acked seq lie the events the home took whose ack was lost, none past the worker's last; a new
+        // epoch is a journal begun afresh
+        this.acked = replayed && replayed.epoch === inv.epoch ? Math.min(Math.max(inv.acked, replayed.seq), inv.last) : inv.acked;
         this.last = inv.last;
         // as after a write that failed: those events are on disk before they are acked
         if (this.acked > inv.acked && !this.o.store.flush()) throw new Error('state.json was not written');
