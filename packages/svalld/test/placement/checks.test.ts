@@ -157,7 +157,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(await refusal(d)).toEqual({
       reason: 'linus-vault cannot read github.com/linus/svall-notes', action: 'log gh in there', run: 'gh auth login', details: [],
     });
-    expect(d.asked.find((a) => a.method === 'repo.probe')?.params).toEqual({ path: `${t.far}/code/svall-notes`, remote: 'git@github.com:linus/svall-notes.git' });
+    expect(d.asked.find((a) => a.method === 'repo.probe')?.params).toEqual({ path: `${t.far}/code/svall-notes`, remote: 'git@github.com:linus/svall-notes.git', branch: 'kanban' });
   });
 
   it('an origin carrying a token reaches the worker and the plan without it; an ssh user and an scp-style remote stay', async () => {
@@ -174,7 +174,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
       t.g(root, 'remote', 'set-url', 'origin', origin);
       const d = depsOf(t, [on(root)], { probe: async () => ({ state: 'none', refs: [], reachable: true }) });
       const { plan } = await sheet(d);
-      expect(d.asked.find((a) => a.method === 'repo.probe')?.params).toEqual({ path: `${t.far}/code/svall`, remote: sent });
+      expect(d.asked.find((a) => a.method === 'repo.probe')?.params).toEqual({ path: `${t.far}/code/svall`, remote: sent, branch: 'kanban' });
       expect(plan.remote).toBe(sent);
     }
   });

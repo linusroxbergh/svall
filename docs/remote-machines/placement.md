@@ -57,7 +57,9 @@ behind **details**.
    github.com/ada/svall; log gh in there", with the terminal button. A path in the way is refused with its path, and
    nothing there is ever reset or deleted to make room.
 5. **No other robot, on any machine, is on this branch of this repository.** "board is on kanban too; put one of
-   them on another branch first".
+   them on another branch first". A branch of its name on the worker, checked out or not, that holds commits the
+   robot's lacks refuses too: "linus-vault has a branch kanban with commits this one lacks; merge or rename it there
+   first". The move checks it again where it applies the branch, and fails before its commit.
 6. **What travels fits, and carries no tracked credential.** The patches, untracked files and carried commits come
    to at most 100 MB. An untracked file in the worktree named like a credential (`.env*`, `*.pem`, `id_rsa*`,
    `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick it in the sheet (`--carry`), and the sheet names it: ".env
@@ -104,6 +106,8 @@ Moving back is the same move the other way. The worktree the robot left on this 
 recorded:
 
 - A branch that moved refuses: "kanban moved on this Mac since the move; merge or rename it".
+- Another branch of the robot's branch's name on this Mac, holding commits the worker's lacks, refuses: "this Mac has
+  a branch fix-login with commits this one lacks; merge or rename it there first".
 - A worktree that changed refuses: "changes on this Mac in /Users/ada/code/app/.claude/worktrees/kanban since the
   move; stash or commit them".
 - An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac

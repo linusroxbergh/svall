@@ -744,7 +744,7 @@ export class Placement {
       j = { ...j, made: { unlocked: true } };
       this.save(j);
       await takeBack(left.path, left.branchSha, this.d.git);
-      await applyBundle(left.path, dir, m, this.d.git);
+      await applyBundle(left.path, dir, m, this.d.git, { machine: 'this Mac', ...(left.branch === m.branch && { keep: left.branchSha }) });
     }
     placeSessions(j.sessions ?? [], sessions);
     await importSessions(j.sessions ?? [], sessions, j.plan.paths, path.join(this.files.dir, 'held'), run);
@@ -790,7 +790,11 @@ export class Placement {
       if (changed) return fail(changed);
     }
     const plan = await this.returnPlan(c, from, hello, o.interruptAfterMs ?? (c.agent?.status === 'blocked' ? 0 : undefined));
-    const carried = await this.d.links.call<Carried | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have }, { timeoutMs: SHEET_MS })
+    // this Mac's branch of the robot's branch's name, which the way back would reset, but the one it left here, compared above
+    const name = c.repo?.branch;
+    const sha = name && c.left && c.left.branch !== name ? (await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${name}^{commit}`], c.left.path)).stdout.trim() : '';
+    const branch = sha ? { name: name!, sha } : undefined;
+    const carried = await this.d.links.call<Carried | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have, ...(branch && { branch }) }, { timeoutMs: SHEET_MS })
       .catch((e: Error) => ({ refusal: sheetRefusal(e, this.name(from)) }));
     if ('refusal' in carried) return fail(carried.refusal);
     const sheet: MoveSheet = {

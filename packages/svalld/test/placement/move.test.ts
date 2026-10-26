@@ -467,6 +467,56 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(again.store.state.robots.c_1.machine).toBe(W);
   });
 
+  it('a move refuses a branch of its name on the worker holding commits the robot\'s lacks, at the check and at the apply, and takes one it holds whole', async () => {
+    const w = open();
+    w.g(w.base, 'clone', '-q', w.origin, w.clone);
+    // kanban there, checked out nowhere, one commit past anything this Mac has
+    const theirs = w.g(w.clone, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'on w1');
+    w.g(w.clone, 'update-ref', 'refs/heads/kanban', theirs);
+    const home = await w.start();
+    const sentence = 'w1 has a branch kanban with commits this one lacks; merge or rename it there first';
+    expect(await home.placement.check('c_1', W)).toMatchObject({ ok: false, refusal: { reason: 'w1 has a branch kanban with commits this one lacks', action: 'merge or rename it there first' } });
+
+    // one made there after the check passed is refused where the bundle is applied
+    w.g(w.clone, 'update-ref', '-d', 'refs/heads/kanban');
+    at('move.journal.prepare', 'after', () => { w.g(w.clone, 'update-ref', 'refs/heads/kanban', theirs); });
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: sentence });
+    disarm?.();
+    expect(w.g(w.clone, 'rev-parse', 'kanban')).toBe(theirs);
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(w.mac1.opened).toEqual(['c_1']);
+    const [j] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
+    expect(home.placement.status(j.slice(0, -'.json'.length))).toMatchObject({ phase: 'aborted', error: sentence });
+
+    // one the robot's branch holds whole moves on to it
+    w.g(w.clone, 'update-ref', 'refs/heads/kanban', w.g(w.main, 'rev-parse', 'main'));
+    const id = await home.placement.start('c_1', W);
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(w.g(w.clone, 'rev-parse', 'kanban')).toBe(w.g(w.wt, 'rev-parse', 'HEAD'));
+  });
+
+  it('a return refuses a branch of its name on this Mac holding commits the worker\'s lacks, at the check and at the apply, and the robot stays there', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    // the robot takes up fix-login there, which this Mac holds too, one commit past anything w1 has
+    w.g(w.farWt, 'switch', '-q', '-c', 'fix-login');
+    for (const s of [w.worker.store, home.store]) s.update((d) => { d.robots.c_1.repo!.branch = 'fix-login'; });
+    const base = w.g(w.main, 'rev-parse', 'main');
+    const mine = w.g(w.main, 'commit-tree', `${base}^{tree}`, '-p', base, '-m', 'on the Mac');
+    w.g(w.main, 'update-ref', 'refs/heads/fix-login', mine);
+    const sentence = 'this Mac has a branch fix-login with commits this one lacks; merge or rename it there first';
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'this Mac has a branch fix-login with commits this one lacks', action: 'merge or rename it there first' } });
+
+    w.g(w.main, 'update-ref', '-d', 'refs/heads/fix-login');
+    at('move.journal.bundle', 'after', () => { w.g(w.main, 'update-ref', 'refs/heads/fix-login', mine); });
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: sentence });
+    expect(w.g(w.main, 'rev-parse', 'fix-login')).toBe(mine);
+    expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
   it('an abort after a worktree in the way leaves that worktree and its branch on the worker as they were', async () => {
     const w = open();
     w.g(w.base, 'clone', '-q', w.origin, w.clone);

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { ObjectName, Sha256 } from '@svall/protocol';
+import { ApiError, ObjectName, Sha256 } from '@svall/protocol';
 import { must } from '../handover/git-graph.js';
 import { byCodeUnit, canonicalDigest, hashStream, sha256Hex } from '../handover/hash.js';
 import type { GitRunner } from '../links/git.js';
@@ -187,10 +187,25 @@ async function createdBy(patch: string, root: string, git: GitRunner): Promise<s
   return written.filter((p) => !indexed.has(p));
 }
 
-/** Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless that is what left. */
-export async function applyBundle(root: string, dir: string, manifest: BundleManifest, git: GitRunner): Promise<void> {
+/** The refusal of a branch of `name` on `machine` that holds commits the branch moving there lacks. */
+export const branchAhead = (machine: string, name: string) => ({ reason: `${machine} has a branch ${name} with commits this one lacks`, action: 'merge or rename it there first' });
+
+/** Whether `sha`, the tip of a branch the move would reset, is `head` or behind it, as only then does the move lose nothing of it. */
+export const holdsWhole = async (sha: string, head: string, root: string, git: GitRunner): Promise<boolean> =>
+  (await git(['merge-base', '--is-ancestor', sha, head], root)).code === 0;
+
+/**
+ * Puts a bundle into the worktree at `root`: its commits under the branch, both patches, the untracked files; throws unless
+ * that is what left. A branch of its name on `machine` that holds commits the bundle's lacks is refused, but at `keep`.
+ */
+export async function applyBundle(root: string, dir: string, manifest: BundleManifest, git: GitRunner, o: { machine?: string; keep?: string } = {}): Promise<void> {
   const at = (f: string): string => path.join(dir, f);
   if (manifest.commits) await must(git, ['bundle', 'unbundle', at(COMMITS)], root);
+  const held = (await git(['rev-parse', '--verify', '-q', `refs/heads/${manifest.branch}^{commit}`], root)).stdout.trim();
+  if (held && held !== o.keep && !await holdsWhole(held, manifest.base, root, git)) {
+    const f = branchAhead(o.machine ?? 'this machine', manifest.branch);
+    throw new ApiError('refused', `${f.reason}; ${f.action}`, { refusal: { ...f, details: [] } });
+  }
   await must(git, ['checkout', '-q', '--no-recurse-submodules', '-B', manifest.branch, manifest.base], root);
   if (fs.statSync(at(STAGED)).size) await must(git, ['apply', '--index', '--whitespace=nowarn', at(STAGED)], root);
   // a new file in the unstaged patch was added with intent to add, which `git add -N` restores; `git apply -N` would

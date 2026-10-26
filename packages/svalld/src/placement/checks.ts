@@ -14,7 +14,7 @@ import type { CliRun } from '../handover/sessions/types.js';
 import type { HomeLinks, WorkerLink } from '../link/home.js';
 import { remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
-import { BundleTooLarge, buildBundle, trackedCredentials, type BundleManifest } from './bundle.js';
+import { branchAhead, BundleTooLarge, buildBundle, holdsWhole, trackedCredentials, type BundleManifest } from './bundle.js';
 import { refuseUncarried, WORKTREES, worktreeSlug } from './convert.js';
 import { destinationPaths, sessionLanding, type Homes } from './paths.js';
 
@@ -45,9 +45,9 @@ true satisfies Same<MovePlan['paths'], Landing> & Same<keyof MovePlan['paths'], 
 
 export type CheckResult = { ok: true; sheet: MoveSheet; plan: MovePlan } | { ok: false; refusal: Refusal };
 
-/** What the worker holds at a path, and with nothing there whether it can read the remote. */
-export type RepoProbe = { state: 'clone' | 'other' | 'none'; remote?: string; rootCommit?: string; refs: string[]; reachable?: boolean };
-export const RepoProbeParams = z.object({ path: z.string().startsWith('/'), remote: z.string().regex(/^[^-]/).optional() });
+/** What the worker holds at a path, and with nothing there whether it can read the remote; `branchSha`, the tip of the branch asked for in a clone. */
+export type RepoProbe = { state: 'clone' | 'other' | 'none'; remote?: string; rootCommit?: string; refs: string[]; reachable?: boolean; branchSha?: string };
+export const RepoProbeParams = z.object({ path: z.string().startsWith('/'), remote: z.string().regex(/^[^-]/).optional(), branch: z.string().optional() });
 
 export type CheckDeps = {
   store: Pick<Store, 'state'>;
@@ -108,8 +108,12 @@ export async function probeRepo(p: z.infer<typeof RepoProbeParams>, git: GitRunn
   if (!st.isDirectory()) return { state: 'other', refs: [] };
   const top = await git(['rev-parse', '--show-toplevel'], p.path);
   if (top.code !== 0 || fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(p.path)) return { state: 'other', refs: [] };
-  const [remote, rootCommit, refs] = await Promise.all([originOf(p.path, git), rootOf(p.path, git), git(['for-each-ref', '--format=%(objectname)'], p.path)]);
-  return { state: 'clone', ...(remote && { remote }), ...(rootCommit && { rootCommit }), refs: [...new Set(refs.stdout.split('\n').filter(Boolean))] };
+  const [remote, rootCommit, refs, branch] = await Promise.all([
+    originOf(p.path, git), rootOf(p.path, git), git(['for-each-ref', '--format=%(objectname)'], p.path),
+    p.branch ? git(['rev-parse', '--verify', '-q', `refs/heads/${p.branch}^{commit}`], p.path) : undefined,
+  ]);
+  const branchSha = branch?.stdout.trim();
+  return { state: 'clone', ...(remote && { remote }), ...(rootCommit && { rootCommit }), refs: [...new Set(refs.stdout.split('\n').filter(Boolean))], ...(branchSha && { branchSha }) };
 }
 
 // each agent's home as both machines' CLIs name it, else the user's
@@ -275,12 +279,16 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }) };
     }
 
+    // the branch that travels, which for a main checkout is the one it converts to
+    const branch = convert?.slug ?? (detached ? undefined : repo.branch);
+
     // 4: a clone of this repository at the main checkout's place there, or nothing there and a remote it reads
+    let probe: RepoProbe | undefined;
     if (homes) {
       clone = relocate(repo.mainRoot, homes.user);
       const origin = await originOf(repo.mainRoot, d.git);
       remote = origin && withoutToken(origin);
-      const probe = await ask<RepoProbe>('repo.probe', { path: clone, ...(remote && { remote }) });
+      probe = await ask<RepoProbe>('repo.probe', { path: clone, ...(remote && { remote }), ...(branch && { branch }) });
       const inTheWay: Failure = { reason: `${clone} on ${name} is not a clone of ${repoName}`, action: 'move it out of the way there first' };
       if (probe?.state === 'clone') {
         if (remoteKey(probe.remote) === remoteKey(remote) && probe.rootCommit === await rootOf(repo.mainRoot, d.git)) have = probe.refs;
@@ -295,12 +303,15 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       }
     }
 
-    // 5: no other robot, on any machine, on the branch that travels, which for a main checkout is the one it converts to
-    const branch = convert?.slug ?? (detached ? undefined : repo.branch);
+    // 5: no other robot, on any machine, on the branch that travels, and no branch of its name there that the move would
+    // reset past commits it lacks, but the one the robot left there, which the move compares on its own
     if (branch) {
       const places = new Set([clean(repo.mainRoot), ...(clone ? [clean(clone)] : [])]);
       const other = Object.values(s.robots).find((r) => r.id !== c.id && r.repo?.branch === branch && places.has(clean(r.repo.mainRoot)));
       if (other) fail({ reason: `${other.name} is on ${branch} too`, action: 'put one of them on another branch first' });
+      const there = probe?.state === 'clone' ? probe.branchSha : undefined;
+      const left = c.left?.machine === to && c.left.branch === branch;
+      if (there && !left && !await holdsWhole(there, 'HEAD', repo.root, d.git)) fail(branchAhead(name, branch));
     }
 
     // 6: the bundle fits, and carries no tracked credential file; built here to know both, and built again by the move

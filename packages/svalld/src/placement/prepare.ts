@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiError, LeftBehind, MoveId, Sha256, type AgentKind, type FleetId, type MachineId } from '@svall/protocol';
+import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type FleetId, type MachineId } from '@svall/protocol';
 import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { boundary } from '../handover/failpoints.js';
@@ -16,7 +16,7 @@ import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
-import { applyBundle, verifyBundle } from './bundle.js';
+import { applyBundle, branchAhead, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
   blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
@@ -56,7 +56,8 @@ const ById = z.object({ id: MoveId });
 const WithJournal = z.object({ journal: MoveJournal });
 const Prepare = z.object({ id: MoveId, blobs: z.object({ bundle: Sha256.optional(), session: Sha256 }) });
 const Compare = z.object({ left: LeftBehind });
-const Sheet = z.object({ robotId: z.string(), have: z.array(z.string()) });
+// branch: the home's branch of the robot's branch's name, which the way back would reset
+const Sheet = z.object({ robotId: z.string(), have: z.array(z.string()), branch: z.object({ name: z.string(), sha: ObjectName }).optional() });
 
 type Made = NonNullable<MoveJournal['made']>;
 
@@ -103,9 +104,13 @@ export class PrepareService {
       'move.release': byId((id) => this.release(id)),
       // what a robot of this machine's carries to the home, which holds `have`
       'move.sheet': async (raw) => {
-        const { robotId, have } = parse(Sheet, raw);
+        const { robotId, have, branch } = parse(Sheet, raw);
         const c = this.d.store.state.robots[robotId];
         if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? robotId} does not run on ${this.name}`);
+        if (c.repo && branch) {
+          const on = (await this.d.git(['symbolic-ref', '-q', '--short', 'HEAD'], c.repo.root)).stdout.trim();
+          if (on === branch.name && !await holdsWhole(branch.sha, 'HEAD', c.repo.root, this.d.git)) return { refusal: branchAhead('this Mac', branch.name) };
+        }
         return carriedFrom(c, have, this.d.git, this.d.cli ?? cliRunner());
       },
       // what moved in the worktree a robot left here since it left
@@ -200,7 +205,9 @@ export class PrepareService {
         await boundary('worker.prepare.worktree', () => this.worktree(j, made));
         await boundary('worker.prepare.apply', async () => {
           made({ branch: (await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`], clone)).stdout.trim() || null });
-          await applyBundle(paths.root, dir, m, this.d.git);
+          const left = j.robot?.left;
+          const keep = left?.machine === this.d.me && left.branch === m.branch ? left.branchSha : undefined;
+          await applyBundle(paths.root, dir, m, this.d.git, { machine: this.name, ...(keep && { keep }) });
         });
       }
       boundary('worker.prepare.session', () => {
