@@ -328,10 +328,11 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     }
     const pane = w.store.state.robots[id]?.tmux?.paneId;
     const adapter = agent && sessionAdapter(agent.kind);
-    // a CLI that reports no session until its first turn, and asks nothing it can be answered, is up once its window is
-    if (!adapter || !pane || (!adapter.sessionStartOnResume && !adapter.trustAnswer)) return undefined;
-    void answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, signal: watch.signal })
+    if (!adapter || !pane) return undefined;
+    // a CLI that reports no session until its first turn is up once its window is, and its trust question is watched on
+    void answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, ...(adapter.sessionStartOnResume && { signal: watch.signal }) })
       .catch((e: Error) => w.log.error(`move ${j.id}: ${c.name}'s trust question went unwatched: ${e.message}`));
+    if (!adapter.sessionStartOnResume) return undefined;
     return await Promise.race([started, dormant, nap(w.watchMs, watch.signal).then(() => undefined)]);
   } finally {
     watch.abort();

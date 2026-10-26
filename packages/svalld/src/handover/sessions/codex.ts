@@ -49,4 +49,6 @@ export const codexAdapter: SessionAdapter = {
     file === transcript && /^sessions\/\d{4}\/\d{2}\/\d{2}\/[^/]+$/.test(file) && ROLLOUT.exec(path.posix.basename(file))?.[1] === sessionId,
 
   trusts,
+  // its "Trust this folder?" prompt preselects it
+  trustAnswer: 'Trust and continue',
 };

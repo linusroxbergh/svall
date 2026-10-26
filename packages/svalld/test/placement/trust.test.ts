@@ -1,9 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseToml } from 'smol-toml';
+import type { Robot } from '@svall/protocol';
 import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { codexAdapter } from '../../src/handover/sessions/codex.js';
+import { opencodeAdapter } from '../../src/handover/sessions/opencode.js';
+import { silentLogger } from '../../src/log.js';
+import { wake, type MoveJournal } from '../../src/placement/move.js';
 import { answerTrustPrompt, seedTrust } from '../../src/placement/trust.js';
 import type { Screen } from '../../src/tmux/tmux.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -72,6 +76,11 @@ const TRUST_DIALOG = [
   ' Do you trust the files in this folder?', '', ' /home/ada/code/app/.claude/worktrees/kanban', '',
   ' ❯ 1. No, exit', '   2. Yes, I trust this folder', '', ' Enter to confirm · Esc to exit',
 ];
+const CODEX_DIALOG = [
+  '  Folder access', '  /home/ada/code/app/.claude/worktrees/kanban', '',
+  '  Trust this folder? Codex can read, edit, and run files here, subject to your permission settings.', '',
+  '› 1. Trust and continue', '  2. Quit', '', '  enter continue · esc quit',
+];
 
 // a pane that shows `later` once it has been read `after` times, and the keys typed into it
 function pane(after: number, later: string[]) {
@@ -101,6 +110,35 @@ describe('answerTrustPrompt', () => {
     expect(await answerTrustPrompt(never.tmux, '%1', claudeAdapter, { forMs: 1200 })).toBe('none');
     expect(never.typed).toEqual([]);
     // a CLI with no answer to give is never looked at
-    expect(await answerTrustPrompt(never.tmux, '%1', codexAdapter, { forMs: 1200 })).toBe('none');
+    expect(await answerTrustPrompt(never.tmux, '%1', opencodeAdapter, { forMs: 1200 })).toBe('none');
+    expect(never.reads()).toBe(3);
+
+    const codex = pane(1, CODEX_DIALOG);
+    expect(await answerTrustPrompt(codex.tmux, '%1', codexAdapter, { forMs: 5000 })).toBe('answered');
+    expect(codex.typed).toEqual(['1', '\r']);
+  });
+});
+
+describe('wake', () => {
+  it('counts a Codex robot up once its window opens, which reports no session until its first turn, and answers its trust question after', async () => {
+    const robot = { id: 'c_1', name: 'kanban', revive: { command: 'codex resume x' }, agent: { kind: 'codex', sessionId: 'x', status: 'idle', lastActivityAt: 0 } } as unknown as Robot;
+    const store = { state: { robots: { c_1: robot } }, subscribe: () => () => {} };
+    const fleet = {
+      reviveRobot: async () => { robot.tmux = { windowId: '@1', paneId: '%1' }; },
+      openSecond: async () => {},
+      onSessionStart: () => () => {},
+    };
+    let shown = false;
+    const typed: string[] = [];
+    const tmux = {
+      screen: async () => ({ rows: shown ? CODEX_DIALOG : [], cursor: 0, shown: true, command: 'codex' }),
+      sendBytes: async (_paneId: string, bytes: Buffer) => { typed.push(bytes.toString('latin1')); },
+    };
+    const began = Date.now();
+    const j = { id: 'mv_0123456789', robotId: 'c_1' } as MoveJournal;
+    expect(await wake({ store, fleet, tmux, log: silentLogger, watchMs: 5000 } as unknown as Parameters<typeof wake>[0], j)).toBeUndefined();
+    expect(Date.now() - began).toBeLessThan(1000);
+    shown = true;
+    await vi.waitFor(() => expect(typed).toEqual(['1', '\r']), { timeout: 3000 });
   });
 });
