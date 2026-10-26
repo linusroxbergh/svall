@@ -46,6 +46,7 @@ const fakeContext = (parents: Record<string, string> = {}) => {
       command: vi.fn(async () => ({})),
       // resolves once the session is idle
       wait: vi.fn(async (_: { sessionID: string }) => {}),
+      interrupt: vi.fn(async (_: { sessionID: string }) => ({ interrupted: true })),
     },
     tool: {
       hook: register('tool'),
@@ -89,15 +90,23 @@ const system = async (h: Record<string, Hook>, sessionID: string) => {
 // the plugin shows a question on the card half a second after it changes
 const shown = () => new Promise((r) => setTimeout(r, 700));
 
+// what tells the plugin its server is stopping, as the listeners a setup adds
+const stopping = () => [...process.listeners('SIGTERM'), ...process.stdin.listeners('end')] as (() => void)[];
+let listening: (() => void)[];
+
 beforeEach(async () => {
   home = makeHome();
   got = [];
   brief = 'BRIEF';
+  listening = stopping();
   vi.stubEnv('SVALL_HOME', home);
   vi.stubEnv('SVALL_ROBOT_ID', 'c_1');
   await listen();
 });
-afterEach(async () => { await receiver.close(); vi.unstubAllEnvs(); cleanHomes(); });
+afterEach(async () => {
+  for (const l of stopping().filter((l) => !listening.includes(l))) { process.off('SIGTERM', l); process.stdin.off('end', l); }
+  await receiver.close(); vi.unstubAllEnvs(); cleanHomes();
+});
 
 describe('the OpenCode plugin', () => {
   it('exports a default definition with an id and a setup, as OpenCode 2 requires of a plugin file, each build its own id', async () => {
@@ -110,16 +119,50 @@ describe('the OpenCode plugin', () => {
     expect((await import(release)).default.id).toBe('svall');
   });
 
-  it('does nothing outside a robot, for the other build\'s fleet, or in the shared background service', async () => {
+  it('does nothing outside a robot, or for the other build\'s fleet', async () => {
     vi.stubEnv('SVALL_ROBOT_ID', '');
     expect((await load()).hooks).toEqual({});
     vi.stubEnv('SVALL_ROBOT_ID', 'c_1');
     vi.stubEnv('SVALL_HOME', '/u/.svall');
     expect((await load()).hooks).toEqual({});
-    vi.stubEnv('SVALL_HOME', home);
+  });
+
+  it("in the shared background service, interrupts a robot's session it runs unprompted, as one it resumed at its start", async () => {
+    // the user's home, with this build's fleet and the release's
+    vi.stubEnv('HOME', home);
+    for (const [fleet, id] of [['.svall-dev', SID], ['.svall-work', 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn']]) {
+      fs.mkdirSync(path.join(home, fleet, 'transcripts/opencode'), { recursive: true });
+      fs.writeFileSync(path.join(home, fleet, 'transcripts/opencode', `${id}.jsonl`), '');
+    }
     const argv = process.argv;
     process.argv = [...argv, 'serve', '--service'];
-    try { expect((await load()).hooks).toEqual({}); } finally { process.argv = argv; }
+    const said = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const { ctx, hooks: h } = await load(fakeContext({ [CHILD]: SID }));
+      expect(Object.keys(h).sort()).toEqual(['session.context', 'session.prompt']);
+      const run = async (sessionID: string) => {
+        ctx.session.interrupt.mockClear();
+        await h['session.context']({ sessionID, system: [] });
+        return ctx.session.interrupt.mock.calls.map(([o]) => o.sessionID);
+      };
+      expect(await run(SID)).toEqual([SID]);
+      expect(await run(CHILD)).toEqual([CHILD]);
+      expect(said.mock.calls.map(([line]) => line)).toEqual([
+        `svall: interrupted ${SID}, a Svall robot's session that OpenCode's service ran unprompted\n`,
+        `svall: interrupted ${CHILD}, a Svall robot's session that OpenCode's service ran unprompted\n`,
+      ]);
+      // the user's own session, and one of the other build's fleets
+      expect(await run('ses_0f3a5b7c9d21AbCdEfGhIjKlMn')).toEqual([]);
+      expect(await run('ses_0f3a5b7c9d20AbCdEfGhIjKlMn')).toEqual([]);
+      // a robot's session the user prompts in the service runs as theirs, its subagents with it
+      await h['session.prompt']({ sessionID: SID, messageID: 'msg_u1', prompt: { text: 'go' } });
+      expect(await run(SID)).toEqual([]);
+      expect(await run(CHILD)).toEqual([]);
+      expect(got).toEqual([]);
+    } finally {
+      process.argv = argv;
+      said.mockRestore();
+    }
   });
 
   it("takes OpenCode's worktree_create from a robot's agent, so its worktrees are made inside the repository", async () => {
@@ -585,6 +628,39 @@ describe('the OpenCode plugin', () => {
     await fail();
     expect(await resubscribed(4)).toBeLessThan(1500);
   }, 10_000);
+
+  it("interrupts every session it has run once its server is stopping, so the shared service doesn't resume it, and none at a reload", async () => {
+    for (const stop of ['SIGTERM', 'stdin'] as const) {
+      const before = stopping();
+      const { ctx, hooks: h, emit, cleanup } = await load(fakeContext({ [CHILD]: SID }));
+      const [onSignal, onEnd] = stopping().filter((l) => !before.includes(l));
+      await emit('session.created', { sessionID: SID });
+      await emit('session.created', { sessionID: CHILD, parentID: SID });
+      await prompt(h, SID);
+      (stop === 'SIGTERM' ? onSignal : onEnd)();
+      await cleanup();
+      expect(ctx.session.interrupt.mock.calls.map(([o]) => o.sessionID)).toEqual([SID, CHILD]);
+      expect(ctx.session.wait.mock.calls.map(([o]) => o.sessionID)).toEqual([SID, CHILD]);
+      expect(stopping()).toEqual(before);
+    }
+    const { ctx, hooks: h, cleanup } = await load();
+    await prompt(h, SID);
+    await cleanup();
+    expect(ctx.session.interrupt).not.toHaveBeenCalled();
+  });
+
+  it('ends a stopping server within two seconds, before the TUI kills it, whatever its sessions are doing', async () => {
+    const before = stopping();
+    const f = fakeContext();
+    f.ctx.session.wait.mockImplementation(() => new Promise(() => {}));
+    const { hooks: h, cleanup } = await load(f);
+    await prompt(h, SID);
+    stopping().filter((l) => !before.includes(l))[0]();
+    const t = Date.now();
+    await cleanup();
+    expect(Date.now() - t).toBeGreaterThan(1900);
+    expect(Date.now() - t).toBeLessThan(2500);
+  });
 
   it('says nothing when OpenCode unloads the plugin, nor subscribes again', async () => {
     const { ctx, emit, cleanup } = await load();
