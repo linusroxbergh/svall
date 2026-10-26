@@ -46,16 +46,12 @@ test('a link opens in the browser, and a path on the Mac is only named', () => {
   expect(screen.getByText('plan.md').closest('a')).toBeNull();
 });
 
-test('pins, removes and adds context as the whole list', () => {
+test('removes and adds context as the whole list', () => {
   open();
-  const { pinned: _, ...unpinned } = pr;
-  fireEvent.click(screen.getByRole('button', { name: 'Pin the PR' }));
-  expect(updates().at(-1)).toEqual({ id: 'c0', context: [unpinned, plan] });
-  fireEvent.click(screen.getByRole('button', { name: 'Pin plan.md' }));
-  expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr, { ...plan, pinned: true }] });
+  fireEvent.click(screen.getByRole('button', { name: 'Remove the PR' }));
+  expect(updates().at(-1)).toEqual({ id: 'c0', context: [plan] });
   fireEvent.click(screen.getByRole('button', { name: 'Remove plan.md' }));
   expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr] });
-  expect(screen.queryByRole('button', { name: 'Remove the PR' })).toBeNull();
   expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => screen.getByLabelText('Add a url or path').getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   fireEvent.change(screen.getByLabelText('Add a url or path'), { target: { value: ' https://herdr.dev/docs ' } });
   fireEvent.submit(screen.getByLabelText('Add a url or path').closest('form')!);
@@ -100,7 +96,7 @@ test('the sheet shows where the robot works, not where it could move', () => {
 test('a refused edit says why beside it, and a refused ref goes back in the field', async () => {
   refuse = 'fleet is read-only';
   open();
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pin the PR' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Remove the PR' })); });
   expect(screen.getByText('fleet is read-only').closest('.m-sec')!.querySelector('h4')!.textContent).toBe('Context');
   const field = screen.getByLabelText('Add a url or path') as HTMLInputElement;
   fireEvent.change(field, { target: { value: 'herdr.dev' } });

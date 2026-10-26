@@ -114,7 +114,7 @@ export function SideCard({ id }: { id: string }) {
             onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
-          <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
+          <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}
             robotId={id} onChange={saveContext} />
           <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
         </Section>

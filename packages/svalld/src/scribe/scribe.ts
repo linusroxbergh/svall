@@ -247,7 +247,7 @@ export class Scribe {
       if (!only && a.links && scribeKey(cur.context) === scribeKey(before.context)) {
         // a PR the scribe takes from the branch's lookup keeps the state that lookup read until the next one
         const states = new Map(cur.context.flatMap((it) => (it.prState ? [[bareUrl(it.ref), it.prState] as const] : [])));
-        const links = prFirst(acceptLinks(a.links, transcript, cur.context)).map((l) => {
+        const links = prFirst(acceptLinks(a.links, transcript, cur.context, cur.removedLinks)).map((l) => {
           const prState = states.get(bareUrl(l.ref));
           return prState ? { ...l, prState } : l;
         });
@@ -296,7 +296,7 @@ export class Scribe {
         lines.push(`island ${cur.name}  description: ${description}`);
       }
       if (a.links && scribeKey(cur.context) === scribeKey(i.context)) {
-        const links = acceptLinks(a.links, refs, cur.context);
+        const links = acceptLinks(a.links, refs, cur.context, cur.removedLinks);
         if (scribeKey(links) !== scribeKey(cur.context)) {
           cur.context = [...cur.context.filter((it) => it.source !== 'scribe'), ...links];
           lines.push(`island ${cur.name}  links: ${links.map((l) => l.label).join(', ') || 'none'}`);

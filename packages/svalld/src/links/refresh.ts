@@ -70,7 +70,8 @@ async function linkChange(store: Store, config: Config, robotId: string, deps: P
       const read = found.get(bareUrl(l.ref))?.prState ?? (failed ? prState : undefined);
       return read ? { ...l, prState: read } : l;
     });
-    const held = new Set(kept.map((l) => bareUrl(l.ref)));
+    // and none goes back that a person took off
+    const held = new Set([...kept.map((l) => bareUrl(l.ref)), ...(cur.removedLinks ?? [])]);
     cur.context = prFirst([
       ...kept,
       ...all.filter((a) => !held.has(bareUrl(a.ref))).map((a) => (pins.has(bareUrl(a.ref)) ? { ...a, pinned: true as const } : a)),

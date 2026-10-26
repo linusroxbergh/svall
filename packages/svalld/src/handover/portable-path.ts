@@ -104,10 +104,10 @@ export const PATH_FIELDS: Record<string, PathField> = {
 /** The string fields of the same schemas that hold no absolute path: ids, names, text, commands, patterns and root-relative paths. */
 export const NOT_PATHS: readonly string[] = [
   'FleetState.islands.*.id', 'FleetState.islands.*.name', 'FleetState.islands.*.description', 'FleetState.islands.*.instructions',
-  'FleetState.islands.*.context[].label',
+  'FleetState.islands.*.context[].label', 'FleetState.islands.*.removedLinks[]',
   'FleetState.robots.*.id', 'FleetState.robots.*.islandId', 'FleetState.robots.*.name', 'FleetState.robots.*.note',
   'FleetState.robots.*.instructions', 'FleetState.robots.*.agentProfile', 'FleetState.robots.*.repo.branch', 'FleetState.robots.*.column',
-  'FleetState.robots.*.context[].label',
+  'FleetState.robots.*.context[].label', 'FleetState.robots.*.removedLinks[]',
   'FleetState.robots.*.machine', 'FleetState.robots.*.moving.id', 'FleetState.robots.*.moving.to', 'FleetState.robots.*.moving.error',
   'FleetState.robots.*.left.moveId', 'FleetState.robots.*.left.machine', 'FleetState.robots.*.left.branch', 'FleetState.robots.*.left.branchSha',
   'FleetState.robots.*.left.fingerprint', 'FleetState.machines.*.name', 'FleetState.machines.*.release',

@@ -205,6 +205,16 @@ runIf('Fleet layout', () => {
     expect(fleet.brief(c.id)).toContain('Robot instructions: in Spanish');
   });
 
+  it('remembers a scribe link a person takes off a robot or an island', async () => {
+    const { fleet, store } = await boot();
+    const a = fleet.createIsland({ name: 'a' });
+    const c = await fleet.createRobot({ islandId: a.id, cwd: '/tmp' });
+    const found = { kind: 'other' as const, ref: 'https://found', label: 'found', source: 'scribe' as const };
+    store.update((d) => { d.robots[c.id].context = [found]; d.islands[a.id].context = [found]; });
+    expect(fleet.updateRobot(c.id, { context: [] }).removedLinks).toEqual(['found/']);
+    expect(fleet.updateIsland(a.id, { context: [] }).removedLinks).toEqual(['found/']);
+  });
+
   it('a move without a cell re-places a robot on the island it already stands on', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a' });

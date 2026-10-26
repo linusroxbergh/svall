@@ -1,5 +1,5 @@
 import { DEFAULT_SIZE, byIslandOrder, landCells, type Cell, type ContextItem, type Island, type Size } from '@svall/protocol';
-import { settleItems } from './context/items.js';
+import { setContext, settleItems } from './context/items.js';
 import { removeDocs } from './docs.js';
 import { Invalid, NotFound } from './errors.js';
 import { newId } from './ids.js';
@@ -59,7 +59,7 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
     if (p.name !== undefined) i.name = p.name;
     if (p.description !== undefined) setDescription(i, p.description);
     if (p.instructions !== undefined) i.instructions = p.instructions;
-    if (context) i.context = context;
+    if (context) setContext(i, context);
     if (p.position) i.position = p.position;
     if (p.size) {
       i.size = p.size;

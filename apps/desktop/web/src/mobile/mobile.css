@@ -190,8 +190,8 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .m-doc span { font-size: var(--text-md); color: var(--ink-3); }
 .m-doc-text { margin: 0; white-space: pre-wrap; word-break: break-word; font: var(--text-md)/var(--lh-read) var(--mono); overflow: auto; max-height: 70vh; }
 
-/* glyph, name, then a column each for pin and remove, so the pins line up down the list */
-.m-link { display: grid; grid-template-columns: auto minmax(0, 1fr) 36px 36px; align-items: center; column-gap: var(--sp-lg); border-bottom: 1px solid var(--line-soft); }
+/* glyph, name, then a column for remove, so the buttons line up down the list */
+.m-link { display: grid; grid-template-columns: auto minmax(0, 1fr) 36px; align-items: center; column-gap: var(--sp-lg); border-bottom: 1px solid var(--line-soft); }
 .m-link .lg {
   width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-xs);
   font: var(--w-semibold) var(--text-2xs)/1 var(--mono); font-style: normal; color: var(--ink-3); background: var(--fill-1);
@@ -202,8 +202,6 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   font-size: var(--text-lg); color: inherit; text-decoration: none;
 }
 .m-link button { min-height: 40px; color: var(--ink-3); }
-.m-link button + button { grid-column: 4; }
-.m-link button[aria-pressed='true'] { color: var(--sel); }
 .m-add { display: flex; gap: var(--sp-sm); margin-top: var(--sp-md); }
 .m-add input, .m-field { flex: 1; min-width: 0; padding: var(--sp-md) var(--sp-xl); resize: none; }
 .m-add button { padding: 0 var(--sp-xl); border-radius: var(--r-md); background: var(--fill-1); border: 1px solid var(--line); }

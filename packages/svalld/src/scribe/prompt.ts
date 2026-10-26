@@ -166,13 +166,13 @@ export function acceptLine(text: string | null | undefined, max: number): string
   return v || undefined;
 }
 
-// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold.
+// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold, none a person took off.
 // The branch's PR is the scribe's to take too, pin and all, so the work keeps it once its checkout moves to another branch.
 // A held link someone pinned, or that the branch's lookup still reads a state for, stays whatever the answer says
-export function acceptLinks(proposed: NonNullable<RobotAnswer['links']>, text: string, context: ContextItem[]): ContextItem[] {
+export function acceptLinks(proposed: NonNullable<RobotAnswer['links']>, text: string, context: ContextItem[], removed: string[] = []): ContextItem[] {
   const held = new Map(context.filter((it) => it.source === 'scribe').map((it) => [bareUrl(it.ref), it]));
   const branchPrs = new Map(context.filter((it) => it.source === 'auto' && it.kind === 'pr').map((it) => [bareUrl(it.ref), it]));
-  const seen = new Set(context.filter((it) => it.source !== 'scribe').map((it) => bareUrl(it.ref)).filter((key) => !branchPrs.has(key)));
+  const seen = new Set([...context.filter((it) => it.source !== 'scribe').map((it) => bareUrl(it.ref)).filter((key) => !branchPrs.has(key)), ...removed]);
   const out: ContextItem[] = [];
   for (const { url, label } of proposed) {
     const ref = itemUrl(url.trim());

@@ -46,7 +46,7 @@ export function IslandCard({ id }: { id: string }) {
             onSave={(v) => { if (v !== i.instructions) save({ instructions: v }); }} />
         </Section>
         <Section name="island.context" title="Context">
-          <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove', pin: 'island-context-pin' }}
+          <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove' }}
             robotId={robots[0]?.id} onChange={saveContext} />
           <AddLink id={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
         </Section>

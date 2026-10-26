@@ -5,9 +5,7 @@ import { followLink } from './LinkAsk.js';
 import { LinkIcon } from './map/LinkIcon.js';
 import { linkText } from './map/tokenText.js';
 
-// a pinned item is read before the agent starts; the toggle flips that flag
-export function ContextPills({ items, ids, robotId, onChange }: { items: ContextItem[]; ids: { list: string; remove: string; pin: string }; robotId?: string; onChange(next: ContextItem[]): void }) {
-  const toggle = (i: number) => onChange(items.map((it, j) => (j !== i ? it : it.pinned ? (({ pinned: _p, ...r }) => r)(it) : { ...it, pinned: true })));
+export function ContextPills({ items, ids, robotId, onChange }: { items: ContextItem[]; ids: { list: string; remove: string }; robotId?: string; onChange(next: ContextItem[]): void }) {
   return (
     <div className="pills" data-testid={ids.list}>
       {items.map((it, i) => (
@@ -15,8 +13,7 @@ export function ContextPills({ items, ids, robotId, onChange }: { items: Context
           <i className="lg"><LinkIcon item={it} /></i>
           <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} title={it.ref}
             onClick={(e) => { e.preventDefault(); followLink(it, robotId, { x: e.clientX, y: e.clientY }); }}>{linkText(it)}</a>
-          <button data-testid={ids.pin} title={it.pinned ? 'Unpin' : 'Pin: the agent reads it first'} onClick={() => toggle(i)}>{it.pinned ? '●' : '○'}</button>
-          {it.source === 'manual' && <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i))}>×</button>}
+          <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i))}>×</button>
         </span>
       ))}
     </div>
