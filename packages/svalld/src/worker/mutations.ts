@@ -48,7 +48,7 @@ export class WorkerMutations {
 
   constructor(private o: {
     store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
-    me: MachineId; home: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>;
+    me: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>;
   }) {}
 
   /** Whether the home has acknowledged every mutation this worker has journaled; its reports change nothing it could lack. */

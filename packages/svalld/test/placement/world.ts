@@ -123,7 +123,7 @@ export function world(o: {
     created: (c, p) => mutations.created(c, p),
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
-  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, home: H, paths: workerPaths, log: silentLogger, forget });
+  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
   const workerDocs = o.docs && new WorkerDocs({
     dir: path.join(workerPaths.cache, 'docs'), file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,

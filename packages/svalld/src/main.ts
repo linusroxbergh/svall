@@ -268,8 +268,8 @@ async function start(opts: Options): Promise<Daemon> {
     ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
   });
   // what the CLI in a worker's panes starts there, and changes there while its home is away
-  const mutations = worker && connection && outbox && new WorkerMutations({
-    store, fleet, connection, outbox, me, home: worker.worker.homeMachineId, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
+  const mutations = connection && outbox && new WorkerMutations({
+    store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
   });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
   // what each machine's agent CLIs are: a handover and a move read them
