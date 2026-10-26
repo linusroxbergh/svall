@@ -137,6 +137,10 @@ function pluginServers(installPath: string, unreadable: string[]): Entry[] {
   return [...from(path.join(installPath, '.mcp.json')), ...entries(manifest, ['mcpServers'], named), ...(inside ? from(file) : [])];
 }
 
+/** The Claude servers of plugin `plugin` in `v`, which lies at `place` in `file`. */
+export const pluginServersAt = (plugin: string, file: string, place: string[], v: unknown): McpServer[] =>
+  entries(file, place, v).map((e) => toServer('claude', { plugin }, e));
+
 /** The servers of the plugin installed at `p`, each from its file; a file it cannot read is named in `unreadable`. */
 export const readPluginServers = (p: PluginInstall, unreadable: string[]): McpServer[] =>
   pluginServers(p.installPath, unreadable).map((e) => toServer('claude', { plugin: p.name }, e));

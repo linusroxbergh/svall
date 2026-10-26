@@ -18,7 +18,7 @@ import { CREDENTIAL_PATTERNS, packTar, ustarFits } from './bundle.js';
 import { filesIn } from './docs-sync.js';
 import {
   configNeeds, configPlace, configRedacted, configSecrets, fieldPlace, getAt, isMacOnly, isOAuth, isReferenceOnly, needsOf, oauthLogin, parseJsonc,
-  readPluginConfigs, readPluginServers, readPlugins, readServers, readSettingsEnv, redacted, relocatedServer, runtimesOf, secretsOf, setAt,
+  pluginServersAt, readPluginConfigs, readPluginServers, readPlugins, readServers, readSettingsEnv, redacted, relocatedServer, runtimesOf, secretsOf, setAt,
   withoutCredentials, type McpServer, type Place, type Scope, type Secret,
 } from './mirror-config.js';
 import { CONFIG_ITEMS, itemKey, pluginKey, preview, readConsent, setConsent, tickedFields } from './mirror-consent.js';
@@ -59,7 +59,8 @@ export type MirrorPlan = {
   settings: Record<string, unknown>;
   plugins: { key: string; name: string; fields: string[]; ticked: boolean }[];
   codex?: Record<string, unknown>;
-  opencode: { file: (typeof OPENCODE_FILES)[number]; doc: Record<string, unknown> }[];
+  /** Each OpenCode config file, and the secret fields of its own. */
+  opencode: { file: (typeof OPENCODE_FILES)[number]; doc: Record<string, unknown>; fields: string[] }[];
   homes: Homes;
   vars: string[];
   unreadable: string[];
@@ -117,7 +118,7 @@ const Manifest = z.object({
   settings: Doc,
   settingsEnv: z.record(z.string(), z.string()),
   codex: Doc.optional(),
-  opencode: z.array(z.object({ file: z.enum(OPENCODE_FILES), doc: Doc })),
+  opencode: z.array(z.object({ file: z.enum(OPENCODE_FILES), doc: Doc, fields: z.array(z.string()) })),
   vars: z.array(z.string()),
   unreadable: z.array(z.string()),
   keep: z.array(z.string()),
@@ -229,20 +230,51 @@ function pluginFile(file: string, servers: McpServer[], consent: ReadonlySet<str
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
-// of a marketplace's files, the plugin server files and settings that hold a key, and those that cannot be read
-function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[] } {
+// a server that may travel raw: one whose fields the mirror knows, holding no key
+const plain = (s: McpServer): boolean => s.known && !secretsOf(s).length;
+const manifestOf = (root: string): string => path.join(root, '.claude-plugin/plugin.json');
+
+// the files a plugin's manifest names as its servers', wherever they lie
+function namedServerFiles(root: string): string[] {
+  let doc: unknown;
+  try { doc = JSON.parse(fs.readFileSync(manifestOf(root), 'utf8')); } catch { return []; }
+  const named = isDoc(doc) ? doc.mcpServers : undefined;
+  return (Array.isArray(named) ? named : [named]).filter((n): n is string => typeof n === 'string').map((n) => path.resolve(root, n));
+}
+
+const readJson = (file: string): unknown => {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
+};
+
+/**
+ * Of a marketplace's files: the plugin server files, settings and marketplace lists that hold a key or a server the
+ * mirror does not know; those that cannot be read; and, silently, every file of a plugin whose manifest cannot be read.
+ */
+function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; hidden: string[] } {
   const broken: string[] = [];
+  const keyed: string[] = [];
+  const hidden: string[] = [];
   const base = (f: string, name: string): boolean => path.basename(f) === name;
   const roots = new Set(found.flatMap((f) => (base(f, '.mcp.json') ? [path.dirname(f)]
     : base(f, 'plugin.json') && base(path.dirname(f), '.claude-plugin') ? [path.dirname(path.dirname(f))] : [])));
-  const keyed = [...roots].flatMap((installPath) => readPluginServers({ name: '', installPath }, broken).filter((s) => secretsOf(s).length).map((s) => s.file ?? ''));
-  for (const f of found.filter((x) => base(x, 'settings.json'))) {
-    let doc: unknown;
-    try { doc = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* named below */ }
-    if (!isDoc(doc)) broken.push(f);
-    else if (Object.values(isDoc(doc.env) ? doc.env : {}).some((v) => typeof v === 'string' && !isReferenceOnly(v)) || configSecrets('claude', doc).length) keyed.push(f);
+  for (const root of roots) {
+    keyed.push(...readPluginServers({ name: '', installPath: root }, broken).filter((s) => !plain(s)).map((s) => s.file ?? ''));
+    hidden.push(...namedServerFiles(root));
+    if (broken.includes(manifestOf(root))) hidden.push(...found.filter((f) => holds(root, f)));
   }
-  return { keyed: [...new Set(keyed)], broken: [...new Set(broken)] };
+  for (const f of found) {
+    if (base(f, 'settings.json')) {
+      const doc = readJson(f);
+      if (!isDoc(doc)) broken.push(f);
+      else if (Object.values(isDoc(doc.env) ? doc.env : {}).some((v) => typeof v === 'string' && !isReferenceOnly(v)) || configSecrets('claude', doc).length) keyed.push(f);
+    } else if (base(f, 'marketplace.json') && base(path.dirname(f), '.claude-plugin')) {
+      // a plugin a marketplace defines in place may hold its servers there too
+      const doc = readJson(f);
+      if (!isDoc(doc) || (doc.plugins !== undefined && !Array.isArray(doc.plugins))) broken.push(f);
+      else if ((doc.plugins as unknown[] ?? []).some((p, i) => isDoc(p) && !pluginServersAt('', f, ['plugins', String(i), 'mcpServers'], p.mcpServers).every(plain))) keyed.push(f);
+    }
+  }
+  return { keyed: [...new Set(keyed)], broken: [...new Set(broken)], hidden };
 }
 
 /**
@@ -288,7 +320,8 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const codexOff = codexDoc ? unticked(CONFIG_ITEMS.codex, 'codex', 'config.toml', configSecrets('codex', codexDoc)) : [];
   const ocDocs = OPENCODE_FILES.flatMap((file) => {
     const doc = configDoc(path.join(o.opencodeDir, file), parseJsonc, unreadable);
-    return doc ? [{ file, doc: without(doc, OPENCODE_WORKER_OWNED), secrets: configSecrets('opencode', without(doc, OPENCODE_WORKER_OWNED)) }] : [];
+    const secrets = doc ? configSecrets('opencode', without(doc, OPENCODE_WORKER_OWNED)) : [];
+    return doc ? [{ file, doc: without(doc, OPENCODE_WORKER_OWNED), secrets, fields: [...new Set(secrets.map((f) => f.field))] }] : [];
   });
   const ocOff = unticked(CONFIG_ITEMS.opencode, 'opencode', ocDocs.filter((d) => d.secrets.length).map((d) => d.file).join(' and '), ocDocs.flatMap((d) => d.secrets));
 
@@ -304,6 +337,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const byFile = new Map<string, McpServer[]>();
   for (const p of plugins) for (const s of readPluginServers(p, [])) if (s.file) byFile.set(s.file, [...(byFile.get(s.file) ?? []), s]);
   for (const f of byFile.keys()) hold(f);
+  for (const f of plugins.flatMap((p) => namedServerFiles(p.installPath))) hold(f);
   const pluginRows: MirrorPlan['plugins'] = [];
   for (const c of readPluginConfigs(plugins)) {
     const key = pluginKey(c.name);
@@ -338,34 +372,46 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   // a marketplace's plugin server file or settings that holds a key stays here, as one that cannot be read does
   const pluginsDir = path.join(o.claudeDir, 'plugins');
   const installs = plugins.map((p) => clean(p.installPath));
+  // a file the mirror writes itself, as the Mac's `from` would land
+  const made = (from: string, data: string): void => {
+    if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
+    else files.push({ from, to: path.posix.join('claude', path.posix.relative(o.claudeDir, from)), mode: (statOf(from)?.mode ?? 0o644) & 0o777, data });
+  };
+  // one that cannot be read now stays as the worker has it
+  const unread = (file: string): void => {
+    skipped.push(`${file} cannot be read`);
+    unreadable.push(file);
+  };
   tree('claude', path.join(pluginsDir, 'marketplaces'), 'plugins/marketplaces', (f) => !installs.some((i) => holds(i, f)), (found) => {
-    const { keyed, broken } = marketplaceKeys(found);
+    const { keyed, broken, hidden } = marketplaceKeys(found);
     for (const f of keyed) skipped.push(`${f} holds a key`);
-    for (const f of broken) skipped.push(`${f} cannot be read`);
-    for (const f of [...keyed, ...broken]) hold(f);
+    for (const f of broken) unread(f);
+    for (const f of [...keyed, ...broken, ...hidden]) hold(f);
   });
   for (const p of plugins) {
     if (!holds(pluginsDir, clean(p.installPath)) || clean(p.installPath) === pluginsDir) {
       skipped.push(`${p.installPath} lies outside ${pluginsDir}`);
       continue;
     }
+    // a manifest that cannot be read may name a server file, so nothing of its plugin travels
+    if (unreadable.includes(manifestOf(p.installPath))) {
+      skipped.push(`${manifestOf(p.installPath)} cannot be read`);
+      continue;
+    }
     tree('claude', p.installPath, path.posix.relative(o.claudeDir, p.installPath));
     for (const [file, ss] of byFile) {
       if (!holds(p.installPath, file) || unreadable.includes(file)) continue;
       const data = pluginFile(file, ss, consent);
-      if (data === undefined) skipped.push(`${file} cannot be read`);
-      else files.push({ from: file, to: path.posix.join('claude', path.posix.relative(o.claudeDir, file)), mode: (statOf(file)?.mode ?? 0o644) & 0o777, data });
+      if (data === undefined) unread(file);
+      else made(file, data);
     }
   }
   for (const name of PLUGIN_LISTS) {
     const from = path.join(o.claudeDir, 'plugins', name);
-    if (unreadable.includes(from)) continue;
-    let doc: unknown;
-    try { doc = JSON.parse(fs.readFileSync(from, 'utf8')); } catch (e) {
-      if (!isNoFile(e)) skipped.push(`${from} cannot be read`);
-      continue;
-    }
-    files.push({ from, to: path.posix.join('claude/plugins', name), mode: (statOf(from)?.mode ?? 0o644) & 0o777, data: `${JSON.stringify(withoutLogins(doc), null, 2)}\n` });
+    if (unreadable.includes(from) || !fs.existsSync(from)) continue;
+    const doc = readJson(from);
+    if (doc === undefined) unread(from);
+    else made(from, `${JSON.stringify(withoutLogins(doc), null, 2)}\n`);
   }
   one('claude', o.claudeDir, 'CLAUDE.md');
   one('claude', o.claudeDir, 'keybindings.json');
@@ -387,7 +433,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     settingsEnv: Object.fromEntries(Object.entries(env).filter(([k]) => !settingsOff.includes(`env.${k}`))),
     settings: configRedacted(settingsDoc, settingsOff), plugins: pluginRows,
     ...(codexDoc && { codex: configRedacted(codexDoc, codexOff) }),
-    opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff) })),
+    opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff.filter((f) => d.fields.includes(f))), fields: d.fields })),
     homes: { homedir: o.homedir, claudeDir: o.claudeDir, claudeJson: o.claudeJson, codexDir: o.codexDir, opencodeDir: o.opencodeDir },
     vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], keep: carried.map((f) => f.to), skipped,
   };
@@ -579,9 +625,16 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
     }
   }
   const keep = new Set(m.keep);
+  const pluginList = path.join(m.homes.claudeDir, 'plugins/installed_plugins.json');
+  // a plugin file stays as the mirror last wrote it while the Mac cannot read it, its plugin's manifest or the plugin list
+  const unread = (to: string): boolean => {
+    if (!to.startsWith('claude/plugins/')) return false;
+    const mac = path.join(m.homes.claudeDir, to.slice('claude/'.length));
+    return m.unreadable.some((u) => u === pluginList || u === mac || (u.endsWith('/.claude-plugin/plugin.json') && holds(path.dirname(path.dirname(u)), mac)));
+  };
   for (const [to, h] of Object.entries(state.files)) {
     if (Object.hasOwn(next.files, to)) continue;
-    if (keep.has(to)) {
+    if (keep.has(to) || unread(to)) {
       next.files[to] = h;
       continue;
     }
@@ -625,12 +678,17 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
 
   // its keys, each written when the Mac's changed since the mirror last wrote it
   const config = m.configs.find((c) => c.key === d.item);
-  const macDoc = d.name === 'settings.json' ? m.settings : d.name === 'config.toml' ? m.codex : m.opencode.find((x) => x.file === d.name)?.doc;
+  const oc = m.opencode.find((x) => x.file === d.name);
+  const macDoc = d.name === 'settings.json' ? m.settings : d.name === 'config.toml' ? m.codex : oc?.doc;
+  // this file's own secret fields: an OpenCode file shares its row with the other
+  const fields = oc ? oc.fields : config?.fields ?? [];
   const remergedKeys = new Set<string>();
+  let bareDoc: Doc = {};
   if (d.name !== '.claude.json' && leave) next.docs[d.name] = state.docs[d.name] ?? {};
   else if (d.name !== '.claude.json') {
     const ticked = relocated(macDoc ?? {}, move) as Doc;
-    const bare = configRedacted(ticked, config?.ticked ?? []);
+    const bare = configRedacted(ticked, (config?.ticked ?? []).filter((f) => fields.includes(f)));
+    bareDoc = bare;
     const recorded = state.docs[d.name] ?? {};
     const shas: Record<string, string> = {};
     for (const [k, v] of Object.entries(bare)) {
@@ -642,7 +700,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     }
     for (const k of Object.keys(recorded)) if (!Object.hasOwn(shas, k) && !d.owned.includes(k)) delete doc[k];
     next.docs[d.name] = shas;
-    for (const g of leavesOf(config?.fields ?? [], (f) => configPlace(ticked, f))) {
+    for (const g of leavesOf(fields, (f) => configPlace(ticked, f))) {
       leaves.push({
         record: JSON.stringify([d.name, ...g.place]), place: g.place, want: g.fields.some((f) => config?.ticked.includes(f)) ? getAt(ticked, g.place) as string : undefined,
         bare: getAt(bare, g.place) as string, named: !g.fields.some((f) => f.endsWith('.userinfo')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true,
@@ -661,13 +719,15 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   }
 
   // its servers, each in its own place, a Claude project's under the worker's own path of it
-  const placed = (place: string[]): string[] => (d.name === '.claude.json' && place[0] === 'projects' ? ['projects', realPath(move(place[1])).normalize('NFC'), ...place.slice(2)] : place);
+  const placed = (place: Place): Place => (d.name === '.claude.json' && place[0] === 'projects' ? ['projects', realPath(move(String(place[1]))).normalize('NFC'), ...place.slice(2)] : place);
   const servers: Record<string, string> = {};
+  const carried: { place: string[]; at: Place; bare: Doc; codex: boolean }[] = [];
   for (const s of m.servers.filter((x) => x.doc === d.name && Object.keys(x.entry).length)) {
     const rk = JSON.stringify([d.name, ...s.place]);
     const at = placed(s.place);
     const entry = relocatedServer(s.entry, move);
     const bare = relocatedServer(s.bare, move);
+    carried.push({ place: s.place, at, bare, codex: s.agent === 'codex' });
     servers[rk] = sha(bare);
     const remerged = state.servers[rk] !== servers[rk] || getAt(doc, at) === undefined;
     if (remerged) setAt(doc, at, structuredClone(bare));
@@ -683,12 +743,26 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   for (const [rk, h] of records(state.servers)) {
     if (Object.hasOwn(servers, rk)) continue;
     if (leave) servers[rk] = h;
-    else setAt(doc, placed((JSON.parse(rk) as string[]).slice(1)), undefined);
+    else setAt(doc, placed((JSON.parse(rk) as Place).slice(1)), undefined);
   }
   Object.assign(next.servers, servers);
 
   for (const l of leaves) settle(doc, was, l, state.secrets[l.record], next.secrets);
-  if (leave) for (const [k, h] of records(state.secrets)) next.secrets[k] ??= h;
+  // a value copied where the Mac now holds no secret is emptied as that place stands bare, while it is still the copy
+  for (const [k, h] of records(state.secrets)) {
+    if (leave) next.secrets[k] ??= h;
+    if (leave || Object.hasOwn(next.secrets, k)) continue;
+    const place = (JSON.parse(k) as Place).slice(1);
+    const s = carried.find((c) => c.place.every((p, i) => place[i] === p));
+    const leaf = s ? place.slice(s.place.length) : place;
+    const l: Leaf = {
+      record: k, place: s ? [...s.at, ...leaf] : placed(place), named: true, remerged: false, overOwn: true,
+      bare: (s ? getAt(s.bare, leaf) : d.name === 'settings.json' && place[0] === 'env' ? undefined : getAt(bareDoc, place)) as string | undefined,
+      ...(s?.codex && leaf[0] === 'env' && { server: s.at }),
+    };
+    const v = getAt(doc, l.place);
+    if (typeof v === 'string' && sha256Hex(v) === h) setLeaf(doc, l, l.bare);
+  }
 
   for (const [k, v] of Object.entries(override ?? {})) {
     if (k === d.servers) doc[k] = overlay(doc[k], v);
