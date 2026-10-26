@@ -285,9 +285,9 @@ export const methods = {
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
   'resources.get': { params: z.object({}), result: z.object({ sources: z.array(ResourceSource) }) },
-  // paths are relative to the robot's root: repo.root, else cwd
+  // paths are relative to the robot's root: repo.root, else cwd; an absolute one names a file anywhere
   'fs.list': { params: RootPath, result: z.object({ entries: z.array(FsEntry) }) },
-  // root is the folder the path was read under, which moves with the robot
+  // root is the folder the path was read under, which moves with the robot; the disk's for an absolute path
   'fs.read': { params: RootPath, result: z.object({ text: z.string(), mtimeMs: z.number(), root: z.string() }) },
   // mtimeMs is the one fs.read gave, 0 for no file; a file changed or gone since is left alone and answered with conflict and
   // the disk's mtime, 0 when it is gone. root is the one fs.read gave, and a write after the robot moved away is refused
