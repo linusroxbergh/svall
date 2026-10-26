@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { dispatch } from '../../src/api/methods.js';
 import { markDormant } from '../../src/dormancy.js';
 import { cleanHomes } from '../helpers.js';
-import { W, placed, robot, until, world } from './world.js';
+import { H, W, placed, robot, until, world } from './world.js';
 
 const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
@@ -78,6 +78,18 @@ describe('routing calls for placed robots', () => {
     w.worker.store.update((d) => { markDormant(d.robots.c_1); });
     await until(() => { if (w.home.store.state.robots.c_1.tmux) throw new Error('not reported yet'); });
     expect(w.home.store.state.robots.c_1.revive).toEqual({ command: '' });
+  });
+
+  it('on the worker, machines.list lists the home with no robots, and nothing the worker sends home gives the home an entry of its own', async () => {
+    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    await w.link();
+    await until(() => { if (!w.worker.store.state.machines?.[H]) throw new Error('no snapshot yet'); });
+    const listed = await dispatch({ id: 1, method: 'machines.list', params: {} }, w.worker.ctx) as { result: { machines: { id: string }[] } };
+    expect(listed.result.machines.find((m) => m.id === H)).toEqual({ id: H, name: 'mac', reachable: true, robots: 0 });
+    expect(listed.result.machines.find((m) => m.id === W)).toMatchObject({ name: 'w1', robots: 1 });
+    w.worker.store.update((d) => { markDormant(d.robots.c_1); });
+    await until(() => { if (w.home.store.state.robots.c_1.tmux) throw new Error('not reported yet'); });
+    expect(Object.keys(w.home.store.state.machines ?? {})).toEqual([W]);
   });
 
   it('the home takes from a worker only calls about its robots, islands and tabs, and the worker only the params it can read', async () => {

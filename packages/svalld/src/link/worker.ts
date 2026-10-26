@@ -41,6 +41,7 @@ export class HomeConnection {
   }) {}
 
   async start(): Promise<void> {
+    this.away();
     // the home lock keeps every other daemon off this home, so a socket left here is a dead one's
     fs.rmSync(this.o.paths.linkSock, { force: true });
     const server = net.createServer((socket) => this.accept(socket));
@@ -109,6 +110,13 @@ export class HomeConnection {
     return new ApiError('not_reachable', `${this.o.worker.homeName} is not reachable`);
   }
 
+  // the home's entry, which a snapshot marks reachable, unreachable until the next one
+  private away(): void {
+    const homeId = this.o.worker.homeMachineId;
+    const held = this.o.store.state.machines?.[homeId];
+    if (held?.reachable) this.o.store.update((d) => { d.machines![homeId] = { ...held, reachable: false, since: Date.now() }; });
+  }
+
   private accept(socket: net.Socket): void {
     const stream: LinkStream = new LinkStream(socket, {
       onFrame: (f) => { if (this.link?.stream === stream) this.take(this.link, f); else this.greet(stream, f); },
@@ -116,9 +124,7 @@ export class HomeConnection {
         this.streams.delete(stream);
         if (this.link?.stream !== stream) return;
         this.link = undefined;
-        const homeId = this.o.worker.homeMachineId;
-        const held = this.o.store.state.machines?.[homeId];
-        if (held?.reachable) this.o.store.update((d) => { d.machines![homeId] = { ...held, reachable: false, since: Date.now() }; });
+        this.away();
       },
     });
     this.streams.add(stream);

@@ -538,6 +538,16 @@ describe('the link', () => {
     await until(() => expect(Store.load(path.join(w.workerPaths.home, 'state.json'), () => {}).state.robots.r_1.name).toBe('renamed'));
   });
 
+  it("the worker's entry for its home says unreachable from the worker's start until a snapshot comes", async () => {
+    const w = world();
+    w.store.update((d) => { d.machines = { [H]: { name: 'mac', reachable: true, since: 1, home: '/Users/ada', snapshot: { version: 7, at: 1 } } }; });
+    await w.worker.start();
+    expect(w.store.state.machines?.[H]).toMatchObject({ name: 'mac', reachable: false, home: '/Users/ada', snapshot: { version: 7 } });
+    expect(w.store.state.machines![H]!.since).toBeGreaterThan(1);
+    w.links().start();
+    await until(() => expect(w.store.state.machines?.[H]?.reachable).toBe(true));
+  });
+
   it('sends no snapshot over the line limit: the push fails, says so once, and the link stays up', async () => {
     const logged: string[] = [];
     const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
