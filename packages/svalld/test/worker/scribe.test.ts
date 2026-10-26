@@ -220,4 +220,21 @@ describe('the scribe on a placed robot', () => {
     expect(w.home.store.state.robots.c_1.column).toBe('review');
     await until(() => expect(w.worker.store.state.robots.c_1.column).toBe('review'));
   });
+
+  it('a names sweep writes a placed robot\'s name alone, its note, links and column left as they are', async () => {
+    const dir = makeHome();
+    const robots = { c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }) };
+    const { w, asked } = await open({
+      home: { robots }, worker: { robots }, scribe: { worker: runner({ c_1: { ...kb, links: [{ url: PLAN, label: 'plan' }], column: 'In review' } }, []) },
+    });
+    // the board is in the prompt while placing is on, and a names sweep still places nothing
+    w.home.store.update((d) => { delete d.placingAsk; });
+    grow(path.join(dir, 'c_1.jsonl'), REST_BYTES / 4);
+
+    const swept = await dispatch({ id: 1, method: 'scribe.sweep', params: { names: true } }, w.home.ctx);
+    expect(asked).toEqual([{ id: 'c_1', only: 'names', columns: w.home.store.state.columns, sweep: true }]);
+    expect(swept).toEqual({ id: 1, result: { lines: ['golden heron → kb'] } });
+    expect(w.home.store.state.robots.c_1).toMatchObject({ name: 'kb', note: '', context: [] });
+    expect(w.home.store.state.robots.c_1.column).toBeUndefined();
+  });
 });
