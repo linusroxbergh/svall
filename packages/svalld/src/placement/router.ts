@@ -1,7 +1,6 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, Column, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
-import { repoRootOf } from '../docs.js';
+import { ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
@@ -71,19 +70,19 @@ export class Router {
     return robots[robotId].machine ?? this.o.home?.id;
   }
 
-  /** The machine a workspace id's folder is on, when that is another one: a robot's, or the clone robots placed there work in. */
+  /** The machine a workspace id's folder is on, when that is another one: a placed robot's, or the worker a clone's root id names. */
   rootPlacedAt(id: string): MachineId | undefined {
     if (!id.startsWith('r:')) return this.placedAt(id);
-    const working = Object.values(this.o.store.state.robots).filter((c) => repoRootOf(c) === id.slice(2));
-    // a folder a robot here works in is this machine's
-    return working.some((c) => this.runsHere(c)) || !working.length ? undefined : this.placedAt(working[0].id);
+    const far = farRootOf(id);
+    return far && far.machine !== this.o.me ? far.machine : undefined;
   }
 
-  /** The answer of the machine a workspace id's folder is on to a call about it; undefined for a folder here. */
+  /** The answer of the machine a workspace id's folder is on to a call about it, a clone named by its path there; undefined for a folder here. */
   forwardRoot<M extends MethodName>(id: string, method: M, params: Params<M>): Promise<Result<M>> | undefined {
     const at = this.rootPlacedAt(id);
     if (!at || !this.o.links) return undefined;
-    return this.o.links.call<Result<M>>(at, method, params, { timeoutMs: callMs(method, params) });
+    const far = farRootOf(id);
+    return this.o.links.call<Result<M>>(at, method, far ? { ...params, id: `r:${far.root}` } : params, { timeoutMs: callMs(method, params) });
   }
 
   /** On the home, the user folder a worker's paths are named from here. */

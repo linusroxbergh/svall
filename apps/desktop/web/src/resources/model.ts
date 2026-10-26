@@ -1,4 +1,4 @@
-import type { ContextItem, FleetState, ResourceItem, ResourceKind, ResourceSource } from '@svall/protocol';
+import { farRootOf, type ContextItem, type FleetState, type MachineId, type ResourceItem, type ResourceKind, type ResourceSource } from '@svall/protocol';
 import { linkText } from '../map/tokenText.js';
 import { shortPath } from '../paths.js';
 import { islandsSorted } from '../selectors.js';
@@ -107,8 +107,9 @@ export const tierWhere = (tier: Tier): string => `${TIER_WHERE}${tier}`;
 export const whereTier = (where: string | undefined): Tier | undefined =>
   where?.startsWith(TIER_WHERE) ? (where.slice(TIER_WHERE.length) as Tier) : undefined;
 
-export const sourceOfRoot = (sources: ResourceSource[], root: string | undefined): ResourceSource | undefined =>
-  root === undefined ? undefined : sources.find((s) => s.root === root);
+// a worker's clone goes by its machine as well, since another worker or this Mac may hold one at the same path
+export const sourceOfRoot = (sources: ResourceSource[], root: string | undefined, machine?: MachineId): ResourceSource | undefined =>
+  root === undefined ? undefined : sources.find((s) => s.root === root && farRootOf(s.rootId)?.machine === machine);
 
 
 // the ladder, broad to narrow; one is the label of a single source of the tier
@@ -186,9 +187,9 @@ export function chainOf(sources: ResourceSource[], f: FleetState, s: Omit<Resour
   const ours = sources.find((x) => x.tier === 'fleet');
   const island = f.islands[s.islandIds[0]];
   const crew = Object.values(f.robots).filter((c) => (s.tier === 'robot' ? c.id === s.robotIds[0] : c.islandId === island?.id));
-  const roots = island?.kind === 'home' ? [] : [...new Set(crew.map((c) => c.repo?.mainRoot ?? c.cwd))];
-  const repos = roots.map((r) => sources.find((x) => x.tier === 'repo' && x.root === r)).filter((x): x is ResourceSource => !!x)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const clones = sources.filter((x) => x.tier === 'repo');
+  const repos = [...new Set(island?.kind === 'home' ? [] : crew.map((c) => sourceOfRoot(clones, c.repo?.mainRoot ?? c.cwd, c.machine)))]
+    .filter((x): x is ResourceSource => !!x).sort((a, b) => a.name.localeCompare(b.name));
   const repo: Chip[] = repos.length === 0 ? [] : repos.length === 1 ? [chip(repos[0])] : [{ tier: 'repo', label: `${repos.length} repos`, rootIds: repos.map((r) => r.rootId) }];
   const islandSource = s.tier === 'island' ? s : sources.find((x) => x.tier === 'island' && x.islandIds[0] === island?.id);
   return {

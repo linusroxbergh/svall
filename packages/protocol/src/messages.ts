@@ -172,6 +172,16 @@ export const ResourceSource = z.object({
 });
 export type ResourceSource = z.infer<typeof ResourceSource>;
 
+/** A worker clone's root id on the home's shelf: the worker and the folder on its disk, as two workers may hold one path. */
+export const farRootId = (machine: MachineId, root: string): string => `r:${machine}:${root}`;
+const FAR_ROOT = /^r:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+)$/i;
+/** The worker and folder a root id names, undefined for a root on this machine. */
+export function farRootOf(id: string): { machine: MachineId; root: string } | undefined {
+  const m = FAR_ROOT.exec(id);
+  const machine = m ? MachineId.safeParse(m[1]) : undefined;
+  return m && machine?.success ? { machine: machine.data, root: m[2] } : undefined;
+}
+
 // a fleet on this Mac: windowOpen when an app instance shows it
 export const FleetEntry = z.object({ home: z.string(), name: z.string(), current: z.boolean(), windowOpen: z.boolean() });
 export type FleetEntry = z.infer<typeof FleetEntry>;

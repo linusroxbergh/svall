@@ -4,14 +4,20 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Event, ResourceSource } from '@svall/protocol';
+import { MachineId, emptyState, farRootId, type Event, type ResourceSource } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { docsDir, repoSlug } from '../../src/docs.js';
 import { relocate } from '../../src/handover/relocate.js';
+import type { HomeLinks } from '../../src/link/home.js';
+import { silentLogger } from '../../src/log.js';
+import { resolvePaths } from '../../src/paths.js';
 import { FarViewers } from '../../src/placement/far-viewers.js';
+import { Router } from '../../src/placement/router.js';
+import { mergeSources } from '../../src/resources/merge.js';
+import { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { W, placed, until, world } from './world.js';
+import { H, W, placed, until, world } from './world.js';
 
 const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
@@ -57,12 +63,14 @@ async function linked() {
 }
 
 describe('files of a robot on a worker', () => {
-  it('repo.status and repo.file for a placed robot answer from the worker\'s worktree; fs.list and fs.read too, by robot id from its worktree and by its r: root from main', async () => {
+  it('repo.status and repo.file for a placed robot answer from the worker\'s worktree; fs.list and fs.read too, by robot id from its worktree and by its worker root from main', async () => {
     const { w, main, tree } = await linked();
     expect(await dispatch({ id: 1, method: 'repo.status', params: { id: 'c_1' } }, w.home.ctx)).toMatchObject({ result: { branch: 'feat', files: [{ path: 'a.txt', status: 'M' }] } });
     expect(await dispatch({ id: 2, method: 'repo.file', params: { id: 'c_1', path: 'a.txt' } }, w.home.ctx)).toEqual({ id: 2, result: { before: 'one\n', after: 'changed\n' } });
     expect(await dispatch({ id: 2, method: 'fs.read', params: { id: 'c_1', path: 'a.txt' } }, w.home.ctx)).toMatchObject({ result: { text: 'changed\n', root: tree } });
-    expect(await dispatch({ id: 3, method: 'fs.read', params: { id: `r:${main}`, path: 'a.txt' } }, w.home.ctx)).toMatchObject({ result: { text: 'one\n', root: main } });
+    expect(await dispatch({ id: 3, method: 'fs.read', params: { id: farRootId(W, main), path: 'a.txt' } }, w.home.ctx)).toMatchObject({ result: { text: 'one\n', root: main } });
+    // the path alone names a folder on this Mac, where no robot works in it
+    expect(await dispatch({ id: 3, method: 'fs.read', params: { id: `r:${main}`, path: 'a.txt' } }, w.home.ctx)).toMatchObject({ error: { code: 'not_found' } });
     expect(await dispatch({ id: 4, method: 'fs.list', params: { id: 'c_1', path: '' } }, w.home.ctx)).toEqual({ id: 4, result: { entries: [{ name: 'a.txt', kind: 'file' }] } });
   });
 
@@ -77,7 +85,7 @@ describe('files of a robot on a worker', () => {
     const { w, main, tree } = await linked();
     const write = (id: string) => dispatch({ id: 1, method: 'fs.write', params: { id, path: 'a.txt', text: 'mine\n', mtimeMs: 0 } }, w.home.ctx);
     expect(await write('c_1')).toEqual({ id: 1, error: { code: 'read_only', message: 'a.txt is on w1; edit it in the robot\'s terminal' } });
-    expect(await write(`r:${main}`)).toEqual({ id: 1, error: { code: 'read_only', message: 'a.txt is on w1; edit it in the robot\'s terminal' } });
+    expect(await write(farRootId(W, main))).toEqual({ id: 1, error: { code: 'read_only', message: 'a.txt is on w1; edit it in the robot\'s terminal' } });
     expect(fs.readFileSync(path.join(tree, 'a.txt'), 'utf8')).toBe('changed\n');
     expect(fs.readFileSync(path.join(main, 'a.txt'), 'utf8')).toBe('one\n');
   });
@@ -120,10 +128,38 @@ describe('files of a robot on a worker', () => {
 
     const { sources } = (await dispatch({ id: 1, method: 'resources.get', params: {} }, w.home.ctx) as { result: { sources: ResourceSource[] } }).result;
     const repos = sources.filter((s) => s.tier === 'repo');
-    expect(repos).toEqual([expect.objectContaining({ root: main, docs: `r:${folder}`, robotIds: ['c_1'] })]);
+    expect(repos).toEqual([expect.objectContaining({ rootId: farRootId(W, main), root: main, docs: `r:${folder}`, robotIds: ['c_1'] })]);
+    expect(repos[0].groups.flatMap((g) => g.items.map((i) => i.open?.rootId))).toEqual([`r:${folder}`, farRootId(W, main)]);
     expect(repos[0].groups.map((g) => [g.kind, g.items.map((i) => i.name)])).toEqual([['docs', ['notes']], ['instructions', ['CLAUDE.md']]]);
     expect(sources.filter((s) => s !== repos[0] && (s.root === folder || s.docs === `r:${folder}`))).toEqual([]);
     expect(sources.filter((s) => s.root.startsWith(w.worker.paths.home))).toEqual([]);
+  });
+});
+
+describe('clones at one path on two workers', () => {
+  it('keep apart: each merged source and row names its worker, and a call by one goes to that worker with the path alone', async () => {
+    const W2 = MachineId.parse('0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f');
+    const root = '/home/ada/src/kanban';
+    const repo = { root, mainRoot: root, branch: 'main', isWorktree: false };
+    const store = Store.load(resolvePaths(makeHome()).state, () => {});
+    store.update((d) => { Object.assign(d, { ...emptyState(), robots: { c_1: placed({ id: 'c_1', cwd: root, repo }), c_2: placed({ id: 'c_2', cwd: root, repo, machine: W2 }) } }); });
+    const asked: unknown[] = [];
+    const links = { call: async (machine: MachineId, method: string, params: unknown) => { asked.push([machine, method, params]); return { text: machine, mtimeMs: 1, root }; } };
+    const router = new Router({ store, me: H, log: silentLogger, links: links as unknown as Pick<HomeLinks, 'call'> });
+    expect(router.rootPlacedAt(farRootId(W, root))).toBe(W);
+    expect(router.rootPlacedAt(farRootId(W2, root))).toBe(W2);
+    expect(router.rootPlacedAt(`r:${root}`)).toBeUndefined();
+    expect(await router.forwardRoot(farRootId(W2, root), 'fs.read', { id: farRootId(W2, root), path: 'a.txt' })).toEqual({ text: W2, mtimeMs: 1, root });
+    expect(asked).toEqual([[W2, 'fs.read', { id: `r:${root}`, path: 'a.txt' }]]);
+
+    const far = (id: string): ResourceSource => ({
+      rootId: `r:${root}`, root, name: 'kanban', tier: 'repo', islandIds: ['i_1'], robotIds: [id],
+      groups: [{ kind: 'instructions', items: [{ id: `instructions\u0000${root}/CLAUDE.md\u0000CLAUDE.md`, name: 'CLAUDE.md', reveal: `${root}/CLAUDE.md`, target: 'file', open: { rootId: `r:${root}`, path: 'CLAUDE.md' } }] }],
+    });
+    const merged = mergeSources([], [{ machine: W, sources: [far('c_1')] }, { machine: W2, sources: [far('c_2')] }], { docs: '/tmp/docs', machines: {}, homedir: '/Users/ada' });
+    expect(merged.map((s) => s.rootId)).toEqual([farRootId(W, root), farRootId(W2, root)]);
+    expect(merged.map((s) => s.groups[0].items[0].open?.rootId)).toEqual([farRootId(W, root), farRootId(W2, root)]);
+    expect(new Set(merged.map((s) => s.groups[0].items[0].id)).size).toBe(2);
   });
 });
 
