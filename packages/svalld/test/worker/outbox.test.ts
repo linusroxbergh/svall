@@ -36,6 +36,40 @@ describe('Outbox', () => {
     expect(emptied.append('robot.sync', {})).toBe(4);
   });
 
+  it("keeps one unacknowledged entry per kind and key, on disk too, and never folds an entry without a key", () => {
+    const paths = resolvePaths(makeHome());
+    const o = Outbox.open(paths);
+    o.append('robot.sync', { robotId: 'r_2', n: 0 }, 'r_2');
+    o.append('docs.write', { path: 'a.md', n: 1 });
+    for (let n = 1; n <= 1000; n++) o.append('robot.sync', { robotId: 'r_1', n }, 'r_1');
+    o.append('docs.write', { path: 'a.md', n: 2 });
+    const kept = [
+      { seq: 1, kind: 'robot.sync', data: { robotId: 'r_2', n: 0 }, key: 'r_2' },
+      { seq: 2, kind: 'docs.write', data: { path: 'a.md', n: 1 } },
+      { seq: 1002, kind: 'robot.sync', data: { robotId: 'r_1', n: 1000 }, key: 'r_1' },
+      { seq: 1003, kind: 'docs.write', data: { path: 'a.md', n: 2 } },
+    ];
+    expect([o.last(), ...o.after(0)]).toEqual([1003, ...kept]);
+    expect(fs.readFileSync(paths.outbox, 'utf8').trim().split('\n').map((l) => JSON.parse(l))).toEqual(kept);
+    expect(Outbox.open(paths).after(0)).toEqual(kept);
+  });
+
+  it('an ack of a seq that gave way trims up to it, and the entries after it replay in order', () => {
+    const paths = resolvePaths(makeHome());
+    const o = Outbox.open(paths);
+    o.append('robot.sync', { n: 1 }, 'r_1');
+    o.append('docs.write', { n: 2 });
+    o.append('robot.sync', { n: 3 }, 'r_1');
+    // the home took seq 1 before it gave way, and acks it
+    o.ack(1);
+    expect([o.acked(), ...seqs(o)]).toEqual([1, 2, 3]);
+    o.append('robot.sync', { n: 4 }, 'r_1');
+    const reopened = Outbox.open(paths);
+    expect([reopened.last(), reopened.acked(), ...seqs(reopened, 1)]).toEqual([4, 1, 2, 4]);
+    reopened.ack(4);
+    expect([reopened.acked(), seqs(reopened).length, reopened.append('robot.sync', { n: 5 }, 'r_1')]).toEqual([4, 0, 5]);
+  });
+
   it('drops a last line a crash cut short, and the next append starts on a line of its own', () => {
     const paths = resolvePaths(makeHome());
     Outbox.open(paths).append('robot.sync', { n: 1 });

@@ -83,13 +83,14 @@ export class HomeConnection {
     return link.stream.receiveBlob(id, into);
   }
 
+  // a report holds every field the worker owns of its robot, so the newest stands for those before it
   report(r: RobotSync): void {
-    this.journal('robot.sync', r);
+    this.journal('robot.sync', r, r.robotId);
   }
 
   /** Puts an event in the outbox and sends it while the home is linked; returns its seq. */
-  journal(kind: string, data: unknown): number {
-    const seq = this.o.outbox.append(kind, data);
+  journal(kind: string, data: unknown, key?: string): number {
+    const seq = this.o.outbox.append(kind, data, key);
     if (this.link?.live) this.link.stream.send({ t: 'event', seq, kind, data });
     return seq;
   }

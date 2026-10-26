@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { appendDurable, writeDurable } from '../handover/durable.js';
 import type { Paths } from '../paths.js';
 
-const Entry = z.object({ seq: z.number().int().positive(), kind: z.string(), data: z.unknown() });
+// an unacknowledged entry gives way to a later one of the same kind and key
+const Entry = z.object({ seq: z.number().int().positive(), kind: z.string(), data: z.unknown(), key: z.string().optional() });
 export type Entry = z.infer<typeof Entry>;
 
 const readOr = (file: string, missing: string): string => {
@@ -25,10 +26,12 @@ export class Outbox {
     return new Outbox(paths, entries, entries.at(-1)?.seq ?? acked, acked);
   }
 
-  append(kind: string, data: unknown): number {
-    const entry = { seq: this.lastSeq + 1, kind, data };
-    appendDurable(this.paths.outbox, entry);
-    this.entries.push(entry);
+  append(kind: string, data: unknown, key?: string): number {
+    const entry: Entry = { seq: this.lastSeq + 1, kind, data, ...(key !== undefined && { key }) };
+    const kept = key === undefined ? this.entries : this.entries.filter((e) => e.kind !== kind || e.key !== key);
+    if (kept.length < this.entries.length) writeDurable(this.paths.outbox, lines([...kept, entry]));
+    else appendDurable(this.paths.outbox, entry);
+    this.entries = [...kept, entry];
     this.lastSeq = entry.seq;
     return entry.seq;
   }

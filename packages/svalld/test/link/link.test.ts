@@ -213,7 +213,7 @@ describe('the link', () => {
     expect(w.snapshots()).toBe(before + 1);
   });
 
-  it('a report made while the home is away is journaled and arrives after reconnect, once, in sequence', async () => {
+  it('reports made while the home is away arrive after reconnect as the newest of each robot, in sequence with the rest', async () => {
     const w = world();
     await w.worker.start();
     const first = w.links();
@@ -230,15 +230,49 @@ describe('the link', () => {
     expect(writes).toBe(0);
     counting();
     w.worker.report(report('/w/away-1'));
+    w.worker.journal('docs.write', {});
     w.worker.report(report('/w/away-2'));
-    expect(Outbox.open(w.workerPaths).after(1).map((e) => (e.data as RobotSync).fields.cwd)).toEqual(['/w/away-1', '/w/away-2']);
+    expect(Outbox.open(w.workerPaths).after(1).map((e) => `${e.seq} ${e.kind}`)).toEqual(['3 docs.write', '4 robot.sync']);
 
     const second = w.links();
     second.start();
     await until(() => expect(second.for(W)?.outboxDrained()).toBe(true));
-    await until(() => expect(w.outbox.acked()).toBe(3));
-    expect(w.reports).toEqual(['/w/live', '/w/away-1', '/w/away-2']);
+    await until(() => expect(w.outbox.acked()).toBe(4));
+    expect(w.reports).toEqual(['/w/live', '/w/away-2']);
+    expect(w.seen.slice(-3, -1)).toEqual(['event docs.write', 'report /w/away-2']);
     expect(w.home.state.robots.r_1.cwd).toBe('/w/away-2');
+  });
+
+  it('a report that replaced one sent and never acked is all that replays after the stream drops', async () => {
+    const w = world();
+    await w.worker.start();
+    const connect = async () => {
+      const sock = net.connect(w.workerPaths.linkSock);
+      await once(sock, 'connect');
+      const got: LinkFrame[] = [];
+      const stream = new LinkStream(sock, { onFrame: (f) => got.push(f), onClose: () => {} });
+      stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)! });
+      await until(() => expect(got).toHaveLength(2));
+      stream.send({ t: 'ack', seq: 0 });
+      await until(() => expect(w.worker.connected()).toBe(true));
+      return { got, stream };
+    };
+    const events = (got: LinkFrame[]) => got.flatMap((f) => (f.t === 'event' ? [`${f.seq} ${(f.data as RobotSync).fields.cwd}`] : []));
+    const first = await connect();
+    w.worker.report(report('/w/1'));
+    w.worker.report(report('/w/2'));
+    await until(() => expect(events(first.got)).toEqual(['1 /w/1', '2 /w/2']));
+    first.stream.close();
+    await until(() => expect(w.worker.connected()).toBe(false));
+    w.worker.report(report('/w/3'));
+
+    const second = await connect();
+    expect(second.got[1]).toMatchObject({ t: 'inventory', last: 3, acked: 0 });
+    await until(() => expect(events(second.got)).toEqual(['3 /w/3']));
+    second.stream.send({ t: 'ack', seq: 3 });
+    await until(() => expect(w.outbox.acked()).toBe(3));
+    expect(Outbox.open(w.workerPaths).after(0)).toEqual([]);
+    second.stream.close();
   });
 
   it('machines[id].reachable flips to false within a heartbeat when the stream dies and back on reconnect', async () => {
