@@ -75,14 +75,20 @@ function setup(o: { home?: Partial<FleetState>; lose?: () => number } = {}) {
   const create = async (p: Record<string, unknown> = {}) => (await call('robot.create', { islandId: 'i_1', cwd: clone, ...p }) as { result: Robot }).result;
   const journaled = () => w.worker.outbox.after(w.worker.outbox.acked()).filter((e) => e.kind === 'mutation').map((e) => Mutation.parse(e.data));
   const replayed = () => until(() => expect(w.home.store.state.machines?.[W]?.replayed?.seq).toBe(w.worker.outbox.last()));
-  return { w, clone, typed, killed, logged, call, create, journaled, replayed };
+  // a mutation from w1 taken as the link takes one, with no hold around it
+  const apply = async (m: unknown) => {
+    const staged = await w.home.replay.prepare(m, W);
+    staged.change();
+    staged.after();
+  };
+  return { w, clone, typed, killed, logged, call, create, journaled, replayed, apply };
 }
 
 describe('the home replaying what a worker did while it slept', () => {
   it('a robot created offline appears at home once, on its cell, with the slept note; a replay after a lost ack adds nothing', async () => {
     let seq = 0;
     // a crew the island would be laid out afresh for, which leaves the worker's cell free
-    const { w, create, journaled } = setup({ home: { robots: { c_x: robot({ id: 'c_x', cell: { x: 1, y: 3 } }) } }, lose: () => seq });
+    const { w, create, journaled, apply } = setup({ home: { robots: { c_x: robot({ id: 'c_x', cell: { x: 1, y: 3 } }) } }, lose: () => seq });
     const { id } = await create();
     const [m] = journaled();
     seq = w.worker.outbox.after(0).find((e) => e.kind === 'mutation')!.seq;
@@ -93,19 +99,19 @@ describe('the home replaying what a worker did while it slept', () => {
     await until(() => expect(w.worker.outbox.acked()).toBe(w.worker.outbox.last()));
     expect(w.home.store.state.robots[id]).toEqual(held);
     // and the same mutation applied again adds nothing
-    await w.home.replay.apply(m, W);
+    await apply(m);
     expect(w.home.store.state.robots[id]).toEqual(held);
     expect(Object.keys(w.home.store.state.robots)).toHaveLength(3);
   });
 
   it('a replayed create leaves the board column to the home, and types nothing here, its run included', async () => {
-    const { w, create, journaled, logged } = setup();
+    const { w, create, journaled, logged, apply } = setup();
     await create();
     const [m] = journaled();
     await w.link();
     const r = { ...m.robot!, id: 'c_other', name: 'other', column: 'done', columnSource: 'manual' as const };
     // the home's tmux fails any call made to it, and the failure would be logged
-    await w.home.replay.apply({ ...m, id: 'mu_0000000001', params: { ...(m.params as object), command: 'claude', run: 'go on' }, robot: r }, W);
+    await apply({ ...m, id: 'mu_0000000001', params: { ...(m.params as object), command: 'claude', run: 'go on' }, robot: r });
     expect(w.home.store.state.robots.c_other).toMatchObject({ machine: W, name: 'other' });
     expect(w.home.store.state.robots.c_other).not.toHaveProperty('column');
     expect(w.home.store.state.robots.c_other).not.toHaveProperty('columnSource');
@@ -140,14 +146,14 @@ describe('the home replaying what a worker did while it slept', () => {
   });
 
   it('a mutation that cannot apply here says why in one line of its robot\'s note, and a line the replay writes is the user\'s', async () => {
-    const { w, logged } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_2: placed({ id: 'c_2', note: 'the scribe\'s' }) } } });
-    await w.home.replay.apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', name: 5 }, base: { name: 'c_1' }, snapshotVersion: 0, at: 1 }, W);
+    const { w, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_2: placed({ id: 'c_2', note: 'the scribe\'s' }) } } });
+    await apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', name: 5 }, base: { name: 'c_1' }, snapshotVersion: 0, at: 1 });
     expect(w.home.store.state.robots.c_1.note).toMatch(/^w1 changed this robot while this Mac slept; it could not be applied here: \S.*expected string/);
     expect(w.home.store.state.robots.c_1.note).not.toContain('\n');
     expect(w.home.store.state.robots.c_1.noteSource).toBe('manual');
     expect(logged).toHaveLength(1);
     // the scribe leaves a lost value where it was written
-    await w.home.replay.apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 }, W);
+    await apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 });
     expect(w.home.store.state.robots.c_2).toMatchObject({ note: 'the scribe\'s\nw1 set note to "mine" while this Mac slept; it had changed here since', noteSource: 'manual' });
   });
 
@@ -222,7 +228,7 @@ describe('the home replaying what a worker did while it slept', () => {
 
   it('an update whose field the home changed since loses, and the lost value lands in the note; the other fields apply', async () => {
     let seq = 0;
-    const { w, call, journaled } = setup({ home: { robots: { c_1: placed({ id: 'c_1', note: 'mine', noteSource: 'manual' }) } }, lose: () => seq });
+    const { w, call, journaled, apply } = setup({ home: { robots: { c_1: placed({ id: 'c_1', note: 'mine', noteSource: 'manual' }) } }, lose: () => seq });
     await call('robot.update', { id: 'c_1', note: 'reviewing', name: 'kb2' });
     seq = w.worker.outbox.last();
     const [m] = journaled();
@@ -236,7 +242,7 @@ describe('the home replaying what a worker did while it slept', () => {
     await until(() => expect(w.home.store.state.machines?.[W]?.replayed?.seq).toBe(w.worker.outbox.last()));
     expect(w.home.store.state.robots.c_1.note).toBe(note);
     // the same update applied again changes nothing
-    await w.home.replay.apply(m, W);
+    await apply(m);
     expect(w.home.store.state.robots.c_1).toMatchObject({ name: 'kb2', note });
     // no snapshot took the worker's change back before the home had it
     expect(names).not.toContain('c_1');

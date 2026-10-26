@@ -90,13 +90,6 @@ export class Replay {
     };
   }
 
-  /** `prepare`, `change` and `after` at once, for a caller in no hold. */
-  async apply(raw: unknown, machine: MachineId): Promise<void> {
-    const staged = await this.prepare(raw, machine);
-    staged.change();
-    staged.after();
-  }
-
   /** The robots `machine` started here since the last call. */
   created(machine: MachineId): string[] {
     const ids = this.made.get(machine) ?? [];
