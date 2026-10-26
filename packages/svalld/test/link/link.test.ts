@@ -718,13 +718,14 @@ describe('the link', () => {
     expect(acks.slice(before)).toEqual(['{"t":"ack","seq":1}\n']);
   });
 
-  it('a notify frame over PART_REPLY arrives cut to its tail, and the cut is logged', async () => {
+  it('a notify frame over PART_REPLY arrives cut to its tail, and the cut is logged once until one of its kind fits', async () => {
     const logged: string[] = [];
     const w = world({ workerLog: { info() {}, error: (m) => logged.push(m) } });
     await w.worker.start();
     w.links().start();
     await until(() => expect(w.worker.connected()).toBe(true));
-    w.worker.notify('screen', { id: 'c_1', text: 'a'.repeat(PART_REPLY) + 'END', at: 1 });
+    const big = { id: 'c_1', text: 'a'.repeat(PART_REPLY) + 'END', at: 1 };
+    w.worker.notify('screen', big);
     await until(() => expect(w.notified).toHaveLength(1));
     const [kind, data] = w.notified[0]!;
     const { text } = data as { text: string };
@@ -733,6 +734,15 @@ describe('the link', () => {
     // cut no further than it must
     expect(Buffer.byteLength(JSON.stringify({ t: 'notify', kind, data }))).toBe(PART_REPLY);
     expect(logged).toEqual([expect.stringContaining('screen')]);
+
+    w.worker.notify('screen', big);
+    await until(() => expect(w.notified).toHaveLength(2));
+    expect(logged).toHaveLength(1);
+    // one that fits, and the next cut is said again
+    w.worker.notify('screen', { id: 'c_1', text: 'small', at: 2 });
+    w.worker.notify('screen', big);
+    await until(() => expect(w.notified).toHaveLength(4));
+    expect(logged).toEqual([expect.stringContaining('screen'), expect.stringContaining('screen')]);
   });
 
   it('onSynced fires once the inventory is taken and onLost when the stream dies; onLink on the worker mirrors them', async () => {

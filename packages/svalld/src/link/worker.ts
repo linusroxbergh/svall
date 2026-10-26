@@ -42,6 +42,8 @@ export class HomeConnection {
   private server?: net.Server;
   private streams = new Set<LinkStream>();
   private link?: Link;
+  // the kinds whose last notification did not fit, logged once until one of the kind fits again
+  private cutting = new Set<string>();
 
   constructor(private o: {
     paths: Paths; worker: WorkerFile; me: MachineId; store: Store; outbox: Outbox; log: Logger; release: string; bootId: string; handlers: Handlers;
@@ -119,15 +121,24 @@ export class HomeConnection {
     if (!link?.live) return;
     const json = JSON.stringify({ t: 'notify', kind, data });
     const bytes = Buffer.byteLength(json);
-    if (bytes <= PART_REPLY) return link.stream.send({ t: 'notify', kind, data });
+    if (bytes <= PART_REPLY) {
+      this.cutting.delete(kind);
+      return link.stream.send({ t: 'notify', kind, data });
+    }
     const box = { data: (JSON.parse(json) as { data: unknown }).data };
     let size = bytes;
     for (let s = longest(box); size > PART_REPLY && s?.text; s = longest(box)) {
       s.at[s.key] = s.text.slice(size - PART_REPLY);
       size = Buffer.byteLength(JSON.stringify({ t: 'notify', kind, data: box.data }));
     }
-    if (size > PART_REPLY) return this.o.log.error(`link: a ${kind} notification of ${bytes} bytes does not fit in ${PART_REPLY} and was dropped`);
-    this.o.log.error(`link: a ${kind} notification of ${bytes} bytes was cut from the front to fit in ${PART_REPLY}`);
+    const first = !this.cutting.has(kind);
+    this.cutting.add(kind);
+    const later = 'the next are not logged until one fits';
+    if (size > PART_REPLY) {
+      if (first) this.o.log.error(`link: a ${kind} notification of ${bytes} bytes does not fit in ${PART_REPLY} and was dropped; ${later}`);
+      return;
+    }
+    if (first) this.o.log.error(`link: a ${kind} notification of ${bytes} bytes was cut from the front to fit in ${PART_REPLY}; ${later}`);
     link.stream.send({ t: 'notify', kind, data: box.data });
   }
 
