@@ -161,7 +161,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   One whose island was deleted here, or is full, stands on the island "recovered from linus-vault", its worktree and
   transcript left as they are.
 - A field changed here since keeps this Mac's value, and the note names the worker's: "linus-vault set note to
-  "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile.
+  "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile:
+  "linus-vault set name to "kb2" while this Mac slept; another robot has that name here".
 - A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
   "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
 - A note changed both there and here keeps this Mac's text. The worker's lands beside it as

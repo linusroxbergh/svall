@@ -13,6 +13,7 @@ import { homeRootOf } from './repo-key.js';
 
 export const RECOVERED = (worker: string) => `recovered from ${worker}`;
 export const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while this Mac slept; it had changed here since`;
+export const takenLine = (worker: string, name: string) => `${worker} set name to ${JSON.stringify(name)} while this Mac slept; another robot has that name here`;
 export const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while this Mac slept; it could not be applied here: ${why}`;
 export const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
 export const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
@@ -169,8 +170,9 @@ export class Replay {
       const value = k === 'context' ? settled?.items : p[k];
       const changed = !same(value, c[k]);
       const taken = k === 'name' && Object.values(robots).some((o) => o.id !== c.id && o.name.toLowerCase() === p.name!.toLowerCase());
-      if (changed && (taken || !same(m.base?.[k], c[k]))) {
-        lost.push(lostLine(worker, k, p[k]));
+      const here = !same(m.base?.[k], c[k]);
+      if (changed && (taken || here)) {
+        lost.push(here ? lostLine(worker, k, p[k]) : takenLine(worker, p.name!));
         continue;
       }
       if (changed) Object.assign(next, { [k]: value });

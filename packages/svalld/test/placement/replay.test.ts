@@ -273,7 +273,7 @@ describe('the home replaying what a worker did while it slept', () => {
     await w.link();
     await replayed();
     expect(w.home.store.state.robots.c_1).toMatchObject({
-      name: 'c_1', note: 'reviewing\nw1 set name to "kb2" while this Mac slept; it had changed here since', noteSource: 'manual', context,
+      name: 'c_1', note: 'reviewing\nw1 set name to "kb2" while this Mac slept; another robot has that name here', noteSource: 'manual', context,
     });
     expect(w.home.store.state.robots.c_h.name).toBe('KB2');
   });
