@@ -227,6 +227,18 @@ describe('a doc changed on both machines', () => {
     await until(() => expect(read(path.join(farDir, 'notes.md'))).toBe('v2, changed here\n'));
   });
 
+  it('a delete refused while linked brings this Mac\'s copy back to the worker at once', async () => {
+    const { w, dir, farDir } = apart('v1\n');
+    // a change here sends no docs, so only the refusal can
+    vi.spyOn(w.home.docs!, 'watch').mockReturnValue(() => {});
+    await w.link();
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('not live yet'); });
+    put(path.join(dir, 'notes.md'), 'v2, changed here\n');
+    fs.rmSync(path.join(farDir, 'notes.md'));
+    await until(() => expect(w.home.store.state.robots.c_1.note).toBe('w1 deleted robots/c_1/notes.md, which changed here since; it stays'));
+    await until(() => expect(read(path.join(farDir, 'notes.md'))).toBe('v2, changed here\n'));
+  });
+
   it('a write whose base is the home\'s current content applies, and a replay of it is nothing', async () => {
     const { w, dir, farDir } = apart('v1\n');
     const applied = vi.spyOn(w.home.docs!, 'apply');
