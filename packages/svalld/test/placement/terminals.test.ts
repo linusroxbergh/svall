@@ -1,10 +1,11 @@
 import { EventEmitter, once } from 'node:events';
 import net from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Event, Robot } from '@svall/protocol';
+import { ApiError, type Event, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import type { Fleet } from '../../src/fleet.js';
 import { HEARTBEAT_MS } from '../../src/link/home.js';
+import { silentLogger, type Logger } from '../../src/log.js';
 import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
@@ -52,12 +53,12 @@ function viewer(kind: Viewer['kind']): Seen {
 }
 
 // the home and w1 linked over sockets the test can cut, newest last, both holding c_1 in its window on w1
-async function linked(more: Partial<Robot> = {}) {
+async function linked(more: Partial<Robot> = {}, homeLog?: Logger) {
   const pane = paneTmux();
   const c_1 = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, ...more });
   const sockets: net.Socket[] = [];
   const w = world({
-    home: { robots: { c_1 } }, worker: { robots: { c_1 } }, tmux: pane.tmux,
+    home: { robots: { c_1 } }, worker: { robots: { c_1 } }, tmux: pane.tmux, homeLog,
     connect: async () => {
       const s = net.connect(w.worker.paths.linkSock);
       await once(s, 'connect');
@@ -198,6 +199,23 @@ describe('the terminal of a robot on a worker', () => {
     await until(() => expect(phone.got).toEqual([resync('$ make test\nok'), resync('$ \n')]));
     expect(opens).toBe(2);
     expect(w.worker.terminals.viewerCount('c_1')).toBe(1);
+  });
+
+  it('a terminal the worker does not open again after the link comes back says why to its viewer and in the log, and is let go of', async () => {
+    const errors: string[] = [];
+    const { w, phone, sockets } = await linked({}, { ...silentLogger, error: (m) => { errors.push(m); } });
+    await w.home.terminals.open('c_1', 40, 12, 2000, phone);
+    let closes = 0;
+    const close = w.worker.handlers['far.term.close'];
+    w.worker.handlers['far.term.close'] = (p) => { closes++; return close(p); };
+    w.worker.handlers['far.term.open'] = async () => { throw new ApiError('dormant', 'c_1 is dormant; revive it first'); };
+    sockets.at(-1)!.destroy();
+    await until(() => expect(phone.got).toEqual([output('\r\nthis terminal did not reopen: c_1 is dormant; revive it first\r\n')]));
+    expect(errors).toEqual([`${W}: terminal c_1 did not reopen: c_1 is dormant; revive it first`]);
+    await until(() => expect(closes).toBe(1));
+    w.worker.fleet.emit('output', 'c_1', Buffer.from('x\n'));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(phone.got).toHaveLength(1);
   });
 });
 

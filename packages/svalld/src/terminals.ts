@@ -46,7 +46,7 @@ export class TerminalHub {
   private screens = new Map<string, { text: string; at: number }>();
 
   constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger, private remote?: Remote) {
-    this.far = remote && new FarTerminals({ links: remote.links, router: remote.router });
+    this.far = remote && new FarTerminals({ links: remote.links, router: remote.router, log });
     fleet.on('output', (id, data) => this.stream(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
     fleet.on('pause', (id) => this.resumeWhenDrained(id));
     fleet.on('continue', (id) => { this.resync(id).catch((e) => log.error(`resync ${id}: ${String(e)}`)); });

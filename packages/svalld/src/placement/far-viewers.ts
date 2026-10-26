@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ApiError, type Event, type MachineId } from '@svall/protocol';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
+import type { Logger } from '../log.js';
 import type { Viewer } from '../terminals.js';
 import type { Router } from './router.js';
 
@@ -163,7 +164,7 @@ export class FarTerminals {
   // by viewer key and robot id
   private terms = new Map<string, FarTerm>();
 
-  constructor(private o: { links: Pick<HomeLinks, 'call'>; router: Pick<Router, 'placedAt'> }) {}
+  constructor(private o: { links: Pick<HomeLinks, 'call'>; router: Pick<Router, 'placedAt'>; log: Logger }) {}
 
   /** The robot's screen on `machine`, sized for the viewer, whose output streams to it from then on. */
   async open(machine: MachineId, id: string, cols: number, rows: number, lines: number, viewer: Viewer): Promise<string> {
@@ -221,11 +222,19 @@ export class FarTerminals {
     if (screen !== undefined && this.held(viewerKey(t.viewer), t.id) === t) t.viewer.send({ event: 'term.resync', data: { id: t.id, screen } });
   }
 
-  /** Opens and resyncs every terminal held on `machine`, as after it linked anew; one that no longer opens there is let go. Never rejects. */
+  /**
+   * Opens and resyncs every terminal held on `machine`, as after it linked anew. One whose robot no longer runs there is
+   * let go; one that does not open is let go there too, and its viewer told why. Never rejects.
+   */
   async reopen(machine: MachineId): Promise<void> {
     await Promise.all(this.on(machine).map((t) => {
       if (this.o.router.placedAt(t.id) !== machine) return this.drop(t);
-      return this.resync(t).catch(() => this.drop(t));
+      return this.resync(t).catch((e: Error) => {
+        this.o.log.error(`${machine}: terminal ${t.id} did not reopen: ${e.message}`);
+        if (this.held(viewerKey(t.viewer), t.id) !== t) return;
+        t.viewer.send({ event: 'term.output', data: { id: t.id, data: Buffer.from(`\r\nthis terminal did not reopen: ${e.message}\r\n`).toString('base64') } });
+        this.close(t.id, t.viewer);
+      });
     }));
   }
 
