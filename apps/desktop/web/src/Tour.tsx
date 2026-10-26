@@ -1,10 +1,11 @@
 import { HOME_ISLAND } from '@svall/protocol';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { app } from './boot.js';
-import { holdCutout } from './cutout.js';
+import { holdCutout, recut } from './cutout.js';
 import { useApp } from './hooks.js';
 import { keyLabel } from './keys.js';
 import { shortPath } from './paths.js';
+import { isVeiled } from './selectors.js';
 import { clamp } from './settings.js';
 import { scopedKey, SETTINGS_KEY, TOUR_KEY, type AppState } from './store/index.js';
 
@@ -15,7 +16,9 @@ type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; bod
 
 const STEPS: Step[] = [
   {
-    at: ({ id }) => ({ sel: id ? `[data-testid="token-${id}"]` : '[data-testid^="island-new-"]', side: 'bottom' }),
+    // an open terminal card covers the robot on the map
+    at: ({ id, cardOpen }) => (id && cardOpen ? { sel: `[data-testid="sb-robot-${id}"]`, side: 'right' }
+      : { sel: id ? `[data-testid="token-${id}"]` : '[data-testid^="island-new-"]', side: 'bottom' }),
     title: 'Your first robot',
     body: (k, cwd) => <>A shell in <code>{cwd}</code>. Double-click it or press Enter, then type <code>claude</code>, <code>codex</code> or <code>opencode</code>. {k('newRobot')} makes another.</>,
   },
@@ -63,20 +66,25 @@ const firstRobot = (s: AppState) => Object.values(s.fleet.robots).find((c) => s.
 type Box = { left: number; top: number; right: number; bottom: number; radius?: number };
 const sameBox = (a?: Box, b?: Box) => a?.left === b?.left && a?.top === b?.top && a?.right === b?.right && a?.bottom === b?.bottom && a?.radius === b?.radius;
 
-// every match of the selector, as one box
+// a browser zooms the page with CSS, which rects carry and lengths do not; the shell zooms the page whole
+const zoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+
+// every match of the selector, as one box in the page's own pixels
 function boxOf(selector: string): Box | undefined {
   const els = [...document.querySelectorAll(selector)].filter((e) => e.getBoundingClientRect().width > 0);
   if (els.length === 0) return undefined;
-  const rs = els.map((e) => e.getBoundingClientRect());
+  const rs = els.map((e) => e.getBoundingClientRect()), z = zoom();
   const radius = els.length === 1 ? parseFloat(getComputedStyle(els[0]).borderTopLeftRadius) || 0 : undefined;
-  return { left: Math.min(...rs.map((r) => r.left)), top: Math.min(...rs.map((r) => r.top)), right: Math.max(...rs.map((r) => r.right)), bottom: Math.max(...rs.map((r) => r.bottom)), radius };
+  return { left: Math.min(...rs.map((r) => r.left)) / z, top: Math.min(...rs.map((r) => r.top)) / z, right: Math.max(...rs.map((r) => r.right)) / z, bottom: Math.max(...rs.map((r) => r.bottom)) / z, radius };
 }
 
-// beside the anchor on its side, kept in the window; the arrow follows the anchor's middle
-function place(side: Side, b: Box, w: number, h: number): React.CSSProperties {
+// beside the anchor on its side, kept in the window; the arrow follows the anchor's middle.
+// With its anchor out of sight it stands mid-window, so Next and Skip never go with it
+function place(side: Side, b: Box | undefined, w: number, h: number, vw: number, vh: number): React.CSSProperties {
+  if (!b) return { left: (vw - w) / 2, top: (vh - h) / 2 };
   const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
-  const left = clamp(side === 'left' ? b.left - GAP - w : side === 'right' ? b.right + GAP : cx - w / 2, GAP, innerWidth - w - GAP);
-  const top = clamp(side === 'top' ? b.top - GAP - h : side === 'bottom' ? b.bottom + GAP : cy - h / 2, GAP, innerHeight - h - GAP);
+  const left = clamp(side === 'left' ? b.left - GAP - w : side === 'right' ? b.right + GAP : cx - w / 2, GAP, vw - w - GAP);
+  const top = clamp(side === 'top' ? b.top - GAP - h : side === 'bottom' ? b.bottom + GAP : cy - h / 2, GAP, vh - h - GAP);
   const arrow = side === 'top' || side === 'bottom' ? clamp(cx - left, 20, w - 20) : clamp(cy - top, 20, h - 20);
   return { left, top, '--arrow': `${arrow}px` } as React.CSSProperties;
 }
@@ -100,15 +108,20 @@ export function Tour() {
     setStep(next);
   };
 
-  // the map pans and the side card eases in, so the anchor is measured every frame
+  // the map pans and the side card eases in, so the anchor is measured every frame; the bubble moves with it,
+  // and the hole a terminal under it gives up has to follow
   useEffect(() => {
     if (!selector) return;
-    let raf = 0;
+    let raf = 0, held = '';
     const tick = () => {
       const b = boxOf(selector);
       setBox((prev) => (sameBox(prev, b) ? prev : b));
       const el = bubble.current;
-      if (el) setSize((prev) => (prev.w === el.offsetWidth && prev.h === el.offsetHeight ? prev : { w: el.offsetWidth, h: el.offsetHeight }));
+      if (el) {
+        setSize((prev) => (prev.w === el.offsetWidth && prev.h === el.offsetHeight ? prev : { w: el.offsetWidth, h: el.offsetHeight }));
+        const r = el.getBoundingClientRect(), at = `${r.left} ${r.top} ${r.width} ${r.height}`;
+        if (at !== held) { held = at; recut(app.bridge); }
+      }
       raf = requestAnimationFrame(tick);
     };
     tick();
@@ -126,18 +139,30 @@ export function Tour() {
     s.toggleSideCard(true);
   }, [ready, step, first]);
 
-  const shown = Boolean(cur && box);
+  const shown = Boolean(cur);
   useEffect(() => (shown && bubble.current ? holdCutout(app.bridge, bubble.current, true) : undefined), [shown, step]);
 
-  if (!cur || !at || !box) return null;
+  // Escape ends the tour before the card or the map read it; a dialog over the page keeps its own
+  useEffect(() => {
+    if (!shown) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || isVeiled(app.store.getState())) return;
+      e.stopPropagation();
+      go(STEPS.length);
+    };
+    window.addEventListener('keydown', key, true);
+    return () => window.removeEventListener('keydown', key, true);
+  }, [shown]);
+
+  if (!cur || !at) return null;
   const k = (id: Parameters<typeof keyLabel>[0]) => keyLabel(id, bindings) ?? '';
   const last = step === STEPS.length - 1;
-  const ring = { left: Math.max(box.left - 6, 3), top: Math.max(box.top - 6, 3), right: Math.min(box.right + 6, innerWidth - 3), bottom: Math.min(box.bottom + 6, innerHeight - 3) };
-  const radius = clamp((box.radius ?? 12) + 6, 10, (ring.bottom - ring.top) / 2);
+  const z = zoom(), vw = innerWidth / z, vh = innerHeight / z;
+  const ring = box && { left: Math.max(box.left - 6, 3), top: Math.max(box.top - 6, 3), right: Math.min(box.right + 6, vw - 3), bottom: Math.min(box.bottom + 6, vh - 3), radius: (box.radius ?? 12) + 6 };
   return (
     <>
-      <div className="tour-ring" style={{ left: ring.left, top: ring.top, width: ring.right - ring.left, height: ring.bottom - ring.top, borderRadius: radius }} />
-      <div key={`tour-${step}`} ref={bubble} className="tour panel" data-testid="tour" data-side={at.side} style={place(at.side, box, size.w, size.h)} role="dialog" aria-label={cur.title}>
+      {ring && <div className="tour-ring" style={{ left: ring.left, top: ring.top, width: ring.right - ring.left, height: ring.bottom - ring.top, borderRadius: clamp(ring.radius, 10, (ring.bottom - ring.top) / 2) }} />}
+      <div key={`tour-${step}`} ref={bubble} className="tour panel" data-testid="tour" data-side={box ? at.side : undefined} style={place(at.side, box, size.w, size.h, vw, vh)} role="dialog" aria-label={cur.title}>
         <div className="kicker">{step + 1} of {STEPS.length}</div>
         <div className="tour-title">{cur.title}</div>
         <div className="tour-body">{cur.body(k, cwd)}</div>

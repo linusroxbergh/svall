@@ -39,3 +39,18 @@ test('the tour selects its first robot once, so a robot shown after a sheet clos
   act(() => store.getState().setNamingRobot(false));
   expect(store.getState().selectedId).toBe('c2');
 });
+
+test('with its anchor out of sight the tour still offers its buttons, and Escape ends it for good', () => {
+  const { queryByTestId } = render(<Tour />);
+  expect(queryByTestId('tour-next')).not.toBeNull();
+  expect(queryByTestId('tour-skip')).not.toBeNull();
+  const esc = () => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+  // a dialog over the page keeps its own Escape
+  act(() => store.getState().setMissionPrompt(true));
+  esc();
+  expect(queryByTestId('tour')).not.toBeNull();
+  act(() => store.getState().setMissionPrompt(false));
+  esc();
+  expect(queryByTestId('tour')).toBeNull();
+  expect(localStorage.getItem('svall.tour')).toBe('done');
+});

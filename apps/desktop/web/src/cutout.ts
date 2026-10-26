@@ -13,6 +13,9 @@ function send(bridge: Bridge): void {
   bridge.send({ type: 'shell.cutout', rects, passive });
 }
 
+/** Sends every held rect again, for an overlay that moved without changing size. */
+export const recut = (bridge: Bridge): void => send(bridge);
+
 /** The shell draws terminals and browser tabs above the page, so an overlay that lands on one is seen and
  * clicked only where the surfaces give its rect up. One that takes no presses leaves them to the surface.
  * Returns the call that hands the region back. */
