@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
 import { dropBuffers, editBuffer, loadBuffer } from '../src/ide/buffers.js';
@@ -101,6 +102,20 @@ describe('followQuit', () => {
     q.bridge.emit({ type: 'quit.ask' });
     await vi.advanceTimersByTimeAsync(0);
     expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 1 }]);
+    q.stop();
+  });
+
+  it('counts a robot on a worker apart, as one that keeps running there, whatever it is doing', async () => {
+    const q = setup();
+    const W = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status: 'working' as const, lastActivityAt: 0 };
+    const f = fleet();
+    f.machines = { [W]: { name: 'linus-vault', reachable: true, since: 0 } };
+    f.robots = { a: chr('a', 'i_a', { x: 0, y: 0 }, { agent, machine: W }), b: chr('b', 'i_a', { x: 1, y: 0 }, { machine: W }) };
+    q.store.getState().setFleet(f);
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 0, placed: 2 }]);
     q.stop();
   });
 

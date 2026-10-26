@@ -249,8 +249,8 @@ final class ShellRouter {
             keys.capturing = on
         case .keysQuit(let chord):
             setQuit(chord)
-        case .quitAnswer(let unsaved, let working):
-            quitFlow.answered(unsaved: unsaved, working: working)
+        case .quitAnswer(let unsaved, let working, let placed):
+            quitFlow.answered(unsaved: unsaved, working: working, placed: placed)
         case .quitStopped(let ok):
             quitFlow.stopped(ok: ok)
         case .openUrl(let url):

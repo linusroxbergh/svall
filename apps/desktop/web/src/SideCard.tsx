@@ -75,7 +75,8 @@ export function SideCard({ id }: { id: string }) {
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
   const placed = isPlaced(c) ? machineName(fleet, c.machine) : undefined;
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
-  const movable = fleet.islands[c.islandId]?.kind !== 'home' && !c.moving;
+  // one on a worker moves back from wherever on the map it stands
+  const movable = (placed !== undefined || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
   const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => m.reachable);
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);

@@ -65,7 +65,7 @@ enum ToShell: Decodable {
     case handoverChoose(choices: HandoverChoices)
     case handoverCancel
     case handoverForget
-    case quitAnswer(unsaved: [String], working: Int)
+    case quitAnswer(unsaved: [String], working: Int, placed: Int)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
     case retitle
@@ -76,7 +76,7 @@ enum ToShell: Decodable {
     case connectionRetry
     case connectionHere
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -122,7 +122,9 @@ enum ToShell: Decodable {
         case "handover.choose": self = .handoverChoose(choices: try c.decode(HandoverChoices.self, forKey: .choices))
         case "handover.cancel": self = .handoverCancel
         case "handover.forget": self = .handoverForget
-        case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working))
+        case "quit.answer":
+            self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working),
+                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0)
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle

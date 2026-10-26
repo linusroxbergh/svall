@@ -431,6 +431,12 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(store.getState().moveSheet).toEqual({ id: 'c0' });
 });
 
+test('a placed robot that landed on mission control can still move back to this Mac', () => {
+  withVault(true, { machine: VAULT, islandId: 'home' });
+  render(<Side />);
+  expect(moves()).toEqual(['Move to this Mac']);
+});
+
 test('a robot on a worker the fleet no longer lists goes by the machine\'s id', () => {
   withVault(true, { machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId });
   render(<Side />);

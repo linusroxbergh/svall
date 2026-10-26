@@ -94,7 +94,7 @@ export type ToShell =
   | { type: 'handover.choose'; choices: HandoverChoices }
   | { type: 'handover.cancel' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
-  | { type: 'quit.answer'; unsaved: string[]; working: number }
+  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number }
   // the fleet has stopped, or could not be asked to
   | { type: 'quit.stopped'; ok: boolean }
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone

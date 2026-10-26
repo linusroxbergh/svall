@@ -34,7 +34,7 @@
 .modal .acts { display: flex; gap: var(--sp-md); }
 .modal .acts .btn { flex: 1; }
 /* a choice the move sheet asks about again as it changes */
-.move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); }
+.move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .fleet-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); }
 .fleet-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-md) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }
 .fleet-row:hover:not(:disabled), .fleet-row:focus-visible { background: var(--fill-2); }
@@ -55,7 +55,7 @@
 .machine-acts { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 .machine .row b.machine-said { font-weight: var(--w-regular); color: var(--ink-2); }
 .host .acts { flex-wrap: wrap; }
-.host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); }
+.host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }
 .host-note ul { margin: 0; padding-left: var(--sp-2xl); }
 .host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
 .host-phase { display: flex; flex-direction: column; gap: var(--sp-xs); }
