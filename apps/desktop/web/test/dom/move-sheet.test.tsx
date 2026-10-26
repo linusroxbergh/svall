@@ -128,6 +128,17 @@ test('the way back asks about this Mac by the id the daemon gives itself', async
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: HOME });
 });
 
+test('the way back of a working robot is refused, and the interrupt chosen from it moves the robot after its turn', async () => {
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  answers = [{ ok: false, refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] } }, { ok: true, sheet: sheet({ interrupts: true }) }];
+  await open();
+  expect(screen.getByTestId('move-reason').textContent).toBe('ada is working');
+  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  expect(checks().at(-1)).toEqual({ id: 'c0', machine: HOME, interruptAfterMs: 0 });
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: HOME, interruptAfterMs: 0 });
+});
+
 test('a move the daemon refuses after the sheet closed says why in a toast, whose Check again opens the sheet on it', async () => {
   call.mockImplementation((method: string) => (method === 'robot.moveTo'
     ? Promise.reject(new ApiError('refused', 'linus-vault runs claude 1.2.3, this Mac 1.2.4; update claude on linus-vault'))

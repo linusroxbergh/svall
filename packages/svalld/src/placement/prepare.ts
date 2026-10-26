@@ -19,7 +19,8 @@ import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, branchAhead, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+  type ReturnSheet,
 } from './move.js';
 import { seedTrust } from './trust.js';
 
@@ -102,8 +103,8 @@ export class PrepareService {
       'move.rest': byJournal((j) => this.rest(j)),
       'move.bundle': byId((id) => this.bundle(id)),
       'move.release': byId((id) => this.release(id)),
-      // what a robot of this machine's carries to the home, which holds `have`
-      'move.sheet': async (raw) => {
+      // what a robot of this machine's carries to the home, which holds `have`, and what its terminals here are doing
+      'move.sheet': async (raw): Promise<ReturnSheet | { refusal: unknown }> => {
         const { robotId, have, branch } = parse(Sheet, raw);
         const c = this.d.store.state.robots[robotId];
         if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? robotId} does not run on ${this.name}`);
@@ -111,7 +112,10 @@ export class PrepareService {
           const on = (await this.d.git(['symbolic-ref', '-q', '--short', 'HEAD'], c.repo.root)).stdout.trim();
           if (on === branch.name && !await holdsWhole(branch.sha, 'HEAD', c.repo.root, this.d.git)) return { refusal: branchAhead('this Mac', branch.name) };
         }
-        return carriedFrom(c, have, this.d.git, this.d.cli ?? cliRunner());
+        const carried = await carriedFrom(c, have, this.d.git, this.d.cli ?? cliRunner());
+        if ('refusal' in carried) return carried;
+        const terminals = (await liveTerminals(this.d)).filter((t) => t.robotId === robotId).map((t) => ({ ...(t.term && { term: t.term }), class: t.class }));
+        return { ...carried, terminals };
       },
       // what moved in the worktree a robot left here since it left
       'move.compare': async (raw) => {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { moveSummary } from '@svall/protocol';
+import { INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
 import { realPath } from '../../src/handover/portable-path.js';
@@ -370,6 +370,31 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.moving).toBeUndefined();
     expect(state(w, w.wt)).toEqual(before);
     expect(w.worker.store.state.robots.c_1?.machine).toBeUndefined();
+  });
+
+  it('a return refuses a working agent or a running command there unless an interrupt is chosen, and one chosen rests it after its turn', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+    const pane = w.worker.store.state.robots.c_1.tmux!.paneId;
+    const win = [...w.vault.windows.values()].find((x) => x.paneId === pane)!;
+    const agent = win.job;
+    win.job = 'npm test';
+    expect(await home.placement.check('c_1', H)).toMatchObject({
+      ok: false, refusal: { reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] },
+    });
+    win.job = agent;
+    w.worker.store.update((d) => { d.robots.c_1.agent!.status = 'working'; });
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'kanban is working', action: INTERRUPT_ACTIONS.agent, details: [] } });
+    expect(await home.placement.check('c_1', H, { interruptAfterMs: 0 })).toMatchObject({ ok: true, sheet: { interrupts: true }, plan: { interruptAfterMs: 0 } });
+
+    const id = await home.placement.start('c_1', H, { interruptAfterMs: 0 });
+
+    expect(w.vault.keys).toContainEqual({ paneId: pane, text: '\x1b' });
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(w.mac1.opened).toEqual(['c_1']);
   });
 
   it('a return check names a worker that answers no move sheet in time, or runs a release without one', async () => {

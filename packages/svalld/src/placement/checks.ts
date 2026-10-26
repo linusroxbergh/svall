@@ -187,6 +187,19 @@ const bundleFailure = (e: unknown): Failure => (e instanceof BundleTooLarge
 
 export type Carried = Pick<MoveSheet, 'sessionBytes' | 'commits' | 'changedFiles' | 'untrackedFiles'>;
 
+/** Check 7 over a robot's live terminals: the agent idle, or an interrupt chosen; a robot waiting on a question moves and asks again. */
+export function restCheck(name: string, mine: Pick<Classified, 'class'>[], chosen: boolean): { failures: Failure[]; interrupts: boolean; question: boolean } {
+  const failures: Failure[] = [];
+  if (!chosen && mine.some((t) => t.class === 'agent-working')) failures.push({ reason: `${name} is working`, action: INTERRUPT_ACTIONS.agent });
+  if (!chosen && mine.some((t) => t.class === 'foreground')) failures.push({ reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] });
+  return { failures, interrupts: chosen && mine.some((t) => t.class !== 'agent-ready' && t.class !== 'shell-ready'), question: mine.some((t) => t.class === 'agent-blocked') };
+}
+
+/** The first failure's sentence and action, with every other behind its details. */
+export function refusalOf([first, ...rest]: Failure[]): Refusal {
+  return { reason: first.reason, action: first.action, ...(first.run && { run: first.run }), details: [...first.details ?? [], ...rest.flatMap((f) => [`${f.reason}; ${f.action}`, ...f.details ?? []])] };
+}
+
 /** What a move of robot `c` from this machine to one holding `have` carries, as its sheet counts it, or why it cannot. */
 export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run: CliRun): Promise<Carried | { refusal: Failure }> {
   let session: number;
@@ -333,21 +346,13 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   }
 
-  // 7: the agent idle, or an interrupt chosen; a robot waiting on a question moves and asks again
-  const mine = (await d.terminals()).filter((t) => t.robotId === c.id);
-  const chosen = o.interruptAfterMs !== undefined;
-  const question = mine.some((t) => t.class === 'agent-blocked');
-  if (!chosen && mine.some((t) => t.class === 'agent-working')) fail({ reason: `${c.name} is working`, action: INTERRUPT_ACTIONS.agent });
-  if (!chosen && mine.some((t) => t.class === 'foreground')) fail({ reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] });
+  // 7
+  const rest = restCheck(c.name, (await d.terminals()).filter((t) => t.robotId === c.id), o.interruptAfterMs !== undefined);
+  for (const f of rest.failures) fail(f);
+  const { question } = rest;
 
   // a worker out of reach has failed a check, so no homes means a refusal
-  if (failed.length || !homes) {
-    const [first, ...rest] = failed;
-    return {
-      ok: false,
-      refusal: { reason: first.reason, action: first.action, ...(first.run && { run: first.run }), details: [...first.details ?? [], ...rest.flatMap((f) => [`${f.reason}; ${f.action}`, ...f.details ?? []])] },
-    };
-  }
+  if (failed.length || !homes) return { ok: false, refusal: refusalOf(failed) };
   const credentialFiles = bundle?.manifest.credentialFiles ?? [];
   const carry = credentialFiles.filter((f) => o.carry?.includes(f));
   const stays = [
@@ -357,7 +362,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const [changed, untracked] = [bundle?.changed ?? 0, bundle?.manifest.untracked.length ?? 0];
   const sheet: MoveSheet = {
     sessionBytes: session, branch: convert?.slug ?? repo?.branch ?? '', commits: bundle?.manifest.commits?.count ?? 0, changedFiles: changed, untrackedFiles: untracked,
-    clone: mode, credentialFiles, stays, interrupts: chosen && mine.some((t) => t.class !== 'agent-ready' && t.class !== 'shell-ready'), question,
+    clone: mode, credentialFiles, stays, interrupts: rest.interrupts, question,
     ...(convert && { converts: { main: convert.main, branch: convert.slug, changed: changed + untracked } }), notInRepo: !repo,
   };
   // a question is cut at once: the agent resumes idle and asks again

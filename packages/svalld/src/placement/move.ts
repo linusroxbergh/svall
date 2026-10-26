@@ -19,7 +19,7 @@ import { SourceJournal, type JournalState } from '../handover/journal.js';
 import { clean } from '../handover/portable-path.js';
 import { ProcessTable } from '../handover/processes.js';
 import { relocate } from '../handover/relocate.js';
-import { classifyTerminals, restTerminals, type RestChoices, type RestDeps } from '../handover/rest.js';
+import { classifyTerminals, restTerminals, type Classified, type RestChoices, type RestDeps } from '../handover/rest.js';
 import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../handover/sessions/registry.js';
 import { SessionError, type CliRun, type SessionAdapter } from '../handover/sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
@@ -29,7 +29,7 @@ import { installedScripts, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
 import { applyBundle, BundleManifest, buildBundle, CREDENTIAL_PATTERNS, fingerprintOf, verifyBundle } from './bundle.js';
-import { converted, homesOf, MovePlan, moveChecks, type Carried, type CheckDeps, type CheckResult } from './checks.js';
+import { converted, homesOf, MovePlan, moveChecks, refusalOf, restCheck, type Carried, type CheckDeps, type CheckResult } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths, sessionLanding } from './paths.js';
 import { answerTrustPrompt } from './trust.js';
@@ -260,6 +260,16 @@ export function landed(c: Robot, j: Pick<MoveJournal, 'plan' | 'generation'>, ma
 }
 
 type RestSide = Omit<RestDeps, 'journal'>;
+
+/** This machine's terminals that still hold a process, as rest reads them. */
+export async function liveTerminals(d: Pick<RestDeps, 'store' | 'tmux' | 'processes'>): Promise<Classified[]> {
+  const live = await d.tmux.listWindows().catch((e: unknown) => { if (noServer(e)) return []; throw e; });
+  const table = await (d.processes ?? (() => ProcessTable.read({ scripts: installedScripts() })))();
+  return classifyTerminals(d.store.state, live, table);
+}
+
+/** What a worker sends of a robot's way back: what travels, and the class of each of its live terminals there. */
+export type ReturnSheet = Carried & { terminals: Pick<Classified, 'term' | 'class'>[] };
 
 /** Rests the robot's terminals and closes their windows, recording what it stops as the journal's `rest`. */
 export async function restRobot(deps: RestSide, j: MoveJournal, save: (j: MoveJournal) => void, fleetId: FleetId, choices: RestChoices): Promise<MoveJournal> {
@@ -572,10 +582,8 @@ export class Placement {
     return { store, me, links, git, agents, gateway, release, homedir, terminals: () => this.terminals(), ...(cli && { cli }) };
   }
 
-  private async terminals() {
-    const live = await this.d.tmux.listWindows().catch((e: unknown) => { if (noServer(e)) return []; throw e; });
-    const table = await (this.d.processes ?? (() => ProcessTable.read({ scripts: installedScripts() })))();
-    return classifyTerminals(this.d.store.state, live, table);
+  private terminals(): Promise<Classified[]> {
+    return liveTerminals(this.d);
   }
 
   private restDeps(): RestSide {
@@ -789,29 +797,35 @@ export class Placement {
       const changed = await changedSince(c.left, 'on this Mac', this.d.git);
       if (changed) return fail(changed);
     }
-    const plan = await this.returnPlan(c, from, hello, o.interruptAfterMs ?? (c.agent?.status === 'blocked' ? 0 : undefined));
+    const plan = await this.returnPlan(c, from, hello);
     // this Mac's branch of the robot's branch's name, which the way back would reset, but the one it left here, compared above
     const name = c.repo?.branch;
     const sha = name && c.left && c.left.branch !== name ? (await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${name}^{commit}`], c.left.path)).stdout.trim() : '';
     const branch = sha ? { name: name!, sha } : undefined;
-    const carried = await this.d.links.call<Carried | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have, ...(branch && { branch }) }, { timeoutMs: SHEET_MS })
+    const answer = await this.d.links.call<ReturnSheet | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have, ...(branch && { branch }) }, { timeoutMs: SHEET_MS })
       .catch((e: Error) => ({ refusal: sheetRefusal(e, this.name(from)) }));
-    if ('refusal' in carried) return fail(carried.refusal);
+    if ('refusal' in answer) return fail(answer.refusal);
+    const { terminals, ...carried } = answer;
+    // 7, over the robot's terminals there
+    const rest = restCheck(c.name, terminals, o.interruptAfterMs !== undefined);
+    if (rest.failures.length) return { ok: false, refusal: refusalOf(rest.failures) };
+    // a question is cut at once: the agent resumes idle and asks again
+    const interruptAfterMs = o.interruptAfterMs ?? (rest.question ? 0 : undefined);
     const sheet: MoveSheet = {
       ...carried, branch: c.repo?.branch ?? '', clone: 'warm', credentialFiles: [], stays: [],
-      interrupts: plan.interruptAfterMs !== undefined, question: c.agent?.status === 'blocked', notInRepo: !c.repo,
+      interrupts: rest.interrupts, question: rest.question, notInRepo: !c.repo,
     };
-    return { ok: true, sheet, plan };
+    return { ok: true, sheet, plan: { ...plan, ...(interruptAfterMs !== undefined && { interruptAfterMs }) } };
   }
 
-  private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello, interruptAfterMs: number | undefined): Promise<MovePlan> {
+  private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello): Promise<MovePlan> {
     const info = await this.d.links.call<SystemInfo>(from, 'system.info', {});
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, await this.d.agents());
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
     const paths = destinationPaths(c, main, homes);
     if (c.left && clean(paths.root) !== clean(c.left.path)) throw new Error(`${c.name} would come back to ${paths.root}, not to ${c.left.path} where it left from`);
     const have = c.left ? [...new Set((await must(this.d.git, ['for-each-ref', '--format=%(objectname)'], c.left.path)).split('\n').filter(Boolean))] : [];
-    return { clone: main, paths, have, carry: [], ...(interruptAfterMs !== undefined && { interruptAfterMs }) };
+    return { clone: main, paths, have, carry: [] };
   }
 
   // ---- from the commit on, both ways
