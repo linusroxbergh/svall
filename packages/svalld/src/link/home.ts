@@ -49,6 +49,12 @@ type Options = {
   onInventory(inv: Inventory, machine: MachineId): Promise<void>;
   /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
   onCall?(method: string, params: unknown): Promise<unknown>;
+  /** A notification from a linked worker, never journaled nor acked. */
+  onNotify?(kind: string, data: unknown, machine: MachineId): void;
+  /** A worker's inventory and the outbox past it are taken, and snapshots go to it. */
+  onSynced?(machine: MachineId): void;
+  /** A worker's stream closed. */
+  onLost?(machine: MachineId): void;
   snapshot: () => Snapshot;
   /** The home's agent configuration, which a worker takes once linked and before a move. */
   mirror?: Pick<Mirror, 'push'>;
@@ -269,6 +275,10 @@ export class WorkerLink {
       case 'call':
         void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params)));
         return;
+      case 'notify':
+        // a notification is lost alone, never the link
+        try { this.o.onNotify?.(f.kind, f.data, this.machine); } catch (e) { this.o.log.error(`${this.name}: a ${f.kind} notification not taken: ${(e as Error).message}`); }
+        return;
       default:
         this.o.log.error(`${this.name}: ${f.t} from a worker is not taken`);
     }
@@ -341,6 +351,7 @@ export class WorkerLink {
         await this.o.onInventory(this.inventory, this.machine);
         if (stream !== this.stream) return;
         this.synced = true;
+        this.o.onSynced?.(this.machine);
         this.pushSoon();
         void this.pushMirror();
         this.pushDocs();
@@ -358,6 +369,7 @@ export class WorkerLink {
     this.synced = false;
     for (const w of this.waiting.splice(0)) w.done();
     this.lost(err?.message ?? 'the link closed');
+    this.o.onLost?.(this.machine);
   }
 
   private lost(why: string, again = true): void {

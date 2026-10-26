@@ -11,11 +11,12 @@ import { claudePaths, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Entry, Outbox } from '../worker/outbox.js';
 import { mergeSnapshot, ownedReport, Snapshot, type Inventory, type RobotSync } from '../worker/snapshot.js';
-import { answerCall, LinkStream } from './stream.js';
+import { answerCall, LinkStream, PART_REPLY } from './stream.js';
 
 const HomeHello = z.object({ t: z.literal('hello'), token: z.string(), schema: z.number().optional(), protocol: z.number().optional() });
 
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
+type Held = { at: Record<string, unknown>; key: string; text: string };
 
 // `live` once the home has said where to replay from and the outbox past it is sent; `mismatch` while the home speaks a
 // state schema or link protocol this worker cannot read, when nothing but pings passes
@@ -25,6 +26,16 @@ const sameToken = (a: string, b: string): boolean => {
   const [x, y] = [Buffer.from(a), Buffer.from(b)];
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
+
+// the longest string inside `v`, with the object or array that holds it and its key there
+function longest(v: unknown, best?: Held): Held | undefined {
+  if (v === null || typeof v !== 'object') return best;
+  for (const [key, x] of Object.entries(v)) {
+    if (typeof x !== 'string') best = longest(x, best);
+    else if (!best || x.length > best.text.length) best = { at: v as Record<string, unknown>, key, text: x };
+  }
+  return best;
+}
 
 /** The worker's end of the link: listens on link.sock and holds the one stream that opened with worker.json's token. */
 export class HomeConnection {
@@ -38,6 +49,8 @@ export class HomeConnection {
     versions?: { schema: number; protocol: number };
     /** The outbox entries the home has acknowledged, before they are trimmed. */
     onAcked?(dropped: Entry[]): void;
+    /** As `connected()` turns: true at the home's first ack on a stream, false as that stream closes or is greeted again. */
+    onLink?(live: boolean): void;
   }) {}
 
   async start(): Promise<void> {
@@ -99,6 +112,30 @@ export class HomeConnection {
     this.journal('robot.sync', r, r.robotId);
   }
 
+  /** Sends the home a notification, never journaled: dropped while the home is not linked, and one whose frame is over
+   *  PART_REPLY goes with its longest string cut from the front until it fits, so a text keeps its tail. */
+  notify(kind: string, data: unknown): void {
+    const link = this.link;
+    if (!link?.live) return;
+    const json = JSON.stringify({ t: 'notify', kind, data });
+    const bytes = Buffer.byteLength(json);
+    if (bytes <= PART_REPLY) return link.stream.send({ t: 'notify', kind, data });
+    const box = { data: (JSON.parse(json) as { data: unknown }).data };
+    let size = bytes;
+    for (let s = longest(box); size > PART_REPLY && s?.text; s = longest(box)) {
+      s.at[s.key] = s.text.slice(size - PART_REPLY);
+      size = Buffer.byteLength(JSON.stringify({ t: 'notify', kind, data: box.data }));
+    }
+    if (size > PART_REPLY) return this.o.log.error(`link: a ${kind} notification of ${bytes} bytes does not fit in ${PART_REPLY} and was dropped`);
+    this.o.log.error(`link: a ${kind} notification of ${bytes} bytes was cut from the front to fit in ${PART_REPLY}`);
+    link.stream.send({ t: 'notify', kind, data: box.data });
+  }
+
+  /** The bytes sent to the home that its stream has not passed on yet, 0 while it is not linked. */
+  backlog(): number {
+    return this.link?.stream.backlog() ?? 0;
+  }
+
   /** Puts an event in the outbox and sends it while the home is linked; returns its seq. */
   journal(kind: string, data: unknown, key?: string): number {
     const seq = this.o.outbox.append(kind, data, key);
@@ -122,9 +159,11 @@ export class HomeConnection {
       onFrame: (f) => { if (this.link?.stream === stream) this.take(this.link, f); else this.greet(stream, f); },
       onClose: () => {
         this.streams.delete(stream);
-        if (this.link?.stream !== stream) return;
+        const link = this.link;
+        if (link?.stream !== stream) return;
         this.link = undefined;
         this.away();
+        if (link.live) this.o.onLink?.(false);
       },
     });
     this.streams.add(stream);
@@ -143,6 +182,7 @@ export class HomeConnection {
     const mismatch = hello.data.schema !== schema || hello.data.protocol !== protocol;
     const older = this.link;
     this.link = { stream, live: false, mismatch };
+    if (older?.live) this.o.onLink?.(false);
     if (older && older.stream !== stream) older.stream.close();
     stream.send({
       t: 'hello', workerMachineId: this.o.me, bootId: this.o.bootId, release: this.o.release, schema, protocol, home: os.homedir(),
@@ -175,6 +215,7 @@ export class HomeConnection {
         if (!link.live) {
           for (const e of this.o.outbox.after(f.seq)) stream.send({ t: 'event', seq: e.seq, kind: e.kind, data: e.data });
           link.live = true;
+          this.o.onLink?.(true);
         }
         return;
       case 'snapshot':
