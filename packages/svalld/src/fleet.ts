@@ -183,7 +183,7 @@ export class Fleet extends EventEmitter<Events> {
     const inFlight = () => [...this.background, ...this.creating, ...this.reviving.values(), ...this.openingSecond.values()];
     while (inFlight().length) await Promise.allSettled(inFlight());
     await this.scribe.settled();
-    this.deps.store.flush();
+    await this.deps.store.flush();
   }
 
   // the links a robot's cwd implies, rebuilt off the critical path
@@ -199,7 +199,7 @@ export class Fleet extends EventEmitter<Events> {
     this.prompts.stop();
     await this.link.stop();
     await this.poll.stop();
-    this.deps.store.flush();
+    await this.deps.store.flush();
   }
 
   robot(id: string): Robot {

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
 import path from 'node:path';
 import jsonpatch, { type Operation } from 'fast-json-patch';
@@ -8,6 +9,11 @@ import { cleanupDurableTemps, syncDir, writeDurable } from './handover/durable.j
 import { variant } from './runtime.js';
 
 type Listener = (ops: Operation[]) => void;
+
+/** What `flush()` throws inside the `withheld` fn it would wait for. */
+export class FlushInsideHold extends Error {
+  constructor() { super('flush() inside withheld() would wait for itself'); }
+}
 
 // state.json is written at most this often, so a burst of changes reaches the disk as one write
 const WRITE_EVERY_MS = 250;
@@ -26,8 +32,10 @@ export class Store {
   // a change not yet on disk
   private dirty = false;
   private batching: () => boolean = () => false;
-  // the `withheld` calls under way
+  // the `withheld` calls under way, the flushes waiting for them to end, and the hold the running code is inside
   private holds = 0;
+  private waiting: (() => void)[] = [];
+  private inside = new AsyncLocalStorage<{ running: boolean }>();
 
   private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
 
@@ -86,7 +94,7 @@ export class Store {
     }
     // taken at once and written soon after: a crash loses at most the last WRITE_EVERY_MS of changes
     this.dirty = true;
-    if (!this.holds) this.writing ??= setTimeout(() => this.flush(), WRITE_EVERY_MS);
+    if (!this.holds) this.writing ??= setTimeout(() => void this.flush(), WRITE_EVERY_MS);
     this.notify(next, ops);
     return ops;
   }
@@ -98,11 +106,13 @@ export class Store {
 
   /** Writes nothing while `fn` runs, whatever `batchWritesWhile` says, so what it changes reaches the disk in one write at the next flush. */
   async withheld<T>(fn: () => Promise<T>): Promise<T> {
+    const hold = { running: true };
     this.holds++;
     try {
-      return await fn();
+      return await this.inside.run(hold, fn);
     } finally {
-      this.holds--;
+      hold.running = false;
+      if (--this.holds === 0) for (const done of this.waiting.splice(0)) done();
     }
   }
 
@@ -133,13 +143,14 @@ export class Store {
     return () => { this.listeners.delete(fn); };
   }
 
-  /** Writes what has changed since the last write that went through, and says whether all of it is on disk; a write
-   *  that fails is logged and tried again by the next change or flush, and none is made while a `withheld` runs. */
-  flush(): boolean {
+  /** Writes what has changed since the last write that went through, once no `withheld` runs, and says whether all of it
+   *  is on disk; a write that fails is logged and tried again by the next change or flush. */
+  async flush(): Promise<boolean> {
+    if (this.inside.getStore()?.running) throw new FlushInsideHold();
+    while (this.holds) await new Promise<void>((done) => this.waiting.push(done));
     clearTimeout(this.writing);
     this.writing = undefined;
     if (!this.dirty) return true;
-    if (this.holds) return false;
     // a fleet home that is gone stays gone
     try {
       if (!fs.existsSync(path.dirname(this.file))) throw new Error(`${path.dirname(this.file)} is gone`);
@@ -168,11 +179,14 @@ export class Store {
     return ops;
   }
 
+  // outside any hold, so what a listener starts may flush
   private notify(next: FleetState, ops: Operation[]): void {
     this.current = next;
-    for (const l of this.listeners) {
-      try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
-    }
+    this.inside.exit(() => {
+      for (const l of this.listeners) {
+        try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
+      }
+    });
   }
 
   // prompts, notes and tab urls are the user's alone

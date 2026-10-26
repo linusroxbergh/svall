@@ -172,15 +172,7 @@ export class HomeConnection {
         }
         return;
       case 'snapshot':
-        try {
-          mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me, { id: this.o.worker.homeMachineId, name: this.o.worker.homeName, reachable: true });
-          if (!this.o.store.flush()) throw new Error('state.json was not written');
-        } catch (e) {
-          this.o.log.error(`link: snapshot ${f.version} not taken, closing: ${(e as Error).message}`);
-          stream.close();
-          return;
-        }
-        stream.send({ t: 'snapshot.ack', version: f.version });
+        void this.takeSnapshot(stream, f);
         return;
       case 'ping':
         stream.send({ t: 'pong', release: this.o.release, bootId: this.o.bootId });
@@ -191,5 +183,17 @@ export class HomeConnection {
       default:
         this.o.log.error(`link: ${f.t} from the home is not taken`);
     }
+  }
+
+  private async takeSnapshot(stream: LinkStream, f: Extract<LinkFrame, { t: 'snapshot' }>): Promise<void> {
+    try {
+      mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me, { id: this.o.worker.homeMachineId, name: this.o.worker.homeName, reachable: true });
+      if (!(await this.o.store.flush())) throw new Error('state.json was not written');
+    } catch (e) {
+      this.o.log.error(`link: snapshot ${f.version} not taken, closing: ${(e as Error).message}`);
+      stream.close();
+      return;
+    }
+    stream.send({ t: 'snapshot.ack', version: f.version });
   }
 }

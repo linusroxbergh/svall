@@ -261,7 +261,6 @@ export function moveWorld(o: {
   const seed = (paths: Paths, state: Partial<FleetState>): void => {
     const store = Store.load(paths.state, () => {});
     store.update((d) => { Object.assign(d, { ...emptyState(), islands: { i_1: island }, ...structuredClone(state) }); });
-    store.flush();
   };
   seed(homePaths, { robots });
   seed(workerPaths, {});

@@ -313,7 +313,7 @@ export class WorkerLink {
         this.acked = replayed && replayed.epoch === inv.epoch ? Math.min(Math.max(inv.acked, replayed.seq), inv.last) : inv.acked;
         this.last = inv.last;
         // as after a write that failed: those events are on disk before they are acked
-        if (this.acked > inv.acked && !this.o.store.flush()) throw new Error('state.json was not written');
+        if (this.acked > inv.acked && !(await this.o.store.flush())) throw new Error('state.json was not written');
         stream.send({ t: 'ack', seq: this.acked });
       } else {
         const { inventory } = this;
@@ -330,7 +330,7 @@ export class WorkerLink {
             }
             this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
           });
-          if (!this.o.store.flush()) throw new Error('state.json was not written');
+          if (!(await this.o.store.flush())) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
           this.acked = f.seq;
