@@ -47,7 +47,7 @@ import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
-import { rootHere, scanResources, workspaceRoot } from './resources/scan.js';
+import { repoSources, rootHere, workspaceRoot } from './resources/scan.js';
 import { readOrUndefined } from './settings-file.js';
 import { installHookScripts } from './setup.js';
 import { Store } from './store.js';
@@ -350,7 +350,7 @@ async function start(opts: Options): Promise<Daemon> {
   // a robot's folders are on the machine it runs on
   const rootOf = rootHere((c) => router.runsHere(c));
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
-  if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, resources: () => scanResources(store.state, claude, codex, paths.docs, paths.agentProfiles, rootOf) }));
+  if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, resources: () => repoSources(store.state, claude, paths.docs, rootOf) }));
   const phones = new Phones();
   const mobile = off.has('mobile') ? workerStubs.mobile : mobileControl(realDeps(), {
     home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,

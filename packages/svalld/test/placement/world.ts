@@ -21,7 +21,7 @@ import { Replay } from '../../src/placement/replay.js';
 import { Router, fileCalls, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
 import type { RunScribe } from '../../src/scribe/run.js';
-import { rootHere, scanResources, workspaceRoot } from '../../src/resources/scan.js';
+import { repoSources, rootHere, workspaceRoot } from '../../src/resources/scan.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
@@ -175,7 +175,7 @@ export function world(o: {
     (id) => workspaceRoot(id, workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, (c) => workerRouter.runsHere(c), workerRoots, workerDocsRoot),
     silentLogger, () => [], [workerPaths.docs, workerPaths.agentProfiles],
   );
-  const workerResources = () => scanResources(workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, workerRoots);
+  const workerResources = () => repoSources(workerStore.state, workerClaude, workerPaths.docs, workerRoots);
   const workerDocs = o.docs && new WorkerDocs({
     dir: workerPaths.docs, file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,
   });

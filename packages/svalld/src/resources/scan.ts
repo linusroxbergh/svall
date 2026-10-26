@@ -229,28 +229,12 @@ const slugOf = (root: string): string => root.replace(/[^A-Za-z0-9]/g, '-');
 export const listsDeletable = (sources: ResourceSource[], id: string, rel: string): boolean =>
   sources.some((s) => s.groups.some((g) => g.items.some((i) => deletable(g.kind, i) && i.open!.rootId === id && (i.open!.folder ?? i.open!.path) === rel)));
 
-export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, rootOf?: RootOf): ResourceSource[] {
+/** The repositories the robots `rootOf` counts work in, each with its docs in this machine's docs folder for it. */
+export function repoSources(state: FleetState, claude: ClaudePaths, docs?: string, rootOf?: RootOf): ResourceSource[] {
   const user: Base = { rootId: rootIdOf(claude.dir), root: claude.dir };
   const cj = readClaudeJson(claude.json);
-  const claudeJson = cj && !(cj instanceof Error) ? cj : {};
-  const projects = (claudeJson.projects && typeof claudeJson.projects === 'object' ? claudeJson.projects : {}) as Record<string, { mcpServers?: unknown } | undefined>;
-
-  const everywhere: ResourceSource = {
-    ...user, name: 'Claude', tier: 'global', islandIds: [], robotIds: [],
-    groups: groupsOf([
-      ['instructions', files(user, ['CLAUDE.md'])],
-      ['skills', skills(user, 'skills')],
-      ['agents', markdown(user, 'agents', false)],
-      ['commands', markdown(user, 'commands', true)],
-      ['plugins', pluginItems(user)],
-      ['mcp', claudeJsonServers(claude, claudeJson.mcpServers)],
-      ['hooks', hookItems(user, ['settings.json', 'settings.local.json'])],
-      ['settings', files(user, ['settings.json', 'settings.local.json', 'keybindings.json'])],
-    ]),
-  };
-
-  const roots = fleetRoots(state, rootOf);
-  const repos = roots.map((r): ResourceSource => {
+  const projects = (cj && !(cj instanceof Error) && cj.projects && typeof cj.projects === 'object' ? cj.projects : {}) as Record<string, { mcpServers?: unknown } | undefined>;
+  return fleetRoots(state, rootOf).map((r): ResourceSource => {
     const b: Base = { rootId: rootIdOf(r.root), root: r.root };
     const memory = `projects/${slugOf(r.root)}/memory`;
     const folder = docs && docsDir(docs, 'repo', repoSlug(r.root));
@@ -267,6 +251,28 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
     ]);
     return { ...b, name: path.basename(r.root), tier: 'repo', ...(folder && { docs: rootIdOf(folder) }), islandIds: r.islandIds, robotIds: r.robotIds, groups };
   });
+}
+
+export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, rootOf?: RootOf): ResourceSource[] {
+  const user: Base = { rootId: rootIdOf(claude.dir), root: claude.dir };
+  const cj = readClaudeJson(claude.json);
+  const claudeJson = cj && !(cj instanceof Error) ? cj : {};
+
+  const everywhere: ResourceSource = {
+    ...user, name: 'Claude', tier: 'global', islandIds: [], robotIds: [],
+    groups: groupsOf([
+      ['instructions', files(user, ['CLAUDE.md'])],
+      ['skills', skills(user, 'skills')],
+      ['agents', markdown(user, 'agents', false)],
+      ['commands', markdown(user, 'commands', true)],
+      ['plugins', pluginItems(user)],
+      ['mcp', claudeJsonServers(claude, claudeJson.mcpServers)],
+      ['hooks', hookItems(user, ['settings.json', 'settings.local.json'])],
+      ['settings', files(user, ['settings.json', 'settings.local.json', 'keybindings.json'])],
+    ]),
+  };
+
+  const repos = repoSources(state, claude, docs, rootOf);
 
   // the fleet's own docs, read by every robot in this fleet and by no other, and the agent profiles its robots pick from;
   // both sit in the fleet's home
@@ -289,7 +295,7 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
   const robots = [...crew].sort(byName).flatMap((c) => entity('robot', c.id, c.name, [c.islandId], [c.id]));
 
   // a slug nobody stands in any more cannot be traced to a checkout, so its source is its docs folder
-  const slugs = new Set(roots.map((r) => repoSlug(r.root)));
+  const slugs = new Set(repos.map((r) => repoSlug(r.root)));
   const orphans = docs === undefined ? [] : entries(path.join(docs, 'repos')).filter((d) => d.isDirectory() && !slugs.has(d.name)).flatMap((d): ResourceSource[] => {
     const dir = path.join(docs, 'repos', d.name);
     const groups = groupsOf([['docs', docRows(dir)]]);

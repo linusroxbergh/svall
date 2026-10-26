@@ -132,6 +132,8 @@ describe('files of a robot on a worker', () => {
     fs.mkdirSync(farOrphan, { recursive: true });
     fs.writeFileSync(path.join(farOrphan, 'old.md'), '# old\n');
 
+    // the worker answers with its clones alone
+    expect(((await w.worker.handlers['resources.get']({})) as { sources: ResourceSource[] }).sources.map((s) => [s.tier, s.root])).toEqual([['repo', main]]);
     const { sources } = (await dispatch({ id: 1, method: 'resources.get', params: {} }, w.home.ctx) as { result: { sources: ResourceSource[] } }).result;
     const repos = sources.filter((s) => s.tier === 'repo');
     expect(repos).toEqual([expect.objectContaining({ rootId: farRootId(W, main), root: main, docs: `r:${folder}`, robotIds: ['c_1'] })]);
