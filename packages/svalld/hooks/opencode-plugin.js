@@ -44,8 +44,9 @@ const monitors = new Map();
 // a command that ends at once can exit before its tool call has returned
 const exited = new Set();
 
-// the top-level sessions the shared service has had a prompt for
-const prompted = new Set();
+// the top-level sessions the shared service has had a prompt for; OpenCode imports the plugin again for each location
+// and after each change to it, so the set is kept on the process
+const prompted = (globalThis[Symbol.for(`svall.prompted.${VARIANT}`)] ??= new Set());
 
 // the shared service, as it starts, resumes every turn a server's end cut short, a robot's included, and wakes a session
 // whose background job it recovers; a robot's session it runs unprompted is running outside Svall, so it is interrupted
@@ -64,13 +65,16 @@ async function serve(ctx) {
     try { homes = fs.readdirSync(os.homedir()).filter((f) => /^\.svall(-[a-z][a-z0-9-]*)?$/.test(f) && variantOf(f) === VARIANT); } catch {}
     return homes.some((h) => fs.existsSync(path.join(os.homedir(), h, 'transcripts', 'opencode', `${id}.jsonl`)));
   };
-  await ctx.session.hook('prompt', async (e) => { prompted.add(await rootOf(e.sessionID)); });
-  await ctx.session.hook('context', async (e) => {
+  const guard = async (e) => {
     const root = await rootOf(e.sessionID);
     if (prompted.has(root) || !robots(root)) return;
     process.stderr.write(`svall: interrupted ${e.sessionID}, a Svall robot's session that OpenCode's service ran unprompted\n`);
     await ctx.session.interrupt({ sessionID: e.sessionID }).catch(() => {});
-  });
+  };
+  await ctx.session.hook('prompt', async (e) => { prompted.add(await rootOf(e.sessionID)); });
+  // a compaction due at a run's first step asks the model before the context hook runs
+  await ctx.session.hook('compaction', guard);
+  await ctx.session.hook('context', guard);
 }
 
 async function setup(ctx) {
@@ -380,8 +384,8 @@ async function setup(ctx) {
 
   // the TUI stops its server with SIGTERM or by closing its stdin, where a reload only sets the plugin up again; the shared
   // service would resume a turn the stop cuts short, so each is interrupted first
-  let leaving = false;
-  const leave = () => { leaving = true; };
+  let left;
+  const leave = () => { left ??= Date.now(); };
   process.on('SIGTERM', leave);
   process.stdin.once('end', leave);
 
@@ -390,9 +394,18 @@ async function setup(ctx) {
     quit.abort(); clearTimeout(showing); conn?.end();
     process.off('SIGTERM', leave);
     process.stdin.off('end', leave);
-    if (!leaving) return;
-    const stopped = [...parents.keys()].map((id) => ctx.session.interrupt({ sessionID: id }).then(() => ctx.session.wait({ sessionID: id })).catch(() => {}));
-    await Promise.race([Promise.all(stopped), sleep(LEAVE_MS, undefined, { ref: false })]);
+    // OpenCode's teardown can begin inside the signal or EOF before this plugin's listener has run
+    await null;
+    if (process.stdin.readableEnded || process.stdin.destroyed) leave();
+    if (left === undefined) return;
+    const stop = (ids, by) => Promise.race([
+      Promise.all(ids.map((id) => ctx.session.interrupt({ sessionID: id }).then(() => ctx.session.wait({ sessionID: id })).catch(() => {}))),
+      sleep(Math.max(0, by - Date.now()), undefined, { ref: false }),
+    ]);
+    // a subagent's end wakes its parent, so subagents stop first, within half the time, and top-level sessions after
+    const ids = [...parents.keys()];
+    await stop(ids.filter((id) => parents.get(id)), left + LEAVE_MS / 2);
+    await stop(ids.filter((id) => !parents.get(id)), left + LEAVE_MS);
   };
 }
 
