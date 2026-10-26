@@ -220,14 +220,15 @@ const codex: Harness = {
 
 const OPENCODE = 'anomalyco/opencode';
 const SCHEMA = ['packages/schema/src/session-event.ts', 'packages/schema/src/permission.ts', 'packages/schema/src/form.ts', 'packages/schema/src/shell.ts'];
-// the plugin API calls hooks/opencode-plugin.js makes, what it reads of the shell tool's result, and the tool it takes away,
-// by the file that declares them
+// the plugin API calls hooks/opencode-plugin.js makes, what it reads of the shell tool's result and an MCP server's form, and
+// the tool it takes away, by the file that declares them
 const PLUGIN_API: Record<string, string[]> = {
   'packages/plugin/src/promise/session.ts': ['"prompt"', '"context"'],
   'packages/plugin/src/promise/tool.ts': ['"execute.before"', '"execute.after"', 'transform', 'remove('],
   'packages/plugin/src/promise/event.ts': ['subscribe'],
   'packages/core/src/tool/plugin/shell.ts': ['status: output.status', 'shellID: output.shellID', 'status: "running"'],
   'packages/core/src/tool/plugin/opencode.ts': ['name: "worktree_create"', 'namespace: "opencode"'],
+  'packages/core/src/mcp/index.ts': ['kind: "mcp-elicitation"', 'message: params.message'],
 };
 // what the session adapter (src/handover/sessions/opencode.ts) reads: an export's message ids, pending undo and folder, and
 // what export, import and a session it does not hold print

@@ -190,7 +190,7 @@ Handing work to a new robot:
         const ch = await c.call('robot.update', {
           id: current.id, name: o.name,
           note: o.noteFile ? fs.readFileSync(expandHome(o.noteFile), 'utf8').trim() : o.note,
-          islandId: o.island && islandId(state, o.island), context: editContext(current.context, o), instructions: o.instructions, agentProfile: o.agentProfile,
+          islandId: o.island && islandId(state, o.island), context: editContext(current.context, o), removed: o.drop.length ? o.drop : undefined, instructions: o.instructions, agentProfile: o.agentProfile,
         });
         printResult(ch, json(), () => `${ch.id} ${ch.name}`);
       });

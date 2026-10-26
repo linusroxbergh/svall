@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
-import { basename } from '../paths.js';
+import { accountHome, basename } from '../paths.js';
 import { useWidthGrip } from '../widthGrip.js';
 import { Editor } from './Editor.js';
 import { checkDisk, openFile } from './files.js';
 import { FileTabs } from './FileTabs.js';
 import { Tree } from './Tree.js';
+import { absOf, parent, placeOf, rootOf } from './where.js';
 
 /** The handle on the tree's edge; the width follows the pointer and is written to storage on release. */
 function TreeGrip() {
@@ -18,10 +19,37 @@ function TreeGrip() {
   return <i className="ide-drag" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" title="Drag to resize" {...grip} />;
 }
 
+/** The folders from the home folder, or the disk's top, down to the tree's top; each takes the tree up to it. */
+function Crumbs({ id, root, top }: { id: string; root: string; top: string }) {
+  const nav = useRef<HTMLElement>(null);
+  const home = accountHome(root);
+  const chain: string[] = [];
+  for (let d = absOf(top, root); ; d = parent(d)) { chain.unshift(d); if (d === home || d === '/') break; }
+  // a long chain keeps its end, the folder the tree shows, in view
+  useLayoutEffect(() => { if (nav.current) nav.current.scrollLeft = nav.current.scrollWidth; }, [root, top]);
+  const go = (d: string) => app.store.getState().setTop(id, placeOf(d, root));
+  return (
+    <div className="ide-where">
+      <nav className="ide-root ide-crumbs" ref={nav} aria-label="Folder">
+        {chain.map((d, i) => (
+          <Fragment key={d}>
+            {i > 0 && <span className="ide-sep">›</span>}
+            <button className="ide-crumb" data-testid={`crumb-${d}`} title={d} aria-current={i === chain.length - 1 || undefined} onClick={() => go(d)}>
+              {d === home ? '~' : basename(d) || '/'}
+            </button>
+          </Fragment>
+        ))}
+      </nav>
+      {top !== '' && <button className="ide-back" data-testid="files-back" title="Back to the robot's folder" onClick={() => go(root)}>↩ {basename(root)}</button>}
+    </div>
+  );
+}
+
 export function FilesArea({ id }: { id: string }) {
   const active = useApp((s) => s.ide[id]?.active);
   const tree = useApp((s) => s.filesTree);
-  const root = useApp((s) => { const c = s.fleet.robots[id]; return c?.repo?.root ?? c?.cwd ?? ''; });
+  const root = useApp((s) => { const c = s.fleet.robots[id]; return c ? rootOf(c) : ''; });
+  const top = useApp((s) => s.ide[id]?.top ?? '');
   const [tick, setTick] = useState(0);
 
   // the root is watched while the tab shows; a change refreshes the open folders and checks the open files.
@@ -41,8 +69,8 @@ export function FilesArea({ id }: { id: string }) {
     <div className="ide ide-files" data-testid="files" style={tree.width === undefined ? undefined : { '--tree-w': `${tree.width}px` } as React.CSSProperties}>
       {tree.open && (
         <div className="ide-side" data-testid="files-tree">
-          <div className="ide-root" title={root}>{basename(root)}</div>
-          <Tree id={id} dir="" depth={0} tick={tick} onOpen={open} />
+          <Crumbs id={id} root={root} top={top} />
+          <Tree key={top} id={id} root={root} dir={top} depth={0} tick={tick} onOpen={open} />
         </div>
       )}
       {tree.open && <TreeGrip />}

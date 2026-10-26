@@ -79,7 +79,7 @@ function homeStore(): Store {
 
 describe('docs between the home and a worker', () => {
   it('a note written under the worker\'s docs reaches the home\'s docs folder once and is not echoed back', async () => {
-    const w = world({ docs: true });
+    const w = world({ docs: true, home: { robots: { c_1: placed({ id: 'c_1' }) } } });
     stops.push(() => w.stop());
     const homeDocs = w.home.docs!;
     put(path.join(w.home.paths.docs, 'fleet/plan.md'), 'the plan\n');
@@ -113,7 +113,7 @@ describe('docs between the home and a worker', () => {
   });
 
   it('a note the home has no space to write stays unacked and on the worker, and lands once the home can write it', async () => {
-    const w = world({ docs: true });
+    const w = world({ docs: true, home: { robots: { c_1: placed({ id: 'c_1' }) } } });
     stops.push(() => w.stop());
     await w.link();
     const note = path.join(w.home.paths.docs, 'robots/c_1/notes.md');
@@ -262,6 +262,19 @@ describe('a doc changed on both machines', () => {
     expect(w.home.store.state.robots.c_1.note).toBe('');
   });
 
+  it('a change in the folder of a robot closed here is logged and acked, and nothing is written', async () => {
+    const errors: string[] = [];
+    const w = world({ docs: true, home: { robots: { c_1: placed({ id: 'c_1' }) } }, homeLog: { info() {}, error: (m) => { errors.push(m); } } });
+    stops.push(() => w.stop());
+    const data = Buffer.from('a closed robot\'s note\n');
+    w.worker.connection.journal('docs.write', { path: 'robots/c_gone/notes.md', data: data.toString('base64'), sha256: sha256Hex(data), id: newMutationId() });
+    w.worker.connection.journal('docs.delete', { path: 'robots/c_gone/plan.md', id: newMutationId() });
+    await w.link();
+    await until(() => expect(w.worker.outbox.acked()).toBe(w.worker.outbox.last()));
+    expect(fs.existsSync(path.join(w.home.paths.docs, 'robots/c_gone'))).toBe(false);
+    expect(errors).toEqual([`docs: docs.write from ${W} dropped: c_gone is closed here`, `docs: docs.delete from ${W} dropped: c_gone is closed here`]);
+  });
+
   it('a docs.write without an id, as an older release journaled it, is still taken', async () => {
     const errors: string[] = [];
     const w = world({
@@ -280,7 +293,7 @@ describe('a doc changed on both machines', () => {
     put(path.join(home, NOTE), 'here\n');
     put(path.join(home, 'robots/c_1/plan.md'), 'plan\n');
     const infos: string[] = [];
-    const docs = new HomeDocs(home, { info: (m) => { infos.push(m); }, error: () => {} }, () => 'w1');
+    const docs = new HomeDocs(home, { info: (m) => { infos.push(m); }, error: () => {} }, () => 'w1', () => true);
     const store = homeStore();
     const old = (text: string) => ({ data: Buffer.from(text).toString('base64'), sha256: sha256Hex(Buffer.from(text)) });
     const written = docs.apply('docs.write', { path: NOTE, ...old('old\n') }, W)!;
@@ -305,7 +318,7 @@ describe('a doc changed on both machines', () => {
     await next(() => fs.rmSync(note));
     await next(() => put(note, 'v4\n'));
     // a home started afresh for each, as after a restart, so it holds no record of what it took
-    for (const e of events) expect(new HomeDocs(home, silentLogger, () => 'w1').apply(e.kind, e.data, W)).toBeUndefined();
+    for (const e of events) expect(new HomeDocs(home, silentLogger, () => 'w1', () => true).apply(e.kind, e.data, W)).toBeUndefined();
     expect(fs.readdirSync(path.join(home, 'robots/c_1'))).toEqual(['notes.md']);
     expect(read(path.join(home, NOTE))).toBe('v4\n');
   });
@@ -315,7 +328,7 @@ describe('a doc changed on both machines', () => {
     put(path.join(home, NOTE), 'ours\n');
     await next(() => put(note, 'theirs\n'));
     await next(() => put(note, 'theirs, again\n'));
-    const docs = new HomeDocs(home, silentLogger, () => "ada's box");
+    const docs = new HomeDocs(home, silentLogger, () => "ada's box", () => true);
     const { id } = events[0].data as { id: string };
     const kept = { file: NOTE, kept: `robots/c_1/notes.ada-s-box.${id}.conflict.md` };
     expect(events.map((e) => docs.apply(e.kind, e.data, W))).toEqual([kept, kept]);
@@ -329,7 +342,7 @@ describe('a doc changed on both machines', () => {
   it('a conflict copy edited here is left as it is, and the next change there starts another, named in the note too', async () => {
     const { home, note, events, next } = await journaling('v1\n');
     put(path.join(home, NOTE), 'ours\n');
-    const docs = new HomeDocs(home, silentLogger, () => 'w1');
+    const docs = new HomeDocs(home, silentLogger, () => 'w1', () => true);
     const store = homeStore();
     await next(() => put(note, 'theirs\n'));
     const first = docs.apply(events[0].kind, events[0].data, W)!;
@@ -347,7 +360,7 @@ describe('a doc changed on both machines', () => {
   it('a change made on the worker\'s last one is kept beside a note this Mac deleted or set back to the base text since', async () => {
     const { home, note, events, next } = await journaling('v1\n');
     const plan = path.join(path.dirname(note), 'plan.md');
-    const docs = new HomeDocs(home, silentLogger, () => 'w1');
+    const docs = new HomeDocs(home, silentLogger, () => 'w1', () => true);
     const store = homeStore();
     const take = (e: DocsEvent) => {
       const c = docs.apply(e.kind, e.data, W);

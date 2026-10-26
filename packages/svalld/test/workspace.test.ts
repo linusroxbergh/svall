@@ -169,8 +169,50 @@ describe('Workspace files', () => {
     expect(await codeOf(() => ws.read('c', '../' + path.basename(outside) + '/secret'))).toBe('invalid');
     expect(await codeOf(() => ws.read('c', 'link/secret'))).toBe('invalid');
     expect(await codeOf(() => ws.write('c', 'link/new', '', 0))).toBe('invalid');
-    expect(await codeOf(() => ws.read('c', '/etc/hosts'))).toBe('invalid');
     expect(fs.existsSync(path.join(outside, 'new'))).toBe(false);
+  });
+
+  it('lists, reads and writes an absolute path outside the root, under the disk as its root', async () => {
+    const dir = repo();
+    const outside = makeHome();
+    const log = path.join(outside, 'run.log');
+    fs.writeFileSync(log, 'one\n');
+    const roots: Record<string, string> = { c: dir };
+    const ws = workspace(roots);
+    expect(await ws.list('c', outside)).toEqual([{ name: 'run.log', kind: 'file' }]);
+    const r = ws.read('c', log);
+    expect(r).toMatchObject({ text: 'one\n', root: '/' });
+    // a robot that moved checkout still saves a file that never was in it
+    roots.c = repo();
+    ws.write('c', log, 'two\n', r.mtimeMs, r.root);
+    expect(fs.readFileSync(log, 'utf8')).toBe('two\n');
+    expect(() => ws.read('gone', log)).toThrow('no gone');
+  });
+
+  it('keeps .git and the refused files out of an absolute path, and the diff view to the root', async () => {
+    const dir = repo();
+    const outside = makeHome();
+    fs.writeFileSync(path.join(outside, 'secret'), 's');
+    fs.symlinkSync(path.join(dir, '.git'), path.join(outside, 'alias'));
+    const ws = workspace({ c: dir }, path.join(outside, 'secret'));
+    expect(await codeOf(() => ws.read('c', path.join(dir, '.git/config')))).toBe('invalid');
+    expect(await codeOf(() => ws.read('c', path.join(outside, 'alias/config')))).toBe('invalid');
+    expect(await codeOf(() => ws.write('c', path.join(dir, '.git/hooks/pre-commit'), 'x', 0))).toBe('invalid');
+    expect(await codeOf(() => ws.read('c', path.join(outside, 'secret')))).toBe('invalid');
+    expect((await ws.list('c', outside)).map((e) => e.name)).toEqual(['alias']);
+    expect(await codeOf(() => ws.file('c', path.join(dir, 'a.txt'), 'head'))).toBe('invalid');
+    expect(fs.existsSync(path.join(dir, '.git/hooks/pre-commit'))).toBe(false);
+  });
+
+  it('lists a repository outside the root without running the command its config names', async () => {
+    const other = repo();
+    const ran = path.join(makeHome(), 'ran');
+    const hook = path.join(makeHome(), 'hook.sh');
+    fs.writeFileSync(hook, `#!/bin/sh\ntouch '${ran}'\nexit 1\n`, { mode: 0o755 });
+    sh(other, 'config', 'core.fsmonitor', hook);
+    const ws = workspace({ c: repo() });
+    expect((await ws.list('c', other)).find((e) => e.name === 'build')).toMatchObject({ ignored: true });
+    expect(fs.existsSync(ran)).toBe(false);
   });
 
   it('refuses to write through a symlink that leads nowhere yet', async () => {
@@ -838,9 +880,10 @@ describe('Workspace trash', () => {
   });
 
   it('says when there is nothing to set aside, and refuses a path out of the root', async () => {
-    const { ws } = setup();
+    const { ws, root } = setup();
     expect(await codeOf(() => ws.setAside('r:c', 'agents/gone.md'))).toBe('not_found');
     expect(await codeOf(() => ws.setAside('r:c', '../trash'))).toBe('invalid');
+    expect(await codeOf(() => ws.setAside('r:c', path.join(root, 'agents/critic.md')))).toBe('invalid');
   });
 
   it('empties what a past run set aside', () => {

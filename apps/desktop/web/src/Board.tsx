@@ -15,7 +15,8 @@ import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
 import { ViewSwitch } from './ViewSwitch.js';
 
-type Filter = { island?: string; needsYou: boolean };
+// one island, the open ones, or with neither every island
+type Filter = { island?: string; open: boolean; needsYou: boolean };
 // the card a drag carries, where the pointer holds it, and the column under the pointer
 type Lift = { id: string; from: string; x: number; y: number; dx: number; dy: number; w: number; h: number; over?: string };
 // the column a grip drag carries, and the side of the column under the pointer it would land on
@@ -105,12 +106,23 @@ function PlaceGlyph() {
   );
 }
 
-// whether more of an element's content lies below it, or past its right edge, and the read its scroll calls
-function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void] {
+function ChevronGlyph({ next }: { next?: boolean }) {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={next ? 'M4.5 2.5 8 6l-3.5 3.5' : 'M7.5 2.5 4 6l3.5 3.5'} />
+    </svg>
+  );
+}
+
+// whether more of an element's content lies below it, or past its right edge, the read its scroll calls, and whether it is scrolled from the start
+function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void, boolean] {
   const [more, setMore] = useState(false);
+  const [back, setBack] = useState(false);
   const read = () => {
     const el = ref.current;
-    if (el) setMore(axis === 'y' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    if (!el) return;
+    setMore(axis === 'y' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    setBack((axis === 'y' ? el.scrollTop : el.scrollLeft) > 1);
   };
   // a robot or an island coming or going redraws it; the window changing size does not
   useLayoutEffect(read);
@@ -119,7 +131,7 @@ function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [bo
     if (ref.current) ro.observe(ref.current);
     return () => ro.disconnect();
   }, []);
-  return [more, read];
+  return [more, read, back];
 }
 
 /** A column's robots scroll under a fade that shows only while more of them lie below. */
@@ -139,8 +151,9 @@ export function Board() {
   const sections = useApp((s) => s.sections);
   const dropHover = useApp((s) => s.dropHover);
   const placing = useApp((s) => scribePlaces(s.fleet));
+  const placingNow = useApp((s) => s.placingNow);
   const toastShown = useApp((s) => s.settings.boardToastShown);
-  const [filter, setFilter] = useState<Filter>({ needsYou: false });
+  const [filter, setFilter] = useState<Filter>({ open: true, needsYou: false });
   const [renaming, setRenaming] = useState<string>();
   const [renamingRobot, setRenamingRobot] = useState<string>();
   const [pending, setPending] = useState<{ id: string; column: string }>();
@@ -152,14 +165,26 @@ export function Board() {
   const size = useSize(ground);
   // the island chips scroll sideways under a fade while more of them lie past the right edge
   const chips = useRef<HTMLDivElement>(null);
-  const [moreChips, readChips] = useMore(chips, 'x');
+  const [moreChips, readChips, backChips] = useMore(chips, 'x');
+  // an arrow brings the chip cut at the right edge to the left one, or pages back by a width
+  const pageChips = (dir: 1 | -1) => {
+    const el = chips.current;
+    if (!el) return;
+    const kids = [...el.children] as HTMLElement[], l = el.scrollLeft, w = el.clientWidth;
+    const left = dir > 0
+      ? kids.find((c) => c.offsetLeft > l && c.offsetLeft + c.offsetWidth > l + w)?.offsetLeft ?? el.scrollWidth
+      : kids.find((c) => c.offsetLeft >= l - w && c.offsetLeft < l)?.offsetLeft ?? l - w;
+    el.scrollTo({ left, behavior: 'smooth' });
+  };
   const hov = useHover();
   const hoverRect = useRef<DOMRect>(undefined);
 
   const shown = useMemo(() => placed(fleet, pending), [fleet, pending]);
   const arrived = useArrivals(shown);
   const island = filter.island && fleet.islands[filter.island] ? filter.island : undefined;
-  const inIsland = (c: Robot) => !island || c.islandId === island;
+  const open = (c: Robot) => !fleet.islands[c.islandId]?.collapsed;
+  const openOn = !island && filter.open;
+  const inIsland = (c: Robot) => (island ? c.islandId === island : !openOn || open(c));
   const islandOf = (c: Robot) => (island ? undefined : fleet.islands[c.islandId]?.name);
   const machineOf = (c: Robot) => (isPlaced(c) ? machineName(fleet, c.machine) : undefined);
   const cols = boardColumns(shown, (c) => inIsland(c) && (!filter.needsYou || wantsUser(c, fleet)), arrived);
@@ -306,15 +331,21 @@ export function Board() {
       <div className="kb-bar">
         <ViewSwitch />
         <span className="kb-sep" />
+        {chip('open', openOn, 'Open islands', all.filter(open).length, () => setFilter((f) => ({ ...f, island: undefined, open: !openOn })))}
+        {(backChips || moreChips) && (
+          <button type="button" className="kb-page" data-testid="chips-back" aria-label="Earlier islands" disabled={!backChips} onClick={() => pageChips(-1)}><ChevronGlyph /></button>
+        )}
         <div ref={chips} className="kb-chips" role="group" aria-label="Islands" data-testid="island-chips" data-more={moreChips} onScroll={readChips}>
-          {chip('all', !island, 'All islands', all.length, () => setFilter((f) => ({ ...f, island: undefined })))}
           {islandsSorted(fleet).map((i) => chip(i.id, island === i.id, i.name, robotsOf(fleet, i.id).length,
-            () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id }))))}
+            () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id, open: false }))))}
         </div>
+        {(backChips || moreChips) && (
+          <button type="button" className="kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><ChevronGlyph next /></button>
+        )}
         <span className="kb-gap" />
-        <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} aria-haspopup="menu"
+        <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
-          <PlaceGlyph />Auto-place: {placing ? 'scribe' : 'off'} ▾
+          <PlaceGlyph />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'} ▾
         </button>
         <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'kb-red tnum' : 'kb-n tnum'}>{needs}</span>

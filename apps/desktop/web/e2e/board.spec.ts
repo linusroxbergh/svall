@@ -220,13 +220,26 @@ test('a double click on a card showing only its top under the fade opens that ca
   await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', ids[6]);
 });
 
-test('the island chips fade at the right while more of them lie past it', async ({ page, svall }) => {
+test('the island chips fade at the right while more of them lie past it, and the arrows page through them', async ({ page, svall }) => {
   for (let i = 0; i < 12; i++) await svall.api.call('island.create', { name: svall.uniq(`a long island name ${i}`) });
   await svall.open();
   const chips = page.getByTestId('island-chips');
+  const back = page.getByTestId('chips-back'), next = page.getByTestId('chips-next');
   await expect(chips).toHaveAttribute('data-more', 'true');
+  await expect(back).toBeDisabled();
+  // the chip cut at the right edge comes to the left one, whole
+  const cut = await chips.evaluate((el) => [...el.children].findIndex((c) => c.getBoundingClientRect().right > el.getBoundingClientRect().right));
+  await next.click();
+  await expect(back).toBeEnabled();
+  await expect.poll(() => chips.evaluate((el, i) => Math.abs(el.children[i].getBoundingClientRect().left - el.getBoundingClientRect().left), cut)).toBeLessThan(1);
   await chips.evaluate((el) => { el.scrollLeft = el.scrollWidth; });
   await expect(chips).toHaveAttribute('data-more', 'false');
+  await expect(next).toBeDisabled();
+  const end = await chips.evaluate((el) => el.scrollLeft);
+  await back.click();
+  await expect.poll(() => chips.evaluate((el) => el.scrollLeft)).toBeLessThan(end);
+  await chips.evaluate((el) => { el.scrollLeft = 0; });
+  await expect(back).toBeDisabled();
 });
 
 test('a column renames in place, a new one comes last with its name ready to type, and its grip moves it', async ({ page, svall }) => {
@@ -324,23 +337,29 @@ test('a collapsed column is a strip that keeps its count, takes a drop, opens on
   await expect(page.getByTestId(`col-${k.Done}`).getByTestId(`kc-${c.id}`)).toBeVisible();
 });
 
-test('the chips show one island, or the robots that want the user, and a card names its island until one island shows', async ({ page, svall }) => {
+test('the chips show the open islands, one island, or the robots that want the user, and a card names its island until one island shows', async ({ page, svall }) => {
   const a = await svall.api.call('island.create', { name: svall.uniq('alpha') });
   const b = await svall.api.call('island.create', { name: svall.uniq('beta') });
   const quiet = await svall.api.call('robot.create', { islandId: a.id, cwd: '/tmp', name: 'quiet' });
   const asking = await svall.api.call('robot.create', { islandId: a.id, cwd: '/tmp', name: 'asking', command: FAKE_CLAUDE });
   const other = await svall.api.call('robot.create', { islandId: b.id, cwd: '/tmp', name: 'other' });
+  const shut = await svall.api.call('island.create', { name: svall.uniq('folded') });
+  const folded = await svall.api.call('robot.create', { islandId: shut.id, cwd: '/tmp', name: 'folded' });
+  await svall.api.call('island.update', { id: shut.id, collapsed: true });
   await svall.open();
   await expect(page.getByTestId(`kc-${asking.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
   await svall.api.call('robot.run', { id: asking.id, text: 'block', enter: true });
   await expect(page.getByTestId(`kc-${asking.id}`)).toHaveAttribute('data-need', 'true', { timeout: 15_000 });
-  await expect(page.getByTestId('chip-all')).toHaveText('All islands 3');
+  await expect(page.getByTestId('chip-open')).toHaveText('Open islands 3');
+  await expect(page.getByTestId('chip-open')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId(`kc-${folded.id}`)).toHaveCount(0);
   await expect(page.getByTestId(`chip-${a.id}`)).toContainText('2');
   await expect(page.getByTestId('chip-needs')).toHaveText('Needs you 1');
   await expect(page.getByTestId(`kc-island-${other.id}`)).toHaveText(b.name);
 
   await page.getByTestId(`chip-${b.id}`).click();
   await expect(page.getByTestId(`chip-${b.id}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('chip-open')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('.kc')).toHaveCount(1);
   await expect(page.getByTestId(`kc-${other.id}`)).toBeVisible();
   await expect(page.getByTestId(`kc-island-${other.id}`)).toHaveCount(0);
@@ -351,7 +370,10 @@ test('the chips show one island, or the robots that want the user, and a card na
   await expect(page.locator('.kc')).toHaveCount(1);
   await expect(page.getByTestId(`kc-${asking.id}`)).toBeVisible();
   await page.getByTestId('chip-needs').click();
-  await page.getByTestId('chip-all').click();
+  await page.getByTestId(`chip-${a.id}`).click();
+  await expect(page.locator('.kc')).toHaveCount(4);
+  await expect(page.getByTestId(`kc-${folded.id}`)).toBeVisible();
+  await page.getByTestId('chip-open').click();
   await expect(page.locator('.kc')).toHaveCount(3);
   await expect(page.getByTestId(`kc-${quiet.id}`)).toBeVisible();
 });
@@ -555,6 +577,7 @@ test('the Auto-place chip says who places robots and switches it, and places the
   await chip.click();
   await menu.getByTestId('menu-place now').click();
   await expect(page.getByTestId('toast')).toContainText('Every robot is in its column');
+  await expect(chip).toHaveAttribute('data-busy', 'false');
 
   await chip.click();
   await menu.getByTestId('menu-scribe settings…').click();

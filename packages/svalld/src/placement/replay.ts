@@ -3,20 +3,33 @@ import { Mutation, UPDATE_FIELDS, cellKey, isLand, methods, type ContextItem, ty
 import { settleItems } from '../context/items.js';
 import { removeDocs } from '../docs.js';
 import { setNote } from '../fleet.js';
+import { isRobotId } from '../ids.js';
 import { addIsland } from '../islands.js';
 import { blockedCells, occupiedCells, placeOnIsland, unfold, uniqueName } from '../layout.js';
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
+import { homeRootOf } from './repo-key.js';
 
 export const RECOVERED = (worker: string) => `recovered from ${worker}`;
 export const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while this Mac slept; it had changed here since`;
+export const takenLine = (worker: string, name: string) => `${worker} set name to ${JSON.stringify(name)} while this Mac slept; another robot has that name here`;
 export const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while this Mac slept; it could not be applied here: ${why}`;
 export const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
 export const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
 
 /** A note with `line` added, once. */
 export const withLine = (note: string, line: string): string => (note.includes(line) ? note : note ? `${note}\n${line}` : line);
+
+/** The line a robot's note gets when another robot is on its branch of its repository, the clones named as on the home. */
+export function sharedBranch(state: FleetState, id: string, homedir: string | undefined): string | undefined {
+  const c = Object.hasOwn(state.robots, id) ? state.robots[id] : undefined;
+  const branch = c?.repo?.branch;
+  if (!c || !branch) return undefined;
+  const root = (r: Robot) => homeRootOf(r, state.machines, homedir);
+  const other = Object.values(state.robots).find((r) => r.id !== id && r.repo?.branch === branch && root(r) === root(c));
+  return other && sharesBranch(branch, other.name);
+}
 
 // a line the replay writes is the user's, so the scribe leaves the note as it stands
 const addLine = (c: Robot, line: string): void => setNote(c, withLine(c.note, line));
@@ -46,12 +59,15 @@ function gives(state: FleetState, islandId: string): boolean {
  *  when the worker is to have the fleet's docs once the event is acked. */
 export type Staged = { change(): void; after?(): void; docs?: true };
 
-/** What a worker did while this Mac slept, applied here once each, in the order the worker did it. */
+/** What a worker did while this Mac slept, in the order the worker did it: the link applies each mutation once by its outbox
+ *  epoch and seq, and each kind here is idempotent by content, not by mutation id. */
 export class Replay {
-  // the robots each worker's mutations started here that no reconnect has checked yet
+  // the robots each worker's mutations started here before its link was synced, for its reconnect to check
   private made = new Map<MachineId, string[]>();
+  // the robots a synced worker's mutations started here, checked once a report brings their repo
+  private fresh = new Set<string>();
 
-  constructor(private o: { store: Store; paths: Pick<Paths, 'docs'>; log: Logger }) {}
+  constructor(private o: { store: Store; paths: Pick<Paths, 'docs'>; log: Logger; synced: (machine: MachineId) => boolean; homedir: string }) {}
 
   /** Reads from disk what a mutation needs. Neither step throws: a mutation that does not parse is logged and skipped, one that
    *  cannot apply is logged and its robot's note says why. `change` writes the store alone; logs and removed docs wait for `after`. */
@@ -72,7 +88,7 @@ export class Replay {
         try {
           if (m.method === 'robot.create') this.create(m, machine, worker, log);
           else if (p && !p.success) throw p.error;
-          else if (p) this.update(m, p.data, settled, worker, log);
+          else if (p) this.update(m, p.data, settled, machine, worker, log);
           else if (m.method === 'robot.close') {
             const id = this.close(m, machine, worker);
             if (id) later.push(() => removeDocs(this.o.paths.docs, 'robot', id, this.o.log));
@@ -89,23 +105,25 @@ export class Replay {
     };
   }
 
-  /** `prepare`, `change` and `after` at once, for a caller in no hold. */
-  async apply(raw: unknown, machine: MachineId): Promise<void> {
-    const staged = await this.prepare(raw, machine);
-    staged.change();
-    staged.after();
-  }
-
-  /** The robots `machine` started here since the last call. */
+  /** The robots `machine` started here before its link was synced, since the last call. */
   created(machine: MachineId): string[] {
     const ids = this.made.get(machine) ?? [];
     this.made.delete(machine);
     return ids;
   }
 
+  /** Notes the branch a robot a synced worker started shares with another, once a report has brought its repo. */
+  reported(id: string): void {
+    if (!this.fresh.has(id) || !this.o.store.state.robots[id]?.repo) return;
+    this.fresh.delete(id);
+    const line = sharedBranch(this.o.store.state, id, this.o.homedir);
+    if (line) this.o.store.update((d) => { d.robots[id].note = withLine(d.robots[id].note, line); });
+  }
+
   private create(m: Mutation, machine: MachineId, worker: string, log: Logger): void {
     const r = m.robot;
     if (!r) throw new Error('it carries no robot');
+    if (!isRobotId(r.id)) throw new Error(`${JSON.stringify(r.id)} is not a robot id`);
     if (Object.hasOwn(this.o.store.state.robots, r.id)) return;
     this.o.store.update((d) => {
       const own = Object.hasOwn(d.islands, r.islandId) ? d.islands[r.islandId] : undefined;
@@ -121,7 +139,8 @@ export class Replay {
       delete c.columnSource;
       d.robots[r.id] = c;
     });
-    this.made.set(machine, [...(this.made.get(machine) ?? []), r.id]);
+    if (this.o.synced(machine)) this.fresh.add(r.id);
+    else this.made.set(machine, [...(this.made.get(machine) ?? []), r.id]);
   }
 
   // each item of an update's context as this Mac stores it, read before the hold; a path this Mac lacks is left out
@@ -136,13 +155,14 @@ export class Replay {
   }
 
   // a field changed here since the worker's base, or a name another robot has taken, keeps this Mac's value, and the note names the worker's
-  private update(m: Mutation, p: ParsedParams<'robot.update'>, settled: Settled | undefined, worker: string, log: Logger): void {
+  private update(m: Mutation, p: ParsedParams<'robot.update'>, settled: Settled | undefined, machine: MachineId, worker: string, log: Logger): void {
     const { robots } = this.o.store.state;
     if (!Object.hasOwn(robots, p.id)) {
       log.info(`${worker}: ${p.id} is closed here; what ${worker} changed of it while this Mac slept is dropped`);
       return;
     }
     const c = robots[p.id];
+    if (c.machine !== machine) throw new Error(`it no longer runs on ${worker}`);
     const next: Partial<Pick<Robot, (typeof UPDATE_FIELDS)[number]>> = {};
     const lost: string[] = [];
     for (const k of UPDATE_FIELDS) {
@@ -150,8 +170,9 @@ export class Replay {
       const value = k === 'context' ? settled?.items : p[k];
       const changed = !same(value, c[k]);
       const taken = k === 'name' && Object.values(robots).some((o) => o.id !== c.id && o.name.toLowerCase() === p.name!.toLowerCase());
-      if (changed && (taken || !same(m.base?.[k], c[k]))) {
-        lost.push(lostLine(worker, k, p[k]));
+      const here = !same(m.base?.[k], c[k]);
+      if (changed && (taken || here)) {
+        lost.push(here ? lostLine(worker, k, p[k]) : takenLine(worker, p.name!));
         continue;
       }
       if (changed) Object.assign(next, { [k]: value });

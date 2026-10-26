@@ -1,5 +1,5 @@
 import { DEFAULT_SIZE, byIslandOrder, landCells, type Cell, type ContextItem, type FleetState, type Island, type Size } from '@svall/protocol';
-import { settleItems } from './context/items.js';
+import { setContext, settleItems } from './context/items.js';
 import { removeDocs } from './docs.js';
 import { Invalid, NotFound } from './errors.js';
 import { newId } from './ids.js';
@@ -10,7 +10,7 @@ import type { Store } from './store.js';
 
 type Deps = { store: Store; log: Logger; paths: Paths };
 export type NewIsland = { name: string; position?: Cell; size?: Size; seed?: number; description?: string; instructions?: string; context?: ContextItem[] };
-export type IslandPatch = { name?: string; description?: string; instructions?: string; context?: ContextItem[]; position?: Cell; size?: Size; collapsed?: boolean };
+export type IslandPatch = { name?: string; description?: string; instructions?: string; context?: ContextItem[]; removed?: string[]; position?: Cell; size?: Size; collapsed?: boolean };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
 function setDescription(i: Island, description: string): void {
@@ -46,7 +46,7 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
   if (!Object.hasOwn(store.state.islands, id)) throw new NotFound(`no island ${id}`);
   // home is drawn in screen space; only its text and its fold can change
   const p: typeof patch = current.kind === 'home'
-    ? { name: patch.name, description: patch.description, instructions: patch.instructions, context: patch.context, collapsed: patch.collapsed }
+    ? { name: patch.name, description: patch.description, instructions: patch.instructions, context: patch.context, removed: patch.removed, collapsed: patch.collapsed }
     : patch;
   const next: Island = { ...current, position: p.position ?? current.position, size: p.size ?? current.size, collapsed: p.collapsed ?? current.collapsed };
   // names resolve without regard to case, so a twin would leave both islands unreachable by name
@@ -66,7 +66,7 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
     if (p.name !== undefined) i.name = p.name;
     if (p.description !== undefined) setDescription(i, p.description);
     if (p.instructions !== undefined) i.instructions = p.instructions;
-    if (context) i.context = context;
+    if (context) setContext(i, context, p.removed);
     if (p.position) i.position = p.position;
     if (p.size) {
       i.size = p.size;

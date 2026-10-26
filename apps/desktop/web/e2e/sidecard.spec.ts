@@ -73,8 +73,6 @@ test('edits a robot from the side card', async ({ page, svall }) => {
   await card.getByTestId('context-add').click();
   await expect(card.getByTestId('side-context')).toContainText('r #7');
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].context[0]?.kind).toBe('pr');
-  await card.getByTestId('context-pin').first().click();
-  await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].context[0]?.pinned).toBe(true);
   await card.getByTestId('context-ref').fill('/tmp');
   await card.getByTestId('context-add').click();
   await expect(card.getByTestId('side-context')).toContainText('tmp');

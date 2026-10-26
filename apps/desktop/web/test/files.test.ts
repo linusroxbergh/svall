@@ -1,10 +1,12 @@
+import { EditorView } from '@codemirror/view';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { farRootId, type MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
+import type { ToShell } from '../src/bridge.js';
 import { dropBuffers, getBuffer, isDirty, setState } from '../src/ide/buffers.js';
-import { checkDisk, closeFile, openFile, overwriteFile, placeCursor, reloadFile, saveFile } from '../src/ide/files.js';
+import { checkDisk, closeFile, openFile, openPath, overwriteFile, placeCursor, reloadFile, saveFile } from '../src/ide/files.js';
 import { createAppStore } from '../src/store/index.js';
-import { fleet } from './fixtures.js';
+import { chr, fleet } from './fixtures.js';
 
 type Disk = Record<string, { text: string; mtimeMs: number }>;
 
@@ -70,16 +72,20 @@ describe('files', () => {
     expect(getBuffer('c1', 'a.ts')!.mtimeMs).toBe(2);
   });
 
-  it('opens a file of a robot on a worker, and of a worker\'s clone, read-only; one here stays editable', async () => {
+  it('opens a file of a robot on a worker, and of a worker\'s clone, read-only and wrapped, naming the worker; one here stays editable', async () => {
     const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
     const { api } = fakeApi({ 'a.ts': { text: 'one\n', mtimeMs: 1 } });
     const store = createAppStore();
     const f = fleet();
+    f.machines = { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } };
     f.robots.c2 = { ...f.robots.c1, id: 'c2', machine: VAULT };
     store.getState().setFleet(f);
     const clone = farRootId(VAULT, '/home/ada/app');
     for (const id of ['c1', 'c2', clone]) await openFile({ api, store }, id, 'a.ts');
-    expect([getBuffer('c1', 'a.ts'), getBuffer('c2', 'a.ts'), getBuffer(clone, 'a.ts')].map((b) => b!.state.readOnly)).toEqual([false, true, true]);
+    const opened = [getBuffer('c1', 'a.ts')!, getBuffer('c2', 'a.ts')!, getBuffer(clone, 'a.ts')!];
+    expect(opened.map((b) => b.state.readOnly)).toEqual([false, true, true]);
+    expect(opened.map((b) => b.on)).toEqual([undefined, 'linus-vault', 'linus-vault']);
+    expect(opened.map((b) => b.state.facet(EditorView.contentAttributes).some((a) => typeof a === 'object' && a.class === 'cm-lineWrapping'))).toEqual([true, true, true]);
     dropBuffers('c2');
     dropBuffers(clone);
   });
@@ -354,5 +360,98 @@ describe('files', () => {
     delete disk['a.ts'];
     await reloadFile(d, 'c1', 'a.ts');
     expect(store.getState().toast?.text).toContain('a.ts');
+  });
+});
+
+describe('openPath', () => {
+  beforeEach(() => dropBuffers('c1'));
+  const ROOT = '/Users/ada/svall/.wt/auth';
+
+  // a robot in a worktree, working in a folder below its root, over a disk of text files, one folder and one picture
+  function setup(root = ROOT, cwd = `${root}/pkg`) {
+    const store = createAppStore();
+    const f = fleet();
+    f.robots.c1 = chr('c1', 'i_b', { x: 4, y: 1 }, { cwd, repo: { root, mainRoot: '/Users/ada/svall', branch: 'auth', isWorktree: true } });
+    store.getState().setFleet(f);
+    const text: Record<string, string> = { [`${root}/pkg/src/a.ts`]: 'one\ntwo\nthree\n', '/Users/ada/Desktop/run.log': 'ok\n' };
+    const abs = (p: string) => (p.startsWith('/') ? p : p ? `${root}/${p}` : root);
+    const refuse = (code: string) => Promise.reject(Object.assign(new Error(code), { code }));
+    const api = {
+      call: (method: string, p: { path: string }) => {
+        const at = abs(p.path);
+        if (method === 'fs.read') return text[at] !== undefined ? Promise.resolve({ text: text[at], mtimeMs: 1, root: '/' }) : refuse(at.endsWith('.png') ? 'binary' : 'not_found');
+        if (method === 'fs.list') return at === '/Users/ada/Desktop/invoices' ? Promise.resolve({ entries: [] }) : refuse('not_found');
+        return Promise.resolve({});
+      },
+    } as unknown as Pick<Api, 'call'>;
+    const sent: ToShell[] = [];
+    return { d: { api, store, bridge: { present: true, send: (m: ToShell) => { sent.push(m); } } }, s: () => store.getState(), sent };
+  }
+
+  it('opens a path relative to the cwd as a file under the root, at its line, beside the terminal', async () => {
+    const { d, s } = setup();
+    await openPath(d, 'c1', 'src/a.ts:2:5', 'terminal');
+    expect(s().ide.c1).toMatchObject({ panes: { left: 'terminal', right: 'files' }, open: ['pkg/src/a.ts'], top: '', expanded: ['pkg/src', 'pkg'] });
+    expect(getBuffer('c1', 'pkg/src/a.ts')!.state.selection.main.head).toBe(4);
+  });
+
+  it('reads a relative path against the root when git names it by a real path the cwd does not spell', async () => {
+    const { d, s } = setup();
+    s().setFleet({ ...s().fleet, robots: { ...s().fleet.robots, c1: { ...s().fleet.robots.c1, cwd: '/Users/link/svall/.wt/auth' } } });
+    await openPath(d, 'c1', 'pkg/src/a.ts', 'terminal');
+    expect(s().ide.c1.open).toEqual(['pkg/src/a.ts']);
+  });
+
+  it('places a path spelled through /tmp under the root git names in /private, by the cwd and by its absolute path', async () => {
+    const { d, s } = setup('/private/tmp/auth', '/tmp/auth/pkg');
+    await openPath(d, 'c1', 'src/a.ts', 'terminal');
+    await openPath(d, 'c1', '/tmp/auth/pkg/src/a.ts', 'terminal');
+    expect(s().ide.c1).toMatchObject({ open: ['pkg/src/a.ts'], top: '' });
+  });
+
+  it('leaves out the stop that ends a sentence and the spaces that end a line', async () => {
+    const { d, s } = setup();
+    await openPath(d, 'c1', 'src/a.ts:2.  ', 'terminal');
+    await openPath(d, 'c1', '/Users/ada/Desktop/run.log?', 'terminal');
+    expect(s().ide.c1.open).toEqual(['pkg/src/a.ts', '/Users/ada/Desktop/run.log']);
+    expect(getBuffer('c1', 'pkg/src/a.ts')!.state.selection.main.head).toBe(4);
+  });
+
+  it('reads ~ as the Mac\'s home for a root outside any home', async () => {
+    const { d, s } = setup('/Volumes/ssd/auth');
+    s().setShell({ home: '/Users/ada/.svall', log: [], op: false });
+    await openPath(d, 'c1', '~/Desktop/run.log', 'terminal');
+    expect(s().ide.c1.open).toEqual(['/Users/ada/Desktop/run.log']);
+  });
+
+  it('opens a file named by its absolute path under the root as its place there', async () => {
+    const { d, s } = setup();
+    await openFile(d, 'c1', `${ROOT}/pkg/src/a.ts`);
+    await openFile(d, 'c1', 'pkg/src/a.ts');
+    expect(s().ide.c1.open).toEqual(['pkg/src/a.ts']);
+  });
+
+  it('moves the tree to a file outside the root, reading ~ as the home the root lies in', async () => {
+    const { d, s } = setup();
+    await openPath(d, 'c1', '~/Desktop/run.log', 'terminal');
+    expect(s().ide.c1).toMatchObject({ open: ['/Users/ada/Desktop/run.log'], active: '/Users/ada/Desktop/run.log', top: '/Users/ada/Desktop' });
+  });
+
+  it('makes a folder the tree\'s top, hands a picture to the Mac, and says when a path is not there', async () => {
+    const { d, s, sent } = setup();
+    await openPath(d, 'c1', '/Users/ada/Desktop/invoices/', 'terminal');
+    expect(s().ide.c1.top).toBe('/Users/ada/Desktop/invoices');
+    await openPath(d, 'c1', '/Users/ada/Desktop/shot.png', 'terminal');
+    expect(sent).toEqual([{ type: 'openFile', path: '/Users/ada/Desktop/shot.png' }]);
+    expect(s().ide.c1).toMatchObject({ top: '/Users/ada/Desktop', open: [] });
+    await openPath(d, 'c1', '../gone.ts', 'terminal');
+    expect(s().toast?.text).toBe('~/svall/.wt/auth/gone.ts is not there');
+  });
+
+  it('opens Files on the side away from the terminal the path was followed in', async () => {
+    const { d, s } = setup();
+    s().setPanes('c1', { left: 'browser', right: 'terminal2' });
+    await openPath(d, 'c1', '~/Desktop/run.log', 'terminal2');
+    expect(s().ide.c1.panes).toEqual({ left: 'files', right: 'terminal2' });
   });
 });

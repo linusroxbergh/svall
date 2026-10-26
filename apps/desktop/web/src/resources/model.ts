@@ -1,6 +1,7 @@
 import { farRootOf, type ContextItem, type FleetState, type MachineId, type ResourceItem, type ResourceKind, type ResourceSource } from '@svall/protocol';
 import { linkText } from '../map/tokenText.js';
 import { shortPath } from '../paths.js';
+import { machineName } from '../placement.js';
 import { islandsSorted } from '../selectors.js';
 
 // what an island or a robot carries on its card rather than on disk
@@ -130,7 +131,9 @@ export function qualifierOf(s: ResourceSource, f: FleetState): string {
   if (s.tier === 'fleet') return 'this window only';
   if (s.tier === 'island') return plural(s.robotIds.length, 'robot');
   if (s.tier === 'robot') { const c = f.robots[s.robotIds[0]]; return c?.repo?.branch ?? shortPath(c?.cwd ?? s.root); }
-  return s.tier === 'repo' && s.docs === s.rootId ? 'no robots here' : shortPath(s.root);
+  if (s.tier === 'repo' && s.docs === s.rootId) return 'no robots here';
+  const far = farRootOf(s.rootId);
+  return far ? `${shortPath(s.root)} on ${machineName(f, far.machine)}` : shortPath(s.root);
 }
 
 type WhereGroup = { tier: Tier; count: number; sections: { id?: string; heading?: string; sources: ResourceSource[] }[] };

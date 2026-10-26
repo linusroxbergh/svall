@@ -229,6 +229,16 @@ describe('Scribe, automatically', () => {
     expect(briefReply('SessionStart', brief, s.robots.a.agent!.brief).reply).toContain('https://docs.example/plan');
   });
 
+  it('adds back no link a person took off a robot or its island, though the transcript names it', async () => {
+    const w = world(answer({ links: [{ url: 'https://docs.example/plan', label: 'plan' }] }));
+    w.island('i1', { removedLinks: ['docs.example/plan/'] });
+    w.robot('a', { removedLinks: ['docs.example/plan/'] });
+    w.store.update((d) => { d.robots.b = { ...d.robots.a, id: 'b', name: 'other', context: [{ kind: 'other', ref: 'https://docs.example/plan', label: 'plan', source: 'manual' }] }; });
+    await w.scribe.sweep();
+    expect(w.store.state.robots.a.context).toEqual([]);
+    expect(w.store.state.islands.i1.context).toEqual([]);
+  });
+
   it('keeps a hand-written note and still names the robot', async () => {
     const w = world(answer({ name: { value: 'docs plan', reason: 'generated' }, note: 'something else' }));
     w.island('i1');
@@ -518,6 +528,16 @@ describe('Scribe, swept', () => {
     expect(w.store.state.robots.a).toMatchObject({ name: 'golden heron', note: '', column: 'done' });
     expect(w.calls).toHaveLength(1);
     expect(w.calls[0].prompt).toContain('Columns, left to right: To do · In progress · In review · Done\nColumn: To do\n');
+  });
+
+  it('places a dormant robot from its transcript with columns, and passes it over otherwise', async () => {
+    const w = world(answer({ name: { value: 'docs plan', reason: 'generated' }, note: 'n', column: 'In review' }));
+    w.island('i1');
+    w.robot('asleep', { tmux: undefined, revive: { command: 'claude --resume s' } });
+    expect(await w.scribe.sweep({ columns: true })).toEqual(['golden heron  column: In review']);
+    expect(w.store.state.robots.asleep).toMatchObject({ name: 'golden heron', note: '', column: 'review', tmux: undefined });
+    expect(await w.scribe.sweep()).toEqual([]);
+    expect(w.calls.filter((c) => !c.system.includes('island'))).toHaveLength(1);
   });
 
   it('leaves the note to the next automatic pass after a names-only sweep', async () => {

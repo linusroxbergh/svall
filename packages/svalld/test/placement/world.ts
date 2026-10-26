@@ -101,13 +101,13 @@ export function world(o: {
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
   const homeLog = o.homeLog ?? silentLogger;
-  const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, 100);
+  const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(homeStore.state.robots, id), 100);
   const homeMirror = o.mirror && new Mirror({ ...o.mirror.home, consent: homePaths.mirrorConsent, log: homeLog });
   // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
-    onReport: (r, machine) => { applyReport(homeStore, r, machine); },
+    onReport: (r, machine) => { if (applyReport(homeStore, r, machine) === 'applied') replay.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (kind === 'mutation') {
         await held;
@@ -135,7 +135,7 @@ export function world(o: {
     ...(homeDocs && { docs: homeDocs }),
     ...(homeMirror && { mirror: homeMirror }),
   });
-  const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog });
+  const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog, synced: (m) => links.for(m)?.synced === true, homedir: '/Users/ada' });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
   const homeDocsRoot = (c: Robot) => homeRootOf(c, homeStore.state.machines, '/Users/ada');
   const homeFleet = new Fleet({

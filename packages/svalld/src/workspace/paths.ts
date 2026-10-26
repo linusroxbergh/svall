@@ -33,3 +33,12 @@ export function inside(root: string, rel: string): string {
   if (inGit(root, abs) || inGit(realRoot, real)) throw new WorkspaceError('invalid', `${rel} is in .git`);
   return abs;
 }
+
+/** An absolute path wherever it leads, refused into a .git as `inside` refuses one. */
+export function anywhere(p: string): string {
+  const abs = path.resolve(p);
+  const top = path.parse(abs).root;
+  const real = realOf(abs);
+  if (inGit(top, abs) || (real !== undefined && inGit(top, real))) throw new WorkspaceError('invalid', `${p} is in .git`);
+  return abs;
+}

@@ -26,6 +26,7 @@ afterEach(async () => {
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' });
 const via = { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' };
 const SLEPT = 'started on w1 while this Mac slept';
+const kanban = (home: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch: 'kb', isWorktree: false });
 
 // a link onto w1's link.sock that loses the home's first ack of seq `lost()`, and the stream with it
 function losing(sock: () => string, lost: () => number): Transport {
@@ -75,14 +76,20 @@ function setup(o: { home?: Partial<FleetState>; lose?: () => number } = {}) {
   const create = async (p: Record<string, unknown> = {}) => (await call('robot.create', { islandId: 'i_1', cwd: clone, ...p }) as { result: Robot }).result;
   const journaled = () => w.worker.outbox.after(w.worker.outbox.acked()).filter((e) => e.kind === 'mutation').map((e) => Mutation.parse(e.data));
   const replayed = () => until(() => expect(w.home.store.state.machines?.[W]?.replayed?.seq).toBe(w.worker.outbox.last()));
-  return { w, clone, typed, killed, logged, call, create, journaled, replayed };
+  // a mutation from w1 taken as the link takes one, with no hold around it
+  const apply = async (m: unknown) => {
+    const staged = await w.home.replay.prepare(m, W);
+    staged.change();
+    staged.after();
+  };
+  return { w, clone, typed, killed, logged, call, create, journaled, replayed, apply };
 }
 
 describe('the home replaying what a worker did while it slept', () => {
   it('a robot created offline appears at home once, on its cell, with the slept note; a replay after a lost ack adds nothing', async () => {
     let seq = 0;
     // a crew the island would be laid out afresh for, which leaves the worker's cell free
-    const { w, create, journaled } = setup({ home: { robots: { c_x: robot({ id: 'c_x', cell: { x: 1, y: 3 } }) } }, lose: () => seq });
+    const { w, create, journaled, apply } = setup({ home: { robots: { c_x: robot({ id: 'c_x', cell: { x: 1, y: 3 } }) } }, lose: () => seq });
     const { id } = await create();
     const [m] = journaled();
     seq = w.worker.outbox.after(0).find((e) => e.kind === 'mutation')!.seq;
@@ -93,22 +100,22 @@ describe('the home replaying what a worker did while it slept', () => {
     await until(() => expect(w.worker.outbox.acked()).toBe(w.worker.outbox.last()));
     expect(w.home.store.state.robots[id]).toEqual(held);
     // and the same mutation applied again adds nothing
-    await w.home.replay.apply(m, W);
+    await apply(m);
     expect(w.home.store.state.robots[id]).toEqual(held);
     expect(Object.keys(w.home.store.state.robots)).toHaveLength(3);
   });
 
   it('a replayed create leaves the board column to the home, and types nothing here, its run included', async () => {
-    const { w, create, journaled, logged } = setup();
+    const { w, create, journaled, logged, apply } = setup();
     await create();
     const [m] = journaled();
     await w.link();
-    const r = { ...m.robot!, id: 'c_other', name: 'other', column: 'done', columnSource: 'manual' as const };
+    const r = { ...m.robot!, id: 'c_others', name: 'other', column: 'done', columnSource: 'manual' as const };
     // the home's tmux fails any call made to it, and the failure would be logged
-    await w.home.replay.apply({ ...m, id: 'mu_0000000001', params: { ...(m.params as object), command: 'claude', run: 'go on' }, robot: r }, W);
-    expect(w.home.store.state.robots.c_other).toMatchObject({ machine: W, name: 'other' });
-    expect(w.home.store.state.robots.c_other).not.toHaveProperty('column');
-    expect(w.home.store.state.robots.c_other).not.toHaveProperty('columnSource');
+    await apply({ ...m, id: 'mu_0000000001', params: { ...(m.params as object), command: 'claude', run: 'go on' }, robot: r });
+    expect(w.home.store.state.robots.c_others).toMatchObject({ machine: W, name: 'other' });
+    expect(w.home.store.state.robots.c_others).not.toHaveProperty('column');
+    expect(w.home.store.state.robots.c_others).not.toHaveProperty('columnSource');
     expect(logged).toEqual([]);
   });
 
@@ -140,15 +147,31 @@ describe('the home replaying what a worker did while it slept', () => {
   });
 
   it('a mutation that cannot apply here says why in one line of its robot\'s note, and a line the replay writes is the user\'s', async () => {
-    const { w, logged } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_2: placed({ id: 'c_2', note: 'the scribe\'s' }) } } });
-    await w.home.replay.apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', name: 5 }, base: { name: 'c_1' }, snapshotVersion: 0, at: 1 }, W);
+    const { w, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_2: placed({ id: 'c_2', note: 'the scribe\'s' }) } } });
+    await apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', name: 5 }, base: { name: 'c_1' }, snapshotVersion: 0, at: 1 });
     expect(w.home.store.state.robots.c_1.note).toMatch(/^w1 changed this robot while this Mac slept; it could not be applied here: \S.*expected string/);
     expect(w.home.store.state.robots.c_1.note).not.toContain('\n');
     expect(w.home.store.state.robots.c_1.noteSource).toBe('manual');
     expect(logged).toHaveLength(1);
     // the scribe leaves a lost value where it was written
-    await w.home.replay.apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 }, W);
+    await apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 });
     expect(w.home.store.state.robots.c_2).toMatchObject({ note: 'the scribe\'s\nw1 set note to "mine" while this Mac slept; it had changed here since', noteSource: 'manual' });
+  });
+
+  it('a create whose id is not a robot id is logged and not applied', async () => {
+    const { w, create, journaled, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } } } });
+    await create();
+    const [m] = journaled();
+    await apply({ ...m, id: 'mu_0000000004', robot: { ...m.robot!, id: '../x' } });
+    expect(Object.keys(w.home.store.state.robots)).toEqual(['c_1']);
+    expect(logged).toEqual(['w1: robot.create mu_0000000004 not applied: "../x" is not a robot id']);
+  });
+
+  it('an update of a robot that does not run on the sender is not applied, and its note says why', async () => {
+    const { w, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_h: robot({ id: 'c_h' }) } } });
+    await apply({ id: 'mu_0000000005', method: 'robot.update', params: { id: 'c_h', name: 'taken' }, base: { name: 'c_h' }, snapshotVersion: 0, at: 1 });
+    expect(w.home.store.state.robots.c_h).toMatchObject({ name: 'c_h', note: 'w1 changed this robot while this Mac slept; it could not be applied here: it no longer runs on w1' });
+    expect(logged).toEqual(['w1: robot.update mu_0000000005 not applied: it no longer runs on w1']);
   });
 
   it('a robot that keeps its cell on an island folded here unfolds it', async () => {
@@ -222,7 +245,7 @@ describe('the home replaying what a worker did while it slept', () => {
 
   it('an update whose field the home changed since loses, and the lost value lands in the note; the other fields apply', async () => {
     let seq = 0;
-    const { w, call, journaled } = setup({ home: { robots: { c_1: placed({ id: 'c_1', note: 'mine', noteSource: 'manual' }) } }, lose: () => seq });
+    const { w, call, journaled, apply } = setup({ home: { robots: { c_1: placed({ id: 'c_1', note: 'mine', noteSource: 'manual' }) } }, lose: () => seq });
     await call('robot.update', { id: 'c_1', note: 'reviewing', name: 'kb2' });
     seq = w.worker.outbox.last();
     const [m] = journaled();
@@ -236,7 +259,7 @@ describe('the home replaying what a worker did while it slept', () => {
     await until(() => expect(w.home.store.state.machines?.[W]?.replayed?.seq).toBe(w.worker.outbox.last()));
     expect(w.home.store.state.robots.c_1.note).toBe(note);
     // the same update applied again changes nothing
-    await w.home.replay.apply(m, W);
+    await apply(m);
     expect(w.home.store.state.robots.c_1).toMatchObject({ name: 'kb2', note });
     // no snapshot took the worker's change back before the home had it
     expect(names).not.toContain('c_1');
@@ -250,7 +273,7 @@ describe('the home replaying what a worker did while it slept', () => {
     await w.link();
     await replayed();
     expect(w.home.store.state.robots.c_1).toMatchObject({
-      name: 'c_1', note: 'reviewing\nw1 set name to "kb2" while this Mac slept; it had changed here since', noteSource: 'manual', context,
+      name: 'c_1', note: 'reviewing\nw1 set name to "kb2" while this Mac slept; another robot has that name here', noteSource: 'manual', context,
     });
     expect(w.home.store.state.robots.c_h.name).toBe('KB2');
   });
@@ -335,7 +358,6 @@ describe('the home replaying what a worker did while it slept', () => {
   });
 
   it('a robot created offline on a branch another robot holds is flagged in its note at reconnect', async () => {
-    const kanban = (home: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch: 'kb', isWorktree: false });
     const { w, create } = setup({ home: { robots: { board: robot({ id: 'board', repo: kanban('/Users/ada') }) } } });
     const { id } = await create();
     // the worker's own clone, in its user folder as board's is in this Mac's
@@ -343,5 +365,14 @@ describe('the home replaying what a worker did while it slept', () => {
     await w.link();
     expect(w.home.store.state.robots[id].note).toBe(`${SLEPT}\nshares branch kb with board`);
     expect(w.home.store.state.robots.board.note).toBe('');
+  });
+
+  it('a robot created while linked on a branch another robot holds is flagged once its repo is reported, and left to the next reconnect no more', async () => {
+    const { w, create } = setup({ home: { robots: { board: robot({ id: 'board', repo: kanban('/Users/ada') }) } } });
+    await w.link();
+    const { id } = await create();
+    w.worker.store.update((d) => { d.robots[id].repo = kanban(os.homedir()); });
+    await until(() => expect(w.home.store.state.robots[id]?.note).toBe('shares branch kb with board'));
+    expect(w.home.replay.created(W)).toEqual([]);
   });
 });

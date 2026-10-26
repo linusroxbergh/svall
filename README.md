@@ -260,7 +260,8 @@ The first build takes several minutes and about 1.5 GB of disk.
   reorder, add or delete them. Drag a card, or right-click → Move to, to place
   it; its agent is told nothing. A card names its island, and the bar filters
   by island and by robots that need you; its Auto-place chip says whether the
-  scribe places robots, and its Place now has the scribe place them at once.
+  scribe places robots, and its Place now has the scribe place them at once,
+  dormant robots from the transcripts they left.
 - **Sidebar**: islands as a folder tree. Drag robots and islands to move or
   reorder them. A starred robot also stands in Starred at the top, newest
   first; drag there to star one at a spot or to reorder.

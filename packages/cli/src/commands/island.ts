@@ -34,8 +34,8 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
     .action((id: string, o: { name?: string; description?: string; at?: string; size?: string; instructions?: string } & ContextFlags) => withFleet(connect, async (c, state) => {
       const current = state.islands[islandId(state, id)];
       const island = await c.call('island.update', {
-        id: current.id, name: o.name, description: o.description, context: editContext(current.context, o), instructions: o.instructions,
-        position: point(o.at, '--at'), size: size(o.size, '--size'),
+        id: current.id, name: o.name, description: o.description, context: editContext(current.context, o), removed: o.drop.length ? o.drop : undefined,
+        instructions: o.instructions, position: point(o.at, '--at'), size: size(o.size, '--size'),
       });
       printResult(island, json(), () => `${island.id} ${island.name}`);
     }));

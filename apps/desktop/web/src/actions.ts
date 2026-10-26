@@ -309,8 +309,8 @@ export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.u
 };
 
 // a context write carries the whole list, so a failed one is only reported: sent again later it could drop items added meanwhile
-export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[]): void => {
-  d.api.call('robot.update', { id, context }).catch(toast(d));
+export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
+  d.api.call('robot.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
 };
 
 export const reviveRobot = (d: ActionDeps, id: string): Promise<boolean> =>
@@ -342,8 +342,8 @@ export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island
   d.api.call('island.update', { id, ...patch }).catch(unsent(d, () => saveIsland(d, id, patch)));
 };
 
-export const saveIslandContext = (d: ActionDeps, id: string, context: ContextItem[]): void => {
-  d.api.call('island.update', { id, context }).catch(toast(d));
+export const saveIslandContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
+  d.api.call('island.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
 };
 
 // the island goes and the card that showed it goes with it; a refused delete leaves both
@@ -378,7 +378,7 @@ export const setPlacing = (d: ActionDeps, enabled: boolean): void => {
 
 // one scribe pass that only moves robots to the columns their work is at, Auto-place on or off
 export async function placeNow(d: ActionDeps): Promise<void> {
-  d.store.getState().showToast('Placing robots…', 'ok');
+  d.store.getState().setPlacingNow(true);
   try {
     const { lines } = await d.api.call('scribe.sweep', { columns: true });
     const moved = lines.filter((l) => l.includes('  column: ')).length;
@@ -387,6 +387,8 @@ export async function placeNow(d: ActionDeps): Promise<void> {
     d.store.getState().showToast(failed ? `${text}; the scribe failed on ${failed}` : text, failed ? 'error' : 'ok');
   } catch (e) {
     toast(d)(e as Error);
+  } finally {
+    d.store.getState().setPlacingNow(false);
   }
 }
 

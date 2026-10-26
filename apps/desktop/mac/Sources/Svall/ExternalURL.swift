@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// Opens links the page hands out in the user's browser; other schemes are dropped.
 enum ExternalURL {
@@ -33,6 +34,15 @@ enum ExternalURL {
     static func openText(_ path: String) {
         guard FileManager.default.fileExists(atPath: path) else { NSLog("refused to open: %@", path); return }
         run(["-t", path])
+    }
+
+    /// Opens a file the editor cannot show: a picture, PDF or film in its own app, text in the text editor, and anything else,
+    /// a program above all, selected in Finder rather than run.
+    static func openFile(_ path: String) {
+        guard let type = (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.contentTypeKey]))?.contentType else { reveal(path); return }
+        if [UTType.image, .pdf, .audiovisualContent].contains(where: { type.conforms(to: $0) }) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+        else if type.conforms(to: .text) { openText(path) }
+        else { reveal(path) }
     }
 
     private static func run(_ args: [String]) {

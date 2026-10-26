@@ -22,12 +22,10 @@ function useSave(id: string) {
   return [error, save] as const;
 }
 
-// a pinned item is read before the agent starts; only one added by hand can be taken off
 function Context({ c }: { c: Robot }) {
   const [ref, setRef] = useState('');
   const [error, save] = useSave(c.id);
   const set = (context: ContextItem[]) => save({ context });
-  const pin = (i: number) => set(c.context.map((it, j) => (j !== i ? it : it.pinned ? (({ pinned: _p, ...r }) => r)(it) : { ...it, pinned: true })));
   const add = () => {
     const r = ref.trim();
     if (!r) return;
@@ -46,8 +44,7 @@ function Context({ c }: { c: Robot }) {
           <div key={`${it.ref}-${i}`} className="m-link">
             <i className="lg"><LinkIcon item={it} /></i>
             {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{name}</a> : <span className="m-link-text">{name}</span>}
-            <button type="button" aria-pressed={Boolean(it.pinned)} aria-label={`Pin ${name}`} onClick={() => pin(i)}>{it.pinned ? '●' : '○'}</button>
-            {it.source === 'manual' && <button type="button" aria-label={`Remove ${name}`} onClick={() => set(c.context.filter((_, j) => j !== i))}>×</button>}
+            <button type="button" aria-label={`Remove ${name}`} onClick={() => save({ context: c.context.filter((_, j) => j !== i), removed: [it.ref] })}>×</button>
           </div>
         );
       })}

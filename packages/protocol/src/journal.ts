@@ -8,7 +8,7 @@ export const MUTATIONS = ['robot.create', 'robot.update', 'robot.close', 'robot.
 /** The robot fields an offline `robot update` may change. */
 export const UPDATE_FIELDS = ['name', 'note', 'context', 'instructions'] as const;
 
-/** A call a worker served while its home was away, made against the snapshot of `snapshotVersion`; the home applies it once, by id. */
+/** A call a worker served while its home was away, made against the snapshot of `snapshotVersion`; the home applies it once by its outbox epoch and seq, and each kind is idempotent by content, not by `id`. */
 export const Mutation = z.object({
   id: MutationId,
   method: z.enum(MUTATIONS),

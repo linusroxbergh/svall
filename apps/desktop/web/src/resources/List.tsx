@@ -8,6 +8,7 @@ import { Tree } from '../ide/Tree.js';
 import { followLink } from '../LinkAsk.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { shortPath } from '../paths.js';
+import { machineName } from '../placement.js';
 import { createDoc, deleteDoc, deleteResource, renameDoc } from './docs.js';
 import { chooseResource } from './choose.js';
 import { openedItself } from './keys.js';
@@ -68,9 +69,11 @@ function CardRow({ kind, item }: { kind: Kind; item: CardItem }) {
   );
 }
 
-// a worker's clone (`far`) is read there: its rows are neither shown in Finder nor deleted from here
-function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far: boolean }) {
+// a worker's clone, `far` the worker's name, is read there: its rows are neither shown in Finder nor deleted from here, and
+// one with no file of its own does nothing
+function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: string }) {
   const o = item.open;
+  const idle = far !== undefined && !o;
   const dirty = useApp((s) => (o ? s.ide[o.rootId]?.dirty ?? NONE : NONE));
   const chosen = useChosen(item.id);
   const [renaming, setRenaming] = useState(false);
@@ -81,7 +84,8 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far: boo
     <>
       <div className="res-row" data-doc={isDoc}>
         <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-dirty={unsaved} data-off={item.off ?? false} data-opens={opensItself(item)}
-          title={o || far ? item.reveal : `${item.reveal} (opens in Finder)`} onClick={() => { void chooseResource(deps(), item, far); }}>
+          aria-disabled={idle || undefined} title={idle ? `${item.reveal} (on ${far})` : o || far ? item.reveal : `${item.reveal} (opens in Finder)`}
+          onClick={() => { void chooseResource(deps(), item, far !== undefined); }}>
           <b>
             {item.name}{unsaved && <i className="res-unsaved" aria-label="unsaved" />}{item.off && <em>off</em>}{!o && !far && <em>Finder</em>}
             {item.tag && <em className="res-tag" data-testid={`resources-tag-${kind}-${item.name}`}>{item.tag}</em>}
@@ -103,7 +107,7 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far: boo
         )}
       </div>
       {chosen && o?.folder && (
-        <div className="res-files"><Tree id={o.rootId} dir={o.folder} depth={0} tick={0} onOpen={(p) => { void openFile(deps(), o.rootId, p); }} /></div>
+        <div className="res-files"><Tree id={o.rootId} root={o.rootId.slice(2)} dir={o.folder} depth={0} tick={0} onOpen={(p) => { void openFile(deps(), o.rootId, p); }} /></div>
       )}
     </>
   );
@@ -163,7 +167,8 @@ export function List() {
   const tier = whereTier(resourcesWhere);
   const source = shelfSource({ resources: sources, resourcesWhere, fleet });
   const groups = visible(source, what, query);
-  const far = source !== undefined && farRootOf(source.rootId) !== undefined;
+  const farAt = source && farRootOf(source.rootId);
+  const far = farAt ? machineName(fleet, farAt.machine) : undefined;
   // a new agent profile is made where the list shows them; a new doc wherever else docs show
   const profile = what === 'agentProfiles';
   const addTo = profile ? source?.agentProfiles : what === 'all' || what === 'docs' ? source?.docs : undefined;

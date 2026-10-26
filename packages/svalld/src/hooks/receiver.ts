@@ -142,7 +142,7 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
 const FROM_SUBAGENT: Record<AgentKind, Set<unknown>> = {
   claude: new Set(['PreToolUse', 'PermissionRequest', 'SubagentStart', 'SubagentStop']),
   codex: new Set(['PreToolUse', 'PermissionRequest', 'PostToolUse', 'SubagentStart', 'SubagentStop']),
-  opencode: new Set(['SubagentStart', 'SubagentStop']),
+  opencode: new Set(['PreToolUse', 'PermissionRequest', 'SubagentStart', 'SubagentStop']),
 };
 const SUBAGENT_LIFE = new Set<unknown>(['SubagentStart', 'SubagentStop']);
 const AGENT_ID = /^[\w-]{1,64}$/;

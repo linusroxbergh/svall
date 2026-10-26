@@ -1,9 +1,10 @@
 import type { Page } from '@playwright/test';
 import { WebSocketServer } from 'ws';
-import { emptyState, PROTOCOL_VERSION, type MobileStatus, type PhoneSession } from '@svall/protocol';
+import { emptyState, PROTOCOL_VERSION, type MachineId, type MobileStatus, type PhoneSession } from '@svall/protocol';
 import { expect, test } from './fixtures.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { SETTINGS_KEY } from '../src/store/index.js';
+import { fleet } from '../test/fixtures.js';
 
 const SERVING: MobileStatus = { serving: true, url: 'https://mac.tailnet.ts.net:8443/', port: 8443, logins: [], phones: [] };
 const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
@@ -184,4 +185,23 @@ test('the settings carry the same answer, and the panel calls out a checkout wit
   } finally {
     await fake.close();
   }
+});
+
+test('the phone page says over a placed robot\'s terminal that its worker is not reachable', async ({ page }) => {
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  const f = fleet();
+  f.machines = { [vault]: { name: 'linus-vault', reachable: false, since: Date.now() } };
+  Object.assign(f.robots.c0, { name: 'ada', machine: vault });
+  // the page's socket goes to the origin that served it, where Vite's own carries a token; this one is a stand-in for svalld
+  // behind the proxy, which greets a phone unasked
+  await page.routeWebSocket((url) => !url.searchParams.has('token'), (ws) => {
+    ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw)) as { id: number; method: string };
+      ws.send(JSON.stringify({ id: m.id, result: m.method === 'state.get' ? f : {} }));
+    });
+  });
+  await page.goto('/mobile.html');
+  await page.getByRole('button', { name: /^ada/ }).click();
+  await expect(page.getByRole('status')).toHaveText('linus-vault is not reachable');
 });

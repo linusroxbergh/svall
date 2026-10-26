@@ -155,13 +155,19 @@ test('a robot on a worker out of reach says so in place of its terminal, and att
   expect(call.mock.calls).toEqual([['term.lastScreen', { id: 'c1' }]]);
 });
 
-test('an unreachable robot shows the sentence and the last screen term.lastScreen answers', async () => {
-  call.mockResolvedValueOnce({ text: '$ make test\nok', at: 1 });
+test('an unreachable robot shows the sentence and the last screen term.lastScreen answers, scrolled to its end', async () => {
+  // capture-pane's lines, as tmux.capture joins them
+  call.mockResolvedValueOnce({ text: '$ make test\r\nok', at: 1 });
+  const tall = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(900);
   placed(false);
   render(<TerminalArea id="c1" />);
   await act(async () => {});
+  tall.mockRestore();
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
   expect(screen.getByTestId('terminal-last-screen').textContent).toBe('$ make test\nok');
+  expect(screen.getByTestId('terminal-last-screen').scrollTop).toBe(900);
+  // a scroller the keyboard reaches, as WKWebView does not make one focusable
+  expect(screen.getByLabelText('Last screen the worker sent').tabIndex).toBe(0);
   // back in reach, the terminal stands in for it
   placed(true);
   expect(screen.queryByTestId('terminal-last-screen')).toBeNull();

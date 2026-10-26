@@ -143,6 +143,14 @@ describe('a worker serving its robots while the home is away', () => {
     ]);
   });
 
+  it('an offline close is journaled before its robot is forgotten', async () => {
+    const { w, call, mutations } = setup();
+    const journaledAtKill: string[][] = [];
+    w.worker.tmux.killWindow = async () => { journaledAtKill.push(mutations().map((m) => m.method)); };
+    expect(await call('robot.close', { id: 'c_1' })).toEqual({ id: 1, result: {} });
+    expect(journaledAtKill).toEqual([['robot.close']]);
+  });
+
   it('robot.seen of a robot here is taken here with the home away, and goes home as its report, not a mutation', async () => {
     const { w, call, mutations } = setup();
     w.worker.store.update((d) => { d.robots.c_1.unread = true; });

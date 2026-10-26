@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import type { Bridge, ToShell } from '../src/bridge.js';
 import { chooseResource } from '../src/resources/choose.js';
@@ -97,7 +98,7 @@ describe('followResources', () => {
     const f = fleet();
     expect(listingKey(f)).toBe(listingKey({ ...f }));
   });
-  it('moves when an island or a robot is added, renamed or moved, and not otherwise', () => {
+  it('moves when an island or a robot is added, renamed or moved, to another island or machine, and not otherwise', () => {
     const f = fleet();
     const [cid] = Object.keys(f.robots), [iid] = Object.keys(f.islands);
     const c = f.robots[cid], i = f.islands[iid];
@@ -105,6 +106,8 @@ describe('followResources', () => {
     expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, name: 'renamed' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, islandId: 'elsewhere' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, agentProfile: 'reviewer' } } })).not.toBe(listingKey(f));
+    // a move that keeps the path
+    expect(listingKey({ ...f, robots: { ...f.robots, [cid]: { ...c, machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, islands: { ...f.islands, [iid]: { ...i, name: 'renamed' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, islands: { ...f.islands, extra: { ...i, id: 'extra' } } })).not.toBe(listingKey(f));
   });

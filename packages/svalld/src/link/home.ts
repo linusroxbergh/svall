@@ -387,7 +387,7 @@ export class WorkerLink {
   private lost(why: string, again = true): void {
     if (this.stopped) return;
     const held = this.o.store.state.machines?.[this.machine];
-    if (held?.reachable !== false) this.mark({ name: this.name, reachable: false, since: Date.now() });
+    if (held?.reachable !== false || held.mismatch) this.mark({ name: this.name, reachable: false, since: Date.now(), mismatch: undefined });
     if (!again) return;
     if (why !== this.lastWhy) this.o.log.error(`${this.name} is not reachable: ${why}; trying again`);
     this.lastWhy = why;

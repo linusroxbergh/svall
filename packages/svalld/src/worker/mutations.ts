@@ -30,9 +30,10 @@ export class WorkerMutations {
   private handlers: { [M in Served]: (p: ParsedParams<M>) => Promise<Result<M>> } = {
     'robot.create': (p) => this.create(p),
     'robot.update': (p) => this.update(p),
+    // journaled first, so a crash before the forget leaves a close the home applies and reconcile forgets here
     'robot.close': async (p) => {
-      await this.o.forget(p.id);
       this.journal({ method: 'robot.close', params: p });
+      await this.o.forget(p.id);
       return {};
     },
     'robot.run': async (p) => {

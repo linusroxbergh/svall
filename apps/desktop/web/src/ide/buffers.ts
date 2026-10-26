@@ -3,8 +3,9 @@ import { EditorState, Text, type Extension, type TransactionSpec } from '@codemi
 import { EditorView } from '@codemirror/view';
 
 // the text of an open file as the editor holds it, what the disk last had, and when;
-// diskMtimeMs is the disk's newer mtime while a conflict stands, the one Overwrite saves with; root is the folder it was read under
-export type Buffer = { state: EditorState; saved: Text; mtimeMs: number; diskMtimeMs?: number; root?: string };
+// diskMtimeMs is the disk's newer mtime while a conflict stands, the one Overwrite saves with; root is the folder it was read under,
+// and on the worker it was read from, which leaves it read-only
+export type Buffer = { state: EditorState; saved: Text; mtimeMs: number; diskMtimeMs?: number; root?: string; on?: string };
 
 const buffers = new Map<string, Buffer>();
 const views = new Map<string, EditorView>();
@@ -120,7 +121,8 @@ export function mountView(id: string, path: string, parent: HTMLElement, onChang
   const b = buffers.get(k);
   if (!b) throw new Error(`no buffer for ${path}`);
   const view = new EditorView({
-    state: b.state, parent,
+    // the view opens on its cursor, which a path followed to a line placed before it was shown
+    state: b.state, parent, scrollTo: EditorView.scrollIntoView(b.state.selection.main.head, { y: 'center' }),
     dispatchTransactions: (trs, v) => { v.update(trs); if (trs.some((tr) => tr.docChanged)) onChange(setState(id, path, v.state)); else setState(id, path, v.state); },
   });
   views.get(k)?.destroy();

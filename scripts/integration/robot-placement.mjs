@@ -10,9 +10,12 @@
 // the main checkout and `faults` in a worktree of its own; the repository's remote is a bare one on remote that both
 // machines reach over ssh. The run moves `agent` and `kanban`, restarts the worker, stops the home while the worker's
 // agent works, moves `faults` back and forth with the home's daemon killed or the link dropped at each phase, and
-// returns `agent` through a dirty Mac worktree. With no `--archive` it builds the companion for the docker host's
-// architecture from this checkout, and with no `--image` the machine image from the Dockerfile here. `--steps` picks
-// steps by number (the fixture always runs); `--prefix` replaces `svall` in the machines' names and the network's.
+// returns `agent` through a dirty Mac worktree. Then, from `kanban` on the worker, it starts a reviewer and four more
+// robots while the home is stopped, sweeps the scribe over them, changes kanban's notes on both machines apart, reads
+// its files from the home, and closes the reviewer while the worker is stopped. With no `--archive` it builds the
+// companion for the docker host's architecture from this checkout, and with no `--image` the machine image from the
+// Dockerfile here. `--steps` picks steps by number (the fixture always runs); `--prefix` replaces `svall` in the
+// machines' names and the network's.
 // Every check that fails is printed; the run exits 1 on the first step that has one.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -211,6 +214,17 @@ function until(machine, fn, seconds = 120, light = true) {
   return s;
 }
 
+/** A turn typed into a robot's pane on remote, as someone at that machine would, waited on until the worker records it done. */
+function turnOn(id, text) {
+  const pane = robotIn(snap(R, true), id)?.tmux?.paneId;
+  sh(R, `T=~/.local/share/svall/current/bin/tmux; $T -S ~/.svall/tmux.sock send-keys -t '${pane}' -l '${text}' && $T -S ~/.svall/tmux.sock send-keys -t '${pane}' Enter`);
+  const s = until(R, (x) => robotIn(x, id)?.agent?.prompt === text && robotIn(x, id).agent.status === 'done', 60);
+  check(`worker took "${text}"`, robotIn(s, id)?.agent?.prompt === text, () => brief(robotIn(s, id)?.agent));
+}
+
+/** One call to a machine's daemon through machine.mjs: its answer, or `{ error, code }`. */
+const call = (machine, method, params = {}) => JSON.parse(sh(machine, `/opt/it/node/bin/node /opt/it/machine.mjs call ${method} '${JSON.stringify(params)}'`).stdout);
+
 // ---------------------------------------------------------------------------------------------- assertions
 
 // a repo's state as both machines' git shows it, its untracked credential files left out, which never travel
@@ -356,16 +370,10 @@ function workerRestart(ids, fx) {
 
 function homeDown(ids, fx) {
   const id = fx.agent;
-  const pane = robotIn(snap(R), id)?.tmux?.paneId;
   const was = robotIn(snap(L), id)?.agent;
   sh(L, `systemctl --user stop ${UNIT}`);
-  // two turns typed into the agent's pane on the worker, as someone at that machine would
   const texts = ['first turn while the home is down', 'second turn while the home is down'];
-  for (const text of texts) {
-    sh(R, `T=~/.local/share/svall/current/bin/tmux; $T -S ~/.svall/tmux.sock send-keys -t '${pane}' -l '${text}' && $T -S ~/.svall/tmux.sock send-keys -t '${pane}' Enter`);
-    const s = until(R, (x) => robotIn(x, id)?.agent?.prompt === text && robotIn(x, id).agent.status === 'done', 60);
-    check(`worker took "${text}"`, robotIn(s, id)?.agent?.prompt === text, () => brief(robotIn(s, id)?.agent));
-  }
+  for (const text of texts) turnOn(id, text);
   const down = snap(R);
   const wa = robotIn(down, id)?.agent;
   const queued = down.outbox.entries.filter((e) => e.robotId === id && e.agent);
@@ -434,6 +442,149 @@ printf 'worker untracked
   originUntouched();
 }
 
+// ---------------------------------------------------------------------------------------------- apart
+
+const SLEPT = 'started on remote while this Mac slept';
+const listOn = (machine) => JSON.parse(sh(machine, 'svall --json robot list').stdout);
+
+function reviewerAsleep(ids, fx) {
+  const id = fx.kanban;
+  sh(R, 'git -C ~/src/app worktree add -q -b review .claude/worktrees/review');
+  const count = listOn(L).length;
+  sh(L, `systemctl --user stop ${UNIT}`);
+  const away = until(R, (s) => s.machines[ids.local]?.reachable === false, 60);
+  check('worker sees the Mac away', away.machines[ids.local]?.reachable === false, () => brief(away.machines));
+  // what kanban's agent would do on the worker: a turn, a reviewer in its own worktree, four on main, a sixth
+  const texts = ['a turn while the Mac sleeps', 'a turn after the reviewer started'];
+  turnOn(id, texts[0]);
+  const made = [JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ${HOMES[R]}/src/app/.claude/worktrees/review --name reviewer --claude --run 'review it'`).stdout).id];
+  for (let i = 0; i < 4; i++) made.push(JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ~/src/app --claude`).stdout).id);
+  const sixth = sh(R, `svall robot new --island ${fx.island} --cwd ~/src/app --claude`, { ok: false });
+  check('sixth refused', sixth.code !== 0 && sixth.stderr.includes('remote has started 5 robots since this Mac last answered; wait for it'), () => `exit ${sixth.code}: ${JSON.stringify(sixth.stderr)}`);
+  turnOn(id, texts[1]);
+  const read = sh(R, `svall robot read ${id} --transcript --lines 1`).stdout;
+  check('transcript read', read.includes(texts[1]), () => read.slice(-300));
+  const listed = listOn(R).map((c) => c.id);
+  check('worker lists them', [id, ...made].every((x) => listed.includes(x)), () => brief(listed));
+  // the creates in the order they were made, and kanban's two turns as one report after them
+  const down = snap(R);
+  const creates = down.outbox.entries.filter((e) => e.kind === 'mutation');
+  check('creates journaled', same(creates.map((e) => [e.method, e.robotId]), made.map((m) => ['robot.create', m])), () => brief(down.outbox.entries));
+  const reports = down.outbox.entries.filter((e) => e.kind === 'robot.sync' && e.robotId === id);
+  check('one report after them', reports.length === 1 && reports[0].seq > Math.max(...creates.map((e) => e.seq)) && reports[0].agent?.prompt === texts[1],
+    () => brief(down.outbox.entries));
+
+  sh(L, `systemctl --user start ${UNIT}`);
+  const up = until(R, (x) => x.outbox.acked >= down.outbox.last && x.outbox.entries.length === 0, 120);
+  check('outbox replayed', up.outbox.acked >= down.outbox.last && up.outbox.entries.length === 0, () => brief(up.outbox));
+  const l = until(L, (s) => made.slice(1).every((m) => robotIn(s, m)?.note.includes('shares branch main with ')), 60);
+  const home = listOn(L);
+  const of = (m) => home.find((c) => c.id === m);
+  check('kanban prompt', robotIn(l, id)?.agent?.prompt === texts[1], () => brief(robotIn(l, id)?.agent));
+  for (const m of made) check(`${m} placed`, of(m)?.machine === ids.remote && of(m).islandId === fx.island && of(m).note.includes(SLEPT), () => brief(of(m)));
+  const cells = home.filter((c) => c.islandId === fx.island).map((c) => `${c.cell.x},${c.cell.y}`);
+  check('distinct cells', new Set(cells).size === cells.length, () => brief(cells));
+  for (const m of made.slice(1)) check(`${m} shares main`, of(m)?.note.includes('shares branch main with '), () => brief(of(m)?.note));
+  check('reviewer shares nothing', !of(made[0])?.note.includes('shares branch'), () => brief(of(made[0])?.note));
+  const w = snap(R, true);
+  const applied = w.applied.filter((a) => made.includes(a.changed?.robotId));
+  check('applied in seq order', same(applied.map((a) => [a.method, a.changed.robotId]), made.map((m) => ['robot.create', m])) && applied.every((a, i) => i === 0 || a.seq > applied[i - 1].seq),
+    () => brief(w.applied));
+  const replayed = linksOf()[ids.remote]?.replayed;
+  check('replayed mark', replayed?.epoch === w.outbox.epoch && replayed.seq >= down.outbox.last, () => `${brief(replayed)} vs epoch ${w.outbox.epoch}, last ${down.outbox.last}`);
+
+  // a second start replays nothing again
+  const since = linksOf()[ids.remote]?.since;
+  sh(L, `systemctl --user restart ${UNIT}`);
+  linked(ids, since);
+  until(R, (s) => s.machines[ids.local]?.reachable, 60);
+  for (const [m, list] of [[L, listOn(L)], [R, listOn(R)]]) {
+    check(`${m} holds each once`, list.length === count + 5 && made.every((x) => list.filter((c) => c.id === x).length === 1), () => brief(list.map((c) => [c.id, c.name])));
+  }
+  ctx.slept = { reviewer: made[0], notes: Object.fromEntries(made.map((m) => [m, of(m)?.note])) };
+}
+
+function scribeFar(ids, fx) {
+  const id = fx.kanban;
+  // a robot at rest is due a pass of its own, which could write the note before the sweep that should say so
+  turn(ids, fx, 'kanban', 'a turn before the sweep');
+  const on = call(L, 'scribe.set', { enabled: true });
+  check('scribe on', !on.error, () => brief(on));
+  const swept = sh(L, 'svall scribe sweep').stdout;
+  check('swept', swept.split('\n').includes(`kanban  note: noted on ${R}`), () => swept.slice(-600));
+  const home = listOn(L);
+  check('kanban note', home.find((c) => c.id === id)?.note === `noted on ${R}`, () => brief(home.find((c) => c.id === id)?.note));
+  for (const [m, note] of Object.entries(ctx.slept.notes)) check(`${m} keeps its note`, home.find((c) => c.id === m)?.note === note, () => brief(home.find((c) => c.id === m)?.note));
+}
+
+/** What `file` holds on `machine` once it holds the line `text`, or after `seconds`. */
+const textOn = (machine, file, text, seconds = 60) =>
+  sh(machine, `for i in $(seq ${seconds * 2}); do [ "$(cat ${file} 2>/dev/null)" = '${text}' ] && break; sleep 0.5; done; cat ${file} 2>/dev/null`, { ok: false }).stdout;
+
+function docsConflict(ids, fx) {
+  const id = fx.kanban;
+  const rel = `robots/${id}/notes.md`;
+  const [here, there] = [`~/.svall/docs/${rel}`, `~/.svall/cache/docs/${rel}`];
+  const texts = { first: 'notes written on the Mac', mac: 'notes the Mac changed while apart', remote: 'notes remote changed while apart' };
+  sh(L, `mkdir -p "$(dirname ${here})" && printf '%s\\n' '${texts.first}' > ${here}`);
+  check('worker took the notes', textOn(R, there, texts.first) === `${texts.first}\n`, 'they did not reach cache/docs on remote');
+  sh(L, `systemctl --user stop ${UNIT}`);
+  until(R, (s) => s.machines[ids.local]?.reachable === false, 60);
+  sh(L, `printf '%s\\n' '${texts.mac}' > ${here}`);
+  sh(R, `printf '%s\\n' '${texts.remote}' > ${there}`);
+  const down = until(R, (s) => s.outbox.entries.some((e) => e.kind === 'docs.write'), 30);
+  check('worker journaled its change', down.outbox.entries.some((e) => e.kind === 'docs.write'), () => brief(down.outbox.entries));
+  sh(L, `systemctl --user start ${UNIT}`);
+  const kept = new RegExp(`^robots/${id}/notes\\.remote\\.mu_[0-9a-z]{10}\\.conflict\\.md$`);
+  const copies = (s) => Object.entries(s.conflicts).filter(([f]) => kept.test(f));
+  const [l, w] = [until(L, (s) => copies(s).length > 0, 120), until(R, (s) => copies(s).length > 0, 120)];
+  for (const [m, s, file] of [[L, l, here], [R, w, there]]) {
+    check(`${m} keeps the Mac's text`, textOn(m, file, texts.mac) === `${texts.mac}\n`, () => sh(m, `cat ${file}`, { ok: false }).stdout);
+    check(`${m} holds the copy`, same(copies(s), [[copies(l)[0]?.[0], `${texts.remote}\n`]]), () => brief(s.conflicts));
+  }
+  const name = path.posix.basename(copies(l)[0]?.[0] ?? '');
+  const note = robotIn(snap(L, true), id)?.note ?? '';
+  check('kanban note', note.includes(`${rel} changed on both remote and this Mac; remote's version is kept as ${name}`), () => brief(note));
+}
+
+function filesFar(ids, fx) {
+  const id = fx.kanban;
+  const wt = `${HOMES[R]}/src/app/.claude/worktrees/kanban`;
+  const status = call(L, 'repo.status', { id });
+  const git = sh(R, `git -C ${wt} status --porcelain --untracked-files=all`).stdout.split('\n').filter(Boolean).map((l) => l.slice(3)).sort();
+  check('branch', status.branch === 'kanban', () => brief(status));
+  check('changed files', git.length > 0 && same(status.files?.map((f) => f.path).sort(), git), () => `${brief(status.files)} vs ${brief(git)}`);
+  const read = call(L, 'fs.read', { id, path: 'b.txt' });
+  const text = sh(R, `cat ${wt}/b.txt`).stdout;
+  check('fs.read', read.text === text, () => `${brief(read)} vs ${brief(text)}`);
+  const write = call(L, 'fs.write', { id, path: 'b.txt', text: 'written from the Mac\n', mtimeMs: read.mtimeMs, root: read.root });
+  check('fs.write', write.code === 'read_only' && sh(R, `cat ${wt}/b.txt`).stdout === text, () => brief(write));
+}
+
+function deleteWorkerDown(ids, fx) {
+  const { reviewer } = ctx.slept;
+  // the screen a phone shows of kanban while the worker is down: the last one the worker sent after its last hook
+  const text = 'a turn before the worker stops';
+  turn(ids, fx, 'kanban', text);
+  let last;
+  for (let i = 0; i < 60 && !last?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); last = call(L, 'term.lastScreen', { id: fx.kanban }); }
+  check('last screen', last?.text?.includes(`did: ${text}`) && last.at > 0, () => brief(last));
+  const since = linksOf()[ids.remote]?.since;
+  sh(R, `systemctl --user stop ${UNIT}`);
+  for (let i = 0; i < 120 && linksOf()[ids.remote]?.reachable !== false; i++) sh(L, 'sleep 0.5');
+  check('remote away', linksOf()[ids.remote]?.reachable === false, () => brief(linksOf()[ids.remote]));
+  const frozen = call(L, 'term.lastScreen', { id: fx.kanban });
+  check('frozen screen', same(frozen, last), () => `${brief(frozen)} vs ${brief(last)}`);
+  sh(L, `svall robot close ${reviewer}`);
+  check('home lets go', !robotIn(snap(L, true), reviewer), 'the home still holds the reviewer');
+  sh(R, `systemctl --user start ${UNIT}`);
+  linked(ids, since);
+  const w = until(R, (s) => !robotIn(s, reviewer) && !s.windows.some((x) => x.name === reviewer), 60);
+  check('window gone', !w.windows.some((x) => x.name === reviewer), () => brief(w.windows));
+  check('neither state holds it', !robotIn(w, reviewer) && !robotIn(snap(L, true), reviewer), () => brief(robotIn(w, reviewer)));
+  check('worktree locked', w.locks['src/app/.claude/worktrees/review'] === `closed robot ${reviewer}`, () => brief(w.locks));
+}
+
 // ---------------------------------------------------------------------------------------------- the fault matrix
 
 // a drop lands only where the move needs the link: on the way back the prepare is this Mac's own, and the move runs on
@@ -450,7 +601,7 @@ function drive(dir, fault, at) {
   return { label, summary };
 }
 
-const ctx = { fx: undefined, at: 'local', origin: undefined };
+const ctx = { fx: undefined, at: 'local', origin: undefined, slept: undefined };
 
 /** Waits for the move to end: after the restart a kill brings, once a dropped link is back, or, when it stalls, after `--retry` or a restart. */
 function settle(ids, moveId, fault) {
@@ -531,11 +682,17 @@ function faults(ids, list) {
 
 // ---------------------------------------------------------------------------------------------- the run
 
-const STEPS = { 1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree' };
+const STEPS = {
+  1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
+  7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
+};
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 6, not ${o.steps}`);
-// the home's stop and the return work with the robot the first move placed
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 11, not ${o.steps}`);
+// the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
+// the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
+if (steps.some((s) => s >= 7) && !steps.includes(2)) steps.unshift(2);
+if ((steps.includes(8) || steps.includes(11)) && !steps.includes(7)) steps.push(7);
 
 let code = 0;
 try {
@@ -554,6 +711,11 @@ try {
   if (steps.includes(4)) step(`4. ${STEPS[4]}`, () => homeDown(ids, fx));
   if (steps.includes(5)) faults(ids, scenarios);
   if (steps.includes(6)) step(`6. ${STEPS[6]}`, () => returnDirty(ids, fx));
+  if (steps.includes(7)) step(`7. ${STEPS[7]}`, () => reviewerAsleep(ids, fx));
+  if (steps.includes(8)) step(`8. ${STEPS[8]}`, () => scribeFar(ids, fx));
+  if (steps.includes(9)) step(`9. ${STEPS[9]}`, () => docsConflict(ids, fx));
+  if (steps.includes(10)) step(`10. ${STEPS[10]}`, () => filesFar(ids, fx));
+  if (steps.includes(11)) step(`11. ${STEPS[11]}`, () => deleteWorkerDown(ids, fx));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);
