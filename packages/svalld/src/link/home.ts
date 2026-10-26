@@ -45,7 +45,8 @@ type Options = {
   log: Logger;
   release: string;
   onReport(r: RobotSync, machine: MachineId): void;
-  onEvent(kind: string, data: unknown, machine: MachineId): Promise<void>;
+  /** Any other event, taken before the event's hold, as a mutation is; the `change` it answers writes the store inside it. */
+  onEvent(kind: string, data: unknown, machine: MachineId): Promise<{ change(): void } | void>;
   /** A worker's mutation: it reads the disk before the event's hold, `change` writes the store inside it and never throws,
    *  and `after` runs once the write is tried. */
   onMutation?(data: unknown, machine: MachineId): Promise<{ change(): void; after(): void }>;
@@ -338,15 +339,14 @@ export class WorkerLink {
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
           const mutation = f.kind === 'mutation' && this.o.onMutation ? await this.o.onMutation(f.data, this.machine) : undefined;
+          const event = f.kind === 'robot.sync' || mutation ? undefined : await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
+            if (!(e instanceof UnknownEvent)) throw e;
+            this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
+          });
           await this.o.store.withheld(async () => {
             if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
             else if (mutation) mutation.change();
-            else {
-              await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
-                if (!(e instanceof UnknownEvent)) throw e;
-                this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
-              });
-            }
+            else if (event) event.change();
             this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
           });
           const written = await this.o.store.flush();

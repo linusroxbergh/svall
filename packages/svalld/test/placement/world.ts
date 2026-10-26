@@ -13,8 +13,9 @@ import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
-import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
+import { HomeDocs, WorkerDocs, noteConflict } from '../../src/placement/docs-sync.js';
 import { Mirror, mirrorCalls, type MirrorHomes } from '../../src/placement/mirror.js';
+import { homeRootOf } from '../../src/placement/repo-key.js';
 import { Replay } from '../../src/placement/replay.js';
 import { Router, forgetRobot, workerCalls } from '../../src/placement/router.js';
 import { issueToken } from '../../src/placement/workers.js';
@@ -68,7 +69,7 @@ type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
  * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
  * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
  * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
- * and the home's replay and router log to `homeLog`.
+ * and the home's replay, router and docs log to `homeLog`.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
@@ -83,8 +84,8 @@ export function world(o: {
   const homeStore = storeWith(homePaths, o.home ?? {});
   const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
-  const homeDocs = o.docs && new HomeDocs(homePaths.docs, silentLogger, 100);
   const homeLog = o.homeLog ?? silentLogger;
+  const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, 100);
   // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
@@ -96,7 +97,8 @@ export function world(o: {
     },
     onEvent: async (kind, data, machine) => {
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`no ${kind}`);
-      homeDocs.apply(kind, data, machine);
+      const conflict = homeDocs.apply(kind, data, machine);
+      return conflict && { change: () => noteConflict(homeStore, machine, conflict, '/Users/ada') };
     },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
     onCall: (method, params) => answer(method, params, homeCtx),
@@ -106,7 +108,10 @@ export function world(o: {
   });
   const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
-  const homeFleet = new Fleet({ store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter });
+  const homeFleet = new Fleet({
+    store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter,
+    repoRoot: (c) => homeRootOf(c, homeStore.state.machines, '/Users/ada'),
+  });
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter);
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
@@ -122,7 +127,7 @@ export function world(o: {
   const workerFleet = new Fleet({
     store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [], refreshLinks: async () => {},
-    created: (c, p) => mutations.created(c, p),
+    created: (c, p) => mutations.created(c, p), repoRoot: (c) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home),
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
   const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });

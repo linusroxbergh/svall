@@ -68,6 +68,8 @@ type Deps = {
   remote?: Router; report?: (r: RobotSync) => void;
   // a robot made here and the params createRobot was given, once its record is written and its start line sent
   created?: (c: Robot, p: ParsedParams<'robot.create'>) => void;
+  // the main root a robot's repository docs hang off, as the home names it
+  repoRoot?: (c: Robot) => string | undefined;
 };
 // a note given at the start is the user's
 type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string };
@@ -222,7 +224,7 @@ export class Fleet extends EventEmitter<Events> {
   // a profile that is missing or cannot be used is left out, and the side card says why
   private render(island: Island, c?: Robot): string {
     const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
-    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !this.deps.store.state.worktreesOff, this.asOf());
+    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c, c && this.deps.repoRoot?.(c)), p && !('error' in p) ? p : undefined, !this.deps.store.state.worktreesOff, this.asOf());
   }
 
   // on a worker whose home is away, the snapshot the brief is rendered from, once it is over an hour old

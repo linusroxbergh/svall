@@ -161,6 +161,11 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile.
 - A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
   "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
+- A note changed both there and here keeps this Mac's text. The worker's lands beside it as
+  `<name>.<machine>.<id>.conflict.md`, and the robot's note names it: "robots/c_4f2k9a/notes.md changed on both
+  linus-vault and this Mac; linus-vault's version is kept as notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next
+  changes there go into that copy until the worker has this Mac's text. A note deleted there and changed here stays:
+  "linus-vault deleted robots/c_4f2k9a/notes.md, which changed here since; it stays".
 - A change this Mac cannot apply is skipped, and the robot's note says why.
 - A robot started on a branch another robot works on in the same clone says so in its note: "shares branch kb with
   board".

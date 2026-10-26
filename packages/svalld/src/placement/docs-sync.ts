@@ -4,14 +4,20 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { z } from 'zod';
-import { ApiError, Sha256, type MachineId } from '@svall/protocol';
+import { ApiError, MutationId, Sha256, type FleetState, type MachineId, type Robot } from '@svall/protocol';
+import { repoSlug } from '../docs.js';
+import { setNote } from '../fleet.js';
 import { DURABLE_TEMP, writeDurable } from '../handover/durable.js';
 import { sha256Hex } from '../handover/hash.js';
+import { newMutationId } from '../ids.js';
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
+import type { Store } from '../store.js';
 import { packTar } from './bundle.js';
 import { unpack } from './move.js';
+import { homeRootOf } from './repo-key.js';
+import { withLine } from './replay.js';
 
 // the most a worker takes of the fleet's docs, gzipped
 const DOCS_MAX = 20 * 1024 * 1024;
@@ -20,8 +26,11 @@ const DOCS_QUIET_MS = 2_000;
 // a docs.write rides one line of the link, its bytes in base64
 const NOTE_MAX = 1024 * 1024;
 
-const DocsWrite = z.object({ path: z.string(), data: z.string(), sha256: Sha256 });
-const DocsDelete = z.object({ path: z.string() });
+// what a change was made on: the home's sha as its last tar brought it, and while no tar has come since, the worker's
+// own last change there (null for a removal); an older release journaled neither, nor an id
+const Made = { id: MutationId.optional(), base: Sha256.optional(), prev: Sha256.nullable().optional() };
+const DocsWrite = z.object({ path: z.string(), data: z.string(), sha256: Sha256, ...Made });
+const DocsDelete = z.object({ path: z.string(), ...Made });
 const DocsBlob = z.object({ id: z.string(), sha256: Sha256, seq: z.number().int().nonnegative() });
 const Synced = z.record(z.string(), Sha256);
 
@@ -96,42 +105,102 @@ const shaOf = (file: string): string | undefined => {
   }
 };
 
+// the conflict files in `dir` whose names start with `stem`
+const keptIn = (dir: string, stem: string): string[] => {
+  try { return fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && d.name.startsWith(stem) && d.name.endsWith('.conflict.md')).map((d) => path.join(dir, d.name)); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw e;
+  }
+};
+
+const keptLine = (file: string, worker: string, kept: string) => `${file} changed on both ${worker} and this Mac; ${worker}'s version is kept as ${path.basename(kept)}`;
+const stayedLine = (file: string, worker: string) => `${worker} deleted ${file}, which changed here since; it stays`;
+
+/** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, or a delete refused. */
+export type Conflict = { file: string; kept?: string };
+type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made: (string | undefined)[]; prev?: string | null };
+
+/** The robots a doc at `rel` concerns: the one whose folder it is in, or `machine`'s on its island, in its repository by this Mac's main root, or anywhere for the fleet's. */
+export function concerns(rel: string, state: FleetState, machine: MachineId, homedir: string): string[] {
+  const [tree, id] = rel.split('/');
+  if (tree === 'robots') return Object.hasOwn(state.robots, id) ? [id] : [];
+  const of = (keep: (c: Robot) => boolean) => Object.values(state.robots).filter((c) => c.machine === machine && keep(c)).map((c) => c.id);
+  if (tree === 'islands') return of((c) => c.islandId === id);
+  if (tree === 'repos') return of((c) => { const root = homeRootOf(c, state.machines, homedir); return root !== undefined && repoSlug(root) === id; });
+  return tree === 'fleet' ? of(() => true) : [];
+}
+
+/** Says a conflict in the note of each robot it concerns, as the user's line, so the scribe leaves it. */
+export function noteConflict(store: Store, machine: MachineId, c: Conflict, homedir: string): void {
+  const name = store.state.machines?.[machine]?.name ?? machine;
+  const line = c.kept ? keptLine(c.file, name, c.kept) : stayedLine(c.file, name);
+  const ids = concerns(c.file, store.state, machine, homedir);
+  if (ids.length) store.update((d) => { for (const id of ids) setNote(d.robots[id], withLine(d.robots[id].note, line)); });
+}
+
 /** The home's side: each worker's notes written into the fleet's docs, and the docs sent to each worker as a tar. */
 export class HomeDocs {
   // what each path holds by a worker's last event there, so a write it made is not sent back to it
   private applied = new Map<string, { sha256?: string; machine: MachineId }>();
   private oversize = false;
 
-  constructor(readonly dir: string, private log: Logger, private quietMs = DOCS_QUIET_MS) {}
+  constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private quietMs = DOCS_QUIET_MS) {}
 
   /**
-   * Writes or removes the file a worker's event names unless it is so already. An event naming no file of the docs, or
-   * bytes not its own, is logged and dropped; a write that fails throws, and the event stays in the worker's outbox.
+   * Takes a worker's change made on the copy this Mac holds, or one it holds already; otherwise answers the conflict, a
+   * write kept beside the file, a delete refused. An event naming no file of the docs, or bytes not its own, is logged and
+   * dropped; a write that fails throws, and the event stays in the worker's outbox.
    */
-  apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): void {
+  apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
-    if (!named) return;
-    const { file, bytes, sha256 } = named;
+    if (!named) return undefined;
+    const { file, bytes, sha256, made } = named;
+    const here = shaOf(file);
+    if (here !== sha256 && !made.includes(here)) return this.conflict(named, machine);
     if (!bytes) fs.rmSync(file, { force: true });
-    else if (shaOf(file) !== sha256) {
+    else if (here !== sha256) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       writeDurable(file, bytes);
     }
     this.applied.set(path.relative(this.dir, file), { sha256, machine });
+    return undefined;
   }
 
-  // the file and bytes an event names, or none, said in the log, for one the docs cannot take
-  private named(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): { file: string; bytes?: Buffer; sha256?: string } | undefined {
+  // the file and bytes an event names and what it was made on, or none, said in the log, for one the docs cannot take
+  private named(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Named | undefined {
     try {
-      if (kind === 'docs.delete') return { file: inside(this.dir, DocsDelete.parse(data).path) };
-      const w = DocsWrite.parse(data);
-      const bytes = Buffer.from(w.data, 'base64');
-      if (sha256Hex(bytes) !== w.sha256) throw new Error(`${w.path} did not arrive as it left`);
-      return { file: inside(this.dir, w.path), bytes, sha256: w.sha256 };
+      const e = kind === 'docs.write' ? DocsWrite.parse(data) : { ...DocsDelete.parse(data), data: undefined, sha256: undefined };
+      const bytes = e.data === undefined ? undefined : Buffer.from(e.data, 'base64');
+      if (bytes && sha256Hex(bytes) !== e.sha256) throw new Error(`${e.path} did not arrive as it left`);
+      const file = inside(this.dir, e.path);
+      if (!e.id) this.log.info(`docs: ${kind} of ${e.path} from ${this.nameOf(machine)} carries no id, as an older release journaled it; taken`);
+      const made = [e.base, ...(e.prev === undefined ? [] : [e.prev ?? undefined])];
+      return { file, bytes, sha256: e.sha256, id: e.id ?? newMutationId(), made, prev: e.prev };
     } catch (e) {
       this.log.error(`docs: ${kind} from ${machine} dropped: ${(e as Error).message}`);
       return undefined;
     }
+  }
+
+  // a write goes beside the file, into the copy kept of this machine's change before it if one holds that, so changes
+  // made apart keep one copy; a delete leaves the file
+  private conflict(n: Named, machine: MachineId): Conflict {
+    const name = this.nameOf(machine);
+    const file = path.relative(this.dir, n.file);
+    if (!n.bytes) {
+      this.log.info(`docs: ${stayedLine(file, name)}`);
+      return { file };
+    }
+    const dir = path.dirname(n.file);
+    const stem = `${path.basename(n.file, '.md')}.${name.replace(/[^A-Za-z0-9._-]/g, '-')}.`;
+    const mine = keptIn(dir, stem).map((f) => ({ f, sha256: shaOf(f) })).find((k) => k.sha256 && (k.sha256 === n.sha256 || k.sha256 === n.prev));
+    const kept = mine?.f ?? path.join(dir, `${stem}${n.id}.conflict.md`);
+    if (mine?.sha256 !== n.sha256) {
+      fs.mkdirSync(dir, { recursive: true });
+      writeDurable(kept, n.bytes);
+    }
+    this.log.info(`docs: ${keptLine(file, name, kept)}`);
+    return { file, kept: path.relative(this.dir, kept) };
   }
 
   /** Calls `changed` once the docs have rested after a change, with the machine whose event made it, if one did. */
@@ -163,10 +232,10 @@ export class HomeDocs {
  */
 export class WorkerDocs {
   readonly handlers: Handlers;
-  // each doc's sha256 as this machine and the home last both held it
+  // each doc's sha256 as the home's last tar brought it
   private synced: Record<string, string> = {};
-  // the outbox seq of the last change journaled for each doc
-  private seqs = new Map<string, number>();
+  // each doc's last change journaled here that no tar has covered since: its outbox seq, and its sha256 but for a removal
+  private pending = new Map<string, { seq: number; sha256?: string }>();
   // a doc too large to journal, by the sha256 it was refused at, so it is said once
   private refused = new Map<string, string>();
   private queue: Promise<void> = Promise.resolve();
@@ -190,11 +259,12 @@ export class WorkerDocs {
   // a path gone stands for every doc under it
   private changed(rel: string, data?: Buffer): void {
     if (data) return this.journal(rel, data);
-    for (const k of Object.keys(this.synced)) {
+    for (const k of new Set([...Object.keys(this.synced), ...this.pending.keys()])) {
       if ((k === rel || k.startsWith(`${rel}/`)) && !fs.existsSync(path.join(this.o.dir, k))) this.journal(k);
     }
   }
 
+  // a doc's content, unless the home has it coming already: this machine's last change to it, or else the home's last tar
   private journal(rel: string, data?: Buffer): void {
     const sha256 = data && sha256Hex(data);
     if (data && sha256 && data.length > NOTE_MAX) {
@@ -203,18 +273,18 @@ export class WorkerDocs {
       return;
     }
     this.refused.delete(rel);
-    if (sha256 === this.synced[rel]) return;
-    const seq = data ? this.o.connection.journal('docs.write', { path: rel, data: data.toString('base64'), sha256 }) : this.o.connection.journal('docs.delete', { path: rel });
-    this.seqs.set(rel, seq);
-    if (sha256) this.synced[rel] = sha256;
-    else delete this.synced[rel];
-    this.save();
+    const last = this.pending.get(rel);
+    if (sha256 === (last ? last.sha256 : this.synced[rel])) return;
+    const base = this.synced[rel];
+    const made = { id: newMutationId(), path: rel, ...(base && { base }), ...(last && { prev: last.sha256 ?? null }) };
+    const seq = data ? this.o.connection.journal('docs.write', { ...made, data: data.toString('base64'), sha256 }) : this.o.connection.journal('docs.delete', made);
+    this.pending.set(rel, { seq, sha256 });
   }
 
-  // each doc whose content here is not what both sides last held
+  // each doc whose content here is not what this machine last journaled or the home last sent
   private catchUp(): void {
     const here = new Set(filesIn(this.o.dir));
-    for (const rel of new Set([...here, ...Object.keys(this.synced)])) this.journal(rel, here.has(rel) ? fs.readFileSync(path.join(this.o.dir, rel)) : undefined);
+    for (const rel of new Set([...here, ...Object.keys(this.synced), ...this.pending.keys()])) this.journal(rel, here.has(rel) ? fs.readFileSync(path.join(this.o.dir, rel)) : undefined);
   }
 
   // the blob's id is taken before the home sends a byte of it; tars are settled one at a time, in order
@@ -239,8 +309,9 @@ export class WorkerDocs {
   private settle(from: string, seq: number): void {
     this.catchUp();
     const theirs = new Set(filesIn(from));
-    for (const rel of new Set([...theirs, ...filesIn(this.o.dir)])) {
-      if ((this.seqs.get(rel) ?? 0) > seq || this.refused.has(rel)) continue;
+    for (const rel of new Set([...theirs, ...filesIn(this.o.dir), ...Object.keys(this.synced)])) {
+      const last = this.pending.get(rel);
+      if ((last?.seq ?? 0) > seq || this.refused.has(rel)) continue;
       const file = path.join(this.o.dir, rel);
       if (!theirs.has(rel)) {
         fs.rmSync(file, { force: true });
@@ -249,12 +320,14 @@ export class WorkerDocs {
       }
       const data = fs.readFileSync(path.join(from, rel));
       const sha256 = sha256Hex(data);
-      if (this.synced[rel] === sha256) continue;
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      writeDurable(file, data);
+      // caught up, the file holds the last change journaled or else what the last tar brought
+      if ((last ? last.sha256 : this.synced[rel]) !== sha256) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        writeDurable(file, data);
+      }
       this.synced[rel] = sha256;
     }
-    for (const [rel, s] of this.seqs) if (s <= seq) this.seqs.delete(rel);
+    for (const [rel, { seq: s }] of this.pending) if (s <= seq) this.pending.delete(rel);
     this.save();
   }
 

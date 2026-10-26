@@ -34,9 +34,10 @@ import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
 import { Placement } from './placement/move.js';
-import { HomeDocs, WorkerDocs } from './placement/docs-sync.js';
+import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PrepareService } from './placement/prepare.js';
+import { homeRootOf } from './placement/repo-key.js';
 import { Replay } from './placement/replay.js';
 import { Router, forgetRobot, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
@@ -242,7 +243,7 @@ async function start(opts: Options): Promise<Daemon> {
   let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
-  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log);
+  const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m);
   // what a worker did while this Mac slept, applied once each
   const replay = worker ? undefined : new Replay({ store, paths, log });
   const links = worker ? undefined : new HomeLinks({
@@ -251,7 +252,8 @@ async function start(opts: Options): Promise<Daemon> {
     ...(replay && { onMutation: (data: unknown, machine: MachineId) => replay.prepare(data, machine) }),
     onEvent: async (kind, data, machine) => {
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();
-      homeDocs.apply(kind, data, machine);
+      const conflict = homeDocs.apply(kind, data, machine);
+      return conflict && { change: () => noteConflict(store, machine, conflict, os.homedir()) };
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
     onCall: (method, params) => answer!(method, params),
@@ -271,6 +273,8 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const fleet = new Fleet({
     store, tmux, paths, config, log, ownership, agentsFound, remote: router,
+    // a worker names a clone as the home does once a snapshot has said where the home's user folder is
+    repoRoot: (c) => homeRootOf(c, store.state.machines, worker ? store.state.machines?.[worker.worker.homeMachineId]?.home : os.homedir()),
     ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
   });
   // what the CLI in a worker's panes starts there, and changes there while its home is away
