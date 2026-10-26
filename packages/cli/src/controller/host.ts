@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState } from '@svall/protocol';
+import { FleetConfig, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
@@ -34,8 +34,9 @@ const DU_TIMEOUT = 120_000;
 const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
-// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
-export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string };
+// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
+// port its terminal forwards from this Mac; tick: the consent a mirror row toggles
+export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
 // stopped: the step a run failed at, past which nothing ran
 export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
 
@@ -58,6 +59,8 @@ export type HostDeps = {
   fleet: { home: string; profile?: string };
   /** has this fleet's daemon link the machines enrolled since it started; one that is not running links them at its start */
   refreshLinks(): Promise<void>;
+  /** the machine's setup rows, as this fleet's daemon reads its mirror there; rejects when the daemon cannot be asked */
+  setupRows(machine: MachineId): Promise<SetupRow[]>;
 };
 
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
@@ -67,7 +70,7 @@ class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string };
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
 
 /** The step events a host command emits, and the actions they leave the user with. */
 class Runner {
@@ -97,6 +100,7 @@ class Runner {
     this.emit({
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}),
+      ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}),
     });
     return r.value;
   }
@@ -298,11 +302,11 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
   const call = agentCall(master, o);
   const versions: FarVersions = {};
   const used = fleetAgents(o.homedir);
+  const todo = (detail: string, how: string, command?: string): Outcome<void> =>
+    ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
   for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
-      const todo = (detail: string, how: string, command?: string): Outcome<void> =>
-        ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
       const v = await call(a.bin, ['--version']);
       // env exits 127 for a program it finds nowhere on that PATH; setup writes Svall's hooks only for the agents it finds
       if (v.code === 127) {
@@ -323,6 +327,12 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint, a.loginHint);
     });
   }
+  // the companion's doctor runs gh with the daemon's PATH and config home
+  await run.step('gh', () => {
+    const gh = o.report.checks.find((c) => c.name === 'gh');
+    if (!gh) return Promise.resolve({ value: undefined, status: 'skip' as const, detail: "the companion's doctor reported no gh check" });
+    return Promise.resolve(gh.status === 'ok' ? { value: undefined, detail: 'logged in; can push' } : todo(gh.detail, fixOf(gh.detail).fix, gh.run));
+  });
   return versions;
 }
 
@@ -578,6 +588,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
       await d.refreshLinks();
+      const rows = await d.setupRows(machine).catch((e: Error) => [notChecked(e, o.name)]);
+      for (const r of rows) {
+        const { step, ...out } = rowStep(r);
+        await run.step(step, () => Promise.resolve({ value: undefined, ...out }));
+      }
     } finally {
       await master.close().catch(() => undefined);
     }
@@ -665,8 +680,18 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   } finally {
     await master.close().catch(() => undefined);
   }
+  const rows = await d.setupRows(entry.id).catch((e: Error) => [notChecked(e, entry.record.name)]);
+  checks.push(...rows.map(rowCheck));
   return { machine: entry.record.name, checks, ...(release && { release }) };
 }
+
+/** A setup row as a host command's step, and as a check that keeps its action apart. */
+export const rowStep = ({ key, ...row }: SetupRow): StepEvent => ({ step: `mirror:${key}`, ...row });
+export const rowCheck = ({ key, ...row }: SetupRow): Check => ({ name: `mirror:${key}`, ...row });
+
+/** The one row a command makes of a daemon it could not ask for the rows. */
+export const notChecked = (e: Error, name: string): SetupRow =>
+  ({ key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `svall host doctor ${name} once Svall is open` });
 
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });

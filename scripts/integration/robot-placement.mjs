@@ -102,16 +102,20 @@ function install() {
   sh(L, `systemctl --user is-active ${UNIT}`);
 
   const add = sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false });
-  const steps = lines(add.stdout).filter((e) => e.step && e.status !== 'start');
+  const events = lines(add.stdout);
+  const steps = events.filter((e) => e.step && e.status !== 'start');
+  // there is no Codex or gh on the machine, and a mirror not yet checked, which are advice, not failures
+  const isAdvice = (s) => s.status === 'warn' && (/codex/i.test(`${s.step} ${s.detail ?? ''}`) || s.step === 'gh' || s.step === 'mirror:unchecked');
   for (const s of steps) {
-    // there is no Codex on the machine, which is advice, not a failure
-    const advice = s.status === 'warn' && /codex/i.test(`${s.step} ${s.detail ?? ''}`);
-    check(`host add ${s.step}`, s.status === 'ok' || s.status === 'skip' || advice, `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+    check(`host add ${s.step}`, s.status === 'ok' || s.status === 'skip' || isAdvice(s), `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   }
   for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'enrol', 'probe', 'registry']) {
     check(`host add ${want}`, steps.some((s) => s.step === want), 'step missing');
   }
-  check('host add exit', add.code === 0, () => `exit ${add.code}: ${add.stdout.trim().split('\n').at(-1)}`);
+  const advised = new Set(steps.filter(isAdvice).map((s) => s.action));
+  const result = events.at(-1);
+  check('host add exit', add.code === 0 || (result?.result === 'actions' && !result.stopped && result.actions.every((a) => advised.has(a))),
+    () => `exit ${add.code}: ${add.stdout.trim().split('\n').at(-1)}`);
   const ids = {
     fleet: JSON.parse(sh(L, 'cat ~/.svall/fleet.json').stdout).id,
     local: JSON.parse(sh(L, 'svall version --json').stdout).machineId,

@@ -8,12 +8,12 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
-import { FleetId, MachineId, OLDEST_STATE_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState } from '@svall/protocol';
+import { FleetId, MachineId, OLDEST_STATE_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState, type SetupRow } from '@svall/protocol';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { shq } from '@svall/svalld/text';
-import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
+import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -102,9 +102,24 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     verify: (dir, id) => signer.verify(dir, id),
     fleet: { home: fleet },
     refreshLinks: () => { refreshed++; return Promise.resolve(); },
+    setupRows: () => Promise.resolve([]),
     ...o,
   };
 }
+
+// setup rows as the home's machines.setup words them for trift
+const unticked = (item: string): SetupRow => {
+  const name = item.split(':').at(-1)!;
+  const field = `env.${name.toUpperCase()}_API_KEY`;
+  return {
+    key: item, status: 'warn', action: `copy ${name}'s keys to trift`,
+    detail: `mirrored without ${field} ${name.slice(0, 3)}…90; or set them in ~/.svall/mirror-overrides on trift`,
+    tick: { item, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`] },
+  };
+};
+const varRow = (v: string): SetupRow =>
+  ({ key: `var:${v}`, status: 'warn', action: `set ${v} on trift`, run: `svall worker env ${v}`, detail: `gamma reads ${v}, which trift's daemon does not have` });
+const okRow = (key: string): SetupRow => ({ key, status: 'ok', detail: `${key.split(':').at(-1)} is set on trift` });
 
 /** Everything a healthy Ubuntu companion answers, in the order `host add` asks for it. */
 function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean; tmux?: { stdout?: string; stderr?: string; code?: number }; home?: string } = {}): void {
@@ -791,8 +806,58 @@ describe('host add', () => {
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
       'name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger',
-      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'enrol', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry',
+      'release', 'upload', 'install', 'tmux', 'service', 'identity', 'enrol', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry',
     ]);
+  });
+
+  it('host add ends with the mirror rows after the registry step, each with its tick, and two unticked servers count as two things', async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const asked: MachineId[] = [];
+    const rows = [unticked('claude:mcp:linear'), unticked('codex:mcp:github'), varRow('GAMMA_TOKEN')];
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: (m) => { asked.push(m); return Promise.resolve(rows); } }));
+    await d.close();
+    expect(asked).toEqual([REMOTE]);
+    expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-4)).toEqual(['registry', 'mirror:claude:mcp:linear', 'mirror:codex:mcp:github', 'mirror:var:GAMMA_TOKEN']);
+    expect(step('mirror:claude:mcp:linear').at(-1)).toMatchObject({ status: 'warn', action: "copy linear's keys to trift", tick: { item: 'claude:mcp:linear', on: false } });
+    expect(step('mirror:var:GAMMA_TOKEN').at(-1)).toMatchObject({ status: 'warn', action: 'set GAMMA_TOKEN on trift', run: 'svall worker env GAMMA_TOKEN' });
+    expect(out).toMatchObject({ result: 'actions', actions: ["copy linear's keys to trift", "copy github's keys to trift", 'set GAMMA_TOKEN on trift'] });
+  });
+
+  it('host add whose daemon is not running ends in one not-checked row and the outcome line', async () => {
+    const { outcomeText } = await import('../src/commands/host.js');
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: () => Promise.reject(new Error('svalld is not running')) }));
+    await d.close();
+    expect(step('mirror:unchecked').at(-1)).toEqual({
+      step: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall host doctor trift once Svall is open',
+    });
+    expect(outcomeText(out, 'add', 'trift')).toBe('trift needs 1 thing before robots can move there:\n  svall host doctor trift once Svall is open');
+  });
+
+  it("the gh step reads the companion doctor's gh check: logged in, or gh auth login with the terminal", async () => {
+    const said = (gh: Record<string, string>): string => JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'gh', ...gh }] });
+    const loggedOut = 'not logged in: gh auth login (pull request links stay unresolved)';
+    for (const [gh, want] of [
+      [{ status: 'ok', detail: 'logged in' }, { status: 'ok', detail: 'logged in; can push' }],
+      [{ status: 'warn', detail: loggedOut, run: 'gh auth login' },
+        { status: 'warn', detail: loggedOut, action: 'ssh trift.test, then gh auth login (pull request links stay unresolved)', run: 'gh auth login' }],
+    ] as const) {
+      ssh.clearReplies();
+      events = [];
+      healthy({ doctor: said(gh) });
+      // stops at the probe, with no daemon to answer it, past the agents
+      await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+      expect(step('gh')).toEqual([{ step: 'gh', ...want }]);
+    }
+    ssh.clearReplies();
+    events = [];
+    healthy();
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    expect(step('gh')).toEqual([{ step: 'gh', status: 'skip', detail: "the companion's doctor reported no gh check" }]);
   });
 
   it('stops at the service when the fleet\'s unit is not running', async () => {
@@ -1108,6 +1173,29 @@ describe('host doctor', () => {
     expect(await release({}, false)).toBe(`1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}`);
   });
 
+  it('host doctor lists the rows as checks with action, tick and forward; the verdict counts each warn row with an action', async () => {
+    const { doctorVerdict } = await import('../src/commands/host.js');
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
+    const login: SetupRow = { key: 'oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455, detail: 'log in once on trift with codex mcp login figma; Svall cannot see whether you did' };
+    const asked: MachineId[] = [];
+    const report = await doctorHost('trift', deps({
+      registry: registered(),
+      setupRows: (m) => { asked.push(m); return Promise.resolve([unticked('claude:mcp:linear'), unticked('codex:mcp:github'), okRow('var:X'), login]); },
+    }));
+    expect(asked).toEqual([REMOTE]);
+    expect(report.checks.filter((c) => c.name.startsWith('mirror:'))).toMatchObject([
+      { name: 'mirror:claude:mcp:linear', status: 'warn', action: "copy linear's keys to trift", tick: { on: false } },
+      { name: 'mirror:codex:mcp:github', status: 'warn', action: "copy github's keys to trift", tick: { on: false } }, { name: 'mirror:var:X', status: 'ok' },
+      { name: 'mirror:oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455 },
+    ]);
+    // after the checks the machine answers
+    expect(report.checks.findIndex((c) => c.name.startsWith('mirror:'))).toBe(report.checks.length - 4);
+    expect(doctorVerdict(report.checks, 'trift')).toBe('trift needs 2 things before robots can move there: mirror:claude:mcp:linear, mirror:codex:mcp:github');
+  });
+
   it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {
     const config = path.join(work, 'config');
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off for linus' }) });
@@ -1122,7 +1210,8 @@ describe('host doctor', () => {
     } finally {
       out.mockRestore();
     }
-    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
+    // linger, and the mirror's one not-checked row, as this fleet's daemon is not running
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 2, release: '1.2.3' } });
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
   });
 
@@ -2506,6 +2595,19 @@ describe('the last line a run prints', () => {
     const { stepLine } = await import('../src/commands/host.js');
     expect(stepLine({ step: 'replicas', status: 'warn', detail: '3.0 MB … in /a; delete it\n1.2 GB … in /b; delete it' }))
       .toBe('! replicas  3.0 MB … in /a; delete it\n    1.2 GB … in /b; delete it');
+  });
+
+  it('stepLine prints [ ] before an unticked row and [x] before a ticked one', async () => {
+    const { stepLine } = await import('../src/commands/host.js');
+    const { checkLines } = await import('../src/commands/doctor.js');
+    const row = unticked('claude:mcp:linear');
+    expect(stepLine(rowStep(row))).toMatch(/^! mirror:claude:mcp:linear  \[ \] mirrored without .* -> copy linear's keys to trift$/);
+    expect(stepLine(rowStep({ ...row, status: 'ok', detail: 'keys copied to trift', action: undefined, tick: { ...row.tick!, on: true } })))
+      .toBe('✓ mirror:claude:mcp:linear  [x] keys copied to trift');
+    expect(stepLine(rowStep(varRow('X')))).toMatch(/^! mirror:var:X  gamma reads X/);
+    expect(checkLines([rowCheck(row), { name: 'release', status: 'ok', detail: '1.2.3' }])).toEqual([
+      `! mirror:claude:mcp:linear  [ ] ${row.detail} -> copy linear's keys to trift`, `✓ ${'release'.padEnd(row.key.length + 'mirror:'.length)}  1.2.3`,
+    ]);
   });
 
   it('records the step a run stopped at', async () => {

@@ -16,7 +16,7 @@ import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, upgradeHos
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { farProfile, type Target } from '../target.js';
-import { MARK, type Check } from '../checks-view.js';
+import { MARK, tickMark, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
 import { withClient } from './fleet.js';
 
@@ -61,12 +61,14 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     fleet: { home: fleet.home, ...(farProfile(fleet) && { profile: farProfile(fleet) }) },
     // a daemon that is not running links the machine when it starts
     refreshLinks: () => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.refresh', {})).then(() => undefined, () => undefined),
+    // a machine just linked has up to waitMs to come up and answer
+    setupRows: (machine) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs: 30_000 })).then((r) => r.rows),
   };
 }
 
 /** A step as a run prints it; a detail of several lines, as the replicas step's, lists them under the step. */
 export const stepLine = (e: StepEvent): string =>
-  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
+  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${tickMark(e.tick)}${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
 
 type Op = 'add' | 'upgrade' | 'rollback' | 'remove';
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
@@ -93,10 +95,10 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`)].join('\n');
 }
 
-/** The last line of a check: ready, or how many failed checks are left before robots can move there. */
+/** The last line of a check: ready, or how many failed checks and warnings with something to do are left before robots can move there. */
 export function doctorVerdict(checks: Check[], name: string): string {
-  const failed = checks.filter((c) => c.status === 'fail');
-  return failed.length ? `${needsLine(name, failed.length)}: ${failed.map((c) => c.name).join(', ')}` : readyLine(name);
+  const left = checks.filter((c) => c.status === 'fail' || (c.status === 'warn' && c.action));
+  return left.length ? `${needsLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}` : readyLine(name);
 }
 
 const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
