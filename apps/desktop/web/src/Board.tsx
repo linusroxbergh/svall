@@ -15,7 +15,8 @@ import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
 import { ViewSwitch } from './ViewSwitch.js';
 
-type Filter = { island?: string; needsYou: boolean };
+// one island, the open ones, or with neither every island
+type Filter = { island?: string; open: boolean; needsYou: boolean };
 // the card a drag carries, where the pointer holds it, and the column under the pointer
 type Lift = { id: string; from: string; x: number; y: number; dx: number; dy: number; w: number; h: number; over?: string };
 // the column a grip drag carries, and the side of the column under the pointer it would land on
@@ -152,7 +153,7 @@ export function Board() {
   const placing = useApp((s) => scribePlaces(s.fleet));
   const placingNow = useApp((s) => s.placingNow);
   const toastShown = useApp((s) => s.settings.boardToastShown);
-  const [filter, setFilter] = useState<Filter>({ needsYou: false });
+  const [filter, setFilter] = useState<Filter>({ open: true, needsYou: false });
   const [renaming, setRenaming] = useState<string>();
   const [renamingRobot, setRenamingRobot] = useState<string>();
   const [pending, setPending] = useState<{ id: string; column: string }>();
@@ -181,7 +182,9 @@ export function Board() {
   const shown = useMemo(() => placed(fleet, pending), [fleet, pending]);
   const arrived = useArrivals(shown);
   const island = filter.island && fleet.islands[filter.island] ? filter.island : undefined;
-  const inIsland = (c: Robot) => !island || c.islandId === island;
+  const open = (c: Robot) => !fleet.islands[c.islandId]?.collapsed;
+  const openOn = !island && filter.open;
+  const inIsland = (c: Robot) => (island ? c.islandId === island : !openOn || open(c));
   const islandOf = (c: Robot) => (island ? undefined : fleet.islands[c.islandId]?.name);
   const machineOf = (c: Robot) => (isPlaced(c) ? machineName(fleet, c.machine) : undefined);
   const cols = boardColumns(shown, (c) => inIsland(c) && (!filter.needsYou || wantsUser(c, fleet)), arrived);
@@ -328,13 +331,13 @@ export function Board() {
       <div className="kb-bar">
         <ViewSwitch />
         <span className="kb-sep" />
+        {chip('open', openOn, 'Open islands', all.filter(open).length, () => setFilter((f) => ({ ...f, island: undefined, open: !openOn })))}
         {(backChips || moreChips) && (
           <button type="button" className="kb-page" data-testid="chips-back" aria-label="Earlier islands" disabled={!backChips} onClick={() => pageChips(-1)}><ChevronGlyph /></button>
         )}
         <div ref={chips} className="kb-chips" role="group" aria-label="Islands" data-testid="island-chips" data-more={moreChips} onScroll={readChips}>
-          {chip('all', !island, 'All islands', all.length, () => setFilter((f) => ({ ...f, island: undefined })))}
           {islandsSorted(fleet).map((i) => chip(i.id, island === i.id, i.name, robotsOf(fleet, i.id).length,
-            () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id }))))}
+            () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id, open: false }))))}
         </div>
         {(backChips || moreChips) && (
           <button type="button" className="kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><ChevronGlyph next /></button>
