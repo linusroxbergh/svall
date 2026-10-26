@@ -25,7 +25,7 @@ import { AgentEvents } from './fleet/agent-events.js';
 import { ControlLink, type PaneEvents } from './fleet/control.js';
 import { Poll, resumeOf, type Resume } from './fleet/poll.js';
 import { Prompts, type WaitResult } from './fleet/prompts.js';
-import { repairBrief } from './handover/sessions/repair.js';
+import { repairBrief } from './sessions/repair.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';

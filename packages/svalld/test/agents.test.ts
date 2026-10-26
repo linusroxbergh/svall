@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AGENTS, compareVersions, findAgents, mainAgent, onPath, versionOk } from '../src/agents.js';
-import { sessionAdapter } from '../src/handover/sessions/registry.js';
+import { sessionAdapter } from '../src/sessions/registry.js';
 
 const exec = (files: string[]) => (f: string) => files.includes(f);
 

@@ -1,5 +1,5 @@
 import type { AgentKind } from '@svall/protocol';
-import { condenseTurns } from '../../agent/transcript.js';
+import { condenseTurns } from '../agent/transcript.js';
 
 const NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 

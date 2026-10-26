@@ -12,7 +12,7 @@ import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
 import { TerminalHub } from '../src/terminals.js';
-import { hasGit } from './handover/git-fixture.js';
+import { hasGit } from './git-fixture.js';
 import { cleanHomes, makeHome, ownerOf } from './helpers.js';
 import { moveWorld, type MoveWorld } from './placement/move-world.js';
 import { W, island, placed, world } from './placement/world.js';

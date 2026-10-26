@@ -1,6 +1,8 @@
 import type { Blocker, HandoverEntity } from '@svall/protocol';
 import { compareVersions } from '../agents.js';
-import { handoverGit, type GitRunner } from '../links/git.js';
+import { gitVersion, handoverGit, type GitRunner } from '../links/git.js';
+
+export { gitVersion };
 
 // the first git that opens a repository using each extension; one missing here needs the git that opened it on the source
 const INTRODUCED: Record<string, string> = {
@@ -15,12 +17,6 @@ const INTRODUCED: Record<string, string> = {
 
 /** A carried repository's format version and extensions, names lowercased as git reads them. */
 export type GraphExtensions = { id: string; commonDir: string; version: number; extensions: Record<string, string> };
-
-/** `git --version`'s number, or nothing where git cannot run. */
-export async function gitVersion(git: GitRunner = handoverGit): Promise<string | undefined> {
-  const r = await git(['--version'], '/');
-  return r.code === 0 ? /(\d+\.\d+(?:\.\d+)?)/.exec(r.stdout)?.[1] : undefined;
-}
 
 /** What a repository's own config file says about the git that can open it. */
 export async function readExtensions(commonDir: string, git: GitRunner = handoverGit): Promise<Pick<GraphExtensions, 'version' | 'extensions'>> {

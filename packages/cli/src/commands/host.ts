@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
 import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
+import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';

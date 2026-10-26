@@ -5,11 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { emptyState, FleetConfig, type AgentKind, type MachineId, type TransferSession } from '@svall/protocol';
-import { sha256Hex } from '../../src/handover/hash.js';
+import { sha256Hex } from '../../src/hash.js';
 import { buildInventory } from '../../src/handover/inventory.js';
 import { buildManifest } from '../../src/handover/manifest.js';
-import { adapterFor, installSession, probeAgent, sessionAdapter, type AgentProbe } from '../../src/handover/sessions/registry.js';
-import type { SessionFs } from '../../src/handover/sessions/types.js';
+import { adapterFor, installSession, probeAgent, sessionAdapter, type AgentProbe } from '../../src/sessions/registry.js';
+import type { SessionFs } from '../../src/sessions/types.js';
 
 // Real agents on two machines, as a handover would move them: a session started on one resumes on the other
 // under the same id and still remembers what it was told. Both machines must have Claude Code and Codex logged

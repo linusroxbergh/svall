@@ -2,15 +2,15 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hookCommand, mergeStatusLine, statusWrapper } from '../../src/agent-hooks.js';
-import { Config } from '../../src/config.js';
-import { ProcessTable, bootId, killGroup, parsePs } from '../../src/handover/processes.js';
-import { installedScripts } from '../../src/paths.js';
-import { tmuxConfText } from '../../src/tmux/conf.js';
-import { Tmux } from '../../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
+import { hookCommand, mergeStatusLine, statusWrapper } from '../src/agent-hooks.js';
+import { Config } from '../src/config.js';
+import { ProcessTable, bootId, killGroup, parsePs } from '../src/processes.js';
+import { installedScripts } from '../src/paths.js';
+import { tmuxConfText } from '../src/tmux/conf.js';
+import { Tmux } from '../src/tmux/tmux.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
-const fixture = (name: string): string => fs.readFileSync(path.join(import.meta.dirname, '../fixtures/ps', name), 'utf8');
+const fixture = (name: string): string => fs.readFileSync(path.join(import.meta.dirname, 'fixtures/ps', name), 'utf8');
 const args = (rows: { args: string }[] | undefined): string[] | undefined => rows?.map((r) => r.args);
 
 // the same panes as each platform's ps prints them: a prompt, a pipeline, a background job, Claude with its MCP

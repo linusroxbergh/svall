@@ -117,7 +117,7 @@ describe('checks', () => {
 
 describe('what Svall reads stays listed', () => {
   test('every flag the OpenCode session adapter passes is looked for in its session command\'s help', () => {
-    const adapter = fs.readFileSync(path.join(ROOT, 'packages/svalld/src/handover/sessions/opencode.ts'), 'utf8');
+    const adapter = fs.readFileSync(path.join(ROOT, 'packages/svalld/src/sessions/opencode.ts'), 'utf8');
     const passed = Array.from(adapter.matchAll(/\['session', '(\w+)', ([^\]]*)\]/g), (m) => [m[1], Array.from(m[2].matchAll(/'(--[\w-]+)'/g), (x) => x[1])] as const);
     expect(new Set(passed.map(([sub]) => sub))).toEqual(new Set(['export', 'import', 'delete']));
     for (const [sub, flags] of passed) {

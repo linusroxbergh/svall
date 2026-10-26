@@ -4,9 +4,9 @@ import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { noServer, type LiveWindow, type Tmux } from '../tmux/tmux.js';
-import { boundary } from './failpoints.js';
-import { ProcessTable, bootId, killGroup, suspended, type PaneProcesses, type Proc } from './processes.js';
-import type { JournalState, SourceJournal } from './journal.js';
+import { boundary } from '../failpoints.js';
+import { ProcessTable, bootId, killGroup, suspended, type PaneProcesses, type Proc } from '../processes.js';
+import type { JournalState, SourceJournal } from '../handover/journal.js';
 
 export type TerminalRef = { robotId: string; term?: 2 };
 

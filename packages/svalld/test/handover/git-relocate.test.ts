@@ -6,7 +6,7 @@ import { discoverGit } from '../../src/handover/git-graph.js';
 import { relocationBlockers, staleBlockers } from '../../src/handover/git-relocate.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { runGit } from '../../src/links/git.js';
-import { crew, git, hasGit, seedHere, type Layout } from './git-fixture.js';
+import { crew, git, hasGit, seedHere, type Layout } from '../git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });

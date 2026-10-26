@@ -5,9 +5,9 @@ import path from 'node:path';
 import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, TransferManifestV1 } from '@svall/protocol';
 import { DIRS_ARGS, handoverGit, parseDirs, type GitRunner } from '../links/git.js';
 import { oneLine } from '../text.js';
-import { writeDurable } from './durable.js';
+import { writeDurable } from '../durable.js';
 import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, repoCommands, runsHere, type WorktreeEntry } from './git-graph.js';
-import { byCodeUnit, sha256Hex } from './hash.js';
+import { byCodeUnit, sha256Hex } from '../hash.js';
 
 /** What `git init` probes of the filesystem a Git directory sits on; `precomposeUnicode` only where git probes it, on macOS. */
 export type FsRules = { ignoreCase: boolean; precomposeUnicode?: boolean };

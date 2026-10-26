@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import { FleetConfig, type FleetId, type MachineId, type MethodName, type OwnerRecord, type OwnershipInfo, type Params, type Result } from '@svall/protocol';
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import type { OwnerAnswer } from '@svall/svalld/gateway/client';
-import { appendDurable, writeDurable } from '@svall/svalld/handover/durable';
+import { appendDurable, writeDurable } from '@svall/svalld/durable';
 import { HandoverJournal, handoverGeneration } from '@svall/svalld/handover/journal';
 import { OwnerCache } from '@svall/svalld/ownership/state';
 import { resolvePaths } from '@svall/svalld/paths';

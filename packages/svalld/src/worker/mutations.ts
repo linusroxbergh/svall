@@ -3,7 +3,7 @@ import os from 'node:os';
 import { ApiError, Mutation, UPDATE_FIELDS, type MachineId, type MethodName, type ParsedParams, type Result, type Robot } from '@svall/protocol';
 import { Invalid } from '../errors.js';
 import type { Fleet } from '../fleet.js';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import { newMutationId } from '../ids.js';
 import type { HomeConnection } from '../link/worker.js';
 import { resolveRepo } from '../links/git.js';

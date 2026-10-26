@@ -11,7 +11,7 @@ import { discoverGit } from '../../src/handover/git-graph.js';
 import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
 import { exportSnapshot, NOT_BOUND, NOT_PATHS, PATH_FIELDS, portablePathValues } from '../../src/handover/portable-path.js';
 import { relocationProblem } from '../../src/handover/relocate.js';
-import { git, hasGit } from './git-fixture.js';
+import { git, hasGit } from '../git-fixture.js';
 
 const made: string[] = [];
 const tmp = (): string => { const d = fs.realpathSync(fs.mkdtempSync('/tmp/svall-t-')); made.push(d); return d; };

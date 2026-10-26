@@ -13,11 +13,11 @@ import { AuthorityFailure } from '../../src/gateway/authority.js';
 import { SourceJournal, openJournal } from '../../src/handover/journal.js';
 import { extensionBlockers } from '../../src/handover/git-extensions.js';
 import { manifestDigest, readManifest, realScanFs } from '../../src/handover/manifest.js';
-import { ProcessTable, type Proc } from '../../src/handover/processes.js';
+import { ProcessTable, type Proc } from '../../src/processes.js';
 import { ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
-import type { Clock } from '../../src/handover/rest.js';
+import type { Clock } from '../../src/placement/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
-import { agentProber, cliRunner, resumeFolders, type AgentProbe, type AgentRun } from '../../src/handover/sessions/registry.js';
+import { agentProber, cliRunner, resumeFolders, type AgentProbe, type AgentRun } from '../../src/sessions/registry.js';
 import { HEAP_PER_FILE, type Authority, type SourceDeps } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import { silentLogger } from '../../src/log.js';
@@ -30,7 +30,7 @@ import { Store } from '../../src/store.js';
 import type { GitRunner } from '../../src/links/git.js';
 import type { LiveWindow } from '../../src/tmux/tmux.js';
 import { cleanHomes, idleSides, makeHome, waitFor } from '../helpers.js';
-import { fakeEnv, hold } from './fake-opencode.js';
+import { fakeEnv, hold } from '../sessions/fake-opencode.js';
 
 afterEach(cleanHomes);
 

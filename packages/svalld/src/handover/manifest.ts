@@ -4,13 +4,13 @@ import {
   TRANSFER_SCHEMA_VERSION, TransferManifestV1,
   type Blocker, type HandoverEntity, type ManifestSummary, type TransferFile, type TransferRoot, type TransferSession, type Warning,
 } from '@svall/protocol';
-import { writeDurable } from './durable.js';
+import { writeDurable } from '../durable.js';
 import { gitIndexDigest } from './git-graph.js';
-import { byCodeUnit, canonicalDigest, canonicalJson, hashStream } from './hash.js';
+import { byCodeUnit, canonicalDigest, canonicalJson, hashStream } from '../hash.js';
 import { CONTROL, rootMatcher, settle, unusedRepositories, type Inventory, type InventorySession } from './inventory.js';
 import { holds } from './portable-path.js';
-import { sessionAdapter } from './sessions/registry.js';
-import { SessionError, type FoundSession, type SessionAdapter } from './sessions/types.js';
+import { sessionAdapter } from '../sessions/registry.js';
+import { SessionError, type FoundSession, type SessionAdapter } from '../sessions/types.js';
 
 type Stat = Pick<fs.Stats, 'isFile' | 'isDirectory' | 'isSymbolicLink' | 'mode' | 'size' | 'mtimeMs'> & Partial<Pick<fs.Stats, 'ctimeMs' | 'ino'>>;
 

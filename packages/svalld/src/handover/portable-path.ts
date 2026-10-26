@@ -1,25 +1,9 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FleetState } from '@svall/protocol';
+import { clean, holds, realPath } from '../path-tools.js';
 
-const trim = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
-
-/** Whether `p` is `root` or lies under it, on a component boundary. */
-export const holds = (root: string, p: string): boolean => p === root || p.startsWith(root === '/' ? '/' : `${root}/`);
-
-/** The real path of `p`, spelled as the disk stores it, or of the deepest part of it that exists with the rest joined back on. */
-export function realPath(p: string, realpath: (p: string) => string = (q) => fs.realpathSync.native(q)): string {
-  const tail: string[] = [];
-  let head = p;
-  for (;;) {
-    try { return path.posix.join(realpath(head), ...tail); } catch { /* keep walking up */ }
-    const parent = path.posix.dirname(head);
-    if (parent === head) return p;
-    tail.unshift(path.posix.basename(head));
-    head = parent;
-  }
-}
+export { clean, holds, realPath };
 
 /**
  * What a handover does with a field that holds a path: `portable` names a place the fleet uses, which travels as it
@@ -199,8 +183,6 @@ export function fieldValues(doc: unknown, field: string): Found[] {
 
 /** One path a portable field names, absolute on the machine it was read on. */
 export type PathValue = { field: string; pointer: Found['pointer']; form: PortableForm; path: string };
-
-export const clean = (p: string): string => trim(path.posix.normalize(p));
 
 function pathOf(form: PortableForm, found: Found, home: string | undefined): string | undefined {
   const { value, parent } = found;

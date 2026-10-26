@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import type { OwnerRecord } from '@svall/protocol';
-import type { DurableOptions } from '../handover/durable.js';
-import { boundary } from '../handover/failpoints.js';
+import type { DurableOptions } from '../durable.js';
+import { boundary } from '../failpoints.js';
 import { silentLogger, type Logger } from '../log.js';
 import { FleetAuthority, OWNER_PARAMS, gatewayPaths, isOwnerOp, type AuthorityError } from './authority.js';
 

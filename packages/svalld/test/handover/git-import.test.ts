@@ -9,7 +9,7 @@ import { buildInventory, DEFAULT_EXCLUDES } from '../../src/handover/inventory.j
 import { buildManifest } from '../../src/handover/manifest.js';
 import { destinationView } from '../../src/handover/relocate.js';
 import { runGit, type GitRunner } from '../../src/links/git.js';
-import { robot, crew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
+import { robot, crew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from '../git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });

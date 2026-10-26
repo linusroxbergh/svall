@@ -6,15 +6,15 @@ import path from 'node:path';
 import {
   type AgentKind, type AgentAdapter, type Blocker, type Robot, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession, type Warning,
 } from '@svall/protocol';
-import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
-import { AGENTS, compareVersions, versionOf, versionOk } from '../../agents.js';
-import { robotKeyEnv } from '../../claude.js';
-import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../../codex/install.js';
-import { opencodePaths } from '../../opencode/install.js';
-import { claudePaths, resolvePaths } from '../../paths.js';
-import { PRIVATE, profileHome } from '../../profile.js';
+import { codexInstalled, hooksInstalled } from '../agent-hooks.js';
+import { AGENTS, compareVersions, versionOf, versionOk } from '../agents.js';
+import { robotKeyEnv } from '../claude.js';
+import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../codex/install.js';
+import { opencodePaths } from '../opencode/install.js';
+import { claudePaths, resolvePaths } from '../paths.js';
+import { PRIVATE, profileHome } from '../profile.js';
 import { writeDurable, type DurableStages } from '../durable.js';
-import { holds } from '../portable-path.js';
+import { holds } from '../path-tools.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { opencodeAdapter } from './opencode.js';

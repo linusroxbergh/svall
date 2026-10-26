@@ -2,10 +2,12 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, FleetState, GitCheckout, GitCommand, GitGraph, GitRegistration, HandoverEntity, Warning } from '@svall/protocol';
-import { DIRS_ARGS, handoverGit, parseDirs, type GitDirs, type GitRunner } from '../links/git.js';
+import { DIRS_ARGS, GitFailure, handoverGit, must, parseDirs, type GitDirs, type GitRunner } from '../links/git.js';
 import { oneLine } from '../text.js';
-import { byCodeUnit, sha256Hex } from './hash.js';
+import { byCodeUnit, sha256Hex } from '../hash.js';
 import { excludeMatcher, excludedPath, settle } from './inventory.js';
+
+export { GitFailure, must };
 
 /** One entry of `git worktree list --porcelain -z`. `head` is null on an unborn branch, `branch` on a detached HEAD. */
 export type WorktreeEntry = { path: string; head: string | null; branch: string | null; bare: boolean; locked?: string; prunable: boolean };
@@ -35,15 +37,6 @@ export function parseWorktreeList(stdout: string): WorktreeEntry[] {
 export const listedMain = (commonDir: string): string => (commonDir.endsWith('/.git') ? commonDir.slice(0, -5) : commonDir);
 
 export const graphId = (commonDir: string): string => `g_${sha256Hex(commonDir).slice(0, 16)}`;
-
-export class GitFailure extends Error {}
-
-/** Runs git and answers its output, or throws what it said. */
-export async function must(git: GitRunner, args: readonly string[], cwd: string, subject = cwd): Promise<string> {
-  const r = await git(args, cwd);
-  if (r.code !== 0) throw new GitFailure(`${subject}: git ${args.join(' ')} failed: ${oneLine(r.stderr) || `exit ${r.code}`}`);
-  return r.stdout;
-}
 
 // tracked paths only, the same on every machine whatever its own git configuration says
 const STATUS_ARGS = ['status', '--porcelain=v2', '-z', '--untracked-files=no', '--ignore-submodules=untracked', '--no-renames'];

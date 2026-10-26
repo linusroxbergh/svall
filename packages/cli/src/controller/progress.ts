@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { TransactionId, TransferFile } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
+import { writeDurable } from '@svall/svalld/durable';
 
 /** Where the controller keeps one transaction's files under `base`: its progress journal, and the filter files beside it. */
 export function transactionDir(transactionId: string, base: string): string {

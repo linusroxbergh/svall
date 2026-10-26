@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ResumeFolder } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
-import { AGENTS } from '../../agents.js';
-import { realPath } from '../portable-path.js';
+import { AGENTS } from '../agents.js';
+import { realPath } from '../path-tools.js';
 import { transcriptFile } from './records.js';
 import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
 

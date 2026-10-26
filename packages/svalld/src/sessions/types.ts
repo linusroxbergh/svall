@@ -1,5 +1,5 @@
 import type { AgentKind, HandoverIssueCode, ResumeFolder } from '@svall/protocol';
-import type { Version } from '../../agents.js';
+import type { Version } from '../agents.js';
 
 /** One session as its source keeps it: the agent home, and each file under it with the transcript first. */
 export type FoundSession = { home: string; transcript: string; files: string[] };

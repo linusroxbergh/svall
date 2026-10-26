@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { FleetId, Generation, MachineId, OwnerRecord, Sha256, TransactionId, type TransactionRecord } from '@svall/protocol';
-import { DurableJson, appendDurable, syncDir, writeDurable, type DurableOptions } from '../handover/durable.js';
-import { boundary, type Failpoint } from '../handover/failpoints.js';
-import { canonicalJson } from '../handover/hash.js';
+import { DurableJson, appendDurable, syncDir, writeDurable, type DurableOptions } from '../durable.js';
+import { boundary, type Failpoint } from '../failpoints.js';
+import { canonicalJson } from '../hash.js';
 
 /** Everything the gateway owns lives under one prefix: the records, and the socket they are reached through. */
 export function gatewayPaths(prefix: string) {

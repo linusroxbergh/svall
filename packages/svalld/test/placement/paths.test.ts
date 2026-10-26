@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { destinationPaths, sessionLanding, type Homes } from '../../src/placement/paths.js';
-import type { SessionFs } from '../../src/handover/sessions/types.js';
+import type { SessionFs } from '../../src/sessions/types.js';
 import { robot } from './world.js';
 
 const HOMES: Homes = {

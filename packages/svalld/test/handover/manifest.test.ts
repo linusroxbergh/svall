@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, FleetConfig, MAX_MANIFEST_BYTES, TRANSFER_SCHEMA_VERSION, type Robot, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@svall/protocol';
 import { gitIndexDigest } from '../../src/handover/git-graph.js';
-import { canonicalDigest, canonicalJson, hashStream } from '../../src/handover/hash.js';
+import { canonicalDigest, canonicalJson, hashStream } from '../../src/hash.js';
 import { buildInventory, DEFAULT_EXCLUDES, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, type Inventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { buildManifest, landingFolder, manifestDigest, readManifest, realScanFs, scanPath, spaceNeed, summarize, writeManifest, type ScanFs } from '../../src/handover/manifest.js';
 

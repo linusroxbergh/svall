@@ -7,7 +7,7 @@ import {
 import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
 import { initConfig, loadConfig, peekConfig, reservedFleetNames } from './config.js';
-import { writeDurable } from './handover/durable.js';
+import { writeDurable } from './durable.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
 import { machineId } from './machine.js';
 import { installOpencodePlugin, opencodePluginCurrent, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';

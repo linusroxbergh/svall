@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Blocker, Outcome } from '@svall/protocol';
-import { writeDurable } from '../../src/handover/durable.js';
-import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
+import { writeDurable } from '../../src/durable.js';
+import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint } from '../../src/failpoints.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { G, MAC, TRIFT, World, als, choices, fleetId, play, settledOn, worlds, type Scenario, type Target } from './fault-world.js';
 

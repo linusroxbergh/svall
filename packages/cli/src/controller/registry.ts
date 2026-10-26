@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { MachineId, MachineRecord } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
+import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId, Registry, registryFile } from '@svall/svalld/machine';
 import { svallHome } from '@svall/svalld/paths';
 

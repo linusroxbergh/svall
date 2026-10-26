@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { Blocker, TransferFile, TransferRoot } from '@svall/protocol';
-import { byCodeUnit } from './hash.js';
+import { byCodeUnit } from '../hash.js';
 import { excludedPath, noiseReader, rootMatcher } from './inventory.js';
 import { realScanFs, scanPath, type ScanFs } from './manifest.js';
 

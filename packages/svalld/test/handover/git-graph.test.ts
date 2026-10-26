@@ -6,7 +6,7 @@ import { emptyState, type Robot } from '@svall/protocol';
 import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees, repoCommands } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { handoverGit, runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
-import { robot, crew, git, hasGit, seedHere } from './git-fixture.js';
+import { robot, crew, git, hasGit, seedHere } from '../git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FleetId, TransferFile } from '@svall/protocol';
 import { resolvePaths } from '../../src/paths.js';
-import { realStages } from '../../src/handover/durable.js';
+import { realStages } from '../../src/durable.js';
 import { DEFAULT_EXCLUDES, excludeMatcher } from '../../src/handover/inventory.js';
 import { realScanFs, scanPath, type ScanFs } from '../../src/handover/manifest.js';
 import { ReplicaRecord, ReplicaStore, realReplicaFs, replicaRoots, type ReplicaOptions, type ReplicaRoot } from '../../src/handover/replicas.js';

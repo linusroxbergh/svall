@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { OwnerRecord, handoverError, type FleetId, type MachineId, type TransactionRecord } from '@svall/protocol';
-import { DurableJson } from '../handover/durable.js';
+import { DurableJson } from '../durable.js';
 import type { Logger } from '../log.js';
 import { copiedRemedy } from '../machine.js';
 import type { Paths } from '../paths.js';

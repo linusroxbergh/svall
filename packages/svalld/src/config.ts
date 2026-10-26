@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
-import { createDurable, writeDurable } from './handover/durable.js';
+import { createDurable, writeDurable } from './durable.js';
 import { resolvePaths, type Paths } from './paths.js';
 import { HOME_CWD, PRIVATE, profileHome, profileHomeCwd, profileOf, variantOf } from './profile.js';
 import { variant } from './runtime.js';

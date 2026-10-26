@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { FleetConfig, defaultHome, type FleetId, type MachineId } from '@svall/protocol';
 import { seedAgentProfiles } from '../agent-profiles.js';
-import { DurableJson, writeDurable } from '../handover/durable.js';
+import { DurableJson, writeDurable } from '../durable.js';
 import { OwnerCache } from '../ownership/state.js';
 import { resolvePaths, type Paths } from '../paths.js';
 import { PRIVATE, profileHomeCwd } from '../profile.js';

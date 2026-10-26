@@ -4,7 +4,7 @@ import { z, type ZodTypeAny } from 'zod';
 import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
-import { gitVersion } from '../handover/git-extensions.js';
+import { gitVersion } from '../links/git.js';
 import type { HandoverService } from '../handover/service.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
 import type { Mobile } from '../mobile.js';

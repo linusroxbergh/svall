@@ -6,7 +6,7 @@ import {
   type Blocker, type Robot, type HandoverChoices, type HandoverEvent, type HandoverPhase, type LandedRoot, type Outcome, type OwnerRecord, type SystemInfo, type TransferFile,
 } from '@svall/protocol';
 import { transition, type OwnerOp } from '@svall/svalld/gateway/authority';
-import { canonicalDigest } from '@svall/svalld/handover/hash';
+import { canonicalDigest } from '@svall/svalld/hash';
 import { manifestDigest } from '@svall/svalld/handover/manifest';
 import { replicaRoots } from '@svall/svalld/handover/replicas';
 import { Handover, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from '../../src/controller/handover.js';

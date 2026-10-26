@@ -8,7 +8,7 @@ import type { FleetId, MachineId } from '@svall/protocol';
 import { gatewayPaths } from '../../src/gateway/authority.js';
 import { AuthorityClient, fleetAuthority, ownerAnswer, versionMachineId, type SshRun } from '../../src/gateway/client.js';
 import { startAuthorityServer, type AuthorityServer } from '../../src/gateway/server.js';
-import { armFailpoints } from '../../src/handover/failpoints.js';
+import { armFailpoints } from '../../src/failpoints.js';
 import { adoptAtStart } from '../../src/handover/startup.js';
 import { silentLogger } from '../../src/log.js';
 

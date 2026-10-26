@@ -3,12 +3,12 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError, emptyState, type AgentAdapter, type FleetState, type MachineId, type Robot } from '@svall/protocol';
 import { AGENTS } from '../../src/agents.js';
-import type { AgentProbe } from '../../src/handover/sessions/registry.js';
-import type { CliRun } from '../../src/handover/sessions/types.js';
+import type { AgentProbe } from '../../src/sessions/registry.js';
+import type { CliRun } from '../../src/sessions/types.js';
 import { handoverGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
-import { git, hasGit } from '../handover/git-fixture.js';
+import { git, hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { H, W, island, robot, world } from './world.js';
 

@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Outcome } from '@svall/protocol';
 import { AuthorityClient } from '@svall/svalld/gateway/client';
-import { armFailpoints } from '@svall/svalld/handover/failpoints';
+import { armFailpoints } from '@svall/svalld/failpoints';
 import * as real from '../../../svalld/test/handover/fault-world.js';
 import { cleanHomes, makeHome } from '../../../svalld/test/helpers.js';
 import { runHandover, type CliDeps, type Ctx, type Transaction } from '../../src/commands/handover.js';

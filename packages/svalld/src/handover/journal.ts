@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { FleetConfig, FleetId, Generation, HandoverPhase, MachineId, Sha256, Term, TransactionId } from '@svall/protocol';
 import type { Paths } from '../paths.js';
-import { DurableJson, cleanupDurableTemps, realStages, syncDir, type DurableOptions } from './durable.js';
+import { DurableJson, cleanupDurableTemps, realStages, syncDir, type DurableOptions } from '../durable.js';
 
 const Terminal = z.object({ robotId: z.string().min(1), term: Term });
 const Process = z.object({ pid: z.number().int(), pgid: z.number().int(), args: z.string() });

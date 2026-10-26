@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@svall/protocol';
-import { HOOK_GUARD } from '../paths.js';
-import { isShellCommand } from '../tmux/tmux.js';
+import { HOOK_GUARD } from './paths.js';
+import { isShellCommand } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
 

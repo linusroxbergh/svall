@@ -20,21 +20,21 @@ import type { OwnershipState } from '../ownership/state.js';
 import { claudePaths, expandHome, installedScripts, type Paths } from '../paths.js';
 import { releaseVersion } from '../release.js';
 import type { Tmux } from '../tmux/tmux.js';
-import { boundary } from './failpoints.js';
+import { boundary } from '../failpoints.js';
 import { extensionBlockers, gitVersion, readExtensions } from './git-extensions.js';
 import { discoverGit } from './git-graph.js';
 import { relocationBlockers } from './git-relocate.js';
-import { canonicalJson } from './hash.js';
+import { canonicalJson } from '../hash.js';
 import { buildInventory, expandExcludes, settle, type Inventory, type InventoryRoot, type MachineMaps } from './inventory.js';
 import { SourceJournal } from './journal.js';
 import { buildManifest, readManifest, realScanFs, summarize, writeManifest, type Hashes, type ScanFs } from './manifest.js';
-import { ProcessTable } from './processes.js';
+import { ProcessTable } from '../processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
-import { classifyTerminals, launchFlags, restChoices, restTerminals, serversGone, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
+import { classifyTerminals, launchFlags, restChoices, restTerminals, serversGone, unapproved, type Clock, type RestDeps, type RestOptions } from '../placement/rest.js';
 import type { HandoverService } from './service.js';
-import { opencodeAnswered } from './sessions/opencode.js';
-import { agentBlockers, cliRunner, sessionAdapter, type AgentProbe } from './sessions/registry.js';
-import { SessionError, type CliRun } from './sessions/types.js';
+import { opencodeAnswered } from '../sessions/opencode.js';
+import { agentBlockers, cliRunner, sessionAdapter, type AgentProbe } from '../sessions/registry.js';
+import { SessionError, type CliRun } from '../sessions/types.js';
 
 /** The gateway's record for this fleet. Rejects when the gateway cannot be reached or will not say. */
 export type Authority = { get(fleetId: FleetId): Promise<OwnerRecord> };

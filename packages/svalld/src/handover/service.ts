@@ -11,7 +11,7 @@ import { handoverGit } from '../links/git.js';
 import { DestinationHandover, type DestinationDeps } from './destination.js';
 import { unreached } from './git-import.js';
 import { handoverGeneration, type HandoverJournal, type JournalFile, type JournalState } from './journal.js';
-import { agentAdapters, type AgentProber } from './sessions/registry.js';
+import { agentAdapters, type AgentProber } from '../sessions/registry.js';
 import { SourceHandover, type Authority, type SourceDeps } from './source.js';
 
 export type HandoverDeps = {

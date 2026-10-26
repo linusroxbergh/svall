@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { trimEnd, type Repo } from '@svall/protocol';
+import { oneLine } from '../text.js';
 
 const exec = promisify(execFile);
 
@@ -45,6 +46,21 @@ export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonito
 
 /** git fetching from a remote with this machine's own credentials, which never prompts for one. */
 export const cloneGit: GitRunner = gitRunner(600_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
+
+export class GitFailure extends Error {}
+
+/** Runs git and answers its output, or throws what it said. */
+export async function must(git: GitRunner, args: readonly string[], cwd: string, subject = cwd): Promise<string> {
+  const r = await git(args, cwd);
+  if (r.code !== 0) throw new GitFailure(`${subject}: git ${args.join(' ')} failed: ${oneLine(r.stderr) || `exit ${r.code}`}`);
+  return r.stdout;
+}
+
+/** `git --version`'s number, or nothing where git cannot run. */
+export async function gitVersion(git: GitRunner = handoverGit): Promise<string | undefined> {
+  const r = await git(['--version'], '/');
+  return r.code === 0 ? /(\d+\.\d+(?:\.\d+)?)/.exec(r.stdout)?.[1] : undefined;
+}
 
 /** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
 export type GitDirs = { root: string; commonDir: string; gitDir: string };

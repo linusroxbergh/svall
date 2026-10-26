@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { handoverGit, type GitRunner } from '../../src/links/git.js';
 import { applyBundle, BUNDLE_MAX, buildBundle, fingerprintOf, trackedCredentials, verifyBundle } from '../../src/placement/bundle.js';
-import { git, hasGit } from '../handover/git-fixture.js';
+import { git, hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
 afterEach(cleanHomes);

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { MachineId, OwnerRecord } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
+import { writeDurable } from '@svall/svalld/durable';
 import { OwnerCache } from '@svall/svalld/ownership/state';
 import { resolvePaths } from '@svall/svalld/paths';
 

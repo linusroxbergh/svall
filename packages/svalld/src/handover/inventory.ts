@@ -5,7 +5,7 @@ import { peekConfig, readFleetConfig } from '../config.js';
 import { resolvePaths } from '../paths.js';
 import { fleetHomes } from '../uninstall.js';
 import type { GitDiscovery } from './git-graph.js';
-import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
+import { byCodeUnit, canonicalJson, sha256Hex } from '../hash.js';
 import { exportSnapshot, holds, portablePathValues, realPath, type PathValue } from './portable-path.js';
 import { relocate, relocationProblem, type Relocation } from './relocate.js';
 

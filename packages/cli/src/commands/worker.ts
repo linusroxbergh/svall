@@ -3,7 +3,7 @@ import os from 'node:os';
 import { Command } from 'commander';
 import { z } from 'zod';
 import { WorkerFile } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
+import { writeDurable } from '@svall/svalld/durable';
 import { realRun } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
 import { resolvePaths } from '@svall/svalld/paths';

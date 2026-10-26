@@ -1,4 +1,4 @@
-import { isRelease } from '../release.js';
+import { isRelease } from './release.js';
 
 /** The party a failpoint's step runs on. */
 export type FailSide = 'controller' | 'source' | 'destination' | 'gateway';

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import { SHIM } from '../profile.js';
 import { assetDir } from '../runtime.js';
 import { readOrUndefined } from '../settings-file.js';

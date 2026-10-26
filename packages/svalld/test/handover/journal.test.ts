@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DestinationJournal, HandoverJournal, SourceJournal, openJournal } from '../../src/handover/journal.js';
-import { realStages, type DurableStages } from '../../src/handover/durable.js';
+import { realStages, type DurableStages } from '../../src/durable.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 

@@ -8,9 +8,9 @@ import { emptyState, type AgentAdapter, type FleetState, type Robot } from '@sva
 import { answer, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
-import { ProcessTable, type Proc } from '../../src/handover/processes.js';
-import type { AgentProbe } from '../../src/handover/sessions/registry.js';
-import type { CliRun } from '../../src/handover/sessions/types.js';
+import { ProcessTable, type Proc } from '../../src/processes.js';
+import type { AgentProbe } from '../../src/sessions/registry.js';
+import type { CliRun } from '../../src/sessions/types.js';
 import { HomeLinks, type Transport } from '../../src/link/home.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { handoverGit, type GitRunner } from '../../src/links/git.js';
@@ -29,7 +29,7 @@ import { TerminalHub } from '../../src/terminals.js';
 import type { Screen, Tmux } from '../../src/tmux/tmux.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { applyReport } from '../../src/worker/snapshot.js';
-import { git } from '../handover/git-fixture.js';
+import { git } from '../git-fixture.js';
 import { makeHome } from '../helpers.js';
 import { H, W, island } from './world.js';
 

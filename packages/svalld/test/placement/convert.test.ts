@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { handoverGit } from '../../src/links/git.js';
 import { convertMainCheckout, worktreeSlug } from '../../src/placement/convert.js';
-import { git, hasGit } from '../handover/git-fixture.js';
+import { git, hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
 afterEach(cleanHomes);

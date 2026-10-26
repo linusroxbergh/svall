@@ -2,7 +2,7 @@ import type { FleetId, MachineId, OwnerRecord } from '@svall/protocol';
 import type { Config } from '../config.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { boundary } from './failpoints.js';
+import { boundary } from '../failpoints.js';
 import type { JournalState } from './journal.js';
 import type { HandoverService } from './service.js';
 import type { Authority } from './source.js';

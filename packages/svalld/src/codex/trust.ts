@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import { realPath } from '../handover/portable-path.js';
+import { realPath } from '../path-tools.js';
 import { isOurs } from '../paths.js';
 
 export type HookTrust = { trusted: number; untrusted: number };

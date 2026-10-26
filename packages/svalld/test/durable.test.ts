@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DURABLE_TEMP, DurableJson, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../../src/handover/durable.js';
-import { cleanHomes, makeHome } from '../helpers.js';
+import { DURABLE_TEMP, DurableJson, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../src/durable.js';
+import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
 

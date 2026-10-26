@@ -5,9 +5,9 @@ import {
   FleetId, Generation, HandoverChoices, HandoverPhase, LandedRoot, MachineId, OwnerRecord, Sha256, TransactionId, TransferManifestV1,
   type OwnershipInfo, type Result, type SafeAction, type Standing, type Verdict,
 } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
-import { boundary } from '@svall/svalld/handover/failpoints';
-import { canonicalDigest } from '@svall/svalld/handover/hash';
+import { writeDurable } from '@svall/svalld/durable';
+import { boundary } from '@svall/svalld/failpoints';
+import { canonicalDigest } from '@svall/svalld/hash';
 import { manifestDigest } from '@svall/svalld/handover/manifest';
 import { transactionDir } from './progress.js';
 

@@ -4,9 +4,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { ApiError, ObjectName, Sha256 } from '@svall/protocol';
-import { must } from '../handover/git-graph.js';
-import { byCodeUnit, canonicalDigest, hashStream, sha256Hex } from '../handover/hash.js';
-import type { GitRunner } from '../links/git.js';
+import { byCodeUnit, canonicalDigest, hashStream, sha256Hex } from '../hash.js';
+import { must, type GitRunner } from '../links/git.js';
 
 const exec = promisify(execFile);
 

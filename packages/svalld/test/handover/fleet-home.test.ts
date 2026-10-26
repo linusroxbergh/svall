@@ -98,8 +98,8 @@ const ELSEWHERE: Record<string, string[]> = {
   'packages/svalld/src/codex/install.ts': ['.codex'],
   'packages/svalld/src/opencode/install.ts': ['.config'],
   'packages/svalld/src/handover/inventory.ts': ['.claude', '.codex', '.claude.json', '.ssh'],
-  'packages/svalld/src/handover/sessions/claude.ts': ['.config.json', '.claude.json', 'settings.json'],
-  'packages/svalld/src/handover/sessions/codex.ts': ['config.toml'],
+  'packages/svalld/src/sessions/claude.ts': ['.config.json', '.claude.json', 'settings.json'],
+  'packages/svalld/src/sessions/codex.ts': ['config.toml'],
   'packages/cli/src/controller/host.ts': ['.cache', '.local'],
 };
 

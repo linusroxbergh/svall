@@ -8,7 +8,7 @@ import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../o
 import { claudePaths, resolvePaths } from '../paths.js';
 import { profileHome } from '../profile.js';
 import { systemdDir } from '../release.js';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import type { Runtime } from '../runtime.js';
 import { readJsonSettings } from '../settings-file.js';
 import { setupFleetHome, setupUser } from '../setup.js';

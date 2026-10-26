@@ -5,7 +5,7 @@ import jsonpatch, { type Operation } from 'fast-json-patch';
 import { Robot, FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@svall/protocol';
 import { readJsonOrQuarantine } from './jsonfile.js';
 import { sinkHome, trimHome } from './layout.js';
-import { cleanupDurableTemps, syncDir, writeDurable } from './handover/durable.js';
+import { cleanupDurableTemps, syncDir, writeDurable } from './durable.js';
 import { variant } from './runtime.js';
 
 type Listener = (ops: Operation[]) => void;

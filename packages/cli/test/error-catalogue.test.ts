@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { HANDOVER_PHASES, HandoverError, HandoverIssueCode } from '@svall/protocol';
 import { AGENT_KINDS } from '@svall/svalld/agents';
-import { HANDOVER_KINDS } from '@svall/svalld/handover/sessions/registry';
+import { HANDOVER_KINDS } from '@svall/svalld/sessions/registry';
 import { AUTHORITY_ERROR_CODES } from '@svall/svalld/gateway/authority';
 
 const read = (rel: string): string => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');

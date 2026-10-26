@@ -8,17 +8,17 @@ import {
   type RobotResult, type HandoverEvent, type Outcome, type SafeAction, type StopReason, type Verdict,
 } from '@svall/protocol';
 import { compareVersions } from '@svall/svalld/agents';
-import { boundary } from '@svall/svalld/handover/failpoints';
+import { boundary } from '@svall/svalld/failpoints';
 import { graphsHere } from '@svall/svalld/handover/git-import';
 import { staleBlockers, stalePlaces } from '@svall/svalld/handover/git-relocate';
-import { canonicalDigest } from '@svall/svalld/handover/hash';
+import { canonicalDigest } from '@svall/svalld/hash';
 import { settle } from '@svall/svalld/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
 import { holds } from '@svall/svalld/handover/portable-path';
 import { destinationView, docsBlockers, relocate } from '@svall/svalld/handover/relocate';
 import { caseCollisions, rootCollisions } from '@svall/svalld/handover/probe';
 import { ARCHIVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
-import { resumeFolders } from '@svall/svalld/handover/sessions/registry';
+import { resumeFolders } from '@svall/svalld/sessions/registry';
 import { resolvePaths } from '@svall/svalld/paths';
 import { messageOf } from '@svall/svalld/text';
 import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';

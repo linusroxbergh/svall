@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
-import { appendDurable, writeDurable } from '../handover/durable.js';
+import { appendDurable, writeDurable } from '../durable.js';
 import type { Paths } from '../paths.js';
 
 // an unacknowledged entry gives way to a later one of the same kind and key
