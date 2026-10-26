@@ -275,7 +275,9 @@ async function start(opts: Options): Promise<Daemon> {
     },
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
-    mirror: new Mirror({ claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, log }),
+    mirror: new Mirror({
+      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles, log,
+    }),
     ...(homeDocs && { docs: homeDocs }),
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
@@ -312,7 +314,8 @@ async function start(opts: Options): Promise<Daemon> {
       store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
     const mirror = mirrorCalls({
-      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
+      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
+      agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
       stage: paths.cache, connection, log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, mirror, workerDocs.handlers);

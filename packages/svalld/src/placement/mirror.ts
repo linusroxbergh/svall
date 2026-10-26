@@ -22,7 +22,7 @@ const MIRROR_TREE_MAX = 200 * 1024 * 1024;
 const APPLY_MS = 2 * 60_000;
 
 /** Where a machine keeps what the mirror carries; `agentProfiles` is the fleet home's. */
-export type MirrorHomes = { claudeDir: string; codexDir: string; homedir: string; agentProfiles?: string };
+export type MirrorHomes = { claudeDir: string; codexDir: string; homedir: string; claudeJson: string; opencodeDir: string; agentProfiles?: string };
 /** Each file by where it lands: `to` starts with its home (`claude`, `codex`, `home` or `profiles`) and goes on under it. */
 export type MirrorPlan = { files: { from: string; to: string; mode: number }[]; settings: Record<string, unknown>; skipped: string[] };
 
@@ -160,7 +160,7 @@ export async function packMirror(plan: MirrorPlan, from: Pick<MirrorHomes, 'home
 }
 
 // every string under a path key moved by `move`
-function relocated(v: unknown, move: (p: string) => string, under = false): unknown {
+export function relocated(v: unknown, move: (p: string) => string, under = false): unknown {
   if (typeof v === 'string') return under && path.posix.isAbsolute(v) ? move(v) : v;
   if (Array.isArray(v)) return v.map((x) => relocated(x, move, under));
   if (typeof v === 'object' && v !== null) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, relocated(x, move, under || PATH_KEY.test(k))]));
