@@ -156,7 +156,7 @@ export const NOT_BOUND: readonly string[] = [
   'FleetState.robots.*.context[].kind', 'FleetState.robots.*.context[].source', 'FleetState.robots.*.context[].pinned', 'FleetState.robots.*.context[].prState',
   'FleetState.robots.*.shell.lastOutputAt', 'FleetState.robots.*.unread',
   'FleetState.robots.*.star', 'FleetState.robots.*.figure', 'FleetState.robots.*.columnSource',
-  'FleetState.robots.*.placement.generation', 'FleetState.robots.*.moving.phase', 'FleetState.machines.*.reachable', 'FleetState.machines.*.since',
+  'FleetState.robots.*.placement.generation', 'FleetState.robots.*.moving.phase', 'FleetState.machines.*.reachable', 'FleetState.machines.*.since', 'FleetState.machines.*.mismatch',
   'FleetState.robots.*.revive.interrupted', 'FleetState.robots.*.second.revive.interrupted',
   'FleetState.robots.*.agent.kind', 'FleetState.robots.*.agent.status', 'FleetState.robots.*.agent.contextPct', 'FleetState.robots.*.agent.background',
   'FleetState.robots.*.agent.shellsOnly', 'FleetState.robots.*.second.agent.shellsOnly',
