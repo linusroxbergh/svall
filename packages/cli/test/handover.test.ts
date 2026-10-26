@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { emptyState, FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type Outcome, type OwnerRecord, type Verdict } from '@svall/protocol';
-import { handoverCommand, launchHelper, parseDuration, runAttach, runForget, runHandover, runStatus, spawnHelper, type CliDeps, type Job, type Transaction } from '../src/commands/handover.js';
+import { handoverCommand, launchHelper, runAttach, runForget, runHandover, runStatus, spawnHelper, type CliDeps, type Job, type Transaction } from '../src/commands/handover.js';
 import { options, View } from '../src/commands/handover-view.js';
 import { connectHelper, helperPaths, HelperServer, Live, probe, type Control } from '../src/controller/helper.js';
 import type { ControllerJournal, Observation } from '../src/controller/recovery.js';
@@ -1478,9 +1478,6 @@ describe('svall handover arguments', () => {
     expect((await parse(h, 'trift', '--check', '--carry-unused')).job).toEqual({ kind: 'start', to: 'trift', choices: { carryUnused: true }, check: true });
     expect((await parse(h, '--resume')).job).toEqual({ kind: 'resume' });
     expect((await parse(h, '--abort')).job).toEqual({ kind: 'abort' });
-    expect(parseDuration('1m')).toBe(60_000);
-    expect(parseDuration('250ms')).toBe(250);
-    expect(() => parseDuration('soon')).toThrow(/duration/);
     await expect(parse(h, 'trift', '--resume')).rejects.toThrow();
     await expect(parse(h)).rejects.toThrow();
     await expect(parse(h, '--resume', '--terminate-shells')).rejects.toThrow();

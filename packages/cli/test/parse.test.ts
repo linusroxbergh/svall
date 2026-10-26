@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { int, num, point, size } from '../src/commands/parse.js';
+import { int, num, parseDuration, point, size } from '../src/commands/parse.js';
 
 describe('int', () => {
   it('names the flag a value that is not a whole number came from', () => {
@@ -31,5 +31,14 @@ describe('point and size', () => {
     expect(size('7,5', '--size')).toEqual({ w: 7, h: 5 });
     expect(point(undefined, '--cell')).toBeUndefined();
     expect(() => size('7x5', '--size')).toThrow('bad --size "7x5", expected two integers like 3,4');
+  });
+});
+
+describe('parseDuration', () => {
+  it('reads a duration in ms, s, m or h, seconds when bare, and refuses any other word', () => {
+    expect(parseDuration('1m')).toBe(60_000);
+    expect(parseDuration('250ms')).toBe(250);
+    expect(parseDuration('30')).toBe(30_000);
+    expect(() => parseDuration('soon')).toThrow('bad duration "soon"');
   });
 });

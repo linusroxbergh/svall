@@ -17,6 +17,7 @@ import { fileStore, forgettable } from '../controller/recovery.js';
 import { MachineRegistry } from '../controller/registry.js';
 import type { Target } from '../target.js';
 import { options, Prompter, View, type Words } from './handover-view.js';
+import { parseDuration } from './parse.js';
 
 /** The one handover transaction of a fleet, as the commands drive it. */
 export type Transaction = Pick<Connected, 'secrets' | 'close'> & {
@@ -55,13 +56,6 @@ const POLL_MS = 50;
 const SETTLE_MS = 150;
 
 const stopped = (error: string, stop: StopReason = 'invalid'): Outcome => ({ status: 'interrupted', phase: 'begin', error, safe: [], stop });
-
-export function parseDuration(s: string): number {
-  const m = /^(\d+(?:\.\d+)?)(ms|s|m|h)?$/.exec(s.trim());
-  if (!m) throw new Error(`bad duration "${s}": seconds, or a number with ms, s, m or h after it, like 30s`);
-  const unit = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? 's') as 'ms' | 's' | 'm' | 'h'];
-  return Math.round(Number(m[1]) * unit);
-}
 
 function words(c: Ctx): Words {
   return {
