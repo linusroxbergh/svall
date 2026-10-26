@@ -13,6 +13,11 @@ fleet stays on the Mac; the Linux machine is its worker.
 - **Move a robot** there from its card, or with `svall robot move <id> --machine <name>`, and back with **Move to
   this Mac** or `--machine local`. It keeps its conversation, its branch, its commits and its uncommitted changes, and
   keeps working while the Mac sleeps. See [Moving a robot](placement.md).
+- **While the Mac sleeps**, `svall` in a robot's terminal on a worker starts robots there, five at most until the Mac
+  answers, and updates and closes them; the Mac takes in what they did once it is back. Files, Changes and Resources
+  read a worker's robots there, read-only; the phone reaches them through the Mac; the scribe and usage cover them;
+  and a doc changed on both machines keeps the worker's version beside the Mac's as a conflict copy. See
+  [While this Mac sleeps](placement.md#while-this-mac-sleeps).
 - **A machine that was a fleet's gateway** becomes its worker with `svall host upgrade <name>`.
 
 ## Changed
