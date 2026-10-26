@@ -69,6 +69,8 @@ const ENTRIES: Record<string, Handling> = {
   'workers.json': 'machine-local',
   // a worker's own agent settings over the ones its home mirrors to it
   'mirror-overrides': 'machine-local',
+  // the keys a home's mirror may copy to each of its workers
+  'mirror-consent.json': 'machine-local',
 };
 
 // what a write, a repair, a migration or an archive leaves beside an entry, named by the helper from the entry's own name

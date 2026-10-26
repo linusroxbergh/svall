@@ -276,7 +276,8 @@ async function start(opts: Options): Promise<Daemon> {
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: new Mirror({
-      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles, log,
+      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles,
+      consent: paths.mirrorConsent, log,
     }),
     ...(homeDocs && { docs: homeDocs }),
   });
@@ -316,7 +317,7 @@ async function start(opts: Options): Promise<Daemon> {
     const mirror = mirrorCalls({
       claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
       agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
-      stage: paths.cache, connection, log,
+      stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, connection, log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, mirror, workerDocs.handlers);
   }

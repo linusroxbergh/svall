@@ -186,7 +186,7 @@ export class WorkerLink {
   /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
   pushMirror(): Promise<void> {
     if (!this.o.mirror || !this.connected()) return Promise.resolve();
-    return this.o.mirror.push(this).catch((e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
+    return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
   }
 
   /** Sends the fleet's docs to a synced worker, and once more after if they change meanwhile. */

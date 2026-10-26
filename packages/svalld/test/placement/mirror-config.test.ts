@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,6 +32,7 @@ beforeEach(() => {
   put(path.join(acme, '.mcp.json'), JSON.stringify({ pdf: { command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/pdf.js'] } }));
   put(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { acme: [{ scope: 'user', installPath: acme }] } }));
   put(path.join(mac.codexDir, 'config.toml'), '[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "github-mcp"]\nenv_vars = ["GITHUB_TOKEN"]\n');
+  fs.rmSync(path.join(mac.opencodeDir, 'opencode.jsonc'));
   put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ mcp: { servers: {
     ctx: { type: 'local', command: ['bunx', 'ctx-mcp'], environment: { K: '{env:CTX_KEY}' } },
     far: { type: 'remote', url: 'https://far.test/mcp', headers: { Authorization: 'Bearer {env:FAR_TOKEN}' } },

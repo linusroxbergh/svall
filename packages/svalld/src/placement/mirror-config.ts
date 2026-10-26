@@ -137,6 +137,10 @@ function pluginServers(installPath: string, unreadable: string[]): Entry[] {
   return [...from(path.join(installPath, '.mcp.json')), ...entries(manifest, ['mcpServers'], named), ...(inside ? from(file) : [])];
 }
 
+/** The servers of the plugin installed at `p`, each from its file; a file it cannot read is named in `unreadable`. */
+export const readPluginServers = (p: PluginInstall, unreadable: string[]): McpServer[] =>
+  pluginServers(p.installPath, unreadable).map((e) => toServer('claude', { plugin: p.name }, e));
+
 /**
  * Every agent's MCP servers: Claude's user servers, those of its projects under the home and each plugin's, once per plugin
  * and name from the first install; Codex's mcp_servers; OpenCode's in opencode.json and opencode.jsonc, OpenCode 2's under
@@ -153,10 +157,10 @@ export function readServers(homes: MirrorHomes, plugins: PluginInstall[]): { ser
   }
   const seen = new Set<string>();
   for (const p of plugins) {
-    for (const e of pluginServers(p.installPath, unreadable)) {
-      if (seen.has(JSON.stringify([p.name, e.name]))) continue;
-      seen.add(JSON.stringify([p.name, e.name]));
-      servers.push(toServer('claude', { plugin: p.name }, e));
+    for (const s of readPluginServers(p, unreadable)) {
+      if (seen.has(JSON.stringify([p.name, s.name]))) continue;
+      seen.add(JSON.stringify([p.name, s.name]));
+      servers.push(s);
     }
   }
   const toml = path.join(homes.codexDir, 'config.toml');
@@ -199,8 +203,8 @@ function credential(scheme: string, user: string, password: string | undefined):
 // the credential of each URL in `source`
 const credentials = (source: string): string[] =>
   [...source.matchAll(USERINFO)].flatMap((m) => [credential(m[1], m[2], m[3])].filter((c): c is string => c !== undefined));
-// `source` without them
-const withoutCredentials = (source: string): string =>
+/** `source` without the credential of each URL in it. */
+export const withoutCredentials = (source: string): string =>
   source.replace(USERINFO, (all, scheme: string, user: string, password?: string) => (credential(scheme, user, password) === undefined ? all : scheme));
 
 // the query parameters of `url` before any fragment
@@ -338,6 +342,19 @@ export function redacted(s: McpServer, keep: ReadonlySet<string>): Record<string
   return raw;
 }
 
+/** Where secret field `field` of a server lies in its entry `raw`: under its env, headers or oauth key, its url, or its arg. */
+export function fieldPlace(agent: AgentKind, raw: Record<string, unknown>, field: string): Place {
+  const arg = /^args\[(\d+)\]/.exec(field);
+  if (arg) {
+    const [key, from] = argsAt(agent, raw);
+    return [key, Number(arg[1]) + from];
+  }
+  const dot = field.indexOf('.');
+  const head = field.slice(0, dot);
+  if (head === 'url') return ['url'];
+  return [head === 'env' ? FIELD_PATHS[agent].env : head === 'headers' ? FIELD_PATHS[agent].headers : head, field.slice(dot + 1)];
+}
+
 /** A server entry with its command, args, cwd and OpenCode's command array moved by `move` where they are absolute paths. */
 export function relocatedServer(entry: Record<string, unknown>, move: (p: string) => string): Record<string, unknown> {
   const moved = { ...entry };
@@ -373,6 +390,53 @@ export function configNeeds(agent: AgentKind, doc: Record<string, unknown>): str
   const names = agent === 'opencode' ? strings(at(doc, ['**'])).flatMap((l) => [...l.value.matchAll(VAR_REF)].map((m) => m[2]))
     : agent === 'codex' ? CODEX_NEED_PATHS.flatMap((p) => strings(at(doc, p.split('.')))).map((l) => l.value) : [];
   return [...new Set(names)].filter((n): n is string => !!n).sort();
+}
+
+/** Keys leading into a document, an array's index among them. */
+export type Place = (string | number)[];
+
+/** The value at `place` in `doc`, or undefined where nothing lies. */
+export const getAt = (doc: unknown, place: Place): unknown =>
+  place.reduce<unknown>((v, k) => (typeof v === 'object' && v !== null && Object.hasOwn(v, k) ? (v as Record<string | number, unknown>)[k] : undefined), doc);
+
+/** Puts `v` at `place` in `doc`, making the objects that lead there; `undefined` removes what lies there. */
+export function setAt(doc: Record<string, unknown>, place: Place, v: unknown): void {
+  let at = doc as Record<string | number, unknown>;
+  for (const [i, k] of place.slice(0, -1).entries()) {
+    if (typeof at[k] !== 'object' || at[k] === null) {
+      if (v === undefined) return;
+      at[k] = typeof place[i + 1] === 'number' ? [] : {};
+    }
+    at = at[k] as Record<string | number, unknown>;
+  }
+  const last = place[place.length - 1];
+  if (v !== undefined) at[last] = v;
+  else if (!Array.isArray(at)) delete at[last];
+}
+
+// the keys whose dotted join is `field` and that lead to a string in `v`
+function placeIn(v: unknown, field: string): string[] | undefined {
+  if (typeof v === 'string') return field === '' ? [] : undefined;
+  if (typeof v !== 'object' || v === null || field === '') return undefined;
+  for (const [k, x] of Object.entries(v)) {
+    if (field !== k && !field.startsWith(`${k}.`)) continue;
+    const rest = placeIn(x, field.slice(k.length + 1));
+    if (rest) return [k, ...rest];
+  }
+  return undefined;
+}
+
+/** Where config field `field` of `doc`, as configSecrets names it, lies: its string, the URL one for a `.userinfo`. */
+export const configPlace = (doc: unknown, field: string): string[] | undefined => placeIn(doc, field.replace(/\.userinfo$/, ''));
+
+/** `doc` with each of `fields` emptied: a key field's string, or the credentials of the URLs in it for a `.userinfo`. */
+export function configRedacted(doc: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const out = structuredClone(doc);
+  for (const f of fields) {
+    const place = configPlace(out, f);
+    if (place) setAt(out, place, f.endsWith('.userinfo') ? withoutCredentials(getAt(out, place) as string) : '');
+  }
+  return out;
 }
 
 /** Claude's settings.json env, which stays off the worker. */
