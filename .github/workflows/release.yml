@@ -1,8 +1,7 @@
 name: release
 
-# A tag builds the Mac controller and both Linux companions, hands a fleet between two Linux machines and installs,
-# upgrades and rolls back a clean machine of each architecture with them, and publishes them only once all of that
-# passed. Without the SVALL_RELEASE_KEY secret the tag is a dry run: everything is built and tested, nothing is
+# A tag builds the Mac controller and both Linux companions, installs, upgrades and rolls back a clean machine of each
+# architecture with them, and publishes them only once all of that passed. Without the SVALL_RELEASE_KEY secret the tag is a dry run: everything is built and tested, nothing is
 # signed or uploaded. A tag with a `-` in it, such as v1.0.0-test1, is a dry run too, signed when the secret is there.
 # The key never reaches the build: the build packs every archive unsigned, and a job of its own signs them.
 # See docs/integration.md.
@@ -158,43 +157,10 @@ jobs:
           retention-days: 1
           overwrite: true
 
-  # the release's own companion, handed between two Linux containers; see scripts/integration/fleet-handover.sh
-  integration:
-    needs: [build, sign]
-    # a dry run skips sign, and its archives are tested unsigned
-    if: ${{ !cancelled() && !failure() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: x64, runner: ubuntu-24.04 }
-          - { arch: arm64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: release
-          path: ${{ runner.temp }}/release
-      - run: >-
-          scripts/integration/fleet-handover.sh --out "$RUNNER_TEMP/logs"
-          --archive "$RUNNER_TEMP/release/svall-companion-$GITHUB_REF_NAME-linux-${{ matrix.arch }}.tar.gz"
-      - id: logs
-        if: failure()
-        run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/logs"
-      - if: failure() && steps.logs.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: fleet-handover-logs-${{ matrix.arch }}
-          path: ${{ runner.temp }}/logs
-
   # a clean machine added by the Mac controller's svall, upgraded and rolled back; see scripts/integration/fresh-install.sh
   fresh-install:
     needs: [build, sign]
+    # a dry run skips sign, and its archives are tested unsigned
     if: ${{ !cancelled() && !failure() }}
     strategy:
       fail-fast: false
@@ -230,7 +196,7 @@ jobs:
           path: ${{ runner.temp }}/logs
 
   publish:
-    needs: [key, integration, fresh-install]
+    needs: [key, fresh-install]
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15

@@ -136,10 +136,10 @@ Every pre-commit stop is also checked for a gateway that has not committed and a
 
 ### The CI job
 
-`.github/workflows/ci.yml` job `integration` runs `scripts/integration/fleet-handover.sh` on `ubuntu-24.04`, which is
-x86-64, so every check above also runs on x86-64 Ubuntu. When it fails, it scans the output folder with
-`release-scan.mjs --secrets-only` and uploads it only if the scan passed. Actions jobs do not start on this
-repository (billing), so the job has not run on GitHub.
+No workflow runs this script. `.github/workflows/ci.yml` job `placement` runs the
+[placement run](#robot-placement-between-two-machines) on `ubuntu-24.04`, which is x86-64. When it fails, it scans the
+output folder with `release-scan.mjs --secrets-only` and uploads it only if the scan passed. Actions jobs do not start
+on this repository (billing), so the job has not run on GitHub.
 
 The script runs the machines on the Docker host's own architecture: arm64 on an Apple Silicon Mac, x86-64 on the
 runner. It cannot run under user-mode emulation, such as Docker's qemu binfmt on an arm64 host. There every process
@@ -173,8 +173,8 @@ index, files, locks and journals, the one agent resumed on its session, and the 
 ## Fresh installs
 
 `scripts/integration/fresh-install.sh` provisions a clean Ubuntu 24.04 machine as a user does: with the controller
-the Mac app carries, from the companion archive that controller's manifest pins. It gives the machine a second fleet,
-then upgrades it to a second release and rolls it back.
+the Mac app carries, from the companion archive that controller's manifest pins. `host add` makes the machine a worker
+of the controller's fleet, then the run upgrades it to a second release and rolls it back.
 
 ### Run it
 
@@ -193,8 +193,7 @@ Without `--release`, the script builds the checkout twice with `scripts/release-
 name, carrying its companions as Svall.app does, and as that name with `-next`, pinning its companions on a free
 loopback port, so `host add` takes the app's route and `host upgrade` downloads. The machine runs on the Docker host's
 own architecture, as the handover run's do. It exits 0 when every check passed, and prints `PASS` or its `FAIL` lines
-per step, like the handover run. The output folder holds `run.log`, the NDJSON of `host add`, `host enable` and
-`host upgrade`, the JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with what the checks
+per step, like the handover run. The output folder holds `run.log`, the NDJSON of `host add` and `host upgrade`, the JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with what the checks
 read on the machine, `served.log` with each download, and `machine.log` with the units' logs.
 
 ### What it checks
@@ -208,7 +207,7 @@ read on the machine, `served.log` with each download, and `machine.log` with the
 2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, polkit, sshd, tmux
    3.4, Git, rsync and the `tailscale` double, and no Node.
    - The run makes one account whose home is the controller's home, a folder of its own under `/var/tmp` on both. It
-     is short enough for the gateway's socket path, which holds at most 108 bytes, and outside `/tmp`, which the
+     is short enough for the fleet's socket paths, which hold at most 108 bytes, and outside `/tmp`, which the
      machine empties when it starts again.
    - The account logs in with a key made for the run, and lingering is off.
    - No `node` exists anywhere on the machine, and the home holds only Ubuntu's skeleton.
@@ -224,22 +223,24 @@ read on the machine, `served.log` with each download, and `machine.log` with the
    - Whichever route, the release step says whether the release is signed, as its manifest does.
    - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The
      linger step turns lingering on, and the tmux step finds the release's own.
-   - The result lists exactly three things to do: the three installs.
-4. **A second fleet.** The run runs `svall host enable --fleet work` from a controller-side fleet `work`: the machine
-   provisions its own copy under `svall-svalld@work.service`.
-5. **A restart with no login.**
-   - All three units, the private and `work` fleets' svalld and the gateway, are active and enabled.
-   - Each runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.
+   - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
+     first, as Svall's first start does.
+   - The result lists exactly three things to do, the three installs: `fresh needs 3 things before robots can move
+     there`.
+4. **A restart with no login.**
+   - The private fleet's svalld unit, which runs the worker, is active and enabled.
+   - It runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.
    - `current` and `~/.local/bin/svall` lead to that release.
    - There is no `node` outside the releases and no `pnpm-workspace.yaml` anywhere.
-   - `svall host doctor` fails nothing, and its systemd, gateway, linger, svalld, release and home checks are `ok`.
+   - `svall host doctor` fails nothing, and its systemd, worker, linger, svalld, release and home checks are `ok`.
      The release check names the release the machine runs and whether the machine reports it signed, as the
      manifest does.
-6. **`svall host upgrade`** from the second release's controller, by the same route rule as step 3: every step is
-   `ok`, there is no rollback, and step 5's checks pass against the second release, with both releases kept.
-7. **`svall setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, all three
-   units restart, setup itself finds each fleet's daemon answering from that release, and step 5's checks pass
-   against the first release. `host doctor` from the first release's controller agrees.
+5. **`svall host upgrade`** from the second release's controller, by the same route rule as step 3: every step is
+   `ok` but enrol, which finds the machine this fleet's worker already, there is no rollback, and step 4's checks pass
+   against the second release, with both releases kept.
+6. **`svall setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, the unit
+   restarts, setup itself finds the fleet's daemon answering from that release, and step 4's checks pass against the
+   first release. `host doctor` from the first release's controller agrees.
 
 ### x86-64 on an Apple Silicon Mac
 
@@ -298,9 +299,8 @@ included, and drops the rest.
 | `key` | `ubuntu-24.04` | Checks the key before anything is built: an OpenSSH key without a passphrase whose public half is in `scripts/release/allowed_signers`. Says whether the tag is signed. |
 | `build` | `macos-latest` | Needs `key`, and never holds the key. Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published and pins its companions at `http://127.0.0.1:8765/upgrade`. Restores no cache on a signed tag, so a signed release builds its own rsync. Passes both to the other jobs as workflow artifacts, kept for one day. |
 | `sign` | `macos-latest` | Runs only with the key. Signs both builds' archives with `release-build.sh --sign` and puts them back in place of the unsigned ones. |
-| `integration` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Needs `build`, and `sign` unless a run without the key skips it. Runs `fleet-handover.sh` with the release's own companion for that architecture. |
-| `fresh-install` | the same two | Needs `build`, and `sign` unless a run without the key skips it. Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server. |
-| `publish` | `ubuntu-24.04` | Needs `key` and the two test jobs. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, or for a tag with a `-`, it notes that the dry run passed, and uploads nothing. |
+| `fresh-install` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Needs `build`, and `sign` unless a run without the key skips it. Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server. |
+| `publish` | `ubuntu-24.04` | Needs `key` and `fresh-install`. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, or for a tag with a `-`, it notes that the dry run passed, and uploads nothing. |
 
 - **Signing.** The `SVALL_RELEASE_KEY` secret holds the private key. Only one step in each of the `key`, `sign` and
   `publish` jobs names it, never one in `build`, so nothing `pnpm install` or the bundlers run can read it. Each such
@@ -310,7 +310,7 @@ included, and drops the rest.
 - **The signers.** `scripts/release/allowed_signers` lists the release key and its offline backup. The `key` job
   fails at once, naming the file, when the secret is not an OpenSSH key without a passphrase or its public half is not
   listed there. See [Release keys](security/fleet-handover.md#release-integrity) for retiring a key.
-- **Dry run.** A tag in a repository without the secret builds, hands over and fresh-installs everything, and
+- **Dry run.** A tag in a repository without the secret builds and fresh-installs everything, and
   uploads nothing. A tag with a `-`, such as `v1.0.0-test1`, does the same, signed when the secret is there.
 - **Logs.** A failed job's logs are scanned with `--secrets-only` before they are uploaded, and a hit keeps them back.
 
@@ -321,7 +321,7 @@ Actions jobs do not start on this repository (billing), so these steps have run 
 - the upload: `gh release create` with the job's token, and a signed tag end to end;
 - the native x86-64 and arm64 Linux runners;
 - workflow artifacts passing from the macOS jobs to the Linux jobs;
-- the `sign` job's upload over the build's artifacts, and the test jobs running when a run without the key skips it;
+- the `sign` job's upload over the build's artifacts, and the fresh-install job running when a run without the key skips it;
 - the fresh-install job's server on the runner's `127.0.0.1:8765`, which needs nothing else listening there;
 - the Mac controller's `svall.mjs` on a Linux runner's Node, which has run only on a Mac's Node;
 - the build on a macOS runner, with the runner's `strip` and an rsync build on a cache miss.
