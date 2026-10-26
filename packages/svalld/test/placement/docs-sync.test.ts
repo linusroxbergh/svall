@@ -6,7 +6,9 @@ import { emptyState, type FleetState } from '@svall/protocol';
 import { repoSlug } from '../../src/docs.js';
 import { sha256Hex } from '../../src/handover/hash.js';
 import { silentLogger } from '../../src/log.js';
-import { concerns, docsTar, HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
+import { resolvePaths } from '../../src/paths.js';
+import { concerns, docsTar, HomeDocs, noteConflict, WorkerDocs } from '../../src/placement/docs-sync.js';
+import { Store } from '../../src/store.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { W, placed, robot, until, world } from './world.js';
 
@@ -65,6 +67,13 @@ async function journaling(text: string) {
     await until(() => expect(events).toHaveLength(n + 1));
   };
   return { home, note: path.join(dir, NOTE), events, next };
+}
+
+// the home's fleet with c_1 on w1, to hold the note lines conflicts leave
+function homeStore(): Store {
+  const store = Store.load(resolvePaths(makeHome()).state, () => {});
+  store.update((d) => { Object.assign(d, { ...emptyState(), machines: { [W]: { name: 'w1', reachable: true, since: 1 } }, robots: { c_1: placed({ id: 'c_1' }) } }); });
+  return store;
 }
 
 describe('docs between the home and a worker', () => {
@@ -271,6 +280,38 @@ describe('a doc changed on both machines', () => {
     expect(fs.readdirSync(path.join(home, 'robots/c_1')).sort()).toEqual([`notes.ada-s-box.${id}.conflict.md`, 'notes.md']);
     expect(read(path.join(home, NOTE))).toBe('ours\n');
     expect(read(path.join(home, kept.kept))).toBe('theirs, again\n');
+  });
+
+  it('a change made on the worker\'s last one is kept beside a note this Mac deleted or set back to the base text since', async () => {
+    const { home, note, events, next } = await journaling('v1\n');
+    const plan = path.join(path.dirname(note), 'plan.md');
+    const docs = new HomeDocs(home, silentLogger, () => 'w1');
+    const store = homeStore();
+    const take = (e: DocsEvent) => {
+      const c = docs.apply(e.kind, e.data, W);
+      if (c) noteConflict(store, W, c, '/Users/ada');
+      return c;
+    };
+    // made there, taken here, deleted here, then changed there
+    await next(() => put(plan, 'one\n'));
+    expect(take(events[0])).toBeUndefined();
+    fs.rmSync(path.join(home, 'robots/c_1/plan.md'));
+    await next(() => put(plan, 'two\n'));
+    const planId = (events[1].data as { id: string }).id;
+    expect(take(events[1])).toEqual({ file: 'robots/c_1/plan.md', kept: `robots/c_1/plan.w1.${planId}.conflict.md` });
+    // changed there, taken here, set back here, then changed there again
+    await next(() => put(note, 'v2\n'));
+    expect(take(events[2])).toBeUndefined();
+    put(path.join(home, NOTE), 'v1\n');
+    await next(() => put(note, 'v3\n'));
+    const noteId = (events[3].data as { id: string }).id;
+    expect(take(events[3])).toEqual({ file: NOTE, kept: `robots/c_1/notes.w1.${noteId}.conflict.md` });
+    expect(fs.readdirSync(path.join(home, 'robots/c_1')).sort()).toEqual(['notes.md', `notes.w1.${noteId}.conflict.md`, `plan.w1.${planId}.conflict.md`]);
+    expect(read(path.join(home, NOTE))).toBe('v1\n');
+    expect(store.state.robots.c_1.note).toBe([
+      `robots/c_1/plan.md changed on both w1 and this Mac; w1's version is kept as plan.w1.${planId}.conflict.md`,
+      `robots/c_1/notes.md changed on both w1 and this Mac; w1's version is kept as notes.w1.${noteId}.conflict.md`,
+    ].join('\n'));
   });
 
   it('a conflict concerns the robot whose folder it is in, the worker\'s robots on an island or in a repository by this Mac\'s root, or all of them for the fleet\'s', () => {

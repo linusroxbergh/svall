@@ -118,7 +118,8 @@ const stayedLine = (file: string, worker: string) => `${worker} deleted ${file},
 
 /** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, or a delete refused. */
 export type Conflict = { file: string; kept?: string };
-type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made: (string | undefined)[]; prev?: string | null };
+// `made` is the sha the change was made on, none for no file
+type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made?: string; prev?: string | null };
 
 /** The robots a doc at `rel` concerns: the one whose folder it is in, or `machine`'s on its island, in its repository by this Mac's main root, or anywhere for the fleet's. */
 export function concerns(rel: string, state: FleetState, machine: MachineId, homedir: string): string[] {
@@ -146,17 +147,14 @@ export class HomeDocs {
 
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private quietMs = DOCS_QUIET_MS) {}
 
-  /**
-   * Takes a worker's change made on the copy this Mac holds, or one it holds already; otherwise answers the conflict, a
-   * write kept beside the file, a delete refused. An event naming no file of the docs, or bytes not its own, is logged and
-   * dropped; a write that fails throws, and the event stays in the worker's outbox.
-   */
+  /** Takes a worker's change made on this Mac's copy or held here already, else answers the conflict: a write kept beside
+   *  the file, a delete refused. A malformed event is logged and dropped; a failed write throws and stays in the outbox. */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
     if (!named) return undefined;
     const { file, bytes, sha256, made } = named;
     const here = shaOf(file);
-    if (here !== sha256 && !made.includes(here)) return this.conflict(named, machine);
+    if (here !== sha256 && here !== made) return this.conflict(named, machine);
     if (!bytes) fs.rmSync(file, { force: true });
     else if (here !== sha256) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -174,7 +172,8 @@ export class HomeDocs {
       if (bytes && sha256Hex(bytes) !== e.sha256) throw new Error(`${e.path} did not arrive as it left`);
       const file = inside(this.dir, e.path);
       if (!e.id) this.log.info(`docs: ${kind} of ${e.path} from ${this.nameOf(machine)} carries no id, as an older release journaled it; taken`);
-      const made = [e.base, ...(e.prev === undefined ? [] : [e.prev ?? undefined])];
+      // past the worker's own last change, the home holds `base` only by a change made here since
+      const made = e.prev === undefined ? e.base : e.prev ?? undefined;
       return { file, bytes, sha256: e.sha256, id: e.id ?? newMutationId(), made, prev: e.prev };
     } catch (e) {
       this.log.error(`docs: ${kind} from ${machine} dropped: ${(e as Error).message}`);
