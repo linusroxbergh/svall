@@ -81,9 +81,8 @@ export class Router {
   async scribe(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
     const at = this.placedAt(id);
     if (!at || !this.o.links) return undefined;
-    const raw = await this.o.links.call(at, 'scribe.run', { id, only, columns, sweep }, { timeoutMs: SCRIBE_MS })
-      .catch((e: unknown) => { if (e instanceof ApiError && e.code === 'not_reachable') return undefined; throw e; });
-    // a machine away, a pass skipped there and an answer this Mac cannot read all wait for the next pass
+    const raw = await this.o.links.call(at, 'scribe.run', { id, only, columns, sweep }, { timeoutMs: SCRIBE_MS });
+    // a pass skipped there, and an answer this Mac cannot read, wait for the robot's next turn
     const r = FarPass.safeParse(raw);
     return r.success ? r.data : undefined;
   }

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { z } from 'zod';
-import { bareUrl, columnOf, placingOn, type Column, type Robot, type ContextItem, type Island } from '@svall/protocol';
+import { ApiError, bareUrl, columnOf, placingOn, type Column, type Robot, type ContextItem, type Island } from '@svall/protocol';
 import { condenseTurns, readTail } from '../agent/transcript.js';
 import { carryBrief } from '../context/brief.js';
 import { prFirst } from '../context/items.js';
@@ -69,6 +69,8 @@ export class Scribe {
   private active = new Set<string>();
   private current?: Promise<unknown>;
   private lastStart = -Infinity;
+  // whether the automatic pass running is one the robot's machine did not make
+  private unmade = false;
   // the last sweep asked for, which runs after any before it
   private sweeping?: { key: string; done: Promise<string[]> };
   private stopped = false;
@@ -107,9 +109,10 @@ export class Scribe {
   private due(id: string, now: number): boolean {
     const c = this.deps.store.state.robots[id];
     if (!c) return false;
-    // a transcript on another machine is measured there, once its pass is asked for
-    if (!this.here(c)) return !!this.deps.far && eligible(c, this.seen.get(id), Number.MAX_SAFE_INTEGER, now);
-    return eligible(c, this.seen.get(id), transcriptSize(c), now);
+    const seen = this.seen.get(id);
+    // a transcript on another machine is measured there: its robot is due once the agent has done something since its last pass
+    if (!this.here(c)) return !!this.deps.far && seen?.activityAt !== c.agent?.lastActivityAt && eligible(c, seen, Number.MAX_SAFE_INTEGER, now);
+    return eligible(c, seen, transcriptSize(c), now);
   }
 
   // called on every fleet poll: queue what is due, and start the next pass once the last one is done and spaced
@@ -130,8 +133,14 @@ export class Scribe {
     let job = this.queue.shift();
     while (job?.kind === 'robot' && !this.due(job.id, now)) job = this.queue.shift();
     if (!job) return;
+    const last = this.lastStart;
     this.lastStart = now;
-    this.current = this.start(job).finally(() => { this.current = undefined; });
+    this.unmade = false;
+    this.current = this.start(job).finally(() => {
+      // a pass the robot's machine did not make leaves the minute to the next one
+      if (this.unmade) this.lastStart = last;
+      this.current = undefined;
+    });
   }
 
   // a pass started in a Mac's dark wake is cut off by its sleep; the job waits for a full wake
@@ -267,19 +276,28 @@ export class Scribe {
     return { answer, evidence: [transcript, ...prLinks].join('\n') };
   }
 
-  // a machine that made no pass, being away or finding nothing new, is asked again once a robot at rest would be
+  // a machine away is asked again once a robot at rest would be; one that made no pass, once the agent has done something
   private async readFar(c: Robot, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
     const path = c.agent!.transcriptPath!;
+    const activityAt = c.agent!.lastActivityAt;
+    const seen = () => this.seen.get(c.id) ?? { lastPassAt: 0, path, bytes: 0 };
     let pass: FarPass | undefined;
     try {
       pass = await this.deps.far?.(c.id, only, columns, sweep);
     } catch (e) {
-      this.failed(c.id, path);
-      throw e;
+      if (!(e instanceof ApiError && e.code === 'not_reachable')) {
+        this.failed(c.id, path);
+        throw e;
+      }
+      this.seen.set(c.id, { ...seen(), retryAt: this.now() + REST_MS });
+      this.unmade = true;
+      return undefined;
     }
     if (this.stopped) throw new Error('the scribe has stopped');
-    if (!pass) this.seen.set(c.id, { ...(this.seen.get(c.id) ?? { lastPassAt: 0, path, bytes: 0 }), retryAt: this.now() + REST_MS });
-    else if (!only) this.seen.set(c.id, { lastPassAt: this.now(), path, bytes: 0 });
+    if (!pass) {
+      this.seen.set(c.id, { ...seen(), activityAt });
+      this.unmade = true;
+    } else if (!only) this.seen.set(c.id, { lastPassAt: this.now(), path, bytes: 0, activityAt });
     return pass;
   }
 

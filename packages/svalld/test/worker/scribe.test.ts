@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
-import { REST_BYTES } from '../../src/scribe/eligible.js';
+import { REST_BYTES, REST_MS } from '../../src/scribe/eligible.js';
 import type { RunScribe } from '../../src/scribe/run.js';
 import { SETTLE_MS, SPACING_MS } from '../../src/scribe/scribe.js';
 import { SLEPT_NOTE } from '../../src/worker/mutations.js';
@@ -75,28 +75,62 @@ describe('the scribe on a placed robot', () => {
     await until(() => expect(w.worker.store.state.robots.c_1).toMatchObject({ name: 'kb', note: 'building the board' }));
   });
 
-  it('a worker whose transcript has not grown answers skipped, and the home asks again at its next spaced pass', async () => {
+  it('idle placed robots whose workers skip them leave the minute to a robot here, and one is asked again once its agent has done something', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const dir = makeHome();
+    const robots = {
+      c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }), c_2: resting(placed, 'c_2', dir, { name: 'reviewer' }), c_h: resting(robot, 'c_h', dir),
+    };
+    // what a transcript holds as the worker starts was there for the passes before it
+    for (const id of ['c_1', 'c_2']) grow(path.join(dir, `${id}.jsonl`), 4000);
+    const ran: string[] = [];
+    const { w, asked, scribe } = await open({
+      home: { robots }, worker: { robots }, scribe: { home: runner({ c_h: { note: 'tidying the docs' } }, ran), worker: runner({ c_1: kb }, ran) },
+    });
+    grow(path.join(dir, 'c_h.jsonl'), 4000);
+    const pass = async () => { scribe.tick(); await scribe.settled(); };
+
+    for (let n = 0; n < 3; n++) await pass();
+    expect(asked.map((a) => a.id)).toEqual(['c_1', 'c_2']);
+    expect(w.home.store.state.robots.c_h.note).toBe('tidying the docs');
+    for (let n = 0; n < 3; n++) {
+      vi.advanceTimersByTime(SPACING_MS);
+      await pass();
+    }
+    expect(asked).toHaveLength(2);
+
+    // c_1's agent takes a turn on w1 and rests again
+    const at = Date.now() - 46_000;
+    grow(path.join(dir, 'c_1.jsonl'), 4000);
+    w.worker.store.update((d) => { d.robots.c_1.agent!.lastActivityAt = at; });
+    await until(() => expect(w.home.store.state.robots.c_1.agent?.lastActivityAt).toBe(at));
+    for (let n = 0; n < 3; n++) {
+      vi.advanceTimersByTime(SPACING_MS);
+      await pass();
+    }
+    expect(asked.map((a) => a.id)).toEqual(['c_1', 'c_2', 'c_1']);
+    expect(ran.filter((id) => id.startsWith('c_'))).toEqual(['c_h', 'c_1']);
+    expect(w.home.store.state.robots.c_1.name).toBe('kb');
+  });
+
+  it('a placed robot whose worker is away is asked again once a robot at rest would be, leaving the minute to the next robot', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const dir = makeHome();
     const robots = { c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }) };
-    // what the transcript holds as the worker starts was there for the passes before it
-    grow(path.join(dir, 'c_1.jsonl'), 4000);
-    const ran: string[] = [];
-    const { w, asked, scribe } = await open({ home: { robots }, worker: { robots }, scribe: { worker: runner({ c_1: kb }, ran) } });
+    const w = world({ home: { robots }, worker: { robots } });
+    worlds.push(w);
+    w.home.store.update((d) => { delete d.scribeAsk; });
+    const far = vi.spyOn(w.home.router, 'scribe');
+    const scribe = w.home.fleet['scribe'];
+    const pass = async () => { scribe.tick(); await scribe.settled(); };
 
-    scribe.tick();
-    await until(() => expect(asked).toHaveLength(1));
-    await scribe.settled();
-    vi.advanceTimersByTime(59_000);
-    scribe.tick();
-    await scribe.settled();
-    expect(asked).toHaveLength(1);
-    vi.advanceTimersByTime(2_000);
-    scribe.tick();
-    await until(() => expect(asked).toHaveLength(2));
-    await scribe.settled();
-    expect(ran).toEqual([]);
-    expect(w.home.store.state.robots.c_1.name).toBe('golden heron');
+    await pass();
+    await pass();
+    expect(far).toHaveBeenCalledTimes(1);
+    expect(w.home.store.state.scribeError).toBeUndefined();
+    vi.advanceTimersByTime(REST_MS);
+    await pass();
+    expect(far).toHaveBeenCalledTimes(2);
   });
 
   it('the worker runs no pass of its own and never an island', async () => {
