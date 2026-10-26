@@ -134,6 +134,17 @@ describe('files of a robot on a worker', () => {
     expect(sources.filter((s) => s !== repos[0] && (s.root === folder || s.docs === `r:${folder}`))).toEqual([]);
     expect(sources.filter((s) => s.root.startsWith(w.worker.paths.home))).toEqual([]);
   });
+
+  it('docs.create makes the first doc of a placed robot\'s clone in this Mac\'s folder for it', async () => {
+    const { w, dir, main } = await linked();
+    w.home.store.update((d) => { d.machines![W] = { ...d.machines![W], home: dir }; });
+    const folder = docsDir(w.home.paths.docs, 'repo', repoSlug(relocate(main, { from: dir, to: '/Users/ada' })));
+    const { sources } = (await dispatch({ id: 1, method: 'resources.get', params: {} }, w.home.ctx) as { result: { sources: ResourceSource[] } }).result;
+    const docs = sources.find((s) => s.tier === 'repo')!.docs!;
+    expect(docs).toBe(`r:${folder}`);
+    expect(await dispatch({ id: 2, method: 'docs.create', params: { id: docs, path: 'first.md', text: '# first\n' } }, w.home.ctx)).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
+    expect(fs.readFileSync(path.join(folder, 'first.md'), 'utf8')).toBe('# first\n');
+  });
 });
 
 describe('clones at one path on two workers', () => {

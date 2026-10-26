@@ -128,14 +128,18 @@ export function world(o: {
   });
   const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
+  const homeDocsRoot = (c: Robot) => homeRootOf(c, homeStore.state.machines, '/Users/ada');
   const homeFleet = new Fleet({
     store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter,
-    repoRoot: (c) => homeRootOf(c, homeStore.state.machines, '/Users/ada'), runScribe: o.scribe?.home,
+    repoRoot: homeDocsRoot, runScribe: o.scribe?.home,
   });
   const homeUsage = usageOf(homeStore, homeRouter);
   const homeClaude = { dir: path.join(homePaths.home, 'claude'), json: path.join(homePaths.home, 'claude.json') };
   const homeRoots = rootHere((c) => homeRouter.runsHere(c));
-  const homeWorkspace = new Workspace((id) => workspaceRoot(id, homeStore.state, homeClaude, undefined, homePaths.docs, homePaths.agentProfiles, (c) => homeRouter.runsHere(c), homeRoots), silentLogger);
+  const homeWorkspace = new Workspace(
+    (id) => workspaceRoot(id, homeStore.state, homeClaude, undefined, homePaths.docs, homePaths.agentProfiles, (c) => homeRouter.runsHere(c), homeRoots, homeDocsRoot),
+    silentLogger, () => [], [homePaths.docs, homePaths.agentProfiles],
+  );
   const remoteWatches = new RemoteWatches({ links, router: homeRouter });
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
@@ -154,10 +158,11 @@ export function world(o: {
   const farViewers = new FarViewers({ connection });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
   const workerTmux = { ...o.tmux } as Tmux;
+  const workerDocsRoot = (c: Robot) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home);
   const workerFleet = new Fleet({
     store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [], refreshLinks: async () => {},
-    created: (c, p) => mutations.created(c, p), repoRoot: (c) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home),
+    created: (c, p) => mutations.created(c, p), repoRoot: workerDocsRoot,
     runScribe: o.scribe?.worker,
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
@@ -166,7 +171,10 @@ export function world(o: {
   const workerUsage = usageOf(workerStore, workerRouter);
   const workerClaude = { dir: path.join(workerPaths.home, 'claude'), json: path.join(workerPaths.home, 'claude.json') };
   const workerRoots = rootHere((c) => workerRouter.runsHere(c));
-  const workerWorkspace = new Workspace((id) => workspaceRoot(id, workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, (c) => workerRouter.runsHere(c), workerRoots), silentLogger);
+  const workerWorkspace = new Workspace(
+    (id) => workspaceRoot(id, workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, (c) => workerRouter.runsHere(c), workerRoots, workerDocsRoot),
+    silentLogger, () => [], [workerPaths.docs, workerPaths.agentProfiles],
+  );
   const workerResources = () => scanResources(workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, workerRoots);
   const workerDocs = o.docs && new WorkerDocs({
     dir: workerPaths.docs, file: workerPaths.docsSynced, stage: workerPaths.cache, connection, log: silentLogger, quietMs: 100,

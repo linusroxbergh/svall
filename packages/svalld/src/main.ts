@@ -283,10 +283,10 @@ async function start(opts: Options): Promise<Daemon> {
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }),
   });
   const remoteWatches = links && new RemoteWatches({ links, router });
+  // a worker names a clone as the home does once a snapshot has said where the home's user folder is
+  const docsRoot = (c: Robot) => homeRootOf(c, store.state.machines, worker ? store.state.machines?.[worker.worker.homeMachineId]?.home : os.homedir());
   const fleet = new Fleet({
-    store, tmux, paths, config, log, ownership, agentsFound, remote: router,
-    // a worker names a clone as the home does once a snapshot has said where the home's user folder is
-    repoRoot: (c) => homeRootOf(c, store.state.machines, worker ? store.state.machines?.[worker.worker.homeMachineId]?.home : os.homedir()),
+    store, tmux, paths, config, log, ownership, agentsFound, remote: router, repoRoot: docsRoot,
     ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
   });
   // what the CLI in a worker's panes starts there, and changes there while its home is away
@@ -349,7 +349,7 @@ async function start(opts: Options): Promise<Daemon> {
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   // a robot's folders are on the machine it runs on
   const rootOf = rootHere((c) => router.runsHere(c));
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, resources: () => scanResources(store.state, claude, codex, paths.docs, paths.agentProfiles, rootOf) }));
   const phones = new Phones();
   const mobile = off.has('mobile') ? workerStubs.mobile : mobileControl(realDeps(), {
