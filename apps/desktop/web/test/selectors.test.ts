@@ -301,4 +301,11 @@ describe('resumeErrorOf', () => {
     expect(resumeErrorOf(on, { ...dormant, tmux: { windowId: '@1', paneId: '%1' } })).toBeUndefined();
     expect(resumeErrorOf(on, undefined)).toBeUndefined();
   });
+  it('shows why a terminal of a robot on a worker could not resume there, either terminal, whatever the fleet asks', () => {
+    const W = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    expect(resumeErrorOf({}, { ...dormant, machine: W })).toBe(failed);
+    const second = { machine: W, tmux: { windowId: '@1', paneId: '%1' }, second: { cwd: '/w', unread: false, resumeError: failed } };
+    expect(resumeErrorOf({}, second)).toBeUndefined();
+    expect(resumeErrorOf({}, second, 2)).toBe(failed);
+  });
 });

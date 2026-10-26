@@ -87,9 +87,13 @@ export function firstOfNextIsland(f: FleetState, id: string | undefined): Robot 
   return undefined;
 }
 
-// why a handover could not resume a terminal that lies dormant, shown only while the fleet asks for handover
-export const resumeErrorOf = (s: { shell?: { handoverEnabled?: boolean } }, slot: { tmux?: unknown; resumeError?: string } | undefined): string | undefined =>
-  (s.shell?.handoverEnabled && slot && !slot.tmux ? slot.resumeError : undefined);
+type Resumed = { tmux?: unknown; resumeError?: string };
+
+// why a terminal that lies dormant could not resume, shown for a robot on a worker and while the fleet asks for handover
+export const resumeErrorOf = (s: { shell?: { handoverEnabled?: boolean } }, c: (Resumed & { machine?: unknown; second?: Resumed }) | undefined, term: 1 | 2 = 1): string | undefined => {
+  const slot = term === 2 ? c?.second : c;
+  return (s.shell?.handoverEnabled || c?.machine !== undefined) && slot && !slot.tmux ? slot.resumeError : undefined;
+};
 
 // one terminal's status: 1 is the main terminal, 2 the second
 export const slotStatus = (c: Robot, term: 1 | 2): DisplayStatus => {

@@ -19,7 +19,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const c = useApp((s) => s.fleet.robots[id]);
   const key = second ? secondKey(id) : id;
   const error = useApp((s) => s.terminalErrors[key]);
-  const failed = useApp((s) => resumeErrorOf(s, second ? s.fleet.robots[id]?.second : s.fleet.robots[id]));
+  const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id], second ? 2 : 1));
   const veiled = useApp(isVeiled);
   // the fleet is between machines: its terminals were rested at the source and reopen where it lands
   const resting = useApp((s) => holdsTerminals(s.handover));
