@@ -42,6 +42,8 @@ export interface SessionAdapter {
   carries(file: string, transcript: string, sessionId: string): boolean;
   /** Whether the CLI, keeping its files in `home`, resumes in `folder` without first asking whether to trust it; absent for one that never asks. */
   trusts?(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean;
+  /** The CLI's own words on the row that asks that question. */
+  readonly trustQuestion?: string;
   /** The choice at that question that goes on. */
   readonly trustAnswer?: string;
   /** Whether a resume command, as a revive keeps it, starts the CLI in bypass mode; absent for a CLI with no such mode to warn about. */

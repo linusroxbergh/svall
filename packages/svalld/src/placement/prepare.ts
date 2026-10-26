@@ -250,18 +250,21 @@ export class PrepareService {
       return { ok: false, error: `${this.name} has not taken this Mac's record of the move yet; retry` };
     }
     if (j.phase === 'commit') this.save({ ...j, phase: 'activate' });
+    const seeded = new Set<AgentKind>();
     if (j.plan.clone) {
       const probes = await this.d.agents();
       for (const kind of new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined))) {
         const agentHome = probes.find((p) => p.kind === kind)?.home;
         if (!agentHome) continue;
         const agentRunning = () => (this.d.agentRunning ?? running)(kind);
-        await boundary('worker.activate.trust', () => seedTrust(kind, j.plan.clone, { agentHome, agentRunning }))
+        const r = await boundary('worker.activate.trust', () => seedTrust(kind, j.plan.clone, { agentHome, agentRunning }))
           .catch((e: Error) => this.d.log.error(`move ${id}: trust for ${j.plan.clone} was not seeded: ${e.message}`));
+        if (r === 'seeded') seeded.add(kind);
       }
     }
     const { store, fleet, tmux, log } = this.d;
-    const error = await wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS, open: 'worker.activate.open' }, { ...j, phase: 'activate' });
+    const trust = !!c.agent && !seeded.has(c.agent.kind);
+    const error = await wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS, open: 'worker.activate.open', trust }, { ...j, phase: 'activate' });
     if (error !== undefined) {
       this.save({ ...j, phase: 'activate', error });
       return { ok: false, error };

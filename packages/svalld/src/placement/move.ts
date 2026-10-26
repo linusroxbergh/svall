@@ -20,7 +20,7 @@ import { ProcessTable } from '../handover/processes.js';
 import { relocate } from '../handover/relocate.js';
 import { classifyTerminals, restTerminals, type RestChoices, type RestDeps } from '../handover/rest.js';
 import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../handover/sessions/registry.js';
-import type { CliRun } from '../handover/sessions/types.js';
+import type { CliRun, SessionAdapter } from '../handover/sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import type { GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
@@ -297,12 +297,23 @@ type Wake = {
   log: Logger;
   watchMs: number;
   open?: Failpoint;
+  /** Whether the agent may ask to trust its folder, which no seed answered. */
+  trust?: boolean;
 };
+
+// answers the agent's trust question if it shows before the robot's session reports its start or `watchMs` passes
+function watchTrust(w: Wake, j: MoveJournal, pane: string, adapter: SessionAdapter): void {
+  const stop = new AbortController();
+  const unheard = w.fleet.onSessionStart((robotId, term) => { if (robotId === j.robotId && term === undefined) stop.abort(); });
+  void answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, signal: stop.signal })
+    .catch((e: Error) => w.log.error(`move ${j.id}: ${j.robotId}'s trust question went unwatched: ${e.message}`))
+    .finally(unheard);
+}
 
 /**
  * Opens the terminals the move's rest closed, resuming the robot's agent, and watches for `watchMs` for its session to
- * start, answering its trust question if it asks. Answers the resume's error, or undefined once the robot is up or
- * still coming up; a robot an earlier activation opened is up.
+ * start, answering its trust question if `trust` and it asks. Answers the resume's error, or undefined once the robot
+ * is up or still coming up; a robot an earlier activation opened is up.
  */
 export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined> {
   const id = j.robotId;
@@ -329,9 +340,8 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     const pane = w.store.state.robots[id]?.tmux?.paneId;
     const adapter = agent && sessionAdapter(agent.kind);
     if (!adapter || !pane) return undefined;
-    // a CLI that reports no session until its first turn is up once its window is, and its trust question is watched on
-    void answerTrustPrompt(w.tmux, pane, adapter, { forMs: w.watchMs, ...(adapter.sessionStartOnResume && { signal: watch.signal }) })
-      .catch((e: Error) => w.log.error(`move ${j.id}: ${c.name}'s trust question went unwatched: ${e.message}`));
+    if (w.trust) watchTrust(w, j, pane, adapter);
+    // a CLI that reports no session until its first turn is up once its window is
     if (!adapter.sessionStartOnResume) return undefined;
     return await Promise.race([started, dormant, nap(w.watchMs, watch.signal).then(() => undefined)]);
   } finally {

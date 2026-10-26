@@ -73,8 +73,10 @@ describe('seedTrust', () => {
 });
 
 const TRUST_DIALOG = [
-  ' Do you trust the files in this folder?', '', ' /home/ada/code/app/.claude/worktrees/kanban', '',
-  ' ❯ 1. No, exit', '   2. Yes, I trust this folder', '', ' Enter to confirm · Esc to exit',
+  ' Accessing workspace:', '', ' /home/ada/code/app/.claude/worktrees/kanban', '',
+  ' Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source',
+  ' project, or work from your team). If not, take a moment to review what\'s in this folder first.', '',
+  ' ❯ 1. No, exit', '   2. Yes, I trust this folder', '', ' Enter to confirm · Esc to cancel',
 ];
 const CODEX_DIALOG = [
   '  Folder access', '  /home/ada/code/app/.claude/worktrees/kanban', '',
@@ -117,28 +119,67 @@ describe('answerTrustPrompt', () => {
     expect(await answerTrustPrompt(codex.tmux, '%1', codexAdapter, { forMs: 5000 })).toBe('answered');
     expect(codex.typed).toEqual(['1', '\r']);
   });
+
+  it('types nothing into a conversation that only speaks of the question or its answer', async () => {
+    const conversations = [
+      ['› Which one did you pick at the folder prompt?', '', '• I picked "1. Trust and continue".', '', '  1. Trust and continue', '', '› '],
+      ['• Codex asks "Trust this folder?" the first time; choose 1. Trust and continue there.', '', '› '],
+      ['  1. Trust and continue', '  Trust this folder? was asked on the Mac', '› '],
+    ];
+    for (const rows of conversations) {
+      const p = pane(0, rows);
+      expect(await answerTrustPrompt(p.tmux, '%1', codexAdapter, { forMs: 1200 })).toBe('none');
+      expect(p.typed).toEqual([]);
+    }
+  });
 });
+
+// a Codex robot to wake, the keys typed into its pane, and its first turn's SessionStart to report
+function codexToWake() {
+  const robot = { id: 'c_1', name: 'kanban', revive: { command: 'codex resume x' }, agent: { kind: 'codex', sessionId: 'x', status: 'idle', lastActivityAt: 0 } } as unknown as Robot;
+  const store = { state: { robots: { c_1: robot } }, subscribe: () => () => {} };
+  const heard = new Set<(robotId: string, term: 2 | undefined, sessionId: string) => void>();
+  const fleet = {
+    reviveRobot: async () => { robot.tmux = { windowId: '@1', paneId: '%1' }; },
+    openSecond: async () => {},
+    onSessionStart: (fn: (robotId: string, term: 2 | undefined, sessionId: string) => void) => { heard.add(fn); return () => { heard.delete(fn); }; },
+  };
+  const o = { shown: false, reads: 0 };
+  const typed: string[] = [];
+  const tmux = {
+    screen: async () => { o.reads++; return { rows: o.shown ? CODEX_DIALOG : [], cursor: 0, shown: true, command: 'codex' }; },
+    sendBytes: async (_paneId: string, bytes: Buffer) => { typed.push(bytes.toString('latin1')); },
+  };
+  const j = { id: 'mv_0123456789', robotId: 'c_1' } as MoveJournal;
+  const run = (trust: boolean) => wake({ store, fleet, tmux, log: silentLogger, watchMs: 5000, trust } as unknown as Parameters<typeof wake>[0], j);
+  return { o, typed, heard, run, started: () => { for (const fn of heard) fn('c_1', undefined, 'x'); } };
+}
 
 describe('wake', () => {
   it('counts a Codex robot up once its window opens, which reports no session until its first turn, and answers its trust question after', async () => {
-    const robot = { id: 'c_1', name: 'kanban', revive: { command: 'codex resume x' }, agent: { kind: 'codex', sessionId: 'x', status: 'idle', lastActivityAt: 0 } } as unknown as Robot;
-    const store = { state: { robots: { c_1: robot } }, subscribe: () => () => {} };
-    const fleet = {
-      reviveRobot: async () => { robot.tmux = { windowId: '@1', paneId: '%1' }; },
-      openSecond: async () => {},
-      onSessionStart: () => () => {},
-    };
-    let shown = false;
-    const typed: string[] = [];
-    const tmux = {
-      screen: async () => ({ rows: shown ? CODEX_DIALOG : [], cursor: 0, shown: true, command: 'codex' }),
-      sendBytes: async (_paneId: string, bytes: Buffer) => { typed.push(bytes.toString('latin1')); },
-    };
+    const w = codexToWake();
     const began = Date.now();
-    const j = { id: 'mv_0123456789', robotId: 'c_1' } as MoveJournal;
-    expect(await wake({ store, fleet, tmux, log: silentLogger, watchMs: 5000 } as unknown as Parameters<typeof wake>[0], j)).toBeUndefined();
+    expect(await w.run(true)).toBeUndefined();
     expect(Date.now() - began).toBeLessThan(1000);
-    shown = true;
-    await vi.waitFor(() => expect(typed).toEqual(['1', '\r']), { timeout: 3000 });
+    w.o.shown = true;
+    await vi.waitFor(() => expect(w.typed).toEqual(['1', '\r']), { timeout: 3000 });
+    expect(w.heard.size).toBe(0);
+  });
+
+  it('never looks for a trust question a seed answered, and stops looking once the robot\'s first turn reports its session', async () => {
+    const seeded = codexToWake();
+    seeded.o.shown = true;
+    expect(await seeded.run(false)).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(seeded.o.reads).toBe(0);
+    expect(seeded.typed).toEqual([]);
+
+    const turned = codexToWake();
+    expect(await turned.run(true)).toBeUndefined();
+    turned.started();
+    await vi.waitFor(() => expect(turned.heard.size).toBe(0), { timeout: 3000 });
+    turned.o.shown = true;
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(turned.typed).toEqual([]);
   });
 });

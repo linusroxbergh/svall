@@ -63,22 +63,26 @@ export async function seedTrust(kind: AgentKind, clone: string, o: { agentHome: 
   return kind === 'claude' ? seedClaude(o.agentHome, key.normalize('NFC')) : seedCodex(o.agentHome, key);
 }
 
+// a dialog's choice row: the pointer if it marks it, the choice's number, its text
+const CHOICE = /^\s*(?:[❯›>]\s*)?(?:(\d+)\.\s+)?(.*?)\s*$/;
+
 /**
- * Watches a pane for `forMs` for the agent's trust question and, once its answer shows, picks it and confirms, once. A
- * CLI whose adapter gives no answer is never answered.
+ * Watches a pane for `forMs` for the agent's trust question and, once the question and its answer as a choice below it
+ * show, picks the answer and confirms, once. A CLI whose adapter gives no question and answer is never answered.
  */
 export async function answerTrustPrompt(
-  tmux: Pick<Tmux, 'screen' | 'sendBytes'>, paneId: string, adapter: Pick<SessionAdapter, 'trustAnswer'>, o: { forMs: number; signal?: AbortSignal },
+  tmux: Pick<Tmux, 'screen' | 'sendBytes'>, paneId: string, adapter: Pick<SessionAdapter, 'trustQuestion' | 'trustAnswer'>, o: { forMs: number; signal?: AbortSignal },
 ): Promise<'answered' | 'none'> {
-  const answer = adapter.trustAnswer;
-  if (!answer) return 'none';
+  const { trustQuestion: question, trustAnswer: answer } = adapter;
+  if (!question || !answer) return 'none';
   for (const end = Date.now() + o.forMs; !o.signal?.aborted;) {
     const { rows } = await tmux.screen(paneId);
-    const at = rows.findIndex((r) => r.includes(answer));
+    const asked = rows.findIndex((r) => r.includes(question));
+    const at = asked < 0 ? -1 : rows.findIndex((r, i) => i > asked && CHOICE.exec(r)?.[2] === answer);
     if (at >= 0) {
       // the answer's own number picks it; a dialog that numbers none is walked from the choice the pointer marks
-      const number = /(\d+)\.\s/.exec(rows[at])?.[1];
-      const pointer = rows.findIndex((r) => /^\s*[❯›>]\s/.test(r));
+      const number = CHOICE.exec(rows[at])?.[1];
+      const pointer = rows.findIndex((r, i) => i > asked && /^\s*[❯›>]\s/.test(r));
       const keys = number ? [number] : pointer >= 0 ? Array<string>(Math.abs(at - pointer)).fill(at > pointer ? DOWN : UP) : [];
       for (const k of [...keys, ENTER]) await tmux.sendBytes(paneId, Buffer.from(k));
       return 'answered';

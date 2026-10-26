@@ -39,6 +39,9 @@ const state = (w: MoveWorld, root: string) => ({
 });
 
 // fires `then` at a step's edge, once
+// Claude's question to trust its folder, as the robot's pane on the worker shows it
+const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ 1. No, exit', '   2. Yes, I trust this folder'];
+
 const at = (name: Failpoint, edge: Edge, then: () => void): void => {
   let done = false;
   disarm = armFailpoints((n, e) => { if (!done && n === name && e === edge) { done = true; then(); } });
@@ -261,6 +264,24 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.moving).toBeUndefined();
     expect(w.vault.opened).toEqual(['c_1']);
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
+  });
+
+  it('a worker that could not seed trust answers the agent\'s trust question as it shows', async () => {
+    const w = open({ agentRunsThere: true });
+    w.vault.screens.set('%1', TRUST_DIALOG);
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await until(() => { expect(w.vault.keys).toEqual([{ paneId: '%1', text: '2' }, { paneId: '%1', text: '\r' }]); });
+    expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects).toBeUndefined();
+  });
+
+  it('a worker that seeded trust never looks for the trust question, nor types into the pane', async () => {
+    const w = open();
+    w.vault.screens.set('%1', TRUST_DIALOG);
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(w.vault.keys).toEqual([]);
   });
 
   it('a robot in no repository moves with its session only, and comes back the same way', async () => {

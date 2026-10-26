@@ -167,7 +167,9 @@ const put = (file: string, data: string): void => {
  * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
  * agent configuration.
  */
-export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean } = {}) {
+export function moveWorld(o: {
+  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean; agentRunsThere?: boolean;
+} = {}) {
   const base = fs.realpathSync(makeHome());
   fs.writeFileSync(path.join(base, 'gitconfig'), '');
   const g = (cwd: string, ...args: string[]): string => git(base, cwd, ...args);
@@ -286,7 +288,7 @@ export function moveWorld(o: { agent?: Partial<NonNullable<Robot['agent']>>; sec
   const prepare = new PrepareService({
     store: workerStore, fleet: workerFleet, tmux: vault.tmux as unknown as Tmux, viewers, connection, me: W, fleetId: config.id, homeName: 'mac', paths: workerPaths,
     git: handoverGit, cloneGit: handoverGit, agents: async () => [{ ...macProbe, home: farHome }], processes: vault.processes,
-    agentRunning: async () => false, log: silentLogger, watchMs: 5000, cli: opencode.far.run,
+    agentRunning: async () => !!o.agentRunsThere, log: silentLogger, watchMs: 5000, cli: opencode.far.run,
   });
   const terminals = new TerminalHub(workerFleet, vault.tmux as unknown as Tmux, workerStore, silentLogger);
   Object.assign(handlers, workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals }), prepare.handlers, {
