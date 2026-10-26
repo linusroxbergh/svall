@@ -97,6 +97,19 @@ describe('the agent configuration mirror', () => {
     expect(mirrorPlan(mac).files.map((f) => f.to).sort()).toEqual([...PLANNED, 'claude/rules/house.md'].sort());
   });
 
+  it('the common credential files and folders stay on the Mac, under a mirrored root or through a link into a dotfiles tree', () => {
+    const mac = macHome();
+    const lint = path.join(mac.homedir, '.agents/skills/lint');
+    for (const rel of [
+      '.netrc', '.git-credentials', '.npmrc', '.pypirc', '.aws/credentials', '.aws/config', '.ssh/config', '.docker/config.json',
+      '.config/gh/hosts.yml', '.gnupg/pubring.kbx', 'cert.pem', 'tls.key', '.env', '.env.local',
+    ]) put(path.join(lint, rel), 'secret\n');
+    put(path.join(mac.homedir, 'dotfiles/.aws/credentials'), 'secret\n');
+    put(path.join(mac.homedir, 'dotfiles/notes.md'), 'notes\n');
+    fs.symlinkSync(path.join(mac.homedir, 'dotfiles'), path.join(mac.claudeDir, 'skills/dotfiles'));
+    expect(mirrorPlan(mac).files.map((f) => f.to).sort()).toEqual([...PLANNED, 'claude/skills/dotfiles/notes.md'].sort());
+  });
+
   it('a file over 5 MB and a tree over 200 MB are left out, each with a line', () => {
     const mac = macHome();
     const sparse = (file: string, bytes: number) => { put(file, ''); fs.truncateSync(file, bytes); };

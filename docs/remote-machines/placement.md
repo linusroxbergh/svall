@@ -88,7 +88,9 @@ Mission control's robots stay on this Mac and have no move button.
   `CLAUDE.md`, `skills/`, `rules/`, `agents/`, `commands/`, `keybindings.json` and `settings.json`, Codex's
   `AGENTS.md`, `~/.agents/skills` and the fleet's agent profiles. Svall's own hooks and statusline there, logins, keys,
   plugins, `~/.claude.json` and the settings that hold secrets (`env`, `apiKeyHelper`, `awsCredentialExport`,
-  `awsAuthRefresh`, `otelHeadersHelper`) never travel. A file under `~/.svall/mirror-overrides/` on the worker, laid
+  `awsAuthRefresh`, `otelHeadersHelper`) never travel, nor does a credential file in those folders or behind a link
+  from them: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.env*`, `*.pem`, `*.key`, Docker's `config.json`,
+  gh's `hosts.yml`, or anything under `.aws`, `.ssh` or `.gnupg`. A file under `~/.svall/mirror-overrides/` on the worker, laid
   out the same way, is merged last and wins.
 - **Trust of the folder.** The first move into a clone on the worker trusts its main checkout, and so every worktree in
   it, in the agent's own settings there (Claude's `~/.claude.json`, Codex's `config.toml`), while no agent of that kind

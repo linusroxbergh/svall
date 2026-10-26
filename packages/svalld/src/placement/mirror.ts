@@ -32,8 +32,15 @@ type Root = keyof typeof ROOTS;
 // secrets or run what fetches them
 const WORKER_OWNED = ['hooks', 'statusLine', 'env', 'apiKeyHelper', 'awsCredentialExport', 'awsAuthRefresh', 'otelHeadersHelper'];
 // a key or a login by its name: a move's credential patterns and more
-const SECRET = [...CREDENTIAL_PATTERNS, '.credentials.json', 'credentials.json', 'auth.json', 'id_ed25519*', '*.p12']
+const SECRET = [...CREDENTIAL_PATTERNS, '.credentials.json', 'credentials.json', 'auth.json', 'id_ed25519*', '*.p12', '.git-credentials', '.npmrc', '.pypirc']
   .map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
+// keys and logins by where they lie: anything in these folders, and these files
+const SECRET_DIRS = ['.aws', '.ssh', '.gnupg'];
+const SECRET_FILES = ['.docker/config.json', 'gh/hosts.yml'];
+const secret = (file: string): boolean => {
+  const parts = file.split(path.sep);
+  return SECRET.some((re) => re.test(path.basename(file))) || parts.some((p) => SECRET_DIRS.includes(p)) || SECRET_FILES.some((f) => file.endsWith(`${path.sep}${f}`));
+};
 // a settings value under a key named so is a path, which lands by home
 const PATH_KEY = /(Path|Dir|cwd)$/;
 const MANIFEST = 'mirror.json';
@@ -107,7 +114,7 @@ export function mirrorPlan(o: MirrorHomes): MirrorPlan {
   const logins = new Set([path.join(o.homedir, '.claude.json'), path.join(o.claudeDir, '.claude.json'), path.join(o.codexDir, 'auth.json')].map(realPath));
   const keep = (file: string): boolean => {
     const real = realPath(file);
-    return !holds(plugins, real) && !logins.has(real) && ![file, real].some((f) => SECRET.some((re) => re.test(path.basename(f))));
+    return !holds(plugins, real) && !logins.has(real) && ![file, real].some(secret);
   };
   const tree = (root: Root, top: string, under: string): void => {
     const w: Walk = { found: [], bytes: 0, seen: new Set() };
