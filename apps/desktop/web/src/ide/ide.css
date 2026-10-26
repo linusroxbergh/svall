@@ -41,6 +41,7 @@
 .editor-mode button { padding: var(--sp-xs) var(--sp-lg); border-radius: var(--r-sm); background: none; color: var(--ink-3); font-size: var(--text-sm); }
 .editor-mode button:hover { color: var(--ink); background: var(--fill-1); }
 .editor-mode button[data-active="true"] { color: var(--ink); background: var(--fill-2); }
+.editor-far { margin-left: auto; align-self: center; color: var(--ink-3); font-size: var(--text-sm); }
 .markdown-preview { flex: 1; min-height: 0; overflow: auto; padding: var(--sp-xl) clamp(var(--sp-2xl), 5vw, var(--read-inset-max)); color: var(--ink); font-size: var(--text-md); line-height: var(--lh-read); overflow-wrap: anywhere; }
 .markdown-preview > :first-child { margin-top: 0; }
 .markdown-preview > * { max-width: 75ch; }

@@ -146,6 +146,7 @@ test('a worker\'s clone offers no Show in Finder and no delete, and opens its fi
   ] };
   call.mockImplementation((m: string, p?: unknown) => Promise.resolve(m === 'resources.get' ? { sources: [src] }
     : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: (p as { id: string }).id === D ? '/u/.svall/docs/repos/app-0123abcd' : '/home/ada/app' } : {}));
+  store.getState().setFleet({ ...store.getState().fleet, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } });
   store.getState().setResources([src]);
   store.getState().toggleResources(true, { where: C, what: 'all' });
   render(<OnMap />);
@@ -159,9 +160,11 @@ test('a worker\'s clone offers no Show in Finder and no delete, and opens its fi
   await act(async () => { fireEvent.click(screen.getByTestId('resources-item-instructions-CLAUDE.md')); });
   expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
   expect(getBuffer(C, 'CLAUDE.md')!.state.readOnly).toBe(true);
+  expect(screen.getByTestId('editor-read-only').textContent).toBe('read-only · on linus-vault');
   expect(screen.queryByText('Show in Finder ›')).toBeNull();
   await act(async () => { fireEvent.click(screen.getByTestId('resources-item-docs-plan')); });
   expect(screen.getByText('Show in Finder ›')).toBeTruthy();
+  expect(screen.queryByTestId('editor-read-only')).toBeNull();
 });
 
 // the shelf's box in percent of its room
