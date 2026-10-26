@@ -2,7 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { useApp } from '../hooks.js';
-import { isPlaced, unreachableOf } from '../placement.js';
+import { awayLine } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { RobotMenu } from './RobotMenu.js';
@@ -41,9 +41,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const robot = useApp((s) => s.fleet.robots[id]);
   const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet) : undefined));
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
-  // the worker it runs on, while the home has lost it: the terminal holds the last screen the home saw
-  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && unreachableOf(s.fleet, r); });
-  const mismatch = useApp((s) => { const r = s.fleet.robots[id]; return !!r && isPlaced(r) && s.fleet.machines?.[r.machine]?.mismatch === true; });
+  // what stands over the terminal while the home has lost the worker it runs on; the terminal holds the last screen the home saw
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r); });
   const status = useApp((s) => s.status);
   const online = status === 'online';
   const host = useRef<HTMLDivElement>(null);
@@ -204,9 +203,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       <div className="stage">
         <div className="screen" ref={host} />
         {unreachable && (
-          <p className="unreachable" data-testid="phone-unreachable">
-            {unreachable} {mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}
-          </p>
+          <p className="unreachable" data-testid="phone-unreachable">{unreachable}</p>
         )}
         {failed && (
           <div className="failed">

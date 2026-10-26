@@ -4,7 +4,7 @@ import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './action
 import { app, deps } from './boot.js';
 import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
-import { destinationName, isPlaced, unreachableOf } from './placement.js';
+import { awayLine, destinationName } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
 import { secondKey } from './terminals.js';
 
@@ -26,8 +26,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
   // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
   const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to); });
-  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && unreachableOf(s.fleet, r); });
-  const mismatch = useApp((s) => { const r = s.fleet.robots[id]; return !!r && isPlaced(r) && s.fleet.machines?.[r.machine]?.mismatch === true; });
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r); });
   const away = !!movingTo || !!unreachable;
   // the last lines this Mac saw of the robot's pane there, asked once each time its worker is lost
   const lost = !!unreachable && !second;
@@ -104,7 +103,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   if (unreachable) {
     return (
       <div className="revive away">
-        <span data-testid="terminal-unreachable">{unreachable} {mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}</span>
+        <span data-testid="terminal-unreachable">{unreachable}</span>
         {lastScreen && <pre data-testid="terminal-last-screen">{lastScreen}</pre>}
       </div>
     );

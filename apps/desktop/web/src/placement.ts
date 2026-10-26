@@ -18,3 +18,10 @@ export const readsElsewhere = (f: Pick<FleetState, 'robots'>, id: string): boole
 /** The worker a robot runs on, while the home has lost its link to it. */
 export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>): string | undefined =>
   (isPlaced(c) && f.machines?.[c.machine]?.reachable === false ? machineName(f, c.machine) : undefined);
+
+/** What a robot's terminal and files say in their place while the home has lost its worker: a link in mismatch names the upgrade. */
+export function awayLine(f: Machines, c: Pick<Robot, 'machine'>): string | undefined {
+  const name = unreachableOf(f, c);
+  const mismatch = isPlaced(c) && f.machines?.[c.machine]?.mismatch === true;
+  return name && `${name} ${mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}`;
+}

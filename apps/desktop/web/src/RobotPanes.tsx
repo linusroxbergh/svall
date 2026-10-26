@@ -7,7 +7,7 @@ import { Changes } from './ide/Changes.js';
 import { FilesArea } from './ide/FilesArea.js';
 import { keyTip, type ActionId } from './keys.js';
 import { closeSide, isTerminal, kindOf, pick, shows, snapRatio, split, type Kind, type Panes, type Side, type Surface } from './panes.js';
-import { unreachableOf } from './placement.js';
+import { awayLine } from './placement.js';
 import { panesOf, slotStatus } from './selectors.js';
 import { TerminalArea } from './TerminalArea.js';
 
@@ -52,8 +52,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
   if (!c) return null;
   const two = panes.right !== undefined;
   // the files of a robot on a worker are read there, so they wait while it is out of reach
-  const away = unreachableOf({ machines }, c);
-  const odd = away !== undefined && c.machine !== undefined && machines?.[c.machine]?.mismatch === true;
+  const away = awayLine({ machines }, c);
 
   const set = (next: Panes) => {
     if (shows(next, 'terminal2') && !c.second?.tmux) openSecondTerminal(deps(), id);
@@ -68,7 +67,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
   const body = (surface: Surface, side: Side) => {
     // in a split only the left pane takes the keyboard
     const aside = two && side === 'right';
-    if (away && (surface === 'files' || surface === 'changes')) return <div className="ide-empty" data-testid="pane-elsewhere">{away} {odd ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}</div>;
+    if (away && (surface === 'files' || surface === 'changes')) return <div className="ide-empty" data-testid="pane-elsewhere">{away}</div>;
     // a move takes the files to another machine, and the views mount anew to watch them there
     const at = `${id}@${c.machine ?? ''}`;
     return surface === 'browser' ? <BrowserArea key={id} id={id} aside={aside} />
