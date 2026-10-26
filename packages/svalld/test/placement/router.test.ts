@@ -57,7 +57,8 @@ describe('routing calls for placed robots', () => {
   it('on the worker, a call its mirror cannot answer is the home\'s, and the change comes back in the next snapshot', async () => {
     const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
-    // a change to a robot here is the home's once it has acked all the worker journaled
+    // a change to a robot here is the home's once the worker has read the home's first ack and has none left to send
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
     await until(() => { if (w.worker.outbox.last() !== w.worker.outbox.acked()) throw new Error('not drained yet'); });
     expect(await dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', note: 'reviewing' } }, w.worker.ctx)).toMatchObject({ id: 1, result: { id: 'c_1', note: 'reviewing' } });
     expect(w.home.store.state.robots.c_1.note).toBe('reviewing');
