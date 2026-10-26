@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { ApiError, type Event, type MachineId } from '@svall/protocol';
 import type { HomeLinks } from '../link/home.js';
+import { PART_REPLY } from '../link/stream.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
 import type { Viewer } from '../terminals.js';
@@ -12,6 +13,8 @@ const BEHIND = 1024 * 1024;
 const LOOK_AGAIN_MS = 100;
 /** The most scrollback a home viewer's screen carries over the link. */
 export const REMOTE_LINES = 500;
+/** The most of a screen afresh a notification carries: its base64 and the frame around it stay under PART_REPLY. */
+export const REMOTE_SCREEN_BYTES = ((PART_REPLY - 4096) / 4) * 3;
 
 /** What a worker sends a viewer on the home: the viewer's key, and a file change or what a terminal shows. */
 export const ViewerNotice = z.object({
@@ -44,7 +47,7 @@ export class FarViewers {
   get(key: string, kind: Viewer['kind']): Viewer {
     let v = this.viewers.get(key);
     if (!v) {
-      v = { kind, lines: REMOTE_LINES, send: (ev) => this.send(key, ev), backlog: () => this.o.connection.backlog() };
+      v = { kind, lines: REMOTE_LINES, screenBytes: REMOTE_SCREEN_BYTES, send: (ev) => this.send(key, ev), backlog: () => this.o.connection.backlog() };
       this.viewers.set(key, v);
     }
     return v;

@@ -6,6 +6,7 @@ import { dispatch } from '../../src/api/methods.js';
 import type { Fleet } from '../../src/fleet.js';
 import { HEARTBEAT_MS } from '../../src/link/home.js';
 import { silentLogger, type Logger } from '../../src/log.js';
+import { REMOTE_SCREEN_BYTES } from '../../src/placement/far-viewers.js';
 import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
@@ -144,6 +145,21 @@ describe('the terminal of a robot on a worker', () => {
     behind.mockRestore();
     await until(() => expect(phone.got).toEqual([resync('$ \n')]));
     await until(() => expect(other.got).toEqual([resync('$ \n')]));
+  });
+
+  it('a screen afresh too long for a notification reaches the viewer as its last lines, cut whole', async () => {
+    const { w, pane, phone } = await linked();
+    await w.home.terminals.open('c_1', 40, 12, 2000, phone);
+    const rows = Array.from({ length: 12_000 }, (_, i) => `row ${i} ${'x'.repeat(100)}`);
+    pane.screen = Buffer.from(`${rows.join('\r\n')}\x1b[12;1H`);
+    expect(pane.screen.length).toBeGreaterThan(1.2 * 1024 * 1024);
+    w.worker.fleet.emit('continue', 'c_1');
+    await until(() => expect(phone.got).toHaveLength(1));
+    const got = Buffer.from((phone.got[0] as Extract<Event, { event: 'term.resync' }>).data.screen, 'base64');
+    expect(got.length).toBeLessThanOrEqual(REMOTE_SCREEN_BYTES);
+    expect(got.length).toBeGreaterThan(REMOTE_SCREEN_BYTES - 200);
+    expect(pane.screen.subarray(pane.screen.length - got.length)).toEqual(got);
+    expect(got.toString().startsWith('row ')).toBe(true);
   });
 
   it('a home viewer that falls behind misses a placed robot\'s output and gets its screen afresh from the worker once it drains', async () => {
