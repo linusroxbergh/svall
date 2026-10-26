@@ -9,7 +9,8 @@ import { must } from '../handover/git-graph.js';
 import { clean, holds } from '../handover/portable-path.js';
 import { relocate } from '../handover/relocate.js';
 import type { Classified } from '../handover/rest.js';
-import { sessionAdapter, type AgentProbe, type AgentProber } from '../handover/sessions/registry.js';
+import { cliRunner, sessionAdapter, type AgentProbe, type AgentProber } from '../handover/sessions/registry.js';
+import type { CliRun } from '../handover/sessions/types.js';
 import type { HomeLinks, WorkerLink } from '../link/home.js';
 import { remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
@@ -60,6 +61,8 @@ export type CheckDeps = {
   homedir: string;
   /** This Mac's terminals that still hold a process, as rest reads them. */
   terminals: () => Promise<Pick<Classified, 'robotId' | 'term' | 'class'>[]>;
+  /** Runs an agent CLI that keeps its sessions in a database of its own. */
+  cli?: CliRun;
 };
 
 type Failure = Omit<Refusal, 'details'> & { details?: string[] };
@@ -134,11 +137,20 @@ function agentFailures(c: Robot, local: AgentProbe[], far: AgentAdapter[], name:
   });
 }
 
-async function sessionBytes(c: Robot): Promise<number> {
+// a session a CLI keeps in a database of its own is written out, as its move writes it, to be counted
+async function sessionBytes(c: Robot, run: CliRun): Promise<number> {
   const { sourceHome, files } = await sessionLanding(c);
-  // a session a CLI keeps in a database of its own is written out to its export file only as it moves
-  const exported = c.agent && sessionAdapter(c.agent.kind).exportFile?.(c.agent.sessionId);
-  const sizes = await Promise.all(files.filter((f) => f !== exported).map(async (f) => (await fs.promises.lstat(path.join(sourceHome, f))).size));
+  const adapter = c.agent && sessionAdapter(c.agent.kind);
+  const sizes = await Promise.all(files.map(async (f) => {
+    if (!c.agent || f !== adapter?.exportFile?.(c.agent.sessionId)) return (await fs.promises.lstat(path.join(sourceHome, f))).size;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-session-'));
+    try {
+      await adapter.exportSession!(c.agent.sessionId, path.join(dir, 'session.json'), run, c.cwd);
+      return fs.statSync(path.join(dir, 'session.json')).size;
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }));
   return sizes.reduce((n, s) => n + s, 0);
 }
 
@@ -172,9 +184,9 @@ const bundleFailure = (e: unknown): Failure => (e instanceof BundleTooLarge
 export type Carried = Pick<MoveSheet, 'sessionBytes' | 'commits' | 'changedFiles' | 'untrackedFiles'>;
 
 /** What a move of robot `c` from this machine to one holding `have` carries, as its sheet counts it, or why it cannot. */
-export async function carriedFrom(c: Robot, have: string[], git: GitRunner): Promise<Carried | { refusal: Failure }> {
+export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run: CliRun): Promise<Carried | { refusal: Failure }> {
   let session: number;
-  try { session = await sessionBytes(c); } catch (e) { return { refusal: { reason: (e as Error).message, action: 'start it fresh first' } }; }
+  try { session = await sessionBytes(c, run); } catch (e) { return { refusal: { reason: (e as Error).message, action: 'start it fresh first' } }; }
   if (!c.repo) return { sessionBytes: session, commits: 0, changedFiles: 0, untrackedFiles: 0 };
   const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-check-'));
   try {
@@ -231,7 +243,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const homes = linked && info ? homesOf(d.homedir, linked.home, local, info.agentAdapters) : undefined;
   let session = 0;
   try {
-    session = await sessionBytes(c);
+    session = await sessionBytes(c, d.cli ?? cliRunner());
   } catch (e) {
     fail({ reason: (e as Error).message, action: 'start it fresh first' });
   }

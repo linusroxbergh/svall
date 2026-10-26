@@ -534,8 +534,8 @@ export class Placement {
   }
 
   private checkDeps(): CheckDeps {
-    const { store, me, links, git, agents, gateway, release, homedir } = this.d;
-    return { store, me, links, git, agents, gateway, release, homedir, terminals: () => this.terminals() };
+    const { store, me, links, git, agents, gateway, release, homedir, cli } = this.d;
+    return { store, me, links, git, agents, gateway, release, homedir, terminals: () => this.terminals(), ...(cli && { cli }) };
   }
 
   private async terminals() {

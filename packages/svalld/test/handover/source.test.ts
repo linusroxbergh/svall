@@ -549,7 +549,7 @@ describe('source preflight', () => {
   it('blocks an OpenCode session with an undo pending, at preflight and at freeze before any terminal rests, and keeps no copy of it', async () => {
     const b = opencodeBoot();
     hold(b.env, { info: { id: OC, location: { directory: path.join(b.work, 'ada') }, revert: { messageID: 'msg_1' } }, messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_1', text: 'two' }] });
-    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then hand over$/), entity: { kind: 'robot', id: 'c_ada' } };
+    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then move it$/), entity: { kind: 'robot', id: 'c_ada' } };
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: b.info }) });
     expect(r.blockers).toEqual([pending]);
     expect(b.checked.length).toBe(1);

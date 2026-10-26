@@ -110,7 +110,7 @@ export const opencodeAdapter: SessionAdapter = {
     if (r.code !== 0) throw new SessionError('transcript_missing', `OpenCode holds no session ${sessionId} to carry: ${said(r)}`);
     // import drops a pending undo, so the turns it hides would come back to life on the destination
     if (infoOf(file)?.revert) {
-      throw new SessionError('transcript_missing', `OpenCode session ${sessionId} has an undo pending: send a message or /redo, then hand over`);
+      throw new SessionError('transcript_missing', `OpenCode session ${sessionId} has an undo pending: send a message or /redo, then move it`);
     }
   },
 

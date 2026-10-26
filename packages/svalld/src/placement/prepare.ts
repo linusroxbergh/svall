@@ -106,7 +106,7 @@ export class PrepareService {
         const { robotId, have } = parse(Sheet, raw);
         const c = this.d.store.state.robots[robotId];
         if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? robotId} does not run on ${this.name}`);
-        return carriedFrom(c, have, this.d.git);
+        return carriedFrom(c, have, this.d.git, this.d.cli ?? cliRunner());
       },
       // what moved in the worktree a robot left here since it left
       'move.compare': async (raw) => {

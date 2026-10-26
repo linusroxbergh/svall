@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError, emptyState, type AgentAdapter, type FleetState, type MachineId, type Robot } from '@svall/protocol';
 import { AGENTS } from '../../src/agents.js';
 import type { AgentProbe } from '../../src/handover/sessions/registry.js';
+import type { CliRun } from '../../src/handover/sessions/types.js';
 import { handoverGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
@@ -56,7 +57,7 @@ type Machines = ReturnType<typeof machines>;
 
 type Opts = {
   gateway?: boolean; reachable?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
-  probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>;
+  probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>; cli?: CliRun;
 };
 
 // the home's view of the fleet and of linus-vault, which answers system.info as faked and repo.probe from its real folder
@@ -83,6 +84,7 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     gateway: () => (o.gateway ? W : undefined),
     agents: async () => o.local ?? [{ kind: 'claude', version: CLAUDE, home: `${t.mac}/.claude`, loggedIn: true, hooks: true }],
     terminals: async () => o.terminals ?? [],
+    ...(o.cli && { cli: o.cli }),
     links: {
       for: (m) => (m === W && o.reachable !== false ? { connected: () => true, hello: () => hello } : undefined),
       call: async <T>(_m: MachineId, method: string, params: unknown): Promise<T> => {
@@ -233,7 +235,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     await sheet(depsOf(t, [shellIn(t)]));
   });
 
-  it('passes an OpenCode robot, whose session counts its log alone until its OpenCode writes it out', async () => {
+  it('passes an OpenCode robot, whose session counts its log and the export its OpenCode writes of it, as the move would', async () => {
     const t = machines();
     const sid = 'ses_0123456789abAbCdEfGhIjKlMn';
     const log = path.join(t.mac, '.svall/transcripts/opencode', `${sid}.jsonl`);
@@ -242,7 +244,16 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const agent = { kind: 'opencode' as const, sessionId: sid, transcriptPath: log, status: 'idle' as const, lastActivityAt: 0 };
     const local: AgentProbe[] = [{ kind: 'opencode', version: '2.1.4', home: path.dirname(log), loggedIn: true, hooks: true }];
     const far: AgentAdapter[] = [{ kind: 'opencode', version: '2.1.4', adapter: 1, home: `${t.far}/.svall/transcripts/opencode`, loggedIn: true, hooks: true }];
-    expect((await sheet(depsOf(t, [shellIn(t, { agent })], { local, far }))).sheet).toMatchObject({ sessionBytes: 17 });
+    const exported: string[][] = [];
+    const cli: CliRun = async (_cmd, args, o = {}) => {
+      exported.push(args);
+      fs.writeFileSync(o.stdout!, JSON.stringify({ info: { id: sid }, messages: [{ id: 'msg_1' }] }));
+      return { code: 0, stdout: '', stderr: '' };
+    };
+    const size = 17 + JSON.stringify({ info: { id: sid }, messages: [{ id: 'msg_1' }] }).length;
+    expect((await sheet(depsOf(t, [shellIn(t, { agent })], { local, far, cli }))).sheet).toMatchObject({ sessionBytes: size });
+    expect(exported).toEqual([['session', 'export', '--standalone', sid]]);
+    expect(fs.readdirSync(path.dirname(log))).toEqual([`${sid}.jsonl`]);
   });
 
   it('refuses a robot already moving, naming where to', async () => {
