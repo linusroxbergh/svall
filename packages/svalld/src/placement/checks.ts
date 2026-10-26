@@ -164,6 +164,29 @@ const split = (message: string): Failure => {
   return at < 0 ? { reason: message, action: 'fix it on this Mac first' } : { reason: message.slice(0, at), action: message.slice(at + 2) };
 };
 
+// why a worktree's bundle could not be built
+const bundleFailure = (e: unknown): Failure => (e instanceof BundleTooLarge
+  ? { reason: e.message, action: 'push its commits or ignore its large files first' }
+  : split((e as Error).message.trim().split('\n').at(-1) ?? ''));
+
+export type Carried = Pick<MoveSheet, 'sessionBytes' | 'commits' | 'changedFiles' | 'untrackedFiles'>;
+
+/** What a move of robot `c` from this machine to one holding `have` carries, as its sheet counts it, or why it cannot. */
+export async function carriedFrom(c: Robot, have: string[], git: GitRunner): Promise<Carried | { refusal: Failure }> {
+  let session: number;
+  try { session = await sessionBytes(c); } catch (e) { return { refusal: { reason: (e as Error).message, action: 'start it fresh first' } }; }
+  if (!c.repo) return { sessionBytes: session, commits: 0, changedFiles: 0, untrackedFiles: 0 };
+  const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-check-'));
+  try {
+    const manifest = await buildBundle(c.repo.root, { git, into, have, carry: [] });
+    return { sessionBytes: session, commits: manifest.commits?.count ?? 0, changedFiles: await changedFiles(c.repo.root, git), untrackedFiles: manifest.untracked.length };
+  } catch (e) {
+    return { refusal: bundleFailure(e) };
+  } finally {
+    fs.rmSync(into, { recursive: true, force: true });
+  }
+}
+
 /**
  * Whether robot `robotId` can move from this Mac to `to`, with the sentence and action of the first check that fails
  * and the rest behind details; when all pass, the sheet of what travels and the plan the move follows.
@@ -280,8 +303,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
         }
         bundle = { manifest, changed: await changedFiles(repo.root, d.git) };
       } catch (e) {
-        if (e instanceof BundleTooLarge) fail({ reason: e.message, action: 'push its commits or ignore its large files first' });
-        else fail(split((e as Error).message.trim().split('\n').at(-1) ?? ''));
+        fail(bundleFailure(e));
       } finally {
         fs.rmSync(into, { recursive: true, force: true });
       }

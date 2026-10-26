@@ -28,7 +28,7 @@ import { installedScripts, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
 import { applyBundle, BundleManifest, buildBundle, CREDENTIAL_PATTERNS, fingerprintOf, verifyBundle } from './bundle.js';
-import { converted, homesOf, MovePlan, moveChecks, type CheckDeps, type CheckResult } from './checks.js';
+import { converted, homesOf, MovePlan, moveChecks, type Carried, type CheckDeps, type CheckResult } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths, sessionLanding } from './paths.js';
 import { answerTrustPrompt } from './trust.js';
@@ -751,8 +751,11 @@ export class Placement {
       if (changed) return fail(changed);
     }
     const plan = await this.returnPlan(c, from, hello, o.interruptAfterMs ?? (c.agent?.status === 'blocked' ? 0 : undefined));
+    const carried = await this.d.links.call<Carried | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have })
+      .catch((e: Error) => ({ refusal: { reason: e.message, action: 'try again when it is awake' } }));
+    if ('refusal' in carried) return fail(carried.refusal);
     const sheet: MoveSheet = {
-      sessionBytes: 0, branch: c.repo?.branch ?? '', commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [],
+      ...carried, branch: c.repo?.branch ?? '', clone: 'warm', credentialFiles: [], stays: [],
       interrupts: plan.interruptAfterMs !== undefined, question: c.agent?.status === 'blocked', notInRepo: !c.repo,
     };
     return { ok: true, sheet, plan };

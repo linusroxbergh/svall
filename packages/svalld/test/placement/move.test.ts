@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
 import { realPath } from '../../src/handover/portable-path.js';
@@ -157,6 +158,11 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     fs.appendFileSync(farTranscript, `${JSON.stringify({ type: 'assistant', sessionId: SID })}\n`);
     const there = state(w, w.farWt);
     const fingerprint = await fingerprintOf(w.farWt, handoverGit);
+    // the sheet counts what comes back as the worker holds it
+    const check = await home.placement.check('c_1', H);
+    if (!check.ok) throw new Error(check.refusal.reason);
+    expect(check.sheet).toMatchObject({ sessionBytes: fs.statSync(farTranscript).size, commits: 1, changedFiles: 1, untrackedFiles: 2, clone: 'warm' });
+    expect(moveSummary(check.sheet, 'app', 'this Mac')).toBe('session 1 KB · branch kanban: 1 commit not on origin, 3 changed files · app on this Mac: cloned already');
 
     const back = await home.placement.start('c_1', H);
 

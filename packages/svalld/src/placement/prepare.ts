@@ -17,6 +17,7 @@ import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, verifyBundle } from './bundle.js';
+import { carriedFrom } from './checks.js';
 import {
   blobIds, changedSince, fileSha, importSessions, landed, leaveAgain, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
 } from './move.js';
@@ -55,6 +56,7 @@ const ById = z.object({ id: MoveId });
 const WithJournal = z.object({ journal: MoveJournal });
 const Prepare = z.object({ id: MoveId, blobs: z.object({ bundle: Sha256.optional(), session: Sha256 }) });
 const Compare = z.object({ left: LeftBehind });
+const Sheet = z.object({ robotId: z.string(), have: z.array(z.string()) });
 
 type Made = NonNullable<MoveJournal['made']>;
 
@@ -99,6 +101,13 @@ export class PrepareService {
       'move.rest': byJournal((j) => this.rest(j)),
       'move.bundle': byId((id) => this.bundle(id)),
       'move.release': byId((id) => this.release(id)),
+      // what a robot of this machine's carries to the home, which holds `have`
+      'move.sheet': async (raw) => {
+        const { robotId, have } = parse(Sheet, raw);
+        const c = this.d.store.state.robots[robotId];
+        if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? robotId} does not run on ${this.name}`);
+        return carriedFrom(c, have, this.d.git);
+      },
       // what moved in the worktree a robot left here since it left
       'move.compare': async (raw) => {
         const { left } = parse(Compare, raw);
