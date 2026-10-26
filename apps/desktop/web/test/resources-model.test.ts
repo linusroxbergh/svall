@@ -133,6 +133,10 @@ describe('qualifierOf', () => {
   it('says the fleet holds for this window alone', () => {
     expect(qualifierOf(ours, f)).toBe('this window only');
   });
+  it('names the worker a clone is on', () => {
+    const onVault = { ...f, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
+    expect(qualifierOf(src('repo', 'app', '/home/ada/app', { rootId: farRootId(VAULT, '/home/ada/app') }), onVault)).toBe('~/app on linus-vault');
+  });
 });
 
 describe('kindRows', () => {
