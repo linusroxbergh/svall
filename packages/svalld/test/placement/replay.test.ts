@@ -1,3 +1,4 @@
+import type { AsyncLocalStorage } from 'node:async_hooks';
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs';
@@ -5,7 +6,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { Duplex, Writable } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Mutation, cellKey, isLand, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { docsDir } from '../../src/docs.js';
@@ -17,6 +18,7 @@ import { W, island, placed, robot, until, world } from './world.js';
 
 const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const w of worlds.splice(0)) await w.stop();
   cleanHomes();
 });
@@ -112,13 +114,20 @@ describe('the home replaying what a worker did while it slept', () => {
     expect(logged[0]).toMatch(/^w1: a mutation svalld cannot read is skipped/);
   });
 
-  it('a mutation that cannot apply here is logged, and its robot\'s note says why', async () => {
-    const { w, logged } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } } } });
-    const context = [{ kind: 'file', ref: '/nowhere/spec.md', label: 'spec', source: 'manual' }];
-    await expect(w.home.replay.apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', context }, base: { context: [] }, snapshotVersion: 0, at: 1 }, W)).resolves.toBeUndefined();
-    expect(w.home.store.state.robots.c_1.note).toBe('w1 changed this robot while this Mac slept; it could not be applied here: no such file or folder: /nowhere/spec.md');
-    expect(w.home.store.state.robots.c_1.context).toEqual([]);
-    expect(logged).toHaveLength(1);
+  it('a context path this Mac does not have is left out and named in the note; the rest of the update applies', async () => {
+    const { w, call, logged, replayed } = setup();
+    const notes = path.join(w.worker.paths.home, 'notes.md');
+    fs.writeFileSync(notes, 'notes\n');
+    const url = { kind: 'other', ref: 'https://example.com/spec', label: 'spec', source: 'manual' };
+    await call('robot.update', { id: 'c_1', note: 'reviewing', context: [{ kind: 'file', ref: notes, label: 'notes', source: 'manual' }, url] });
+    // the file is on w1 alone
+    fs.rmSync(notes);
+    await w.link();
+    await replayed();
+    expect(w.home.store.state.robots.c_1).toMatchObject({
+      note: `reviewing\nw1 added ${notes} to the context while this Mac slept; it is not on this Mac`, noteSource: 'manual', context: [url],
+    });
+    expect(logged).toEqual([]);
   });
 
   it('a robot whose cell was taken meanwhile is re-placed on the same island', async () => {
@@ -255,6 +264,35 @@ describe('the home replaying what a worker did while it slept', () => {
     expect(logged).toEqual(['w1: c_1 is closed here; what w1 changed of it while this Mac slept is dropped']);
     await until(() => expect(w.worker.store.state.robots.c_1).toBeUndefined());
     expect(killed).toEqual(['@1']);
+  });
+
+  it('the hold a mutation is applied in touches no file: its stat comes before it, its docs go after the write', async () => {
+    const { w, clone, create, call, replayed } = setup({
+      home: { islands: { i_2: { ...island, id: 'i_2', name: 'b' } }, robots: { c_1: placed({ id: 'c_1', islandId: 'i_2' }), c_2: placed({ id: 'c_2', islandId: 'i_2', cell: { x: 5, y: 2 } }) } },
+    });
+    w.worker.store.update((d) => { d.robots.c_2 = placed({ id: 'c_2', cell: { x: 5, y: 2 }, tmux: { windowId: '@7', paneId: '%7' } }); });
+    const spec = path.join(clone, 'spec.md');
+    fs.writeFileSync(spec, 'spec\n');
+    const docs = docsDir(w.home.paths.docs, 'robot', 'c_2');
+    fs.mkdirSync(docs, { recursive: true });
+    const made = await create();
+    await call('robot.update', { id: 'c_1', context: [{ kind: 'file', ref: spec, label: 'spec', source: 'manual' }] });
+    await call('robot.close', { id: 'c_2' });
+    // the store's own record of a running hold, which a flush from inside one trips over
+    const { inside } = w.home.store as unknown as { inside: AsyncLocalStorage<{ running: boolean }> };
+    const touched: string[] = [];
+    for (const k of ['statSync', 'existsSync', 'readFileSync', 'writeFileSync', 'appendFileSync', 'rmSync', 'mkdirSync', 'renameSync'] as const) {
+      const real = fs[k] as (...a: unknown[]) => unknown;
+      vi.spyOn(fs, k).mockImplementation(((...a: unknown[]) => { if (inside.getStore()?.running) touched.push(k); return real(...a); }) as never);
+    }
+    await w.link();
+    await replayed();
+    const { robots } = w.home.store.state;
+    expect(w.home.store.state.islands[robots[made.id].islandId].name).toBe('recovered from w1');
+    expect(robots.c_1.context).toMatchObject([{ ref: spec, kind: 'file' }]);
+    expect(robots.c_2).toBeUndefined();
+    expect(fs.existsSync(docs)).toBe(false);
+    expect(touched).toEqual([]);
   });
 
   it('a robot created offline on a branch another robot holds is flagged in its note at reconnect', async () => {

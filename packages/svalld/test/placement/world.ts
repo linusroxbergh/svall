@@ -90,11 +90,11 @@ export function world(o: {
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
     onReport: (r, machine) => { applyReport(homeStore, r, machine); },
+    onMutation: async (data, machine) => {
+      await held;
+      return replay.prepare(data, machine);
+    },
     onEvent: async (kind, data, machine) => {
-      if (kind === 'mutation') {
-        await held;
-        return replay.apply(data, machine);
-      }
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new Error(`no ${kind}`);
       homeDocs.apply(kind, data, machine);
     },

@@ -248,8 +248,8 @@ async function start(opts: Options): Promise<Daemon> {
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
     onReport: (r, machine) => { applyReport(store, r, machine); },
+    ...(replay && { onMutation: (data: unknown, machine: MachineId) => replay.prepare(data, machine) }),
     onEvent: async (kind, data, machine) => {
-      if (kind === 'mutation' && replay) return replay.apply(data, machine);
       if (!homeDocs || (kind !== 'docs.write' && kind !== 'docs.delete')) throw new UnknownEvent();
       homeDocs.apply(kind, data, machine);
     },

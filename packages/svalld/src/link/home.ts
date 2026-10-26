@@ -46,6 +46,9 @@ type Options = {
   release: string;
   onReport(r: RobotSync, machine: MachineId): void;
   onEvent(kind: string, data: unknown, machine: MachineId): Promise<void>;
+  /** A worker's mutation: it reads the disk before the event's hold, `change` writes the store inside it and never throws,
+   *  and `after` runs once the write is tried. */
+  onMutation?(data: unknown, machine: MachineId): Promise<{ change(): void; after(): void }>;
   onInventory(inv: Inventory, machine: MachineId): Promise<void>;
   /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
   onCall?(method: string, params: unknown): Promise<unknown>;
@@ -334,8 +337,10 @@ export class WorkerLink {
         if (!inventory) throw new Error('an event came before the inventory');
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
+          const mutation = f.kind === 'mutation' && this.o.onMutation ? await this.o.onMutation(f.data, this.machine) : undefined;
           await this.o.store.withheld(async () => {
             if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
+            else if (mutation) mutation.change();
             else {
               await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
                 if (!(e instanceof UnknownEvent)) throw e;
@@ -344,7 +349,9 @@ export class WorkerLink {
             }
             this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
           });
-          if (!(await this.o.store.flush())) throw new Error('state.json was not written');
+          const written = await this.o.store.flush();
+          mutation?.after();
+          if (!written) throw new Error('state.json was not written');
           // gone meanwhile: the worker replays the event on its next stream
           if (stream !== this.stream) return;
           this.acked = f.seq;
