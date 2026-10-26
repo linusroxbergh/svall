@@ -500,6 +500,25 @@ describe('the link', () => {
     expect(Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.machines?.[W]).toEqual(machine());
   });
 
+  it('a worker in mismatch whose link drops is marked not reachable, its mismatch gone', async () => {
+    const w = world({ versions: { schema: STATE_SCHEMA_VERSION + 1, protocol: PROTOCOL_VERSION } });
+    await w.worker.start();
+    const sockets: net.Socket[] = [];
+    const links = w.links(async (e) => {
+      // the worker is off once its link drops
+      if (sockets.length) throw new Error('connection refused');
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    });
+    const machine = () => w.home.state.machines?.[W];
+    links.start();
+    await until(() => expect(machine()).toMatchObject({ reachable: false, mismatch: true }));
+    sockets[0].destroy();
+    await until(() => expect(machine()?.mismatch).toBeUndefined());
+    expect(machine()?.reachable).toBe(false);
+  });
+
   it("a new epoch starts the home over from the worker's acked seq, whether the journal was wiped or lost its outbox or acked", async () => {
     const w = world();
     const count = (kind: string) => w.seen.filter((s) => s === `event ${kind}`).length;
