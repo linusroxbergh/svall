@@ -165,6 +165,15 @@ describe.skipIf(!hasGit)('bundle', () => {
     const fallback = await buildBundle(mac, { git: handoverGit, into: at('b2'), have: [workerOnly], carry: [] });
     expect(fallback.commits).toEqual({ count: 2, prerequisites: [shared] });
 
+    // a remote branch that moved on past the fork, known here, bounds it too, and the bundle verifies in a clone holding it
+    g(worker, 'push', '-q', 'origin', 'main');
+    g(mac, 'fetch', '-q', 'origin');
+    g(mac, 'remote', 'set-head', 'origin', '--delete');
+    const past = await buildBundle(mac, { git: handoverGit, into: at('b4'), have: [workerOnly], carry: [] });
+    expect(past.commits).toEqual({ count: 2, prerequisites: [shared] });
+    g(at(''), 'clone', '-q', at('up.git'), at('fresh'));
+    expect(g(at('fresh'), 'bundle', 'verify', at('b4/commits.bundle'))).toContain('requires');
+
     g(mac, 'remote', 'remove', 'origin');
     const whole = await buildBundle(mac, { git: handoverGit, into: at('b3'), have: [], carry: [] });
     expect(whole.commits).toEqual({ count: 3, prerequisites: [] });

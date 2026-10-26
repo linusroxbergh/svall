@@ -357,6 +357,31 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(plan.have).toEqual([t.g(root, 'rev-parse', 'main')]);
   });
 
+  it('check 4: a first clone carries only the branch\'s own commits though origin\'s main moved on since the fork, and an orphan branch whole', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    t.g(root, 'remote', 'set-head', 'origin', '--delete');
+    const wt = `${root}/.claude/worktrees/kb`;
+    t.g(root, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    put(wt, 'c.txt', 'three\n');
+    t.g(wt, 'add', 'c.txt');
+    t.g(wt, 'commit', '-qm', 'more');
+    put(root, 'd.txt', 'four\n');
+    t.g(root, 'add', 'd.txt');
+    t.g(root, 'commit', '-qm', 'later on main');
+    t.g(root, 'push', '-q', 'origin', 'main');
+    expect((await sheet(depsOf(t, [on(wt, { main: root, branch: 'kb' })]))).sheet).toMatchObject({ clone: 'clone', commits: 1 });
+
+    const solo = `${root}/.claude/worktrees/solo`;
+    t.g(root, 'worktree', 'add', '-q', '--detach', solo);
+    t.g(solo, 'checkout', '-q', '--orphan', 'solo');
+    t.g(solo, 'rm', '-rqf', '.');
+    put(solo, 'e.txt', 'five\n');
+    t.g(solo, 'add', 'e.txt');
+    t.g(solo, 'commit', '-qm', 'apart');
+    expect((await sheet(depsOf(t, [on(solo, { main: root, branch: 'solo' })]))).sheet).toMatchObject({ clone: 'clone', commits: 1 });
+  });
+
   it('check 5: refuses a branch another robot is on, on any machine, the one a main checkout converts to included, and passes a branch of its own', async () => {
     const t = machines();
     const root = t.repo('code/svall');

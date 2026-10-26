@@ -104,17 +104,16 @@ export async function fingerprintOf(root: string, git: GitRunner): Promise<strin
   return digest(root, git, untracked);
 }
 
-// the branch's commits past every sha the worker holds of its history, else past the merge base with origin's default branch, else all
+// the branch's commits past every commit of the worker's shas this machine holds too, as the worker holds each with its
+// history; with none, past the merge base with origin's default branch, else all
 async function bundleCommits(root: string, git: GitRunner, ref: string, base: string, have: readonly string[], file: string): Promise<BundleManifest['commits']> {
-  const known = new Set<string>();
-  for (const h of new Set(have)) {
-    if (ObjectName.safeParse(h).success && (await git(['merge-base', '--is-ancestor', h, base], root)).code === 0) known.add(h);
-  }
-  if (!known.size) {
+  const shas = [...new Set(have)].filter((h) => ObjectName.safeParse(h).success);
+  const known = shas.length ? (await must(git, ['rev-list', '--no-walk', '--ignore-missing', ...shas, '--'], root)).split('\n').filter(Boolean) : [];
+  if (!known.length) {
     const r = await git(['merge-base', base, 'refs/remotes/origin/HEAD'], root);
-    if (r.code === 0) known.add(r.stdout.trim());
+    if (r.code === 0) known.push(r.stdout.trim());
   }
-  const not = [...known].map((h) => `^${h}`);
+  const not = known.map((h) => `^${h}`);
   const listed = (await must(git, ['rev-list', '--boundary', base, ...not, '--'], root)).split('\n').filter(Boolean);
   const count = listed.filter((l) => !l.startsWith('-')).length;
   if (!count) return undefined;
