@@ -4,7 +4,7 @@ import XCTest
 private let detached = #"{"event":"handover.detached","data":{"pid":4242}}"#
 private let freeze = #"{"event":"handover.changed","data":{"transactionId":"tx1","phase":"freeze"}}"#
 private let complete = #"{"event":"handover.result","data":{"status":"complete","transactionId":"tx1","generation":2,"robots":[]}}"#
-private let blocked = #"{"event":"handover.result","data":{"status":"blocked","phase":"begin","blockers":[{"code":"robot_pinned","message":"ada is kept on this machine"}]}}"#
+private let blocked = #"{"event":"handover.result","data":{"status":"blocked","phase":"begin","blockers":[{"code":"shell_busy","message":"ada's terminal is running npm test"}]}}"#
 private let status = #"{"event":"handover.status","data":{"standing":"none","safe":[],"reason":"no handover is open"}}"#
 private let liveStatus = #"{"event":"handover.status","data":{"standing":"open","phase":"transfer","safe":["resume","abort"],"reason":"handover tx1 is under way","helper":{"pid":4242}}}"#
 private let blockedFreeze = #"{"event":"handover.blocked","data":{"transactionId":"tx1","phase":"freeze","blockers":[]}}"#

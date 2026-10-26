@@ -85,7 +85,6 @@ with no terminal to ask in (`--json`, or stdin not a terminal) stops with `block
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `robot_pinned` | blocks | Not raised: no robot carries a mark that keeps it on its machine. | Nothing. |
 | `shell_busy` | blocks | A terminal's shell is running a command in the foreground: a build, a server, a REPL. Also raised for a command or an agent suspended with ctrl+z, and when that command outlives Terminate and carry. | Let it finish or stop it, or bring a suspended one back with `fg`, after which an agent is waited for as usual; or choose Terminate and carry (`--terminate-shells`), which ends it; the shell reopens in its folder on the destination. |
 | `agent_working` | blocks | An agent is still in its turn after resting waited three minutes. | Continue waiting, or Interrupt and carry (`--interrupt-after <duration>`), which sends Escape; the agent resumes from its transcript. |
 | `agent_blocked` | blocks | An agent is waiting on an answer, such as a permission prompt. | Answer it in its terminal and try again, or Interrupt and carry. |

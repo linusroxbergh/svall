@@ -443,7 +443,6 @@ test('a journal the gateway has moved on from offers Forget, and a standing with
 
 test('preflight blockers name what they are about, and a new start carries the choices made', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('pull') });
-  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
   const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'bo' });
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
@@ -456,18 +455,16 @@ test('preflight blockers name what they are about, and a new start carries the c
   expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', check: true });
 
   await say(page, { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
-    { code: 'robot_pinned', message: 'ada is kept on this machine', entity: { kind: 'robot', id: a.id } },
     { code: 'shell_busy', message: "bo's terminal is running npm test", entity: { kind: 'robot', id: b.id } },
     { code: 'destination_occupied', message: '/Users/l/w/app already exists and no handover left it there', entity: { kind: 'root', id: 'r_0a1b' } },
     { code: 'external_writer', message: 'the source /home/l/w/app kept changing through 3 passes; close whatever writes there, then resume', entity: { kind: 'root', id: 'r_0a1b' } },
   ] } });
   await receive(page, { type: 'handover.exit', code: 1 });
-  await expect(page.getByTestId('handover-headline')).toHaveText('4 things to settle before the fleet moves to This Mac. Nothing has moved.');
+  await expect(page.getByTestId('handover-headline')).toHaveText('3 things to settle before the fleet moves to This Mac. Nothing has moved.');
   await expect(page.getByTestId('handover-try-again')).toHaveText('Move to This Mac');
   await expect(page.getByTestId('handover-blocker-external_writer')).toContainText('on studio or in its copy on This Mac');
   await expect(page.getByTestId('handover-blocker-destination_occupied')).toContainText('folder r_0a1b');
   await expect(page.getByTestId('handover-blocker-destination_occupied')).toContainText('nothing is deleted');
-  await expect(page.getByTestId('handover-blocker-robot_pinned')).toContainText('Keep on this machine');
 
   await page.getByTestId('handover-choice-terminate').click();
   await page.getByTestId('handover-choice-archive').click();
