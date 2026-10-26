@@ -21,7 +21,7 @@ describe('serverWait', () => {
     // the setup rows wait for the link as long as asked, then for the worker's two answers; a tick waits for its push
     expect(serverWait('machines.setup', { machine: UUID_A })).toBe(20_000);
     expect(serverWait('machines.setup', { machine: UUID_A, waitMs: 5_000 })).toBe(25_000);
-    expect(serverWait('machines.consent', { machine: UUID_A, item: 'claude:mcp:linear', fields: [], on: false })).toBe(5 * 60_000);
+    expect(serverWait('machines.consent', { machine: UUID_A, item: 'claude:mcp:linear', fields: [], on: false })).toBe(15 * 60_000);
   });
 });
 

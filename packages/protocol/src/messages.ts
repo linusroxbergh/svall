@@ -113,8 +113,8 @@ const MOVE_RETRY_TIMEOUT_MS = 5 * 60_000;
 export const REPORT_MS = 10_000;
 // the setup rows past the wait for the link: the worker's two answers
 const SETUP_REPORT_MS = 2 * REPORT_MS;
-// a tick waits for the push already under way and its own, then for the setup rows
-const CONSENT_TIMEOUT_MS = 5 * 60_000;
+// a tick waits for the push already under way and its own, each of up to the 200 MB tree, then for the setup rows
+const CONSENT_TIMEOUT_MS = 15 * 60_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {

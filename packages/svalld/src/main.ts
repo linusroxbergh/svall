@@ -53,6 +53,7 @@ import { readOrUndefined } from './settings-file.js';
 import { installHookScripts } from './setup.js';
 import { Store } from './store.js';
 import { TerminalHub } from './terminals.js';
+import { shq } from './text.js';
 import { tmuxConfText, tmuxTooOld } from './tmux/conf.js';
 import { servingTmux, Tmux } from './tmux/tmux.js';
 import { LoadSampler } from './load/sampler.js';
@@ -404,7 +405,7 @@ async function start(opts: Options): Promise<Daemon> {
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
-      mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${profile} `,
+      mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

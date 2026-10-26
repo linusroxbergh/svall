@@ -1,7 +1,8 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { SetupRow } from '@svall/protocol';
+import { MachineId, type SetupRow } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
@@ -254,6 +255,24 @@ describe('machines.setup and machines.consent', () => {
     expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1", tick: { on: false } });
   });
 
+  it('machines.consent answers not_mirrored, naming no value, when the worker does not apply the change, and the untick stays saved', async () => {
+    await linked();
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    w.worker.handlers['config.apply'] = async () => { throw new Error('ENOSPC: no space left on device'); };
+    const res = await dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'claude:mcp:linear', fields: [], on: false } }, w.home.ctx);
+    expect(res).toMatchObject({ id: 1, error: { code: 'not_mirrored', message: expect.stringContaining('ENOSPC: no space left on device') } });
+    expect(JSON.stringify(res)).not.toContain('lin_api_1234567890');
+    expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
+  });
+
+  it('machines.consent refuses a machine not in the fleet before it saves anything', async () => {
+    await linked();
+    const other = MachineId.parse(crypto.randomUUID());
+    expect(await dispatch({ id: 1, method: 'machines.consent', params: { machine: other, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true } }, w.home.ctx))
+      .toEqual({ id: 1, error: { code: 'not_found', message: `no machine ${other}` } });
+    expect(readConsent(w.home.paths.mirrorConsent, other).size).toBe(0);
+  });
+
   it('machines.setup with the link down answers the plan rows, the probe-dependent ones saying not checked, within waitMs', async () => {
     worker = farHome();
     w = world({
@@ -274,7 +293,9 @@ describe('machines.setup and machines.consent', () => {
     w = world({ mirror: { home: macHome(), worker } });
     await w.worker.connection.start();
     w.home.links.start();
+    const started = Date.now();
     const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 5_000 });
+    expect(Date.now() - started).toBeLessThan(5_000);
     expect(rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN' });
   });
 

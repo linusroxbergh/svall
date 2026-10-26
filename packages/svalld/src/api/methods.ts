@@ -29,7 +29,7 @@ import type { WorkerMutations } from '../worker/mutations.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for' | 'pushMirror'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent'] satisfies MethodName[]);
@@ -117,10 +117,16 @@ export const handlers: Handlers = {
   }),
   'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
   'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0),
-  // the push goes after any under way, and carries only what changed
+  // the push goes after any under way and carries only what changed; one that fails leaves the tick saved for the next
   'machines.consent': async (p, ctx) => {
-    mirrorOf(ctx).consent(p.machine, p.item, p.fields, p.on);
-    await ctx.links?.pushMirror(p.machine);
+    const mirror = mirrorOf(ctx);
+    const name = ctx.store.state.machines?.[p.machine]?.name;
+    if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
+    mirror.consent(p.machine, p.item, p.fields, p.on);
+    const link = ctx.links?.for(p.machine);
+    if (link?.connected()) {
+      await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
+    }
     return setupOf(ctx, p.machine, 0);
   },
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),
