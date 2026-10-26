@@ -1,4 +1,4 @@
-import type { FleetState, MachineId, Robot } from '@svall/protocol';
+import { farRootOf, type FleetState, type MachineId, type Robot } from '@svall/protocol';
 
 type Machines = Pick<FleetState, 'machines'>;
 
@@ -10,6 +10,10 @@ export const destinationName = (f: Machines, to: MachineId): string => f.machine
 
 // the home never names itself, so a robot that names a machine runs on a worker
 export const isPlaced = (c: Pick<Robot, 'machine'>): c is { machine: MachineId } => c.machine !== undefined;
+
+/** Whether a workspace id's files are on a worker: a placed robot's, or a worker clone's on the shelf. */
+export const readsElsewhere = (f: Pick<FleetState, 'robots'>, id: string): boolean =>
+  farRootOf(id) !== undefined || (Object.hasOwn(f.robots, id) && isPlaced(f.robots[id]));
 
 /** The worker a robot runs on, while the home has lost its link to it. */
 export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>): string | undefined =>

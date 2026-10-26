@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { farRootId, type MachineId } from '@svall/protocol';
+import { getBuffer } from '../../src/ide/buffers.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
-import { bridge, call, freshStore, store } from './harness.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
 Element.prototype.setPointerCapture ??= function () {};
 
@@ -130,6 +132,36 @@ test('a skill, an agent, a command and a memory file each offer a delete that Un
   expect(store.getState().toast).toMatchObject({ tone: 'ok', text: 'Deleted tidy', action: { label: 'Undo' } });
   await act(async () => { store.getState().toast!.action!.run(); });
   expect(call).toHaveBeenCalledWith('resources.restore', { token: 't1' });
+});
+
+test('a worker\'s clone offers no Show in Finder and no delete, and opens its files read-only; its docs here keep both', async () => {
+  const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  const C = farRootId(VAULT, '/home/ada/app'), D = 'r:/u/.svall/docs/repos/app-0123abcd';
+  const row = (kind: string, name: string, path: string, open = true) =>
+    ({ id: `${kind}:${name}`, name, reveal: `/home/ada/app/${path}`, target: 'file' as const, ...(open && { open: { rootId: C, path } }) });
+  const src = { rootId: C, root: '/home/ada/app', name: 'app', tier: 'repo' as const, docs: D, islandIds: [], robotIds: ['c0'], groups: [
+    { kind: 'docs' as const, items: [{ id: 'docs:plan', name: 'plan', reveal: '/u/.svall/docs/repos/app-0123abcd/plan.md', target: 'file' as const, open: { rootId: D, path: 'plan.md' } }] },
+    { kind: 'instructions' as const, items: [row('instructions', 'CLAUDE.md', 'CLAUDE.md')] },
+    { kind: 'skills' as const, items: [row('skills', 'tidy', '.claude/skills/tidy/SKILL.md'), row('skills', 'shared', '.claude/skills/shared', false)] },
+  ] };
+  call.mockImplementation((m: string, p?: unknown) => Promise.resolve(m === 'resources.get' ? { sources: [src] }
+    : m === 'fs.read' ? { text: '# hi\n', mtimeMs: 1, root: (p as { id: string }).id === D ? '/u/.svall/docs/repos/app-0123abcd' : '/home/ada/app' } : {}));
+  store.getState().setResources([src]);
+  store.getState().toggleResources(true, { where: C, what: 'all' });
+  render(<OnMap />);
+  await act(async () => {});
+  expect(screen.queryByTestId('resources-delete-skills-tidy')).toBeNull();
+  expect(screen.getByTestId('resources-doc-delete-plan')).toBeTruthy();
+  bridge.present = true;
+  try { await act(async () => { fireEvent.click(screen.getByTestId('resources-item-skills-shared')); }); } finally { bridge.present = false; }
+  expect(sent.filter((m) => m.type === 'reveal' || m.type === 'openFolder')).toEqual([]);
+
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-item-instructions-CLAUDE.md')); });
+  expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
+  expect(getBuffer(C, 'CLAUDE.md')!.state.readOnly).toBe(true);
+  expect(screen.queryByText('Show in Finder ›')).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-item-docs-plan')); });
+  expect(screen.getByText('Show in Finder ›')).toBeTruthy();
 });
 
 // the shelf's box in percent of its room

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { farRootId, type MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import { dropBuffers, getBuffer, isDirty, setState } from '../src/ide/buffers.js';
 import { checkDisk, closeFile, openFile, overwriteFile, placeCursor, reloadFile, saveFile } from '../src/ide/files.js';
@@ -67,6 +68,20 @@ describe('files', () => {
     // opening again keeps the buffer instead of reading the disk
     await openFile(d, 'c1', 'a.ts');
     expect(getBuffer('c1', 'a.ts')!.mtimeMs).toBe(2);
+  });
+
+  it('opens a file of a robot on a worker, and of a worker\'s clone, read-only; one here stays editable', async () => {
+    const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const { api } = fakeApi({ 'a.ts': { text: 'one\n', mtimeMs: 1 } });
+    const store = createAppStore();
+    const f = fleet();
+    f.robots.c2 = { ...f.robots.c1, id: 'c2', machine: VAULT };
+    store.getState().setFleet(f);
+    const clone = farRootId(VAULT, '/home/ada/app');
+    for (const id of ['c1', 'c2', clone]) await openFile({ api, store }, id, 'a.ts');
+    expect([getBuffer('c1', 'a.ts'), getBuffer('c2', 'a.ts'), getBuffer(clone, 'a.ts')].map((b) => b!.state.readOnly)).toEqual([false, true, true]);
+    dropBuffers('c2');
+    dropBuffers(clone);
   });
 
   it('reloads a clean buffer from a changed disk, and flags a dirty one', async () => {

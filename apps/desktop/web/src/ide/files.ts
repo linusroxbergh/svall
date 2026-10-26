@@ -2,7 +2,8 @@ import type { Api } from '../api.js';
 import { basename } from '../paths.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
-import { editorExtensions, languageFor } from './codemirror.js';
+import { readsElsewhere } from '../placement.js';
+import { editorExtensions, languageFor, readOnlyExtensions } from './codemirror.js';
 
 type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
@@ -16,12 +17,14 @@ export function onSaved(listener: (d: FilesDeps, id: string, path: string) => vo
   saveListeners.add(listener);
 }
 
-/** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why. */
+/** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why;
+ *  one on a worker opens read-only, as it is edited in the robot's terminal there. */
 export async function openFile(d: FilesDeps, id: string, path: string): Promise<void> {
   if (!getBuffer(id, path)) {
     try {
       const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
-      loadBuffer(id, path, text, mtimeMs, [editorExtensions(() => { void saveFile(d, id, path); }), lang ?? []]).root = root;
+      const shown = readsElsewhere(d.store.getState().fleet, id) ? readOnlyExtensions() : editorExtensions(() => { void saveFile(d, id, path); });
+      loadBuffer(id, path, text, mtimeMs, [shown, lang ?? []]).root = root;
     } catch (e) {
       d.store.getState().showToast(`${path}: ${(e as Error).message}`);
       return;
