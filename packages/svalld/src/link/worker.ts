@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineId, type WorkerFile } from '@svall/protocol';
+import { ApiError, Mutation, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type LinkFrame, type MachineId, type WorkerFile } from '@svall/protocol';
 import { codexPaths } from '../codex/install.js';
 import type { Logger } from '../log.js';
 import { opencodePaths } from '../opencode/install.js';
@@ -245,7 +245,11 @@ export class HomeConnection {
 
   private async takeSnapshot(stream: LinkStream, f: Extract<LinkFrame, { t: 'snapshot' }>): Promise<void> {
     try {
-      mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me, { id: this.o.worker.homeMachineId, name: this.o.worker.homeName, reachable: true });
+      const pending = this.o.outbox.after(this.o.outbox.acked()).flatMap((e) => {
+        const m = e.kind === 'mutation' ? Mutation.safeParse(e.data) : undefined;
+        return m?.success ? [m.data] : [];
+      });
+      mergeSnapshot(this.o.store, Snapshot.parse(f.data), this.o.me, { id: this.o.worker.homeMachineId, name: this.o.worker.homeName, reachable: true }, pending);
       if (!(await this.o.store.flush())) throw new Error('state.json was not written');
     } catch (e) {
       this.o.log.error(`link: snapshot ${f.version} not taken, closing: ${(e as Error).message}`);

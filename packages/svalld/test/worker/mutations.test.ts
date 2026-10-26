@@ -197,6 +197,28 @@ describe('a worker serving its robots while the home is away', () => {
     expect(w.home.store.state.robots.c_1.note).toBe('home');
   });
 
+  it('a snapshot that comes while mutations are unacked keeps what they changed here: an update, a close and a new robot', async () => {
+    const { w, call, create } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }), c_2: placed({ id: 'c_2', cell: { x: 5, y: 2 } }) } } });
+    w.worker.store.update((d) => { d.robots.c_2 = placed({ id: 'c_2', cell: { x: 5, y: 2 }, tmux: { windowId: '@7', paneId: '%7' } }); });
+    await w.link();
+    await drained(w);
+    // the home takes none of what follows until released
+    const release = w.home.hold();
+    const made = madeIn(await create());
+    expect(await call('robot.update', { id: 'c_1', note: 'mine here' })).toMatchObject({ result: { note: 'mine here' } });
+    expect(await call('robot.close', { id: 'c_2' })).toEqual({ id: 1, result: {} });
+    // a change at home sends a snapshot without any of the three
+    w.home.store.update((d) => { d.robots.c_1.instructions = 'from home'; });
+    await until(() => expect(w.worker.store.state.robots.c_1.instructions).toBe('from home'));
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ note: 'mine here', noteSource: 'manual' });
+    expect(w.worker.store.state.robots.c_2).toBeUndefined();
+    expect(w.worker.store.state.robots[made.id]).toBeDefined();
+    release();
+    await drained(w);
+    expect(w.home.store.state.robots.c_1).toMatchObject({ note: 'mine here', instructions: 'from home' });
+    expect(w.home.store.state.robots.c_2).toBeUndefined();
+  });
+
   it('an acked mutation is recorded in journal/applied.ndjson with what it changed, before the outbox trims it', async () => {
     const { w, create, call } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
     // the file keeps its last 500 lines

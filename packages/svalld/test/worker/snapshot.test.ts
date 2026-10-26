@@ -65,6 +65,23 @@ describe('mergeSnapshot', () => {
     expect(store.state.robots.r_here).toEqual(here);
   });
 
+  it('keeps what a pending mutation changed here: the fields an update named, and a robot a close took away', () => {
+    const placed = (id: string, o: Partial<Robot> = {}) => robot(id, { machine: me, placement: { generation: 1 }, ...o });
+    const { store } = storeWith(fleet([placed('r_a', { name: 'mine', note: '' })]));
+    const pending = [
+      { id: 'mu_0000000001', method: 'robot.update' as const, params: { id: 'r_a', name: 'mine', note: '' }, snapshotVersion: 1, at: 1 },
+      { id: 'mu_0000000002', method: 'robot.close' as const, params: { id: 'r_b' }, snapshotVersion: 1, at: 2 },
+    ];
+
+    mergeSnapshot(store, snapshot(fleet([
+      placed('r_a', { name: 'theirs', note: 'theirs', noteSource: 'manual', instructions: 'theirs' }), placed('r_b'),
+    ])), me, undefined, pending);
+
+    expect(Object.keys(store.state.robots)).toEqual(['r_a']);
+    expect(store.state.robots.r_a).toMatchObject({ name: 'mine', note: '', instructions: 'theirs' });
+    expect(store.state.robots.r_a).not.toHaveProperty('noteSource');
+  });
+
   it('takes the whole record from the snapshot for a robot that left this machine or came back at a new placement', () => {
     const { store } = storeWith(fleet([
       robot('r_left', { machine: me, placement: { generation: 1 }, cwd: '/home/ada/app' }),
