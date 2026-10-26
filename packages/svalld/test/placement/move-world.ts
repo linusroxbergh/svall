@@ -341,7 +341,7 @@ export function moveWorld(o: {
     /** where the worker's clone and the robot's worktree land */
     clone: path.join(far, 'code/app'),
     farWt: path.join(far, 'code/app/.claude/worktrees/kanban'),
-    worker: { store: workerStore, fleet: workerFleet, connection, prepare },
+    worker: { store: workerStore, fleet: workerFleet, connection, prepare, handlers },
     async start() {
       await connection.start();
       return bootHome();

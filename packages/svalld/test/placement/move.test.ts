@@ -352,6 +352,40 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.left?.fingerprint).toBe(fingerprint);
   });
 
+  it('a move refuses an OpenCode session the worker went on with since the robot came back, before anything moves, and its copy stays', async () => {
+    const w = open({ opencode: true });
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await home.placement.start('c_1', H);
+    const before = state(w, w.wt);
+    w.opencode.far.sessions.get(OSID)!.messages.push({ id: 'msg_there' });
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({
+      code: 'refused', message: `OpenCode went on with session ${OSID} on w1 since the move; save it with opencode session export, then delete it`,
+    });
+    expect(w.opencode.far.sessions.get(OSID)?.messages.at(-1)).toEqual({ id: 'msg_there' });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(home.store.state.robots.c_1.moving).toBeUndefined();
+    expect(state(w, w.wt)).toEqual(before);
+    expect(w.worker.store.state.robots.c_1?.machine).toBeUndefined();
+  });
+
+  it('a return check names a worker that answers no move sheet in time, or runs a release without one', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const sheet = w.worker.handlers['move.sheet'];
+    w.worker.handlers['move.sheet'] = () => new Promise(() => {});
+    // the sheet's 30 s, cut short
+    const call = home.links.call.bind(home.links);
+    home.links.call = ((m, method, params, o) => call(m, method, params, method === 'move.sheet' ? { ...o, timeoutMs: 100 } : o)) as typeof home.links.call;
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 did not answer the move sheet in 30 s', action: 'try again' } });
+    home.links.call = call;
+    delete w.worker.handlers['move.sheet'];
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 runs a release without move.sheet', action: 'upgrade it under Machines' } });
+    w.worker.handlers['move.sheet'] = sheet;
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
+  });
+
   it('a return whose OpenCode import fails puts back the copy this Mac held, and keeps no other', async () => {
     const w = open({ opencode: true });
     const home = await w.start();

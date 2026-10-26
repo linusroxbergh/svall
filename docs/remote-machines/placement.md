@@ -109,6 +109,8 @@ recorded:
 - An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
   since the move; save it with opencode session export, then delete it". A move out refuses the same way for the
   worker's copy.
+- A worker that sends no sheet of what comes back refuses: "linus-vault did not answer the move sheet in 30 s; try
+  again", or on a release without one, "linus-vault runs a release without move.sheet; upgrade it under Machines".
 
 Otherwise the worktree is reset to the commit it was left at, unlocked, and the robot's work from the worker is
 applied to it: its commits, its staged and unstaged changes and its untracked files. The worktree it leaves on the

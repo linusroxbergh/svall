@@ -84,6 +84,15 @@ const WATCH_MS = 60_000;
 // a rest waits up to 3 minutes for a turn, a prepare may clone
 const REST_MS = 10 * 60_000;
 const PREPARE_MS = 15 * 60_000;
+const SHEET_MS = 30_000;
+
+// a worker that gives no sheet: too slow, on a release without one, or out of reach
+const sheetRefusal = (e: Error, name: string): Failure => {
+  const code = e instanceof ApiError ? e.code : undefined;
+  if (code === 'timeout') return { reason: `${name} did not answer the move sheet in ${SHEET_MS / 1000} s`, action: 'try again' };
+  if (code === 'unknown_method') return { reason: `${name} runs a release without move.sheet`, action: 'upgrade it under Machines' };
+  return { reason: e.message, action: 'try again when it is awake' };
+};
 
 /** A machine's journals of its moves, one durable file each, and the folder each move stages its files in. */
 export class MoveFiles {
@@ -781,8 +790,8 @@ export class Placement {
       if (changed) return fail(changed);
     }
     const plan = await this.returnPlan(c, from, hello, o.interruptAfterMs ?? (c.agent?.status === 'blocked' ? 0 : undefined));
-    const carried = await this.d.links.call<Carried | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have })
-      .catch((e: Error) => ({ refusal: { reason: e.message, action: 'try again when it is awake' } }));
+    const carried = await this.d.links.call<Carried | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have }, { timeoutMs: SHEET_MS })
+      .catch((e: Error) => ({ refusal: sheetRefusal(e, this.name(from)) }));
     if ('refusal' in carried) return fail(carried.refusal);
     const sheet: MoveSheet = {
       ...carried, branch: c.repo?.branch ?? '', clone: 'warm', credentialFiles: [], stays: [],
