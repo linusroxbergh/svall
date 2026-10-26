@@ -95,9 +95,11 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`)].join('\n');
 }
 
-/** The last line of a check: ready, or how many failed checks and warnings with something to do are left before robots can move there. */
+/** The last line of a check: ready, or the things left before robots can move there, each failed check and each warning's action once, as a run counts them. */
 export function doctorVerdict(checks: Check[], name: string): string {
-  const left = checks.filter((c) => c.status === 'fail' || (c.status === 'warn' && c.action));
+  const todo = checks.filter((c) => c.status === 'fail' || (c.status === 'warn' && c.action));
+  const thing = (c: Check): string => c.action ?? c.name;
+  const left = todo.filter((c, i) => todo.findIndex((o) => thing(o) === thing(c)) === i);
   return left.length ? `${needsLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}` : readyLine(name);
 }
 

@@ -293,7 +293,7 @@ function hostAdd(a) {
   check('host add result', result?.result === 'actions'
     && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',
       'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup',
-      'ssh fresh, then sudo apt install gh (pull request links stay unresolved)', 'svall host doctor fresh once Svall is open']), () => brief(result));
+      'ssh fresh, then sudo apt install gh', 'svall host doctor fresh once Svall is open']), () => brief(result));
 }
 
 function doctor(rel, label) {

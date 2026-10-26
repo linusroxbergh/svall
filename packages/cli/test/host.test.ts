@@ -13,7 +13,7 @@ import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { shq } from '@svall/svalld/text';
-import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
+import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -842,9 +842,8 @@ describe('host add', () => {
     const said = (gh: Record<string, string>): string => JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'gh', ...gh }] });
     const loggedOut = 'not logged in: gh auth login (pull request links stay unresolved)';
     for (const [gh, want] of [
-      [{ status: 'ok', detail: 'logged in' }, { status: 'ok', detail: 'logged in; can push' }],
-      [{ status: 'warn', detail: loggedOut, run: 'gh auth login' },
-        { status: 'warn', detail: loggedOut, action: 'ssh trift.test, then gh auth login (pull request links stay unresolved)', run: 'gh auth login' }],
+      [{ status: 'ok', detail: 'logged in' }, { status: 'ok', detail: 'logged in' }],
+      [{ status: 'warn', detail: loggedOut, run: 'gh auth login' }, { status: 'warn', detail: loggedOut, action: 'ssh trift.test, then gh auth login', run: 'gh auth login' }],
     ] as const) {
       ssh.clearReplies();
       events = [];
@@ -1196,6 +1195,17 @@ describe('host doctor', () => {
     expect(doctorVerdict(report.checks, 'trift')).toBe('trift needs 2 things before robots can move there: mirror:claude:mcp:linear, mirror:codex:mcp:github');
   });
 
+  it('a not-checked row names the doctor of the fleet the rows were asked of', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
+    const report = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' }, setupRows: () => Promise.reject(new Error('svalld is not running')) }));
+    expect(report.checks.at(-1)).toEqual({
+      name: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall -p work host doctor trift once Svall is open',
+    });
+  });
+
   it('keeps what a check found and the release the machine runs, by machine id, for host list', async () => {
     const config = path.join(work, 'config');
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off for linus' }) });
@@ -1204,7 +1214,8 @@ describe('host doctor', () => {
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     registered().save();
     const { hostCommands, lastChecks } = await import('../src/commands/host.js');
-    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const said: string[] = [];
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { said.push(String(chunk)); return true; });
     try {
       await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift'], { from: 'user' });
     } finally {
@@ -1212,6 +1223,9 @@ describe('host doctor', () => {
     }
     // linger, and the mirror's one not-checked row, as this fleet's daemon is not running
     expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 2, release: '1.2.3' } });
+    expect((JSON.parse(said.join('')) as HostReport).checks.at(-1)).toEqual({
+      name: 'mirror:unchecked', status: 'warn', detail: expect.stringMatching(/^not checked: svalld is not running/), action: 'svall host doctor trift once Svall is open',
+    });
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
   });
 
@@ -2589,6 +2603,10 @@ describe('the last line a run prints', () => {
     expect(doctorVerdict([ok, warn, warn], 'trift')).toBe(ready);
     expect(doctorVerdict([ok, warn, fail('systemd')], 'trift')).toBe('trift needs 1 thing before robots can move there: systemd');
     expect(doctorVerdict([fail('systemd'), fail('release')], 'trift')).toBe('trift needs 2 things before robots can move there: systemd, release');
+    // one thing per action, as a run counts them: rows with no report all say to check again
+    const again = (key: string) => rowCheck({ key, status: 'warn', action: 'check trift again', detail: 'not checked: trift is not reachable' });
+    expect(doctorVerdict([rowCheck(unticked('claude:mcp:linear')), rowCheck(unticked('codex:mcp:github')), again('var:X'), again('var:Y'), fail('systemd')], 'trift'))
+      .toBe('trift needs 4 things before robots can move there: mirror:claude:mcp:linear, mirror:codex:mcp:github, mirror:var:X, systemd');
   });
 
   it('lists a detail of several lines under its step', async () => {

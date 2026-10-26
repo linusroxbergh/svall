@@ -331,7 +331,7 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
   await run.step('gh', () => {
     const gh = o.report.checks.find((c) => c.name === 'gh');
     if (!gh) return Promise.resolve({ value: undefined, status: 'skip' as const, detail: "the companion's doctor reported no gh check" });
-    return Promise.resolve(gh.status === 'ok' ? { value: undefined, detail: 'logged in; can push' } : todo(gh.detail, fixOf(gh.detail).fix, gh.run));
+    return Promise.resolve(gh.status === 'ok' ? { value: undefined, detail: 'logged in' } : todo(gh.detail, gh.run ?? fixOf(gh.detail).fix, gh.run));
   });
   return versions;
 }
@@ -588,7 +588,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
       await d.refreshLinks();
-      const rows = await d.setupRows(machine).catch((e: Error) => [notChecked(e, o.name)]);
+      const rows = await d.setupRows(machine).catch((e: Error) => [notChecked(e, o.name, d)]);
       for (const r of rows) {
         const { step, ...out } = rowStep(r);
         await run.step(step, () => Promise.resolve({ value: undefined, ...out }));
@@ -680,7 +680,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   } finally {
     await master.close().catch(() => undefined);
   }
-  const rows = await d.setupRows(entry.id).catch((e: Error) => [notChecked(e, entry.record.name)]);
+  const rows = await d.setupRows(entry.id).catch((e: Error) => [notChecked(e, entry.record.name, d)]);
   checks.push(...rows.map(rowCheck));
   return { machine: entry.record.name, checks, ...(release && { release }) };
 }
@@ -689,9 +689,9 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
 export const rowStep = ({ key, ...row }: SetupRow): StepEvent => ({ step: `mirror:${key}`, ...row });
 export const rowCheck = ({ key, ...row }: SetupRow): Check => ({ name: `mirror:${key}`, ...row });
 
-/** The one row a command makes of a daemon it could not ask for the rows. */
-export const notChecked = (e: Error, name: string): SetupRow =>
-  ({ key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `svall host doctor ${name} once Svall is open` });
+/** The one row a command makes of a daemon it could not ask for the rows; its action asks that fleet's daemon again. */
+export const notChecked = (e: Error, name: string, d: HostDeps): SetupRow =>
+  ({ key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open` });
 
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });
