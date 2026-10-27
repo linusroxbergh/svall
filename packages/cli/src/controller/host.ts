@@ -404,10 +404,7 @@ function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undef
   return undefined;
 }
 
-/**
- * What the fleet home there serves and which units are there, once that home is found to be this fleet's to enrol and the
- * gateway unit an older release left is stopped and removed; `off` is what the enrol step's detail then adds.
- */
+/** Refuses a fleet home there that serves another Mac, then stops and removes the gateway unit there; `off` is what the enrol detail adds. */
 async function claimUnits(master: SshMaster, o: { name: string; home: string; svallBase: string }, d: HostDeps): Promise<{ far: RemoteVersion; units: string[]; off: string }> {
   const unitDir = unitDirOf(o.home);
   const units = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE)), 'the units there')).split('\n');

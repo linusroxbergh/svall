@@ -1655,6 +1655,7 @@ esac
 
     const first = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     expect(first).toMatchObject({ result: 'actions', stopped: 'enrol' });
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: 'systemctl --user disable --now svall-gateway.service exited 1: Failed to connect to bus' });
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
 

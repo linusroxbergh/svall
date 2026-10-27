@@ -174,7 +174,7 @@ function Machines() {
           <div className="row">
             <span><b>{m.name}</b> {m.ssh}</span>
             <b className="machine-said">
-              {[m.fleets.length ? `gateway for ${m.fleets.join(', ')}` : '', m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
+              {[m.fleets?.length ? `gateway for ${m.fleets.join(', ')}` : '', m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
                 .filter(Boolean).join(' · ')}
             </b>
           </div>
