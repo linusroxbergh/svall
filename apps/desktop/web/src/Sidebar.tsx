@@ -5,7 +5,8 @@ import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
-import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
+import { EyeGlyph, MachineGlyph, PrGlyph, reviewText } from './indicators.js';
+import { isPlaced, machineName } from './placement.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
@@ -139,6 +140,13 @@ function Marks({ c }: { c: Robot }) {
   return <span className="sb-ind" title={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
 }
 
+// a robot on a worker names the machine on a line under its name
+function RobotName({ c, title }: { c: Robot; title?: string }) {
+  const on = useApp((s) => (isPlaced(c) ? machineName(s.fleet, c.machine) : undefined));
+  const name = <span className="sb-name" title={title}>{c.name}</span>;
+  return on ? <span className="sb-names">{name}<span className="sb-on" data-testid={`sb-machine-${c.id}`}><MachineGlyph /><span>on {on}</span></span></span> : name;
+}
+
 const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; editing: boolean; setEditing(id?: string): void }) {
   const selected = useApp((s) => s.selectedId === c.id);
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id);
@@ -167,7 +175,7 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
         }} />
       ) : (
         <>
-          <span className="sb-name">{c.name}</span>
+          <RobotName c={c} />
           {failed && <span className="sb-sub mono" data-testid={`sb-resume-error-${c.id}`} title={failed}>resume failed</span>}
         </>
       )}
@@ -197,7 +205,7 @@ function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: Ret
       onDragEnd={() => setDragging(false)}
       onClick={() => pick(c.id, true)} onContextMenu={(e) => robotMenu(e, c.id)}>
       <i className="sdot" data-status={status} />
-      <span className="sb-name" title={c.name}>{c.name}</span>
+      <RobotName c={c} title={c.name} />
       <span className="sb-where"><span>{island}</span></span>
       <Marks c={c} />
       <StarButton c={c} testid={`sb-star-toggle-${c.id}`} />

@@ -409,6 +409,8 @@ const withVault = (reachable: boolean, c0: Partial<Robot> = {}) => {
   act(() => store.getState().setFleet(f));
 };
 const moves = () => [...document.querySelectorAll('[data-testid^="side-move"]')].map((b) => b.textContent);
+// the card's buttons, in the one block at its foot
+const foot = () => [...document.querySelectorAll('.side > .acts > button')].map((b) => b.textContent);
 
 test('a robot here offers a move to each worker within reach, which opens the move sheet', () => {
   const f = fleet();
@@ -416,6 +418,7 @@ test('a robot here offers a move to each worker within reach, which opens the mo
   act(() => store.getState().setFleet(f));
   render(<Side />);
   expect(moves()).toEqual(['Move to linus-vault']);
+  expect(foot()).toEqual(['Finder', 'Resources', 'Move to linus-vault', 'Open terminal', 'Delete robot']);
   expect(screen.queryByTestId('side-machine')).toBeNull();
   fireEvent.click(screen.getByTestId(`side-move-${VAULT}`));
   expect(store.getState().moveSheet).toEqual({ id: 'c0', to: VAULT });
@@ -425,8 +428,10 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   load = { at: 0, cores: 8, total: { cpu: 1, mem: 1, procs: 1 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: { c0: { cpu: 0.5, mem: 1e8, procs: 3, shellOnly: false, sleepable: false } } };
   withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
   await act(async () => { render(<Side />); });
-  expect(screen.getByTestId('side-machine').textContent).toBe('linus-vault');
+  expect(screen.getByTestId('side-machine').textContent).toBe('Runs on linus-vault');
+  expect(screen.getByTestId('side-machine').closest('.kicker')).toBeNull();
   expect(moves()).toEqual(['Move to this Mac']);
+  expect(foot()).toEqual(['Terminal there', 'Resources', 'Move to this Mac', 'Open terminal', 'Delete robot']);
   expect(screen.queryByTestId('side-cpu')).toBeNull();
   // this Mac has a clone at the same path, and the button opens the worker's
   const repo = (rootId: string): ResourceSource => ({ rootId, root: '/home/ada/svall', name: 'svall', tier: 'repo', islandIds: [], robotIds: ['c0'], groups: [] });
@@ -454,7 +459,7 @@ test('a placed robot that landed on mission control can still move back to this 
 test('a robot on a worker the fleet no longer lists goes by the machine\'s id', () => {
   withVault(true, { machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId });
   render(<Side />);
-  expect(screen.getByTestId('side-machine').textContent).toBe('0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f');
+  expect(screen.getByTestId('side-machine').textContent).toBe('Runs on 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f');
   expect(screen.getByTestId('side-cwd').title).toBe('Copy 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f:/tmp');
 });
 

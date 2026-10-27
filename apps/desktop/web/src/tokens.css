@@ -54,6 +54,8 @@
   /* a robot between machines, and one on a worker this Mac cannot reach */
   --moving: #A8B8C6;
   --unknown: #A6A094;
+  /* a robot that runs on a worker, and the ink on its band where that is filled */
+  --away: #9CB3F0; --ink-on-away: #18213D;
   --sel: #8ED0FF;
   --star: var(--pt-sun);
   /* a PR waiting on its reviewers */

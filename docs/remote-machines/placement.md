@@ -5,8 +5,8 @@ move to a worker keeps its conversation, its branch, its commits and its uncommi
 this Mac sleeps. The fleet stays on this Mac: its islands, map, notes, phone and mission control. A worker runs robots
 and nothing else, and keeps its own clone of each repository its robots work in.
 
-Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker shows
-a machine badge on its card, token and board card, and keeps its board column; `svall robot run`, `read`, `wait` and
+Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker names
+its machine on its board card, token, sidebar row, side card and terminal card, and keeps its board column; `svall robot run`, `read`, `wait` and
 `revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
 Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**
 opens a terminal in its folder. The Usage panel counts the robots on each worker too, read on the worker where their
@@ -34,7 +34,7 @@ long, `--carry <file>` takes a credential file such as `.env` along, and `--retr
 from the step it stopped at.
 
 While it moves the card says "moving" and its terminal "moving to linus-vault…"; opening a terminal, a revive, `svall
-robot run` and closing the robot are refused with "moving to linus-vault". Then the card shows the badge, and the
+robot run` and closing the robot are refused with "moving to linus-vault". Then the card names the machine, and the
 terminal reopens on the other machine with the same conversation, in the robot's folder there.
 
 ## The checks

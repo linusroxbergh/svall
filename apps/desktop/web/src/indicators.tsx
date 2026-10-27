@@ -44,3 +44,14 @@ export function HandGlyph() {
     </svg>
   );
 }
+
+export function MachineGlyph() {
+  return (
+    <svg className="ind-glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
+      <rect x="1.6" y="1.7" width="8.8" height="3.6" rx="1.1" />
+      <rect x="1.6" y="6.7" width="8.8" height="3.6" rx="1.1" />
+      <circle cx="3.9" cy="3.5" r=".6" fill="currentColor" stroke="none" />
+      <circle cx="3.9" cy="8.5" r=".6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
