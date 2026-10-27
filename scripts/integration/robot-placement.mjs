@@ -12,11 +12,11 @@
 // agent works, moves `faults` back and forth with the home's daemon killed or the link dropped at each phase, and
 // returns `agent` through a dirty Mac worktree. Then, from `kanban` on the worker, it starts a reviewer and four more
 // robots while the home is stopped, sweeps the scribe over them, changes kanban's notes on both machines apart, reads
-// its files from the home, and closes the reviewer while the worker is stopped. Last, it gives the home's Claude three
-// MCP servers with keys, ticks one's key for remote, sets there the variable another reads, moves `agent` there and
-// unticks the key while it runs. With no `--archive` it builds the companion for the docker host's architecture from
-// this checkout, and with no `--image` the machine image from the Dockerfile here. `--steps` picks steps by number (the
-// fixture always runs); `--prefix` replaces `svall` in the machines' names and the network's.
+// its files from the home, and closes the reviewer while the worker is stopped. Last, it gives the home's Claude two
+// MCP servers with keys and one that reads a variable, ticks one's key for remote, sets the variable there, moves
+// `agent` there and unticks the key while it runs. With no `--archive` it builds the companion for the docker host's
+// architecture from this checkout, and with no `--image` the machine image from the Dockerfile here. `--steps` picks
+// steps by number (the fixture always runs); `--prefix` replaces `svall` in the machines' names and the network's.
 // Every check that fails is printed; the run exits 1 on the first step that has one.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -106,7 +106,7 @@ function install() {
   const events = lines(add.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
   // there is no Codex or gh on the machine, and a mirror not yet checked, which are advice, not failures
-  const isAdvice = (s) => s.status === 'warn' && (/codex/i.test(`${s.step} ${s.detail ?? ''}`) || s.step === 'gh' || s.step === 'mirror:unchecked');
+  const isAdvice = (s) => s.status === 'warn' && (/codex/i.test(`${s.step} ${s.detail ?? ''}`) || (s.step === 'gh' && !s.action) || s.step === 'mirror:unchecked');
   for (const s of steps) {
     check(`host add ${s.step}`, s.status === 'ok' || s.status === 'skip' || isAdvice(s), `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   }
@@ -633,6 +633,11 @@ function agentSetup(ids, fx) {
   check('alpha ticked', after.alpha?.env?.ALPHA_KEY === 'secret-alpha-0001' && after.beta?.env?.BETA_KEY === '${BETA_KEY}'
     && ticked['claude:mcp:alpha']?.status === 'ok' && same(ticked['claude:mcp:alpha'].tick?.preview, ['env.ALPHA_KEY sec…01']),
   () => `${brief({ alpha: after.alpha, beta: after.beta })} ${brief(ticked['claude:mcp:alpha'])}`);
+  // the files on remote that hold a value, under its home or in /tmp
+  const holding = (value) => sh(R, `grep -rIl -D skip -- ${value} ~ /tmp 2>/dev/null`, { ok: false }).stdout.trim();
+  const beta = holding('secret-beta-0002');
+  const copied = holding('secret-alpha-0001');
+  check('beta key nowhere there', beta === '' && copied.includes('/.claude.json'), () => `beta in ${brief(beta)}; alpha in ${brief(copied)}`);
 
   // the agent starts on remote after the variable is set there, so its environment holds it
   sh(R, "printf 'xyz' | svall worker env GAMMA_TOKEN");
@@ -650,6 +655,8 @@ function agentSetup(ids, fx) {
   const alpha = serversOn(R).alpha;
   check('alpha unticked', alpha?.env?.ALPHA_KEY === '${ALPHA_KEY}' && pid && agentsOf(snap(R, true), id)[0]?.pid === pid,
     () => `${brief(alpha)}; agent ${pid} then ${brief(agentsOf(snap(R, true), id))}`);
+  const left = holding('secret-alpha-0001');
+  check('alpha key nowhere there', left === '', () => left);
 }
 
 // ---------------------------------------------------------------------------------------------- the fault matrix

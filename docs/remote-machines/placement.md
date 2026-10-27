@@ -97,7 +97,8 @@ Mission control's robots stay on this Mac and have no move button.
   `awsAuthRefresh`, `otelHeadersHelper`), or a git login in a plugin marketplace's URL. Nor does a credential file in
   those folders or behind a link from them: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.env*`, `*.pem`,
   `*.key`, Docker's `config.json`, gh's `hosts.yml`, or anything under `.aws`, `.ssh` or `.gnupg`. A file under
-  `~/.svall/mirror-overrides/` on the worker is merged last and wins. See
+  `mirror-overrides/` in the fleet's home on the worker (`~/.svall` for the private fleet, `~/.svall-<fleet>` for
+  another) is merged last and wins. See
   [Your agent setup on the machine](setup.md#your-agent-setup-on-the-machine).
 - **Trust of the folder.** The first move into a clone on the worker trusts its main checkout, and so every worktree in
   it, in the agent's own settings there (Claude's `~/.claude.json`, Codex's `config.toml`), while no agent of that kind

@@ -10,7 +10,8 @@ On its first start, each fleet's daemon on the Mac migrates `state.json` from ve
 robot's keep-on-this-machine mark, and keeps the file as it was beside it as `state.json.v11-<time>`. The app,
 `svall` and the daemons of this release speak protocol 33; an update installs all of them together.
 
-Then run `svall host upgrade <machine>`, or **Upgrade** under Settings → Machines, for each Linux machine 0.18 set up.
+Then run `svall host upgrade <machine>`, or **Upgrade to this Mac's release** in the machine's ⋯ menu under Settings →
+Machines, for each Linux machine 0.18 set up.
 It installs this Mac's release there, and goes back to the release before if the fleet's daemon there does not answer
 from it. A machine that was a fleet's gateway then becomes its worker: `fleet.json` names no gateway,
 `svall-gateway.service` is stopped and removed there unless another fleet keeps it, and each folder an earlier
