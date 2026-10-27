@@ -327,7 +327,7 @@ describe('robot move to a machine', () => {
     for (const flags of [
       ['--island', 'work', '--machine', 'linus-vault'], ['--island', 'work', '--carry', '.env'], ['--machine', 'linus-vault', '--cell', '1,1'],
       ['--retry', '--island', 'work'], ['--retry', '--machine', 'linus-vault'], ['--retry', '--carry', '.env'], ['--retry', '--interrupt-after', '30s'],
-      ['--island', 'work', '--own-worktree'], ['--retry', '--own-worktree'],
+      ['--island', 'work', '--own-worktree'], ['--retry', '--own-worktree'], ['--machine', 'linus-vault', '--own-worktree', '--carry', '.env'],
     ]) {
       await expect(cmd.parseAsync(['move', 'c_1', ...flags], { from: 'user' }), flags.join(' ')).rejects.toThrow(/cannot be used with/);
     }

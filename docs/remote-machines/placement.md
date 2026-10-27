@@ -59,9 +59,12 @@ behind **details**.
    were, and leaves main clean on its branch. The stash list is never touched. "two robots share svall's main
    checkout; give it its own worktree", whose button **Give it its own worktree** makes that worktree at main's HEAD
    instead and leaves main as it is, since neither robot alone can claim its changes; the sheet says so ("it leaves
-   svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files"). "kanban is on a detached
-   HEAD; check out a branch first". A robot in no repository, such as a shell in `~`, skips checks 3 to 6 and moves
-   with its session only.
+   svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files"). The worktree starts at
+   the commit the check found, whatever the robot that stays commits meanwhile; the offer is refused while another
+   robot moves out of that checkout ("board is moving out of svall's main checkout; wait for the move to finish") or
+   for a robot whose folder that commit lacks ("web/new is not in svall's last commit; commit it first"). "kanban is
+   on a detached HEAD; check out a branch first". A robot in no repository, such as a shell in `~`, skips checks 3 to
+   6 and moves with its session only.
 4. **The repository is known to the worker.** At the main checkout's place there (`/Users/ada/code/app` on the Mac is
    `/home/ada/code/app` on the worker) it has a clone of the same repository, or nothing and a remote it can fetch
    from with its own credentials. "svall has no remote; push svall to a remote first". "linus-vault cannot read

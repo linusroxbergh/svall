@@ -110,6 +110,28 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_2.machine).toBeUndefined();
   });
 
+  it('a robot given its own worktree whose move fails reopens in that worktree, and main keeps its changes', async () => {
+    const w = open();
+    const home = await w.start();
+    fs.writeFileSync(path.join(w.main, 'notes.md'), 'untracked\n');
+    home.store.update((d) => {
+      Object.assign(d.robots.c_1, { name: 'ada', cwd: w.main, repo: { root: w.main, mainRoot: w.main, branch: 'main', isWorktree: false } });
+      const { tmux: _t, agent: _a, ...board } = structuredClone(d.robots.c_1);
+      d.robots.c_2 = { ...board, id: 'c_2', name: 'board', cell: { x: 1, y: 0 } };
+    });
+    const before = state(w, w.main);
+    at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
+
+    await expect(home.placement.start('c_1', W, { ownWorktree: true })).rejects.toThrow('the disk is full');
+
+    const wt = path.join(w.main, '.claude/worktrees/ada');
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: wt, repo: { root: wt, mainRoot: w.main, branch: 'ada', isWorktree: true } });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(w.mac1.opened).toEqual(['c_1']);
+    expect(state(w, wt)).toEqual({ head: before.head, branch: 'ada', staged: '', unstaged: '', untracked: [] });
+    expect({ ...state(w, w.main), untracked: state(w, w.main).untracked.filter((f) => f !== '.claude/worktrees/ada/') }).toEqual(before);
+  });
+
   it('a failure in prepare reopens the robot at home with its window and the worker has nothing left', async () => {
     const w = open();
     const home = await w.start();

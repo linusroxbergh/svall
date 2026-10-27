@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, INTERRUPT_ACTIONS, Repo, WORKTREE_ACTION, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
+import { AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, WORKTREE_ACTION, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
 import { clean, holds } from '../path-tools.js';
@@ -25,9 +25,9 @@ export const MovePlan = z.object({
     root: z.string(), cwd: z.string(), second: z.string().optional(), transcriptPath: z.string().optional(),
     secondTranscriptPath: z.string().optional(), panePath: z.string().optional(), repo: Repo.optional(),
   }),
-  // the main checkout that becomes the robot's worktree `slug` before the bundle is built; with keep, the worktree starts at
-  // its HEAD and main keeps its changes
-  convert: z.object({ main: z.string(), slug: z.string(), keep: z.literal(true).optional() }).optional(),
+  // the main checkout that becomes the robot's worktree `slug` before the bundle is built; with head, the worktree starts at
+  // that commit, main's HEAD as the checks found it, and main keeps its changes
+  convert: z.object({ main: z.string(), slug: z.string(), head: ObjectName.optional() }).optional(),
   // what the worker clones from when it holds no clone
   remote: z.string().optional(),
   // the shas the worker's clone's refs name, which the bundle's commits build on
@@ -296,7 +296,21 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       } catch (e) {
         fail(split((e as Error).message));
       }
-      convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }), ...(keep && { keep: true as const }) };
+      const head = keep ? (await d.git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], repo.mainRoot)).stdout.trim() : '';
+      convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }), ...(head && { head }) };
+    }
+    if (keep) {
+      // one robot leaves a main checkout at a time, so two never take one slug
+      const leaving = Object.values(s.robots).find((r) => r.id !== c.id && r.moving && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
+      if (leaving) fail({ reason: `${leaving.name} is moving out of ${repoName}'s main checkout`, action: 'wait for the move to finish' });
+      // a worktree at HEAD holds only the folders HEAD does
+      for (const p of new Set([c.cwd, c.second?.cwd])) {
+        const rel = p && holds(clean(repo.root), clean(p)) ? path.posix.relative(clean(repo.root), clean(p)) : '';
+        if (rel && (await d.git(['cat-file', '-e', `HEAD:${rel}`], repo.root)).code !== 0) {
+          fail({ reason: `${rel} is not in ${repoName}'s last commit`, action: 'commit it first' });
+          break;
+        }
+      }
     }
 
     // the branch that travels, which for a main checkout is the one it converts to
@@ -372,7 +386,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const sheet: MoveSheet = {
     sessionBytes: session, branch: convert?.slug ?? repo?.branch ?? '', commits: bundle?.manifest.commits?.count ?? 0, changedFiles: changed, untrackedFiles: untracked,
     clone: mode, credentialFiles, stays, interrupts: rest.interrupts, question,
-    ...(convert && { converts: { main: convert.main, branch: convert.slug, changed: convert.keep ? kept : changed + untracked, ...(convert.keep && { keep: true as const }) } }), notInRepo: !repo,
+    ...(convert && { converts: { main: convert.main, branch: convert.slug, changed: convert.head ? kept : changed + untracked, ...(convert.head && { keep: true as const }) } }), notInRepo: !repo,
   };
   // a question is cut at once: the agent resumes idle and asks again
   const interruptAfterMs = o.interruptAfterMs ?? (question ? 0 : undefined);

@@ -100,7 +100,7 @@ Handing work to a new robot:
     .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this Mac; prints what travels, then moves it').conflicts(['island', 'cell']))
     .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
     .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
-    .addOption(new Option('--own-worktree', 'on a main checkout, leave it at HEAD for a new worktree of its own; the checkout keeps its changes').conflicts('island'))
+    .addOption(new Option('--own-worktree', 'on a main checkout, leave it at HEAD for a new worktree of its own; the checkout keeps its changes').conflicts(['island', 'carry']))
     .addOption(new Option('--retry', 'run on the move the robot is in, from the step it stopped at').conflicts(['island', 'cell', 'machine', 'carry', 'interruptAfter', 'ownWorktree']))
     .action(async (id: string, { island, cell, machine: to, interruptAfter, carry, ownWorktree, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; ownWorktree?: boolean; retry?: boolean }) => {
       if (!island && !to && !retry) throw new Error('name one of --island, --machine and --retry');

@@ -316,8 +316,8 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     t.g(root, 'add', '-f', '.env');
     t.g(root, 'commit', '-qm', 'env');
     t.g(root, 'push', '-q', 'origin', 'main');
-    put(root, 'c.txt', 'three\n');
-    t.g(root, 'add', 'c.txt');
+    put(root, 'src/c.txt', 'three\n');
+    t.g(root, 'add', 'src/c.txt');
     t.g(root, 'commit', '-qm', 'three');
     put(root, 'a.txt', 'one\nedited\n');
     put(root, 'b.txt', 'two\nstaged\n');
@@ -334,9 +334,22 @@ describe.skipIf(!hasGit)('moveChecks', () => {
       sessionBytes: 0, branch: 'kanban', commits: 1, changedFiles: 0, untrackedFiles: 0, clone: 'clone', credentialFiles: [], stays: [],
       interrupts: false, question: false, converts: { main: root, branch: 'kanban', changed: 5, keep: true }, notInRepo: false,
     });
-    expect(plan.convert).toEqual({ main: root, slug: 'kanban', keep: true });
+    expect(plan.convert).toEqual({ main: root, slug: 'kanban', head: t.g(root, 'rev-parse', 'HEAD') });
     expect(plan.paths).toEqual({ root: wt, cwd: `${wt}/src`, repo: { root: wt, mainRoot: `${t.far}/code/svall`, branch: 'kanban', isWorktree: true } });
     expect(plan.carry).toEqual([]);
+  });
+
+  it('check 3: its own worktree is refused while another robot moves out of that main checkout, and for a folder its last commit lacks', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    const leaving = on(root, { id: 'c_2', name: 'board', moving: { id: 'mv_0123456789', to: W, phase: 'rest' } });
+    expect(await refusal(depsOf(t, [on(root), leaving]), { ownWorktree: true }))
+      .toEqual({ reason: "board is moving out of svall's main checkout", action: 'wait for the move to finish', details: [] });
+
+    put(root, 'new/todo.md', 'todo\n');
+    const other = on(root, { id: 'c_2', name: 'board' });
+    expect(await refusal(depsOf(t, [on(root, { second: { cwd: `${root}/new`, unread: false } }), other]), { ownWorktree: true }))
+      .toEqual({ reason: "new is not in svall's last commit", action: 'commit it first', details: [] });
   });
 
   it('check 4: a clone of the same repository is warm and builds on its refs; a folder or another repository there is in the way', async () => {

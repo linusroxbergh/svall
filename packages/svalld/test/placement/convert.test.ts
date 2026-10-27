@@ -83,8 +83,13 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(stashes(g, main)).toBe(stash);
   });
 
-  it('with keep, the new worktree starts clean at HEAD and main keeps its changes, a merge under way included', async () => {
+  it('with head, the new worktree starts clean at that commit and main keeps its changes, a merge under way included', async () => {
     const { main, g } = mainCheckout();
+    const head = g(main, 'rev-parse', 'HEAD');
+    // a commit main gains after the check, which the worktree does not start at
+    put(main, 'c.txt', 'three\n');
+    g(main, 'add', 'c.txt');
+    g(main, 'commit', '-qm', 'three');
     put(main, 'a.txt', 'one\nstaged\n');
     g(main, 'add', 'a.txt');
     put(main, 'b.txt', 'two\nunstaged\n');
@@ -92,9 +97,9 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     fs.writeFileSync(path.join(main, '.git/MERGE_HEAD'), `${g(main, 'rev-parse', 'HEAD')}\n`);
     const before = [g(main, 'diff', '--cached'), g(main, 'diff'), g(main, 'status', '--porcelain', '--untracked-files=all'), stashes(g, main)];
 
-    const r = await convertMainCheckout(main, { git: hooklessGit, slug: 'kanban', keep: true });
+    const r = await convertMainCheckout(main, { git: hooklessGit, slug: 'kanban', head });
     expect(r).toEqual({ root: path.join(main, '.claude/worktrees/kanban'), branch: 'kanban' });
-    expect(g(r.root, 'rev-parse', 'HEAD')).toBe(g(main, 'rev-parse', 'HEAD'));
+    expect(g(r.root, 'rev-parse', 'HEAD')).toBe(head);
     expect(g(r.root, 'symbolic-ref', '--short', 'HEAD')).toBe('kanban');
     expect(g(r.root, 'status', '--porcelain')).toBe('');
     expect(g(main, 'symbolic-ref', '--short', 'HEAD')).toBe('main');

@@ -642,7 +642,7 @@ export class Placement {
   private async convert(j: MoveJournal): Promise<void> {
     const cv = j.plan.convert;
     if (!cv) return;
-    if (!fs.existsSync(path.join(cv.main, WORKTREES, cv.slug))) await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug, ...(cv.keep && { keep: true }) });
+    if (!fs.existsSync(path.join(cv.main, WORKTREES, cv.slug))) await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug, ...(cv.head && { head: cv.head }) });
     this.settleConversion(j);
   }
 
