@@ -1,10 +1,12 @@
 import type { MachineId, SetupRow } from '@svall/protocol';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
-import { groupSteps, machineName, OP_TITLE, outcomeOf, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
+import {
+  groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
+} from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
 
@@ -77,6 +79,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   // the tick asked for while svalld pushes it
   const [asked, setAsked] = useState<boolean>();
   const [failed, setFailed] = useState<string>();
+  const sentence = useId();
   const said = stepSaid(row, name);
   const idle = !run.running;
   // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them
@@ -88,7 +91,10 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
     setAsked(on);
     setFailed(undefined);
     app.api().call('machines.consent', { machine, item: row.tick!.item, fields: row.tick!.fields, on })
-      .catch((e: Error) => { setFailed(e.message); return app.api().call('machines.setup', { machine }); })
+      .catch((e: Error) => {
+        setFailed(plainStep(e.message, machineNames(app.store.getState().machines)));
+        return app.api().call('machines.setup', { machine });
+      })
       .then(show, () => {})
       .finally(() => setAsked(undefined));
   };
@@ -97,14 +103,15 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       <span className="host-mark">{MARK[row.status]}</span>
       <span className="host-name" title={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
-        {row.action ? <em data-testid={`host-action-${row.step}`}>{row.action}</em> : said}
+        {row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
         {row.action && said && <details className="ho-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{said}</details>}
-        {failed && <span className="host-failed" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
+        {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>
       {row.tick ? (
-        <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={stepLabel(row.step)} checked={asked ?? row.tick.on}
-          disabled={!id || asked !== undefined || !idle} title={id ? undefined : 'listed once the machine is added'}
-          onChange={(e) => { if (id) tick(id as MachineId, e.target.checked); }} />
+        // a tick under way keeps the box, and focus on it, and takes no second change
+        <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={stepLabel(row.step)} aria-describedby={sentence} checked={asked ?? row.tick.on}
+          disabled={!id || !idle} aria-disabled={asked !== undefined || undefined} title={id ? undefined : 'listed once the machine is added'}
+          onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
       ) : row.run && terminal && idle ? (
         <button className="btn set-open" data-testid={`host-terminal-${row.step}`} title={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>

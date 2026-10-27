@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, CLAUDE_OAUTH_FORWARD, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, loginForward, machineName, outcomeOf,
+  applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, loginForward, machineName, outcomeOf,
   replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 import type { HostStep } from '../src/bridge.js';
@@ -224,6 +224,13 @@ describe('the attended checklist', () => {
     expect(replaceRows({ ...run, steps: [step('ssh', 'ok')] }, [step('mirror:var:X', 'warn')]).steps).toEqual([step('ssh', 'ok'), step('mirror:var:X', 'warn')]);
   });
 
+  it('replaceRows words the rows as a step from the shell is worded: no token, and a machine by its name', () => {
+    const studio = '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    const rows = [step('mirror:var:X', 'warn', { action: `check machine ${studio} again`, detail: 'pushed with token=s3cr3t; not yet there' })];
+    const run = replaceRows(beginRun('doctor', { name: 'studio' }), rows, { [studio]: 'studio' });
+    expect(run.steps).toEqual([step('mirror:var:X', 'warn', { action: 'check studio again', detail: 'pushed with token=…; not yet there' })]);
+  });
+
   it('rowToStep names a row of the report as svall host does, keeping what it carries', () => {
     const tick = { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true, preview: ['env.LINEAR_API_KEY lin…90'] };
     expect(rowToStep({ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to box: env.LINEAR_API_KEY lin…90', tick }))
@@ -251,12 +258,11 @@ describe('what the page may ask for', () => {
     expect(loginForward('claude auth login')).toBeUndefined();
   });
 
-  it("loginForward prefers the row's forward, then codex login's 1455, then the Claude login's port", () => {
+  it("loginForward prefers the row's forward, then codex login's 1455", () => {
     expect(loginForward('claude', 3334)).toBe(3334); expect(loginForward('codex login')).toBe(1455);
-    // oauthLogin's run for a Claude server fixes Claude Code's sign-in port, which is otherwise a random one
-    expect(CLAUDE_OAUTH_FORWARD).toBe(3118);
-    expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude')).toBe(CLAUDE_OAUTH_FORWARD);
-    // a plain claude, as mcp-remote's login with no port of its own, waits on no port Svall knows
+    // the Claude login's row names the port its run fixes; a run alone names none
+    expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude', 3118)).toBe(3118);
+    expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude')).toBeUndefined();
     expect(loginForward('claude')).toBeUndefined();
   });
 });

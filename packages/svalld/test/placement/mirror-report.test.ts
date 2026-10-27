@@ -59,7 +59,7 @@ describe('the setup rows of the mirror', () => {
     expect(all.find(byKey('runtime:npx'))).toMatchObject({ status: 'warn', action: 'install npx on w1', run: 'sudo apt install nodejs npm', detail: 'linear, empty, github need it' });
     expect(all.find(byKey('runtime:node'))).toBeUndefined();
     expect(all.find(byKey('maconly:claude:chrome'))).toMatchObject({ status: 'skip', detail: 'chrome only runs on a Mac; not mirrored' });
-    expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', detail: 'then /mcp and sign in to notion' });
+    expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'then /mcp and sign in to notion' });
     expect(rows(report({ oauth: { 'claude:mcp:notion': true } })).find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'ok', detail: 'logged in on w1' });
     expect(all.filter(byKey('codex:config'))).toMatchObject([{ status: 'warn', action: "copy config.toml's keys to w1", tick: { item: 'codex:config', on: false } }]);
   });

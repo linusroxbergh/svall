@@ -193,6 +193,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await expect.poll(async () => (await sent(page)).slice(-2)).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
   await expect(panel.getByTestId('host-terminal')).toHaveCount(0);
   await expect(panel.getByTestId('host-running')).toBeVisible();
+  await expect(panel.getByTestId('host-steps')).toBeAttached();
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
   // a plain terminal types nothing, and closing the panel closes it and checks the machine again
@@ -311,7 +312,7 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
 test('a row with a run opens the terminal with its forward', async ({ page, svall }) => {
   const logins: HostStep[] = [
     { step: 'mirror:oauth:claude:mcp:linear', status: 'warn', action: 'log in once on studio', run: 'claude', forward: 3334, detail: 'then /mcp and sign in to linear' },
-    { step: 'mirror:oauth:claude:mcp:notion', status: 'warn', action: 'log in once on studio', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', detail: 'then /mcp and sign in to notion' },
+    { step: 'mirror:oauth:claude:mcp:notion', status: 'warn', action: 'log in once on studio', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'then /mcp and sign in to notion' },
   ];
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, ...logins]);
@@ -328,7 +329,7 @@ test('a row with a run opens the terminal with its forward', async ({ page, sval
   expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   await doctor(page, [...PASSED, ...logins]);
 
-  // Claude Code's own sign-in, on the port its run fixes
+  // Claude Code's own sign-in, on the port its run fixes and its row names
   await panel.getByTestId('host-terminal-mirror:oauth:claude:mcp:notion').click();
   await expect(panel.getByTestId('host-terminal-note')).toContainText('through port 3118 on this Mac');
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1))

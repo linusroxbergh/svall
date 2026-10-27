@@ -2,7 +2,7 @@ import type { HandoverChoices } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { ConnectionState, HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyEvent, endFollow, followRun, goOn, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
-import { applyStep, beginRun, endRun, replaceRows, withoutTokens, type HostRun } from '../host.js';
+import { applyStep, beginRun, endRun, machineNames, replaceRows, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
 export type HostConfirm = { name: string; forget: boolean };
@@ -77,9 +77,9 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
-  hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, Object.fromEntries((s.machines ?? []).map((m) => [m.id, m.name]))) } : {})),
+  hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, machineNames(s.machines)) } : {})),
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
-  hostRows: (rows) => set((s) => (s.host ? { host: replaceRows(s.host, rows) } : {})),
+  hostRows: (rows) => set((s) => (s.host ? { host: replaceRows(s.host, rows, machineNames(s.machines)) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
   setMachines: (machines, machinesError) => set({ machines, machinesError }),
   toggleHandover: (open) => set((s) => ({ handoverOpen: open ?? !s.handoverOpen })),

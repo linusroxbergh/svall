@@ -330,7 +330,8 @@ export function oauthLogin(s: McpServer): { run: string; forward?: number } {
   // mcp-remote logs in once the agent starts it; Codex's and OpenCode's own logins take remote servers only
   const run = remote >= 0 ? s.agent : s.agent === 'codex' ? `codex mcp login ${name}` : s.agent === 'opencode' ? `opencode mcp auth ${name}`
     : own !== undefined ? 'claude' : `MCP_OAUTH_CALLBACK_PORT=${CLAUDE_OAUTH_PORT} claude`;
-  const forward = remote >= 0 ? (port !== undefined && /^\d+$/.test(port) ? Number(port) : undefined) : own;
+  const forward = remote >= 0 ? (port !== undefined && /^\d+$/.test(port) ? Number(port) : undefined)
+    : s.agent === 'claude' ? own ?? CLAUDE_OAUTH_PORT : undefined;
   return { run, ...(forward !== undefined && { forward }) };
 }
 

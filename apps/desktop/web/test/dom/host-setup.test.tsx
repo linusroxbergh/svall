@@ -117,6 +117,8 @@ test('a mirror row is one sentence, a tick and its details; the tick asks svalld
   expect(screen.getByTestId('host-outcome').textContent).toBe('trift needs 1 thing before robots can move there.Check again');
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
   expect([box.type, box.checked, box.disabled]).toEqual(['checkbox', false, false]);
+  // what ticking does is the sentence beside the box
+  expect(document.getElementById(box.getAttribute('aria-describedby')!)?.textContent).toBe("copy linear's keys to trift");
 
   await act(async () => { fireEvent.click(box); });
   expect(call).toHaveBeenCalledWith('machines.consent', { machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
@@ -129,7 +131,7 @@ test('a mirror row is one sentence, a tick and its details; the tick asks svalld
 
 test('a tick the worker did not take says why on its row, and the rows are read again as svalld kept them', async () => {
   call.mockImplementation(async (method: string) => {
-    if (method === 'machines.consent') throw new ApiError('not_mirrored', 'the change is saved, but trift did not take it: ENOSPC');
+    if (method === 'machines.consent') throw new ApiError('not_mirrored', `the change is saved, but machine ${MACHINE} did not take it: token=s3cr3t`);
     return { rows: [{ key: 'claude:mcp:linear', status: 'warn', action: 'check trift again', detail: 'pushed; not yet on trift', tick: tick(true) }] };
   });
   checked();
@@ -138,9 +140,25 @@ test('a tick the worker did not take says why on its row, and the rows are read 
     ['machines.consent', { machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }],
     ['machines.setup', { machine: MACHINE }],
   ]);
-  expect(screen.getByTestId('host-tick-failed-mirror:claude:mcp:linear').textContent).toBe('the change is saved, but trift did not take it: ENOSPC');
+  const failed = screen.getByTestId('host-tick-failed-mirror:claude:mcp:linear');
+  expect([failed.textContent, failed.getAttribute('role')]).toEqual(['the change is saved, but trift did not take it: token=…', 'status']);
   expect(screen.getByTestId('host-action-mirror:claude:mcp:linear').textContent).toBe('check trift again');
   expect((screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement).checked).toBe(true);
+});
+
+test('a tick under way keeps the box where focus is, showing what was asked, and takes no second change', async () => {
+  let answer: (v: unknown) => void = () => {};
+  call.mockImplementation((method: string) => (method === 'machines.consent' ? new Promise((resolve) => { answer = resolve; }) : Promise.resolve({})));
+  checked();
+  const box = () => screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
+  box().focus();
+  await act(async () => { fireEvent.click(box()); });
+  expect([box().checked, box().disabled, box().getAttribute('aria-disabled'), document.activeElement === box()]).toEqual([true, false, 'true', true]);
+  await act(async () => { fireEvent.click(box()); });
+  expect(call.mock.calls.filter(([method]) => method === 'machines.consent')).toHaveLength(1);
+  expect(box().checked).toBe(true);
+  await act(async () => { answer({ rows: [{ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to trift', tick: tick(true) }] }); });
+  expect([box().checked, box().getAttribute('aria-disabled')]).toEqual([true, null]);
 });
 
 test('a machine not yet in the list has its rows shown but nothing ticked, and the sheet keeps its title and outcome out of the scrolling rows', () => {

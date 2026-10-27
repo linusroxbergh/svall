@@ -1,5 +1,5 @@
 import type { SetupRow } from '@svall/protocol';
-import type { ConnectionState, HostArgs, HostOp, HostStep } from './bridge.js';
+import type { ConnectionState, HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
 const TOKEN = /(token["']?\s*[:=]\s*["']?)[^\s"'&,;}]+/gi;
@@ -11,6 +11,8 @@ export function withoutTokens(text: string): string {
 
 /** The machines this Mac knows: each one's name by its id. */
 export type MachineNames = Record<string, string>;
+
+export const machineNames = (machines: MachineRow[] = []): MachineNames => Object.fromEntries(machines.map((m) => [m.id, m.name]));
 
 // an id says nothing to a person; one inside a path names a file, and stays
 const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
@@ -37,7 +39,17 @@ function withoutIds(text: string, names: MachineNames): string {
     .replace(ids('\\s?(UUID)'), (all: string, id: string) => (names[id] ? all.replace(id, names[id]) : ''));
 }
 
-const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
+export const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
+
+/** A step as the panel keeps it: its words plain, and what it carries. */
+const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
+  step: event.step, status: event.status,
+  ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
+  ...(event.action ? { action: plainStep(event.action, names) } : {}),
+  ...(event.run ? { run: event.run } : {}),
+  ...(event.forward ? { forward: event.forward } : {}),
+  ...(event.tick ? { tick: event.tick } : {}),
+});
 
 /** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */
 const PHASES = [
@@ -81,14 +93,7 @@ export const beginRun = (op: HostOp, args: HostArgs): HostRun => ({ op, args, st
 
 /** A step is announced before it runs and named again when it ends: the row is the same row. */
 export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {}): HostRun {
-  const row: HostStep = {
-    step: event.step, status: event.status,
-    ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
-    ...(event.action ? { action: plainStep(event.action, names) } : {}),
-    ...(event.run ? { run: event.run } : {}),
-    ...(event.forward ? { forward: event.forward } : {}),
-    ...(event.tick ? { tick: event.tick } : {}),
-  };
+  const row = plainRow(event, names);
   if (event.status === 'start' && run.steps.some((s) => s.step === event.step)) return run;
   const at = run.steps.findIndex((s) => s.step === event.step && s.status === 'start');
   const steps = at < 0 ? [...run.steps, row] : run.steps.map((s, i) => (i === at ? row : s));
@@ -100,11 +105,12 @@ export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, runnin
 /** A row of the mirror's report as the step `svall host` names it. */
 export const rowToStep = ({ key, ...row }: SetupRow): HostStep => ({ step: `${MIRROR}${key}`, ...row });
 
-/** The run with its mirror rows swapped for `rows` where they stood, or added at its end when it had none. */
-export function replaceRows(run: HostRun, rows: HostStep[]): HostRun {
+/** The run with its mirror rows swapped for `rows`, worded as a step is, where they stood, or added at its end when it had none. */
+export function replaceRows(run: HostRun, rows: HostStep[], names: MachineNames = {}): HostRun {
   const at = run.steps.findIndex((s) => s.step.startsWith(MIRROR));
   const rest = run.steps.filter((s) => !s.step.startsWith(MIRROR));
-  return { ...run, steps: at < 0 ? [...rest, ...rows] : [...rest.slice(0, at), ...rows, ...rest.slice(at)] };
+  const plain = rows.map((r) => plainRow(r, names));
+  return { ...run, steps: at < 0 ? [...rest, ...plain] : [...rest.slice(0, at), ...plain, ...rest.slice(at)] };
 }
 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
@@ -241,10 +247,5 @@ export function connectionBanner(c: ConnectionState | undefined, o: { handoverEn
   }
 }
 
-/** The port Claude Code's MCP sign-in waits on there, which `oauthLogin`'s run names in MCP_OAUTH_CALLBACK_PORT. */
-export const CLAUDE_OAUTH_FORWARD = 3118;
-const CLAUDE_LOGIN = `MCP_OAUTH_CALLBACK_PORT=${CLAUDE_OAUTH_FORWARD} claude`;
-
-/** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, Codex's 1455, or Claude's. */
-export const loginForward = (run: string, forward?: number): number | undefined =>
-  forward ?? (/^codex login\s*$/.test(run) ? 1455 : run === CLAUDE_LOGIN ? CLAUDE_OAUTH_FORWARD : undefined);
+/** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, or Codex's 1455. */
+export const loginForward = (run: string, forward?: number): number | undefined => forward ?? (/^codex login\s*$/.test(run) ? 1455 : undefined);
