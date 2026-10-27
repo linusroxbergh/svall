@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const CONTOURS: [number, string][] = [
   [1.2, 'var(--contour-2)'],
@@ -14,6 +14,9 @@ const GLOWS = [
 ];
 
 const around = (k: number, cx: number, cy: number) => `translate(${cx},${cy}) scale(${k}) translate(${-cx},${-cy})`;
+
+// bitmap px per world px: the narrowest blur is still 2.5 of them wide
+const RES = 0.5;
 
 type Glow = { href: string; x: number; y: number; w: number; h: number };
 const glows = new Map<string, Glow | undefined>();
@@ -31,8 +34,8 @@ function glow(sand: string, cx: number, cy: number): Glow | undefined {
     const edge = (f: (o: typeof GLOWS[number]) => number, pick: (...v: number[]) => number) => pick(...GLOWS.map(f));
     const x = Math.floor(edge((o) => cx + o.k * (lx - cx) + o.dx - 3 * o.sd * o.k, Math.min));
     const y = Math.floor(edge((o) => cy + o.k * (ly - cy) + o.dy - 3 * o.sd * o.k, Math.min));
-    const w = Math.ceil(edge((o) => cx + o.k * (hx - cx) + o.dx + 3 * o.sd * o.k, Math.max)) - x;
-    const h = Math.ceil(edge((o) => cy + o.k * (hy - cy) + o.dy + 3 * o.sd * o.k, Math.max)) - y;
+    const w = Math.ceil(RES * (edge((o) => cx + o.k * (hx - cx) + o.dx + 3 * o.sd * o.k, Math.max) - x));
+    const h = Math.ceil(RES * (edge((o) => cy + o.k * (hy - cy) + o.dy + 3 * o.sd * o.k, Math.max) - y));
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d');
@@ -40,11 +43,11 @@ function glow(sand: string, cx: number, cy: number): Glow | undefined {
       // the coast itself is drawn off the canvas, so only its shadow lands on it
       const off = 4 * (w + h), path = new Path2D(sand);
       for (const o of GLOWS) {
-        ctx.setTransform(o.k, 0, 0, o.k, cx - o.k * cx + o.dx - x - off, cy - o.k * cy + o.dy - y);
-        ctx.shadowColor = o.fill; ctx.shadowBlur = 2 * o.sd * o.k; ctx.shadowOffsetX = off;
+        ctx.setTransform(RES * o.k, 0, 0, RES * o.k, RES * (cx - o.k * cx + o.dx - x) - off, RES * (cy - o.k * cy + o.dy - y));
+        ctx.shadowColor = o.fill; ctx.shadowBlur = 2 * RES * o.sd * o.k; ctx.shadowOffsetX = off;
         ctx.fill(path);
       }
-      g = { href: canvas.toDataURL(), x, y, w, h };
+      g = { href: canvas.toDataURL(), x, y, w: w / RES, h: h / RES };
     }
   }
   if (glows.size >= 64) glows.delete(glows.keys().next().value!);
@@ -54,7 +57,17 @@ function glow(sand: string, cx: number, cy: number): Glow | undefined {
 
 // everything drawn under the land: the shoals lightening the sea, the cast shadow, the wave-line contours and the sand bank
 export function Seabed({ sand, cx, cy, bank }: { sand: string; cx: number; cy: number; bank: string }) {
-  const g = useMemo(() => glow(sand, cx, cy), [sand, cx, cy]);
+  const next = useMemo(() => glow(sand, cx, cy), [sand, cx, cy]);
+  // a new coast keeps the last glow until its own has decoded: WebKit would paint a frame with none
+  const [g, setG] = useState(next);
+  useEffect(() => {
+    if (!next || next === g) return;
+    let live = true;
+    const im = new Image();
+    im.src = next.href;
+    im.decode().catch(() => {}).then(() => { if (live) setG(next); });
+    return () => { live = false; };
+  }, [next]);
   return (
     <>
       {g && <image href={g.href} x={g.x} y={g.y} width={g.w} height={g.h} />}
