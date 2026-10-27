@@ -128,27 +128,29 @@ the machine are never replaced. Logins never travel: log each agent, and `gh`, i
 
 **Keys.** A key in your setup travels only once you tick it for that machine. Keys are an MCP server's `env` values,
 its headers, and a key in its URL or arguments, plus the key fields of `settings.json` (among them the headers a
-marketplace in `extraKnownMarketplaces` sends, which are emptied in `known_marketplaces.json` too until ticked),
-`config.toml` and the OpenCode config. Each server or file that holds one is a row under **Your agent setup**, such as
-"copy linear's keys to studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). A key in an argument is
-named by the flag before it, its own `--flag=` or `KEY=`, or its URL's scheme and host, such as `args[--api-key]` or
-`args[https://example.com].token`, so a tick stays with its argument when the arguments move. Unticked, the server is
-copied without them:
-each `env` key becomes the agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code,
-`{env:LINEAR_API_KEY}` for OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable
-from its environment on the machine, which robots there take from the fleet's `.env` (below); a key in its headers,
-URL or arguments is left out. The row stays until you tick it or the machine has its own key: a key for that server
-in the overrides (below) counts, and so does an `env` key's variable set there with `svall worker env LINEAR_API_KEY`;
-the row then reads "studio has its own keys". While this Mac is linked to the machine, ticking or unticking changes
-the copy there at once, whatever runs there; otherwise the change is saved, and takes effect when studio links. An
-untick while this Mac cannot read the file that holds the key is saved too, and the copy stays on studio until this
-Mac can read that file again; while studio still holds a copy you unticked, the row reads "still on studio; check
-studio again". A file there that holds a ticked key is readable by your account alone. A server or plugin config with
-fields Svall does not know is a row "copy notion whole to studio", and is copied only once ticked. So is a file whose
-keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, or `lspServers` in its `plugin.json`) with a key in a
-server's `env`, a marketplace's `marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent in
-`agents/` whose `mcpServers` defines a server with a key or fields Svall does not know. Until ticked, each stays on
-this Mac.
+marketplace in `extraKnownMarketplaces` sends and the query of its URL, which are emptied in `known_marketplaces.json`
+too until ticked), `config.toml` and the OpenCode config. A reference with a default, `${LINEAR_API_KEY:-lin_…}`,
+holds its default as a key. Each server or file that holds one is a row under **Your agent setup**, such as "copy
+linear's keys to studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). A key in an argument is named
+by the flag before it, its own `--flag=` or `KEY=`, or its URL's scheme and host, such as `args[--api-key]` or
+`args[https://example.com].token`, and every argument of one name is that one key, as an `env` key is, so a tick
+follows its name when the arguments move. Unticked, the server is copied without them: each `env` key becomes the
+agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code, `{env:LINEAR_API_KEY}` for
+OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable from its environment on
+the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left
+out; a reference with a default keeps the reference alone. The row stays until you tick it or the machine has its own
+key: a key for that server in the overrides (below) counts, and so does the variable an `env` key reads set there with
+`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own keys". While this Mac is linked to the
+machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
+takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
+copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
+reads "still on studio; check studio again". A file there that holds a ticked key is readable by your account alone. A
+server or plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only
+once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
+`plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
+`marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/` or a plugin's, whose
+`mcpServers` defines a server with a key or fields Svall does not know, or that names `mcpServers` in a way Svall does
+not read. Until ticked, each stays on this Mac.
 From a terminal, `svall host doctor studio` lists the rows, and `svall host consent studio <item> <on|off>
 [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
 `--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item.
@@ -260,9 +262,10 @@ On the Linux machine itself:
   journal, since that would strand the fleet. Before it removes Svall, it takes back what each fleet's mirror copied
   there with keys, each while it is as the mirror wrote it: a copied key becomes what an untick leaves (an `env` key
   the agent's reference to its variable, a key in a URL or argument the rest of it, any other key emptied), a server
-  copied whole leaves its config file, a file the mirror wrote holding a ticked key is deleted, and a copy a daemon
-  left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since the mirror wrote it
-  stays, named in what it prints, and so does every key in
+  copied whole leaves its config file, a key in `known_marketplaces.json`, a `marketplace.json` or a subagent is
+  taken out where it lies there and the file stays, another file the mirror wrote holding a ticked key, such as a
+  plugin's server file, is deleted, and a copy a daemon left unapplied in the fleet's `cache` goes. A key, server or
+  file changed on the machine since the mirror wrote it stays, named in what it prints, and so does every key in
   a config file there that no longer parses, as do the fleet's `.env` and its `mirror-overrides/`, which are the
   machine's own. Uninstalling a worker ends the robots that run there, so move them back first. `svall host remove`
   from the Mac checks the fleets that Mac knows of, then runs it with `--force-fleet` for each of them that names the
