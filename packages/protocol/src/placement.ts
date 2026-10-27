@@ -11,11 +11,15 @@ export type Refusal = z.infer<typeof Refusal>;
 /** The actions of the refusals a move clears by interrupting: an agent at work, and a command running in a shell. */
 export const INTERRUPT_ACTIONS = { agent: 'interrupt after this turn', command: 'move anyway and it ends' } as const;
 
-// stays holds the sheet's phrases for what is left on this Mac: ".env stays here", "node_modules is not carried"
+/** The action of the refusal a move clears by leaving a shared main checkout for a new worktree at its HEAD. */
+export const WORKTREE_ACTION = 'give it its own worktree';
+
+// stays holds the sheet's phrases for what is left on this Mac: ".env stays here", "node_modules is not carried";
+// converts.keep, that the main checkout keeps its `changed` files
 export const MoveSheet = z.object({
   sessionBytes: z.number(), branch: z.string(), commits: z.number(), changedFiles: z.number(), untrackedFiles: z.number(),
   clone: z.enum(['warm', 'clone']), credentialFiles: z.array(z.string()), stays: z.array(z.string()), interrupts: z.boolean(), question: z.boolean(),
-  converts: z.object({ main: z.string(), branch: z.string(), changed: z.number() }).optional(), notInRepo: z.boolean(),
+  converts: z.object({ main: z.string(), branch: z.string(), changed: z.number(), keep: z.literal(true).optional() }).optional(), notInRepo: z.boolean(),
 });
 export type MoveSheet = z.infer<typeof MoveSheet>;
 
@@ -42,6 +46,7 @@ export function moveSummary(s: MoveSheet, repo: string | undefined, machine: str
 /** What becomes of a main checkout the move converts into a worktree. */
 export function convertLine(c: NonNullable<MoveSheet['converts']>): string {
   const main = base(c.main);
+  if (c.keep) return `it leaves ${main}'s main checkout for a new branch ${c.branch}${c.changed ? `; the checkout keeps its ${count(c.changed, 'changed file')}` : ''}`;
   return c.changed
     ? `your ${count(c.changed, 'changed file')} in ${main}'s main checkout ${c.changed === 1 ? 'moves' : 'move'} to a new branch ${c.branch}`
     : `it leaves ${main}'s main checkout for a new branch ${c.branch}`;

@@ -83,6 +83,25 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(stashes(g, main)).toBe(stash);
   });
 
+  it('with keep, the new worktree starts clean at HEAD and main keeps its changes, a merge under way included', async () => {
+    const { main, g } = mainCheckout();
+    put(main, 'a.txt', 'one\nstaged\n');
+    g(main, 'add', 'a.txt');
+    put(main, 'b.txt', 'two\nunstaged\n');
+    put(main, 'notes.md', 'untracked\n');
+    fs.writeFileSync(path.join(main, '.git/MERGE_HEAD'), `${g(main, 'rev-parse', 'HEAD')}\n`);
+    const before = [g(main, 'diff', '--cached'), g(main, 'diff'), g(main, 'status', '--porcelain', '--untracked-files=all'), stashes(g, main)];
+
+    const r = await convertMainCheckout(main, { git: hooklessGit, slug: 'kanban', keep: true });
+    expect(r).toEqual({ root: path.join(main, '.claude/worktrees/kanban'), branch: 'kanban' });
+    expect(g(r.root, 'rev-parse', 'HEAD')).toBe(g(main, 'rev-parse', 'HEAD'));
+    expect(g(r.root, 'symbolic-ref', '--short', 'HEAD')).toBe('kanban');
+    expect(g(r.root, 'status', '--porcelain')).toBe('');
+    expect(g(main, 'symbolic-ref', '--short', 'HEAD')).toBe('main');
+    expect([g(main, 'diff', '--cached'), g(main, 'diff'), g(main, 'status', '--porcelain', '--untracked-files=all').replace(/^\?\? \.claude\/.*\n?/gm, ''), stashes(g, main)])
+      .toEqual(before);
+  });
+
   it('one that fails once its worktree is made takes the worktree and its branch away again, and main keeps every change', async () => {
     const { main, g } = mainCheckout();
     put(main, 'a.txt', 'one\nstaged\n');

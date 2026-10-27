@@ -289,7 +289,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const root = t.repo('code/svall');
     const other = on(root, { id: 'c_2', name: 'board' });
     expect(await refusal(depsOf(t, [on(root), other])))
-      .toEqual({ reason: "two robots share svall's main checkout", action: 'give one its own worktree first', details: [] });
+      .toEqual({ reason: "two robots share svall's main checkout", action: 'give it its own worktree', details: [] });
 
     fs.writeFileSync(path.join(root, '.git/MERGE_HEAD'), `${t.g(root, 'rev-parse', 'HEAD')}\n`);
     expect(await refusal(depsOf(t, [on(root)]))).toEqual({ reason: `${root} is in the middle of a merge`, action: 'finish or abort it first', details: [] });
@@ -306,6 +306,37 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(s.branch).toBe('kb');
     expect(plan.convert).toBeUndefined();
     expect(plan.paths.root).toBe(`${t.far}/code/svall/.claude/worktrees/kb`);
+  });
+
+  it('check 3: a robot sharing a main checkout given its own worktree travels on a new branch at HEAD with HEAD\'s commits alone, and main keeps the rest', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    // a tracked .env on origin, a commit origin lacks, and changes of every kind that neither robot can claim
+    put(root, '.env', 'KEY=1\n');
+    t.g(root, 'add', '-f', '.env');
+    t.g(root, 'commit', '-qm', 'env');
+    t.g(root, 'push', '-q', 'origin', 'main');
+    put(root, 'c.txt', 'three\n');
+    t.g(root, 'add', 'c.txt');
+    t.g(root, 'commit', '-qm', 'three');
+    put(root, 'a.txt', 'one\nedited\n');
+    put(root, 'b.txt', 'two\nstaged\n');
+    t.g(root, 'add', 'b.txt');
+    put(root, 'new.txt', 'new\n');
+    put(root, '.env', 'KEY=2\n');
+    put(root, '.env.local', 'KEY=3\n');
+    fs.writeFileSync(path.join(root, '.git/MERGE_HEAD'), `${t.g(root, 'rev-parse', 'HEAD')}\n`);
+    const robots = [on(root, { cwd: `${root}/src` }), on(root, { id: 'c_2', name: 'board' })];
+
+    const { sheet: s, plan } = await sheet(depsOf(t, robots), { ownWorktree: true });
+    const wt = `${t.far}/code/svall/.claude/worktrees/kanban`;
+    expect(s).toEqual({
+      sessionBytes: 0, branch: 'kanban', commits: 1, changedFiles: 0, untrackedFiles: 0, clone: 'clone', credentialFiles: [], stays: [],
+      interrupts: false, question: false, converts: { main: root, branch: 'kanban', changed: 5, keep: true }, notInRepo: false,
+    });
+    expect(plan.convert).toEqual({ main: root, slug: 'kanban', keep: true });
+    expect(plan.paths).toEqual({ root: wt, cwd: `${wt}/src`, repo: { root: wt, mainRoot: `${t.far}/code/svall`, branch: 'kanban', isWorktree: true } });
+    expect(plan.carry).toEqual([]);
   });
 
   it('check 4: a clone of the same repository is warm and builds on its refs; a folder or another repository there is in the way', async () => {

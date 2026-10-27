@@ -30,8 +30,8 @@ svall robot move <id> --machine local          # back to this Mac
 
 It prints the sheet's line, then the move's id once the robot is the destination's. A refused move exits 2 with the
 reason and the action. `--interrupt-after <duration>` (such as `30s`, or `0`) interrupts what still runs after that
-long, `--carry <file>` takes a credential file such as `.env` along, and `--retry` runs the robot's current move again
-from the step it stopped at.
+long, `--carry <file>` takes a credential file such as `.env` along, `--own-worktree` gives a robot on a main checkout
+its own worktree (check 3), and `--retry` runs the robot's current move again from the step it stopped at.
 
 While it moves the card says "moving" and its terminal "moving to linus-vault…"; opening a terminal, a revive, `svall
 robot run` and closing the robot are refused with "moving to linus-vault". Then the card shows the badge, and the
@@ -57,8 +57,11 @@ behind **details**.
    you confirm and the agent rests, the move makes a worktree under `.claude/worktrees/<robot>` on a new branch
    `<robot>`, carries main's index, working-tree changes and untracked files into it, staged against unstaged as they
    were, and leaves main clean on its branch. The stash list is never touched. "two robots share svall's main
-   checkout; give one its own worktree first". "kanban is on a detached HEAD; check out a branch first". A robot in
-   no repository, such as a shell in `~`, skips checks 3 to 6 and moves with its session only.
+   checkout; give it its own worktree", whose button **Give it its own worktree** makes that worktree at main's HEAD
+   instead and leaves main as it is, since neither robot alone can claim its changes; the sheet says so ("it leaves
+   svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files"). "kanban is on a detached
+   HEAD; check out a branch first". A robot in no repository, such as a shell in `~`, skips checks 3 to 6 and moves
+   with its session only.
 4. **The repository is known to the worker.** At the main checkout's place there (`/Users/ada/code/app` on the Mac is
    `/home/ada/code/app` on the worker) it has a clone of the same repository, or nothing and a remote it can fetch
    from with its own credentials. "svall has no remote; push svall to a remote first". "linus-vault cannot read

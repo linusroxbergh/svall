@@ -100,8 +100,9 @@ Handing work to a new robot:
     .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this Mac; prints what travels, then moves it').conflicts(['island', 'cell']))
     .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
     .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
-    .addOption(new Option('--retry', 'run on the move the robot is in, from the step it stopped at').conflicts(['island', 'cell', 'machine', 'carry', 'interruptAfter']))
-    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; retry?: boolean }) => {
+    .addOption(new Option('--own-worktree', 'on a main checkout, leave it at HEAD for a new worktree of its own; the checkout keeps its changes').conflicts('island'))
+    .addOption(new Option('--retry', 'run on the move the robot is in, from the step it stopped at').conflicts(['island', 'cell', 'machine', 'carry', 'interruptAfter', 'ownWorktree']))
+    .action(async (id: string, { island, cell, machine: to, interruptAfter, carry, ownWorktree, retry }: { island?: string; cell?: string; machine?: string; interruptAfter?: string; carry?: string[]; ownWorktree?: boolean; retry?: boolean }) => {
       if (!island && !to && !retry) throw new Error('name one of --island, --machine and --retry');
       if (retry) {
         await withFleet(connect, async (c, state) => {
@@ -127,7 +128,7 @@ Handing work to a new robot:
         const machine = to === LOCAL ? (await c.call('system.info', {})).machineId : machineId(state, to!);
         const worker = to === LOCAL && state.machines?.[machine];
         if (worker) { refuseMove({ reason: `this terminal is on ${worker.name}`, action: 'run this on the Mac', details: [] }, json()); return; }
-        const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }) };
+        const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(ownWorktree && { ownWorktree }) };
         const checked = await c.call('robot.moveCheck', params);
         if (!checked.ok) { refuseMove(checked.refusal, json()); return; }
         if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), to === LOCAL ? 'this Mac' : state.machines![machine].name)}\n`);

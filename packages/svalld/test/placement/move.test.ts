@@ -81,6 +81,35 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.placement.status(id).phase).toBe('done');
   });
 
+  it('a robot sharing a main checkout, given its own worktree, moves on a new branch at HEAD, and main keeps its changes and the robot that stays', async () => {
+    const w = open();
+    const home = await w.start();
+    fs.writeFileSync(path.join(w.main, 'a.txt'), 'one\nstaged\n');
+    w.g(w.main, 'add', 'a.txt');
+    fs.writeFileSync(path.join(w.main, 'notes.md'), 'untracked\n');
+    home.store.update((d) => {
+      Object.assign(d.robots.c_1, { name: 'ada', cwd: w.main, repo: { root: w.main, mainRoot: w.main, branch: 'main', isWorktree: false } });
+      const { tmux: _t, agent: _a, ...board } = structuredClone(d.robots.c_1);
+      d.robots.c_2 = { ...board, id: 'c_2', name: 'board', cell: { x: 1, y: 0 } };
+    });
+    // the worktrees under main are untracked there
+    const inMain = () => { const s = state(w, w.main); return { ...s, untracked: s.untracked.filter((f) => !f.startsWith('.claude/')) }; };
+    const before = inMain();
+
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: "two robots share app's main checkout; give it its own worktree" });
+    const id = await home.placement.start('c_1', W, { ownWorktree: true });
+
+    const [wt, farWt] = [path.join(w.main, '.claude/worktrees/ada'), path.join(w.clone, '.claude/worktrees/ada')];
+    const fresh = { head: before.head, branch: 'ada', staged: '', unstaged: '', untracked: [] };
+    expect(inMain()).toEqual(before);
+    expect(state(w, wt)).toEqual(fresh);
+    expect(listed(w, w.main, wt)).toEqual({ locked: `moved to w1 ${id}` });
+    expect(state(w, farWt)).toEqual(fresh);
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: farWt, repo: { root: farWt, mainRoot: w.clone, branch: 'ada', isWorktree: true } });
+    expect(home.store.state.robots.c_2).toMatchObject({ cwd: w.main, repo: { root: w.main, branch: 'main', isWorktree: false } });
+    expect(home.store.state.robots.c_2.machine).toBeUndefined();
+  });
+
   it('a failure in prepare reopens the robot at home with its window and the worker has nothing left', async () => {
     const w = open();
     const home = await w.start();

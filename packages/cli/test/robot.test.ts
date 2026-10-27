@@ -292,6 +292,14 @@ describe('robot move to a machine', () => {
     expect((await run(shell, ['c_1', '--machine', 'linus-vault'])).out.split('\n')[0]).toBe('session 4 MB · in no repository: it moves with its session only');
   });
 
+  it('gives a robot sharing a main checkout its own worktree with --own-worktree, and says the checkout keeps its changes', async () => {
+    const converts = { main: '/Users/ada/code/svall', branch: 'kanban', changed: 2, keep: true as const };
+    const d = daemon({ check: { ok: true, sheet: { ...sheet, sessionBytes: 0, branch: 'kanban', commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', stays: [], converts } } });
+    const { out } = await run(d, ['c_1', '--machine', 'linus-vault', '--own-worktree']);
+    expect(out.split('\n')[0]).toBe("branch kanban · svall on linus-vault: cloned already · it leaves svall's main checkout for a new branch kanban; the checkout keeps its 2 changed files");
+    expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: VAULT, ownWorktree: true }], ['robot.moveTo', { id: 'c_1', machine: VAULT, ownWorktree: true }]]);
+  });
+
   it('svall robot move c_1 --machine local brings it back to this Mac by the home\'s id', async () => {
     const d = daemon({ check: { ok: true, sheet: { ...sheet, sessionBytes: 0, commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [] } } });
     expect((await run(d, ['c_1', '--machine', 'local'])).out).toBe('branch kanban-board · svall on this Mac: cloned already\nmv_0123456789\n');
@@ -319,6 +327,7 @@ describe('robot move to a machine', () => {
     for (const flags of [
       ['--island', 'work', '--machine', 'linus-vault'], ['--island', 'work', '--carry', '.env'], ['--machine', 'linus-vault', '--cell', '1,1'],
       ['--retry', '--island', 'work'], ['--retry', '--machine', 'linus-vault'], ['--retry', '--carry', '.env'], ['--retry', '--interrupt-after', '30s'],
+      ['--island', 'work', '--own-worktree'], ['--retry', '--own-worktree'],
     ]) {
       await expect(cmd.parseAsync(['move', 'c_1', ...flags], { from: 'user' }), flags.join(' ')).rejects.toThrow(/cannot be used with/);
     }

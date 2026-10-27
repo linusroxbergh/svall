@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, convertLine, INTERRUPT_ACTIONS, moveSummary, type MachineId, type MoveSheet as What, type Refusal } from '@svall/protocol';
+import { ApiError, convertLine, INTERRUPT_ACTIONS, moveSummary, WORKTREE_ACTION, type MachineId, type MoveSheet as What, type Refusal } from '@svall/protocol';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
@@ -17,6 +17,7 @@ type Interrupt = keyof typeof INTERRUPT_ACTIONS;
 // the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
 const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
 const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'a command is running; move anyway and it ends' };
+const OWN_WORKTREE = 'Give it its own worktree';
 // the interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
@@ -35,10 +36,11 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [machine, setMachine] = useState(to);
   const [carry, setCarry] = useState<string[]>([]);
   const [interrupt, setInterrupt] = useState<Interrupt>();
+  const [own, setOwn] = useState(false);
   const [asked, setAsked] = useState(0);
   const [answer, setAnswer] = useState<Answer>();
   const shut = useRef<HTMLButtonElement>(null);
-  const params = machine && { id, machine, ...(carry.length > 0 && { carry }), ...(interrupt && { interruptAfterMs: INTERRUPT_AFTER_MS }) };
+  const params = machine && { id, machine, ...(carry.length > 0 && { carry }), ...(interrupt && { interruptAfterMs: INTERRUPT_AFTER_MS }), ...(own && { ownWorktree: true }) };
   const close = () => store().setMoveSheet(undefined);
 
   useEffect(() => { shut.current?.focus(); }, []);
@@ -54,7 +56,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     let live = true;
     app.api().call('robot.moveCheck', params).then((a) => { if (live) setAnswer(a); }, (e: Error) => { if (live) setAnswer({ error: e.message }); });
     return () => { live = false; };
-  }, [machine, carry.join('\n'), interrupt, asked]);
+  }, [machine, carry.join('\n'), interrupt, own, asked]);
 
   if (!c) return null;
   const sheet = answer && 'ok' in answer && answer.ok ? answer.sheet : undefined;
@@ -91,6 +93,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
             {sheet.credentialFiles.map((f) => (
               <label key={f} className="move-pick"><input type="checkbox" checked={carry.includes(f)} onChange={() => pick(f)} />copy {f} to {where}</label>
             ))}
+            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} />{OWN_WORKTREE}</label>}
             {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(undefined)} />{KEPT[interrupt]}</label>}
             <div className="acts"><button className="btn pri" data-testid="move-go" onClick={go}>Move</button></div>
           </>
@@ -110,6 +113,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               {refusal.run ? (
                 <button className="btn pri" data-testid="move-action" title={`Opens a terminal on ${where} with ${refusal.run} typed, for you to run`}
                   onClick={() => { close(); terminalOn(where, refusal.run); }}>Open terminal</button>
+              ) : refusal.action === WORKTREE_ACTION ? (
+                <button className="btn pri" data-testid="move-action" onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
               ) : answerable ? (
                 <button className="btn pri" data-testid="move-action" onClick={() => setInterrupt(answerable)}>{refusal.action[0].toUpperCase()}{refusal.action.slice(1)}</button>
               ) : (
