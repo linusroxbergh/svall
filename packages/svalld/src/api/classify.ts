@@ -47,6 +47,12 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'dormancy.set': 'mutation',
   'mainAgent.set': 'mutation',
   'model.set': 'mutation',
+  'retro.plan': 'mutation',
+  'retro.run': 'mutation',
+  'retro.status': 'read',
+  'retro.findings': 'read',
+  'retro.mark': 'mutation',
+  'retro.apply': 'mutation',
   'usage.get': 'read',
   'load.get': 'read',
   // listing, creating and starting other fleets on this Mac leaves this one alone

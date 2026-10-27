@@ -130,6 +130,21 @@ describe('splitting config.json', () => {
     patchFleetConfig(resolvePaths(own).fleetConfig, { name: 'base' });
     expect(reservedFleetNames(root)).toEqual([{ home: work, name: 'version' }]);
   });
+
+  it('reads a fleet.json name svall now keeps for a command as no name, and names its home until it is renamed', () => {
+    const root = makeHome();
+    const p = resolvePaths(path.join(root, '.svall-work'));
+    fs.mkdirSync(p.home);
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', name: 'retro', mainAgent: 'codex' }));
+    const config = loadConfig(p);
+    expect(config).toMatchObject({ mainAgent: 'codex' });
+    expect(config.name).toBeUndefined();
+    expect(reservedFleetNames(root)).toEqual([{ home: p.home, name: 'retro' }]);
+    patchFleetConfig(p.fleetConfig, { retro: { exclude: { repos: [], islands: ['Life'] }, unrecorded: [] } });
+    patchFleetConfig(p.fleetConfig, { name: 'side' });
+    expect(reservedFleetNames(root)).toEqual([]);
+    expect(loadConfig(p).name).toBe('side');
+  });
 });
 
 describe('finishing an interrupted split', () => {

@@ -18,7 +18,7 @@ const count = execFileSync('git', ['-C', root, 'rev-list', '--count', 'HEAD'], {
 fs.rmSync(out, { recursive: true, force: true });
 await build({
   absWorkingDir: root,
-  entryPoints: { svalld: 'packages/svalld/src/bin.ts', svall: 'packages/cli/src/main.ts' },
+  entryPoints: { svalld: 'packages/svalld/src/bin.ts', svall: 'packages/cli/src/main.ts', 'retro-index': 'packages/svalld/src/retro/index-worker.ts' },
   outdir: out,
   outExtension: { '.js': '.mjs' },
   bundle: true,

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carryCompanions, companionAssets, nodeRuntime, PINS, releaseKey, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
+import { carryCompanions, companionAssets, nodeRuntime, PINS, releaseKey, schemaVersions, VENDOR, WORKERS } from '../scripts/release-stage.mjs';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -20,6 +20,17 @@ describe('the versions a release records', () => {
     const versions = await schemaVersions(temp());
     expect(Object.keys(versions).sort()).toEqual(['protocol', 'stateSchema']);
     for (const [name, v] of Object.entries(versions)) expect(Number.isInteger(v), name).toBe(true);
+  });
+});
+
+describe('the bundles a release carries', () => {
+  it("holds each worker svalld starts, as the app's runtime does", () => {
+    expect(WORKERS).toContainEqual({ name: 'retro-index', entry: 'packages/svalld/src/retro/index-worker.ts' });
+    const app = fs.readFileSync(path.join(import.meta.dirname, '../scripts/runtime-bundle.mjs'), 'utf8');
+    for (const { name, entry } of WORKERS) {
+      expect(fs.existsSync(path.join(import.meta.dirname, '..', entry)), entry).toBe(true);
+      expect(app).toContain(`'${name}': '${entry}'`);
+    }
   });
 });
 

@@ -27,6 +27,10 @@ export const variant: Variant = bundled || isRelease() || process.env.SVALL_VARI
 export const assetDir = (name: 'hooks' | 'home' | 'agent-profiles'): string =>
   bundled ? path.join(here, name) : path.resolve(here, '..', name);
 
+/** The script a worker thread runs: bundled beside svalld's own, or in a checkout the source tsx loads. */
+export const workerFile = (name: 'retro-index'): string =>
+  bundled || isRelease() ? path.join(here, `${name}.mjs`) : path.resolve(here, 'retro/index-worker.ts');
+
 /** The phone page svalld serves. */
 export const mobileDist = (): string => (bundled ? path.join(here, 'mobile') : mobileDistDir());
 

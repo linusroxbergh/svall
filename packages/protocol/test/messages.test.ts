@@ -22,6 +22,8 @@ describe('serverWait', () => {
     expect(serverWait('machines.setup', { machine: UUID_A })).toBe(20_000);
     expect(serverWait('machines.setup', { machine: UUID_A, waitMs: 5_000 })).toBe(25_000);
     expect(serverWait('machines.consent', { machine: UUID_A, item: 'claude:mcp:linear', fields: [], on: false })).toBe(15 * 60_000);
+    // each fix may start a robot
+    expect(serverWait('retro.mark', { marks: [{ id: 'a', action: 'fix' }, { id: 'b', action: 'later' }, { id: 'c', action: 'fix' }] })).toBe(2 * RUN_TIMEOUT_MS);
   });
 });
 

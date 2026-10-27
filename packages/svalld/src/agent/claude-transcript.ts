@@ -50,7 +50,7 @@ const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
 // Claude Code stamps the turns a person typed with a human origin. Everything else sharing the user
 // stream — tool results, task notifications, interrupts, local command output — is its own writing.
 // A typed slash command is the exception: it arrives unstamped, inside a command envelope.
-function submitted(e: Entry): string | undefined {
+export function submitted(e: Entry): string | undefined {
   if (e.type === 'attachment') return e.attachment?.commandMode === 'prompt' && e.attachment.origin?.kind === 'human' ? queued(e) : undefined;
   if (e.type !== 'user' || e.isSidechain || e.isMeta) return undefined;
   const text = textOf(e.message?.content);

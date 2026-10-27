@@ -17,7 +17,7 @@ export const NodeFile = NodeConfig.extend({ port: z.number().int().optional() })
 
 type Raw = Record<string, unknown>;
 
-// a config.json may name its fleet with a word svall has since kept for a command: that name is read as none, so the
+// a config file may name its fleet with a word svall has since kept for a command: that name is read as none, so the
 // fleet goes by its default one
 function unreserved(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || !RESERVED.includes((raw as Raw).name as string)) return raw;
@@ -71,7 +71,7 @@ const mergeConfig = (fleet: FleetConfig, node: z.infer<typeof NodeFile>): Config
 /** What `text` holds under `schema`; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
 export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, schema: T): z.infer<T> {
   try {
-    return schema.parse(JSON.parse(text));
+    return schema.parse(unreserved(JSON.parse(text)));
   } catch (err) {
     const why = err instanceof z.ZodError
       ? err.issues.map((i) => `${i.path.join('.') || 'the whole file'}: ${i.message}`).join('; ')
@@ -192,8 +192,8 @@ export const keptPorts = (homes: string[]): number[] => homes.flatMap((h) => {
 });
 
 /**
- * Each fleet home in `homedir` whose config.json, or the backup its split left, named the fleet with a word svall now
- * keeps for a command, while its fleet.json names it nothing else.
+ * Each fleet home in `homedir` whose fleet.json names the fleet with a word svall now keeps for a command, or names it
+ * nothing while its config.json, or the backup its split left, did.
  */
 export function reservedFleetNames(homedir: string): { home: string; name: string }[] {
   const json = (file: string): Raw | undefined => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as Raw; } catch { return undefined; } };
@@ -201,8 +201,8 @@ export function reservedFleetNames(homedir: string): { home: string; name: strin
   try { entries = fs.readdirSync(homedir).sort(); } catch { return []; }
   return entries.filter((f) => variantOf(f) === variant).flatMap((f) => {
     const p = resolvePaths(path.join(homedir, f));
-    const name = (json(p.legacyConfig) ?? json(`${p.legacyConfig}.bak`))?.name;
-    return typeof name === 'string' && RESERVED.includes(name) && json(p.fleetConfig)?.name === undefined ? [{ home: p.home, name }] : [];
+    const name = json(p.fleetConfig)?.name ?? (json(p.legacyConfig) ?? json(`${p.legacyConfig}.bak`))?.name;
+    return typeof name === 'string' && RESERVED.includes(name) ? [{ home: p.home, name }] : [];
   });
 }
 
