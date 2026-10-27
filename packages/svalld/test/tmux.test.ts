@@ -309,38 +309,62 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     const t = await boot();
     const own = fs.realpathSync(t.binary);
     expect(await t.startOverStale(own, await fakeProc(t, own))).toBeUndefined();
-    const proc = await fakeProc(t, `${old} (deleted)`);
     const w = await t.newWindow('c_kept', '/tmp', {});
+    // the daemon's own tmux replaced in place, as by an apt upgrade, leaves the server on the file it started from
+    expect(await t.startOverStale(own, await fakeProc(t, `${own} (deleted)`))).toEqual({ running: own, kept: 'robots' });
+    const proc = await fakeProc(t, old);
     expect(await t.startOverStale(own, proc)).toEqual({ running: old, kept: 'robots' });
     await t.killWindow(w.windowId);
     expect(await t.startOverStale(own, proc)).toEqual({ running: old });
     await expect(t.run('has-session')).rejects.toThrow();
   });
 
-  it('ends a stale server only once its process is gone', async () => {
-    const t = await boot();
-    const proc = await fakeProc(t, old);
-    const pid = Number((await t.run('display', '-p', '#{pid}')).trim());
-    // kill-server returns before the server exits
-    const run = t.run.bind(t);
+  // kill-server answers before the server exits
+  function lateKill(t: Tmux, then: () => void): void {
+    const run = (...args: string[]) => Tmux.prototype.run.apply(t, args);
     vi.spyOn(t, 'run').mockImplementation(async (...args) => {
       if (args[0] !== 'kill-server') return run(...args);
-      setTimeout(() => { run('kill-server').catch(() => {}); }, 300);
+      then();
       return '';
     });
-    expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old });
-    expect(() => process.kill(pid, 0)).toThrow();
+  }
+
+  it('ends a stale server once its process is gone, and kills one that does not end unless its pid runs another binary', async () => {
+    const t = await boot();
+    const own = fs.realpathSync(t.binary);
+    const proc = await fakeProc(t, old);
+    const pid = Number((await t.run('display', '-p', '#{pid}')).trim());
+    const exe = path.join(proc, String(pid), 'exe');
+    const kill = vi.spyOn(process, 'kill');
+    // the pid went to another program
+    lateKill(t, () => { fs.rmSync(exe); fs.symlinkSync('/usr/bin/vi', exe); });
+    expect(await t.startOverStale(own, proc, 300)).toEqual({ running: old });
+    expect(await t.run('has-session', '-t', '=fleet')).toBe('');
+    fs.rmSync(exe);
+    fs.symlinkSync(old, exe);
+    lateKill(t, () => {});
+    expect(await t.startOverStale(own, proc, 300)).toEqual({ running: old });
+    expect(kill).toHaveBeenCalledWith(pid, 'SIGKILL');
+    await waitFor(async () => { try { process.kill(pid, 0); return false; } catch { return true; } });
+
+    const u = await boot();
+    const late = Number((await u.run('display', '-p', '#{pid}')).trim());
+    lateKill(u, () => { setTimeout(() => { Tmux.prototype.run.call(u, 'kill-server').catch(() => {}); }, 300); });
+    kill.mockClear();
+    expect(await u.startOverStale(own, await fakeProc(u, old))).toEqual({ running: old });
+    expect(() => process.kill(late, 0)).toThrow();
+    expect(kill).not.toHaveBeenCalledWith(late, 'SIGKILL');
   });
 
-  it('keeps a stale server that does not end, or does not list its windows', async () => {
+  it('keeps a stale server that does not list its windows, and lists them on a tmux older than list-windows -f', async () => {
     const t = await boot();
     const proc = await fakeProc(t, old);
     const run = t.run.bind(t);
-    vi.spyOn(t, 'run').mockImplementation(async (...args) => (args[0] === 'kill-server' ? '' : run(...args)));
-    expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old, kept: 'unended' });
     vi.spyOn(t, 'run').mockImplementation(async (...args) => (args[0] === 'list-windows' ? Promise.reject(new Error('timed out')) : run(...args)));
     expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old, kept: 'unlisted' });
-    expect(await run('has-session', '-t', '=fleet')).toBe('');
+    // as tmux 3.0a answers
+    vi.spyOn(t, 'run').mockImplementation(async (...args) => (args[0] === 'list-windows' && args.includes('-f') ? Promise.reject(new Error('usage: list-windows [-a] [-F format] [-t target-session]')) : run(...args)));
+    expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old });
   });
 
   it('keeps a stale server while a viewer holds a robot, its fleet session gone, across starts, and compares an own tmux gone from disk as named', async () => {
