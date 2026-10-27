@@ -123,7 +123,7 @@ export class Fleet extends EventEmitter<Events> {
     });
     this.agentEvents = new AgentEvents({
       store, config, log, render: (island, c) => this.render(island, c), refreshLinks: deps.refreshLinks ?? refreshLinks,
-      track, processes: this.sleep.processes,
+      track, processes: this.sleep.processes, sessions: deps.paths.retroSessions,
     });
     this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
     if (deps.report) this.unwatch = watchOwned(store, runsHere, deps.report);
@@ -147,6 +147,7 @@ export class Fleet extends EventEmitter<Events> {
     for (const c of Object.values(this.deps.store.state.robots)) if (c.tmux) this.seen.set(c.id, now);
     const opening = this.ensureHome();
     this.syncAgents();
+    this.agentEvents.recordCurrent();
     // the shell is for the Mac app's tour, so a new fleet on Linux starts with no robot
     if (opening && (this.deps.platform ?? process.platform) === 'darwin') {
       await this.createRobot({ islandId: opening, cwd: this.deps.config.defaultCwd })

@@ -12,11 +12,14 @@ import type { RefreshLinks } from '../fleet.js';
 import type { SocketEvent } from '../hooks/receiver.js';
 import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { appendSessions, currentLines, sessionLines, type SessionLine } from '../retro/sessions.js';
 import type { Store } from '../store.js';
 
 type Deps = {
   store: Store; config: Config; log: Logger; render: (island: Island, c?: Robot) => string; refreshLinks: RefreshLinks;
   track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
+  // the retro's record of each session a robot takes; absent, none is kept
+  sessions?: string;
 };
 
 // a pid is looked at again after this long, as one an ended server freed may come back as an agent
@@ -46,6 +49,7 @@ export class AgentEvents {
   private async run(e: SocketEvent): Promise<string | undefined> {
     if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.robotId, e.hook.pid); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
+    const before = this.deps.store.state.robots[ev.robotId];
     let reply: string | undefined;
     this.deps.store.update((d) => {
       const c = d.robots[ev.robotId];
@@ -80,6 +84,7 @@ export class AgentEvents {
         d.robots[ev.robotId] = next;
       }
     });
+    this.record(sessionLines(before, this.deps.store.state.robots[ev.robotId], Date.now()));
     // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the robot
     const agent = this.deps.store.state.robots[ev.robotId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
@@ -88,6 +93,18 @@ export class AgentEvents {
       this.deps.track(this.followCwd(ev.robotId, cwd), `follow ${ev.robotId} to ${cwd}`);
     }
     return reply;
+  }
+
+  /** Records the session each robot holds now, once: the first start that keeps the record has seen none of them begin. */
+  recordCurrent(): void {
+    if (!this.deps.sessions || fs.existsSync(this.deps.sessions)) return;
+    this.record(currentLines(Object.values(this.deps.store.state.robots), Date.now()));
+  }
+
+  // a record that can't be written loses the retro a session's attribution, never the hook
+  private record(lines: SessionLine[]): void {
+    if (!this.deps.sessions || !lines.length) return;
+    try { appendSessions(this.deps.sessions, lines); } catch (e) { this.deps.log.error(`retro sessions: ${String(e)}`); }
   }
 
   forget(id: string): void {
