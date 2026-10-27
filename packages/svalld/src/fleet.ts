@@ -147,7 +147,7 @@ export class Fleet extends EventEmitter<Events> {
     for (const c of Object.values(this.deps.store.state.robots)) if (c.tmux) this.seen.set(c.id, now);
     const opening = this.ensureHome();
     this.syncAgents();
-    // the shell is for the Mac app's tour; a Linux machine's new fleet is the one host add starts, which enable replaces only unused
+    // the shell is for the Mac app's tour, so a new fleet on Linux starts with no robot
     if (opening && (this.deps.platform ?? process.platform) === 'darwin') {
       await this.createRobot({ islandId: opening, cwd: this.deps.config.defaultCwd })
         .catch((e) => this.deps.log.error(`first robot: ${String(e)}`));
