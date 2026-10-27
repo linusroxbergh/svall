@@ -80,7 +80,7 @@ describe('the retro service', () => {
     const w = world({ now: () => now, runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
     const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
     now += 25 * HOUR;
-    const { run } = w.retro.run({ plan: plan.id, preset: 'thrifty' });
+    const { run } = w.retro.run({ plan: plan.id, preset: 'thrifty', robot: 'c_crew' });
     expect(run).toBe(plan.id);
     await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
     expect(w.retro.status().run).toBe(run);
@@ -89,6 +89,10 @@ describe('the retro service', () => {
     const thrifty = plan.presets.find((x) => x.name === 'thrifty')!;
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'started'), 'utf8'))).toMatchObject({ preset: 'thrifty', budget: Math.ceil(thrifty.tokens.max) });
     expect(w.retro.findings(run).run).toBe(run);
+    // the crew member's card shows the run it started, and a restart clears it
+    expect(w.store.state.retro).toMatchObject({ run, stage: 'done', robot: 'c_crew' });
+    w.make().start();
+    expect(w.store.state.retro).toBeUndefined();
   });
 
   it('plans a stale plan again on the CLI it was planned for, whatever the main agent is now', async () => {
