@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 
 const CONTOURS: [number, string][] = [
   [1.2, 'var(--contour-2)'],
@@ -48,7 +48,7 @@ function glow(sand: string, cx: number, cy: number): Glow | null | undefined {
         ctx.fill(path);
       }
       // the canvas lives in WebKit's GPU process and reads back 'data:,' when that process is replaced for not answering
-      // within 15 s: null is drawn again each second rather than kept
+      // within 15 s: null is not kept, so the next call draws it again
       const href = canvas.toDataURL();
       if (href === 'data:,') return null;
       g = { href, x, y, w: w / RES, h: h / RES };
@@ -61,13 +61,13 @@ function glow(sand: string, cx: number, cy: number): Glow | null | undefined {
 
 // everything drawn under the land: the shoals lightening the sea, the cast shadow, the wave-line contours and the sand bank
 export function Seabed({ sand, cx, cy, bank }: { sand: string; cx: number; cy: number; bank: string }) {
-  const [tries, setTries] = useState(0);
+  const [tries, retry] = useReducer((n: number) => n + 1, 0);
   const next = useMemo(() => glow(sand, cx, cy), [sand, cx, cy, tries]);
   // a new coast keeps the last glow until its own has decoded: WebKit would paint a frame with none
   const [g, setG] = useState(next);
   useEffect(() => {
     if (next === null) {
-      const t = setTimeout(() => setTries((n) => n + 1), 1000);
+      const t = setTimeout(retry, 1000);
       return () => clearTimeout(t);
     }
     if (!next || next === g) return;

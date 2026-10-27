@@ -16,14 +16,17 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const glow = (container: HTMLElement) => container.querySelector('image')?.getAttribute('href');
+const drawn = () => vi.mocked(HTMLCanvasElement.prototype.toDataURL).mock.calls.length;
 
 // a canvas WebKit's GPU process doesn't answer for in time reads back as 'data:,', which an <image> paints as its broken-image icon
 test('a glow that reads back empty is left out and drawn again each second until it reads back', async () => {
   reads = ['data:,', 'data:,'];
   const { container } = render(<svg><Seabed sand="M10 10L90 10L90 60Z" cx={50} cy={35} bank="#000" /></svg>);
   expect(glow(container)).toBeUndefined();
-  await act(async () => { vi.advanceTimersByTime(1000); });
-  expect(glow(container)).toBeUndefined();
+  await act(async () => { vi.advanceTimersByTime(999); });
+  expect(drawn()).toBe(1);
+  await act(async () => { vi.advanceTimersByTime(1); });
+  expect([drawn(), glow(container)]).toEqual([2, undefined]);
   await act(async () => { vi.advanceTimersByTime(1000); });
   expect(glow(container)).toBe(PNG);
 });
