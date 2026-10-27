@@ -15,7 +15,7 @@ import { machineId } from '../src/machine.js';
 import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
 import { runSetup, shimText } from '../src/setup.js';
-import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, UninstallRefused, type AppQuit } from '../src/uninstall.js';
+import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
@@ -545,56 +545,19 @@ describe('runUninstall', () => {
     expect(await runUninstall({ ...f.o, tmux: '/private/tmp/tmux-501/default,123,0' })).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
   });
 
-  it('refuses, unless forced, while a handover is open, this machine runs a fleet for its gateway, or it is the gateway of fleets, and changes nothing', async () => {
-    const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+  it('uninstalls whatever a handover journal, an owner.json or the gateway\'s records there hold', async () => {
     const FLEET = '7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
-    const cases: [string, (f: ReturnType<typeof installed>, prefix: string) => void, RegExp][] = [
-      ['an open handover', (f) => { fs.mkdirSync(path.join(f.home, 'handover')); fs.writeFileSync(path.join(f.home, 'handover/journal.json'), '{}'); }, /a handover of \S+ is open/],
-      ['a fleet run here for its gateway', (f) => {
-        fs.writeFileSync(path.join(f.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
-        fs.writeFileSync(path.join(f.home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 3, ownerMachineId: machineId() }));
-      }, new RegExp(`this machine runs \\S+ for its gateway ${GATEWAY}`)],
-      ['the gateway of a fleet', (_f, prefix) => {
-        fs.mkdirSync(path.join(prefix, 'gateway/fleets'), { recursive: true });
-        fs.writeFileSync(path.join(prefix, 'gateway/fleets', `${FLEET}.json`), '{}');
-      }, /this machine is the gateway of 1 fleet/],
-    ];
-    for (const [what, set, why] of cases) {
-      const f = installed();
-      await runSetup(f.o);
-      const prefix = path.join(f.root, '.local', 'share', 'svall');
-      set(f, prefix);
-      const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
-      await expect(runUninstall({ ...f.o, prefix }), what).rejects.toThrow(why);
-      await expect(runUninstall({ ...f.o, prefix }), what).rejects.toThrow(/svall handover local.*svall host remove.*--force/);
-      expect(fs.existsSync(plist), what).toBe(true);
-      expect(fs.existsSync(path.join(f.shimDir, 'svall')), what).toBe(true);
-      expect(await runUninstall({ ...f.o, prefix, force: true }), what).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
-    }
-  });
-
-  it('lets go only of the gateway records of the fleets it is told to, and refuses any other, and an open handover of those fleets too', async () => {
-    const FLEET = '7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
-    const THEIRS = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
     const f = installed();
     await runSetup(f.o);
     const prefix = path.join(f.root, '.local', 'share', 'svall');
-    fs.mkdirSync(path.join(prefix, 'gateway/fleets'), { recursive: true });
-    for (const id of [FLEET, THEIRS]) fs.writeFileSync(path.join(prefix, 'gateway/fleets', `${id}.json`), '{}');
-    const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
-
-    // a fleet another controller keeps here, which the one that asked has not checked
-    await expect(runUninstall({ ...f.o, prefix, forceFleets: [FLEET] })).rejects.toThrow(UninstallRefused);
-    await expect(runUninstall({ ...f.o, prefix, forceFleets: [FLEET] })).rejects.toThrow(/this machine is the gateway of 1 fleet/);
-    fs.writeFileSync(path.join(f.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: machineId() }));
     fs.mkdirSync(path.join(f.home, 'handover'));
     fs.writeFileSync(path.join(f.home, 'handover/journal.json'), '{}');
-    await expect(runUninstall({ ...f.o, prefix, forceFleets: [FLEET, THEIRS] })).rejects.toThrow(/a handover of \S+ is open/);
-    expect(fs.existsSync(plist)).toBe(true);
-    expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(true);
-
-    fs.rmSync(path.join(f.home, 'handover'), { recursive: true });
-    expect(await runUninstall({ ...f.o, prefix, forceFleets: [FLEET, THEIRS] })).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
+    fs.writeFileSync(path.join(f.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }));
+    fs.writeFileSync(path.join(f.home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 3, ownerMachineId: machineId() }));
+    fs.mkdirSync(path.join(prefix, 'gateway/fleets'), { recursive: true });
+    fs.writeFileSync(path.join(prefix, 'gateway/fleets', `${FLEET}.json`), '{}');
+    expect(await runUninstall({ ...f.o, prefix })).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
+    expect(fs.existsSync(path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`))).toBe(false);
   });
 
   it('changes nothing when the Claude settings are not valid JSON', async () => {

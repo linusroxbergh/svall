@@ -103,6 +103,17 @@ export function resolvePaths(home: string = svallHome()) {
 }
 export type Paths = ReturnType<typeof resolvePaths>;
 
+// the bytes a Unix socket path holds before its NUL
+const SOCKET_MAX: Partial<Record<NodeJS.Platform, number>> = { linux: 107, darwin: 103 };
+
+/** Why nothing can listen on `socket` on `platform`: a path longer than a Unix socket takes, which listen refuses with EINVAL. */
+export function socketTooLong(socket: string, platform: NodeJS.Platform = process.platform): { message: string; over: number } | undefined {
+  const max = SOCKET_MAX[platform];
+  const bytes = Buffer.byteLength(socket);
+  if (max === undefined || bytes <= max) return undefined;
+  return { message: `the socket ${socket} is ${bytes} bytes, past the ${max} a Unix socket path holds, so its listen fails with EINVAL`, over: bytes - max };
+}
+
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile, p.workersFile];
 

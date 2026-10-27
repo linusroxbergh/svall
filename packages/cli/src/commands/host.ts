@@ -12,7 +12,7 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, doctorHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { farProfile, type Target } from '../target.js';
@@ -126,13 +126,12 @@ export function forgetCheck(dir: string, id: string): void {
   else fs.rmSync(checksFile(dir), { force: true });
 }
 
-/** One machine as `host list --json` gives it: no ssh for this one, the fleets here it is the gateway of, and its last check. */
-export type MachineRow = { name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[]; check?: LastCheck };
+/** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; check?: LastCheck };
 
-export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, fleetsOf: (id: MachineId) => string[]): MachineRow[] {
+export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>): MachineRow[] {
   return registry.list().map(({ id, record }) => ({
-    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, gateway: record.gateway,
-    fleets: fleetsOf(id), ...(checks[id] && { check: checks[id] }),
+    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...(checks[id] && { check: checks[id] }),
   }));
 }
 
@@ -158,7 +157,7 @@ async function runFlow(json: boolean, last: (o: HostOutcome) => string, run: (d:
 
 /** `target`: the fleet a machine added or upgraded becomes a worker of. */
 export function hostCommands(json: () => boolean, target: () => Target, dir: () => string = configDir): Command {
-  const host = new Command('host').description('the machines this controller can hand a fleet to')
+  const host = new Command('host').description('the machines robots can run on')
     // the app's Stop is a SIGTERM, which would otherwise leave this command's master running
     .hook('preAction', () => { closeMastersOnSignal(); });
 
@@ -172,12 +171,11 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       runFlow(json(), (out) => outcomeText(out, 'add', name), (d) => addHost({ name, ...o }, d), dir(), target()));
 
   host.command('list')
-    .description('every machine in the registry, the fleets here it is the gateway of, and its last check')
+    .description('every machine in the registry and its last check')
     .action(() => {
-      const rows = machineRows(MachineRegistry.load(dir()), lastChecks(dir()), (id) => fleetsNaming(id, os.homedir()));
+      const rows = machineRows(MachineRegistry.load(dir()), lastChecks(dir()));
       printResult(rows, json(), () => table(rows.map((r) => ({
         name: r.name, ssh: r.ssh ?? '(this machine)', platform: r.platform,
-        gateway: r.fleets.length ? `for ${r.fleets.join(', ')}` : r.gateway ? 'yes' : 'no',
         release: r.check?.release ?? '', checked: r.check ? checkedLine(r.check) : '', id: r.id,
       }))));
     });

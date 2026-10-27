@@ -44,8 +44,8 @@ const PHASES = [
   { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger'] },
   // the tmux the units start, which the release installed carries
   { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'tmux', 'uninstall'] },
-  // an upgrade makes a gateway this fleet's worker once its probe passes
-  { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'enrol', 'gateway', 'fleet', 'replicas'] },
+  // an upgrade enrols the machine once its probe passes
+  { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'enrol'] },
   { phase: 'agents', label: 'Agent CLIs', steps: ['claude', 'codex', 'opencode', 'versions'] },
   // an upgrade puts the release before back when its probe fails
   { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback'] },
@@ -99,9 +99,9 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
-  service: 'Services', identity: 'Installed release', enrol: 'Worker', fleet: 'Fleets', replicas: 'Earlier handover', claude: 'Claude Code',
+  service: 'Services', identity: 'Installed release', enrol: 'Worker', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
-  systemd: 'Fleet service', worker: 'Worker', gateway: 'Gateway service', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
+  systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall',
 };

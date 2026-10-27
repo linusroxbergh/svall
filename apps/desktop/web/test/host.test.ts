@@ -91,8 +91,7 @@ describe('the end of a run', () => {
 
   it('the outcome line reads ready when nothing is left to do, and counts the things otherwise', () => {
     expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]))).toEqual({ text: ready, done: true });
-    const replicas = step('replicas', 'warn', { detail: '22 GB from an earlier handover is in /home/box/lab; delete it when you no longer need it' });
-    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok'), replicas]))).toEqual({ text: ready, done: true });
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: ready, done: true });
     expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('codex', 'skip'), step('release', 'ok')]))).toEqual({ text: ready, done: true });
     // each step's action is one thing, and so is each failed step that names none
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
@@ -123,11 +122,11 @@ describe('the end of a run', () => {
 
 describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
-    expect(['master', 'identity', 'enrol', 'fleet', 'replicas', 'registry'].map(stepLabel))
-      .toEqual(['Connection', 'Installed release', 'Worker', 'Fleets', 'Earlier handover', 'Machine list']);
+    expect(['master', 'identity', 'enrol', 'registry'].map(stepLabel))
+      .toEqual(['Connection', 'Installed release', 'Worker', 'Machine list']);
     // the checks a machine's own doctor reports
-    expect(['systemd', 'gateway', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
-      .toEqual(['Fleet service', 'Gateway service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
+    expect(['systemd', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
+      .toEqual(['Fleet service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
     expect(stepLabel('weather')).toBe('weather');
   });
 
@@ -159,14 +158,14 @@ describe('the attended checklist', () => {
 
   it('calls no phase by the name of a step in it', () => {
     const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
-      'tmux', 'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
+      'tmux', 'uninstall', 'service', 'identity', 'authority', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
     const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload',
       'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
-    const remove = ['machine', 'fleet', 'uninstall', 'registry'];
+    const remove = ['machine', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);
       expect(labels).not.toContain('Checks');

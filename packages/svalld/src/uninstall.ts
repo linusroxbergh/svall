@@ -5,10 +5,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import { codexPaths, type CodexPaths } from './codex/install.js';
-import { gatewayPaths } from './gateway/authority.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
 import { agentHomesEnv, ourUnits } from './linux/setup.js';
-import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { opencodePaths, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { resolvePaths } from './paths.js';
@@ -144,49 +142,16 @@ const once = (files: string[]): string[] => {
   return files.filter((file, i) => files.findIndex((f) => real(f) === real(file)) === i);
 };
 
-const readJson = (file: string): Record<string, unknown> | undefined => {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
-};
-
-/**
- * What stopping this machine's fleets would strand: a handover open in a fleet home, a fleet run here for its gateway,
- * or the fleets this machine is the gateway of, but for those in `released`, whose keeper has checked them.
- */
-export function stranded(homes: string[], prefix?: string, released: string[] = []): string[] {
-  let me: string | undefined;
-  try { me = fs.existsSync(path.join(configDir(), 'machine.json')) ? machineId() : undefined; } catch { me = undefined; }
-  const out: string[] = [];
-  for (const home of homes) {
-    const p = resolvePaths(home);
-    const gateway = readJson(p.fleetConfig)?.gatewayMachineId;
-    if (fs.existsSync(p.journal)) out.push(`a handover of ${home} is open`);
-    else if (typeof gateway === 'string' && me && readJson(p.owner)?.ownerMachineId === me) out.push(`this machine runs ${home} for its gateway ${gateway}`);
-  }
-  const records = prefix ? gatewayPaths(prefix).fleets : undefined;
-  const held = records && fs.existsSync(records) ? fs.readdirSync(records).filter((f) => f.endsWith('.json') && !released.includes(path.basename(f, '.json'))).length : 0;
-  if (held) out.push(`this machine is the gateway of ${held} fleet${held > 1 ? 's' : ''}, whose records are in ${records}`);
-  return out;
-}
-
-/** The refusal of an uninstall that would strand a fleet. */
-export class UninstallRefused extends Error {}
-
 // takes back what setup put outside the fleet homes: the Claude hooks and statusline, the Codex hooks and the OpenCode
 // plugin that run `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
-// fleets' own data stays for purge. Unless forced, it refuses where that would strand a fleet; `forceFleets` passes
-// only the gateway records of those fleets.
+// fleets' own data stays for purge.
 export async function runUninstall(o: {
   home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
   mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; cache?: string; run?: Run;
-  force?: boolean; forceFleets?: string[];
 }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
   if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run ${SHIM} uninstall from a terminal outside Svall`);
-  const strands = o.force ? [] : stranded(o.homes, o.prefix, o.forceFleets);
-  if (strands.length) {
-    throw new UninstallRefused(`uninstalling here would strand fleets: ${strands.join('; ')}. Finish or abort the handover, bring each fleet to the machine that keeps it with ${SHIM} handover local, and remove this machine from that one with ${SHIM} host remove <name>, which checks all of this; or run ${SHIM} uninstall --force`);
-  }
   const paths = resolvePaths(o.home);
   const linux = (o.platform ?? process.platform) === 'linux' && o.unitDir;
   // Linux setup put the hooks under the agent homes the daemon's unit is given, which this command's env may not name

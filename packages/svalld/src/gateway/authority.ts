@@ -13,17 +13,6 @@ export function gatewayPaths(prefix: string) {
   return { dir, fleets: path.join(dir, 'fleets'), socket: path.join(dir, 'authority.sock'), recoveries: path.join(dir, 'recoveries.ndjson') };
 }
 
-// the bytes a Unix socket path holds before its NUL
-const SOCKET_MAX: Partial<Record<NodeJS.Platform, number>> = { linux: 107, darwin: 103 };
-
-/** Why the gateway cannot listen on `socket` on `platform`: a path longer than a Unix socket takes, which listen refuses with EINVAL. */
-export function socketTooLong(socket: string, platform: NodeJS.Platform = process.platform): { message: string; over: number } | undefined {
-  const max = SOCKET_MAX[platform];
-  const bytes = Buffer.byteLength(socket);
-  if (max === undefined || bytes <= max) return undefined;
-  return { message: `the gateway's socket ${socket} is ${bytes} bytes, past the ${max} a Unix socket path holds, so its listen fails with EINVAL`, over: bytes - max };
-}
-
 /** The compare-and-swap operations, and what each one has to carry to be considered. */
 export const OWNER_PARAMS = {
   'owner.get': z.object({ fleetId: FleetId }),

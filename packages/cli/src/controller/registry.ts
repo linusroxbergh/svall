@@ -117,11 +117,6 @@ export class MachineRegistry {
     this.machines.set(entry.id, { ...entry.record, name });
   }
 
-  clearGateway(idOrName: string): void {
-    const entry = this.need(idOrName);
-    this.machines.set(entry.id, { ...entry.record, gateway: false });
-  }
-
   remove(idOrName: string): void {
     const entry = this.need(idOrName);
     if (entry.id === this.localId) throw new Error('the local machine cannot be removed from the registry');
