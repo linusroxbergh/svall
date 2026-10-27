@@ -695,12 +695,12 @@ export class Placement {
   // the terminals the rest closed open again where they were
   private async reopen(j: MoveJournal): Promise<void> {
     const id = j.robotId;
+    await serversLeft(this.restDeps(), j, (x) => this.save(x));
     this.d.store.update((d) => {
       const c = d.robots[id];
       if (!c) return;
       if (c.moving?.id === j.id) delete c.moving;
     });
-    await serversLeft(this.restDeps(), j, (x) => this.save(x));
     for (const t of j.rest?.stoppedTerminals ?? []) {
       await (t.term === 2 ? this.d.fleet.openSecond(id) : this.d.fleet.reviveRobot(id))
         .catch((e: Error) => this.d.log.error(`move ${j.id}: ${id} did not reopen: ${e.message}`));

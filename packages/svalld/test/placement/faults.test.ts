@@ -285,6 +285,28 @@ describe.skipIf(!hasGit)('a crash of the home during a move', () => {
     expect(w.vault.opened).toEqual(['c_1']);
   });
 
+  it('a move out undone after a crash holds the robot as moving while it waits for the OpenCode server its rest left, and refuses a revive meanwhile', async () => {
+    const w = open(WORLDS.out);
+    const first = await w.start();
+    at('move.rest.server.kill', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
+    await expect(first.placement.start('c_1', W, { interruptAfterMs: 0 })).rejects.toThrow(Crash);
+    first.links.stop();
+    expect(w.mac1.left).not.toEqual([]);
+    let refused: unknown;
+    at('move.rest.server.kill', 'before', () => {
+      try { void w.home.fleet.reviveRobot('c_1').catch(() => {}); } catch (e) { refused = e; }
+    });
+
+    const again = await w.bootHome();
+    await again.placement.recoverMoves();
+
+    expect(refused).toMatchObject({ code: 'moving', message: 'moving to w1' });
+    const here = again.store.state.robots.c_1;
+    expect(here.moving).toBeUndefined();
+    expect(here.tmux).toBeDefined();
+    expect(w.mac1.left).toEqual([]);
+  });
+
   it('a return cut short before its commit leaves the robot on the worker and the Mac worktree locked, and the next return goes through', async () => {
     const w = open();
     const first = await w.start();
