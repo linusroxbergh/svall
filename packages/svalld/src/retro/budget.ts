@@ -66,7 +66,8 @@ export const judgeTokens = (batches: number, agent: AgentKind): Range => judgeCa
 
 /** What a preset would take on the plan's batches: tokens, and cost when both models are in the price table. */
 export function estimate(batches: { tokens: number }[], p: PresetPick, agent: AgentKind): Preset {
-  const calls = [...batches.map((b) => readCall(b.tokens, agent, p.read)), judgeCall(batches.length, agent, p.judge)];
+  // with nothing to read there are no notes, and the judge is never called
+  const calls = batches.length ? [...batches.map((b) => readCall(b.tokens, agent, p.read)), judgeCall(batches.length, agent, p.judge)] : [];
   const sum = (ranges: Range[]): Range => ({ min: ranges.reduce((n, r) => n + r.min, 0), max: ranges.reduce((n, r) => n + r.max, 0) });
   const tokens = sum(calls.map((c) => c.tokens));
   const costs = calls.flatMap((c) => (c.cost ? [c.cost] : []));

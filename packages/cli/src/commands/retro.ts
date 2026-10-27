@@ -1,8 +1,9 @@
 import os from 'node:os';
+import path from 'node:path';
 import { Command, Option } from 'commander';
 import { AGENT_LABEL, FocusPick, RetroSpan, type Finding, type Range, type RetroPlan, type RetroReport, type RetroStatus } from '@svall/protocol';
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
-import { resolvePaths } from '@svall/svalld/paths';
+import { expandHome, resolvePaths } from '@svall/svalld/paths';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
 import { withClient } from './fleet.js';
@@ -23,6 +24,9 @@ const tokenRange = (r: Range): string => {
 };
 const usd = (r: Range): string => `~$${r.min.toFixed(1)}–${r.max.toFixed(1)}`;
 const collect = (v: string, all: string[] = []): string[] => [...all, v];
+const collectPath = (v: string, all: string[] = []): string[] => [...all, path.resolve(expandHome(v))];
+// the unrecorded repos the plan lists by name; the rest are counted, and --json lists them all
+const SHOWN = 8;
 const indent = (text: string, by: string): string => text.split('\n').map((l) => `${by}${l}`).join('\n');
 const source = (s: Finding['evidence'][number]['source']): string => ('pr' in s ? s.pr : `${s.agent} ${s.session} line ${s.line}`);
 const rate = (r: { count: number; of: number } | null): string => (r ? `${r.count} of ${r.of}` : '–');
@@ -41,8 +45,10 @@ export function formatPlan(p: RetroPlan): string {
     `scope: ${c.inScope} in scope, ${c.excluded} excluded, ${c.otherFleets} in other fleets, ${c.remote} robots on another machine`,
   ];
   if (c.unrecorded.length) {
-    const groups = c.unrecorded.map((u) => `${short(u.repo)} ${u.count}${u.picked ? ' (picked)' : ''}`).join(', ');
-    lines.push(`not recorded by a fleet (read only when picked): ${groups}`);
+    const groups = c.unrecorded.slice(0, SHOWN).map((u) => `${short(u.repo)} ${u.count}${u.picked ? ' (picked)' : ''}`);
+    const rest = c.unrecorded.slice(SHOWN);
+    if (rest.length) groups.push(`${rest.length} more with ${rest.reduce((n, u) => n + u.count, 0)}`);
+    lines.push(`not recorded by a fleet (read only when picked): ${groups.join(', ')}`);
   }
   const missing = Object.entries(c.missing).filter(([, n]) => n > 0);
   if (missing.length) lines.push(`missing: ${missing.map(([field, n]) => `${n} sessions without ${field}`).join(', ')}`);
@@ -91,9 +97,9 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
   cmd.command('plan').description('read the stores and print the scope, the batches and each preset\'s tokens and cost; sends nothing to a model')
     .addOption(new Option('--span <span>', 'since the last retro, or the last 7 or 30 days').choices(RetroSpan.options).default('last'))
     .addOption(new Option('--focus <focus>', 'what to look for').choices(FocusPick.options).default('skills-reviews'))
-    .option('--exclude-repo <path>', 'leave out a repo (saved)', collect)
+    .option('--exclude-repo <path>', 'leave out a repo (saved)', collectPath)
     .option('--exclude-island <name>', 'leave out an island by name or id (saved)', collect)
-    .option('--pick <repo>', 'read the sessions no fleet recorded in this repo (saved)', collect)
+    .option('--pick <repo>', 'read the sessions no fleet recorded in this repo (saved)', collectPath)
     .action(async (o: { span: RetroSpan; focus: FocusPick; excludeRepo?: string[]; excludeIsland?: string[]; pick?: string[] }) => {
       const exclude = o.excludeRepo || o.excludeIsland ? { repos: o.excludeRepo, islands: o.excludeIsland } : undefined;
       const plan = await withClient(connect, (c) => c.call('retro.plan', { span: o.span, focus: o.focus, exclude, unrecorded: o.pick }));
@@ -163,9 +169,9 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
     });
 
   cmd.command('config').description('show or change what the retro leaves out and the models it uses (fleet.json retro)')
-    .option('--exclude-repo <path>', 'leave out a repo', collect)
+    .option('--exclude-repo <path>', 'leave out a repo', collectPath)
     .option('--exclude-island <name>', 'leave out an island', collect)
-    .option('--include-repo <path>', 'stop leaving out a repo', collect)
+    .option('--include-repo <path>', 'stop leaving out a repo', collectPath)
     .option('--include-island <name>', 'stop leaving out an island', collect)
     .addOption(new Option('--agent <cli>', 'the CLI --read-model and --judge-model are for').choices(['claude', 'codex', 'opencode']).default('claude'))
     .option('--read-model <model>', 'the model that reads the batches')

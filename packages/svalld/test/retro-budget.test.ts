@@ -49,10 +49,13 @@ describe('estimate', () => {
 
   it("prices codex's own input at the cache-read rate", () => {
     const pick = { name: 'x', label: 'x', read: 'gpt-6-luna', judge: 'gpt-6-luna' };
-    const none = estimate([], pick, 'codex');
+    const empty = estimate([{ tokens: 0 }], pick, 'codex');
     const luna = priceOf('gpt-6-luna')!;
-    // no batches: the judge alone, its 30k–40k of CLI input at cacheRead, 40k of targets at input
-    expect(none.cost!.min).toBeCloseTo((40_000 * luna.input + 30_000 * luna.cacheRead + 6_000 * luna.output) / 1e6, 9);
+    // an empty batch: its read is codex's own 30k input at cacheRead and half its 2k output; the judge reads 2k of notes and
+    // 40k of targets at input, its own 30k at cacheRead, and half its 12k output
+    const read = 30_000 * luna.cacheRead + 1_000 * luna.output;
+    const judge = 42_000 * luna.input + 30_000 * luna.cacheRead + 6_000 * luna.output;
+    expect(empty.cost!.min).toBeCloseTo((read + judge) / 1e6, 9);
   });
 });
 
@@ -65,5 +68,11 @@ describe('presetsFor', () => {
 
   it('opencode has one preset on its own model', () => {
     expect(presetsFor('opencode', retro())).toEqual([{ name: 'default', label: "Default — OpenCode's model reads and judges", read: undefined, judge: undefined }]);
+  });
+
+  it('costs nothing when there is nothing to read', () => {
+    const p = estimate([], presetsFor('claude', { exclude: { repos: [], islands: [] }, unrecorded: [] })[1], 'claude');
+    expect(p.tokens).toEqual({ min: 0, max: 0 });
+    expect(p.cost).toEqual({ min: 0, max: 0 });
   });
 });
