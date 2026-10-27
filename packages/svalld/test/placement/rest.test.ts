@@ -1189,8 +1189,6 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     cleanup.push(async () => { client.kill(); });
     await waitFor(async () => (await tmux.run('list-clients', '-t', `=${session}`, '-F', '#{client_name}')).trim() !== '');
 
-    // the poll and the control client, stopped, lay nothing dormant before the rest does
-    await fleet.stop();
     const journal = restJournal();
 
     const result = await restTerminals(

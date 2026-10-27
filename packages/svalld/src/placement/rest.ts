@@ -430,13 +430,19 @@ async function layToRest(
   };
   // each slot goes dormant as its own window closes, so a later window that will not close strands none of them
   for (const { t, c } of open) {
+    // a live fleet that hears the close first drops a second terminal without an agent; the rest lays it as it stood
+    const had = t.term === 2 ? structuredClone(deps.store.state.robots[t.robotId]?.second) : undefined;
     await boundary('move.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
     // a kill tmux refused leaves the terminal running: the rest stops there, and an abort or a resume finds it live
     if ((await bounded('tmux list-panes', windows(deps))).some((w) => w.windowId === c.window.windowId && !w.dead)) {
       const name = deps.store.state.robots[t.robotId]?.name ?? t.robotId;
       throw new Error(`${name}'s ${t.term === 2 ? 'second ' : ''}terminal is still open after tmux was asked to close its window ${c.window.windowId}`);
     }
-    deps.store.update((d) => lay(d, t, true));
+    deps.store.update((d) => {
+      const r = d.robots[t.robotId];
+      if (r && had && !r.second) r.second = had;
+      lay(d, t, true);
+    });
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
   deps.store.update((d) => {
