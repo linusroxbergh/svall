@@ -1,15 +1,11 @@
-// The in-machine half of the fleet handover and robot placement integration runs, run inside each container with the
-// release's own node:
+// The in-machine half of the robot placement integration run, run inside each container with the release's own node:
 //
-//   snap [--gateway <fleetId>] [--light]  one JSON document: this machine's view of the fleet, its repos, sessions,
+//   snap [--light]                        one JSON document: this machine's view of the fleet, its repos, sessions,
 //                                         terminals, agent processes and OpenCode servers, worktree locks, move
-//                                         journals, outbox and its epoch, applied mutations and docs conflict copies
-//                                         (and, on the gateway, its record); --light leaves out repos, trees and sessions
+//                                         journals, outbox and its epoch, applied mutations and docs conflict copies;
+//                                         --light leaves out repos, trees and sessions
 //   machines                              the links the fleet's state holds, by machine id
 //   call <method> [<params json>]         one call to this machine's daemon: its answer, or its error, as one JSON document
-//   drive <host|local> [--fault kill|drop --at begin|transfer|ready|commit|activate] --log <file> [--cap <s>]
-//                                         runs `svall handover <host|local> --json`, injects the fault at that boundary,
-//                                         and prints what happened as one JSON document
 //   drive move|return <robot> [--machine <name>] [--fault kill|drop --at rest|bundle|prepare|commit|activate|release] [--cap <s>]
 //                                         on the home: runs `svall robot move <robot> --machine <name|local> --json`,
 //                                         injects the fault at that phase of the move, and prints what happened as one JSON document
@@ -139,7 +135,7 @@ function processes(needle) {
   return out;
 }
 
-// the repos the handover run makes, and every worktree of src/app, by their paths under the home
+// the repos the placement run makes, and every worktree of src/app, by their paths under the home
 function repos() {
   const listed = run('git', ['worktree', 'list', '--porcelain'], { cwd: path.join(HOME, 'src/app') });
   const worktrees = listed.startsWith('ERROR') ? [] : listed.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => path.relative(HOME, l.slice(9)));
@@ -236,15 +232,12 @@ async function snap(o) {
   // a machine that let the fleet go runs no tmux server for it at all
   const windows = (/^ERROR \d+: no server running/.test(listed) ? '' : listed)
     .split('\n').filter(Boolean).map((l) => { const [name, pid, command] = l.split('|'); return { name, pid: Number(pid), command }; });
-  const controller = path.join(FLEET, 'controller', 'handover.json');
   const fleet = JSON.parse(fs.readFileSync(path.join(FLEET, 'fleet.json'), 'utf8'));
   const out = {
     machineId: info.machineId ?? null,
     home: HOME,
     info,
-    ownership: await settled(() => rpc('ownership.get')),
-    handover: await settled(() => rpc('handover.status')),
-    fleet: { id: fleet.id, gatewayMachineId: fleet.gatewayMachineId, handoverEnabled: fleet.handover?.enabled },
+    fleet: { id: fleet.id },
     robots: state.robots ? Object.values(state.robots).map((c) => ({
       id: c.id, name: c.name, cwd: c.cwd, islandId: c.islandId, tmux: c.tmux ?? null, revive: c.revive ?? null,
       agent: c.agent ? { kind: c.agent.kind, sessionId: c.agent.sessionId, status: c.agent.status, pid: c.agent.pid ?? null, contextPct: c.agent.contextPct ?? null, prompt: c.agent.lastPrompt?.text ?? null } : null,
@@ -257,7 +250,6 @@ async function snap(o) {
       ...opencodes().filter((p) => !['serve', 'session', 'auth', 'run', '--version', '--help'].includes(p.args[1])).map((p) => ({ kind: 'opencode', ...p })),
     ],
     servers: opencodes().filter((p) => p.args[1] === 'serve').map((p) => ({ ...p, ppid: ppidOf(p.pid) })),
-    controllerJournal: fs.existsSync(controller) ? JSON.parse(fs.readFileSync(controller, 'utf8')) : null,
     ...(!o.light && {
       git: Object.fromEntries(repos().map((r) => [r, gitOf(path.join(HOME, r))])),
       trees: Object.fromEntries(repos().map((r) => [r, walk(path.join(HOME, r), new Set(['.git', '.claude']))])),
@@ -271,45 +263,12 @@ async function snap(o) {
     conflicts: conflicts(),
     moves: moves(),
   };
-  if (o.gateway) {
-    const said = run(path.join(HOME, '.local', 'bin', 'svall'), ['gateway', 'owner', 'get', '--fleet', o.gateway]).trim().split('\n').at(-1);
-    try { out.gateway = JSON.parse(said); } catch { out.gateway = { error: said }; }
-  }
   process.stdout.write(`${JSON.stringify(out)}\n`);
-}
-
-/** Each process descended from `root`, which runs its ssh and rsync in sessions of their own: pid and arguments. */
-function descendants(root) {
-  const children = new Map();
-  for (const pid of fs.readdirSync('/proc').filter((f) => /^\d+$/.test(f))) {
-    let stat;
-    try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch { continue; }
-    // the fields after the command name, which may itself hold spaces and parentheses
-    const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
-    children.set(ppid, [...(children.get(ppid) ?? []), Number(pid)]);
-  }
-  const out = [];
-  for (const queue = [...(children.get(root) ?? [])]; queue.length;) {
-    const pid = queue.shift();
-    queue.push(...(children.get(pid) ?? []));
-    try { out.push({ pid, args: fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean) }); } catch { /* gone */ }
-  }
-  return out;
 }
 
 function ppidOf(pid) {
   try { const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]); } catch { return null; }
 }
-
-const alive = (pid) => fs.existsSync(`/proc/${pid}`);
-
-// the process that marks each boundary: the ssh that carries one gateway operation, or the rsync that copies a root
-const MARKS = {
-  begin: (a) => a.includes('gateway') && a.includes('owner') && a.includes("'begin'"),
-  ready: (a) => a.includes('gateway') && a.includes('owner') && a.includes("'ready'"),
-  commit: (a) => a.includes('gateway') && a.includes('owner') && a.includes("'commit'"),
-  transfer: (a) => path.basename(a[0] ?? '') === 'rsync' && a.includes('--info=progress2'),
-};
 
 async function link(cmd) {
   const [host, port] = (process.env.IT_LINK ?? 'svall-remote:7070').split(':');
@@ -319,76 +278,6 @@ async function link(cmd) {
     sock.on('data', (d) => { said += d; if (said.includes('\n')) { sock.end(); resolve(said.trim()); } });
     sock.on('error', reject);
   });
-}
-
-/**
- * One handover, with a controller kill or a dropped ssh link at a boundary. A kill at a gateway operation takes the
- * controller alone, so the ssh already carrying that operation still lands it, as a helper killed mid-call leaves it;
- * a kill during the transfer takes it and everything it started, rsync and ssh with it, as a crash of the machine would.
- */
-async function drive(o) {
-  const to = o._[0];
-  const at = o.at;
-  const fault = o.fault ?? 'none';
-  if (fault !== 'none' && !['begin', 'transfer', 'ready', 'commit', 'activate'].includes(at)) throw new Error(`bad --at ${at}`);
-  const log = fs.createWriteStream(o.log);
-  const t0 = Date.now();
-  const child = spawn(path.join(HOME, '.local', 'bin', 'svall'), ['handover', to, '--json'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  child.stderr.pipe(fs.createWriteStream(`${o.log}.stderr`));
-  // `close` waits for the controller's output to be read to its end; nothing it spawns inherits that pipe
-  const exited = new Promise((resolve) => child.on('close', (code, signal) => resolve({ code, signal })));
-  const events = [];
-  let result = null;
-  let fire;
-  const fired = new Promise((resolve) => { fire = resolve; });
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    log.write(`${line}\n`);
-    let e;
-    try { e = JSON.parse(line); } catch { return; }
-    events.push({ ms: Date.now() - t0, event: e.event, phase: e.data?.phase });
-    if (e.event === 'handover.result') result = e.data;
-    if (at === 'activate' && e.event === 'handover.changed' && e.data?.phase === 'activate') fire({ by: 'handover.changed activate' });
-  });
-
-  let watching = fault !== 'none' && MARKS[at];
-  const watch = async () => {
-    while (watching) {
-      const hit = descendants(child.pid).find((p) => MARKS[at](p.args));
-      if (hit) { fire({ by: hit.args.join(' ').slice(0, 300), pid: hit.pid }); return; }
-      if (!alive(child.pid)) return;
-      await sleep(2);
-    }
-  };
-  if (watching) void watch();
-
-  const summary = { to, fault, at: at ?? null };
-  if (fault !== 'none') {
-    const hit = await Promise.race([fired, exited.then(() => null)]);
-    watching = false;
-    summary.trigger = hit ? { ...hit, ms: Date.now() - t0 } : null;
-    if (hit && fault === 'kill') {
-      const doomed = [child.pid, ...(at === 'transfer' ? descendants(child.pid).map((p) => p.pid) : [])];
-      for (const pid of doomed) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
-      // the operation already on its way lands before anyone looks
-      if (hit.pid) for (const end = Date.now() + 60_000; alive(hit.pid) && Date.now() < end;) await sleep(20);
-    }
-    if (hit && fault === 'drop') {
-      summary.drop = await link('drop');
-      const cap = Number(o.cap ?? 300) * 1000;
-      let timer;
-      const ended = await Promise.race([exited.then(() => true), new Promise((r) => { timer = setTimeout(() => r(false), cap); })]);
-      clearTimeout(timer);
-      if (!ended) { summary.capped = true; process.kill(child.pid, 'SIGKILL'); }
-      summary.restore = await link('restore');
-    }
-  }
-  summary.exit = await exited;
-  summary.ms = Date.now() - t0;
-  summary.result = result;
-  summary.phases = events.filter((e) => e.event === 'handover.changed').map((e) => `${e.phase}@${e.ms}`);
-  summary.retries = events.filter((e) => e.event === 'handover.retry').length;
-  log.end();
-  process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 
 const UNIT = 'svall-svalld@private.service';
@@ -524,7 +413,6 @@ if (cmd === 'machines') process.stdout.write(`${JSON.stringify((await settled(()
 else if (cmd === 'call') process.stdout.write(`${JSON.stringify(await settled(() => rpc(o._[0], o._[1] === undefined ? {} : JSON.parse(o._[1]))))}\n`);
 else if (cmd === 'snap') await snap(o);
 else if (cmd === 'drive' && ['move', 'return'].includes(o._[0])) await driveMove(o);
-else if (cmd === 'drive') await drive(o);
 else if (cmd === 'watch') await watch(o);
 else if (cmd === 'link') serveLink(o._[0] ?? 7070);
 else { process.stderr.write(`unknown command ${cmd}\n`); process.exit(2); }
