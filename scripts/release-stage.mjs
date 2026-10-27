@@ -108,41 +108,6 @@ export async function nodeRuntime(platform, o = {}) {
   return { version, platform, tarball, name, sha256: actual, verifiedAgainst: publishedAt };
 }
 
-export const RSYNC_CONFIGURE = ['--disable-xxhash', '--disable-zstd', '--disable-lz4', '--disable-openssl', '--disable-md2man'];
-
-/**
- * The pinned rsync, built once per version and architecture and kept under vendor/ after that, and the source it was
- * built from, which ships beside it under its GPL. A `fresh` one, for a signed release, is built again from that source
- * whatever vendor/ holds.
- */
-export async function pinnedRsync(arch, o = {}) {
-  const { version } = PINS.rsync;
-  const vendor = o.vendor ?? VENDOR;
-  const cache = path.join(vendor, 'rsync', `${version}-${arch}`);
-  const binary = path.join(cache, 'rsync');
-  const licence = path.join(cache, 'COPYING');
-  const name = `rsync-${version}.tar.gz`;
-  const tarball = path.join(vendor, 'rsync', name);
-  if (!fs.existsSync(tarball)) await download(`https://download.samba.org/pub/rsync/src/${name}`, tarball);
-  const digest = sha256(tarball);
-  if (digest !== PINS.rsync.sha256) throw new Error(`${name} is not the pinned source: expected ${PINS.rsync.sha256}, got ${digest}`);
-  if (!o.fresh && fs.existsSync(binary) && fs.existsSync(licence)) return { version, binary, licence, tarball, sha256: PINS.rsync.sha256 };
-
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-rsync-'));
-  try {
-    run('tar', ['-xzf', tarball, '-C', work, '--strip-components', '1']);
-    run('./configure', RSYNC_CONFIGURE, { cwd: work });
-    run('make', ['-j', String(os.availableParallelism())], { cwd: work });
-    fs.mkdirSync(cache, { recursive: true });
-    fs.copyFileSync(path.join(work, 'rsync'), binary);
-    fs.chmodSync(binary, 0o755);
-    fs.copyFileSync(path.join(work, 'COPYING'), licence);
-  } finally {
-    fs.rmSync(work, { recursive: true, force: true });
-  }
-  return { version, binary, licence, tarball, sha256: PINS.rsync.sha256 };
-}
-
 /** Unpacks the runtime and drops what a companion never runs: the headers, npm and corepack. */
 function stageNode(runtime, stage) {
   const dest = path.join(stage, 'node');

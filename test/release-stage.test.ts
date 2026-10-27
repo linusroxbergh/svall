@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carryCompanions, companionAssets, nodeRuntime, PINS, pinnedRsync, releaseKey, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
+import { carryCompanions, companionAssets, nodeRuntime, PINS, releaseKey, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -47,29 +47,8 @@ describe('the Node runtime a release carries', () => {
   });
 });
 
-describe('the rsync a controller release carries', () => {
-  const source = path.join(VENDOR, 'rsync', `rsync-${PINS.rsync.version}.tar.gz`);
-  // a vendor/ holding the pinned source and, where a build cached its rsync, a binary that is not one
-  const vendor = (): string => {
-    const dir = temp();
-    const cache = path.join(dir, 'rsync', `${PINS.rsync.version}-${process.arch}`);
-    fs.mkdirSync(cache, { recursive: true });
-    fs.copyFileSync(source, path.join(dir, 'rsync', path.basename(source)));
-    fs.writeFileSync(path.join(cache, 'rsync'), '#!/bin/sh\necho planted\n', { mode: 0o755 });
-    fs.writeFileSync(path.join(cache, 'COPYING'), 'GPL\n');
-    return dir;
-  };
-
-  it.skipIf(!fs.existsSync(source))('is the one a development build cached (skipped without the source cached)', async () => {
-    const r = await pinnedRsync(process.arch, { vendor: vendor() });
-    expect(execFileSync(r.binary, { encoding: 'utf8' })).toBe('planted\n');
-  });
-
-  // configure and make take half a minute
-  it.skipIf(!fs.existsSync(source) || !process.env.SVALL_TEST_RSYNC_BUILD)('is built from the pinned source for a signed release, whatever is cached (set SVALL_TEST_RSYNC_BUILD=1 to run)', async () => {
-    const r = await pinnedRsync(process.arch, { vendor: vendor(), fresh: true });
-    expect(execFileSync(r.binary, ['--version'], { encoding: 'utf8' })).toMatch(new RegExp(`^rsync +version ${PINS.rsync.version.replace(/\./g, '\\.')} `));
-  }, 300_000);
+describe('a release', () => {
+  it('pins no rsync', () => { expect(PINS).not.toHaveProperty('rsync'); });
 });
 
 describe('the companions a controller release carries', () => {

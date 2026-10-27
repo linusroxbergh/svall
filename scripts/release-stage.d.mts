@@ -1,7 +1,6 @@
 export const VENDOR: string;
 export const PINS: {
   node: { version: string; platforms: string[]; sha256: Record<string, string> };
-  rsync: { version: string; sha256: string };
 };
 
 export function describeVersion(repo?: string): string;
@@ -14,4 +13,3 @@ export function stageRelease(o: { out: string; version: string; platform: string
 export function releaseKey(signers?: string): string | undefined;
 export function packageLicence(dir: string): { name: string; version: string; license: string; file: string };
 export function phonePackages(repo?: string): string[];
-export function pinnedRsync(arch: string, o?: { vendor?: string; fresh?: boolean }): Promise<{ version: string; binary: string; licence: string; tarball: string; sha256: string }>;

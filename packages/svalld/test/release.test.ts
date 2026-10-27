@@ -455,27 +455,6 @@ describe('a release built by the build scripts', () => {
   }, 180_000);
 });
 
-const rsyncCached = (): string | undefined => {
-  const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));
-  const built = path.join(checkout, 'vendor/rsync', `${pins.rsync.version}-${process.arch}`, 'rsync');
-  return why ?? (fs.existsSync(built) ? undefined : `no cached ${path.relative(checkout, built)}`);
-};
-
-const whyRsync = rsyncCached();
-describe('the controller a release builds', () => {
-  (whyRsync ? it.skip : it)(`carries the source of the rsync it ships, and names both in its NOTICE${whyRsync ? ` (skipped: ${whyRsync})` : ''}`, () => {
-    const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));
-    const out = makeHome();
-    execFileSync(process.execPath, [path.join(checkout, 'scripts/build-controller.mjs'), '--out', out, '--version', '0.0.0-test',
-      '--node-shasums', path.join(checkout, 'vendor/node', `SHASUMS256-${pins.node.version}.txt`)], { stdio: 'pipe' });
-    const licenses = path.join(out, 'releases/0.0.0-test/licenses');
-    const source = path.join(licenses, `rsync-${pins.rsync.version}.tar.gz`);
-    expect(execFileSync('shasum', ['-a', '256', source], { encoding: 'utf8' }).split(' ')[0]).toBe(pins.rsync.sha256);
-    const notice = fs.readFileSync(path.join(licenses, 'NOTICE'), 'utf8');
-    expect(notice).toMatch(new RegExp(`^rsync ${pins.rsync.version.replace(/\./g, '\\.')} \\(bin/rsync\\)  GPL-3\\.0-or-later  licenses/rsync-LICENSE; source licenses/rsync-${pins.rsync.version.replace(/\./g, '\\.')}\\.tar\\.gz, built with \\./configure .*, then strip -S$`, 'm'));
-  }, 180_000);
-});
-
 const companionArch = process.arch === 'arm64' ? 'arm64' : 'x64';
 const tmuxCached = (): string | undefined => {
   const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));

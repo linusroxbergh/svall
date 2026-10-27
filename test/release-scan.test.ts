@@ -120,9 +120,9 @@ describe('developer paths', () => {
     expect(rules(release({
       'lib/svall.mjs': "import fs from 'node:fs';\nconst a = '/Users/someone/x';\n",
       'systemd/svalld.service.in': `ExecStart=${CHECKOUT}/node_modules/.bin/tsx\n`,
-      'bin/rsync': `debug map ${TMP}/svall-rsync-1/flist.o`,
+      'bin/tmux': `debug map ${TMP}/tmp.Ab12Cd/tty.o`,
     })).sort()).toEqual([
-      'releases/v1.0.0/bin/rsync developer path',
+      'releases/v1.0.0/bin/tmux developer path',
       'releases/v1.0.0/lib/svall.mjs developer path',
       'releases/v1.0.0/systemd/svalld.service.in developer path',
     ]);

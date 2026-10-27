@@ -8,9 +8,5 @@
       "darwin-arm64": "6239d4cf92d864487ec8cd3615038f7b67e7f58b77b21cd2f09ea9fbd68065fe",
       "darwin-x64": "0ae5a24c24bb7d015cd816c5036b3f90f2945aa872fcf54e58da054753b3a299"
     }
-  },
-  "rsync": {
-    "version": "3.4.4",
-    "sha256": "bd88cf82fa653da32314fb229136407c5c90f80d1758d8f4b091767877d8fa96"
   }
 }
