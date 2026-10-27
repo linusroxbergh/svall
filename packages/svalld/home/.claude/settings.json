@@ -19,7 +19,8 @@
       "Bash(svall island create:*)",
       "Bash(svall island update:*)",
       "Bash(svall island arrange:*)",
-      "Bash(svall scribe sweep:*)"
+      "Bash(svall scribe sweep:*)",
+      "Bash(svall retro:*)"
     ]
   }
 }

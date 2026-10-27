@@ -32,7 +32,7 @@ await build({
   external: ['bufferutil', 'utf-8-validate'],
   logLevel: 'warning',
 });
-for (const dir of ['hooks', 'home', 'agent-profiles']) {
+for (const dir of ['hooks', 'home', 'skills', 'agent-profiles']) {
   fs.cpSync(path.join(root, 'packages/svalld', dir), path.join(out, dir), { recursive: true });
 }
 fs.cpSync(mobile, path.join(out, 'mobile'), { recursive: true });

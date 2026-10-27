@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carryCompanions, companionAssets, nodeRuntime, PINS, releaseKey, schemaVersions, VENDOR, WORKERS } from '../scripts/release-stage.mjs';
+import { carryCompanions, companionAssets, nodeRuntime, PINS, releaseKey, schemaVersions, stageAssets, VENDOR, WORKERS } from '../scripts/release-stage.mjs';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -60,6 +60,18 @@ describe('the Node runtime a release carries', () => {
 
 describe('a release', () => {
   it('pins no rsync', () => { expect(PINS).not.toHaveProperty('rsync'); });
+});
+
+describe('the assets a release carries', () => {
+  const repo = path.join(import.meta.dirname, '..');
+  it.skipIf(!fs.existsSync(path.join(repo, 'apps/desktop/web/dist-mobile')))('stages the skills folder (skipped without the phone page built)', () => {
+    const stage = temp();
+    fs.mkdirSync(path.join(stage, 'release'));
+    stageAssets(stage);
+    const skills = fs.readdirSync(path.join(repo, 'packages/svalld/skills')).sort();
+    expect(skills).toContain('svall-retro');
+    expect(fs.readdirSync(path.join(stage, 'skills')).sort()).toEqual(skills);
+  });
 });
 
 describe('the companions a controller release carries', () => {

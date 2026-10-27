@@ -50,6 +50,7 @@ export function installHookScripts(paths: Paths, helper: string | undefined = ho
 export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }): string[] {
   const done: string[] = [];
   const template = assetDir('home');
+  const skills = assetDir('skills');
   const dir = expandHome(cwd);
   fs.mkdirSync(dir, { recursive: true });
   const claudeMd = path.join(dir, 'CLAUDE.md');
@@ -61,7 +62,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   fs.mkdirSync(dotClaude, { recursive: true });
   fs.cpSync(path.join(template, '.claude/rules'), path.join(dotClaude, 'rules'), { recursive: true, force: true });
   done.push(`home rules -> ${dotClaude}/rules`);
-  fs.cpSync(path.join(template, '.claude/skills'), path.join(dotClaude, 'skills'), { recursive: true, force: true });
+  fs.cpSync(skills, path.join(dotClaude, 'skills'), { recursive: true, force: true });
   done.push(`home skills -> ${dotClaude}/skills`);
   // codex reads AGENTS.md, .agents/skills and .codex/rules instead; each start writes them from the same template
   const agentsMd = path.join(dir, 'AGENTS.md');
@@ -79,7 +80,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
     writeDurable(agentsMd, Buffer.from(`${agentsHeader}\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`), { mode: 0o644 });
     done.push(`home AGENTS.md -> ${agentsMd}`);
   }
-  fs.cpSync(path.join(template, '.claude/skills'), path.join(dir, '.agents/skills'), { recursive: true, force: true });
+  fs.cpSync(skills, path.join(dir, '.agents/skills'), { recursive: true, force: true });
   done.push(`home codex skills -> ${dir}/.agents/skills`);
   fs.cpSync(path.join(template, '.codex/rules'), path.join(dir, '.codex/rules'), { recursive: true, force: true });
   done.push(`home codex rules -> ${dir}/.codex/rules`);

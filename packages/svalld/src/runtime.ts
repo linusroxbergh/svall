@@ -24,7 +24,7 @@ export type Variant = 'release' | 'dev';
 export const variant: Variant = bundled || isRelease() || process.env.SVALL_VARIANT === 'release' ? 'release' : 'dev';
 
 /** A folder the daemon reads its own files from; a companion release's bundles sit in lib/, beside these folders. */
-export const assetDir = (name: 'hooks' | 'home' | 'agent-profiles'): string =>
+export const assetDir = (name: 'hooks' | 'home' | 'skills' | 'agent-profiles'): string =>
   bundled ? path.join(here, name) : path.resolve(here, '..', name);
 
 /** The script a worker thread runs: bundled beside svalld's own, or in a checkout the source tsx loads. */
