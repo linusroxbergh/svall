@@ -148,9 +148,9 @@ reads "still on studio; check studio again". A file there that holds a ticked ke
 server or plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only
 once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
-`marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/` or a plugin's, whose
-`mcpServers` defines a server with a key or fields Svall does not know, or that names `mcpServers` in a way Svall does
-not read. Until ticked, each stays on this Mac.
+`marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
+or a file a plugin's `plugin.json` names in `agents`, whose `mcpServers` defines a server with a key or fields Svall
+does not know, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on this Mac.
 From a terminal, `svall host doctor studio` lists the rows, and `svall host consent studio <item> <on|off>
 [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
 `--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item.
@@ -263,11 +263,12 @@ On the Linux machine itself:
   there with keys, each while it is as the mirror wrote it: a copied key becomes what an untick leaves (an `env` key
   the agent's reference to its variable, a key in a URL or argument the rest of it, any other key emptied), a server
   copied whole leaves its config file, a key in `known_marketplaces.json`, a `marketplace.json` or a subagent is
-  taken out where it lies there and the file stays, another file the mirror wrote holding a ticked key, such as a
-  plugin's server file, is deleted, and a copy a daemon left unapplied in the fleet's `cache` goes. A key, server or
-  file changed on the machine since the mirror wrote it stays, named in what it prints, and so does every key in
-  a config file there that no longer parses, as do the fleet's `.env` and its `mirror-overrides/`, which are the
-  machine's own. Uninstalling a worker ends the robots that run there, so move them back first. `svall host remove`
+  taken out where it lies there, even where an entry added above it moved it, and the file stays, another file the
+  mirror wrote holding a ticked key, such as a plugin's server file or a subagent whose `mcpServers` Svall cannot
+  read or whose server has fields Svall does not know, is deleted, and a copy a daemon left unapplied in the fleet's
+  `cache` goes. A key, server or file changed on the machine since the mirror wrote it stays, named in what it
+  prints, and so does every key in a config file there that no longer parses, as do the fleet's `.env` and its
+  `mirror-overrides/`, which are the machine's own. Uninstalling a worker ends the robots that run there, so move them back first. `svall host remove`
   from the Mac checks the fleets that Mac knows of, then runs it with `--force-fleet` for each of them that names the
   machine as its gateway, so it still refuses for a fleet another Mac keeps there. To
   remove a machine two Macs use, bring the other Mac's fleet home and run `svall host remove <name> --forget` there,
