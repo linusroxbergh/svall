@@ -50,7 +50,7 @@ export class Crash extends Error {}
 export type Life = { dead: boolean };
 
 // `o` as a daemon that dies with `life` reaches it: every call after the death throws and changes nothing
-export function mortal<T extends object>(o: T, life: Life): T {
+function mortal<T extends object>(o: T, life: Life): T {
   return new Proxy(o, {
     get(target, key) {
       const v = Reflect.get(target, key, target) as unknown;

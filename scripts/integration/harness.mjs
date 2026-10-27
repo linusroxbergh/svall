@@ -14,7 +14,6 @@ export function flags(argv) {
 }
 
 export const lines = (text) => text.split('\n').filter((l) => l.trim().startsWith('{')).map((l) => JSON.parse(l));
-export const last = (text) => lines(text).at(-1);
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const brief = (v) => JSON.stringify(v)?.slice(0, 600);
 
@@ -87,5 +86,5 @@ export function machines(prefix, docker) {
     if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
     return r;
   }
-  return { L, R, NET: `${prefix}-it`, HOMES, userEnv, sh };
+  return { L, R, NET: `${prefix}-it`, HOMES, sh };
 }
