@@ -154,7 +154,7 @@ describe('a step by name', () => {
 
   it('leaves out the machine the panel already names where a step starts with it', () => {
     expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toBe('runs release 0.5.0');
-    expect(stepSaid({ step: 'fleet', status: 'ok', detail: "studio's unused fleet is now this fleet" }, 'studio')).toBe("studio's unused fleet is now this fleet");
+    expect(stepSaid({ step: 'enrol', status: 'ok', detail: "studio's fleet home serves this fleet" }, 'studio')).toBe("studio's fleet home serves this fleet");
     expect(stepSaid({ step: 'ssh', status: 'ok', detail: 'studios answered' }, 'studio')).toBe('studios answered');
     expect(stepSaid({ step: 'ssh', status: 'ok' }, 'studio')).toBeUndefined();
   });
