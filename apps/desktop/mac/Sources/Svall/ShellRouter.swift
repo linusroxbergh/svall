@@ -17,9 +17,6 @@ final class ShellRouter {
     // `svall host list` for the Machines pane, and whether it was asked for again while it ran
     private var listing: LineChild?
     private var listAgain = false
-    private var switching: LineChild?
-    // the handover helper the page follows; absent in a build with no svall beside it
-    private var handover: HandoverSession?
     private let awake = KeepAwake()
     private var sentConfigErrors = false
     // whether a page panel holds a rect of the surfaces
@@ -38,10 +35,7 @@ final class ShellRouter {
                                          elsewhere: { [weak self] in
                                              guard let route = self?.remote.route, case .remote = route else { return false }
                                              return true
-                                         },
-                                         handoverOpen: { [weak self] in self?.handover?.isFollowing == true || SvallHome.handoverOpen() },
-                                         handoverFollowed: { [weak self] in self?.handover?.isFollowing == true },
-                                         handoverRunning: { SvallHome.handoverRunning() })
+                                         })
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
@@ -83,18 +77,6 @@ final class ShellRouter {
         remote.onSurfaces = { [weak self] in self?.surfaces.rebuild() }
         surfaces.route = { [weak self] in self?.remote.route ?? .local }
         remote.start()
-
-        handover = ControllerProcess.locate().map {
-            HandoverSession(executable: $0, profile: SvallHome.profile, eventsFile: SvallHome.path + "/controller/events.ndjson")
-        }
-        handover?.onLine = { [weak self] line in self?.bridge.send(.handoverEvent(line.json)) }
-        handover?.onReplay = { [weak self] lines in self?.bridge.send(.handoverReplay(lines.map(\.json))) }
-        handover?.onExit = { [weak self] code, error in self?.bridge.send(.handoverExit(code: code, error: error)) }
-        // the move is done: where the fleet runs now is asked afresh, rather than on the old helper's next tick
-        handover?.onMoved = { [weak self] in
-            guard let helper = Self.connect() else { return }
-            self?.remote.reconnect(with: helper)
-        }
 
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
         notifier.onOpen = { [weak self] key in self?.open(key) }
@@ -187,8 +169,6 @@ final class ShellRouter {
 
     func closeAll() {
         hostRun?.cancel()
-        // the helper goes on without the app: only the attach following it ends
-        handover?.stop()
         remote.stop()
         surfaces.closeAll()
         browsers.closeAll()
@@ -331,25 +311,6 @@ final class ShellRouter {
             hostRun?.cancel()
         case .hostList:
             listMachines()
-        case .handoverEnable(let on):
-            turnHandover(on)
-        case .handoverStart(let to, let choices, let check):
-            guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: SvallHome.gatewayName(), profile: SvallHome.profile, check: check ?? false) else {
-                return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices svall handover takes"))
-            }
-            followHandover { try $0.launch(argv) }
-        case .handoverResume:
-            followHandover { try $0.launch(HandoverCommand.resume(profile: SvallHome.profile)) }
-        case .handoverAbort:
-            followHandover { try $0.launch(HandoverCommand.abort(profile: SvallHome.profile)) }
-        case .handoverAttach:
-            followHandover { try $0.observe() }
-        case .handoverForget:
-            followHandover { try $0.forget() }
-        case .handoverChoose(let choices):
-            handover?.send(.choose(choices))
-        case .handoverCancel:
-            handover?.send(.cancel)
         case .shellCutout(let rects, let passive):
             holding = !rects.isEmpty || !passive.isEmpty
             surfaces.setCutout(rects: rects, passive: passive)
@@ -461,18 +422,6 @@ final class ShellRouter {
         }
     }
 
-    private func turnHandover(_ on: Bool) {
-        guard switching == nil else { return }
-        let said = { [weak self] (error: String?) in
-            guard let self else { return }
-            switching = nil
-            if let error { bridge.send(.notice(text: "Remote machines could not be turned \(on ? "on" : "off"): \(error)")) }
-            sendShellInfo()
-        }
-        guard let executable = ControllerProcess.locate() else { return said("this build has no svall beside it") }
-        switching = HandoverSwitch.turn(on, executable: executable, profile: SvallHome.profile, done: said)
-    }
-
     // upgrade and remove rewrite fleet.json, so a window that went without a helper gets one if a gateway is now named
     private func followGateway() {
         remote.followIfGatewayNamed(with: Self.connect())
@@ -489,13 +438,6 @@ final class ShellRouter {
                                ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: SvallHome.handoverEnabled(),
                                gateway: SvallHome.gatewayName(), profile: SvallHome.profile,
                                copyHere: RemoteConnection.copyHere(home: SvallHome.path, daemon: SvallHome.connection() != nil)))
-    }
-
-    private func followHandover(_ run: (HandoverSession) throws -> Void) {
-        guard let handover else {
-            return bridge.send(.handoverExit(code: 1, error: "this build has no svall beside it to hand the fleet over with"))
-        }
-        do { try run(handover) } catch { bridge.send(.handoverExit(code: 1, error: "\(error)")) }
     }
 
     private func isHere(_ path: String) -> Bool {

@@ -17,7 +17,7 @@ type Interrupt = keyof typeof INTERRUPT_ACTIONS;
 // the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
 const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
 const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'a command is running; move anyway and it ends' };
-// as the handover sheet's interrupt: Escape at once
+// the interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
 type Answer = { ok: true; sheet: What } | { ok: false; refusal: Refusal } | { error: string };

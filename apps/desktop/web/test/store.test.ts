@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ResourceSource } from '@svall/protocol';
 import { openFleetPicker } from '../src/keyboard.js';
-import type { HandoverEvent } from '../src/handover.js';
 import { isVeiled, panesOf } from '../src/selectors.js';
 import type { Tier } from '../src/resources/model.js';
 import { DEFAULT_SETTINGS, type Settings } from '../src/settings.js';
@@ -802,113 +801,5 @@ describe('the machine that owns the fleet', () => {
     store.getState().toggleHost(false);
     store.getState().toggleHost(true, 'box');
     expect(store.getState().hostTerminal).toBeUndefined();
-  });
-});
-
-describe('the handover sheet', () => {
-  const changed = (phase: 'begin' | 'freeze' | 'transfer' | 'activate' | 'complete') => ({ event: 'handover.changed' as const, data: { transactionId: 'tx', phase } });
-
-  it('follows the run the page started, and closes over a waiting decision without answering it', () => {
-    const store = createAppStore();
-    store.getState().setFleet(fleet());
-    store.getState().handoverFollow('studio');
-    expect(store.getState().handover).toMatchObject({ to: 'studio', following: true, rows: [] });
-    store.getState().toggleHandover(true);
-    store.getState().toggleHandover(false);
-    expect(store.getState().handoverOpen).toBe(false);
-    store.getState().handoverEvent(changed('freeze'));
-    store.getState().handoverEvent({ event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } });
-    expect(store.getState().handoverOpen).toBe(true);
-    const decision = store.getState().handover?.decision;
-    expect(decision?.phase).toBe('freeze');
-    // closed, the sheet lets the terminals show, and the dock's Handover control brings the same decision back
-    store.getState().toggleHandover(false);
-    expect(store.getState().handoverOpen).toBe(false);
-    expect(isVeiled(store.getState())).toBe(false);
-    expect(store.getState().handover?.decision).toBe(decision);
-    store.getState().toggleHandover();
-    expect(store.getState().handoverOpen).toBe(true);
-    expect(store.getState().handover?.decision).toBe(decision);
-    store.getState().handoverChoose({ interruptAfterMs: 0 });
-    expect(store.getState().handover?.decision).toBeUndefined();
-    expect(store.getState().handover?.choices).toEqual({ interruptAfterMs: 0 });
-    store.getState().toggleHandover(false);
-    expect(store.getState().handoverOpen).toBe(false);
-  });
-
-  it('passes over a line the sheet cannot read, and keeps the run it follows', () => {
-    const store = createAppStore();
-    store.getState().handoverFollow('studio');
-    store.getState().handoverEvent(changed('freeze'));
-    const run = store.getState().handover;
-    for (const odd of [{ event: 'handover.status', data: { standing: 'open', reason: 'no safe list' } }, { event: 'handover.weather', data: {} }]) {
-      expect(() => store.getState().handoverEvent(odd as unknown as HandoverEvent)).not.toThrow();
-    }
-    expect(store.getState().handover).toBe(run);
-    expect(store.getState().handoverOpen).toBe(false);
-  });
-
-  it('opens by itself when a relaunch finds a handover stopped part way, and not for one that finished', () => {
-    const store = createAppStore();
-    store.getState().handoverFollow();
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
-    expect(store.getState().handoverOpen).toBe(false);
-    expect(store.getState().handover?.following).toBe(false);
-    store.getState().handoverFollow();
-    store.getState().handoverReplay([changed('begin'), changed('freeze'), changed('transfer'),
-      { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'none', phase: 'transfer', safe: ['resume', 'abort'], reason: 'stopped at transfer' } }]);
-    expect(store.getState().handoverOpen).toBe(true);
-    expect(store.getState().handover?.status?.safe).toEqual(['resume', 'abort']);
-  });
-
-  it('does not open for a run read back from the events file, whatever it once asked, nor for a standing with nothing to decide', () => {
-    const store = createAppStore();
-    store.getState().handoverFollow();
-    store.getState().handoverReplay([changed('begin'), changed('freeze'),
-      { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } },
-      changed('transfer'), changed('activate'), changed('complete'),
-      { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [] } },
-      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
-    expect(store.getState().handoverOpen).toBe(false);
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway did not answer' } }]);
-    expect(store.getState().handoverOpen).toBe(false);
-    // the gateway moved on from this Mac's journal: Forget is the way out, and it is asked
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', safe: [], reason: 'the gateway holds another handover' } }]);
-    expect(store.getState().handoverOpen).toBe(true);
-  });
-
-  it('takes the app’s own answer to a decision as the end of it', () => {
-    const store = createAppStore();
-    store.getState().handoverFollow('studio');
-    store.getState().handoverEvent(changed('freeze'));
-    store.getState().handoverEvent({ event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: 'still working' }] } });
-    store.getState().handoverCancelled();
-    expect(store.getState().handover?.decision).toBeUndefined();
-    store.getState().toggleHandover(false);
-    expect(store.getState().handoverOpen).toBe(false);
-  });
-
-  it('keeps the selected robot, its card and its panes while the fleet moves, and lets the terminals go once it has loaded there', () => {
-    const store = createAppStore(undefined, 'map');
-    store.getState().setFleet(fleet());
-    store.getState().focus('c0');
-    store.getState().setPanes('c0', { left: 'terminal', right: 'files' });
-    store.getState().handoverFollow('studio');
-    for (const p of ['begin', 'freeze', 'transfer', 'activate', 'complete'] as const) store.getState().handoverEvent(changed(p));
-    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [{ id: 'c0', ok: true }] } });
-    store.getState().handoverExit(0);
-    expect(store.getState().handover?.awaitingOwner).toBe(true);
-    // the new owner's fleet: the same robots, now running there
-    store.getState().setFleet(fleet());
-    expect(store.getState().handover?.awaitingOwner).toBe(false);
-    expect(store.getState()).toMatchObject({ card: 'c0', selectedId: 'c0', focusedId: 'c0' });
-    expect(store.getState().ide.c0.panes).toEqual({ left: 'terminal', right: 'files' });
-  });
-
-  it('hides the terminals while the sheet is open over them', () => {
-    const store = createAppStore();
-    store.getState().setFleet(fleet());
-    store.getState().toggleHandover(true);
-    expect(isVeiled(store.getState())).toBe(true);
   });
 });

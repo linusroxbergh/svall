@@ -70,21 +70,19 @@ describe('dispatchKey', () => {
     await dispatchKey({ type: 'newRobot' }, c);
     expect(c.store.getState()).toMatchObject({ closingRobot: undefined, namingRobot: true });
   });
-  it('with the machines panel or the handover sheet up, no key opens a dialog beneath it', async () => {
-    for (const open of [(c: ReturnType<typeof ctx>) => c.store.getState().toggleHost(true), (c: ReturnType<typeof ctx>) => c.store.getState().toggleHandover(true)]) {
-      const c = ctx();
-      c.store.getState().select('c0');
-      open(c);
-      await dispatchKey({ type: 'closeRobot' }, c);
-      await dispatchKey({ type: 'closeRobot' }, c);
-      await dispatchKey({ type: 'newRobot' }, c);
-      await dispatchKey({ type: 'missionControl' }, c);
-      await dispatchKey({ type: 'openFleets' }, c);
-      expect(c.calls).toEqual([]);
-      expect(c.store.getState()).toMatchObject({ closingRobot: undefined, namingRobot: false, missionPrompt: false, selectedId: 'c0' });
-      expect(c.store.getState().fleetPicker).toBeUndefined();
-      expect(c.store.getState().hostOpen || c.store.getState().handoverOpen).toBe(true);
-    }
+  it('with the machines panel up, no key opens a dialog beneath it', async () => {
+    const c = ctx();
+    c.store.getState().select('c0');
+    c.store.getState().toggleHost(true);
+    await dispatchKey({ type: 'closeRobot' }, c);
+    await dispatchKey({ type: 'closeRobot' }, c);
+    await dispatchKey({ type: 'newRobot' }, c);
+    await dispatchKey({ type: 'missionControl' }, c);
+    await dispatchKey({ type: 'openFleets' }, c);
+    expect(c.calls).toEqual([]);
+    expect(c.store.getState()).toMatchObject({ closingRobot: undefined, namingRobot: false, missionPrompt: false, selectedId: 'c0' });
+    expect(c.store.getState().fleetPicker).toBeUndefined();
+    expect(c.store.getState().hostOpen).toBe(true);
   });
   it('a confirmed close moves on to the next robot', async () => {
     const c = ctx();

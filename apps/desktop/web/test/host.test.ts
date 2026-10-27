@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, loginForward, machineName, outcomeOf,
-  replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
+  plainStep, replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 import type { HostStep } from '../src/bridge.js';
 
@@ -59,8 +59,8 @@ describe('host run', () => {
     expect(run.steps[0].action).toBe('point trift.test back at trift');
   });
 
-  it('names a machine this Mac knows by its name, and leaves out the ids of fleets and handovers and the generations', () => {
-    const [studio, other, fleet, theirs, tx] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '1a1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
+  it('names a machine this Mac knows by its name, and leaves out the ids of fleets and the generations', () => {
+    const [studio, other, fleet, theirs] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
     const names = { [studio]: 'studio' };
     const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
     expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
@@ -68,11 +68,15 @@ describe('host run', () => {
     expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
     expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`))
       .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`);
-    expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4 in handover ${tx}`))
-      .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it in another handover");
-    expect(said(`trift cannot take a copy of this fleet: ${tx} is committed; this fleet belongs to ${other} at generation 5`))
-      .toBe('trift cannot take a copy of this fleet: the handover is committed; this fleet belongs to another machine');
+    expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4`))
+      .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it");
+    expect(said(`trift cannot take a copy of this fleet: this fleet belongs to ${other} at generation 5`))
+      .toBe('trift cannot take a copy of this fleet: this fleet belongs to another machine');
     expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
+  });
+
+  it('says a step line as the controller wrote it, with no handover rewording', () => {
+    expect(plainStep('stuck in handover 3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', {})).toBe('stuck in handover');
   });
 
   it('masks a token wherever it is labelled, and leaves the rest of the line alone', () => {

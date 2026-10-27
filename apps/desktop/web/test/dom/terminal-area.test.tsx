@@ -119,25 +119,6 @@ test('starting afresh from a failed resume asks first, and says where the old se
   expect(store.getState().toast).toEqual({ text: 'c1 started fresh; old session old-1 kept at /h/.claude/projects/-w/old-1.jsonl', tone: 'ok' });
 });
 
-test('a dormant robot wakes nothing while a handover rests the fleet', () => {
-  act(() => store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', safe: [], reason: 'moving' } }));
-  render(<TerminalArea id="c1" />);
-  act(() => { vi.advanceTimersByTime(5000); });
-  expect(screen.getByTestId('terminal-held')).toBeTruthy();
-  expect(call).not.toHaveBeenCalled();
-});
-
-test('a terminal rested for a handover says the step it is at, and opens the sheet on a click', () => {
-  act(() => {
-    store.getState().handoverFollow('trift');
-    for (const phase of ['begin', 'freeze', 'transfer'] as const) store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase } });
-  });
-  render(<TerminalArea id="c1" />);
-  expect(screen.getByTestId('terminal-held').textContent).toBe('Resting for the handover: Transferring files and sessions…');
-  act(() => screen.getByTestId('terminal-held').click());
-  expect(store.getState().handoverOpen).toBe(true);
-});
-
 const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
 const placed = (reachable: boolean, more: Partial<Robot> = {}) => {
   const f = fleet();

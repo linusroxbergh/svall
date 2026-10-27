@@ -1,5 +1,4 @@
-import type { AgentKind, ContextItem, HandoverChoices, SetupRow } from '@svall/protocol';
-import type { HandoverEvent } from './handover.js';
+import type { AgentKind, ContextItem, SetupRow } from '@svall/protocol';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 // via: for a robot placed on another machine, the ssh destination and master socket that reach it
@@ -84,18 +83,6 @@ export type ToShell =
   | { type: 'host.cancel' }
   // `svall host list`, answered by host.machines
   | { type: 'host.list' }
-  // sets fleet.json's handover.enabled, then sends shell.info again
-  | { type: 'handover.enable'; on: boolean }
-  // the shell starts, resumes or aborts a handover as a detached helper, then follows it with `handover attach`,
-  // whose stdin carries the user's answers; `to` is `local` or the gateway's name, and `check` runs the checks alone
-  | { type: 'handover.start'; to: string; choices?: HandoverChoices; check?: boolean }
-  | { type: 'handover.resume' }
-  | { type: 'handover.abort' }
-  // follows a live helper, or reads back the last run and the status when none is live
-  | { type: 'handover.attach' }
-  | { type: 'handover.forget' }
-  | { type: 'handover.choose'; choices: HandoverChoices }
-  | { type: 'handover.cancel' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
   | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number }
   // the fleet has stopped, or could not be asked to
@@ -124,10 +111,6 @@ export type FromShell =
   | { type: 'host.done'; op: HostOp; code: number }
   // the registry, read again after every host operation too; `error` when it could not be read
   | { type: 'host.machines'; machines: MachineRow[]; error?: string }
-  // each line the helper printed, and the end of the process the page was following
-  | { type: 'handover.event'; event: HandoverEvent }
-  | { type: 'handover.replay'; events: HandoverEvent[] }
-  | { type: 'handover.exit'; code: number; error?: string }
   | ({ type: 'shell.info' } & ShellInfo)
   | { type: 'key'; chord: string }
   | { type: 'term.exited'; id: string }

@@ -91,21 +91,20 @@ describe('selectors', () => {
     }
   });
   it('anything the page spreads over a surface hides it first', () => {
-    const base = { namingRobot: false, missionPrompt: false, closingRobot: undefined, resourcesOpen: false, hostOpen: false, handoverOpen: false, fleet: fleet() };
+    const base = { namingRobot: false, missionPrompt: false, closingRobot: undefined, resourcesOpen: false, hostOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingRobot: true })).toBe(true);
     expect(isVeiled({ ...base, closingRobot: 'c0' })).toBe(true);
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
     expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
-    expect(isVeiled({ ...base, handoverOpen: true })).toBe(true);
     expect(isVeiled({ ...base, moveSheet: { id: 'c0' } })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
     expect(isVeiled({ ...base, view: 'board', fleet: { ...fleet(), placingAsk: true } })).toBe(true);
     expect(isVeiled({ ...base, view: 'map', fleet: { ...fleet(), placingAsk: true } })).toBe(false);
   });
   it('veils while the resources shelf is open', () => {
-    expect(isVeiled({ namingRobot: false, missionPrompt: false, resourcesOpen: true, hostOpen: false, handoverOpen: false, fleet: fleet() })).toBe(true);
+    expect(isVeiled({ namingRobot: false, missionPrompt: false, resourcesOpen: true, hostOpen: false, fleet: fleet() })).toBe(true);
   });
 });
 

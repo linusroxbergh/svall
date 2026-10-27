@@ -1,7 +1,6 @@
 import { ApiError, robotOfKey } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
-import { holdsTerminals } from './handover.js';
 import { panesOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
@@ -54,8 +53,6 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       if (takeFocus) focus(id);
       return;
     }
-    // the fleet is between machines: nothing is attached until it runs again
-    if (holdsTerminals(state().handover)) return;
     let p = attaching.get(id);
     if (!p) {
       p = api.call('term.attach', target(id)).finally(() => attaching.delete(id));
@@ -67,14 +64,12 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // refused, or unanswered while online: the user retries; svalld, a handover or the robot's machine away: retried
+      // refused, or unanswered while online: the user retries; svalld or the robot's machine away: retried
       // once the connection or link is back (a closed socket reports offline before its calls fail)
       if (e instanceof ApiError ? !RETRIED.has(e.code) : state().status === 'online') state().termFailed(id, (e as Error).message);
       else retry.set(id, { rect, opacity });
       throw e;
     }
-    // the freeze began while the attach was on its way, and rests the window it names
-    if (holdsTerminals(state().handover)) { retry.set(id, { rect, opacity }); return; }
     bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
     state().termOpened(id, rect);
     if (!wanted.has(id) || !inView(id)) bridge.send({ type: 'term.hide', id });
@@ -98,12 +93,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   });
 
   store.subscribe((s, prev) => {
-    // the source rests every terminal at its freeze, so the surfaces on them go first
-    if (s.handover !== prev.handover && holdsTerminals(s.handover) && !holdsTerminals(prev.handover)) {
-      retry.clear();
-      for (const id of Object.keys(s.terminals)) close(id);
-    }
-    const online = (s.status === 'online' && prev.status !== 'online') || (!holdsTerminals(s.handover) && holdsTerminals(prev.handover));
+    const online = s.status === 'online' && prev.status !== 'online';
     const machineBack = (id: string) => {
       const m = s.fleet.robots[target(id).id]?.machine;
       return m !== undefined && !!s.fleet.machines?.[m]?.reachable && !prev.fleet.machines?.[m]?.reachable;

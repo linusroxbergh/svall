@@ -64,6 +64,10 @@ describe('bridge between the page and the shell', () => {
     const fields = Object.values(tsUnion('ToShell')).flat().map((f) => f.replace('?', ''));
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
   });
+
+  it('carries no handover message either way', () => {
+    expect([...Object.keys(tsUnion('ToShell')), ...Object.keys(tsUnion('FromShell'))].filter((t) => t.startsWith('handover.'))).toEqual([]);
+  });
 });
 
 // the banner's click and the phone's notification tag spell the second terminal's key out themselves

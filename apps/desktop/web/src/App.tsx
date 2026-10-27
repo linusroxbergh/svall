@@ -6,7 +6,6 @@ import { ConfirmClose, ConfirmDeleteColumn, ConfirmDeleteIsland, ConfirmSleep } 
 import { ContextMenu } from './ContextMenu.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
-import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
 import { connectionBanner, FAR_ANSWER_MS, type Banner } from './host.js';
 import { HostSetup, startHost } from './HostSetup.js';
@@ -164,7 +163,6 @@ function Screen() {
       <ConfirmDeleteIsland />
       <MoveSheet />
       <ConfirmDeleteColumn />
-      <HandoverSheet />
       <ScribeAsk />
       <PlacingAsk />
       <FleetPicker />

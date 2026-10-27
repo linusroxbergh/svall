@@ -164,14 +164,11 @@ func profileFlag(_ profile: String?) -> [String] {
     profile.map { ["-p", $0] } ?? []
 }
 
-/// A machine's registry name: the only name `svall host` and `svall handover` take for one.
+/// A machine's registry name: the only name `svall host` takes for one.
 let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
 
 /// An ssh destination the app hands to ssh: never one that reads as a flag.
 let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
-
-/// What `svall handover` reads as its own words before a machine's name, which the registry refuses as names.
-let handoverWords: Set<String> = ["on", "off", "status", "attach"]
 
 /// The argv of `svall host <op> … --json`. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.

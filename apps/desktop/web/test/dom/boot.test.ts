@@ -24,19 +24,3 @@ test('the app keeps its settings under the fleet the shell names', async () => {
   delete window.__svallHome;
   vi.unstubAllGlobals();
 });
-
-test('follows a handover once the shell says handover is on, and asks for none while it is off', async () => {
-  const sent: { type: string }[] = [];
-  window.webkit = { messageHandlers: { svall: { postMessage: (json: string) => { sent.push(JSON.parse(json) as { type: string }); } } } };
-  vi.resetModules();
-  const fresh = await import('../../src/boot.js');
-  fresh.initApp();
-  const info = (handoverEnabled: boolean) => window.__svall!.receive(JSON.stringify({ type: 'shell.info', home: '/u/.svall', log: [], op: false, handoverEnabled }));
-  const attaches = () => sent.filter((m) => m.type === 'handover.attach').length;
-  info(false);
-  expect(attaches()).toBe(0);
-  info(true);
-  info(true);
-  expect(attaches()).toBe(1);
-  delete window.webkit;
-});
