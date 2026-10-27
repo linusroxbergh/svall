@@ -291,6 +291,31 @@ test('mission control unfolds at the size its fit kept room for, though the map 
   }
 });
 
+test('the map opens on a fit that knows how tall mission control\'s row has wrapped', () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1280 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  const row = { w: 520, h: theme.home.row * 4 };
+  const own = { w: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!, h: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')! };
+  const hrow = (el: HTMLElement, v: number) => (el.classList.contains('hrow') ? v : 0);
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return hrow(this, row.w); } });
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return hrow(this, row.h); } });
+  // one tall island, so the room mission control's row takes decides the zoom
+  const f = { ...fleet(), robots: {} };
+  f.islands = { i_t: isl('i_t', 't', 0, { size: { w: 7, h: 14 } }), home: { ...f.islands.home, position: { x: 0, y: 18 } } };
+  store.getState().setFleet(f);
+  try {
+    render(<Map />);
+    const scale = (r: { w: number; h: number }) => fitWithHome(mapIslands(f), crewOf(f), { w: 1280, h: 800 }, f.islands.home, r).fit.scale;
+    expect(scale(row)).not.toBe(scale({ w: 0, h: theme.home.row }));
+    expect(document.querySelector<HTMLElement>('.map-world')!.style.getPropertyValue('--ms')).toBe(String(scale(row)));
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', own.w);
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', own.h);
+  }
+});
+
 const dragRight = (islandId: string) => {
   const map = screen.getByTestId('map');
   fireEvent.pointerDown(screen.getByTestId(`island-label-${islandId}`), { pointerId: 1, clientX: 100, clientY: 100 });

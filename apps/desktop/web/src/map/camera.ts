@@ -144,11 +144,13 @@ export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: R
       row.current = { w: el.offsetWidth, h: el.offsetHeight };
       return true;
     };
-    if (read()) refit();
+    // the first read comes with the map's first width, before paint: the map opens on its fit rather than easing to it
+    const first = !row.current.w;
+    if (read()) refit(first);
     const ro = new ResizeObserver(() => { if (read()) refit(); });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [hasHome]);
+  }, [hasHome, hostSize.w > 0]);
 
   // the side panels change the map's width immediately; refit before paint so no stale layout is ever visible,
   // holding the refit until an open click sequence ends
