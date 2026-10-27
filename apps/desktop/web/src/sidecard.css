@@ -39,6 +39,11 @@
 .side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-branch .badge { flex: none; }
 .side-hint { color: var(--danger); font-size: var(--text-sm); }
+/* a robot on a worker: the machine it runs on, close under its name */
+.side-on { display: flex; align-items: center; gap: var(--sp-sm); min-width: 0; margin-top: calc(-1 * var(--sp-md)); color: var(--away); font-size: var(--text-md); font-weight: var(--w-medium); }
+.side-on span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-on b { font-weight: var(--w-semibold); }
+.side-on .ind-glyph { flex: none; width: 12px; height: 12px; }
 .side-portrait { position: relative; flex: none; }
 .side-portrait .side-figure { display: block; box-sizing: border-box; width: var(--disc-side); height: var(--disc-side); padding: calc(var(--disc-side) * .08);
   object-fit: contain; object-position: center bottom; }
@@ -65,7 +70,7 @@
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 .side .opens { display: flex; gap: var(--sp-md); }
 .side .opens .btn { flex: 1; }
-.btn.sm, .side .opens .btn { padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.btn.sm, .side .opens .btn, .side > .acts .btn { padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
 .side .addlink { display: flex; gap: var(--sp-md); align-items: center; }
 .side .addlink .btn { flex: none; }
 .side-profile { display: flex; gap: var(--sp-md); align-items: center; }
@@ -109,6 +114,10 @@
 .side-doc-del:hover { background: var(--fill-3); color: var(--ink); }
 .side .acts { display: flex; gap: var(--sp-md); margin-top: auto; padding-top: var(--sp-2xl); }
 .side .acts .btn { flex: 1; }
+/* a card's own buttons: two even columns, where a button alone, or a move alone on its row, takes both */
+.side > .acts { display: grid; grid-template-columns: 1fr 1fr; }
+.side > .acts .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side > .acts > :only-child, .side > .acts > .move:nth-last-child(1 of .move):nth-child(odd of .move) { grid-column: 1 / -1; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }

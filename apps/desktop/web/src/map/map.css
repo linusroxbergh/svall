@@ -209,11 +209,11 @@
   border-radius:calc(var(--tok)*.27);color:var(--ink-land);
   font-size:calc(var(--tok)*.32);font-weight:var(--w-bold);line-height:1;font-variant-numeric:tabular-nums}
 .tok .mark.subs svg{flex:none;width:calc(var(--tok)*.32);height:calc(var(--tok)*.32)}
-/* the worker a placed robot runs on, a capsule hung under the card's foot */
-.tok .corner .mach{position:absolute;bottom:calc(var(--tok)*-.2);left:50%;transform:translateX(-50%);box-sizing:border-box;max-width:100%;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 calc(var(--tok)*.13);border-radius:var(--r-pill);
-  font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);line-height:calc(var(--tok)*.36);
-  background:var(--surface-2);color:var(--ink);box-shadow:0 2px 4px var(--shade-3)}
+/* the worker a placed robot runs on, a band across the top of its card */
+.tok .mach{flex:none;display:flex;align-items:center;justify-content:center;gap:calc(var(--tok)*.08);height:calc(var(--tok)*.38);padding:0 calc(var(--tok)*.1);
+  background:var(--away);color:var(--ink-on-away);font-size:calc(var(--tok)*.22);font-weight:var(--w-bold);letter-spacing:var(--track-loose);text-transform:uppercase;white-space:nowrap}
+.tok .mach span{overflow:hidden;text-overflow:ellipsis}
+.tok .mach .ind-glyph{flex:none;width:calc(var(--tok)*.26);height:calc(var(--tok)*.26)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);

@@ -115,8 +115,13 @@
 .kc-un::before { content: '·'; margin-right: var(--sp-sm); color: var(--ink-3); }
 .kc-sp { flex: 1; }
 .kc-isl { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); font-size: var(--text-xs); }
-.kc-mach { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 var(--sp-sm); border-radius: var(--r-pill);
-  background: var(--fill-1); color: var(--ink); font-size: var(--text-xs); font-weight: var(--w-semibold); }
+/* one on a worker: a band across its top names the machine */
+.kc:has(.kc-on) { padding-top: calc(var(--sp-md) + var(--sp-2xl)); }
+.kc-on { position: absolute; inset: 0 0 auto; height: var(--sp-2xl); display: flex; align-items: center; gap: var(--sp-xs); padding: 0 var(--sp-lg);
+  border-start-start-radius: inherit; border-start-end-radius: inherit; background: color-mix(in srgb, var(--away) 16%, var(--surface-2)); color: var(--away);
+  font-size: var(--text-2xs); font-weight: var(--w-bold); letter-spacing: var(--track-loose); text-transform: uppercase; white-space: nowrap; }
+.kc-on span { overflow: hidden; text-overflow: ellipsis; }
+.kc-on .ind-glyph { flex: none; width: 10px; height: 10px; }
 .kc-mk { flex: none; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; box-shadow: 0 0 0 1px var(--shade-2); }
 .kc-mk svg { width: 10px; height: 10px; display: block; }
 .kc-mk[data-kind="review"] { background: var(--review); color: var(--ink-on-review); }

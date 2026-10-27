@@ -48,6 +48,16 @@ test('while its machine runs a different build, Files and Changes say so as the 
   expect(screen.getAllByTestId('pane-elsewhere').map((e) => e.textContent)).toEqual(['linus-vault runs a different build; upgrade it under Machines', 'linus-vault runs a different build; upgrade it under Machines']);
 });
 
+test('a robot on a worker says under each pane\'s head where it runs, and one here says nothing', () => {
+  act(() => store.getState().setPanes('c0', { left: 'terminal', right: 'files' }));
+  const { unmount } = render(<RobotPanes id="c0" />);
+  expect(screen.queryAllByTestId(/^pane-(left|right)-machine$/)).toEqual([]);
+  unmount();
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  render(<RobotPanes id="c0" />);
+  expect(screen.getAllByTestId(/^pane-(left|right)-machine$/).map((e) => e.textContent)).toEqual(['Runs on linus-vault', 'Runs on linus-vault']);
+});
+
 test('a move mounts the Files view anew, to watch the folder on the machine the robot runs on now', () => {
   mounts.length = 0;
   act(() => store.getState().setPanes('c0', { left: 'files' }));

@@ -18,3 +18,15 @@ test('a token draws without an app store, and shows a failed resume only when to
   rerender(<Token {...props} failed="codex exited back to its shell" />);
   expect(screen.getByTestId('token-resume-error-c0').getAttribute('title')).toBe('codex exited back to its shell');
 });
+
+test('a token on a worker wears a band naming the machine across the top of its card', () => {
+  const props = { c: chr('c0', 'i_b', { x: 1, y: 1 }), status: 'idle' as const, world: { x: 1, y: 1 }, selected: false, dragging: false, hover: false,
+    pointer, onHoverStart: none, onHoverEnd: none, onOpen: none, onLink: none, onMenu: none };
+  const { rerender } = render(<Token {...props} />);
+  expect(screen.queryByTestId('token-machine-c0')).toBeNull();
+  rerender(<Token {...props} machine="linus-vault" />);
+  const band = screen.getByTestId('token-machine-c0');
+  expect(band.textContent).toBe('on linus-vault');
+  expect(band.parentElement?.className).toBe('card');
+  expect(band.nextElementSibling?.className).toBe('edge');
+});

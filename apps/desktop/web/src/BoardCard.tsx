@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Robot } from '@svall/protocol';
 import { memoByValue, stop } from './hooks.js';
-import { EyeGlyph, HandGlyph, PrGlyph, reviewText } from './indicators.js';
+import { EyeGlyph, HandGlyph, MachineGlyph, PrGlyph, reviewText } from './indicators.js';
 import { figureOf, figureUrl } from './portraits.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, type DisplayStatus } from './selectors.js';
 
@@ -22,7 +22,7 @@ export function NameInput({ name, className, testid, onSave, onDone }: { name: s
   );
 }
 
-/** A robot on the board: every card one size, with two lines kept for the name and two for the note. */
+/** A robot on the board: every card one size, with two lines kept for the name and two for the note; one on a worker adds a band naming it. */
 export const BoardCard = memoByValue(function BoardCard({ c, status, machine, island, selected, arrived, dragging, lifted, fileHover, renaming, onRename, onRenamed, on }: {
   c: Robot;
   status: DisplayStatus;
@@ -54,6 +54,7 @@ export const BoardCard = memoByValue(function BoardCard({ c, status, machine, is
       data-selected={selected} data-need={status === 'blocked'} data-unread={unread} data-arrived={arrived}
       data-dragging={dragging} data-lifted={lifted}
       {...(!lifted && { 'data-drop': `robot:${c.id}`, 'data-drop-hover': fileHover })} {...on}>
+      {machine && <span className="kc-on" title={`Runs on ${machine}`} data-testid={`kc-machine-${c.id}`}><MachineGlyph /><span>on {machine}</span></span>}
       <span className="kc-av"><img src={figureUrl(figureOf(c))} alt="" draggable={false} /></span>
       {renaming
         ? <NameInput name={c.name} className="kb-ren kc-ren" testid={`kc-name-input-${c.id}`} onSave={(name) => onRename?.(name)} onDone={() => onRenamed?.()} />
@@ -64,7 +65,6 @@ export const BoardCard = memoByValue(function BoardCard({ c, status, machine, is
         {unread && <span className="kc-un">unread</span>}
         <span className="kc-sp" />
         {island && <span className="kc-isl" title={island} data-testid={`kc-island-${c.id}`}>{island}</span>}
-        {machine && <span className="kc-mach" title={`Runs on ${machine}`} data-testid={`kc-machine-${c.id}`}>{machine}</span>}
         {pr && <span className="kc-mk" data-kind="review" title={reviewText(pr)} data-testid={`kc-review-${c.id}`}><PrGlyph /></span>}
         {isMonitoring(c) && <span className="kc-mk" data-kind="monitor" title="Monitoring" data-testid={`kc-monitor-${c.id}`}><EyeGlyph /></span>}
         {c.columnSource === 'manual' && <span className="kc-hand" title="Placed by hand" data-testid={`kc-hand-${c.id}`}><HandGlyph /></span>}

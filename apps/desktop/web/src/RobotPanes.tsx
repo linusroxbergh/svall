@@ -5,9 +5,10 @@ import { BrowserArea } from './BrowserArea.js';
 import { useApp } from './hooks.js';
 import { Changes } from './ide/Changes.js';
 import { FilesArea } from './ide/FilesArea.js';
+import { MachineGlyph } from './indicators.js';
 import { keyTip, type ActionId } from './keys.js';
 import { closeSide, isTerminal, kindOf, pick, shows, snapRatio, split, type Kind, type Panes, type Side, type Surface } from './panes.js';
-import { awayLine } from './placement.js';
+import { awayLine, isPlaced, machineName } from './placement.js';
 import { panesOf, slotStatus } from './selectors.js';
 import { TerminalArea } from './TerminalArea.js';
 
@@ -53,6 +54,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
   const two = panes.right !== undefined;
   // the files of a robot on a worker are read there, so they wait while it is out of reach
   const away = awayLine({ machines }, c);
+  const on = isPlaced(c) ? machineName({ machines }, c.machine) : undefined;
 
   const set = (next: Panes) => {
     if (shows(next, 'terminal2') && !c.second?.tmux) openSecondTerminal(deps(), id);
@@ -96,6 +98,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
           : <button className="tbtn psplit" data-testid="pane-split" title="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
         {(side === 'right' || !two) && trail}
       </div>
+      {on && <div className="pon" data-testid={`pane-${side}-machine`}><MachineGlyph /><span>Runs on <b>{on}</b></span></div>}
       <div className="pbody">{body(surface, side)}</div>
     </div>
   );

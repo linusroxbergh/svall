@@ -6,20 +6,29 @@ test.afterEach(async ({ svall }) => { await unplace(svall); });
 const fakeShell = (page: Page, svall: Svall) =>
   nativeShell(page, { port: svall.port, token: svall.token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
 
-test('a placed robot shows its machine badge, Move to this Mac, and a not-reachable terminal when the link is down', async ({ page, svall }) => {
+test('a placed robot names its machine on its card, row, panes and token, offers Move to this Mac, and a not-reachable terminal when the link is down', async ({ page, svall }) => {
   const id = await seed(svall, false, (c) => { c.machine = VAULT; });
   await fakeShell(page, svall);
   await svall.open();
   await expect(page.getByTestId(`kc-${id}`)).toHaveAttribute('data-status', 'unknown');
-  await expect(page.getByTestId(`kc-machine-${id}`)).toHaveText('linus-vault');
+  await expect(page.getByTestId(`kc-machine-${id}`)).toHaveText('on linus-vault');
+  await expect(page.getByTestId(`sb-machine-${id}`)).toHaveText('on linus-vault');
   await page.getByTestId(`kc-${id}`).dblclick();
   await expect(page.getByTestId('terminal-unreachable')).toHaveText('linus-vault is not reachable');
+  await expect(page.getByTestId('pane-left-machine')).toHaveText('Runs on linus-vault');
   expect((await sent(page)).some((m) => m.type === 'term.show' && m.id === id)).toBe(false);
 
   const card = page.getByTestId('side-card');
   await expect(card.locator('.kicker').first()).toContainText('unknown');
-  await expect(card.getByTestId('side-machine')).toHaveText('linus-vault');
+  await expect(card.getByTestId('side-machine')).toHaveText('Runs on linus-vault');
   await expect(card.getByTestId('side-move-home')).toHaveText('Move to this Mac');
+  // one size of button in two columns: the folder pair, the move alone on its row across both, then open and delete
+  const box = async (t: string) => (await card.getByTestId(t).boundingBox())!;
+  const [there, res, home, open, close] = await Promise.all(['side-finder', 'side-resources', 'side-move-home', 'side-open', 'side-close'].map(box));
+  expect(new Set([there, res, home, open, close].map((b) => b.height)).size).toBe(1);
+  expect([there.y, open.y]).toEqual([res.y, close.y]);
+  expect(there.y < home.y && home.y < open.y).toBe(true);
+  expect(home.width).toBeCloseTo(close.x + close.width - open.x, 0);
   await expect(card.getByTestId('side-cwd')).toHaveAttribute('title', 'Copy linus-vault:/tmp');
   await expect(card.getByTestId('side-finder')).toHaveText('Terminal there');
 
@@ -33,7 +42,7 @@ test('a placed robot shows its machine badge, Move to this Mac, and a not-reacha
 
   await svall.open('map');
   await expect(page.getByTestId(`token-${id}`)).toHaveAttribute('data-status', 'unknown');
-  await expect(page.getByTestId(`token-machine-${id}`)).toHaveText('linus-vault');
+  await expect(page.getByTestId(`token-machine-${id}`)).toHaveText('on linus-vault');
 });
 
 test('a placed robot\'s Files and Changes say its machine is not reachable while the link is down', async ({ page, svall }) => {

@@ -6,6 +6,7 @@ import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
+import { MachineGlyph } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
@@ -90,7 +91,6 @@ export function SideCard({ id }: { id: string }) {
     <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
         <i className="sdot" data-status={status} />{status}{isUnread(c) ? ' · unread' : ''}
-        {placed && <span className="badge" data-testid="side-machine">{placed}</span>}
       </div>
       <div className="side-head">
         <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
@@ -99,6 +99,7 @@ export function SideCard({ id }: { id: string }) {
         <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}
           aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
       </div>
+      {placed && <div className="side-on" data-testid="side-machine"><MachineGlyph /><span>Runs on <b>{placed}</b></span></div>}
       {c.repo && (
         <div className="side-branch" data-testid="side-branch">
           <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
@@ -154,7 +155,7 @@ export function SideCard({ id }: { id: string }) {
           </div>
         </Section>
       </div>
-      <div className="opens">
+      <div className="acts">
         {placed ? (
           <button className="btn" data-testid="side-finder" title={`A terminal on ${placed} in ${c.cwd}`}
             onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
@@ -163,14 +164,12 @@ export function SideCard({ id }: { id: string }) {
             onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
-      </div>
-      <div className="acts">
-        <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         {movable && (placed
-          ? <button className="btn" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
+          ? <button className="btn move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
           : workers.map(([m, w]) => (
-            <button key={m} className="btn" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>Move to {w.name}</button>
+            <button key={m} className="btn move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>Move to {w.name}</button>
           )))}
+        <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         <button className="btn dan" data-testid="side-close" title="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>

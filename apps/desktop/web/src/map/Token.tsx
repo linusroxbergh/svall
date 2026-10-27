@@ -1,6 +1,6 @@
 import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { BotGlyph, EyeGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
+import { BotGlyph, EyeGlyph, MachineGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
@@ -81,6 +81,7 @@ export const Token = memoByValue(function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
+        {machine && <span className="mach" data-testid={`token-machine-${c.id}`} title={`Runs on ${machine}`}><MachineGlyph /><span>on {machine}</span></span>}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
         <Figure n={figureOf(c)} />
@@ -100,7 +101,7 @@ export const Token = memoByValue(function Token({
           </svg>
         </button>
       </div>
-      {(review || monitor || subs > 0 || machine) && (
+      {(review || monitor || subs > 0) && (
         <span className="corner">
           <span className="marks">
             {review && (
@@ -128,7 +129,6 @@ export const Token = memoByValue(function Token({
               </span>
             </span>
           )}
-          {machine && <span className="mach" data-testid={`token-machine-${c.id}`} title={`Runs on ${machine}`}>{machine}</span>}
         </span>
       )}
       {links && c.context.length > 0 && (
