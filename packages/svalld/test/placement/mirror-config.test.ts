@@ -287,6 +287,14 @@ describe('reading agent configs and finding secrets by field', () => {
     expect(out.provider.vertex.models.m.options).toEqual({ privateKey: '', private_key: '', clientSecret: '', apiKey: '', project: 'p-1' });
   });
 
+  it('a baseURL query value whose name holds dots is emptied as it is listed, alone where only it is', () => {
+    const doc = { provider: { x: { options: { baseURL: 'https://h.test/v1?auth.token=tok_1234567890&k=v_1234567890' } } } };
+    const fields = configSecrets('opencode', doc).map((f) => f.field);
+    expect(fields.sort()).toEqual(['provider.x.options.baseURL.auth.token', 'provider.x.options.baseURL.k']);
+    expect((configRedacted(doc, fields) as typeof doc).provider.x.options.baseURL).toBe('https://h.test/v1?auth.token=&k=');
+    expect((configRedacted(doc, ['provider.x.options.baseURL.auth.token']) as typeof doc).provider.x.options.baseURL).toBe('https://h.test/v1?auth.token=&k=v_1234567890');
+  });
+
   it('a plugin manifest naming a server file through a link that leads outside the plugin is unreadable and yields none', () => {
     const acme = path.join(mac.claudeDir, 'plugins/cache/mp/link/1.0.0');
     const outside = path.join(makeHome(), 'keys.json');

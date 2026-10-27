@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { AgentKind, ApiError, REPORT_MS, Sha256, type MachineId, type SetupRow } from '@svall/protocol';
 import { VAR_NAME } from '../claude.js';
 import { writeDurable } from '../handover/durable.js';
-import { sha256Hex } from '../handover/hash.js';
+import { canonicalJson, sha256Hex } from '../handover/hash.js';
 import { clean, holds } from '../handover/portable-path.js';
 import { relocate } from '../handover/relocate.js';
 import { tryLock } from '../kernel-lock.js';
@@ -71,21 +71,31 @@ export type MirrorPlan = {
   vars: string[];
   unreadable: string[];
   keep: string[];
+  /** Each file that holds a ticked key, by its `to`, which the worker keeps for its owner alone. */
+  keyed: string[];
   skipped: string[];
 };
 
 const Shas = z.record(z.string(), Sha256);
+const Copies = z.record(z.string(), z.union([Sha256, z.array(Sha256)]));
 /**
  * What the mirror last wrote on a worker, by sha256: each file by its `to`, each doc's keys, each server and each copied
- * value by the JSON of its doc and the keys that lead to it there; a value an apply cut short may have left as either of two.
+ * value by the JSON of its doc and the keys that lead to it there; each server copied whole, by its keys in any order,
+ * and each file holding a ticked key. A value an apply cut short may have left as either of two.
  */
-export const WorkerState = z.object({ files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: z.record(z.string(), z.union([Sha256, z.array(Sha256)])) });
+export const WorkerState = z.object({
+  files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), keyed: Copies.optional(),
+});
 export type WorkerState = z.infer<typeof WorkerState>;
 type Copied = WorkerState['secrets'][string];
+const isCopyOf = (recorded: Copied | undefined, h: string | undefined): boolean => recorded !== undefined && h !== undefined && [recorded].flat().includes(h);
+// a server's sha whatever order its keys lie in, as TOML writes a table's plain keys first; none for a value JSON cannot hold
+const serverSha = (v: unknown): string | undefined => {
+  try { return sha256Hex(canonicalJson(v)); } catch { return undefined; }
+};
 
 /** Whether `v` is a value the record holds as copied. */
-export const isCopy = (recorded: Copied | undefined, v: unknown): boolean =>
-  typeof v === 'string' && recorded !== undefined && [recorded].flat().includes(sha256Hex(v));
+export const isCopy = (recorded: Copied | undefined, v: unknown): boolean => typeof v === 'string' && isCopyOf(recorded, sha256Hex(v));
 
 // matches no file and no value, so a push writes again what an apply cut short may have left half done
 const UNSURE = '0'.repeat(64);
@@ -94,13 +104,14 @@ const UNSURE = '0'.repeat(64);
 function provisional(state: WorkerState, next: WorkerState): WorkerState {
   const keys = (a: Record<string, unknown>, b: Record<string, unknown>) => [...new Set([...Object.keys(a), ...Object.keys(b)])];
   const shas = (a: Record<string, string>, b: Record<string, string>) => Object.fromEntries(keys(a, b).map((k) => [k, b[k] === undefined || a[k] === b[k] ? a[k] : UNSURE]));
+  const either = (a: Record<string, Copied>, b: Record<string, Copied>) => Object.fromEntries(keys(a, b).map((k) => {
+    const both = [...new Set([a[k], b[k]].flat().filter((h): h is string => h !== undefined))];
+    return [k, both.length === 1 ? both[0] : both];
+  }));
   return {
     files: shas(state.files, next.files), servers: shas(state.servers, next.servers),
     docs: Object.fromEntries(keys(state.docs, next.docs).map((d) => [d, shas(state.docs[d] ?? {}, next.docs[d] ?? {})])),
-    secrets: Object.fromEntries(keys(state.secrets, next.secrets).map((k) => {
-      const both = [...new Set([state.secrets[k], next.secrets[k]].flat().filter((h): h is string => h !== undefined))];
-      return [k, both.length === 1 ? both[0] : both];
-    })),
+    secrets: either(state.secrets, next.secrets), whole: either(state.whole ?? {}, next.whole ?? {}), keyed: either(state.keyed ?? {}, next.keyed ?? {}),
   };
 }
 /** The Mac's home and its project folders, which the worker answers for. */
@@ -150,6 +161,7 @@ const Manifest = z.object({
   vars: z.array(z.string()),
   unreadable: z.array(z.string()),
   keep: z.array(z.string()),
+  keyed: z.array(z.string()).default([]),
 });
 type Manifest = z.infer<typeof Manifest>;
 const Offer = z.object({ id: z.string(), sha256: Sha256 });
@@ -417,9 +429,12 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const pluginsDir = path.join(o.claudeDir, 'plugins');
   const installs = plugins.map((p) => clean(p.installPath));
   // a file the mirror writes itself, as the Mac's `from` would land; one holding a ticked key for its owner alone
+  const withKeys = new Set<string>();
   const made = (from: string, data: string, keyed = false): void => {
+    const to = path.posix.join('claude', path.posix.relative(o.claudeDir, from));
     if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
-    else files.push({ from, to: path.posix.join('claude', path.posix.relative(o.claudeDir, from)), mode: keyed ? 0o600 : (statOf(from)?.mode ?? 0o644) & 0o777, data });
+    else files.push({ from, to, mode: keyed ? 0o600 : (statOf(from)?.mode ?? 0o644) & 0o777, data });
+    if (keyed) withKeys.add(to);
   };
   // one that cannot be read now stays as the worker has it
   const unread = (file: string): void => {
@@ -452,7 +467,11 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   }
   // a plugin's settings ticked whole hold its keys
   const tickedSettings = new Set(pluginRows.filter((r) => r.ticked).flatMap((r) => r.files));
-  for (const f of files) if (tickedSettings.has(f.from)) f.mode = 0o600;
+  for (const f of files) {
+    if (!tickedSettings.has(f.from)) continue;
+    f.mode = 0o600;
+    withKeys.add(f.to);
+  }
   for (const name of PLUGIN_LISTS) {
     const from = path.join(o.claudeDir, 'plugins', name);
     if (unreadable.includes(from) || !fs.existsSync(from)) continue;
@@ -485,7 +504,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     ...(codexDoc && { codex: configRedacted(codexDoc, codexOff) }),
     opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff.filter((f) => d.fields.includes(f))), fields: d.fields })),
     homes: { homedir: o.homedir, claudeDir: o.claudeDir, claudeJson: o.claudeJson, codexDir: o.codexDir, opencodeDir: o.opencodeDir },
-    vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], keep: carried.map((f) => f.to), skipped,
+    vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], keep: carried.map((f) => f.to), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to), skipped,
   };
 }
 
@@ -524,6 +543,13 @@ export function relocated(v: unknown, move: (p: string) => string, under = false
   if (Array.isArray(v)) return v.map((x) => relocated(x, move, under));
   if (typeof v === 'object' && v !== null) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, relocated(x, move, under || PATH_KEY.test(k))]));
   return v;
+}
+
+// `file`, through a link, readable and writable by its owner alone
+function ownerOnly(file: string): void {
+  const at = realPath(file);
+  const mode = statOf(at)?.mode;
+  if (mode !== undefined && (mode & 0o777) !== 0o600) fs.chmodSync(at, 0o600);
 }
 
 // `data` at `file`, through a link, unless it holds those bytes already
@@ -693,12 +719,23 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
     return home ? filesIn(path.join(blobDir, root)).map((rel) => ({ root, home, rel, to: path.posix.join(root, rel), from: path.join(blobDir, root, rel) })) : [];
   });
   for (const f of carried) next.files[f.to] = sha256Hex(fs.readFileSync(f.from));
+  for (const to of m.keyed) {
+    const h = next.files[to] ?? state.files[to];
+    if (h) (next.keyed ??= {})[to] = h;
+  }
   put(o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
+  // where `to` lies in this machine's homes
+  const fileOf = (to: string): string | undefined => {
+    const [root, ...rest] = to.split('/');
+    const home = Object.hasOwn(ROOTS, root) ? o[ROOTS[root as Root]] : undefined;
+    return home && path.join(home, ...rest);
+  };
 
-  // a config file holding a ticked key is its owner's alone
+  // a config file holding a ticked key is its owner's alone, whether or not this apply changed it
   DOCS.forEach((d, i) => {
-    const out = docs[i];
-    if (out && put(d.at(o), Buffer.from(d.format(out.doc)), out.keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
+    const { doc, keyed } = docs[i];
+    if (doc && put(d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
+    if (keyed) ownerOnly(d.at(o));
   });
   for (const { root, home, rel, to, from } of carried) {
     if (state.files[to] === next.files[to]) continue;
@@ -721,15 +758,19 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
     if (Object.hasOwn(next.files, to)) continue;
     if (keep.has(to) || unread(to)) {
       next.files[to] = h;
+      if (unread(to) && state.keyed?.[to]) (next.keyed ??= {})[to] = state.keyed[to];
       continue;
     }
-    const [root, ...rest] = to.split('/');
-    const home = Object.hasOwn(ROOTS, root) ? o[ROOTS[root as Root]] : undefined;
-    const file = home && path.join(home, ...rest);
+    const file = fileOf(to);
     if (file && fs.lstatSync(file, { throwIfNoEntry: false })) {
       fs.rmSync(file, { force: true });
       removed.push(file);
     }
+  }
+  // a file holding a ticked key is its owner's alone, whether or not this apply wrote it
+  for (const to of Object.keys(next.keyed ?? {})) {
+    const file = fileOf(to);
+    if (file) ownerOnly(file);
   }
   // the overrides of whole files, each over what the mirror wrote there
   const docOverrides = new Set(DOCS.map((d) => d.override));
@@ -751,10 +792,10 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
 
 type Applying = { m: Manifest; state: WorkerState; next: WorkerState; move: (p: string) => string };
 
-// one config file as the mirror leaves it, and whether it holds a ticked value, or undefined when that is as it was: its
+// one config file as the mirror leaves it, none when that is as it was, and whether it holds a ticked value: its
 // keys merged, its servers put in place, its secrets settled and its override over them; one the Mac could not read keeps
 // the record of it
-function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, { m, state, next, move }: Applying): { doc: Doc; keyed: boolean } | undefined {
+function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, { m, state, next, move }: Applying): { doc?: Doc; keyed: boolean } {
   const doc: Doc = current ?? structuredClone(d.empty ?? {});
   const before = JSON.stringify(doc);
   const was = JSON.parse(before) as Doc;
@@ -815,6 +856,9 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     const bare = relocatedServer(s.bare, move);
     carried.push({ place: s.place, at, bare, codex: s.agent === 'codex' });
     servers[rk] = sha(bare);
+    // a server ticked whole carries its fields as they are, keys among them
+    const whole = !s.secretFields.length && s.ticked.length ? serverSha(bare) : undefined;
+    if (whole) (next.whole ??= {})[rk] = whole;
     const remerged = state.servers[rk] !== servers[rk] || getAt(doc, at) === undefined;
     if (remerged) setAt(doc, at, structuredClone(bare));
     for (const g of leavesOf(s.secretFields, (f) => fieldPlace(s.agent, s.entry, f))) {
@@ -828,8 +872,11 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   }
   for (const [rk, h] of records(state.servers)) {
     if (Object.hasOwn(servers, rk)) continue;
-    if (leave) servers[rk] = h;
-    else setAt(doc, placed((JSON.parse(rk) as Place).slice(1)), undefined);
+    if (!leave) setAt(doc, placed((JSON.parse(rk) as Place).slice(1)), undefined);
+    else {
+      servers[rk] = h;
+      if (state.whole?.[rk]) (next.whole ??= {})[rk] = state.whole[rk];
+    }
   }
   Object.assign(next.servers, servers);
 
@@ -851,7 +898,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
 
   overrideOver(d, doc, override);
   const keyed = leaves.some((l) => l.want !== undefined) || m.servers.some((x) => x.doc === d.name && Object.keys(x.entry).length > 0 && x.ticked.length > 0);
-  return JSON.stringify(doc) === before ? undefined : { doc, keyed };
+  return JSON.stringify(doc) === before ? { keyed } : { doc, keyed };
 }
 
 /** The home's side: its agent configuration packed and sent to a worker, by what the consent file ticks for it. */
@@ -955,17 +1002,26 @@ export async function lockAgentFiles(homedir: string): Promise<() => void> {
   }
 }
 
+// removes the blobs a daemon left under `stage`, which may hold ticked keys, answering how many
+function dropBlobs(stage: string): number {
+  const left = (fs.existsSync(stage) ? fs.readdirSync(stage, { withFileTypes: true }) : []).filter((f) => f.isDirectory() && f.name.startsWith('mirror-'));
+  for (const f of left) fs.rmSync(path.join(stage, f.name), { recursive: true, force: true });
+  return left.length;
+}
+
 /**
- * Takes back what the mirror copied into this machine's agent config files, by the record at `stateFile`: each value it
- * holds as copied, while it is still the copy, becomes what an untick leaves there, a server's env key its agent's
- * reference, a settings env key gone and any other key ''. Answers a line for each file it changed or could not.
+ * Takes back what the mirror copied into this machine's agent files, by the record at `stateFile`, each while it is still
+ * the copy: a copied value becomes what an untick leaves there, a server's env key its agent's reference, a settings env
+ * key gone and any other key ''; a server copied whole leaves its file; a file holding a ticked key is removed; and a blob
+ * left beside the record goes. Answers a line for each file it changed or could not.
  */
 export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
   const state = readState(o.stateFile);
   const done: string[] = [];
   for (const d of DOCS) {
     const keys = Object.keys(state.secrets).filter((k) => JSON.parse(k)[0] === d.name);
-    if (!keys.length) continue;
+    const whole = Object.keys(state.whole ?? {}).filter((k) => JSON.parse(k)[0] === d.name);
+    if (!keys.length && !whole.length) continue;
     let doc: Doc | undefined;
     try { doc = readDocFile(d.at(o), d.parse); } catch (e) {
       done.push(`could not take the mirror's keys back from ${d.at(o)}: ${(e as Error).message}`);
@@ -973,11 +1029,14 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
     }
     if (!doc) continue;
     const projects = Object.keys(isDoc(doc.projects) ? doc.projects : {});
+    // a Claude project lies under this machine's own path of it, which the record does not keep
+    const places = (k: string): Place[] => {
+      const place = (JSON.parse(k) as Place).slice(1);
+      return d.name === '.claude.json' && place[0] === 'projects' ? projects.map((p) => ['projects', p, ...place.slice(2)]) : [place];
+    };
     let n = 0;
     for (const k of keys) {
-      const place = (JSON.parse(k) as Place).slice(1);
-      // a Claude project lies under this machine's own path of it, which the record does not keep
-      for (const at of d.name === '.claude.json' && place[0] === 'projects' ? projects.map((p) => ['projects', p, ...place.slice(2)]) : [place]) {
+      for (const at of places(k)) {
         if (!isCopy(state.secrets[k], getAt(doc, at))) continue;
         const key = String(at.at(-1));
         const leaf: Leaf = { record: k, place: at, named: true, remerged: false, overOwn: true };
@@ -989,10 +1048,36 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
         n += 1;
       }
     }
-    if (!n) continue;
+    let w = 0;
+    for (const k of whole) {
+      for (const at of places(k)) {
+        const v = getAt(doc, at);
+        if (!isDoc(v) || !isCopyOf(state.whole?.[k], serverSha(v))) continue;
+        setAt(doc, at, undefined);
+        w += 1;
+      }
+    }
+    if (!n && !w) continue;
     put(d.at(o), Buffer.from(d.format(doc)), (statOf(d.at(o))?.mode ?? 0o600) & 0o777);
-    done.push(`took ${n} ${n === 1 ? 'key' : 'keys'} the mirror copied out of ${d.at(o)}`);
+    const took = [n && `${n} ${n === 1 ? 'key' : 'keys'} the mirror copied`, w && `${w} ${w === 1 ? 'server' : 'servers'} the mirror copied whole`].filter(Boolean);
+    done.push(`took ${took.join(' and ')} out of ${d.at(o)}`);
   }
+  // every file holding a ticked key is a plugin's, under Claude's folder
+  for (const [to, h] of Object.entries(state.keyed ?? {})) {
+    if (!to.startsWith('claude/')) continue;
+    const file = path.join(o.claudeDir, to.slice('claude/'.length));
+    let bytes: Buffer;
+    try { bytes = fs.readFileSync(realPath(file)); } catch { continue; }
+    if (!isCopyOf(h, sha256Hex(bytes))) continue;
+    try {
+      fs.rmSync(realPath(file), { force: true });
+      done.push(`removed ${file}, which held keys the mirror copied`);
+    } catch (e) {
+      done.push(`could not remove ${file}, which holds keys the mirror copied: ${(e as Error).message}`);
+    }
+  }
+  const blobs = dropBlobs(path.dirname(o.stateFile));
+  if (blobs) done.push(`removed ${blobs} mirror ${blobs === 1 ? 'blob' : 'blobs'} left in ${path.dirname(o.stateFile)}`);
   return done;
 }
 
@@ -1011,9 +1096,7 @@ export function mirrorCalls(o: MirrorHomes & {
     blobs.delete(id);
     if (b) fs.rmSync(b.dir, { recursive: true, force: true });
   };
-  for (const f of fs.existsSync(o.stage) ? fs.readdirSync(o.stage, { withFileTypes: true }) : []) {
-    if (f.isDirectory() && f.name.startsWith('mirror-')) fs.rmSync(path.join(o.stage, f.name), { recursive: true, force: true });
-  }
+  dropBlobs(o.stage);
   const calls: Record<string, (raw: unknown) => Promise<unknown>> = {
     'config.state': async (raw) => configState(parse(StateAsk, raw), o),
     'config.report': async (raw) => configReport(parse(ReportAsk, raw), o),

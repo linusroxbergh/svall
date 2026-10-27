@@ -225,12 +225,13 @@ export function readPlugins(claudeDir: string, unreadable: string[]): PluginInst
     unreadable.push(file);
     return [];
   }
-  const { named, broken } = marketNamed(claudeDir);
+  const { named, broken, known, list } = marketNamed(claudeDir);
   return Object.entries(plugins as Record<string, Doc[]>).flatMap(([name, all]) => {
     const paths = [...all.filter((i) => i.scope === 'user'), ...all.filter((i) => i.scope !== 'user')].map((i) => i.installPath as string);
     // an install is named `<plugin>@<marketplace>`
     const files = named.get(name) ?? [...named].find(([k]) => !name.includes('@') && k.startsWith(`${name}@`))?.[1];
-    const market = name.includes('@') ? broken.get(name.slice(name.indexOf('@') + 1)) : undefined;
+    const from = name.includes('@') ? name.slice(name.indexOf('@') + 1) : undefined;
+    const market = from === undefined ? undefined : broken.get(from) ?? (list && !known.has(from) ? list : undefined);
     if (market) unreadable.push(market);
     return [...new Set(paths)].map((installPath) => ({ name, installPath, ...(files && { named: files }), ...(market && { unreadMarket: market }) }));
   });
@@ -240,25 +241,39 @@ export function readPlugins(claudeDir: string, unreadable: string[]): PluginInst
 export const namedPaths = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((n): n is string => typeof n === 'string');
 
 // the server files each marketplace's plugin entries name by path, as `strict: false` entries do, by `<plugin>@<marketplace>`;
-// and each marketplace whose marketplace.json cannot be read, by its folder's name
-function marketNamed(claudeDir: string): { named: Map<string, string[]>; broken: Map<string, string> } {
+// each marketplace whose folder is not there or whose marketplace.json cannot be read, by its name; every name found; and
+// known_marketplaces.json when it cannot be read. A marketplace lies under plugins/marketplaces, or where
+// known_marketplaces.json puts one added from a local folder
+function marketNamed(claudeDir: string): { named: Map<string, string[]>; broken: Map<string, string>; known: Set<string>; list?: string } {
   const named = new Map<string, string[]>();
   const broken = new Map<string, string>();
+  const known = new Set<string>();
   const dir = path.join(claudeDir, 'plugins/marketplaces');
-  let names: string[];
-  try { names = fs.readdirSync(dir); } catch { return { named, broken }; }
-  for (const m of names) {
-    const file = path.join(dir, m, '.claude-plugin/marketplace.json');
+  const roots: [string, string][] = [];
+  try { for (const m of fs.readdirSync(dir)) roots.push([m, path.join(dir, m)]); } catch { /* none cloned */ }
+  const listFile = path.join(claudeDir, 'plugins/known_marketplaces.json');
+  const unreadList: string[] = [];
+  for (const [m, v] of Object.entries(readDoc(listFile, JSON.parse, unreadList) ?? {})) {
+    if (isDoc(v) && typeof v.installLocation === 'string') roots.push([m, v.installLocation]);
+  }
+  for (const [m, root] of roots) {
+    const file = path.join(root, '.claude-plugin/marketplace.json');
+    known.add(m);
     const unread: string[] = [];
-    const doc = readDoc(file, JSON.parse, unread);
-    if (unread.length) broken.set(m, file);
+    // a folder that is not there, or a list that leads outside it, cannot be read
+    const inside = within(root, root) && (!fs.existsSync(file) || within(root, file));
+    const doc = inside ? readDoc(file, JSON.parse, unread) : undefined;
+    if (!inside || unread.length) broken.set(m, file);
     const list: unknown = doc?.plugins;
     for (const e of Array.isArray(list) ? list : []) {
       if (!isDoc(e) || typeof e.name !== 'string' || !namedPaths(e.mcpServers).length) continue;
-      for (const market of new Set([m, typeof doc?.name === 'string' ? doc.name : m])) named.set(`${e.name}@${market}`, namedPaths(e.mcpServers));
+      for (const market of new Set([m, typeof doc?.name === 'string' ? doc.name : m])) {
+        known.add(market);
+        named.set(`${e.name}@${market}`, [...new Set([...(named.get(`${e.name}@${market}`) ?? []), ...namedPaths(e.mcpServers)])]);
+      }
     }
   }
-  return { named, broken };
+  return { named, broken, known, ...(unreadList.length && { list: listFile }) };
 }
 
 export const isReferenceOnly = (v: string): boolean => v.replace(VAR_REF, '').replace(/^(Bearer|Token|Basic)\s*$/i, '').trim() === '';
@@ -528,10 +543,16 @@ function placeIn(v: unknown, field: string): string[] | undefined {
 
 /**
  * Where config field `field` of `doc`, as configSecrets names it, lies: its string, or the URL one that holds it for a
- * `.userinfo` or a query value.
+ * `.userinfo` or a query value, whose name may hold dots.
  */
-export const configPlace = (doc: unknown, field: string): string[] | undefined =>
-  placeIn(doc, field.replace(/\.userinfo$/, '')) ?? (field.includes('.') ? placeIn(doc, field.slice(0, field.lastIndexOf('.'))) : undefined);
+export function configPlace(doc: unknown, field: string): string[] | undefined {
+  const parts = field.replace(/\.userinfo$/, '').split('.');
+  for (let n = parts.length; n > 0; n -= 1) {
+    const place = placeIn(doc, parts.slice(0, n).join('.'));
+    if (place) return place;
+  }
+  return undefined;
+}
 
 /** `doc` with each of `fields` emptied: a key field's string, or in a URL the credentials for a `.userinfo` or the query value. */
 export function configRedacted(doc: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
