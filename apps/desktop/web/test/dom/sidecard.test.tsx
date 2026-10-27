@@ -18,7 +18,8 @@ let load: unknown;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
   return why ? Promise.reject(new Error(why))
-    : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : method === 'load.get' ? load ?? {} : {});
+    : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : method === 'load.get' ? load ?? {}
+      : method === 'machines.setup' ? { rows: [] } : {});
 });
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -435,6 +436,9 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(moves()).toEqual(['Move to this Mac']);
   expect(foot()).toEqual(['Terminal there', 'Resources', 'Move to this Mac', 'Open terminal', 'Delete robot']);
   expect(screen.queryByTestId('side-cpu')).toBeNull();
+  // what of its agent setup will not work there, which here is nothing
+  expect(calls()).toContainEqual(['machines.setup', { machine: VAULT, robot: 'c0' }]);
+  expect(document.querySelector('[data-section="robot.machine"]')).toBeNull();
   // this Mac has a clone at the same path, and the button opens the worker's
   const repo = (rootId: string): ResourceSource => ({ rootId, root: '/home/ada/svall', name: 'svall', tier: 'repo', islandIds: [], robotIds: ['c0'], groups: [] });
   act(() => store.getState().setResources([repo('r:/home/ada/svall'), repo(farRootId(VAULT, '/home/ada/svall'))]));

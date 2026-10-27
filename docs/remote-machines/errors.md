@@ -27,8 +27,11 @@ tries five times, waiting up to 8 seconds between tries. The others wait for the
 
 `svall host add`, `upgrade` (and `upgrade --rollback`) and `remove` run their steps in order and stop at the first that
 fails. Each step's `action` is something for you to do. An add or an upgrade ends in one line, "<name> is ready. Robots
-you move there keep working while this Mac sleeps." or "<name> needs <N> things before robots can move there:" with
-the list; the others say what they did or what is still to do. Each exits 1 unless nothing is left.
+you move there keep working while this Mac sleeps." or "<name> has <N> things to fix:" with the list, then any parts
+of [your agent setup](setup.md#your-agent-setup-on-the-machine) that will not work there yet; the others say what they
+did or what is still to do. Each exits 1 while something is left to fix; the agent setup never stops a robot moving
+there, so it leaves the exit at 0. The JSON result's `actions` are the things to fix, and its `setup` the
+`mirror:<key>` steps of what will not work there.
 
 ### Step statuses
 
@@ -71,13 +74,14 @@ the list; the others say what they did or what is still to do. Each exits 1 unle
 | `uninstall` | remove | Runs `svall uninstall` on the machine, once it has checked the ssh destination reaches the machine the registry names. Its fleets and their files stay there. With `--forget` it is skipped and the machine is left untouched. | A failure names the exit and what `svall uninstall` said: `ssh <destination>` and run it to see what stops it. `svall host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
 | `keys` | remove | What the `svall uninstall` there did with the keys [your agent setup](setup.md#your-agent-setup-on-the-machine) copied to the machine: each file it took them out of, each it could not read or change, and each copy it left as it changed there since. Listed only when that uninstall named one, after `registry`. | A warning: `ssh <destination>` and take the keys the mirror copied out of the files it names, or delete those files. |
 
-After `registry`, `host add` lists each row of [your agent setup there](setup.md#your-agent-setup-on-the-machine) as a
-step `mirror:<key>`: a server or file whose keys you tick (`claude:mcp:<name>`, `claude:settings`, `codex:config`,
+After `registry`, `host add` and, after `enrol`, `host upgrade` list each row of [your agent setup
+there](setup.md#your-agent-setup-on-the-machine) as a step `mirror:<key>`: a server or file whose keys you tick (`claude:mcp:<name>`, `claude:settings`, `codex:config`,
 `opencode:config`, `claude:plugin:<name>`, `claude:marketplace:<name>`, `claude:agent:<file>`), `var:<VAR>`,
 `oauth:<item>`, `runtime:<command>`,
 `maconly:<agent>:<name>`, `unreadable:<path>`, or `unchecked` when this Mac's daemon could not be asked. None fails; a
 warning's action says what to do: tick the box (`svall host consent`), set the variable there (`svall worker env`),
-log in, install the program, or check the machine again.
+log in, install the program, or check the machine again. A row of something that will not work there yet carries a
+`gap`: its `name` and `what` it lacks, as the list at the end of the run shows them.
 
 ### Doctor checks
 
@@ -117,6 +121,6 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `space` | host doctor | Free space in the home. |
 | `home` | host doctor | The machine's home is still the one the registry records. |
 
-`host doctor` ends with the same `mirror:<key>` rows as `host add` lists ([above](#steps)); each warning with an
-action counts as one thing left before robots can move there, and the rows that ask to check the machine again count
-once.
+`host doctor` ends with the same `mirror:<key>` rows as `host add` lists ([above](#steps)). They are never things to
+fix: each row that names a `gap` is a part of your agent setup that will not work there yet, listed after the things
+to fix with its name, what it lacks and the one thing to do.

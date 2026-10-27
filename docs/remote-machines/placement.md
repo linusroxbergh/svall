@@ -32,7 +32,20 @@ svall robot move <id> --machine local          # back to this Mac
 ```
 
 It prints the sheet's line, then the move's id once the robot is the destination's. A refused move exits 2 with the
-reason and the action. `--interrupt-after <duration>` (such as `30s`, or `0`) interrupts what still runs after that
+reason and the action. To a worker, it lists between them what of the robot's [agent
+setup](setup.md#your-agent-setup-on-the-machine) will not work there yet: its agent's servers (yours, its plugins' and
+those of the project it works in), its agent's config file, and the variables, logins and programs those need, each
+with the one thing to do, as `svall host doctor` lists them; `--json` gives them as `setup`:
+
+```
+2 parts of kanban's agent setup will not work on linus-vault yet:
+  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent linus-vault claude:mcp:linear on
+  notion  not logged in                         → ssh -L 3118:localhost:3118 ada@vault, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp
+```
+
+In the app, once the robot lands a toast says "kanban is on linus-vault. 2 parts of its agent setup will not work
+there.", and **Show** opens its card, whose **On linus-vault** section lists them with **Copy keys** or **Open
+terminal** while it runs there. `--interrupt-after <duration>` (such as `30s`, or `0`) interrupts what still runs after that
 long, `--carry <file>` takes a credential file such as `.env` along, `--own-worktree` gives a robot on a main checkout
 its own worktree (check 3), and `--retry` runs the robot's current move again from the step it stopped at.
 

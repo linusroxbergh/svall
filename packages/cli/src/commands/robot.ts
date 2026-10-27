@@ -9,6 +9,7 @@ import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
+import { robotSetupText, type There } from './host.js';
 import { int, parseDuration, point } from './parse.js';
 import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 
@@ -42,7 +43,8 @@ function refuseMove(r: Refusal, json: boolean): void {
   process.exitCode = 2;
 }
 
-export function robotCommands(connect: () => Promise<Client>, json: () => boolean): Command {
+/** `there`: how a machine is reached from this Mac's terminal, for the commands a move's list names. */
+export function robotCommands(connect: () => Promise<Client>, json: () => boolean, there: (machine: string) => There): Command {
   const cmd = new Command('robot').alias('char').description('manage robots');
 
   cmd.command('list').description("list every robot, or one island's").option('--island <id>').action((o: { island?: string }) => withFleet(connect, async (_c, state) => {
@@ -141,7 +143,15 @@ Handing work to a new robot:
           refuseMove(refusal.data, json());
           return;
         }
-        printResult({ ok: true, sheet: checked.sheet, moveId }, json(), () => moveId);
+        // what of its agent setup will not work where it lands, which a daemon that cannot list it, as a worker's, leaves
+        // unsaid; the way back to this Mac takes it all along
+        const rows = to === LOCAL ? [] : (await c.call('machines.setup', { machine, robot: robot.id }).catch(() => ({ rows: [] }))).rows;
+        const setup = rows.filter((r) => r.gap);
+        if (setup.length && !json()) {
+          const name = state.machines![machine].name;
+          process.stdout.write(`${robotSetupText(setup, robot.name, name, there(name))}\n`);
+        }
+        printResult({ ok: true, sheet: checked.sheet, moveId, ...(setup.length > 0 && { setup }) }, json(), () => moveId);
       });
     });
 

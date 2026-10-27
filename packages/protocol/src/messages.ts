@@ -263,9 +263,9 @@ export const methods = {
   },
   // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran
   'machines.refresh': { params: z.object({}), result: z.object({}) },
-  // the setup rows of a machine's agent configuration, once its link is up or waitMs has passed
+  // the setup rows of a machine's agent configuration, once its link is up or waitMs has passed; with robot, those its agents use
   'machines.setup': {
-    params: z.object({ machine: MachineId, waitMs: z.number().int().min(0).max(60_000).optional() }),
+    params: z.object({ machine: MachineId, waitMs: z.number().int().min(0).max(60_000).optional(), robot: z.string().optional() }),
     result: z.object({ rows: z.array(SetupRow) }),
   },
   // ticks `fields` of `item` for `machine`, or unticks all of them, pushes the change there and answers the setup rows

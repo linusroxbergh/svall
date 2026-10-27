@@ -20,7 +20,7 @@ this pass covers what only the app and real machines show. What each step should
 1. Settings → Machines → **Add machine**. Name the machine `studio` and give its ssh destination. Choose **Add machine**.
    - Each step appears as it finishes, grouped Reaching the machine, What the machine needs, Svall on the machine,
      Running Svall there, Agent CLIs, Trying it out and This Mac's list of machines. A new host key is asked in a dialog.
-   - A fresh account ends with "studio needs N things before robots can move there", such as an agent not logged in.
+   - A fresh account ends with "studio has N things to fix", such as an agent not logged in.
 2. Choose **Open terminal** on a row that offers it, such as an agent not logged in: a terminal on `studio` opens in
    the panel with the command typed at the prompt and not run. Press Return and finish the login; ⌘-click its link
    opens your browser. For `codex login` the sign-in comes back through port 1455; with another `codex login` holding

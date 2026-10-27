@@ -288,13 +288,13 @@ function hostAdd(a) {
   check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
-  // the JSON actions are the three installs and the mirror's check, what the text line "fresh needs 4 things ..." counts; gh
-  // is advice, offered in the terminal with no thing to do
+  // the JSON actions are the three installs the text line "fresh has 3 things to fix" counts, and its setup the mirror not
+  // yet checked, which will not work there yet; gh is advice, offered in the terminal with no thing to do
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
     && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',
-      'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup',
-      'svall host doctor fresh once Svall is open']), () => brief(result));
+      'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup'])
+    && JSON.stringify(result.setup?.map((s) => s.step)) === JSON.stringify(['mirror:unchecked']), () => brief(result));
   check('host add gh', at('gh')?.status === 'warn' && at('gh').run === 'sudo apt install gh' && at('gh').action === undefined, () => brief(at('gh')));
 }
 

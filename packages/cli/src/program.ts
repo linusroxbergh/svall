@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { Command } from 'commander';
+import { configDir } from '@svall/svalld/machine';
 import { SHIM } from '@svall/svalld/profile';
 import { agentCommand } from './commands/agent.js';
 import { browserCommands } from './commands/browser.js';
@@ -7,7 +8,7 @@ import { retroCommands } from './commands/retro.js';
 import { robotCommands } from './commands/robot.js';
 import { connectionInfoCommand } from './commands/connection.js';
 import { doctorCommand } from './commands/doctor.js';
-import { hostCommands } from './commands/host.js';
+import { hostCommands, thereOf } from './commands/host.js';
 import { islandCommands } from './commands/island.js';
 import { mobileCommand } from './commands/mobile.js';
 import { scribeCommands } from './commands/scribe.js';
@@ -76,7 +77,7 @@ export function buildProgram(): Command {
   });
   program.addCommand(statusCommand(connect, json, home));
   program.addCommand(islandCommands(connect, json));
-  program.addCommand(robotCommands(connect, json));
+  program.addCommand(robotCommands(connect, json, (name) => thereOf(name, configDir(), target())));
   program.addCommand(scribeCommands(connect, json));
   program.addCommand(retroCommands(connect, json, home));
   program.addCommand(browserCommands(connect, json));

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { ApiError, PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -12,9 +12,10 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowStep, thingOf, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowStep, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
+import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
 import { MARK, tickMark, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
@@ -83,24 +84,82 @@ export function doneLine(op: Op, name: string, o: { forget?: boolean } = {}): st
   }
 }
 
-// the one line a machine's setup ends in: ready, or how many things are left before robots can move there
+// a machine's setup ends in one line: ready, or the things to fix there, then what of your agent setup will not work there yet
 const readyLine = (name: string): string => `${name} is ready. Robots you move there keep working while this Mac sleeps.`;
-const needsLine = (name: string, n: number): string => `${name} needs ${plural(n, 'thing')} before robots can move there`;
+const fixLine = (name: string, n: number): string => `${name} has ${plural(n, 'thing')} to fix`;
+const parts = (n: number, whose = 'your'): string => `${plural(n, 'part')} of ${whose} agent setup`;
+// the list under its line: after ready, or after the things to fix there
+const withList = (list: string[], name: string, ready: boolean): string[] =>
+  (!list.length ? [] : [ready ? `${name} is ready. ${parts(list.length)} will not work there yet:` : `${parts(list.length)} will not work on ${name} yet:`, ...list]);
 
-/** The last line a run prints: what it did, or what is still to do; an add or an upgrade ends in the setup's one line. */
-export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forget?: boolean } = {}): string {
-  const setup = op === 'add' || op === 'upgrade';
-  if (o.result === 'ready') return setup ? readyLine(name) : doneLine(op, name, flags);
-  const left = setup ? `${needsLine(name, o.actions.length)}:` : 'still to do:';
-  return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`)].join('\n');
+/** How a line of the list reaches the machine from this Mac's terminal: its ssh destination, and the svall that names this fleet. */
+export type There = { ssh: string; svall: string };
+
+/** A mirror row by its key, as svalld words it, or as a step or a check carries it. */
+type Gapped = Pick<SetupRow, 'key' | 'gap' | 'tick' | 'run' | 'forward' | 'action'>;
+const MIRROR = 'mirror:';
+const asRow = <T extends { step: string } | { name: string }>(e: T): T & { key: string } => ({ ...e, key: ('step' in e ? e.step : e.name).slice(MIRROR.length) });
+
+/** The one thing to do about a row from this Mac's terminal: tick it from here, or run its command there; Claude Code signs in with /mcp. */
+function gapAction(r: Gapped, machine: string, there: There): string | undefined {
+  if (r.tick && !r.tick.on) return `${there.svall} host consent ${machine} ${r.tick.item} on`;
+  if (r.run) return `ssh ${r.forward ? `-L ${r.forward}:localhost:${r.forward} ` : ''}${there.ssh}, then ${r.run}${r.key.startsWith('oauth:claude:') ? ', /mcp' : ''}`;
+  if (r.action && /^check .+ again$/.test(r.action)) return `${there.svall} host doctor ${machine}`;
+  return r.action;
 }
 
-/** The last line of a check: ready, or the things left before robots can move there, each failed check and each warning's action once, as a run counts them. */
-export function doctorVerdict(checks: Check[], name: string): string {
-  const todo = checks.filter((c) => c.status === 'fail' || (c.status === 'warn' && c.action));
-  const thing = (c: Check): string => (c.action === undefined ? c.name : thingOf(c.name, c.action));
+/** What will not work on `machine` yet, a line each: its name, what it lacks, and the one thing to do from here. */
+export function setupList(rows: Gapped[], machine: string, there: There): string[] {
+  const listed = rows.flatMap((r) => (r.gap ? [{ ...r.gap, action: gapAction(r, machine, there) }] : []));
+  const [name, what] = [Math.max(0, ...listed.map((l) => l.name.length)), Math.max(0, ...listed.map((l) => l.what.length))];
+  return listed.map((l) => `  ${l.name.padEnd(name)}  ${l.action ? `${l.what.padEnd(what)}  → ${l.action}` : l.what}`);
+}
+
+/** The last line a run prints: what it did, or what is still to do; an add or an upgrade ends in the setup's lines. */
+export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forget?: boolean; there?: There } = {}): string {
+  const setup = op === 'add' || op === 'upgrade';
+  const rows = (o.setup ?? []).map(asRow);
+  const list = setup && rows.length ? setupList(rows, name, flags.there ?? { ssh: name, svall: 'svall' }) : [];
+  if (o.result === 'ready') return !setup ? doneLine(op, name, flags) : list.length ? withList(list, name, true).join('\n') : readyLine(name);
+  const left = setup ? `${fixLine(name, o.actions.length)}:` : 'still to do:';
+  return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`), ...withList(list, name, false)].join('\n');
+}
+
+/** The end of a check: ready, or the things to fix there, each failed check and each warning's action once, then what of the agent setup will not work there. */
+export function doctorVerdict(checks: Check[], name: string, there: There): string {
+  const todo = checks.filter((c) => !c.name.startsWith(MIRROR) && (c.status === 'fail' || (c.status === 'warn' && c.action)));
+  // two checks can name the same thing to do
+  const thing = (c: Check): string => c.action ?? c.name;
   const left = todo.filter((c, i) => todo.findIndex((o) => thing(o) === thing(c)) === i);
-  return left.length ? `${needsLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}` : readyLine(name);
+  const list = setupList(checks.filter((c) => c.name.startsWith(MIRROR)).map(asRow), name, there);
+  if (!left.length) return list.length ? withList(list, name, true).join('\n') : readyLine(name);
+  return [`${fixLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}`, ...withList(list, name, false)].join('\n');
+}
+
+/** What of a robot's agent setup will not work on `machine` yet, as a move prints its rows that name a gap. */
+export function robotSetupText(rows: SetupRow[], robot: string, machine: string, there: There): string {
+  return [`${parts(rows.length, `${robot}'s`)} will not work on ${machine} yet:`, ...setupList(rows, machine, there)].join('\n');
+}
+
+type SetUpIo = { ask(q: string): Promise<string>; write(text: string): void; consent: HostDeps['consent'] };
+
+/** Asks to set up what will not work on the machine yet: each key to copy there, one at a time, then the commands to run there. */
+export async function setUpNow(steps: StepEvent[], o: { name: string; machine: MachineId; there: There }, io: SetUpIo): Promise<void> {
+  if (!/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
+  const rows = steps.map(asRow);
+  for (const r of rows.filter((x) => x.tick && !x.tick.on)) {
+    const { item, fields, preview } = r.tick!;
+    if (!/^y(es)?$/i.test((await io.ask(`${r.action![0].toUpperCase()}${r.action!.slice(1)}? ${preview.join(', ')} [y/N] `)).trim())) continue;
+    try {
+      const now = (await io.consent(o.machine, item, fields, true)).find((x) => x.key === r.key);
+      io.write(`  ${now?.status === 'ok' ? MARK.ok : MARK.warn} ${r.gap!.name}: ${now?.detail ?? 'ticked'}\n`);
+    } catch (e) {
+      io.write(`  ${MARK.warn} ${r.gap!.name}: ${(e as Error).message}\n`);
+    }
+  }
+  const runs = rows.filter((x) => x.run).map((x) => gapAction(x, o.name, o.there)!);
+  if (runs.length) io.write([`Run these on ${o.name}:`, ...runs.map((a) => `  ${a}`), ''].join('\n'));
+  io.write(`${o.there.svall} host doctor ${o.name} checks again once they are done.\n`);
 }
 
 const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
@@ -142,21 +201,36 @@ export function machineRows(registry: MachineRegistry, checks: Record<string, La
 const checkedLine = (c: LastCheck): string =>
   `${new Date(c.at).toISOString().slice(0, 16).replace('T', ' ')}: ${c.failed ? `${plural(c.failed, 'check')} failed` : c.warned ? plural(c.warned, 'warning') : 'ready'}`;
 
-/** Either one NDJSON object per step and a final result, or the same events as doctor-style lines. */
-function reporter(json: boolean, last: (o: HostOutcome) => string): { emit: (e: StepEvent) => void; finish: (o: HostOutcome) => void } {
+/** Either one NDJSON object per step and a final result, or the same events as doctor-style lines, the agent setup rows left to the list at the end. */
+export function reporter(json: boolean, last: (o: HostOutcome) => string): { emit: (e: StepEvent) => void; finish: (o: HostOutcome) => void } {
   const write = (v: unknown) => process.stdout.write(`${JSON.stringify(v)}\n`);
   if (json) return { emit: write, finish: write };
   return {
-    emit: (e) => { if (e.status !== 'start') process.stdout.write(`${stepLine(e)}\n`); },
+    emit: (e) => { if (e.status !== 'start' && !e.step.startsWith(MIRROR)) process.stdout.write(`${stepLine(e)}\n`); },
     finish: (o) => { process.stdout.write(`${last(o)}\n`); },
   };
 }
 
-async function runFlow(json: boolean, last: (o: HostOutcome) => string, run: (d: HostDeps) => Promise<HostOutcome>, dir: string, fleet: Target): Promise<void> {
+// a terminal of the user's own can be asked whether to set up the machine's agent setup now
+const askable = (json: boolean): boolean => !json && process.stdin.isTTY === true && process.stdout.isTTY === true;
+
+/** How the machine `name` in the registry at `dir` is reached from this Mac's terminal, and the svall that names `fleet` there. */
+export const thereOf = (name: string, dir: string, fleet: Target): There =>
+  ({ ssh: MachineRegistry.load(dir).get(name)?.record.ssh ?? name, svall: farProfile(fleet) ? `svall -p ${farProfile(fleet)}` : 'svall' });
+
+/** Runs a host flow; one that leaves the machine `after` in the registry with agent setup left asks to set it up now. */
+async function runFlow(
+  json: boolean, last: (o: HostOutcome) => string, run: (d: HostDeps) => Promise<HostOutcome>, dir: string, fleet: Target, after?: { name: string; there: There },
+): Promise<void> {
   const out = reporter(json, last);
-  const outcome = await run(realDeps(out.emit, dir, fleet));
+  const d = realDeps(out.emit, dir, fleet);
+  const outcome = await run(d);
   out.finish(outcome);
   if (outcome.result !== 'ready') process.exitCode = 1;
+  const machine = after && d.registry.get(after.name)?.id;
+  if (outcome.setup && machine && askable(json)) {
+    await setUpNow(outcome.setup, { name: after.name, machine, there: after.there }, { ask, write: (t) => process.stdout.write(t), consent: d.consent });
+  }
 }
 
 /** `target`: the fleet a machine added or upgraded becomes a worker of. */
@@ -171,8 +245,10 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .requiredOption('--ssh <destination>', 'the ssh destination to reach it at')
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean }) =>
-      runFlow(json(), (out) => outcomeText(out, 'add', name), (d) => addHost({ name, ...o }, d), dir(), target()));
+    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean }) => {
+      const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
+      return runFlow(json(), (out) => outcomeText(out, 'add', name, { there }), (d) => addHost({ name, ...o }, d), dir(), target(), { name, there });
+    });
 
   host.command('list')
     .description('every machine in the registry and its last check')
@@ -194,7 +270,8 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
         throw e;
       });
       if (entry) recordCheck(dir(), entry.id, report);
-      printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks), doctorVerdict(report.checks, name)].join('\n'));
+      const there = thereOf(name, dir(), target());
+      printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks.filter((c) => !c.name.startsWith(MIRROR))), doctorVerdict(report.checks, name, there)].join('\n'));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
     });
 
@@ -225,7 +302,10 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .option('--rollback [release]', 'put the machine back on this release, or on the one before, and check its daemons answer from it')
     .action((name: string, o: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string }) => {
-      if (o.rollback === undefined) return runFlow(json(), (out) => outcomeText(out, 'upgrade', name), (d) => upgradeHost(name, o, d), dir(), target());
+      if (o.rollback === undefined) {
+        const there = thereOf(name, dir(), target());
+        return runFlow(json(), (out) => outcomeText(out, 'upgrade', name, { there }), (d) => upgradeHost(name, o, d), dir(), target(), { name, there });
+      }
       if (o.release !== undefined || o.allowUnsigned) throw new Error('--rollback installs nothing, so it takes no --release or --allow-unsigned');
       const to = typeof o.rollback === 'string' ? o.rollback : undefined;
       return runFlow(json(), (out) => outcomeText(out, 'rollback', name), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir(), target());

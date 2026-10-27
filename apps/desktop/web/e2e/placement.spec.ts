@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
-import { expect, nativeShell, receive, sent, seed, test, unplace, VAULT, type Svall } from './fixtures.js';
+import type { SetupRow } from '@svall/protocol';
+import { expect, nativeShell, receive, rewrite, sent, seed, test, unplace, VAULT, type Svall } from './fixtures.js';
 
 test.afterEach(async ({ svall }) => { await unplace(svall); });
 
@@ -183,6 +184,48 @@ test('a move runs in its sheet, one line per step as it gets there, and a failur
   await expect(sheet.locator('.acts button')).toHaveText(['Try again']);
   await sheet.getByTestId('move-run-details').locator('summary').click();
   await expect(sheet.getByTestId('move-run-details')).toContainText('move mv_0123456789');
+});
+
+test('a robot that lands on a machine says what of its agent setup will not work there, and its card lists each with its way on', async ({ page, svall }) => {
+  const rows: SetupRow[] = [
+    {
+      key: 'claude:mcp:linear', status: 'warn', detail: 'mirrored without env.LINEAR_API_KEY lin…90', action: "copy linear's keys to linus-vault",
+      tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
+    },
+    {
+      key: 'oauth:claude:mcp:notion', status: 'warn', detail: 'then /mcp and sign in to notion', action: 'log in once on linus-vault', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118,
+      gap: { name: 'notion', what: 'not logged in' },
+    },
+  ];
+  // svalld behind the page, but for machines.setup, which answers as linus-vault's mirror would for this robot
+  const asked: unknown[] = [];
+  await page.routeWebSocket((url) => url.port === String(svall.port), (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw)) as { id?: number; method?: string; params?: unknown };
+      if (m.method !== 'machines.setup') { server.send(raw); return; }
+      asked.push(m.params);
+      ws.send(JSON.stringify({ id: m.id, result: { rows } }));
+    });
+  });
+  const id = await seed(svall, true, (c) => { c.moving = { id: 'mv_0123456789', to: VAULT, phase: 'activate' }; });
+  await fakeShell(page, svall);
+  await svall.open();
+  await expect(page.getByTestId(`kc-${id}`)).toHaveAttribute('data-status', 'moving');
+  await rewrite(svall, (s) => { delete s.robots[id].moving; s.robots[id].machine = VAULT; });
+
+  const toast = page.getByTestId('toast');
+  await expect(toast).toContainText('ada is on linus-vault. 2 parts of its agent setup will not work there.', { timeout: 15_000 });
+  expect(asked).toContainEqual({ machine: VAULT, robot: id });
+  await toast.getByTestId('toast-action').click();
+  const card = page.getByTestId('side-card');
+  await expect(card.getByTestId('sec-fold-robot.machine')).toHaveText('On linus-vault');
+  await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveText('linear keys not copied (env.LINEAR_API_KEY)Copy keys');
+  await card.getByTestId('side-gap-terminal-oauth:claude:mcp:notion').click();
+  await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux' }] });
+  await expect.poll(async () => (await sent(page)).find((m) => m.type === 'term.show' && m.id === 'machine:linus-vault'))
+    .toMatchObject({ machine: { ssh: 'linus@vault', type: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118 } });
 });
 
 test('a placed robot keeps its Resources button', async ({ page, svall }) => {

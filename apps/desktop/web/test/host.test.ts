@@ -88,29 +88,29 @@ describe('the end of a run', () => {
     endRun(steps.reduce((run, s) => applyStep(run, s), beginRun(op, { name: 'box', ...args })), code);
   const ready = 'box is ready. Robots you move there keep working while this Mac sleeps.';
 
-  it('the outcome line reads ready when nothing is left to do, and counts the things otherwise', () => {
+  it('the outcome line reads ready when nothing is left to fix, counts the things to fix otherwise, then the parts of the agent setup that will not work there', () => {
     expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]))).toEqual({ text: ready, done: true });
     expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: ready, done: true });
     expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('codex', 'skip'), step('release', 'ok')]))).toEqual({ text: ready, done: true });
     // each step's action is one thing, and so is each failed step that names none
-    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
+    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box has 1 thing to fix.' });
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })])))
-      .toEqual({ text: 'box needs 2 things before robots can move there.' });
+      .toEqual({ text: 'box has 2 things to fix.' });
     const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
-    expect(outcomeOf(blocked)).toEqual({ text: 'box needs 2 things before robots can move there.' });
-    // each distinct action is one thing, as the CLI's verdict counts them: two rows saying check box again are one
+    expect(outcomeOf(blocked)).toEqual({ text: 'box has 2 things to fix.' });
+    // the agent setup is nothing to fix: a row naming a gap is a part that will not work there, though two read alike, and one that only asks to check again is none
     const again = (key: string) => step(`mirror:${key}`, 'warn', { action: 'check box again', detail: 'not checked: box is not reachable' });
-    const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'),
-      step('mirror:codex:mcp:github', 'warn', { action: "copy github's keys to box" }), step('mirror:opencode:mcp:sentry', 'warn', { action: "copy sentry's keys to box" })]);
-    expect(outcomeOf(mirrored)).toEqual({ text: 'box needs 3 things before robots can move there.' });
-    // a mirror row is its own thing, though two servers' rows read alike
-    const alike = ended('doctor', 0, [step('mirror:claude:mcp:github', 'warn', { action: "copy github's keys to box" }), step('mirror:codex:mcp:github', 'warn', { action: "copy github's keys to box" })]);
-    expect(outcomeOf(alike)).toEqual({ text: 'box needs 2 things before robots can move there.' });
+    const gap = (key: string, name: string) => step(`mirror:${key}`, 'warn', { action: `copy ${name}'s keys to box`, gap: { name, what: 'keys not copied (env.KEY)' } });
+    const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'), gap('claude:mcp:github', 'github'), gap('codex:mcp:github', 'github')]);
+    const parts = 'box is ready. 2 parts of your agent setup will not work there yet.';
+    expect(outcomeOf(mirrored)).toEqual({ text: parts, done: true, setup: 2 });
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), gap('claude:mcp:linear', 'linear')])))
+      .toEqual({ text: 'box is ready. 1 part of your agent setup will not work there yet.', done: true, setup: 1 });
+    expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok'), gap('claude:mcp:linear', 'linear')])))
+      .toEqual({ text: 'box has 1 thing to fix, and 1 part of your agent setup will not work there yet.', setup: 1 });
     // one stopped part way said nothing it left to do
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
-    // an add in the list that exited 1 for the things it left is ready once ticks there leave none
-    expect(outcomeOf(ended('add', 1, [step('ssh', 'ok'), step('registry', 'ok'), step('mirror:claude:mcp:linear', 'ok')]))).toEqual({ text: ready, done: true });
-    expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
+    expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box has 1 thing to fix.' });
   });
 
   it('offers Roll back only when the rollback after a failed upgrade failed too', () => {

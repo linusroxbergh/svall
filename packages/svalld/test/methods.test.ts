@@ -20,7 +20,7 @@ import { Workspace } from '../src/workspace/workspace.js';
 import { TerminalHub } from '../src/terminals.js';
 import { hasGit } from './git-fixture.js';
 import { cleanHomes, makeHome } from './helpers.js';
-import { farHome, macHome, mirroredFiles, statsOf } from './placement/mirror-homes.js';
+import { editJson, farHome, macHome, mirroredFiles, statsOf } from './placement/mirror-homes.js';
 import { moveWorld, type MoveWorld } from './placement/move-world.js';
 import { W, island, placed, world } from './placement/world.js';
 
@@ -325,6 +325,31 @@ describe('machines.setup and machines.consent', () => {
     const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 5_000 });
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN' });
+  });
+
+  it('machines.setup for a robot answers its agent\'s rows, a project\'s by its folder read under this Mac\'s home where it runs on the worker; an unknown robot is not_found', async () => {
+    const mac = macHome();
+    const app = path.join(mac.homedir, 'code/app');
+    editJson(mac.claudeJson, (j) => { j.projects[app].mcpServers.db.env = { DB_KEY: 'db_key_1234567890' }; });
+    const agent = (kind: 'claude' | 'codex') => ({ kind, sessionId: 's', status: 'idle' as const, lastActivityAt: 0 });
+    w = world({
+      mirror: { home: mac, worker: farHome() }, connect: async () => { throw new Error('connection refused'); },
+      home: {
+        machines: { [W]: { name: 'w1', reachable: false, since: 0, home: '/home/ada' } },
+        robots: {
+          c_there: placed({ id: 'c_there', cwd: '/home/ada/code/app/web', agent: agent('claude') }),
+          c_here: placed({ id: 'c_here', machine: undefined, placement: undefined, cwd: path.join(mac.homedir, 'code/other'), agent: agent('claude') }),
+          c_codex: placed({ id: 'c_codex', cwd: '/home/ada/code/app', agent: agent('codex') }),
+        },
+      },
+    });
+    const keys = async (robot: string) => (await call(w.home.ctx, 'machines.setup', { machine: W, robot })).rows.map((r) => r.key);
+    const db = `claude:mcp:db@${app}`;
+    expect(await keys('c_there')).toContain(db);
+    expect(await keys('c_there')).not.toContain('codex:mcp:github');
+    expect(await keys('c_here')).not.toContain(db);
+    expect(await keys('c_codex')).toEqual(['codex:mcp:github', 'codex:config']);
+    expect(await dispatch({ id: 1, method: 'machines.setup', params: { machine: W, robot: 'c_gone' } }, w.home.ctx)).toEqual({ id: 1, error: { code: 'not_found', message: 'no robot c_gone' } });
   });
 
   it('machines.setup on a worker answers not_on_worker, machines.consent from a worker is refused by the home, and a phone is refused both', async () => {

@@ -110,6 +110,12 @@ final class HostProcess {
         let preview: [String]
     }
 
+    /// What will not work on the machine yet, by name.
+    struct Gap: Decodable, Equatable {
+        let name: String
+        let what: String
+    }
+
     struct Step: Decodable, Equatable {
         let step: String, status: String
         let detail: String?, action: String?
@@ -118,11 +124,12 @@ final class HostProcess {
         // the port a login on the machine is forwarded through, and the consent a row asks for
         var forward: Int? = nil
         var tick: Tick? = nil
+        var gap: Gap? = nil
     }
 
     /// What `svall host doctor --json` prints once it is done: each check becomes a step.
     private struct Report: Decodable {
-        struct Check: Decodable { let name: String, status: String, detail: String?, action: String?, run: String?, forward: Int?, tick: Tick? }
+        struct Check: Decodable { let name: String, status: String, detail: String?, action: String?, run: String?, forward: Int?, tick: Tick?, gap: Gap? }
         let checks: [Check]
     }
 
@@ -169,7 +176,7 @@ final class HostProcess {
     /// command itself said.
     private func finish(_ status: Int32, said: [String]) {
         if report, let report = try? JSONDecoder().decode(Report.self, from: Data(printed.joined(separator: "\n").utf8)) {
-            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: check.action, run: check.run, forward: check.forward, tick: check.tick)) }
+            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: check.action, run: check.run, forward: check.forward, tick: check.tick, gap: check.gap)) }
         }
         if status != 0, !sawFailure, !said.isEmpty {
             onStep(Step(step: "svall", status: "fail", detail: said.joined(separator: "\n"), action: nil))

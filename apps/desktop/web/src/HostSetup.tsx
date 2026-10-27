@@ -67,7 +67,7 @@ export function MachineActions({ name }: { name: string }) {
   const item = (fn: () => void) => () => { close(); fn(); };
   return (
     <span className="machine-acts" ref={box}>
-      <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs before robots can move there, checked now" onClick={() => run('doctor')}>Check</button>
+      <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
       <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
       {open && (
         <div ref={menu} className="machine-menu popover" role="menu" style={place}>
@@ -87,8 +87,9 @@ export function MachineActions({ name }: { name: string }) {
   );
 }
 
-// the footer: the run's one line, then Stop while it runs, and Done, or Check again on a machine in the registry while something is left
-function Outcome({ run }: { run: HostRun }) {
+// the footer: the run's one line, then Stop while it runs, Set them up now while parts of the agent setup will not work
+// there and the page shows every step, and Done, or Check again on a machine in the registry while something is left to fix
+function Outcome({ run, narrow }: { run: HostRun; narrow?: () => void }) {
   const known = useApp((s) => !!s.machines?.some((m) => m.name === run.args.name));
   if (run.running) {
     return (
@@ -110,6 +111,7 @@ function Outcome({ run }: { run: HostRun }) {
           <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
             onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
         )}
+        {o.setup && narrow && <button className="btn" data-testid="host-set-up" onClick={narrow}>Set them up now</button>}
         {o.done || !known
           ? <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
           : <button className="btn" data-testid="host-check-again" onClick={() => startHost('doctor', { name })}>Check again</button>}
@@ -175,11 +177,14 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   );
 }
 
-// terminal: opens a terminal on the machine with a step's command typed, where the panel knows how to reach it
-function Checklist({ run, terminal }: { run: HostRun; terminal?: Terminal }) {
+// terminal: opens a terminal on the machine with a step's command typed, where the panel knows how to reach it; wide, while
+// the page shows only the agent setup rows of what will not work there and those with a tick, which keep it once it does
+function Checklist({ run, terminal, wide }: { run: HostRun; terminal?: Terminal; wide?: () => void }) {
+  const steps = wide ? run.steps.filter((s) => s.step.startsWith('mirror:') && (s.gap || s.tick)) : run.steps;
   return (
     <div className="host-steps" data-testid="host-steps">
-      {groupSteps(run.steps).map((group) => (
+      {wide && <div className="acts"><button className="btn set-open" data-testid="host-show-all" onClick={wide}>Show every step</button></div>}
+      {groupSteps(steps).map((group) => (
         <div key={group.phase} className="host-phase">
           <div className="kicker" data-testid="host-phase">{group.label}</div>
           {group.rows.map((row, at) => <Row key={`${row.step}-${at}`} row={row} run={run} terminal={terminal} />)}
@@ -226,6 +231,7 @@ export function HostSetup() {
   const machine = useApp((s) => s.hostMachine);
   const known = useApp((s) => !!s.machines?.some((m) => m.name === s.hostMachine));
   const terminal = useApp((s) => s.hostTerminal);
+  const narrow = useApp((s) => !!s.hostNarrow);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
   const shut = useRef<HTMLButtonElement>(null);
@@ -288,11 +294,14 @@ export function HostSetup() {
                   </div>
                 </div>
               )}
-              {shown && <Checklist run={shown} terminal={machine && ssh ? (run, forward) => app.store.getState().openHostTerminal(machine, run, forward) : undefined} />}
+              {shown && (
+                <Checklist run={shown} terminal={machine && ssh ? (run, forward) => app.store.getState().openHostTerminal(machine, run, forward) : undefined}
+                  wide={narrow ? () => app.store.getState().narrowHost(false) : undefined} />
+              )}
             </>
           )}
         </div>
-        {!term && shown && <Outcome run={shown} />}
+        {!term && shown && <Outcome run={shown} narrow={narrow ? undefined : () => app.store.getState().narrowHost(true)} />}
       </div>
     </div>
   );

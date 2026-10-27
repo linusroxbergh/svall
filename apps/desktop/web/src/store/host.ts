@@ -16,6 +16,8 @@ export type HostState = {
   hostConfirm?: HostConfirm;
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there
   hostTerminal?: { run?: string; forward?: number };
+  // the panel shows only the agent setup rows of what will not work on the machine, until the panel closes or shows every step
+  hostNarrow?: boolean;
   // the registry as the shell last read it, and why it could not
   machines?: MachineRow[];
   machinesError?: string;
@@ -31,6 +33,7 @@ export type HostActions = {
   // the mirror's rows as a tick left them, in place of the run's own
   hostRows(rows: HostStep[]): void;
   confirmHost(ask?: HostConfirm): void;
+  narrowHost(narrow: boolean): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
 
@@ -40,9 +43,13 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   hostMachine: undefined,
   hostConfirm: undefined,
   hostTerminal: undefined,
+  hostNarrow: undefined,
   machines: undefined,
   machinesError: undefined,
-  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined }; }),
+  toggleHost: (open, machine) => set((s) => {
+    const next = open ?? !s.hostOpen;
+    return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined, hostNarrow: undefined };
+  }),
   openHostTerminal: (machine, run, forward) => set({
     hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run, ...(forward !== undefined && { forward }) } : {},
   }),
@@ -54,5 +61,6 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
   hostRows: (rows) => set((s) => (s.host ? { host: replaceRows(s.host, rows, machineNames(s.machines)) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
+  narrowHost: (narrow) => set({ hostNarrow: narrow || undefined }),
   setMachines: (machines, machinesError) => set({ machines, machinesError }),
 });

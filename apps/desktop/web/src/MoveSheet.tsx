@@ -8,10 +8,10 @@ import { machineName } from './placement.js';
 
 const store = () => app.store.getState();
 
-/** A terminal on a worker in the Machines panel, `run` typed at its prompt; the registry it reads names the way there. */
-export function terminalOn(machine: string, run?: string): void {
+/** A terminal on a worker in the Machines panel, `run` typed at its prompt, `forward` its login's port; the registry it reads names the way there. */
+export function terminalOn(machine: string, run?: string, forward?: number): void {
   app.bridge.send({ type: 'host.list' });
-  store().openHostTerminal(machine, run);
+  store().openHostTerminal(machine, run, forward);
 }
 
 type Interrupt = keyof typeof INTERRUPT_ACTIONS;

@@ -40,6 +40,7 @@ const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   ...(event.run ? { run: event.run } : {}),
   ...(event.forward ? { forward: event.forward } : {}),
   ...(event.tick ? { tick: event.tick } : {}),
+  ...(event.gap ? { gap: event.gap } : {}),
 });
 
 /** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */
@@ -152,26 +153,30 @@ export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove',
 };
 
-/** How a finished run ends: its one line, whether nothing is left (`done`), and the one step the panel offers next. */
-export type RunOutcome = { text: string; done?: true; next?: 'rollback' };
+/**
+ * How a finished run ends: its one line, whether nothing is left to fix (`done`), the one step the panel offers next, and
+ * how many parts of the agent setup will not work on the machine yet (`setup`).
+ */
+export type RunOutcome = { text: string; done?: true; next?: 'rollback'; setup?: number };
 
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-// what a step leaves to do, as the CLI counts things: its action, or the failed step that names none; a mirror row by its
-// key, as two servers' rows can read alike, unless it only asks to check again
-const thingOf = (s: HostStep): string => (!s.action || (s.step.startsWith(MIRROR) && !/^check .+ again$/.test(s.action)) ? s.step : s.action);
-const thingsLeft = (run: HostRun): number => new Set(run.steps.filter((s) => s.action || s.status === 'fail').map(thingOf)).size;
+// what a step leaves to fix, as the CLI counts things: its action, or the failed step that names none; the agent setup is
+// never a thing to fix
+const thingsLeft = (run: HostRun): number =>
+  new Set(run.steps.filter((s) => !s.step.startsWith(MIRROR) && (s.action || s.status === 'fail')).map((s) => s.action ?? s.step)).size;
 
 export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
   const left = thingsLeft(run);
+  // the mirror rows of what will not work on the machine yet
+  const setup = run.steps.filter((s) => s.step.startsWith(MIRROR) && s.gap).length;
+  const parts = `${plural(setup, 'part')} of your agent setup will not work there yet.`;
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
-  // an add that put the machine in the list and failed nowhere exits 1 for the things it left, which ticks there may settle
-  const added = run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok') && !run.steps.some((s) => s.status === 'fail');
   if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
-    if (left) return { text: `${name} needs ${plural(left, 'thing')} before robots can move there.`, ...rollback };
-    if (run.code === 0 || added) return { text: `${name} is ready. Robots you move there keep working while this Mac sleeps.`, done: true };
+    if (left) return { text: `${name} has ${plural(left, 'thing')} to fix${setup ? `, and ${parts}` : '.'}`, ...rollback, ...(setup > 0 && { setup }) };
+    if (run.code === 0) return { text: `${name} is ready. ${setup ? parts : 'Robots you move there keep working while this Mac sleeps.'}`, done: true, ...(setup > 0 && { setup }) };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };

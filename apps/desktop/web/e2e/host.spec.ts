@@ -61,7 +61,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(page.getByTestId('host-step-probe')).not.toContainText('s3cr3t');
   // steps read as plain words, and the run ends in one line counting what is left to do
   await expect(page.getByTestId('host-step-master')).toContainText('Connection');
-  await expect(page.getByTestId('host-outcome')).toContainText('studio needs 4 things before robots can move there.');
+  await expect(page.getByTestId('host-outcome')).toContainText('studio has 4 things to fix.');
   // a machine not in the registry has nothing to check again
   await expect(page.getByTestId('host-done')).toBeVisible();
 
@@ -105,7 +105,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 1 });
-  await expect(page.getByTestId('host-outcome')).toContainText('studio needs 1 thing before robots can move there.');
+  await expect(page.getByTestId('host-outcome')).toContainText('studio has 1 thing to fix.');
   await page.getByTestId('host-check-again').click();
   expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
@@ -122,7 +122,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'install', status: 'fail', detail: 'svall setup exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
-  await expect(page.getByTestId('host-outcome')).toContainText('studio needs 1 thing before robots can move there.');
+  await expect(page.getByTestId('host-outcome')).toContainText('studio has 1 thing to fix.');
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // one whose own rollback failed too offers the rollback the CLI names
@@ -212,7 +212,7 @@ const STUDIO = { name: 'studio', id: MACHINE, ssh: 'linus@studio', platform: 'li
 const tick = (item: string, field: string, on: boolean) => ({ item, fields: [field], on, preview: [`${field} lin…90`] });
 const unticked = (server: string, agent: string, field: string): HostStep => ({
   step: `mirror:${agent}:mcp:${server}`, status: 'warn', action: `copy ${server}'s keys to studio`, tick: tick(`${agent}:mcp:${server}`, field, false),
-  detail: `mirrored without ${field} lin…90; or set them in ~/.svall/mirror-overrides on studio`,
+  detail: `mirrored without ${field} lin…90; or set them in ~/.svall/mirror-overrides on studio`, gap: { name: server, what: `keys not copied (${field})` },
 });
 // what a check of studio says before its report: every step there passed
 const PASSED: HostStep[] = [
@@ -238,18 +238,24 @@ const doctor = async (page: import('@playwright/test').Page, events: HostStep[],
   await receive(page, { type: 'host.done', op: 'doctor', code });
 };
 
-test('the setup page ends in one of three lines: ready, needs N things (a warn with an action counts), or an operation stopped at a step (remove)', async ({ page, svall }) => {
+test('the setup page ends in one line: ready, parts of the agent setup that will not work there, which it offers to set up now, or an operation stopped at a step (remove)', async ({ page, svall }) => {
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, unticked('linear', 'claude', 'env.LINEAR_API_KEY'), unticked('github', 'codex', 'env.GITHUB_TOKEN')]);
   await expect(panel.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
-  // two servers whose keys are not copied are two things, each with its own sentence and tick
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 2 things before robots can move there.Check again');
+  // two servers whose keys are not copied are two parts, each with its own sentence and tick
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Set them up nowDone');
   await expect(panel.getByTestId('host-action-mirror:claude:mcp:linear')).toHaveText("copy linear's keys to studio");
   await expect(panel.getByTestId('host-action-mirror:codex:mcp:github')).toHaveText("copy github's keys to studio");
   for (const step of ['mirror:claude:mcp:linear', 'mirror:codex:mcp:github']) await expect(panel.getByTestId(`host-tick-${step}`)).not.toBeChecked();
+  // set up now: those rows alone, until every step again
+  await panel.getByTestId('host-set-up').click();
+  await expect(panel.getByTestId('host-phase')).toHaveText(['Your agent setup']);
+  await expect(panel.locator('[data-testid^="host-step-"]')).toHaveCount(2);
+  await panel.getByTestId('host-show-all').click();
+  await expect(panel.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
 
   // a report long enough to scroll keeps the title and the outcome in sight
-  await panel.getByTestId('host-check-again').click();
+  await panel.getByTestId('machine-doctor').click();
   const vars = Array.from({ length: 40 }, (_, i): HostStep => ({ step: `mirror:var:VAR_${i}`, status: 'ok', detail: `VAR_${i} is set on studio` }));
   await doctor(page, [...PASSED, ...vars]);
   await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. Robots you move there keep working while this Mac sleeps.Done');
@@ -295,7 +301,7 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
   await expect(details).toHaveText('detailsmirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on studio');
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 1 thing before robots can move there.Check again');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 1 part of your agent setup will not work there yet.Set them up nowDone');
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
   await expect.poll(() => asked).toEqual([{ machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }]);
@@ -312,13 +318,16 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
 
 test('a row with a run opens the terminal with its forward', async ({ page, svall }) => {
   const logins: HostStep[] = [
-    { step: 'mirror:oauth:claude:mcp:linear', status: 'warn', action: 'log in once on studio', run: 'claude', forward: 3334, detail: 'then /mcp and sign in to linear' },
-    { step: 'mirror:oauth:claude:mcp:notion', status: 'warn', action: 'log in once on studio', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'then /mcp and sign in to notion' },
+    { step: 'mirror:oauth:claude:mcp:linear', status: 'warn', action: 'log in once on studio', run: 'claude', forward: 3334, detail: 'then /mcp and sign in to linear', gap: { name: 'linear', what: 'not logged in' } },
+    {
+      step: 'mirror:oauth:claude:mcp:notion', status: 'warn', action: 'log in once on studio', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'then /mcp and sign in to notion',
+      gap: { name: 'notion', what: 'not logged in' },
+    },
   ];
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, ...logins]);
-  // each login is its own thing, as the CLI counts them: one terminal forwards one sign-in's port
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 2 things before robots can move there.Check again');
+  // each login is its own part, as the CLI lists them: one terminal forwards one sign-in's port
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Set them up nowDone');
   await expect(panel.getByTestId('host-step-mirror:oauth:claude:mcp:linear').locator('.host-name')).toHaveText('linear login');
 
   // mcp-remote's sign-in comes back on the port its args name

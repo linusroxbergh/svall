@@ -199,9 +199,8 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
      linger step turns lingering on, and the tmux step finds the release's own.
    - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
      first, as Svall's first start does.
-   - The JSON result's `actions` are exactly the three installs and `svall host doctor fresh once Svall is open`,
-     the things the text line `fresh needs 4 things before robots can move there` counts; `gh` is advice and counts
-     for none.
+   - The JSON result's `actions` are exactly the three installs, the things the text line `fresh has 3 things to fix`
+     counts, and its `setup` the one `mirror:unchecked` row; `gh` is advice and counts for none.
 4. **A restart with no login.**
    - The private fleet's svalld unit, which runs the worker, is active and enabled.
    - It runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.
