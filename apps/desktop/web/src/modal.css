@@ -34,6 +34,22 @@
 .modal .acts .btn { flex: 1; }
 /* a choice the move sheet asks about again as it changes */
 .move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+/* a running move: a bar of its steps, and a line for each */
+.move-bar { display: flex; gap: var(--sp-2xs); }
+.move-bar > i { flex: 1; height: 3px; border-radius: var(--r-pill); background: var(--line); }
+.move-bar > i[data-state="done"] { background: var(--done); }
+.move-bar > i[data-state="doing"] { background: var(--moving); animation: move-pulse var(--pulse-fast) ease-in-out infinite; }
+.move-bar > i[data-state="failed"] { background: var(--danger); }
+.move-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-sm); font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); }
+.move-steps > li { display: flex; align-items: baseline; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }
+.move-steps > li[data-state="todo"] { color: var(--ink-3); }
+.move-steps > li[data-state="doing"], .move-steps > li[data-state="failed"] { color: var(--ink); }
+.move-mark { flex: none; width: 1em; text-align: center; }
+.move-steps > li[data-state="done"] > .move-mark { color: var(--done); }
+.move-steps > li[data-state="failed"] > .move-mark { color: var(--danger); }
+.move-spin { display: inline-block; width: .7em; height: .7em; box-sizing: border-box; border: 1.5px solid var(--line-strong); border-top-color: var(--ink); border-radius: 50%; animation: move-spin var(--pulse-fast) linear infinite; }
+@keyframes move-spin { to { transform: rotate(360deg); } }
+@keyframes move-pulse { 50% { opacity: .45; } }
 .fleet-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); }
 .fleet-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-md) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }
 .fleet-row:hover:not(:disabled), .fleet-row:focus-visible { background: var(--fill-2); }

@@ -138,7 +138,8 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
 
-    await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
+    // with the step it failed at, which the move sheet names
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ message: 'the disk is full', data: { phase: 'prepare', moveId: expect.stringMatching(/^mv_/) } });
 
     const here = home.store.state.robots.c_1;
     expect(here.machine).toBeUndefined();
@@ -706,7 +707,6 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.windows.size).toBe(1);
   });
 
-  it('a move sends the worker the home\'s agent configuration before its bundle, and goes on when that fails', async () => {
   it('a move whose link to the worker drops before its prepare waits for the link to come back, and goes on', async () => {
     const w = open();
     const home = await w.start();
@@ -717,6 +717,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
   });
 
+  it('a move sends the worker the home\'s agent configuration before its bundle, and goes on when that fails', async () => {
     let pushes = 0;
     const w = open({ mirror: { push: async () => { pushes++; throw new Error('no space left on device'); } } });
     const home = await w.start();

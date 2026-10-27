@@ -118,6 +118,9 @@ export class MoveFiles {
   }
 }
 
+// a move undone before its commit rejects with the phase it failed at, which the move sheet names
+const failedAt = (e: Error & { data?: Record<string, unknown> }, j: MoveJournal): Error => Object.assign(e, { data: { ...e.data, moveId: j.id, phase: j.phase } });
+
 const newMoveId = (): string => `mv_${[...crypto.randomBytes(10)].map((b) => (b % 36).toString(36)).join('')}`;
 
 export const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
@@ -634,7 +637,7 @@ export class Placement {
       }
     } catch (e) {
       await this.abortOut(j, e as Error);
-      throw e;
+      throw failedAt(e as Error, j);
     }
     await this.finish(j);
   }
@@ -722,7 +725,7 @@ export class Placement {
       if (j.phase === 'prepare') j = this.enter(await this.prepareHere(j), 'commit');
     } catch (e) {
       await this.abortBack(j, e as Error);
-      throw e;
+      throw failedAt(e as Error, j);
     }
     await this.finish(j);
   }
