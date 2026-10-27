@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, INTERRUPT_ACTIONS, Repo, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
+import { AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, WORKTREE_ACTION, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
 import { clean, holds } from '../path-tools.js';
@@ -13,7 +13,7 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello, WorkerLink } from '../link/home.js';
 import { must, remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
-import { branchAhead, BundleTooLarge, buildBundle, holdsWhole, trackedCredentials, type BundleManifest } from './bundle.js';
+import { branchAhead, BundleTooLarge, buildBundle, credentialsIn, holdsWhole, trackedCredentials, untrackedFiles, type BundleManifest } from './bundle.js';
 import { refuseUncarried, WORKTREES, worktreeSlug } from './convert.js';
 import { destinationPaths, sessionLanding, type Homes } from './paths.js';
 
@@ -25,8 +25,9 @@ export const MovePlan = z.object({
     root: z.string(), cwd: z.string(), second: z.string().optional(), transcriptPath: z.string().optional(),
     secondTranscriptPath: z.string().optional(), panePath: z.string().optional(), repo: Repo.optional(),
   }),
-  // the main checkout that becomes the robot's worktree `slug` before the bundle is built
-  convert: z.object({ main: z.string(), slug: z.string() }).optional(),
+  // the main checkout that becomes the robot's worktree `slug` before the bundle is built; with head, the worktree starts at
+  // that commit, main's HEAD as the checks found it, and main keeps its changes
+  convert: z.object({ main: z.string(), slug: z.string(), head: ObjectName.optional() }).optional(),
   // what the worker clones from when it holds no clone
   remote: z.string().optional(),
   // the shas the worker's clone's refs name, which the bundle's commits build on
@@ -229,7 +230,7 @@ export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run:
  * Whether robot `robotId` can move from this Mac to `to`, with the sentence and action of the first check that fails
  * and the rest behind details; when all pass, the sheet of what travels and the plan the move follows.
  */
-export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o: { carry?: string[]; interruptAfterMs?: number } = {}): Promise<CheckResult> {
+export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o: { carry?: string[]; interruptAfterMs?: number; ownWorktree?: boolean } = {}): Promise<CheckResult> {
   const s = d.store.state;
   if (!Object.hasOwn(s.robots, robotId)) throw new NotFound(`no robot ${robotId}`);
   const c = s.robots[robotId];
@@ -275,24 +276,42 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   let have: string[] = [];
   let convert: MovePlan['convert'];
   let bundle: { manifest: BundleManifest; changed: number } | undefined;
+  // how many changed files stay in the main checkout, and a phrase for each credential file there
+  let kept = 0;
+  let stayMain: string[] = [];
   if (repo) {
     const repoName = path.posix.basename(clean(repo.mainRoot));
     const detached = repo.branch === 'HEAD';
     const onMain = !repo.isWorktree;
+    const keep = onMain && !!o.ownWorktree;
 
-    // 3: a worktree on a branch, or a main checkout of this robot's alone that converts
-    if (onMain) {
+    // 3: a worktree on a branch, or a main checkout that converts: of this robot's alone, or with a new worktree at HEAD
+    if (onMain && !keep) {
       const sharing = Object.values(s.robots).some((r) => r.id !== c.id && (r.machine ?? d.me) === d.me && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
-      if (sharing) fail({ reason: `two robots share ${repoName}'s main checkout`, action: 'give one its own worktree first' });
+      if (sharing) fail({ reason: `two robots share ${repoName}'s main checkout`, action: WORKTREE_ACTION });
     }
     if (detached) fail({ reason: `${c.name} is on a detached HEAD`, action: 'check out a branch first' });
     if (onMain) {
       try {
-        await refuseUncarried(repo.mainRoot, d.git);
+        if (!keep) await refuseUncarried(repo.mainRoot, d.git);
       } catch (e) {
         fail(split((e as Error).message));
       }
-      convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }) };
+      const head = keep ? (await d.git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], repo.mainRoot)).stdout.trim() : '';
+      convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }), ...(head && { head }) };
+    }
+    if (keep) {
+      // one robot leaves a main checkout at a time, so two never take one slug
+      const leaving = Object.values(s.robots).find((r) => r.id !== c.id && r.moving && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
+      if (leaving) fail({ reason: `${leaving.name} is moving out of ${repoName}'s main checkout`, action: 'wait for the move to finish' });
+      // a worktree at HEAD holds only the folders HEAD does
+      for (const p of new Set([c.cwd, c.second?.cwd])) {
+        const rel = p && holds(clean(repo.root), clean(p)) ? path.posix.relative(clean(repo.root), clean(p)) : '';
+        if (rel && (await d.git(['cat-file', '-e', `HEAD:${rel}`], repo.root)).code !== 0) {
+          fail({ reason: `${rel} is not in ${repoName}'s last commit`, action: 'commit it first' });
+          break;
+        }
+      }
     }
 
     // the branch that travels, which for a main checkout is the one it converts to
@@ -334,13 +353,19 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     if (!detached) {
       const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-check-'));
       try {
-        const manifest = await buildBundle(repo.root, { git: d.git, into, have, carry: o.carry ?? [] });
-        const tracked = await trackedCredentials(repo.root, d.git, manifest);
+        const manifest = await buildBundle(repo.root, { git: d.git, into, have, carry: o.carry ?? [], head: keep });
+        const tracked = await trackedCredentials(repo.root, d.git, manifest, { head: keep });
         if (tracked.length) {
           const list = tracked.join(', ');
           fail({ reason: `${list} ${tracked.length > 1 ? 'are' : 'is'} tracked and would travel with the branch`, action: `commit or revert ${list} first` });
         }
-        bundle = { manifest, changed: await changedFiles(repo.root, d.git) };
+        const changed = await changedFiles(repo.root, d.git);
+        if (keep) {
+          const listed = await untrackedFiles(repo.root, d.git);
+          kept = changed + listed.length;
+          stayMain = (await credentialsIn(repo.root, d.git, listed)).map((f) => `${f} stays in ${repoName}'s main checkout`);
+        }
+        bundle = { manifest, changed: keep ? 0 : changed };
       } catch (e) {
         fail(bundleFailure(e));
       } finally {
@@ -359,6 +384,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const credentialFiles = bundle?.manifest.credentialFiles ?? [];
   const carry = credentialFiles.filter((f) => o.carry?.includes(f));
   const stays = [
+    ...stayMain,
     ...credentialFiles.filter((f) => !carry.includes(f)).map((f) => `${f} stays here`),
     ...(repo && fs.existsSync(path.join(repo.root, 'node_modules')) ? ['node_modules is not carried'] : []),
   ];
@@ -366,7 +392,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const sheet: MoveSheet = {
     sessionBytes: session, branch: convert?.slug ?? repo?.branch ?? '', commits: bundle?.manifest.commits?.count ?? 0, changedFiles: changed, untrackedFiles: untracked,
     clone: mode, credentialFiles, stays, interrupts: rest.interrupts, question,
-    ...(convert && { converts: { main: convert.main, branch: convert.slug, changed: changed + untracked } }), notInRepo: !repo,
+    ...(convert && { converts: { main: convert.main, branch: convert.slug, changed: convert.head ? kept : changed + untracked, ...(convert.head && { keep: true as const }) } }), notInRepo: !repo,
   };
   // a question is cut at once: the agent resumes idle and asks again
   const interruptAfterMs = o.interruptAfterMs ?? (question ? 0 : undefined);

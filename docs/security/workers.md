@@ -148,7 +148,8 @@ the keys in your agent setup, agent logins and ssh keys.
 
 - **Credential files in a worktree.** An untracked file named like a credential (`.env*`, `*.pem`, `id_rsa*`,
   `*.tfvars`, `*.key`, `.netrc`) stays where it is unless ticked in the sheet; a tracked one that changed, or that a
-  carried commit holds, refuses the move. One that stays is left on that machine, as a worktree a move takes back is
+  carried commit holds, refuses the move. A robot given its own worktree off a main checkout carries none of main's
+  changes, so there only a carried commit holding one refuses. One that stays is left on that machine, as a worktree a move takes back is
   cleaned but for such files. One ticked travels, and stays on the destination when the robot leaves again.
   (`bundle.test.ts` "an unticked .env stays behind and is named; a ticked one travels; a tracked changed .env is
   reported by trackedCredentials"; `checks.test.ts` "check 6: …")

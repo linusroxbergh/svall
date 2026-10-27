@@ -414,7 +414,7 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
   }
 }
 
-export type StartOptions = { interruptAfterMs?: number; carry?: string[] };
+export type StartOptions = { interruptAfterMs?: number; carry?: string[]; ownWorktree?: boolean };
 
 export type PlacementDeps = {
   store: Store;
@@ -642,7 +642,7 @@ export class Placement {
   private async convert(j: MoveJournal): Promise<void> {
     const cv = j.plan.convert;
     if (!cv) return;
-    if (!fs.existsSync(path.join(cv.main, WORKTREES, cv.slug))) await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug });
+    if (!fs.existsSync(path.join(cv.main, WORKTREES, cv.slug))) await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug, head: cv.head });
     this.settleConversion(j);
   }
 

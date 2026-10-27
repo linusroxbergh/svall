@@ -75,15 +75,16 @@ export async function untrackedFiles(root: string, git: GitRunner): Promise<stri
 }
 
 // untracked files named like credentials, ignored ones too, but none inside a folder git ignores whole
-async function credentialsIn(root: string, git: GitRunner, listed: readonly string[]): Promise<string[]> {
+export async function credentialsIn(root: string, git: GitRunner, listed: readonly string[]): Promise<string[]> {
   const ignored = (await must(git, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], root)).split('\0');
   return [...listed, ...ignored].filter((p) => p && !p.endsWith('/') && isCredential(p)).sort(byCodeUnit);
 }
 
-// the index and working tree against HEAD, and the untracked files but credentials, all by content
-async function digest(root: string, git: GitRunner, untracked: readonly { path: string; sha256: string }[]): Promise<string> {
-  const index = await must(git, ['diff', '--cached', ...RAW], root);
-  const fields = (await must(git, ['diff', ...RAW], root)).split('\0');
+// the index and working tree against HEAD, and the untracked files but credentials, all by content; with `head`, those of a
+// new worktree at HEAD, which holds none
+async function digest(root: string, git: GitRunner, untracked: readonly { path: string; sha256: string }[], head = false): Promise<string> {
+  const index = head ? '' : await must(git, ['diff', '--cached', ...RAW], root);
+  const fields = head ? [] : (await must(git, ['diff', ...RAW], root)).split('\0');
   const worktree: (string | null)[][] = [];
   for (let i = 0; i + 1 < fields.length; i += 2) {
     const file = path.join(root, fields[i + 1]);
@@ -135,19 +136,22 @@ export async function packTar(root: string, paths: readonly string[], file: stri
 
 /**
  * Writes into `into` both patches, the untracked files git does not ignore (credential files only as `carry` names them),
- * the commits past `have`, the worker's shas, and the manifest.
+ * the commits past `have`, the worker's shas, and the manifest; with `head`, as a new worktree at HEAD would: the commits alone.
  */
-export async function buildBundle(root: string, o: { git: GitRunner; into: string; have: string[]; carry: string[] }): Promise<BundleManifest> {
+export async function buildBundle(root: string, o: { git: GitRunner; into: string; have: string[]; carry: string[]; head?: boolean }): Promise<BundleManifest> {
   const { git, into } = o;
   const at = (f: string): string => path.join(into, f);
   const base = (await must(git, ['rev-parse', '--verify', 'HEAD^{commit}'], root)).trim();
   const ref = (await must(git, ['symbolic-ref', 'HEAD'], root)).trim();
   fs.mkdirSync(into, { recursive: true });
   for (const f of [...CARRIED, MANIFEST]) fs.rmSync(at(f), { force: true });
-  await must(git, ['diff', ...PATCH, '--cached', `--output=${at(STAGED)}`], root);
-  await must(git, ['diff', ...PATCH, `--output=${at(UNSTAGED)}`], root);
-  const listed = await untrackedFiles(root, git);
-  const credentialFiles = await credentialsIn(root, git, listed);
+  if (o.head) for (const f of [STAGED, UNSTAGED]) fs.writeFileSync(at(f), '');
+  else {
+    await must(git, ['diff', ...PATCH, '--cached', `--output=${at(STAGED)}`], root);
+    await must(git, ['diff', ...PATCH, `--output=${at(UNSTAGED)}`], root);
+  }
+  const listed = o.head ? [] : await untrackedFiles(root, git);
+  const credentialFiles = o.head ? [] : await credentialsIn(root, git, listed);
   const ticked = new Set(o.carry);
   const paths = [...listed.filter((p) => !isCredential(p)), ...credentialFiles.filter((p) => ticked.has(p))].sort(byCodeUnit);
   const stats = paths.map((p) => fs.lstatSync(path.join(root, p)));
@@ -164,7 +168,7 @@ export async function buildBundle(root: string, o: { git: GitRunner; into: strin
   refuseOver(root, bytes);
   const manifest: BundleManifest = {
     base, branch: ref.replace(/^refs\/heads\//, ''), staged: await fileSha(at(STAGED)), unstaged: await fileSha(at(UNSTAGED)),
-    untracked, commits, credentialFiles, bytes, fingerprint: await digest(root, git, untracked),
+    untracked, commits, credentialFiles, bytes, fingerprint: await digest(root, git, untracked, o.head),
   };
   fs.writeFileSync(at(MANIFEST), JSON.stringify(manifest));
   return manifest;
@@ -226,12 +230,11 @@ export async function applyBundle(root: string, dir: string, manifest: BundleMan
   if (await digest(root, git, manifest.untracked) !== manifest.fingerprint) throw new Error(`${root} does not hold what the move carried`);
 }
 
-/** The credential files the bundle carries as tracked changes or in its commits, which no tick can leave behind. */
-export async function trackedCredentials(root: string, git: GitRunner, manifest: BundleManifest): Promise<string[]> {
+/** The credential files the bundle carries as tracked changes or in its commits, which no tick can leave behind; `head` as buildBundle's. */
+export async function trackedCredentials(root: string, git: GitRunner, manifest: BundleManifest, o: { head?: boolean } = {}): Promise<string[]> {
   const names = async (args: string[]): Promise<string[]> => (await must(git, args, root)).split('\0');
   const touched = [
-    ...await names(['diff', '--cached', '--name-only', '-z', '--no-renames']),
-    ...await names(['diff', '--name-only', '-z', '--no-renames']),
+    ...(o.head ? [] : [...await names(['diff', '--cached', '--name-only', '-z', '--no-renames']), ...await names(['diff', '--name-only', '-z', '--no-renames'])]),
     ...(manifest.commits
       ? await names(['log', '--no-show-signature', '--format=', '--name-only', '-z', '--no-renames', manifest.base, ...manifest.commits.prerequisites.map((p) => `^${p}`), '--'])
       : []),

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { ApiError, INTERRUPT_ACTIONS, type MachineId, type MoveSheet as Sheet, type Refusal } from '@svall/protocol';
+import { ApiError, INTERRUPT_ACTIONS, WORKTREE_ACTION, type MachineId, type MoveSheet as Sheet, type Refusal } from '@svall/protocol';
 import { chr, fleet } from '../fixtures.js';
 import { call, freshStore, sent, store } from './harness.js';
 
@@ -95,6 +95,36 @@ test('a command running in its shell is ended by the move once the user says so,
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, interruptAfterMs: 0 });
   expect((screen.getByLabelText('a command is running; move anyway and it ends') as HTMLInputElement).checked).toBe(true);
   expect(screen.queryByLabelText('Interrupt after this turn')).toBeNull();
+});
+
+test('a robot sharing a main checkout is offered its own worktree, and the sheet says the checkout keeps its changes', async () => {
+  answers = [
+    { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } },
+    { ok: true, sheet: sheet({ changedFiles: 0, credentialFiles: [], stays: [], converts: { main: '/Users/ada/svall', branch: 'ada', changed: 3, keep: true } }) },
+  ];
+  await open(VAULT);
+  expect(screen.getByTestId('move-reason').textContent).toBe("two robots share svall's main checkout");
+  expect(screen.getByTestId('move-action').textContent).toBe('Give it its own worktree');
+
+  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, ownWorktree: true });
+  expect(screen.getByTestId('move-converts').textContent).toBe("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
+  expect((screen.getByLabelText('Give it its own worktree') as HTMLInputElement).checked).toBe(true);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: VAULT, ownWorktree: true });
+});
+
+test('unticking its own worktree asks again without it', async () => {
+  answers = [
+    { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } },
+    { ok: true, sheet: sheet({ converts: { main: '/Users/ada/svall', branch: 'ada', changed: 0, keep: true } }) },
+    { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } },
+  ];
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  await act(async () => fireEvent.click(screen.getByLabelText('Give it its own worktree')));
+  expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT });
+  expect(screen.getByTestId('move-action').textContent).toBe('Give it its own worktree');
 });
 
 test('a refusal with a command to run opens a terminal there with it typed', async () => {

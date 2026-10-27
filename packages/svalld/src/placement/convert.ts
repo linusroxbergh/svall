@@ -40,10 +40,15 @@ function remove(root: string, rel: string): void {
  * Moves what the main checkout holds beyond its HEAD into a new worktree on a new branch `slug`, through the bundle's
  * patches and tar so staged and unstaged stay apart, and leaves main clean on its branch. The stash list is never touched.
  * A failure before main is reset takes the worktree and its branch away again, so the folder stands only for a conversion.
+ * With `head`, the worktree starts clean at that commit and main keeps all it holds.
  */
-export async function convertMainCheckout(main: string, o: { git: GitRunner; slug: string }): Promise<{ root: string; branch: string }> {
+export async function convertMainCheckout(main: string, o: { git: GitRunner; slug: string; head?: string }): Promise<{ root: string; branch: string }> {
   const { git, slug } = o;
   const root = path.join(main, WORKTREES, slug);
+  if (o.head) {
+    await must(git, ['worktree', 'add', '-q', '-b', slug, root, o.head], main);
+    return { root, branch: slug };
+  }
   await refuseUncarried(main, git);
   const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-convert-'));
   try {

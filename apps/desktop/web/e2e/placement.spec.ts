@@ -95,6 +95,40 @@ test('mission control has no move button; a refusal shows one sentence and one b
   await expect(sheet.getByTestId('move-go')).toHaveCount(0);
 });
 
+test('a robot sharing a main checkout is offered its own worktree, and moves with it', async ({ page, svall }) => {
+  const id = await seed(svall, true);
+  // svalld behind the page, but for the move's check and start, which answer as for a robot sharing svall's main checkout
+  const asked: { method: string; params: { ownWorktree?: boolean } }[] = [];
+  await page.routeWebSocket((url) => url.port === String(svall.port), (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw)) as { id?: number; method?: string; params: { ownWorktree?: boolean } };
+      if (m.method !== 'robot.moveCheck' && m.method !== 'robot.moveTo') { server.send(raw); return; }
+      asked.push({ method: m.method, params: m.params });
+      const sheet = {
+        sessionBytes: 0, branch: 'ada', commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [], interrupts: false, question: false,
+        converts: { main: '/Users/ada/svall', branch: 'ada', changed: 3, keep: true }, notInRepo: false,
+      };
+      const result = m.method === 'robot.moveTo' ? { moveId: 'mv_0123456789' } : m.params.ownWorktree
+        ? { ok: true, sheet } : { ok: false, refusal: { reason: "two robots share svall's main checkout", action: 'give it its own worktree', details: [] } };
+      ws.send(JSON.stringify({ id: m.id, result }));
+    });
+  });
+  await svall.open();
+  await page.getByTestId(`sb-robot-${id}`).click();
+  await page.getByTestId('side-card').getByTestId(`side-move-${VAULT}`).click();
+  const sheet = page.getByTestId('move-sheet');
+  await expect(sheet.getByTestId('move-reason')).toHaveText("two robots share svall's main checkout");
+  await expect(sheet.locator('.acts button')).toHaveText(['Give it its own worktree']);
+
+  await sheet.getByTestId('move-action').click();
+  await expect(sheet.getByTestId('move-converts')).toHaveText("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
+  await expect(sheet.getByLabel('Give it its own worktree')).toBeChecked();
+  await sheet.getByTestId('move-go').click();
+  await expect(sheet).toHaveCount(0);
+  expect(asked.at(-1)).toEqual({ method: 'robot.moveTo', params: { id, machine: VAULT, ownWorktree: true } });
+});
+
 test('a placed robot keeps its Resources button', async ({ page, svall }) => {
   const id = await seed(svall, true, (c) => { c.machine = VAULT; });
   await svall.open();
