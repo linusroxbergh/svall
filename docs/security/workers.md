@@ -320,7 +320,7 @@ reset and kill a move, a worker or an install makes, with what authorises it:
   catch a copy a backup restore or Migration Assistant made by mistake.
 - **`svall setup` replaces `~/.local/bin/svall`** whatever it was. It is setup's own name.
 - **An upgrade restarts a fleet daemon the user disabled but whose unit file remains.** A rollback must not leave a
-  failed daemon down, so it restarts every unit.
+  failed daemon down, so it restarts every fleet's unit.
 - **An install can remove a release a process still runs from.** Each install keeps only the new release and the one
   to go back to. A daemon left running by `--no-launchctl`, or a long-lived `svall`, started from an older release
   loses its files. Setup restarts the daemons it moves.

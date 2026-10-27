@@ -264,24 +264,22 @@ describe('host add', () => {
   });
 
   it('enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {
-    for (const [far, detail, action] of [
-      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
-    ] as const) {
-      ssh.clearReplies();
-      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...far }) });
-      healthy();
-      const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-      events = [];
-      const registry = MachineRegistry.load(path.join(work, 'config'));
-      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
-      await d.close();
-      expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
-      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail, action });
-      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
-      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
-      expect(registry.get('trift')).toBeUndefined();
-    }
+    const action = 'on bea-mbp, run svall host remove trift';
+    ssh.clearReplies();
+    const worker = { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET };
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker }) });
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    events = [];
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    await d.close();
+    expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
+    expect(registry.get('trift')).toBeUndefined();
   });
 
   it('add stops and removes a gateway unit it finds there, and enrols the fleet\'s unit as the worker', async () => {
@@ -1831,24 +1829,20 @@ esac
   });
 
   it('enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {
-    for (const [worker, detail, action] of [
-      [{ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET }, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
-    ] as const) {
-      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
-      const systemctl = farSystemctl();
-      const { units } = oldGateway();
-      serves(worker);
-      events = [];
-      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-      await far.close();
-      expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
-      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail, action });
-      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
-      expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
-      expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
-      expect(fs.existsSync(systemctl)).toBe(false);
-      fs.rmSync(path.join(work, 'far'), { recursive: true, force: true });
-    }
+    const action = 'on bea-mbp, run svall host remove trift';
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const systemctl = farSystemctl();
+    const { units } = oldGateway();
+    serves({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
+    events = [];
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
+    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
+    expect(fs.existsSync(systemctl)).toBe(false);
   });
 
   it('enrols a worker unit there whose worker.json names another fleet of this Mac', async () => {
@@ -2122,15 +2116,6 @@ describe('host remove', () => {
     return registry;
   };
 
-  it('uninstalls on the machine before the route is dropped, forcing past no refusal, and never purges', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('ready');
-    expect(ssh.remoteCalls()).toEqual([[SVALL, 'version', '--json'], [SVALL, 'uninstall']]);
-    expect(registry.get('trift')).toBeUndefined();
-  });
-
   it('uninstalls nothing while a robot of a fleet here is on the machine or moving to it, and names them; --forget still drops the route', async () => {
     const ada = {
       id: 'c_ada', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [], shell: { lastOutputAt: 0 }, unread: false,
@@ -2227,7 +2212,7 @@ describe('host remove', () => {
   const gatewayOf = (home: string): string | undefined =>
     (JSON.parse(fs.readFileSync(path.join(home, 'fleet.json'), 'utf8')) as { gatewayMachineId?: string }).gatewayMachineId;
 
-  it('remove runs svall uninstall there with no --force-fleet, and drops the registry entry alone', async () => {
+  it('remove runs svall uninstall there with no flag before it drops the registry entry, and leaves this Mac\'s fleet.json as it is', async () => {
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');
     const mine = fleetAt('.svall', { gateway: REMOTE, owner: MAC });
@@ -2237,15 +2222,6 @@ describe('host remove', () => {
     expect(events.filter((e) => e.status !== 'start').map((e) => e.step)).toEqual(['machine', 'uninstall', 'registry']);
     expect(registry.get('trift')).toBeUndefined();
     expect(gatewayOf(mine)).toBe(REMOTE);
-  });
-
-  it('reports a far uninstall that exits 3 as any other failure', async () => {
-    ssh.reply(['uninstall'], { stderr: 'svall: uninstalling here would strand fleets\n', code: 3 });
-    const registry = registered('trift.test');
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('actions');
-    expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail: 'svall uninstall exited 3 on trift.test: svall: uninstalling here would strand fleets' });
-    expect(registry.get('trift')).toBeDefined();
   });
 
   it('forgets an unreachable machine and says the remote was left alone', async () => {

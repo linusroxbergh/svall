@@ -135,6 +135,9 @@ Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Silicon Ma
   containers. The Mac's launchd, the app and Mac-to-Linux paths are covered by a manual run on real machines.
 - **Real agents.** Real Claude Code, Codex and OpenCode need logins. The mocked Claude speaks the same hooks and
   transcript layout; `pnpm compat` checks each new release's session layout and flags.
+- **Other agents' moves.** The run moves Claude robots only: the mocked OpenCode (`scripts/integration/opencode.mjs`)
+  answers just the version and login probes, and `packages/svalld/test/placement/move.test.ts` moves an OpenCode
+  session against fakes.
 - **Tailscale.** The containers talk over the docker network.
 - **Fresh installs.** Installing on a clean machine with no Node, `host upgrade` and `setup --rollback` are the
   fresh-install run's, below. `host upgrade --rollback` runs in neither.

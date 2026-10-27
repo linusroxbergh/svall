@@ -199,19 +199,6 @@ function moves() {
   }));
 }
 
-// the mocked OpenCode retitles itself, so its command line is one string of the words the native binary's would hold
-const opencodes = () => processes('opencode').map((p) => ({ ...p, args: p.args.join(' ').split(' ') })).filter((p) => p.args[0] === 'opencode');
-
-/** The sessions the mocked OpenCode holds, where the real one keeps its database: messages and folder, by id. */
-function opencodeSessions() {
-  const root = path.join(HOME, '.local', 'share', 'opencode', 'mock-sessions');
-  if (!fs.existsSync(root)) return {};
-  return Object.fromEntries(fs.readdirSync(root).filter((n) => n.endsWith('.json')).map((f) => {
-    const s = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
-    return [s.info.id, { messages: s.messages.length, sha: sha(JSON.stringify(s.messages)), directory: s.info.location.directory }];
-  }));
-}
-
 function sessions() {
   const root = path.join(HOME, '.claude', 'projects');
   const out = {};
@@ -245,17 +232,12 @@ async function snap(o) {
     })).sort((a, b) => a.id.localeCompare(b.id)) : state,
     machines: state.machines ?? {},
     windows,
-    agents: [
-      ...processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth') && !p.args.includes('-p')).map((p) => ({ kind: 'claude', ...p })),
-      ...opencodes().filter((p) => !['serve', 'session', 'auth', 'run', '--version', '--help'].includes(p.args[1])).map((p) => ({ kind: 'opencode', ...p })),
-    ],
-    servers: opencodes().filter((p) => p.args[1] === 'serve').map((p) => ({ ...p, ppid: ppidOf(p.pid) })),
+    agents: processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth') && !p.args.includes('-p')).map((p) => ({ kind: 'claude', ...p })),
     ...(!o.light && {
       git: Object.fromEntries(repos().map((r) => [r, gitOf(path.join(HOME, r))])),
       trees: Object.fromEntries(repos().map((r) => [r, walk(path.join(HOME, r), new Set(['.git', '.claude']))])),
       sessions: sessions(),
     }),
-    opencode: opencodeSessions(),
     worker: (({ token, ...w }) => w)(readJson(path.join(FLEET, 'worker.json')) ?? {}),
     locks: locks(),
     outbox: outbox(),
@@ -264,10 +246,6 @@ async function snap(o) {
     moves: moves(),
   };
   process.stdout.write(`${JSON.stringify(out)}\n`);
-}
-
-function ppidOf(pid) {
-  try { const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]); } catch { return null; }
 }
 
 async function link(cmd) {
