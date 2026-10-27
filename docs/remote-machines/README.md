@@ -7,12 +7,11 @@ robots on different machines share its islands, cards and map.
 
 | Page | What it covers |
 | --- | --- |
-| [Setting up a Linux machine](setup.md) | Supported machines, home paths, adding the machine as a worker, your agent setup there, turning a gateway into a worker, upgrading and removing it |
+| [Setting up a Linux machine](setup.md) | Supported machines, home paths, adding the machine as a worker, your agent setup there, upgrading and removing it |
 | [Moving a robot](placement.md) | Moving a robot there and back, the checks, what travels and what stays, the return, what a robot does while this Mac sleeps, what goes wrong, and limitations |
-| [Moving a fleet](handover.md) | The whole-fleet handover of a fleet that names a gateway, which a later release removes |
-| [Blockers, warnings and errors](errors.md) | Every code a handover or `svall host` reports, what it means and what to do |
+| [Blockers, warnings and errors](errors.md) | Every code `svall host` and `svall doctor` report, what it means and what to do |
 | [Upgrading and downgrading](migration.md) | What the upgrade changes in your fleet homes, and how to go back |
-| [Release notes](release-notes.md) | What this release adds |
+| [Release notes](release-notes.md) | What this release adds and changes |
 
 ## In short
 
@@ -25,4 +24,4 @@ robots on different machines share its islands, cards and map.
 ## How it is distributed
 
 Svall.app carries the x86-64 and arm64 Linux companions `svall host add` installs. Releases are signed, and every
-install checks the signature; [the security notes](../security/fleet-handover.md) cover how.
+install checks the signature; [the security notes](../security/workers.md) cover how.

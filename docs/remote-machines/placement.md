@@ -199,9 +199,6 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - **A worker that reboots**: its robots come back dormant, as on a Mac, and revive from their cards. Restarting its
   Svall service alone leaves them running.
 
-`svall handover` moves no fleet while any of its robots runs on a worker or is on its way to one: "kanban runs on
-linus-vault; move every robot back first".
-
 ## Limitations
 
 - Stashes, refs other than the branch, and ignored files in the worktree stay on the machine they were on.
@@ -209,7 +206,6 @@ linus-vault; move every robot back first".
 - No platform or filter checks: a robot whose work needs Xcode moves and finds out.
 - A second terminal moves as a shell in the same worktree; a command running in it ends.
 - The phone cannot see the server's robots while the Mac sleeps.
-- No replica divergence protection, because there are no replicas: the only shared thing is a branch, and git owns it.
 - A worker that disappears for good: its robots stay unknown until you close them.
 - The scribe passes a robot on a worker only while this Mac is awake to ask for it.
 - A restart of this Mac's daemon forgets the last screen a worker sent until the worker is back.

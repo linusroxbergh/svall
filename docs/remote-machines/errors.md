@@ -1,61 +1,27 @@
 # Blockers, warnings and errors
 
-Every code a handover, `svall host` or `svall fleet recover` can report: what it means and the safe way on. The test
-`packages/cli/test/error-catalogue.test.ts` reads each list below from the code, and fails when the code has one this
-page lacks or this page names one the code no longer has.
+Every code `svall host`, `svall doctor` and a command run with `--host` can report: what it means and the safe way
+on. The test `packages/cli/test/error-catalogue.test.ts` reads each list below from the code, and fails when the code
+has one this page lacks or this page names one the code no longer has. What stops a move is in [the
+checks](placement.md#the-checks).
 
-Where codes show up:
-
-- **The handover sheet** shows the message the machine wrote with its code beside it and, for every code that blocks, a
-  line on what to do.
-- **`svall handover`** prints a blocker as `✗ <who>: <message> (<code>)` and a warning with `!`. With `--json`, each
-  blocker or warning carries `code`, `message` and, when it is about one thing, `entity` (`robot`, `root`,
-  `session` or `git`, with its id).
-- **`svall host …`** prints one line per step, and `--json` one object per step with `step`, `status`, `detail`,
-  `action` and, when a command typed on the machine starts the fix, `run`.
-
-## Before and after the commit
-
-Two rules decide every recovery:
-
-- **Before the commit**, the source machine still owns the fleet. Nothing runs on the destination, and Abort (or
-  `svall handover --abort`) gives the fleet back to the source and reopens only the terminals the handover stopped.
-  Files already copied stay on the destination as a replica for the next try.
-- **At and after the commit**, the destination owns the fleet. Abort is refused, the source stays fenced, and only
-  Resume (Retry in the sheet, `svall handover --resume`) goes on, on the destination. A robot that fails to
-  resume stays dormant with its transcript and says why.
-
-`svall handover status` reads all four journals (this Mac's controller, the gateway's record and both daemons) and
-says which of the two is safe. It changes nothing.
+`svall host …` prints one line per step, and `--json` one object per step with `step`, `status`, `detail`, `action`
+and, when a command typed on the machine starts the fix, `run`.
 
 ## Connection errors
 
-The app and `svall` reach a fleet on another machine through ssh. When that fails, the error names one of these, and
-the banner says it in one sentence naming the machine, with what it said under **Details**. Only `unreachable` and
-`daemon_down` are retried by themselves: the app backs off to every 16 seconds for as long as the window is open, and
-a `svall` command tries five times, waiting up to 8 seconds between tries. The others wait for **Reconnect** in the
-banner, for the window to be reopened or for the command to run again. The banner offers **Check**
-(`svall host doctor`) for a machine whose daemon is down or that failed for another reason, and says so too when the
-far daemon has not answered a minute after its route opened. When the gateway or the app's connection helper did not
-answer and the gateway has never named an owner to this Mac, the banner offers **Open this Mac's copy**, while this
-Mac's daemon runs; that daemon takes a change only while its own record says this Mac owns the fleet, and
-**Reconnect** keeps the copy open until the fleet is found. When the app's own connection helper stops, cannot start or
-has not answered, the banner says it has not said where the fleet runs, with **Reconnect**.
+`svall --host <machine> <command>` runs the command against the fleet's daemon on that machine, reached through ssh.
+When that fails, the error names one of these. Only `unreachable` and `daemon_down` are retried by themselves: `svall`
+tries five times, waiting up to 8 seconds between tries. The others wait for the command to run again.
 
 | Kind | What it means | What to do |
 | --- | --- | --- |
-| `auth` | ssh was refused: no key it accepts, a password it cannot ask for, or a Tailscale SSH check waiting on the browser. | `ssh <host>` once in Terminal; add the key to the agent, or approve Tailscale's check; then **Reconnect**. |
-| `host_key` | The host key is unknown or has changed. | `ssh <host>` once in Terminal and check the key, then **Reconnect**. A changed key needs a look before you trust it. |
-| `unreachable` | The machine did not answer, refused the connection, or the link dropped. | Check Tailscale and the machine; it reconnects by itself. |
+| `auth` | ssh was refused: no key it accepts, a password it cannot ask for, or a Tailscale SSH check waiting on the browser. | `ssh <host>` once in Terminal; add the key to the agent, or approve Tailscale's check; then run the command again. |
+| `host_key` | The host key is unknown or has changed. | `ssh <host>` once in Terminal and check the key, then run the command again. A changed key needs a look before you trust it. |
+| `unreachable` | The machine did not answer, refused the connection, or the link dropped. | Check Tailscale and the machine; `svall` tries again by itself. |
 | `version` | `svall` is missing there, cannot run, or speaks another protocol. | `svall host upgrade <host>`. |
 | `daemon_down` | The fleet's daemon is not running there. | `svall host doctor <host>`; on Linux, `systemctl --user status svall-svalld@<fleet>`. |
 | `other` | Anything else, such as a machine that answers with another fleet or machine id. | Follow the message. |
-
-A window opens a fleet with no gateway in `fleet.json` on this Mac at once. For one with a gateway, it waits up to 10
-seconds for the connection helper to say where the fleet is; a helper that has not answered by then, as one stuck on
-ssh, leaves the window on this Mac when the route `svall` last cached names this Mac at the generation its daemon
-holds, and otherwise shows kind `helper`: "the connection helper has not answered in 10 s". A window left on this
-Mac shows none of the helper's retries, and moves, terminals and all, once the helper names where the fleet is.
 
 ## Host commands
 
@@ -86,19 +52,19 @@ the list; the others say what they did or what is still to do. Each exits 1 unle
 | `home` | add | The account's home is short enough for the fleet's hook socket there, `hooks.sock` in its fleet home, which a Unix socket path holds at 107 bytes (a home of at most 89 bytes for the private fleet). | Use an account with a shorter home ([setup](setup.md#home-paths)) and add it again. |
 | `tools` | add | Tailscale, Git and systemd user services. | Run the `apt install` command the action names; without systemd the machine is not supported. |
 | `space` | add | Free space in the home. Under 5 GiB is a warning. | Free space. |
-| `linger` | add | Whether the account's services keep running after you log out. Off, `host add` turns it on; where the system refuses, it is a warning here, and blocks a handover to the machine, or from it while it is the gateway, with `linger_off`. | Run the `sudo loginctl enable-linger <user>` the action names. |
+| `linger` | add | Whether the account's services keep running after you log out. Off, `host add` turns it on; where the system refuses, it is a warning: the fleet's robots there stop when you log out. | Run the `sudo loginctl enable-linger <user>` the action names. |
 | `release` | add, upgrade | The companion release for the machine's architecture: the one Svall.app carries or its release names, checked against the digest this Mac's release pins, or the archive `--release` names, with its signature. | Name an archive with `--release`; an unsigned development build needs `--allow-unsigned`. |
 | `upload` | add, upgrade | Copies the companion archive to the machine. | Check free space and the link. |
 | `install` | add, upgrade | The machine checks the archive against its manifest and, where a release is installed, the signers that release pins, then installs it under `~/.local/share/svall`. | Read the message; `svall host doctor <host>`. |
 | `tmux` | add | The tmux the units start, on their `PATH`: the one the release brings, or for a release that carries none, the machine's. Older than 3.5 is a warning: Shift+Enter does not reach the agents. None at all stops the add. | For a release that carries none, `sudo apt install tmux`, as the action names. |
 | `service` | add | The fleet's daemon unit runs. | Read the units' logs under `~/.local/share/svall/log` there. |
 | `identity` | add | The machine's id, that it runs the release just installed, and that it speaks this Mac's protocol. For a name already in the registry, the id must be the one it records, which catches a machine that had no `svall` for the `master` step to ask. | `ssh <destination>` and run `~/.local/bin/svall version --json` to see what it answers, then add the machine again. Another machine at the destination: point it back, or `svall host remove <name> --forget` and add it again. Another release than the one installed: its setup went back to the release it ran, as the new release's daemon did not answer. Read the daemon log there, then `svall host upgrade <name>` for a machine already in the registry, or add the machine again. |
-| `enrol` | add, upgrade | Stops and removes the `svall-gateway` unit an older release left there, then makes the machine a worker of this fleet: a new token on this Mac, and `svall worker enroll` there, which writes `worker.json` in the fleet's home there and writes its `svall-svalld@<fleet>` unit again with `--worker`, an older release's provisioned one included, and restarts it. The detail ends in "; svall-gateway.service is stopped and removed" when it removed that unit. It refuses, changing nothing, when that fleet home serves another Mac as a worker ("<host> already serves <Mac> as a worker; remove it from that Mac first"). An upgrade enrols only a machine whose fleet unit runs without `--worker` or as a worker of anything but this fleet, or that had the `svall-gateway` unit and no unit of this fleet, and skips one that is this fleet's worker already; one with neither unit is a warning. | Read the message; `svall host doctor <host>`. Another Mac's worker: on that Mac, `svall host remove <host>`. A gateway unit that would not stop: `systemctl --user status svall-gateway.service` there. No unit of this fleet: `svall host add <host> --ssh <destination>` again. |
+| `enrol` | add, upgrade | Stops and removes the `svall-gateway` unit an older release left there, then makes the machine a worker of this fleet: a new token on this Mac, and `svall worker enroll` there, which writes `worker.json` in the fleet's home there and writes its `svall-svalld@<fleet>` unit again with `--worker`, and restarts it. The detail ends in "; svall-gateway.service is stopped and removed" when it removed that unit. It refuses, changing nothing, when that fleet home serves another Mac as a worker ("<host> already serves <Mac> as a worker; remove it from that Mac first"). An upgrade enrols only a machine whose fleet unit runs without `--worker` or as a worker of anything but this fleet, or that had the `svall-gateway` unit and no unit of this fleet, and skips one that is this fleet's worker already; one with neither unit is a warning. | Read the message; `svall host doctor <host>`. Another Mac's worker: on that Mac, `svall host remove <host>`. A gateway unit that would not stop: `systemctl --user status svall-gateway.service` there. No unit of this fleet: `svall host add <host> --ssh <destination>` again. |
 | `claude` | add | Claude Code on the PATH the daemon uses, its version (2.1.251 or newer), its login, and, once logged in, Svall's hooks as the machine's doctor finds them. Each finding is a warning with an action. | Install, update, log in or set up the hooks as the action says. |
 | `codex` | add | The same for Codex (0.156.0 or newer). When it is not logged in, the action also says to trust Svall's hooks once with `/hooks`. | As for `claude`. |
 | `opencode` | add | The same for OpenCode (2.0.22 or newer), its login a model provider's that `opencode auth list` names, with Svall's OpenCode plugin as the machine's doctor finds it. | As for `claude`. |
 | `gh` | add | The GitHub CLI's login there, as the machine's doctor finds it with the daemon's PATH. Not installed or not logged in is a warning that names the command to run there and has no action, so it is advice and never a thing left; a doctor that reports no `gh` check skips it. | Run the `sudo apt install gh` or `gh auth login` it names. |
-| `versions` | add | Each agent's release there against this Mac's, as this Mac's own daemon finds it, since a handover each way needs the destination's at least the source's. A difference is a warning naming the side behind. An agent below Svall's floor there is left to its own row. Skipped when this Mac's own daemon cannot be asked, as when it is not running or speaks another protocol, or when no agent CLI is left to compare. | Run the update the action names on the side behind: `claude update`, `codex update` or `opencode upgrade`. |
+| `versions` | add | Each agent's release there against this Mac's, as this Mac's own daemon finds it, since a move each way needs the destination's at least the source's. A difference is a warning naming the side behind. An agent below Svall's floor there is left to its own row. Skipped when this Mac's own daemon cannot be asked, as when it is not running or speaks another protocol, or when no agent CLI is left to compare. | Run the update the action names on the side behind: `claude update`, `codex update` or `opencode upgrade`. |
 | `probe` | add, upgrade, upgrade --rollback | add: the machine's own fleet answers through a forwarded port from the release just installed, `svall version --json` there says this fleet runs as a worker, and tmux opens a window, on a socket of its own with the units' PATH, and closes it. upgrade, with or without `--rollback`: the machine's doctor answers with its daemon unit running, and its fleet answers from the release now current. | An add stops here. An upgrade whose probe fails goes back to the release before (`rollback`). After `--rollback`, read the daemon log there; the action names the release it runs now. |
 | `rollback` | upgrade, upgrade --rollback | Puts back the release the machine ran before, or the kept release `--rollback <release>` names. The machine's own `svall setup --rollback` restarts its units and checks each fleet's daemon answers from that release. `--rollback` first refuses, changing nothing, when a fleet's `state.json` there is at a newer state schema than that release reads, whose daemon would then refuse to start; or, for a release whose `svall version --json` names no schema, newer than the oldest any release has read. It refuses too when that release carries no tmux and a fleet's tmux server there runs another version than the machine's own tmux, which that release would run and which cannot reach it. | Read the daemon log there; the action names the release it runs now, and when the rollback failed, `svall host upgrade <host> --rollback <release>` to put back another release kept there. Refused for a newer state, or for a tmux server, the machine stays on the release it runs: keep it, or go back to a release that reads that schema or carries a tmux. |
 | `registry` | add, remove | Writes or drops the machine in this Mac's registry. | Check `~/.config/svall` is writable. |
@@ -122,7 +88,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `node` | both | Node 24 or newer runs `svall`. |
 | `claude` | both | Claude Code's login, and where robots move its version: 2.1.251 or newer. Robots move on Linux, and on a Mac whose `~/.config/svall/machines.json` lists a machine reached over ssh or cannot be read. |
 | `codex` | both | Codex's version and login. |
-| `opencode` | both | OpenCode's version and login: a model provider's login or key, as `opencode auth list` names it and a handover's checks read it. |
+| `opencode` | both | OpenCode's version and login: a model provider's login or key, as `opencode auth list` names it and a move's checks read it. |
 | `agents` | both | No agent CLI is installed (a failure on a Mac, a warning on Linux). |
 | `path` | both | `~/.local/bin` is on your PATH. |
 | `shims` | both | The `svall` in `~/.local/bin` runs this build. |
