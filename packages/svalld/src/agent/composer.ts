@@ -31,9 +31,6 @@ export function readComposer(kind: AgentKind, s: Screen): Composer {
   return 'empty';
 }
 
-/** Whether a pane shows Codex's review of hooks it has not trusted, which holds its start until answered. */
-export const codexHooksReview = (s: Screen): boolean => !s.shown && s.rows.some((r) => plain(r).trim() === 'Hooks need review');
-
 // OpenCode's prompt box has a bar down its left side, a blank row at its top and the agent and model in its last row
 function readOpencode(rows: string[], cursor: number): Composer {
   const bar = plain(rows[cursor] ?? '').indexOf('┃');

@@ -9,10 +9,10 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { runProcess, type RunResult } from './process.js';
 
 // what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
-export const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
-export const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
+const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
+const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
 // what Tailscale SSH in check mode prints while it waits for a check in the browser, until the timeout kills ssh
-export const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
+const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
 
 const CONTROL_TIMEOUT = 10_000;
 const OPEN_TIMEOUT = 20_000;

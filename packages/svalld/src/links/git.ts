@@ -36,8 +36,6 @@ function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', 
   });
 }
 
-export const runGit: GitRunner = gitRunner();
-
 /** git for a handover, whose repositories may carry another machine's config: it runs no fsmonitor or hook that config names. */
 export const handoverGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
 
@@ -47,7 +45,7 @@ export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonito
 /** git fetching from a remote with this machine's own credentials, which never prompts for one. */
 export const cloneGit: GitRunner = gitRunner(600_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
 
-export class GitFailure extends Error {}
+class GitFailure extends Error {}
 
 /** Runs git and answers its output, or throws what it said. */
 export async function must(git: GitRunner, args: readonly string[], cwd: string, subject = cwd): Promise<string> {
@@ -65,9 +63,9 @@ export async function gitVersion(git: GitRunner = handoverGit): Promise<string |
 /** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
 export type GitDirs = { root: string; commonDir: string; gitDir: string };
 
-export const DIRS_ARGS = ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'] as const;
+const DIRS_ARGS = ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'] as const;
 
-export function parseDirs(stdout: string): GitDirs {
+function parseDirs(stdout: string): GitDirs {
   const [root, commonDir, gitDir] = stdout.replace(/\n$/, '').split('\n');
   return { root, commonDir, gitDir };
 }

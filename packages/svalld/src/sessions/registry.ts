@@ -37,7 +37,7 @@ export function sessionAdapter(kind: AgentKind, adapter?: number): SessionAdapte
 /** The reads and writes placing a session makes, so a test can fail one. */
 export type InstallFs = { read(file: string): Buffer | undefined; mkdir(dir: string): void; stages?: Partial<DurableStages> };
 
-export const realInstallFs: InstallFs = {
+const realInstallFs: InstallFs = {
   read: (file) => { try { return fs.readFileSync(file); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw e; } },
   mkdir: (dir) => { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); },
 };

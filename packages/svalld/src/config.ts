@@ -65,7 +65,7 @@ const withIntegrations = <T extends Pick<Config, 'agentsOff' | 'integrations'>>(
     : c.integrations && AgentKind.options.filter((k) => c.integrations!.includes(k) || !LISTED.includes(k)),
 });
 
-export const mergeConfig = (fleet: FleetConfig, node: z.infer<typeof NodeFile>): Config =>
+const mergeConfig = (fleet: FleetConfig, node: z.infer<typeof NodeFile>): Config =>
   withIntegrations({ ...fleet, ...node, mobile: { ...fleet.mobile, ...node.mobile } });
 
 /** What `text` holds under `schema`; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
