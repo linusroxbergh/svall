@@ -146,6 +146,9 @@ export async function scope(o: {
     return r;
   };
   const [excludedRepos, picks] = [new Set(o.exclude.repos.map(real)), new Set(o.unrecorded.map(real))];
+  // an excluded folder leaves out its repo's sessions and any that ran inside it, in git or not
+  const out = (repo?: string, cwd?: string): boolean =>
+    (!!repo && excludedRepos.has(real(repo))) || (!!cwd && [...excludedRepos].some((x) => real(cwd) === x || real(cwd).startsWith(x + path.sep)));
   for (const c of o.candidates) {
     const ids = [c.session, ...(c.parent ? [c.parent] : [])];
     if (ids.some((id) => o.others.has(id))) { otherFleets++; continue; }
@@ -154,12 +157,12 @@ export async function scope(o: {
     if (record) {
       if (islandOut(record.island)) { excluded++; continue; }
       const repo = record.repo ?? (cwd ? await o.repoOf(cwd) : undefined);
-      if (repo && excludedRepos.has(real(repo))) { excluded++; continue; }
+      if (out(repo, cwd)) { excluded++; continue; }
       inScope.push({ ...c, record, repo });
       continue;
     }
     const repo = cwd ? await o.repoOf(cwd) : undefined;
-    if (repo && excludedRepos.has(real(repo))) { excluded++; continue; }
+    if (out(repo, cwd)) { excluded++; continue; }
     const group = repo ?? cwd ?? 'unknown';
     groups.set(group, (groups.get(group) ?? 0) + 1);
     if (picks.has(real(group))) inScope.push({ ...c, repo });

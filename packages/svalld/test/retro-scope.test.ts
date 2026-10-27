@@ -107,6 +107,18 @@ describe('scope', () => {
     expect(out.counts).toMatchObject({ inScope: 0, excluded: 3, unrecorded: [] });
   });
 
+  it('leaves out what ran inside an excluded folder, in git or not, recorded or picked', async () => {
+    const [notes, work] = [fs.realpathSync(makeHome()), fs.realpathSync(makeHome())];
+    const app = path.join(work, 'app');
+    const r = await scope({
+      ...base, repoOf: repos({ [app]: app }), exclude: { repos: [notes, work], islands: [] }, unrecorded: [notes, app],
+      candidates: [cand('MINE-notes', { cwd: path.join(notes, 'sub') }), cand('MINE-app', { cwd: app }), cand('UNREC-notes', { cwd: notes }), cand('UNREC-app', { cwd: app })],
+      own: new Map([['MINE-notes', rec('MINE-notes')], ['MINE-app', rec('MINE-app')]]),
+    });
+    expect(r.inScope).toEqual([]);
+    expect(r.counts).toMatchObject({ excluded: 4, unrecorded: [] });
+  });
+
   it("takes a Codex sub-agent's rollout as the session that started it", async () => {
     const child = (parent: string) => cand(`${parent}-child`, { agent: 'codex', cwd: '/r', parent });
     const r = await scope({

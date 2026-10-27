@@ -82,19 +82,26 @@ describe('indexSessions', () => {
     const straddle = (name: string, run: string) => {
       const file = path.join(d, `${name}.jsonl`);
       const cut = Math.floor(run.length / 2);
-      fs.writeFileSync(file, Buffer.concat([Buffer.alloc(SCAN_CHUNK - cut, 'x'), Buffer.from(run), Buffer.alloc(1024, 'x')]));
+      fs.writeFileSync(file, Buffer.concat([Buffer.alloc(SCAN_CHUNK - cut - 1, 'x'), Buffer.from(`\n${run}`), Buffer.alloc(1024, 'x')]));
       return file;
     };
     const onDisk = [
       straddle('claude-skill', '{"type":"tool_use","name":"Skill","input":{"skill":"superpowers:brainstorming"}}'),
       straddle('slash', '"content":"<command-name>/work-review</command-name>"'),
-      straddle('rollout-codex-read', '"cmd":"sed -n 1,200p /Users/me/.codex/skills/publish/SKILL.md"'),
+      straddle('rollout-codex-read', '{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"sed -n 1,200p /Users/me/.codex/skills/publish/SKILL.md"}}'),
     ];
+    // a rollout's instructions and world state list every skill's SKILL.md, and a tool's output or a message may name one
+    const listed = path.join(d, 'rollout-listed.jsonl');
+    fs.writeFileSync(listed, [
+      { type: 'session_meta', payload: { instructions: '- handover: /Users/me/.codex/skills/handover/SKILL.md' } },
+      { type: 'response_item', payload: { type: 'message', role: 'developer', content: [{ text: '/Users/me/.codex/skills/handover/SKILL.md' }] } },
+      { type: 'response_item', payload: { type: 'custom_tool_call_output', output: '/Users/me/.codex/skills/handover/SKILL.md' } },
+    ].map((l) => JSON.stringify(l)).join('\n'));
     const quoted = path.join(d, 'quoted.jsonl');
     // a call quoted inside another string, a name that only starts like a skill's, and a SKILL.md a Claude session
     // only reads or mentions, are no runs
     fs.writeFileSync(quoted, '{"text":"{\\"skill\\":\\"handover\\"}"}\n{"input":{"skill":"publishing"}}\n{"input":{"file_path":"/Users/me/.claude/skills/handover/SKILL.md"}}\n');
-    const r = await indexSessions(job({ files: [], skills: ['handover', 'publish', 'superpowers:brainstorming', 'work-review'], onDisk: [...onDisk, quoted] }));
+    const r = await indexSessions(job({ files: [], skills: ['handover', 'publish', 'superpowers:brainstorming', 'work-review'], onDisk: [...onDisk, quoted, listed] }));
     expect(r).toEqual({ outlines: [], skillsSeen: ['publish', 'superpowers:brainstorming', 'work-review'] });
   });
 });

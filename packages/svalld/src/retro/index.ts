@@ -29,14 +29,25 @@ const SCAN_COST = 0.5;
 const EXPORT_COST = 400e6;
 
 // what marks a run in a transcript's raw text: Claude's Skill input, a typed slash command, and in a Codex rollout, which
-// runs a skill by reading it, skills/<name>/SKILL.md
+// runs a skill by reading it, skills/<name>/SKILL.md on a tool call's line, as its instructions list every skill's path
 const INPUT = Buffer.from('"skill":"');
 const TYPED = Buffer.from('<command-name>/');
 const SKILL_MD = Buffer.from('/SKILL.md');
 const SKILLS = Buffer.from('skills/');
+const CALLS = ['custom_tool_call', 'function_call', 'local_shell_call', 'exec_command_begin', 'CommandExecution'].map((t) => Buffer.from(`"type":"${t}"`));
+// a rollout line names its type within this many bytes of its start
+const HEAD = 400;
+
+// whether the line `i` is in is a Codex tool call; one that started before the chunk is `carried`
+function callAt(buf: Buffer, i: number, carried: boolean): boolean {
+  const start = i > 0 ? buf.lastIndexOf(0x0a, i - 1) + 1 : 0;
+  if (start === 0) return carried;
+  const head = buf.subarray(start, start + HEAD);
+  return CALLS.some((c) => head.includes(c));
+}
 
 // each name a chunk marks as a run, `max` bytes long at most
-function named(buf: Buffer, max: number, codex: boolean, found: (name: string) => void): void {
+function named(buf: Buffer, max: number, codex: boolean, found: (name: string) => void, carried = false): void {
   const after = (mark: Buffer, end: string) => {
     for (let i = buf.indexOf(mark); i >= 0; i = buf.indexOf(mark, i + mark.length)) {
       const from = i + mark.length;
@@ -50,7 +61,7 @@ function named(buf: Buffer, max: number, codex: boolean, found: (name: string) =
   for (let i = buf.indexOf(SKILL_MD); i >= 0; i = buf.indexOf(SKILL_MD, i + SKILL_MD.length)) {
     const head = buf.subarray(Math.max(0, i - max - SKILLS.length), i);
     const slash = head.lastIndexOf('/');
-    if (slash >= SKILLS.length - 1 && head.subarray(slash + 1 - SKILLS.length, slash + 1).equals(SKILLS)) found(head.toString('utf8', slash + 1));
+    if (slash >= SKILLS.length - 1 && head.subarray(slash + 1 - SKILLS.length, slash + 1).equals(SKILLS) && callAt(buf, i, carried)) found(head.toString('utf8', slash + 1));
   }
 }
 
@@ -66,10 +77,11 @@ function scan(files: string[], wanted: Set<string>, seen: Set<string>): void {
     let fd: number | undefined;
     try {
       fd = fs.openSync(file, 'r');
-      for (let kept = 0, got; (got = fs.readSync(fd, buf, kept, buf.length - kept, null)) > 0;) {
+      for (let kept = 0, got, carried = false; (got = fs.readSync(fd, buf, kept, buf.length - kept, null)) > 0;) {
         const end = kept + got;
-        named(buf.subarray(0, end), max, codex, found);
+        named(buf.subarray(0, end), max, codex, found, carried);
         kept = Math.min(overlap, end);
+        carried = codex && callAt(buf, end - kept, carried);
         buf.copy(buf, 0, end - kept, end);
       }
     } catch { /* a file gone or unreadable names none */ } finally {

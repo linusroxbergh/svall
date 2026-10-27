@@ -46,7 +46,7 @@ type Read = { excerpts: Excerpt[]; notes: Note[] } | { failed: string };
 
 const said = (e: unknown): string => clip(String(e instanceof Error ? e.message : e).replace(/\s+/g, ' '), 300);
 const sessionKey = (s: { agent: AgentKind; session: string }): string => `${s.agent}\n${s.session}`;
-const sourceKey = (s: Source): string => ('pr' in s ? s.pr : sessionKey(s));
+const lineKey = (s: Source): string => ('pr' in s ? s.pr : `${sessionKey(s)}\n${s.line}`);
 
 // one call whose answer must fit `reply`, under the `hold` its caller reserved, retried once under a reservation of its
 // own; a call that fails, or whose CLI says nothing of what it used, is charged all it held. OpenCode has no schema flag,
@@ -164,13 +164,18 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
         { model: preset.judge.model, schema: JUDGE_SCHEMA, timeoutMs: 600_000 }, FINDINGS_OF, judgeHold, budget, signal,
       );
       const dismissed = new Set(Object.values(ledger).filter((e) => e.status === 'dismissed').map((e) => e.id));
-      const noted = new Set(notes.map((n) => sourceKey(n.source)));
+      const given = new Map<string, Note[]>();
+      for (const n of notes) given.set(lineKey(n.source), [...(given.get(lineKey(n.source)) ?? []), n]);
       const unused = new Set(o.unused);
       findings = reply.flatMap((j): Finding[] => {
         const target = targetOf(j.target, inventory, hashes);
         const id = findingId(j.focus, j.category, target?.realPath ?? '', j.subject);
-        // only what a note the judge was given stands on counts as evidence
-        const evidence = j.evidence.filter((e) => noted.has(sourceKey(e.source)));
+        // evidence counts only where it cites a note the judge was given, line and all, and shows that note's own quote
+        const evidence = j.evidence.flatMap((e) => {
+          const cited = given.get(lineKey(e.source)) ?? [];
+          const n = cited.find((x) => x.quote === e.quote) ?? cited[0];
+          return n ? [{ source: n.source, quote: n.quote }] : [];
+        });
         const sessions = new Set(evidence.flatMap((e) => ('pr' in e.source ? [] : [sessionKey(e.source)]))).size;
         const prs = new Set(evidence.flatMap((e) => ('pr' in e.source ? [e.source.pr] : []))).size;
         // a skill no transcript has run is a fact code read, which no session shows, and is never changed by a diff

@@ -285,6 +285,18 @@ describe('runPlan', () => {
     expect(report.findings[0].evidence.map((e) => ('pr' in e.source ? e.source.pr : e.source.session))).toEqual(['s1', 's2', 's3']);
   });
 
+  it("counts evidence only at a noted line, and prints the note's own quote for it", async () => {
+    const { input } = setup(THREE, (side) => side === 'read'
+      ? notes(note('s1'), note('s2'), note('s3', { source: { agent: 'claude', session: 's3', line: 7 } }))
+      : findings(
+        { ...judged(['s1', 's2', 's3']), evidence: [1, 2, 3].map((i) => ({ source: { agent: 'claude', session: `s${i}`, line: i === 3 ? 7 : 2 }, quote: 'invented' })) },
+        judged(['s1', 's2', 's3'], { subject: 'unnoted-line' }),
+      ));
+    const report = await runPlan(input);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].evidence.map((e) => e.quote)).toEqual(['L2 TOOL: Skill publish', 'L2 TOOL: Skill publish', 'L2 TOOL: Skill publish']);
+  });
+
   it('keeps the notes and findings of a reply that fit, and drops those that do not', async () => {
     const offFocus = note('s2', { category: 'missed-trigger' });
     const { input, dir } = setup(THREE, (side) => side === 'read'
