@@ -260,8 +260,8 @@ port. When the Mac sleeps, the fleet goes on.
 - The Load tab shows what the fleet costs the machine it runs on. On Linux a robot counts only what runs in its
   terminals: a server it left running in the background is neither listed nor ended by Sleep or Delete.
 - Revealing a file in Finder, or opening Settings → Fleet config, asks you to open it on the machine that holds it.
-- File → Open Fleet… lists and makes this Mac's fleets only from a window whose fleet is on this Mac; in this fleet's
-  window it says where the fleet runs instead. `svall <name>` opens another fleet from a terminal either way.
+- The File menu and the fleet picker list and make this Mac's fleets only from a window whose fleet is on this Mac; in
+  this fleet's window they say where the fleet runs instead. `svall <name>` opens another fleet from a terminal either way.
 - A terminal attaches only while the app's own ssh connection to that machine answers, and waits while it is down.
 - If the ssh link drops, the terminals and agents keep running on the other machine. The banner says it is not
   reachable, and the app reconnects and re-attaches every terminal once the link is back.

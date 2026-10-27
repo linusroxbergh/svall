@@ -43,8 +43,9 @@ export type UiState = {
   deletingIsland?: string;
   // a board column with robots in it, whose delete waits on where they go
   deletingColumn?: string;
-  // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it
-  fleetPicker?: 'bare' | 'menu';
+  // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it;
+  // new only makes one
+  fleetPicker?: 'bare' | 'menu' | 'new';
   card?: string;
   cardSize: CardSize;
   active: boolean;
@@ -107,7 +108,7 @@ export type UiActions = {
   setMoveSheet(ask?: MoveAsk): void;
   setDeletingIsland(id?: string): void;
   setDeletingColumn(id?: string): void;
-  setFleetPicker(mode?: 'bare' | 'menu'): void;
+  setFleetPicker(mode?: 'bare' | 'menu' | 'new'): void;
   termOpened(id: string, rect: Rect): void;
   termMoved(id: string, rect: Rect): void;
   termGone(id: string): void;

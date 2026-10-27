@@ -7,7 +7,7 @@ import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
 
-// the fleets on this Mac: one opens beside this window, or on a bare launch in its place
+// the fleets on this Mac: one opens beside this window, or on a bare launch in its place; File's New Fleet… asks only for a name
 export function FleetPicker() {
   const mode = useApp((s) => s.fleetPicker);
   // each opening starts fresh
@@ -16,7 +16,7 @@ export function FleetPicker() {
 
 const listFleets = (): Promise<FleetEntry[]> => app.api().call('fleets.list', {}).then((r) => r.fleets);
 
-function Picker({ mode }: { mode: 'bare' | 'menu' }) {
+function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
   const online = useApp((s) => s.status === 'online');
   // a fleet on another machine talks to that machine's daemon, which knows nothing of this Mac's fleets
   const away = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
@@ -47,7 +47,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
       const target = await home();
       if (!shown.current) return;
       app.bridge.send({ type: 'openFleet', home: target, quit: mode === 'bare' });
-      if (mode === 'menu') close();
+      if (mode !== 'bare') close();
     } catch (e) {
       setErrors((x) => ({ ...x, [key]: (e as Error).message }));
       // a fleet made but slow to answer is a row to start from, not a name to make again
@@ -73,11 +73,11 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
           if (e.key === 'Enter') e.stopPropagation();
           if (e.key === 'Escape') { e.stopPropagation(); close(); }
         }}>
-        <div className="kicker">Fleets<CloseX onClose={close} testid="fleet-picker-close" /></div>
+        <div className="kicker">{mode === 'new' ? 'New fleet' : 'Fleets'}<CloseX onClose={close} testid="fleet-picker-close" /></div>
         {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
         {away && <div className="modal-note" data-testid="fleet-picker-away">This fleet runs on {away}; open other fleets from a window of a fleet on this Mac.</div>}
         {listError && <div className="fleet-error">{listError}</div>}
-        <div className="fleet-rows">
+        {mode !== 'new' && <div className="fleet-rows">
           {!away && fleets?.map((f) => (
             <div key={f.home}>
               {/* a reflex Enter keeps this window's fleet */}
@@ -90,9 +90,9 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
               {errors[f.home] && <div className="fleet-error" data-testid={`fleet-error-${f.name}`}>{errors[f.home]}</div>}
             </div>
           ))}
-        </div>
+        </div>}
         {!away && <div className="fleet-new">
-          <input className="fld" placeholder="New fleet" aria-label="New fleet name" value={name} disabled={!online} data-testid="fleet-new-name" {...AS_TYPED}
+          <input className="fld" placeholder="New fleet" aria-label="New fleet name" value={name} disabled={!online} data-testid="fleet-new-name" autoFocus={mode === 'new'} {...AS_TYPED}
             onChange={(e) => setName(e.target.value.trim())} onKeyDown={(e) => { if (e.key === 'Enter') create(); }} />
           <button className="btn" data-testid="fleet-new-create" disabled={!online || !name || !!problem || busy !== undefined} onClick={create}>
             {busy === 'new' ? 'Creating…' : 'Create'}

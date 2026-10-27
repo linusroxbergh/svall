@@ -1,4 +1,4 @@
-import type { AgentKind, ContextItem, HandoverChoices, SetupRow } from '@svall/protocol';
+import type { AgentKind, ContextItem, FleetEntry, HandoverChoices, SetupRow } from '@svall/protocol';
 import type { HandoverEvent } from './handover.js';
 
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -8,6 +8,8 @@ export type Attach = { socket: string; session: string; tmux: string; via?: { ss
 // loopback that reaches the same port there
 export type MachineTerm = { ssh: string; type?: string; forward?: number };
 export type Connection = { host: string; port: number; token: string };
+// what the Mac menu bar's titles follow: whether each panel is up, and a card open for Close and the browser
+export type MenuState = { view: 'map' | 'board'; sides: boolean; sideCard: boolean; resources: boolean; browser: boolean; card: boolean };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
 // handoverEnabled: fleet.json's handover.enabled, which every control for another machine waits on
@@ -113,7 +115,11 @@ export type ToShell =
   // a fresh connect helper, whatever the last one gave up on
   | { type: 'connection.retry' }
   // the fleet's copy on this Mac, while the helper cannot say where the fleet runs
-  | { type: 'connection.here' };
+  | { type: 'connection.here' }
+  // the menu bar: the chord each action is on by its name in keys.ts, and the state its titles follow
+  | { type: 'menu.state'; chords: Record<string, string>; state: MenuState }
+  // the fleets File lists, or why it lists none
+  | { type: 'menu.fleets'; fleets: FleetEntry[]; note?: string };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
@@ -158,8 +164,11 @@ export type FromShell =
   | { type: 'quit.ask' }
   // the quit goes ahead: the fleet stops, and the shell waits for quit.stopped
   | { type: 'quit.stop' }
-  // the menu's Open Fleet…
-  | { type: 'fleets' }
+  // File is opening, and lists the fleets afresh
+  | { type: 'menu.ask' }
+  // a menu bar command, by its action's name in keys.ts, or shortcuts or newFleet
+  | { type: 'menu.run'; action: string }
+  | { type: 'menu.openFleet'; home: string }
   | { type: 'openFleet.failed'; home: string; reason: string }
   // the page's web process has grown large while the app sat in the background, and a reload would free it
   | { type: 'memory.high' };

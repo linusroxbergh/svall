@@ -111,6 +111,22 @@ test('a new fleet\'s name is checked as it is typed, then the fleet is made and 
   expect(call).toHaveBeenCalledWith('fleets.create', { name: 'lab' });
 });
 
+test('File\'s New Fleet… asks only for a name, still checked against the fleets there are, and closes once the fleet opens', async () => {
+  store.getState().setFleetPicker('new');
+  render(<FleetPicker />);
+  const input = screen.getByTestId('fleet-new-name');
+  expect(document.activeElement).toBe(input);
+  expect(screen.getByTestId('fleet-picker').textContent).toContain('New fleet');
+  await waitFor(() => expect(call).toHaveBeenCalledWith('fleets.list', {}));
+  expect(screen.queryAllByTestId(/^fleet-row-/)).toEqual([]);
+  fireEvent.change(input, { target: { value: 'work' } });
+  expect(screen.getByTestId('fleet-new-problem').textContent).toBe('another fleet is called work');
+  fireEvent.change(input, { target: { value: 'lab' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(sent).toContainEqual({ type: 'openFleet', home: '/u/.svall-lab', quit: false }));
+  expect(store.getState().fleetPicker).toBeUndefined();
+});
+
 // with no row or field to hold it, the dialog itself takes the keys
 const escapeCloses = () => {
   expect(screen.getByTestId('fleet-picker').contains(document.activeElement)).toBe(true);
