@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKind } from '@svall/protocol';
+import { frontmatterEnd, type AgentKind } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 import { VAR_NAME } from '../claude.js';
@@ -89,6 +89,8 @@ const RUNTIME: Record<string, string[]> = {
   npx: ['node', 'npx'], node: ['node'], bunx: ['bun'], bun: ['bun'], uvx: ['uvx'], uv: ['uv'], docker: ['docker'], python3: ['python3'], python: ['python3'],
 };
 const MARKETPLACE_URL = 'extraKnownMarketplaces.*.source.url';
+// every header a marketplace's source sends, its own or a plugin entry's
+const MARKETPLACE_HEADERS = 'extraKnownMarketplaces.*.source.**.headers.*';
 const PLUGIN_SETTINGS = ['permissions', 'hooks', 'model'];
 
 type Doc = Record<string, unknown>;
@@ -400,14 +402,16 @@ function argValue(args: string[], i: number): [keep: string, value: string] | un
   return undefined;
 }
 
-// the secrets in `args`, each by its field: an arg's value whole, or else the query and credentials of a URL anywhere in it
+// the secrets in `args`, each by its field: an arg's value whole, or else the query and credentials of a URL anywhere in
+// it; the args are named only once one holds a secret
 function argsSecrets(args: string[]): Secret[] {
-  const fields = argFields(args);
-  return args.flatMap((a, i) => {
+  const found = args.flatMap((a, i) => {
     const kv = argValue(args, i);
-    if (kv && !isReferenceOnly(kv[1])) return [{ field: fields[i], value: kv[1] }];
-    return urlSecrets(a, fields[i], hasUrl(a));
+    if (kv && !isReferenceOnly(kv[1])) return [{ i, part: '', value: kv[1] }];
+    return urlSecrets(a, '', hasUrl(a)).map((u) => ({ i, part: u.field, value: u.value }));
   });
+  const fields = found.length ? argFields(args) : [];
+  return found.map(({ i, part, value }) => ({ field: `${fields[i]}${part}`, value }));
 }
 
 // arg `i` of `args`, whose field is `field`, with the secrets `drop` names emptied
@@ -502,10 +506,10 @@ export function redacted(s: McpServer, keep: ReadonlySet<string>): Record<string
   for (const h of Object.keys(s.headers)) if (drop.has(`headers.${h}`)) (raw[p.headers] as Doc)[h] = '';
   if (s.url !== undefined) raw.url = urlWithout(s.url, 'url', drop);
   const [key, from] = argsAt(s.agent, raw);
-  const fields = argFields(s.args);
-  s.args.forEach((a, i) => {
-    const emptied = argWithout(s.args, i, fields[i], drop);
-    if (emptied !== a) (raw[key] as unknown[])[i + from] = emptied;
+  const fields = [...drop].some((f) => f.startsWith('args[')) ? argFields(s.args) : [];
+  fields.forEach((field, i) => {
+    const emptied = argWithout(s.args, i, field, drop);
+    if (emptied !== s.args[i]) (raw[key] as unknown[])[i + from] = emptied;
   });
   const oauth = raw.oauth;
   if (isDoc(oauth)) for (const k of OAUTH_SECRETS) if (drop.has(`oauth.${k}`)) oauth[k] = '';
@@ -545,7 +549,7 @@ function at(doc: unknown, pattern: string[], field: string[] = []): Leaf[] {
   return kids.filter(([k]) => head === '*' || k === head).flatMap(([k, v]) => at(v, rest, [...field, k]));
 }
 const strings = (leaves: Leaf[]): (Leaf & Secret)[] => leaves.filter((l): l is Leaf & Secret => typeof l.value === 'string');
-const SECRET_PATHS: Record<AgentKind, readonly string[]> = { claude: [], codex: CODEX_SECRET_PATHS, opencode: OPENCODE_SECRET_PATHS };
+const SECRET_PATHS: Record<AgentKind, readonly string[]> = { claude: [MARKETPLACE_HEADERS], codex: CODEX_SECRET_PATHS, opencode: OPENCODE_SECRET_PATHS };
 
 // OpenCode's provider, model and agent options: each string named as a key, and the query values of their baseURL
 function providerSecrets(doc: Record<string, unknown>): Secret[] {
@@ -685,4 +689,161 @@ export function readPluginConfigs(plugins: PluginInstall[], unreadable: string[]
       PLUGIN_SETTINGS.includes(k) || (k === 'env' && isDoc(v) && Object.values(v).every((x) => typeof x === 'string' && isReferenceOnly(x))));
     return plain ? [] : [{ name, file, fields: Object.keys(doc) }];
   });
+}
+
+/**
+ * Claude's known_marketplaces.json with each header of a marketplace's source that is not only references emptied, but
+ * those `keep` holds by their settings.json field; `kept` whether one of those stays.
+ */
+export function marketplaceList(doc: Record<string, unknown>, keep: ReadonlySet<string>): { doc: Record<string, unknown>; kept: boolean } {
+  const out = structuredClone(doc);
+  let kept = false;
+  for (const l of strings(at(out, MARKETPLACE_HEADERS.split('.').slice(1)))) {
+    if (isReferenceOnly(l.value)) continue;
+    if (keep.has(`extraKnownMarketplaces.${l.field}`)) kept = true;
+    else setAt(out, l.place, '');
+  }
+  return { doc: out, kept };
+}
+
+/** The LSP servers in `v`, an LSP config wrapped in lspServers or flat, whose env holds a value that is not only references. */
+export const keyedLsp = (v: unknown): string[] => docs(isDoc(v) && isDoc(v.lspServers) ? v.lspServers : v)
+  .filter(([, s]) => Object.values(texts(s.env)).some((x) => !isReferenceOnly(x))).map(([name]) => name);
+
+/**
+ * The LSP configs under plugin root `root` with a server holding a key, each with those servers as `lspServers.<name>`:
+ * its .lsp.json, and its manifest's lspServers inline or in each file under it the manifest names; one there that cannot
+ * be read, or that leads outside the plugin, is named in `unreadable`.
+ */
+export function lspKeys(root: string, unreadable: string[]): { file: string; fields: string[] }[] {
+  const manifest = path.join(root, '.claude-plugin/plugin.json');
+  const named = readDoc(manifest, JSON.parse, [])?.lspServers;
+  const read = (f: string): { file: string; doc: unknown }[] => {
+    if (!fs.existsSync(f)) return [];
+    if (within(root, f)) return [{ file: f, doc: readDoc(f, JSON.parse, unreadable) }];
+    unreadable.push(f);
+    return [];
+  };
+  const found = [
+    ...read(path.join(root, '.lsp.json')), ...(isDoc(named) ? [{ file: manifest, doc: named }] : []),
+    ...[...new Set(namedPaths(named).map((n) => path.resolve(root, n)))].filter((f) => f !== path.join(root, '.lsp.json')).flatMap(read),
+  ];
+  return found.flatMap(({ file, doc }) => {
+    const fields = keyedLsp(doc).map((name) => `lspServers.${name}`);
+    return fields.length ? [{ file, fields }] : [];
+  });
+}
+
+/** Each plugin's LSP configs with a server holding a key, as lspKeys finds them in its install. */
+export const readPluginLsp = (plugins: PluginInstall[], unreadable: string[]): { name: string; file: string; fields: string[] }[] =>
+  plugins.flatMap((p) => lspKeys(p.installPath, unreadable).map((c) => ({ name: p.name, ...c })));
+
+/** The entries of a marketplace list `doc` that set headers or a headersHelper anywhere in them, as `plugins.<name>`. */
+export const headedEntries = (doc: unknown): string[] => (isDoc(doc) && Array.isArray(doc.plugins) ? doc.plugins as unknown[] : [])
+  .flatMap((e, i) => (isDoc(e) && (at(e, ['**', 'headers']).length || at(e, ['**', 'headersHelper']).length) ? [`plugins.${typeof e.name === 'string' ? e.name : i}`] : []));
+
+type YamlLine = { indent: number; text: string };
+// a YAML map's key, plain or quoted, and what follows its colon
+const YAML_KEY = /^([A-Za-z0-9_][\w.-]*|"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')\s*:(?:\s+(.*))?$/;
+const YAML_ITEM = /^-(?: |$)/;
+
+// a plain or quoted YAML scalar, or a one-line list of them; undefined for any other form
+function yamlScalar(v: string): unknown {
+  if (v.startsWith('"')) {
+    try { return text(JSON.parse(v)); } catch { return undefined; }
+  }
+  if (v.startsWith("'")) return /^'(?:[^']|'')*'$/.test(v) ? v.slice(1, -1).replaceAll("''", "'") : undefined;
+  if (v.startsWith('[') && v.endsWith(']')) {
+    const items = v.slice(1, -1).split(',').map((x) => x.trim());
+    const list = (items.at(-1) === '' ? items.slice(0, -1) : items).map(yamlScalar);
+    return list.every((x) => typeof x === 'string') ? list : undefined;
+  }
+  const special = /^[,[\]{}#&*!|>'"%@`]/.test(v) || /^[-?:](\s|$)/.test(v);
+  return v === '' || special || /: | #|:$/.test(v) ? undefined : v;
+}
+
+// the value under a line at `indent`: the block indented past it, or null where there is none
+const yamlUnder = (lines: YamlLine[], i: number, indent: number): [unknown, number] | undefined =>
+  (lines[i] !== undefined && lines[i].indent > indent ? yamlBlock(lines, i, lines[i].indent) : [null, i]);
+
+// the YAML map or list in `lines` from `i` at `indent`, and the index past it; undefined for a form the mirror does not read
+function yamlBlock(lines: YamlLine[], i: number, indent: number): [unknown, number] | undefined {
+  const list = YAML_ITEM.test(lines[i].text);
+  const out: unknown[] | Record<string, unknown> = list ? [] : {};
+  while (lines[i]?.indent === indent && YAML_ITEM.test(lines[i].text) === list) {
+    const line = lines[i].text;
+    let v: [unknown, number] | undefined;
+    if (Array.isArray(out)) {
+      const rest = line.slice(1).trimStart();
+      const at = indent + line.length - rest.length;
+      if (rest === '') v = yamlUnder(lines, i + 1, indent);
+      else if (YAML_KEY.test(rest)) {
+        // a map that starts on its item's line
+        lines[i] = { indent: at, text: rest };
+        v = yamlBlock(lines, i, at);
+      } else v = [yamlScalar(rest), i + 1];
+      if (v?.[0] === undefined) return undefined;
+      out.push(v[0]);
+    } else {
+      const kv = YAML_KEY.exec(line);
+      const key = kv && yamlScalar(kv[1]);
+      if (typeof key !== 'string' || Object.hasOwn(out, key)) return undefined;
+      // a key's list may stand at the key's own indent
+      const own = lines[i + 1]?.indent === indent && YAML_ITEM.test(lines[i + 1].text);
+      v = kv?.[2] ? [yamlScalar(kv[2]), i + 1] : own ? yamlBlock(lines, i + 1, indent) : yamlUnder(lines, i + 1, indent);
+      if (v?.[0] === undefined) return undefined;
+      out[key] = v[0];
+    }
+    i = v[1];
+  }
+  return [out, i];
+}
+
+/**
+ * The servers a subagent file's frontmatter `mcpServers` defines inline, each by its name and entry, from its list or map;
+ * a server it only names is none. Undefined where that block is not in the plain YAML the mirror reads.
+ */
+export function agentServers(source: string): [name: string, entry: unknown][] | undefined {
+  const end = frontmatterEnd(source);
+  const lines = end ? source.slice(0, end).split(/\r?\n/).slice(1, -1) : [];
+  const at = lines.findIndex((l) => /^mcpServers\s*:/.test(l));
+  if (at < 0) return [];
+  const head = lines[at].slice(lines[at].indexOf(':') + 1).trim();
+  const after = lines.slice(at + 1);
+  // the next key at the top ends the block
+  const stop = after.findIndex((l) => /^[^\s#-]|^-\S/.test(l));
+  const body: YamlLine[] = [];
+  for (const l of stop < 0 ? after : after.slice(0, stop)) {
+    if (/^\s*(#|$)/.test(l)) continue;
+    if (/^ *\t/.test(l)) return undefined;
+    body.push({ indent: l.length - l.trimStart().length, text: l.trim() });
+  }
+  if (head !== '' && body.length) return undefined;
+  const block = head === '' && body.length ? yamlBlock(body, 0, body[0].indent) : [null, 0];
+  if (!block || block[1] !== body.length) return undefined;
+  const value = head !== '' ? yamlScalar(head) : block[0];
+  if (value === null) return [];
+  if (isDoc(value)) return Object.entries(value);
+  if (!Array.isArray(value)) return undefined;
+  const servers: [string, unknown][] = [];
+  for (const e of value) {
+    if (typeof e === 'string') continue;
+    if (!isDoc(e) || Object.keys(e).length !== 1) return undefined;
+    servers.push(Object.entries(e)[0]);
+  }
+  return servers;
+}
+
+/**
+ * What of a subagent file `source` the mirror asks before it travels: each inline server holding a key or fields the mirror
+ * does not know, as `mcpServers.<name>`, or `mcpServers` whole where it cannot read them.
+ */
+export function agentKeys(source: string): string[] {
+  const servers = agentServers(source);
+  if (!servers) return ['mcpServers'];
+  return [...new Set(servers.filter(([name, raw]) => {
+    if (!isDoc(raw)) return true;
+    const s = toServer('claude', 'user', { name, raw, file: '', place: [] });
+    return !s.known || secretsOf(s).length > 0;
+  }).map(([name]) => `mcpServers.${name}`))];
 }

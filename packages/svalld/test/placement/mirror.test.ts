@@ -177,6 +177,91 @@ describe('the agent configuration mirror', () => {
     expect(mirrorPlan(mac, new Set(['claude:mcp:linear#env.LINEAR_API_KEY'])).vars).not.toContain('LINEAR_API_KEY');
   });
 
+  it('the variables a plan names come from what it carries: a server withheld until ticked whole names none until it is', () => {
+    const mac = macHome();
+    editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', env: { ODD_KEY: 'odd_key_1234567890', REF: '${ODD_REF}' }, sandbox: true }; });
+    expect(mirrorPlan(mac).vars).toEqual(['E', 'GITHUB_TOKEN', 'LINEAR_API_KEY', 'PDF_KEY', 'REMOTE_TOKEN']);
+    expect(mirrorPlan(mac, new Set(['command', 'env', 'sandbox'].map((f) => `claude:mcp:odd#${f}`))).vars).toContain('ODD_REF');
+  });
+
+  it('a project server outside the Mac\'s home goes where the worker says it has that folder', () => {
+    const mac = macHome();
+    const outside = path.join(makeHome(), 'shared');
+    editJson(mac.claudeJson, (j) => { j.projects[outside] = { mcpServers: { far: { command: 'far' } } }; });
+    const facts = (has: boolean) => ({ state: { files: {}, docs: {}, servers: {}, secrets: {} }, projects: { [outside]: has } });
+    expect(mirrorPlan(mac, new Set(), facts(false)).servers.map((s) => s.name)).not.toContain('far');
+    expect(mirrorPlan(mac, new Set(), facts(true)).servers.find((s) => s.name === 'far')).toMatchObject({ scope: { project: outside } });
+  });
+
+  it('a marketplace source\'s headers in settings.json are key fields of claude:settings, emptied there and in known_marketplaces.json unless ticked', () => {
+    const mac = macHome();
+    const source = { source: 'url', url: 'https://x.test/m.json', headers: { Authorization: 'Bearer mh_fake_1234567890' } };
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => {
+      j.extraKnownMarketplaces = {
+        x: { source },
+        y: { source: { source: 'settings', plugins: [{ name: 'p', source: { source: 'url', url: 'https://y.test/p.zip' }, headers: { 'X-Key': 'ph_fake_1234567890' } }] } },
+      };
+    });
+    editJson(path.join(mac.claudeDir, 'plugins/known_marketplaces.json'), (j) => { j.x = { source, installLocation: path.join(mac.claudeDir, 'plugins/marketplaces/x') }; });
+    const listOf = (plan: ReturnType<typeof mirrorPlan>) => plan.files.find((f) => f.to === 'claude/plugins/known_marketplaces.json')!;
+    const plan = mirrorPlan(mac);
+    expect(plan.configs.find((c) => c.key === 'claude:settings')!.fields).toEqual([
+      'extraKnownMarketplaces.x.source.headers.Authorization', 'extraKnownMarketplaces.y.source.plugins.0.headers.X-Key', 'env.ANTHROPIC_API_KEY',
+    ]);
+    expect(JSON.stringify([plan.settings, listOf(plan).data])).not.toMatch(/mh_fake|ph_fake/);
+    const ticked = mirrorPlan(mac, new Set(['claude:settings#extraKnownMarketplaces.x.source.headers.Authorization']));
+    expect([JSON.parse(listOf(ticked).data!).x.source.headers.Authorization, listOf(ticked).mode, ticked.keyed]).toEqual(['Bearer mh_fake_1234567890', 0o600, ['claude/plugins/known_marketplaces.json']]);
+    expect((ticked.settings as any).extraKnownMarketplaces.x.source.headers.Authorization).toBe('Bearer mh_fake_1234567890');
+    expect(JSON.stringify(ticked.settings)).not.toContain('ph_fake');
+  });
+
+  it('a plugin\'s LSP server holding a key in its env, in .lsp.json or plugin.json, lists the plugin\'s config whole, and a marketplace entry setting headers lists its marketplace.json whole; each stays on the Mac until ticked', () => {
+    const mac = macHome();
+    const acme = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    const market = path.join(mac.claudeDir, 'plugins/marketplaces/mp');
+    const list = path.join(market, '.claude-plugin/marketplace.json');
+    const lsp = JSON.stringify({ go: { command: 'gopls', env: { GO_TOKEN: 'lsp_fake_1234567890' } }, ts: { command: 'tsls', env: { K: '${K}' } } });
+    put(path.join(acme, '.lsp.json'), lsp);
+    put(path.join(market, 'acme/.lsp.json'), lsp);
+    put(path.join(acme, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'acme', lspServers: { py: { command: 'pyls', env: { PY_TOKEN: 'lsp_fake_0987654321' } } } }));
+    put(list, JSON.stringify({ name: 'mp', plugins: [{ name: 'acme', source: './acme' }, { name: 'zip', source: { source: 'url', url: 'https://z.test/z.zip' }, headers: { Authorization: 'Bearer mk_fake_1234567890' } }] }));
+    const files = [path.join(acme, '.lsp.json'), path.join(acme, '.claude-plugin/plugin.json'), list];
+    const plan = mirrorPlan(mac);
+    expect(plan.plugins).toEqual([
+      { key: 'claude:plugin:acme', name: "acme's config", fields: ['lspServers.go', 'lspServers.py'], ticked: false, files: files.slice(0, 2) },
+      { key: 'claude:marketplace:mp', name: "mp's marketplace.json", fields: ['plugins.zip'], ticked: false, files: [list] },
+    ]);
+    expect(plan.files.filter((f) => files.includes(f.from) || f.from === path.join(market, 'acme/.lsp.json'))).toEqual([]);
+    expect(plan.skipped).toEqual(expect.arrayContaining([...files.map((f) => `${f} is not ticked`), `${path.join(market, 'acme/.lsp.json')} holds a key`]));
+    const ticked = mirrorPlan(mac, new Set(['claude:plugin:acme#lspServers.go', 'claude:plugin:acme#lspServers.py', 'claude:marketplace:mp#plugins.zip']));
+    const carried = ticked.files.filter((f) => files.includes(f.from));
+    expect(Object.fromEntries(carried.map((f) => [f.to, f.mode]))).toEqual({
+      [`${ACME}/.lsp.json`]: 0o600, [`${ACME}/.claude-plugin/plugin.json`]: 0o600, 'claude/plugins/marketplaces/mp/.claude-plugin/marketplace.json': 0o600,
+    });
+    expect(ticked.keyed.sort()).toEqual(carried.map((f) => f.to).sort());
+  });
+
+  it('a subagent whose frontmatter defines an inline MCP server holding a key or fields the mirror does not know, or that it cannot read, is listed whole and stays on the Mac until ticked; one naming servers only, or whose servers hold none, travels', () => {
+    const mac = macHome();
+    const agents = path.join(mac.claudeDir, 'agents');
+    const md = (...lines: string[]) => ['---', ...lines, '---', 'the agent', ''].join('\n');
+    put(path.join(agents, 'db.md'), md('name: db', 'mcpServers:', '  - github', '  - pg:', '      type: stdio', '      command: npx', '      args: ["-y", "pg-mcp"]', '      env:', '        PG_PASSWORD: pg_fake_1234567890'));
+    put(path.join(agents, 'team/odd.md'), md('mcpServers:', '  odd:', '    command: odd', '    sandbox: true'));
+    put(path.join(agents, 'folded.md'), md('mcpServers:', '  - pg:', '      command: >', '        npx pg'));
+    put(path.join(agents, 'ref.md'), md('mcpServers:', '- github', '- docs:', '    type: http', '    url: https://docs.test/mcp', '    headers:', "      Authorization: 'Bearer ${DOCS_TOKEN}'"));
+    put(path.join(agents, 'names.md'), md('mcpServers: [github, "slack"]'));
+    const plan = mirrorPlan(mac);
+    expect(plan.plugins).toEqual([
+      { key: 'claude:agent:db.md', name: 'agents/db.md', fields: ['mcpServers.pg'], ticked: false, files: [path.join(agents, 'db.md')] },
+      { key: 'claude:agent:folded.md', name: 'agents/folded.md', fields: ['mcpServers'], ticked: false, files: [path.join(agents, 'folded.md')] },
+      { key: 'claude:agent:team/odd.md', name: 'agents/team/odd.md', fields: ['mcpServers.odd'], ticked: false, files: [path.join(agents, 'team/odd.md')] },
+    ]);
+    expect(plan.files.map((f) => f.to).filter((t) => t.startsWith('claude/agents/')).sort()).toEqual(['claude/agents/names.md', 'claude/agents/planner.md', 'claude/agents/ref.md']);
+    expect(plan.skipped).toEqual(expect.arrayContaining(['db.md', 'folded.md', 'team/odd.md'].map((f) => `${path.join(agents, f)} is not ticked`)));
+    const ticked = mirrorPlan(mac, new Set(['claude:agent:db.md#mcpServers.pg']));
+    expect([ticked.files.find((f) => f.to === 'claude/agents/db.md')?.mode, ticked.keyed]).toEqual([0o600, ['claude/agents/db.md']]);
+  });
+
   it('a file the mirror writes itself is left out over 5 MB too', () => {
     const mac = macHome();
     const mcp = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
@@ -522,7 +607,7 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     tick('claude:mcp:odd', ['command'], true); await push();
     const plan = mirrorPlan(mac, readConsent(w.home.paths.mirrorConsent, W));
     expect(plan.servers.find((s) => s.name === 'odd')).toMatchObject({ known: false, secretFields: [], ticked: ['command'], entry: {} });
-    expect(plan.plugins).toEqual([{ key: 'claude:plugin:acme', name: 'acme', fields: ['env'], ticked: false, files: [path.join(mac.claudeDir, acmeSettings)] }]);
+    expect(plan.plugins).toEqual([{ key: 'claude:plugin:acme', name: "acme's config", fields: ['env'], ticked: false, files: [path.join(mac.claudeDir, acmeSettings)] }]);
     expect(workerJson().mcpServers).not.toHaveProperty('odd');
     expect(fs.existsSync(path.join(worker.claudeDir, acmeSettings))).toBe(false);
     tick('claude:mcp:odd', ['sandbox'], true); tick('claude:plugin:acme', ['env'], true); await push();
@@ -666,6 +751,17 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     await push();
     expect(files.map((f) => fs.statSync(f).mode & 0o777)).toEqual([0o600, 0o600, 0o600]);
     expect(files.map(read)).toEqual(before);
+  });
+
+  it('a marketplace list the Mac cannot read keeps the files of each plugin installed from it on the worker as the mirror last wrote them', async () => {
+    const acme = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    editJson(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), (j) => { j.plugins = { 'acme@mp': j.plugins.acme }; });
+    await push();
+    expect(read(path.join(acme, 'skills/pdf/SKILL.md'))).toBe('pdf\n');
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), '{ "plugins": ');
+    await push(); await push();
+    expect(read(path.join(acme, 'skills/pdf/SKILL.md'))).toBe('pdf\n');
+    expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: '${PDF_KEY}' } } } });
   });
 
   it('a path too long for ustar is skipped with a line, and the push still goes', async () => {

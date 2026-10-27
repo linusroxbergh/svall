@@ -233,6 +233,15 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('oauth:claude:mcp:notion')).toMatchObject({ status: 'ok', detail: 'logged in on w1' });
   });
 
+  it('a subagent file listed whole asks to be copied whole and reads as copied once the worker holds it', async () => {
+    put(path.join(mac.claudeDir, 'agents/db.md'), ['---', 'mcpServers:', '  - pg:', '      command: npx', '      env:', '        PG_PASSWORD: pg_fake_1234567890', '---', ''].join('\n'));
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md whole to w1', tick: { fields: ['mcpServers.pg'], on: false } });
+    tick('claude:agent:db.md', ['mcpServers.pg'], true);
+    await push();
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
+    expect(fs.statSync(path.join(worker.claudeDir, 'agents/db.md')).mode & 0o777).toBe(0o600);
+  });
+
   it('a key in an arg under the Mac\'s home, unticked, reads as the mirror left it there, moved, and not as the worker\'s own', async () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.run = { command: 'sh', args: ['-c', `${mac.homedir}/run.sh https://u:pw_1234567890@host.test/x`] }; });
     await push();

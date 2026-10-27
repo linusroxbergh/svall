@@ -121,17 +121,19 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     if (!docs.has(name)) docs.set(name, docWithOverride(name, o));
     return docs.get(name);
   };
-  // a file the mirror writes whole as it stands here, its override standing in for it, and whether it is as the mirror wrote it
-  const fileHere = (to: string): { doc: unknown; copied: boolean } => {
-    if (!to.startsWith('claude/')) return { doc: undefined, copied: false };
+  // a file the mirror writes whole as it stands here, its override standing in for it: whether it is there, its JSON and
+  // whether it is as the mirror wrote it
+  const fileHere = (to: string): { there: boolean; doc: unknown; copied: boolean } => {
+    if (!to.startsWith('claude/')) return { there: false, doc: undefined, copied: false };
     const override = path.join(o.overrides, to);
     const own = fs.existsSync(override);
-    try {
-      const bytes = fs.readFileSync(own ? override : path.join(o.claudeDir, to.slice('claude/'.length)));
-      return { doc: JSON.parse(bytes.toString('utf8')), copied: !own && sha256Hex(bytes) === state.files[to] };
-    } catch {
-      return { doc: undefined, copied: false };
+    let bytes: Buffer;
+    try { bytes = fs.readFileSync(own ? override : path.join(o.claudeDir, to.slice('claude/'.length))); } catch {
+      return { there: false, doc: undefined, copied: false };
     }
+    let doc: unknown;
+    try { doc = JSON.parse(bytes.toString('utf8')); } catch { /* a file of another kind */ }
+    return { there: true, doc, copied: !own && sha256Hex(bytes) === state.files[to] };
   };
 
   const secrets: ConfigReport['secrets'] = {};
@@ -151,7 +153,9 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
   for (const w of ask.whole) {
     const v = w.doc ? getAt(docHere(w.doc), placedIn(w.doc, w.place, move)) : w.file !== undefined ? getAt(fileHere(w.file).doc, w.place) : undefined;
     const recorded = w.doc ? state.servers[recordKey(w.doc, w.place)] : w.file !== undefined ? state.files[w.file] : undefined;
-    whole[w.item] = (whole[w.item] ?? true) && recorded !== undefined && isDoc(v) && w.fields.every((f) => Object.hasOwn(v, f));
+    // a file carried whole is there once the worker has it
+    const there = !w.doc && w.file !== undefined && !w.place.length ? fileHere(w.file).there : isDoc(v) && w.fields.every((f) => Object.hasOwn(v, f));
+    whole[w.item] = (whole[w.item] ?? true) && recorded !== undefined && there;
   }
   let credentials: unknown;
   try { credentials = JSON.parse(fs.readFileSync(path.join(o.claudeDir, '.credentials.json'), 'utf8')); } catch { /* no login */ }
@@ -236,7 +240,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on a Mac; not mirrored` });
   }
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
-  for (const p of plan.plugins) rows.push(whole(p.key, `${p.name}'s config`, p.fields, p.ticked));
+  for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));
   for (const f of plan.unreadable) rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand` });
   return rows;
 }
