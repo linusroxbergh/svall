@@ -23,7 +23,7 @@ tiffutil -cathidpicheck "$DIR/background.png" "$DIR/background@2x.png" -out "$WO
 SIZE="$(($(du -sm "$WORK/stage" | cut -f1) + 20))m"
 # hdiutil create fails now and then on a stage it builds fine a moment later
 for try in 1 2 3; do
-  hdiutil create -volname "$NAME" -srcfolder "$WORK/stage" -fs HFS+ -format UDRW -size "$SIZE" -ov "$WORK/rw.dmg" && break
+  hdiutil create -volname "$NAME" -srcfolder "$WORK/stage" -fs APFS -format UDRW -size "$SIZE" -ov "$WORK/rw.dmg" && break
   [ "$try" -lt 3 ] || fail "hdiutil could not create the image"
   sleep 10
 done
