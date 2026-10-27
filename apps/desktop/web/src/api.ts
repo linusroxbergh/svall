@@ -122,7 +122,7 @@ export class Api {
       if (!p) return;
       this.pending.delete(msg.id);
       clearTimeout(p.timer);
-      if ('error' in msg) p.reject(new ApiError(msg.error.code, msg.error.message));
+      if ('error' in msg) p.reject(new ApiError(msg.error.code, msg.error.message, msg.error.data));
       else p.resolve(msg.result);
     };
     ws.onerror = () => { /* onclose follows */ };

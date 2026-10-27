@@ -83,6 +83,7 @@ const WATCH_MS = 60_000;
 const REST_MS = 10 * 60_000;
 const PREPARE_MS = 15 * 60_000;
 const SHEET_MS = 30_000;
+const RELINK_MS = 60_000;
 
 // a worker that gives no sheet: too slow, on a release without one, or out of reach
 const sheetRefusal = (e: Error, name: string): Failure => {
@@ -116,6 +117,9 @@ export class MoveFiles {
     return path.join(this.dir, MoveId.parse(id));
   }
 }
+
+// a move undone before its commit rejects with the phase it failed at, which the move sheet names
+const failedAt = (e: Error & { data?: Record<string, unknown> }, j: MoveJournal): Error => Object.assign(e, { data: { ...e.data, moveId: j.id, phase: j.phase } });
 
 const newMoveId = (): string => `mv_${[...crypto.randomBytes(10)].map((b) => (b % 36).toString(36)).join('')}`;
 
@@ -633,7 +637,7 @@ export class Placement {
       }
     } catch (e) {
       await this.abortOut(j, e as Error);
-      throw e;
+      throw failedAt(e as Error, j);
     }
     await this.finish(j);
   }
@@ -655,10 +659,11 @@ export class Placement {
     this.d.store.update((d) => { d.robots[j.robotId] = converted(d.robots[j.robotId], c.repo!, cv.slug); });
   }
 
-  // the worker takes the blobs' ids first, then the blobs, then prepares from them
+  // the worker takes the blobs' ids first, then the blobs, then prepares from them; a link that dropped since the checks,
+  // as one to a worker too busy writing to answer a ping, is waited for
   private async prepareThere(j: MoveJournal): Promise<void> {
     const link = this.d.links.for(j.to);
-    if (!link) throw new ApiError('not_reachable', `${this.name(j.to)} is not reachable`);
+    if (!link || !(await link.linked(RELINK_MS))) throw new ApiError('not_reachable', `${this.name(j.to)} is not reachable`);
     const stage = this.files.stage(j.id);
     const ids = blobIds(j.id);
     const bundle = j.manifest ? path.join(stage, 'bundle.tar') : undefined;
@@ -720,7 +725,7 @@ export class Placement {
       if (j.phase === 'prepare') j = this.enter(await this.prepareHere(j), 'commit');
     } catch (e) {
       await this.abortBack(j, e as Error);
-      throw e;
+      throw failedAt(e as Error, j);
     }
     await this.finish(j);
   }

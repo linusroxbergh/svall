@@ -139,8 +139,50 @@ test('a robot sharing a main checkout is offered its own worktree, and moves wit
   await expect(sheet.getByTestId('move-converts')).toHaveText("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
   await expect(sheet.getByLabel('Give it its own worktree')).toBeChecked();
   await sheet.getByTestId('move-go').click();
-  await expect(sheet).toHaveCount(0);
+  await expect(sheet.getByTestId('move-through')).toHaveText('ada runs on linus-vault.');
   expect(asked.at(-1)).toEqual({ method: 'robot.moveTo', params: { id, machine: VAULT, ownWorktree: true } });
+});
+
+test('a move runs in its sheet, one line per step as it gets there, and a failure names its step with one button', async ({ page, svall }) => {
+  const id = await seed(svall, true);
+  // the daemon answers all but the move, which this page's link to it fakes: its check passes, its phases come as
+  // patches of the robot's mark, and its answer comes once asked
+  const fake: { page?: (m: unknown) => void; moveTo?: number } = {};
+  await page.routeWebSocket((url) => url.port === String(svall.port), (ws) => {
+    const daemon = ws.connectToServer();
+    fake.page = (m) => ws.send(JSON.stringify(m));
+    ws.onMessage((m) => {
+      const req = JSON.parse(String(m)) as { id?: number; method?: string };
+      if (req.method === 'robot.moveCheck') {
+        return fake.page!({ id: req.id, result: { ok: true, sheet: { sessionBytes: 0, branch: '', commits: 0, changedFiles: 0, untrackedFiles: 0, clone: 'warm', credentialFiles: [], stays: [], interrupts: false, question: false, notInRepo: true } } });
+      }
+      if (req.method === 'robot.moveTo') { fake.moveTo = req.id; return; }
+      daemon.send(m);
+    });
+  });
+  await svall.open();
+  const mark = (phase: string) => fake.page!({ event: 'state.patch', data: { ops: [{ op: 'add', path: `/robots/${id}/moving`, value: { id: 'mv_0123456789', to: VAULT, phase } }] } });
+  await page.getByTestId(`sb-robot-${id}`).click();
+  await page.getByTestId('side-card').getByTestId(`side-move-${VAULT}`).click();
+  const sheet = page.getByTestId('move-sheet');
+  await sheet.getByTestId('move-go').click();
+  await expect(sheet.getByTestId('move-step-check')).toHaveText('Checking…');
+  await expect.poll(() => fake.moveTo).toBeDefined();
+
+  mark('rest');
+  mark('bundle');
+  await expect(sheet.getByTestId('move-step-pack')).toHaveText('Packing session…');
+  await expect(sheet.getByTestId('move-step-rest')).toHaveText('✓Rested ada');
+  await expect(sheet.getByTestId('move-bar').locator('i')).toHaveCount(6);
+
+  mark('prepare');
+  fake.page!({ event: 'state.patch', data: { ops: [{ op: 'remove', path: `/robots/${id}/moving` }] } });
+  fake.page!({ id: fake.moveTo, error: { code: 'not_reachable', message: 'linus-vault is not reachable', data: { phase: 'prepare', moveId: 'mv_0123456789' } } });
+  await expect(sheet.getByTestId('move-step-carry')).toHaveText('✕Carry failed: linus-vault is not reachable; ada is back on this Mac.');
+  await expect(sheet.getByTestId('move-step-land')).toHaveCount(0);
+  await expect(sheet.locator('.acts button')).toHaveText(['Try again']);
+  await sheet.getByTestId('move-run-details').locator('summary').click();
+  await expect(sheet.getByTestId('move-run-details')).toContainText('move mv_0123456789');
 });
 
 test('a placed robot keeps its Resources button', async ({ page, svall }) => {

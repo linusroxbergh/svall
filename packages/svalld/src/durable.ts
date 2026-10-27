@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { ZodType } from 'zod';
+import { pool } from './pool.js';
 
 /** The write boundaries a crash can fall between. Tests replace one to stop the write there. */
 export type DurableStages = {
@@ -60,7 +62,7 @@ export function createDurable(file: string, data: Buffer | object, opts: Durable
 
 function writeTemp(file: string, data: Buffer | object, opts: DurableOptions, stages: DurableStages): string {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.durable-${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`;
+  const tmp = tempOf(file);
   const bytes = encode(data);
   try {
     const fd = stages.open(tmp, opts.mode ?? 0o600);
@@ -82,6 +84,51 @@ function writeTemp(file: string, data: Buffer | object, opts: DurableOptions, st
     throw e;
   }
   return tmp;
+}
+
+/** How many writes and fsyncs of a batch go at once, so they share the disk's commits. */
+export const BATCH_WIDTH = 8;
+
+const tempOf = (file: string): string => `${file}.durable-${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`;
+
+/**
+ * `writeDurable` for many files, off the event loop: each written whole, fsynced and renamed over its target as it
+ * goes, and each folder written into fsynced once, at `settle`, which makes every rename before it survive power loss.
+ */
+export class DurableBatch {
+  private dirs = new Set<string>();
+
+  async write(file: string, data: Buffer, mode = 0o600): Promise<void> {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    const tmp = tempOf(file);
+    try {
+      const h = await fsp.open(tmp, 'wx', mode);
+      try {
+        await h.writeFile(data);
+        await h.sync();
+      } finally {
+        await h.close();
+      }
+      await fsp.rename(tmp, file);
+    } catch (e) {
+      await fsp.rm(tmp, { force: true });
+      throw e;
+    }
+    this.dirs.add(path.dirname(file));
+  }
+
+  async settle(): Promise<void> {
+    const dirs = [...this.dirs];
+    this.dirs.clear();
+    await pool(dirs, BATCH_WIDTH, async (dir) => {
+      try {
+        const h = await fsp.open(dir, 'r');
+        try { await h.sync(); } finally { await h.close(); }
+      } catch (err) {
+        if (!DIR_FSYNC_UNSUPPORTED.has((err as NodeJS.ErrnoException).code ?? '')) throw err;
+      }
+    });
+  }
 }
 
 /** Appends `value` to `file` as one JSON line and fsyncs it before returning; a file it creates is the owner's alone. */

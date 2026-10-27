@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sha256Hex } from '../../src/hash.js';
 import { realPath } from '../../src/path-tools.js';
 import { claudeAdapter } from '../../src/sessions/claude.js';
@@ -345,7 +345,7 @@ describe('the agent configuration mirror', () => {
     const blob = path.join(scratch, 'blob');
     await unpack(path.join(scratch, 'mirror.tar'), blob);
 
-    const { written } = applyMirror(blob, o);
+    const { written } = await applyMirror(blob, o);
     expect(written.sort()).toEqual([
       path.join(far, '.agents/skills/lint/SKILL.md'), path.join(worker.agentProfiles, 'reviewer.md'),
       ...[
@@ -375,7 +375,7 @@ describe('the agent configuration mirror', () => {
 
     const skill = fs.statSync(path.join(worker.claudeDir, 'skills/review/SKILL.md'));
     const settings = fs.statSync(path.join(worker.claudeDir, 'settings.json'));
-    expect(applyMirror(blob, o)).toEqual({ written: [], removed: [] });
+    expect(await applyMirror(blob, o)).toEqual({ written: [], removed: [] });
     expect(fs.statSync(path.join(worker.claudeDir, 'skills/review/SKILL.md'))).toMatchObject({ ino: skill.ino, mtimeMs: skill.mtimeMs });
     expect(fs.statSync(path.join(worker.claudeDir, 'settings.json'))).toMatchObject({ ino: settings.ino, mtimeMs: settings.mtimeMs });
   });
@@ -396,6 +396,27 @@ describe('the agent configuration mirror', () => {
     await until(() => expect(fs.readdirSync(w.worker.paths.cache, { withFileTypes: true }).filter((f) => f.isDirectory() && f.name.startsWith('mirror-'))).toEqual([]));
   });
 
+  it('a worker applying a mirror on a disk slow to sync keeps answering its home', async () => {
+    const mac = macHome();
+    for (let i = 0; i < 40; i++) put(path.join(mac.claudeDir, `skills/many/${i}.md`), `${i}\n`);
+    const worker = farHome();
+    const w = world({ mirror: { home: mac, worker } });
+    stops.push(() => w.stop());
+    // each fsync holds the thread that asks it 20 ms, as a disk busy writing back does
+    const fsync = fs.fsyncSync;
+    const slow = vi.spyOn(fs, 'fsyncSync').mockImplementation((fd) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20); fsync(fd); });
+    stops.push(() => slow.mockRestore());
+    let last = performance.now();
+    let stall = 0;
+    const beat = setInterval(() => { stall = Math.max(stall, performance.now() - last); last = performance.now(); }, 5);
+    stops.push(() => clearInterval(beat));
+    await w.link();
+    await w.home.links.pushMirror(W);
+    expect(read(path.join(worker.claudeDir, 'skills/many/39.md'))).toBe('39\n');
+    // a ping waits on the worker no longer than this
+    expect(stall).toBeLessThan(1000);
+  });
+
   it('takeBackCopies empties each value the record holds as copied while it is still the copy, as an untick leaves it, and leaves a value the worker set itself', async () => {
     const mac = macHome();
     const worker = farHome();
@@ -409,7 +430,7 @@ describe('the agent configuration mirror', () => {
     ]);
     await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
     await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
-    applyMirror(path.join(scratch, 'blob'), o);
+    await applyMirror(path.join(scratch, 'blob'), o);
     editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });
     const toml = path.join(worker.codexDir, 'config.toml');
     const settings = path.join(worker.claudeDir, 'settings.json');
@@ -444,7 +465,7 @@ describe('the agent configuration mirror', () => {
     ]);
     await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
     await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
-    applyMirror(path.join(scratch, 'blob'), o);
+    await applyMirror(path.join(scratch, 'blob'), o);
     const toml = path.join(worker.codexDir, 'config.toml');
     const mcp = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
     const settings = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json');
@@ -486,8 +507,8 @@ describe('the agent configuration mirror', () => {
     const taken = farHome();
     const untick = farHome();
     const at = (h: ReturnType<typeof farHome>) => ({ ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') });
-    applyMirror(ticked, at(taken)); takeBackCopies(at(taken));
-    applyMirror(ticked, at(untick)); applyMirror(unticked, at(untick));
+    await applyMirror(ticked, at(taken)); takeBackCopies(at(taken));
+    await applyMirror(ticked, at(untick)); await applyMirror(unticked, at(untick));
     const docs = (h: ReturnType<typeof farHome>) => JSON.stringify([
       json(h.claudeJson).mcpServers, (parseToml(read(path.join(h.codexDir, 'config.toml'))) as any).mcp_servers, json(path.join(h.claudeDir, 'settings.json')).env,
     ]).replaceAll(h.homedir, '~');
@@ -511,7 +532,7 @@ describe('the agent configuration mirror', () => {
     const consent = new Set(['claude:settings#extraKnownMarketplaces.x.source.headers.Authorization', 'claude:marketplace:mp#plugins.zip', 'claude:agent:db.md#mcpServers.pg']);
     await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
     await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
-    applyMirror(path.join(scratch, 'blob'), o);
+    await applyMirror(path.join(scratch, 'blob'), o);
     const list = path.join(worker.claudeDir, 'plugins/known_marketplaces.json');
     const market = path.join(worker.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json');
     const agent = path.join(worker.claudeDir, 'agents/db.md');
@@ -539,20 +560,20 @@ describe('the agent configuration mirror', () => {
     put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), entries());
     await packMirror(mirrorPlan(mac, new Set(['claude:agent:db.md#mcpServers.pg', 'claude:marketplace:mp#plugins.zip'])), path.join(scratch, 'mirror.tar'));
     await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
-    const worker = (twin: boolean) => {
+    const worker = async (twin: boolean) => {
       const h = farHome();
       const o = { ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') };
-      applyMirror(path.join(scratch, 'blob'), o);
+      await applyMirror(path.join(scratch, 'blob'), o);
       const files = { agent: path.join(h.claudeDir, 'agents/db.md'), market: path.join(h.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json') };
       put(files.agent, md(...(twin ? pg('twin') : ['  - other:', '      command: x']), ...pg('pg')));
       put(files.market, entries({ name: 'new', source: './new' }));
       return { o, ...files };
     };
-    const moved = worker(false);
+    const moved = await worker(false);
     expect(takeBackCopies(moved.o).filter((l) => [moved.agent, moved.market].some((f) => l.includes(f))).sort())
       .toEqual([moved.agent, moved.market].map((f) => `took 1 key the mirror copied out of ${f}`).sort());
     expect([/pg_fake/.test(read(moved.agent)), json(moved.market).plugins[1].headers]).toEqual([false, { Authorization: '' }]);
-    const twins = worker(true);
+    const twins = await worker(true);
     expect(takeBackCopies(twins.o).filter((l) => l.includes(twins.agent))).toEqual([`left ${twins.agent}, which holds keys the mirror copied and changed there since`]);
     expect(read(twins.agent)).toContain('pg_fake');
   });
@@ -572,23 +593,23 @@ describe('the agent configuration mirror', () => {
     const consent = new Set(['claude:settings#extraKnownMarketplaces.x.source.headers.Authorization', 'claude:marketplace:mp#plugins.zip', 'claude:agent:db.md#mcpServers.pg']);
     await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
     await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
-    const worker = () => {
+    const worker = async () => {
       const h = farHome();
       const o = { ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') };
-      applyMirror(path.join(scratch, 'blob'), o);
+      await applyMirror(path.join(scratch, 'blob'), o);
       const files = {
         list: path.join(h.claudeDir, 'plugins/known_marketplaces.json'), market: path.join(h.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'),
         agent: path.join(h.claudeDir, 'agents/db.md'),
       };
       return { o, ...files, lines: () => takeBackCopies(o).filter((l) => Object.values(files).some((f) => l.includes(f))) };
     };
-    const below = worker();
+    const below = await worker();
     put(below.agent, md(...pg('pg'), ...pg('twin')));
     expect(below.lines().sort()).toEqual([
       `left ${below.agent}, which holds keys the mirror copied and changed there since`, ...[below.agent, below.list, below.market].map((f) => `took 1 key the mirror copied out of ${f}`),
     ].sort());
     expect(agentServers(read(below.agent))).toEqual([['pg', { command: 'npx', env: { PG_PASSWORD: '${PG_PASSWORD}' } }], ['twin', { command: 'npx', env: { PG_PASSWORD: 'pg_fake_1234567890' } }]]);
-    const bare = worker();
+    const bare = await worker();
     put(bare.agent, md(...pg('pg', '${PG_PASSWORD}')));
     editJson(bare.market, (j) => { j.plugins[0].headers.Authorization = ''; });
     editJson(bare.list, (j) => { j.x.source.headers.Authorization = 'Bearer ${MK_TOKEN}'; });
@@ -635,7 +656,7 @@ describe('the agent configuration mirror', () => {
     const apply = async (name: string, consent: Set<string>) => {
       await packMirror(mirrorPlan(mac, consent), path.join(scratch, `${name}.tar`));
       await unpack(path.join(scratch, `${name}.tar`), path.join(scratch, name));
-      applyMirror(path.join(scratch, name), o);
+      await applyMirror(path.join(scratch, name), o);
     };
     await apply('ticked', new Set(['claude:mcp:linear#env.LINEAR_API_KEY']));
     editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });

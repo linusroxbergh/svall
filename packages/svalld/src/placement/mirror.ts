@@ -1,15 +1,17 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { z } from 'zod';
 import { AgentKind, ApiError, REPORT_MS, Sha256, type MachineId, type SetupRow } from '@svall/protocol';
 import { VAR_NAME } from '../claude.js';
-import { writeDurable } from '../durable.js';
+import { BATCH_WIDTH, DurableBatch, writeDurable } from '../durable.js';
 import { canonicalJson, sha256Hex } from '../hash.js';
 import { tryLock } from '../kernel-lock.js';
 import { clean, holds } from '../path-tools.js';
+import { pool } from '../pool.js';
 import { relocate } from './relocate.js';
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
@@ -676,6 +678,14 @@ function put(file: string, data: Buffer, mode: number): boolean {
   return true;
 }
 
+// as `put`, written in `batch`
+async function place(batch: DurableBatch, file: string, data: Buffer, mode: number): Promise<boolean> {
+  const at = realPath(file);
+  if (fs.existsSync(at) && (await fsp.readFile(at)).equals(data)) return false;
+  await batch.write(at, data, mode);
+  return true;
+}
+
 /** The mirror's record on this machine; an empty one where there is none. */
 export function readState(file: string): WorkerState {
   try {
@@ -823,11 +833,12 @@ function leavesOf(fields: string[], placesOf: (field: string) => Place[]): { pla
  * Puts the mirror unpacked at `blobDir` into this machine's homes, reading and writing each file of theirs at once:
  * each config file merged by key, its servers in place and its secrets as ticked, then each file the record says changed,
  * each the home no longer carries removed, and the overrides last. A record of everything this apply may write goes
- * first, so an apply cut short still knows each copy it left; the record of what it wrote goes last.
+ * first, so an apply cut short still knows each copy it left; the record of what it wrote goes last, once all of it is
+ * on disk. The files go off the event loop, a few at once, so the link is answered meanwhile.
  */
-export function applyMirror(
+export async function applyMirror(
   blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number },
-): { written: string[]; removed: string[] } {
+): Promise<{ written: string[]; removed: string[] }> {
   const m = Manifest.parse(JSON.parse(fs.readFileSync(path.join(blobDir, MANIFEST), 'utf8')));
   const state = readState(o.stateFile);
   const applied = o.seq ?? state.applied;
@@ -842,7 +853,8 @@ export function applyMirror(
     const home = o[ROOTS[root]];
     return home ? filesIn(path.join(blobDir, root)).map((rel) => ({ root, home, rel, to: path.posix.join(root, rel), from: path.join(blobDir, root, rel) })) : [];
   });
-  for (const f of carried) next.files[f.to] = sha256Hex(fs.readFileSync(f.from));
+  const shas = await pool(carried, BATCH_WIDTH, (f) => fileSha(f.from));
+  carried.forEach((f, i) => { next.files[f.to] = shas[i]; });
   for (const to of m.keyed) {
     const h = next.files[to] ?? state.files[to];
     if (h) (next.keyed ??= {})[to] = h;
@@ -856,7 +868,9 @@ export function applyMirror(
       (next.bare ??= {})[k] = { value: p.bare };
     }
   }
-  put(o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
+  const batch = new DurableBatch();
+  await place(batch, o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
+  await batch.settle();
   // where `to` lies in this machine's homes
   const fileOf = (to: string): string | undefined => {
     const [root, ...rest] = to.split('/');
@@ -865,20 +879,21 @@ export function applyMirror(
   };
 
   // a config file holding a ticked key is its owner's alone, whether or not this apply changed it
-  DOCS.forEach((d, i) => {
+  for (const [i, d] of DOCS.entries()) {
     const { doc, keyed } = docs[i];
-    if (doc && put(d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
+    if (doc && await place(batch, d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
     if (keyed) ownerOnly(d.at(o));
-  });
-  for (const { root, home, rel, to, from } of carried) {
-    if (state.files[to] === next.files[to]) continue;
-    const data = fs.readFileSync(from);
+  }
+  const changed = carried.filter((f) => state.files[f.to] !== next.files[f.to]);
+  const wrote = await pool(changed, BATCH_WIDTH, async ({ root, home, rel, from }) => {
+    const data = await fsp.readFile(from);
     const override = path.join(o.overrides, root, rel);
     const list = root === 'claude' && PLUGIN_LISTS.some((n) => rel === path.join('plugins', n));
-    const bytes = fs.existsSync(override) ? fs.readFileSync(override) : list ? Buffer.from(asJson(relocated(JSON.parse(data.toString('utf8')), move) as Doc)) : data;
+    const bytes = fs.existsSync(override) ? await fsp.readFile(override) : list ? Buffer.from(asJson(relocated(JSON.parse(data.toString('utf8')), move) as Doc)) : data;
     const file = path.join(home, rel);
-    if (put(file, bytes, fs.statSync(from).mode & 0o777)) written.push(file);
-  }
+    return await place(batch, file, bytes, fs.statSync(from).mode & 0o777) ? file : undefined;
+  });
+  written.push(...wrote.filter((f) => f !== undefined));
   const keep = new Set(m.keep);
   const pluginList = path.join(m.homes.claudeDir, 'plugins/installed_plugins.json');
   // a plugin file stays as the mirror last wrote it while the Mac cannot read it, its plugin's manifest, the plugin list or
@@ -902,7 +917,7 @@ export function applyMirror(
     }
     const file = fileOf(to);
     if (file && fs.lstatSync(file, { throwIfNoEntry: false })) {
-      fs.rmSync(file, { force: true });
+      await fsp.rm(file, { force: true });
       removed.push(file);
     }
   }
@@ -920,12 +935,14 @@ export function applyMirror(
       if (docOverrides.has(path.posix.join(root, rel))) continue;
       const from = path.join(o.overrides, root, rel);
       const file = path.join(home, rel);
-      if (put(file, fs.readFileSync(from), fs.statSync(from).mode & 0o777)) written.push(file);
+      if (await place(batch, file, await fsp.readFile(from), fs.statSync(from).mode & 0o777)) written.push(file);
     }
   }
 
-  put(o.varsFile, Buffer.from(`${JSON.stringify(m.vars, null, 2)}\n`), 0o644);
-  put(o.stateFile, Buffer.from(asJson(next)), 0o600);
+  await place(batch, o.varsFile, Buffer.from(`${JSON.stringify(m.vars, null, 2)}\n`), 0o644);
+  await batch.settle();
+  await place(batch, o.stateFile, Buffer.from(asJson(next)), 0o600);
+  await batch.settle();
   return { written, removed };
 }
 
@@ -1330,7 +1347,7 @@ export function mirrorCalls(o: MirrorHomes & {
           // an older push would put back what a later one took away
           const last = readState(o.stateFile).applied;
           if (last !== undefined && seq <= last) throw new ApiError('stale', `push ${seq} of the agent configuration came after push ${last}, which this machine applied`);
-          done = applyMirror(path.join(b.dir, 'blob'), { ...o, seq });
+          done = await applyMirror(path.join(b.dir, 'blob'), { ...o, seq });
         } finally { unlock(); }
         if (done.written.length || done.removed.length) o.log.info(`mirror: ${done.written.length} files of the home's agent configuration written, ${done.removed.length} removed`);
         return done;

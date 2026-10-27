@@ -21,7 +21,10 @@ robot that runs elsewhere. The sheet says in one line what travels, such as
 
 > session 564 KB · branch kanban: 2 commits not on origin, 3 changed files · storefront on linus-vault: will clone (first time) · .env stays here
 
-and **Move** runs it. Moving back, the line counts what comes back from the worker the same way. From a terminal:
+and **Move** runs it. Moving back, the line counts what comes back from the worker the same way. While the move runs,
+the sheet shows a line for each step as it happens: check, rest, pack, carry, land and start. A step that fails says so
+in one sentence, with **Try again** before the robot lands, when it is back where it was, or **Retry** after. From a
+terminal:
 
 ```sh
 svall robot move <id> --machine linus-vault    # to the worker
