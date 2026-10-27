@@ -1,0 +1,118 @@
+import path from 'node:path';
+import { inSpan, outliner, type Outline, type Span } from '../retro/outline.js';
+import { submitted } from './claude-transcript.js';
+import { orSkip } from './jsonl.js';
+
+type Block = { type: string; id?: string; tool_use_id?: string; text?: string; name?: string; input?: unknown; content?: unknown; is_error?: boolean };
+type Line = {
+  type?: string; timestamp?: string; isSidechain?: boolean; isMeta?: boolean; origin?: { kind?: string };
+  cwd?: string; gitBranch?: string; message?: { model?: string; content?: string | Block[] };
+  attachment?: { type?: string; commandMode?: string; origin?: { kind?: string }; prompt?: string | Block[] };
+  prUrl?: string; totalCostUSD?: number;
+};
+
+// the lines read past their type: the conversation, the PRs Claude Code links to the session and what it has cost so far.
+// Logged API requests and the like are most of a transcript's bytes and are never parsed
+const READ = new Set(['user', 'assistant', 'attachment', 'system', 'pr-link', 'cost-state']);
+const REJECTED = "The user doesn't want to proceed";
+const INTERRUPT = '[Request interrupted by user';
+// a skill's text, loaded after its Skill call or after the person typed its slash command
+const SKILL_TEXT = 'Base directory for this skill:';
+const HOOK_ERROR = /^hook_\w*error$/;
+
+function lines(text: string): { n: number; e: Line }[] {
+  const out: { n: number; e: Line }[] = [];
+  text.split('\n').forEach((raw, i) => {
+    if (!raw.startsWith('{') || (raw.startsWith('{"type":"') && !READ.has(raw.slice(9, raw.indexOf('"', 9))))) return;
+    const e = orSkip(() => JSON.parse(raw) as Line);
+    if (e) out.push({ n: i + 1, e });
+  });
+  return out;
+}
+
+const blocks = (e: Line): Block[] => (Array.isArray(e.message?.content) ? e.message.content : []);
+const textOf = (c: unknown): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b: Block) => b.text ?? '').join('\n') : '').trim();
+const rejection = (b: Block): boolean => Boolean(b.is_error) && textOf(b.content).startsWith(REJECTED);
+
+// a subagent's tool calls and the ones that failed, inside the span
+function subagentCounts(text: string, span: Span): { tools: number; errors: number } {
+  let [tools, errors] = [0, 0];
+  for (const { e } of lines(text)) {
+    if (!inSpan(Date.parse(e.timestamp ?? ''), span)) continue;
+    for (const b of blocks(e)) {
+      if (e.type === 'assistant' && b.type === 'tool_use') tools++;
+      if (e.type === 'user' && b.type === 'tool_result' && b.is_error && !rejection(b)) errors++;
+    }
+  }
+  return { tools, errors };
+}
+
+/** A Claude Code session's outline; `subagents` are the texts of its subagent files, whose tool calls and errors count with it. */
+export function outlineClaude(text: string, file: string, span: Span, subagents: string[] = []): Outline {
+  const out = outliner();
+  const calls = new Map<string, { name: string; command?: string }>();
+  let model: string | undefined, cwd: string | undefined, branch: string | undefined;
+  // a cost-state line has no time of its own; it holds what the session had cost by the line before it
+  let lastAt = NaN, costBefore = 0, costAfter: number | undefined;
+  // a slash command just typed, which the next line shows to be a skill when it loads one
+  let typed: { name: string; n: number; at: number } | undefined;
+  for (const { n, e } of lines(text)) {
+    if (e.type === 'cost-state') {
+      if (typeof e.totalCostUSD !== 'number') continue;
+      if (!(lastAt >= span.from)) costBefore = e.totalCostUSD;
+      else if (lastAt <= span.to) costAfter = e.totalCostUSD;
+      continue;
+    }
+    const at = Date.parse(e.timestamp ?? '');
+    if (!Number.isNaN(at)) lastAt = at;
+    if (!inSpan(at, span) || e.isSidechain) continue;
+    const command = typed;
+    typed = undefined;
+    if (e.type === 'pr-link' && typeof e.prUrl === 'string') out.pr(e.prUrl);
+    if (e.type === 'attachment' && HOOK_ERROR.test(e.attachment?.type ?? '')) out.hookError();
+    if (e.type !== 'user' && e.type !== 'assistant' && e.type !== 'attachment') continue;
+    cwd = e.cwd ?? cwd;
+    branch = e.gitBranch ?? branch;
+    const said = orSkip(() => submitted(e));
+    if (said) {
+      out.prompt(n, at, said);
+      const name = /^\/(\S+)/.exec(said)?.[1];
+      if (name) typed = { name, n, at };
+      continue;
+    }
+    if (e.type === 'assistant') {
+      if (e.message?.model && e.message.model !== '<synthetic>') model = e.message.model;
+      for (const b of blocks(e)) {
+        if (b.type === 'text' && b.text?.trim()) out.said(n, at, b.text.trim());
+        if (b.type !== 'tool_use') continue;
+        const name = b.name ?? 'tool';
+        const input = (b.input ?? {}) as { skill?: unknown; command?: unknown };
+        out.tool(n, at, name, b.input);
+        calls.set(b.id ?? '', { name, ...(name === 'Bash' && typeof input.command === 'string' && { command: input.command }) });
+        if (name === 'Skill' && typeof input.skill === 'string') out.skill(input.skill, n, at);
+      }
+      continue;
+    }
+    if (e.type !== 'user') continue;
+    const first = textOf(typeof e.message?.content === 'string' ? e.message.content : blocks(e).find((b) => b.type === 'text')?.text);
+    if (first.startsWith(INTERRUPT)) out.interrupt(n, at);
+    if (e.isMeta && command && first.startsWith(SKILL_TEXT)) out.skill(command.name, command.n, command.at);
+    for (const b of blocks(e)) {
+      if (b.type !== 'tool_result') continue;
+      const call = calls.get(b.tool_use_id ?? '');
+      if (rejection(b)) {
+        out.rejected(n, at, call?.name ?? 'tool');
+        continue;
+      }
+      if (b.is_error) out.error(n, at, textOf(b.content));
+      if (call?.command !== undefined) out.command(call.command, Boolean(b.is_error));
+    }
+  }
+  const o = out.outline({ agent: 'claude', session: path.basename(file, '.jsonl'), file, model, cwd, branch, costUsd: costAfter === undefined ? undefined : costAfter - costBefore });
+  for (const s of subagents) {
+    const c = subagentCounts(s, span);
+    o.tools += c.tools;
+    o.errors += c.errors;
+  }
+  return o;
+}

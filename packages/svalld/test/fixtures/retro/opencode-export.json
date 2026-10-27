@@ -1,0 +1,53 @@
+{
+  "info": {
+    "id": "ses_0123456789abAbCdEfGhIjKlMn",
+    "projectID": "p1",
+    "model": { "id": "glm-5", "providerID": "zen", "variant": "default" },
+    "cost": 0.4,
+    "tokens": { "input": 900, "output": 120, "reasoning": 0, "cache": { "read": 0, "write": 0 } },
+    "outcome": "succeeded",
+    "time": { "created": 1790845200000, "updated": 1793012470000, "idle": 1793012470000 },
+    "title": "Review the branch",
+    "location": { "directory": "/w" }
+  },
+  "messages": [
+    { "id": "m0", "type": "user", "time": { "created": 1790845200000 }, "text": "an old question from before the span", "files": [] },
+    {
+      "id": "m1", "type": "assistant", "time": { "created": 1790845201000, "completed": 1790845202000 }, "agent": "build",
+      "model": { "id": "glm-5", "providerID": "zen", "variant": "default" }, "cost": 0.1,
+      "tokens": { "input": 100, "output": 10, "reasoning": 0, "cache": { "read": 0, "write": 0 } },
+      "content": [{ "type": "text", "text": "an old answer", "time": { "created": 1790845201000, "completed": 1790845202000 } }]
+    },
+    { "id": "m2", "type": "user", "time": { "created": 1793012400000 }, "text": "review the branch before I merge", "files": [] },
+    {
+      "id": "m3", "type": "assistant", "time": { "created": 1793012401000, "completed": 1793012404000 }, "agent": "build",
+      "model": { "id": "glm-5", "providerID": "zen", "variant": "default" }, "cost": 0.1,
+      "tokens": { "input": 400, "output": 60, "reasoning": 0, "cache": { "read": 0, "write": 0 } },
+      "content": [
+        { "type": "reasoning", "text": "REASONING-MARKER", "time": { "created": 1793012401000 } },
+        {
+          "type": "tool", "id": "t1", "name": "skill", "executed": false, "time": { "created": 1793012401500, "ran": 1793012401600, "completed": 1793012401700 },
+          "state": { "status": "completed", "input": { "id": "deep-review" }, "content": [{ "type": "text", "text": "SKILL-BODY-MARKER" }], "metadata": { "name": "deep-review", "directory": "/u/skills/deep-review", "truncated": false } }
+        },
+        {
+          "type": "tool", "id": "t2", "name": "shell", "executed": false, "time": { "created": 1793012402000, "ran": 1793012402100, "completed": 1793012402500 },
+          "state": { "status": "completed", "input": { "command": "pnpm lint" }, "content": [{ "type": "text", "text": "2 lint errors" }], "metadata": { "status": "completed", "truncated": false, "exit": 1 } }
+        },
+        {
+          "type": "tool", "id": "t3", "name": "shell", "executed": false, "time": { "created": 1793012403000, "completed": 1793012403500 },
+          "state": { "status": "error", "input": { "command": "rm -rf dist" }, "error": { "type": "aborted", "message": "The user declined this tool call" } }
+        },
+        { "type": "text", "text": "Lint fails. PR: https://github.com/acme/app/pull/9", "time": { "created": 1793012404000, "completed": 1793012404000 } }
+      ]
+    },
+    { "id": "m4", "type": "idle", "time": { "created": 1793012405000 }, "outcome": "interrupted" },
+    { "id": "m5", "type": "user", "time": { "created": 1793012460000 }, "text": "fix lint first", "files": [] },
+    {
+      "id": "m6", "type": "assistant", "time": { "created": 1793012461000, "completed": 1793012470000 }, "agent": "build",
+      "model": { "id": "glm-5", "providerID": "zen", "variant": "default" }, "cost": 0.2,
+      "tokens": { "input": 400, "output": 50, "reasoning": 0, "cache": { "read": 0, "write": 0 } },
+      "content": [{ "type": "text", "text": "Fixed.", "time": { "created": 1793012470000, "completed": 1793012470000 } }]
+    },
+    { "id": "m7", "type": "idle", "time": { "created": 1793012470000 }, "outcome": "succeeded" }
+  ]
+}
