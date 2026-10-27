@@ -74,6 +74,13 @@ describe('svall retro', () => {
     await expect(f.run('mark', 'fix', '3')).rejects.toThrow('no finding 3: the last findings have 2');
   });
 
+  it('run names a preset only when given one, for svalld to pick the plan\'s own', async () => {
+    const f = fake({ 'retro.run': { run: 'r_1' } });
+    await f.run('run', 'r_1');
+    await f.run('run', 'r_1', '--preset', 'default');
+    expect(f.calls.map(([, p]) => (p as { preset?: string }).preset)).toEqual([undefined, 'default']);
+  });
+
   it('wait follows the stages and exits 1 on an interrupted run', async () => {
     const stages: RetroStatus[] = [
       { run: 'r_1', stage: 'reading', done: 1, total: 3 }, { run: 'r_1', stage: 'interrupted', done: 1, total: 3 },

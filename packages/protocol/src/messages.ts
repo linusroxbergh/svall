@@ -110,6 +110,8 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   if (method === 'retro.plan') return RETRO_PLAN_TIMEOUT_MS;
+  // each fix may start a robot, which waits for its agent as robot.create with a run does
+  if (method === 'retro.mark') return ((params as { marks?: { action?: string }[] }).marks ?? []).filter((m) => m.action === 'fix').length * RUN_TIMEOUT_MS;
   if (method === 'mobile.set') return MOBILE_SET_TIMEOUT_MS;
   if (method === 'fleets.create' || method === 'fleets.start') return FLEET_START_TIMEOUT_MS;
   if (method === 'robot.moveTo') return MOVE_TIMEOUT_MS + ((params as { interruptAfterMs?: number }).interruptAfterMs ?? 0);
@@ -299,8 +301,9 @@ export const methods = {
     }),
     result: RetroPlan,
   },
-  // budget is the tokens the user approved, the preset's upper estimate when none is given; robot is the crew member whose card shows the run
-  'retro.run': { params: z.object({ plan: z.string(), preset: z.string(), budget: z.number().int().positive().optional(), robot: z.string().optional() }), result: z.object({ run: z.string() }) },
+  // preset is balanced where the plan has it, else its first, when none is named; budget is the tokens the user approved,
+  // the preset's upper estimate when none is given; robot is the crew member whose card shows the run
+  'retro.run': { params: z.object({ plan: z.string(), preset: z.string().optional(), budget: z.number().int().positive().optional(), robot: z.string().optional() }), result: z.object({ run: z.string() }) },
   'retro.status': { params: z.object({ run: z.string().optional() }), result: RetroStatus },
   'retro.findings': { params: z.object({ run: z.string().optional() }), result: RetroReport },
   'retro.mark': {

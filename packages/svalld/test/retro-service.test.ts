@@ -34,12 +34,13 @@ function world(o: { runner?: Runner; now?: () => number; robots?: unknown[] } = 
   appendSessions(paths.retroSessions, [{ at: NOW - 2 * HOUR, session: 'claude-session', robot: 'c_a', island: 'i_x', cwd: '/w', agent: 'claude', transcript }]);
   const store = Store.load(paths.state, () => {});
   const runner = vi.fn<Runner>(o.runner ?? (async () => { throw new Error('no model in this test'); }));
+  const codexDir = path.join(home, '.codex');
   const make = () => new Retro({
-    paths, store, log: { info: () => {}, error: () => {} }, config: () => readFleetConfig(paths), claudeDir, codexDir: path.join(home, '.codex'), homedir: home,
+    paths, store, log: { info: () => {}, error: () => {} }, config: () => readFleetConfig(paths), claudeDir, codexDir, homedir: home,
     createRobot: async (p: unknown) => { o.robots?.push(p); return { id: 'c_fix' } as Robot; }, runner: () => runner,
     gh: { ready: async () => false, thread: async () => [], forBranch: async () => undefined }, inline: true, now: o.now ?? (() => NOW),
   });
-  return { paths, runner, make, retro: make() };
+  return { paths, store, codexDir, runner, make, retro: make() };
 }
 
 describe('the retro service', () => {
@@ -73,14 +74,69 @@ describe('the retro service', () => {
     expect(fs.existsSync(path.join(dir, 'batches'))).toBe(false);
   });
 
-  it('plans again a plan older than a day before it runs', async () => {
+  it('plans again a plan older than a day before it runs, as the same run under the budget its first plan gave', async () => {
     let now = NOW;
     const w = world({ now: () => now, runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
     const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
     now += 25 * HOUR;
-    const { run } = w.retro.run({ plan: plan.id, preset: 'balanced' });
-    await vi.waitFor(() => expect(['done', 'failed']).toContain(w.retro.status().stage), { timeout: 10_000 });
-    expect(w.retro.status().run).not.toBe(run);
+    const { run } = w.retro.run({ plan: plan.id, preset: 'thrifty' });
+    expect(run).toBe(plan.id);
+    await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
+    expect(w.retro.status().run).toBe(run);
+    const dir = path.join(w.paths.retro, 'runs', run);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8')).created).toBe(now);
+    const thrifty = plan.presets.find((x) => x.name === 'thrifty')!;
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'started'), 'utf8'))).toMatchObject({ preset: 'thrifty', budget: Math.ceil(thrifty.tokens.max) });
+    expect(w.retro.findings(run).run).toBe(run);
+  });
+
+  it('keeps the batches of a plan that has not run across a restart, and runs it', async () => {
+    const w = world({ runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
+    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+    expect(plan.batches.length).toBeGreaterThan(0);
+    const after = w.make();
+    after.start();
+    expect(fs.existsSync(path.join(w.paths.retro, 'runs', plan.id, 'batches', `${plan.batches[0].id}.json`))).toBe(true);
+    after.run({ plan: plan.id });
+    await vi.waitFor(() => expect(['done', 'failed']).toContain(after.status(plan.id).stage), { timeout: 10_000 });
+    expect(after.status(plan.id)).toMatchObject({ stage: 'done' });
+    // with no preset named, balanced
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'started'), 'utf8'))).toMatchObject({ preset: 'balanced' });
+  });
+
+  it('refuses a run id that is not one, before it reads a path', async () => {
+    const w = world();
+    const outside = path.join(w.paths.retro, 'x');
+    fs.mkdirSync(outside, { recursive: true });
+    const report = { run: 'x', findings: [], previous: [], mechanical: [], thin: [], skipped: [], usage: { budget: 1, used: 1 } };
+    fs.writeFileSync(path.join(outside, 'report.json'), JSON.stringify(report));
+    fs.writeFileSync(path.join(outside, 'totals.json'), '{}');
+    for (const run of ['../x', 'r_1/../../x']) {
+      expect(() => w.retro.findings(run)).toThrow(`no retro ${run}`);
+      expect(() => w.retro.status(run)).toThrow(`no retro ${run}`);
+    }
+  });
+
+  it('bills Codex by its own login or svalld\'s environment, never the fleet\'s .env', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    try {
+      const w = world();
+      w.store.update((d) => { d.mainAgent = 'codex'; });
+      fs.writeFileSync(w.paths.env, 'OPENAI_API_KEY=sk-test\n');
+      const billing = async () => (await w.retro.plan({ span: '7d', focus: 'new-skills' })).billing;
+      expect(await billing()).toBe('subscription');
+      fs.mkdirSync(w.codexDir, { recursive: true });
+      fs.writeFileSync(path.join(w.codexDir, 'auth.json'), JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: null }));
+      expect(await billing()).toBe('api-key');
+      fs.writeFileSync(path.join(w.codexDir, 'auth.json'), JSON.stringify({ auth_mode: 'chatgpt', OPENAI_API_KEY: 'sk-x' }));
+      expect(await billing()).toBe('api-key');
+      fs.writeFileSync(path.join(w.codexDir, 'auth.json'), JSON.stringify({ auth_mode: 'chatgpt', OPENAI_API_KEY: null }));
+      expect(await billing()).toBe('subscription');
+      vi.stubEnv('OPENAI_API_KEY', 'sk-env');
+      expect(await billing()).toBe('api-key');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('classes the reads and the mutations', () => {

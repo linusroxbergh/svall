@@ -107,9 +107,9 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
     });
 
   cmd.command('run <plan>').description('read the plan\'s batches with a preset, stopping at the budget; svalld carries on if this exits')
-    .option('--preset <name>', 'the preset to read and judge with', 'balanced')
+    .option('--preset <name>', 'the preset to read and judge with (default: balanced where the plan has it, else its first)')
     .option('--budget <tokens>', 'the most tokens the run may spend (default: the preset\'s upper estimate)')
-    .action(async (planId: string, o: { preset: string; budget?: string }) => {
+    .action(async (planId: string, o: { preset?: string; budget?: string }) => {
       const budget = o.budget === undefined ? undefined : Number(o.budget);
       if (budget !== undefined && !(Number.isInteger(budget) && budget > 0)) throw new Error(`bad --budget "${o.budget}", expected a whole number of tokens`);
       const r = await withClient(connect, (c) => c.call('retro.run', { plan: planId, preset: o.preset, budget, robot: process.env.SVALL_ROBOT_ID }));
