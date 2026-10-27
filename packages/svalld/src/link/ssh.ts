@@ -59,7 +59,7 @@ export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, o
  * socket; with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the search domains,
  * so nothing falls back to a connection of its own that no one checked reaches the machine meant.
  */
-export const REMOTE_HOST = 'svall-remote.invalid';
+const REMOTE_HOST = 'svall-remote.invalid';
 
 /** This user's folder for sockets in a temp directory. */
 function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {

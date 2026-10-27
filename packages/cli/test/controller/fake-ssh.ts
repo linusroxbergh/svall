@@ -22,10 +22,10 @@ export type FakeSsh = {
   /** takes down the master on a socket, as a network drop or a sleeping laptop would */
   dropMaster: (socket: string) => void;
   /**
-   * runs every far command on this machine instead, with `rsync` as the far side's rsync and `path` as its login
-   * shell's PATH; a cut takes the link down once that many bytes have crossed one command, and `undefined` lets it through again
+   * runs every far command on this machine instead, with `path` as its login shell's PATH; a cut takes the link
+   * down once that many bytes have crossed one command, and `undefined` lets it through again
    */
-  execute: (o: { rsync: string; cutAfterBytes?: number; path?: string }) => void;
+  execute: (o: { cutAfterBytes?: number; path?: string }) => void;
   clean: () => void;
 };
 
@@ -79,9 +79,6 @@ export function installFakeSsh(): FakeSsh {
       fs.rmSync(file, { force: true });
     },
     execute: (o) => {
-      const far = path.join(bin, 'rsync');
-      fs.rmSync(far, { force: true });
-      fs.symlinkSync(o.rsync, far);
       process.env.SVALL_FAKE_SSH_EXEC = '1';
       if (o.cutAfterBytes) process.env.SVALL_FAKE_SSH_CUT_AFTER = String(o.cutAfterBytes);
       else delete process.env.SVALL_FAKE_SSH_CUT_AFTER;

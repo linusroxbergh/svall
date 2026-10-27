@@ -8,7 +8,7 @@ export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 const COLOR = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'dim' } as const;
 
 const GROUPS: [string, string[]][] = [
-  ['Tools', ['tmux', 'node', 'path', 'gh', 'rsync']],
+  ['Tools', ['tmux', 'node', 'path', 'gh']],
   ['Agents', ['claude', 'codex', 'codex sandbox', 'opencode', 'agents']],
   ['Fleet', ['config', 'svalld', 'hook receiver', 'launchd', 'systemd', 'gateway', 'linger', 'daemon node', 'daemon path', 'daemon env']],
   ['Setup', ['hooks', 'codex hooks', 'opencode plugin', 'shims', 'launchd plist']],

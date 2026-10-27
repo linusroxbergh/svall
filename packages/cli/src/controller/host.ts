@@ -19,7 +19,6 @@ import {
   remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
 import { redact } from './process.js';
-import { MIN_RSYNC, rsyncVersion } from './rsync.js';
 import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
 import { SshError, type SshMaster } from './ssh.js';
 
@@ -117,8 +116,8 @@ const sh = (name: string, script: string, ...args: string[]): string[] =>
   ['sh', '-c', shq(script), shq(name), ...args.map(shq)];
 
 const WHICH = 'for c in "$@"; do if command -v "$c" >/dev/null 2>&1; then echo "$c yes"; else echo "$c no"; fi; done';
-const TOOLS = ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'];
-const APT: Record<string, string> = { git: 'git', rsync: 'rsync' };
+const TOOLS = ['tailscale', 'git', 'systemctl', 'loginctl'];
+const APT: Record<string, string> = { git: 'git' };
 const ARCHES: Record<string, string> = { aarch64: 'arm64', arm64: 'arm64', x86_64: 'x64', amd64: 'x64' };
 
 async function probe(master: SshMaster, argv: string[], what: string): Promise<string> {
@@ -142,7 +141,7 @@ async function osProbe(master: SshMaster): Promise<Outcome<{ arch: string }>> {
   const id = field(osRelease, 'ID');
   const versionId = field(osRelease, 'VERSION_ID');
   if (id !== 'ubuntu') throw new StepError(`${field(osRelease, 'NAME') || id || 'this machine'} is not Ubuntu; the companion supports the Ubuntu LTS releases`);
-  // the companion's tmux is built against 22.04's glibc, and an older rsync is below the floor a handover needs
+  // the companion's tmux is built against 22.04's glibc
   if (!(Number(versionId.split('.')[0]) >= 22)) throw new StepError(`Ubuntu ${versionId} is older than 22.04, the oldest release the companion runs on`);
   const release = `Ubuntu ${versionId} ${arch}`;
   return isLts(versionId)
@@ -518,13 +517,6 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       });
 
       await run.step('tools', async () => toolsProbe(await probe(master, sh('svall-tools', WHICH, ...TOOLS), 'command -v'), o.ssh));
-      await run.step('rsync', async () => {
-        const line = (await probe(master, sh('svall-rsync', 'rsync --version | head -1'), 'rsync --version')).trim();
-        const r = rsyncVersion(line);
-        return 'reason' in r
-          ? { value: undefined, status: 'warn' as const, detail: `the rsync there ${r.reason}`, action: onThere(o.ssh, `install rsync ${MIN_RSYNC.join('.')} or newer, as Ubuntu 22.04 and later ship`) }
-          : { value: undefined, detail: line };
-      });
       await run.step('space', async () => spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME')));
       await run.step('linger', async () => lingerProbe(await probe(master, sh('svall-linger', SELF_LINGER), 'loginctl show-user'), user, o.ssh));
 

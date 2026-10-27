@@ -41,7 +41,7 @@ const plainStep = (text: string, names: MachineNames): string => withoutIds(with
 /** The phases the checklist shows, and the steps `svall host …` emits inside each. */
 const PHASES = [
   { phase: 'connect', label: 'Reaching the machine', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger'] },
+  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'space', 'linger'] },
   // the tmux the units start, which the release installed carries
   { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'tmux', 'uninstall'] },
   // an upgrade enrols the machine once its probe passes

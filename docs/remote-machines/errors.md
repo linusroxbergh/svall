@@ -84,8 +84,7 @@ the list; the others say what they did or what is still to do. Each exits 1 unle
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps, which asks nothing: Svall needs a key ssh can use without asking, and a password gets only past the `ssh` step. For an upgrade, with or without `--rollback`, and an add of a name already in the registry, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A refused login: install a key with `ssh-copy-id <destination>` and keep its passphrase in the agent (`ssh-add --apple-use-keychain`), then add the machine again. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |
 | `os` | add, upgrade | Linux on x86-64 or arm64, running Ubuntu 22.04 or newer. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
 | `home` | add | The account's home is short enough for the fleet's hook socket there, `hooks.sock` in its fleet home, which a Unix socket path holds at 107 bytes (a home of at most 89 bytes for the private fleet). | Use an account with a shorter home ([setup](setup.md#home-paths)) and add it again. |
-| `tools` | add | Tailscale, Git, rsync and systemd user services. | Run the `apt install` command the action names; without systemd the machine is not supported. |
-| `rsync` | add | The rsync version. Openrsync or one older than 3.2.3 is a warning, and a handover then stops with `rsync_unsupported`. | Install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install rsync`). |
+| `tools` | add | Tailscale, Git and systemd user services. | Run the `apt install` command the action names; without systemd the machine is not supported. |
 | `space` | add | Free space in the home. Under 5 GiB is a warning. | Free space. |
 | `linger` | add | Whether the account's services keep running after you log out. Off, `host add` turns it on; where the system refuses, it is a warning here, and blocks a handover to the machine, or from it while it is the gateway, with `linger_off`. | Run the `sudo loginctl enable-linger <user>` the action names. |
 | `release` | add, upgrade | The companion release for the machine's architecture: the one Svall.app carries or its release names, checked against the digest this Mac's release pins, or the archive `--release` names, with its signature. | Name an archive with `--release`; an unsigned development build needs `--allow-unsigned`. |
@@ -135,7 +134,6 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `daemon node` | Mac | The Node the launchd agent runs is still there. |
 | `daemon path` | Mac | The launchd agent's program is there and its PATH finds the agents. |
 | `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` your login shell sets. |
-| `rsync` | Mac | Where robots move, as for `claude`, the rsync the release bundles, which a handover needs. |
 | `doctor` | host doctor | The companion's doctor answered. |
 | `release` | host doctor | The machine runs this Mac's release and protocol. |
 | `worker` | host doctor | This fleet runs there as a worker, as `svall version --json` there says: its `worker.json` names this Mac and this fleet. It fails with the `enrol` step's refusal for a fleet home that serves another Mac. |

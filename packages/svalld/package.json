@@ -18,8 +18,6 @@
     "./link/process": "./src/link/process.ts",
     "./durable": "./src/durable.ts",
     "./sessions/registry": "./src/sessions/registry.ts",
-    "./handover/inventory": "./src/handover/inventory.ts",
-    "./handover/replicas": "./src/handover/replicas.ts",
     "./codex/install": "./src/codex/install.ts",
     "./codex/trust": "./src/codex/trust.ts",
     "./opencode/install": "./src/opencode/install.ts",

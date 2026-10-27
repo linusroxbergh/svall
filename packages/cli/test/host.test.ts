@@ -110,8 +110,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
   ssh.reply(['cat', '/etc/os-release'], { stdout: o.osRelease ?? OS_RELEASE });
   ssh.reply(['svall-home'], { stdout: `${home}\nlinus\n` });
-  ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
-  ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.2.7  protocol version 31\n' });
+  ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'git', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
   ssh.reply(['svall-space'], { stdout: DF });
   ssh.reply(['svall-linger'], { stdout: o.linger ?? 'Linger=yes\n' });
   ssh.reply(['cat > "$1"'], {});
@@ -177,12 +176,12 @@ describe('host add', () => {
     // each step names the machine, never its id
     expect(JSON.stringify(events)).not.toContain(REMOTE);
     const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : w[0] === 'env' ? `${w[2]} ${w[3]}` : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
-    expect(order.slice(0, 7)).toEqual([
+    expect(order.slice(0, 6)).toEqual([
       'uname -sm', 'cat /etc/os-release',
       'printf "%s\\n%s\\n" "$', 'for c in "$@"; do if',
-      'rsync --version | he', 'df -Pk "$HOME"', 'l=$(loginctl show-us',
+      'df -Pk "$HOME"', 'l=$(loginctl show-us',
     ]);
-    expect(order.slice(7)).toEqual([
+    expect(order.slice(6)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
       'sh -c', 'svall doctor', 'svall version', '[ -f "$1/$2" ] && ec', 'svall version', 'svall worker',
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
@@ -666,7 +665,7 @@ describe('host add', () => {
   });
 
   it('takes Ubuntu 22.04, the release the companion\'s tmux is built on', async () => {
-    healthy({ osRelease: 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="22.04"\n', tools: ['tailscale', 'rsync', 'systemctl', 'loginctl'] });
+    healthy({ osRelease: 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="22.04"\n', tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out).toMatchObject({ result: 'actions', stopped: 'tools' });
     expect(step('os').at(-1)).toMatchObject({ status: 'ok', detail: 'Ubuntu 22.04 arm64 (LTS)' });
@@ -676,22 +675,19 @@ describe('host add', () => {
     healthy({ tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
-    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git rsync', run: 'sudo apt install git rsync' });
+    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git', run: 'sudo apt install git' });
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 
-  it('warns about an rsync too old to hand a fleet over with, naming what to install, without blocking the rest of setup', async () => {
-    ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.1.3  protocol version 31\n' });
-    healthy();
+  it('adds a machine that has no rsync', async () => {
+    healthy({ tools: ['tailscale', 'git', 'systemctl', 'loginctl'] });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('rsync').at(-1)).toMatchObject({
-      status: 'warn', detail: 'the rsync there is rsync 3.1.3; a handover needs 3.2.3 or newer', action: 'ssh trift.test, then install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship',
-    });
-    expect(out).toMatchObject({ result: 'actions', actions: ['ssh trift.test, then install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship'] });
-    expect(step('registry').at(-1)).toMatchObject({ status: 'ok' });
+    expect(events.map((s) => s.step)).not.toContain('rsync');
+    expect(ssh.remoteCalls().flat()).not.toContainEqual(expect.stringMatching(/\brsync\b/));
+    expect(out.result).toBe('ready');
   });
 
   it('checks the tmux the units start once the release is installed, which is the release\'s own', async () => {
@@ -787,7 +783,7 @@ describe('host add', () => {
     await d.close();
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
-      'name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger',
+      'name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger',
       'release', 'upload', 'install', 'tmux', 'service', 'identity', 'enrol', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry',
     ]);
   });
@@ -951,11 +947,11 @@ describe('host add', () => {
       gateway(registry, far);
       for (const [match, stdout] of [
         [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${far}\nlinus\n`],
-        [['svall-tools'], ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
-        [['svall-tmux-version'], OWN_TMUX], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+        [['svall-tools'], ['tailscale', 'git', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+        [['svall-tmux-version'], OWN_TMUX], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
       ] as [string[], string][]) ssh.reply(match, { stdout });
       for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
-      ssh.execute({ rsync: '/usr/bin/rsync' });
+      ssh.execute({});
       const svall = `#!/bin/sh
 case "$1" in
   version) printf '%s\\n' '${JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC })}' ;;
@@ -1307,7 +1303,7 @@ esac
     registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: base, gateway: o.gateway ?? false }, REMOTE);
     ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
     ssh.reply(['cat', '/etc/os-release'], { stdout: OS_RELEASE });
-    ssh.execute({ rsync: '/usr/bin/rsync' });
+    ssh.execute({});
     return { base, now, registry, close: d.close, svall, archive: companionArchive(work, { signedBy: signer.key, svall: svall('1.2.3', PROTOCOL_VERSION) }) };
   }
 
@@ -1358,7 +1354,7 @@ esac
       signedBy: signer.key, svall: far.svall('1.2.3', PROTOCOL_VERSION),
       files: Object.fromEntries(['grep', 'ssh-keygen', 'sha256sum', 'tar'].map((t) => [`node_modules/.bin/${t}`, shim])),
     });
-    ssh.execute({ rsync: '/usr/bin/rsync', path: `node_modules/.bin:${process.env.PATH}` });
+    ssh.execute({ path: `node_modules/.bin:${process.env.PATH}` });
     const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry }));
     await far.close();
     expect(fs.existsSync(ran) ? fs.readFileSync(ran, 'utf8') : '').toBe('');
@@ -1390,8 +1386,8 @@ esac
     fs.writeFileSync(file, JSON.stringify(saved));
     for (const [match, stdout] of [
       [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${work}/far\nlinus\n`],
-      [['svall-tools'], ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
-      [['svall-tmux-version'], OWN_TMUX], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+      [['svall-tools'], ['tailscale', 'git', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+      [['svall-tmux-version'], OWN_TMUX], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
     ] as [string[], string][]) ssh.reply(match, { stdout });
     for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
     const intruder = ephemeralSigner(work);
@@ -1587,7 +1583,7 @@ esac
     const log = path.join(work, 'systemctl.log');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\n[ -e '${broken}' ] && { echo 'Failed to connect to bus' >&2; exit 1; }\necho "$*" >> '${log}'\n`, { mode: 0o755 });
-    ssh.execute({ rsync: '/usr/bin/rsync', path: `${bin}:${process.env.PATH}` });
+    ssh.execute({ path: `${bin}:${process.env.PATH}` });
     return log;
   };
 

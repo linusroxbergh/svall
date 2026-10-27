@@ -258,7 +258,7 @@ describe('SshMaster', () => {
 
   it('runs a far command with its stdin and stdout as one stream, and ends it with the stream', async () => {
     const master = await open('trift');
-    ssh.execute({ rsync: '/usr/bin/true' });
+    ssh.execute({});
     const cat = master.stream(['cat']);
     cat.stream.write('over the link\n');
     const [chunk] = await once(cat.stream, 'data');

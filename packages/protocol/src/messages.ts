@@ -95,7 +95,6 @@ const WAIT_MAX_MS = 2_000_000_000;
 export const PREFLIGHT_TIMEOUT_MS = 10 * 60_000;
 // how long a source may take to rest every terminal (a three-minute wait, the gateway over ssh, the fleet hashed
 // twice), a destination to prove and take its roots, to write or start a whole fleet, and each side to seal its roots.
-// the controller's rsync passes are not daemon calls and have no budget here
 export const FREEZE_TIMEOUT_MS = 15 * 60_000;
 export const CLAIM_TIMEOUT_MS = 15 * 60_000;
 export const PREPARE_TIMEOUT_MS = 10 * 60_000;

@@ -18,14 +18,12 @@ import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svall
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
-import { isRelease } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
 import { MARK, grouped, renderGroups, useColor, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '@svall/svalld/codex/trust';
-import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
@@ -59,13 +57,10 @@ export type DoctorDeps = PreflightDeps & {
   // the program this build's plist starts svalld with
   daemon: string[];
   user: string;
-  // the rsync this Mac hands over with, and how to get it back when it is missing
-  rsync: { bundled: string; fix: string };
   // machine.json, and the hardware id of the machine doctor runs on
   machine: { file: string; hardwareId?: string };
 };
 const LOG_LINES = 20;
-const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
 
 async function gh(d: DoctorDeps): Promise<Check> {
   try {
@@ -315,23 +310,6 @@ function hooks(d: DoctorDeps): Check {
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup`, run: `${SHIM} setup` };
 }
 
-async function rsyncAt(d: DoctorDeps, exe: string): Promise<{ version: string } | { reason: string }> {
-  try {
-    return rsyncVersion(await d.run(exe, ['--version']));
-  } catch (e) {
-    return { reason: missing(e) ? 'is not there' : `could not run: ${firstLine((e as Error).message)}` };
-  }
-}
-
-/** The rsync a handover runs on this Mac. macOS's own is openrsync, which cannot stand in for it. */
-async function rsync(d: DoctorDeps): Promise<Check> {
-  const bundled = await rsyncAt(d, d.rsync.bundled);
-  if ('version' in bundled) return { name: 'rsync', status: 'ok', detail: `${bundled.version} at ${d.rsync.bundled}` };
-  const system = await rsyncAt(d, 'rsync');
-  const fallback = 'version' in system ? `the rsync on PATH is ${system.version}, which handover does not use` : `the rsync on PATH ${system.reason}`;
-  return { name: 'rsync', status: 'warn', detail: `${d.rsync.bundled} ${bundled.reason}, and ${fallback}; handover needs the bundled rsync: ${d.rsync.fix}` };
-}
-
 // verifies the hook definition is installed and current, then asks Codex whether it is trusted.
 export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'integrations' | 'codexTrust'>): Promise<Check> {
   if (d.integrations && !d.integrations.includes('codex')) return { name: 'codex hooks', status: 'skip', detail: 'turned off in setup' };
@@ -412,7 +390,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await hookReceiver(t, d),
     ...(linux
       ? [await systemd(t, d), daemonEnv(t, d), await linger(d)]
-      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), ...(d.moves ? [await rsync(d)] : [])]),
+      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d)]),
     hooks(d),
     await codexCheck(d),
     ...(linux ? [await codexSandbox(d)] : []),
@@ -501,10 +479,6 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
       shimsCurrent: shimsCurrent(shimDir, ownRuntime()),
       daemon: ownRuntime().daemon,
       user: os.userInfo().username,
-      rsync: {
-        bundled: bundledRsync(),
-        fix: isRelease() ? 'reinstall Svall; its release carries one in bin/' : 'build it with node scripts/build-controller.mjs',
-      },
       machine: { file: path.join(configDir(), 'machine.json'), hardwareId: hardwareId() },
     }) };
     printResult(report, json(), () => reportLines(report, useColor()).join('\n'));

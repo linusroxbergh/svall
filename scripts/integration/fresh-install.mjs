@@ -245,7 +245,7 @@ function runs(label, rel, releases) {
 // ---------------------------------------------------------------------------------------------- the provisioning
 
 const ADVICE = new Set(['claude', 'codex', 'opencode']);
-const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
+const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
   'identity', 'enrol', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
 
 // with no --release the controller fetches the companion its manifest pins, checks its digest and caches it

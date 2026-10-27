@@ -140,11 +140,11 @@ describe('a step by name', () => {
 
 describe('the attended checklist', () => {
   it('names the phase each step belongs to, in the order the steps arrived', () => {
-    const steps = [step('ssh', 'ok'), step('master', 'ok'), step('rsync', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
+    const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tools', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('versions', 'warn'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
       ['Reaching the machine', ['ssh', 'master']],
-      ['What the machine needs', ['rsync']],
+      ['What the machine needs', ['tools']],
       ['Svall on the machine', ['release', 'tmux']],
       ['Agent CLIs', ['claude', 'codex', 'opencode', 'versions']],
       ['Trying it out', ['probe']],
@@ -152,18 +152,18 @@ describe('the attended checklist', () => {
   });
 
   it('opens a phase again when a later step comes back to it', () => {
-    expect(groupSteps([step('ssh', 'ok'), step('rsync', 'ok'), step('master', 'ok')]).map((g) => g.label))
+    expect(groupSteps([step('ssh', 'ok'), step('tools', 'ok'), step('master', 'ok')]).map((g) => g.label))
       .toEqual(['Reaching the machine', 'What the machine needs', 'Reaching the machine']);
   });
 
   it('calls no phase by the name of a step in it', () => {
-    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
+    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install',
       'tmux', 'uninstall', 'service', 'identity', 'authority', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
-    const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload',
+    const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload',
       'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
     const remove = ['machine', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
@@ -181,6 +181,10 @@ describe('the attended checklist', () => {
       ['Svall on the machine', ['release', 'upload', 'install']],
       ['Trying it out', ['probe', 'rollback']],
     ]);
+  });
+
+  it('lists what a machine needs without rsync', () => {
+    expect(groupSteps([step('tools', 'ok'), step('rsync', 'ok')]).map((g) => g.label)).toEqual(['What the machine needs', 'Checks']);
   });
 
   it('shows a step it does not know rather than dropping it', () => {
