@@ -28,24 +28,38 @@ export function MachineActions({ name }: { name: string }) {
   const up = useApp((s) => !!id && s.fleet.machines?.[id as MachineId]?.reachable === true);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
+  const more = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const close = (refocus = true) => { setOpen(false); if (refocus) more.current?.focus(); };
+  const items = () => [...menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []];
   useEffect(() => {
     if (!open) return;
-    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    items()[0]?.focus();
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
+    // taken before the panel and the settings window read the same keys
+    const key = (e: KeyboardEvent) => {
+      const all = items(), at = all.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key === 'Tab') { close(); return; }
+      const next = e.key === 'ArrowDown' ? all[(at + 1) % all.length] : e.key === 'ArrowUp' ? all[(at <= 0 ? all.length : at) - 1] : undefined;
+      if (e.key !== 'Escape' && !next) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (next) next.focus(); else close();
+    };
     document.addEventListener('pointerdown', away);
-    document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+    window.addEventListener('keydown', key, true);
+    return () => { document.removeEventListener('pointerdown', away); window.removeEventListener('keydown', key, true); };
   }, [open]);
   const store = () => app.store.getState();
   const run = (op: HostOp) => { store().toggleHost(true, name); startHost(op, { name }); };
   const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget }); };
-  const item = (fn: () => void) => () => { setOpen(false); fn(); };
+  const item = (fn: () => void) => () => { close(); fn(); };
   return (
     <span className="machine-acts" ref={box}>
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs before robots can move there, checked now" onClick={() => run('doctor')}>Check</button>
-      <button className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
+      <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
       {open && (
-        <div className="machine-menu popover" role="menu">
+        <div ref={menu} className="machine-menu popover" role="menu">
           <button role="menuitem" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
           <button role="menuitem" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
@@ -206,7 +220,7 @@ export function HostSetup() {
     if (!open) return;
     shut.current?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || document.querySelector('.machine-menu')) return;
       e.stopPropagation();
       // a terminal there hangs up what runs in it, so only Done or × closes it
       if (!app.store.getState().hostTerminal) app.store.getState().toggleHost(false);

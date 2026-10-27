@@ -490,8 +490,11 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   await expect(row.getByTestId('machine-terminal')).toHaveText('Open a terminal there');
   await expect(row.getByTestId('machine-remove')).toBeEnabled();
   await expect(row.getByTestId('machine-forget')).toBeVisible();
+  await expect(row.getByTestId('machine-upgrade')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(row.getByTestId('machine-upgrade')).toHaveCount(0);
+  await expect(row.getByTestId('machine-more')).toBeFocused();
+  await expect(row).toBeVisible();
 
   // a robot placed there holds Remove back; one only moving there does too
   const id = await seed(svall, true, (c) => { c.machine = VAULT; });
