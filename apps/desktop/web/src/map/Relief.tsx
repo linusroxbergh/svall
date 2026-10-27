@@ -23,7 +23,7 @@ const glows = new Map<string, Glow | undefined>();
 
 // drawn once per coast into a bitmap: WebKit redoes a live SVG blur in software whenever anything restyles its path, a
 // stalled frame for every island on the map; a canvas shadow blurs, because WebKit's canvas has no filter
-function glow(sand: string, cx: number, cy: number): Glow | undefined {
+function glow(sand: string, cx: number, cy: number): Glow | null | undefined {
   const key = `${cx},${cy},${sand}`;
   if (glows.has(key)) return glows.get(key);
   let g: Glow | undefined;
@@ -47,7 +47,11 @@ function glow(sand: string, cx: number, cy: number): Glow | undefined {
         ctx.shadowColor = o.fill; ctx.shadowBlur = 2 * RES * o.sd * o.k; ctx.shadowOffsetX = off;
         ctx.fill(path);
       }
-      g = { href: canvas.toDataURL(), x, y, w: w / RES, h: h / RES };
+      // the canvas lives in WebKit's GPU process and reads back 'data:,' when that process is replaced for not answering
+      // within 15 s: null is drawn again each second rather than kept
+      const href = canvas.toDataURL();
+      if (href === 'data:,') return null;
+      g = { href, x, y, w: w / RES, h: h / RES };
     }
   }
   if (glows.size >= 64) glows.delete(glows.keys().next().value!);
@@ -57,17 +61,22 @@ function glow(sand: string, cx: number, cy: number): Glow | undefined {
 
 // everything drawn under the land: the shoals lightening the sea, the cast shadow, the wave-line contours and the sand bank
 export function Seabed({ sand, cx, cy, bank }: { sand: string; cx: number; cy: number; bank: string }) {
-  const next = useMemo(() => glow(sand, cx, cy), [sand, cx, cy]);
+  const [tries, setTries] = useState(0);
+  const next = useMemo(() => glow(sand, cx, cy), [sand, cx, cy, tries]);
   // a new coast keeps the last glow until its own has decoded: WebKit would paint a frame with none
   const [g, setG] = useState(next);
   useEffect(() => {
+    if (next === null) {
+      const t = setTimeout(() => setTries((n) => n + 1), 1000);
+      return () => clearTimeout(t);
+    }
     if (!next || next === g) return;
     let live = true;
     const im = new Image();
     im.src = next.href;
     im.decode().catch(() => {}).then(() => { if (live) setG(next); });
     return () => { live = false; };
-  }, [next]);
+  }, [next, tries]);
   return (
     <>
       {g && <image href={g.href} x={g.x} y={g.y} width={g.w} height={g.h} />}
