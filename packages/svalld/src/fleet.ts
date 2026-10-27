@@ -149,17 +149,6 @@ export class Fleet extends EventEmitter<Events> {
     return this.activated;
   }
 
-  /** Ends every window, held prompt and the poll: a fleet another machine now runs keeps no terminal running here. */
-  async deactivate(): Promise<void> {
-    const was = this.activated;
-    this.activated = undefined;
-    await was?.catch(() => {});
-    this.prompts.stop();
-    await this.link.stop();
-    await this.poll.stop();
-    await this.deps.tmux.killServer();
-  }
-
   private async begin(): Promise<void> {
     await this.deps.tmux.ensureServer();
     await this.reconcileNow();
@@ -291,11 +280,6 @@ export class Fleet extends EventEmitter<Events> {
     const at = this.deps.remote?.placedAt(id);
     if (at) throw new Invalid(`${c.name} runs on ${this.deps.store.state.machines?.[at]?.name ?? at}`);
     return c;
-  }
-
-  /** Names the terminals a handover has yet to start: reconciling leaves the agent and resume command each carries to it. */
-  carries(fn: Carried): void {
-    this.carried = fn;
   }
 
   setPaneOutput(id: string, on: boolean): void {

@@ -3,18 +3,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {
-  type AgentKind, type AgentAdapter, type Blocker, type Robot, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession, type Warning,
-} from '@svall/protocol';
+import { type AgentKind, type AgentAdapter, type TransferSession } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../agent-hooks.js';
-import { AGENTS, compareVersions, versionOf, versionOk } from '../agents.js';
+import { AGENTS, versionOf, versionOk } from '../agents.js';
 import { robotKeyEnv } from '../claude.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../codex/install.js';
 import { opencodePaths } from '../opencode/install.js';
 import { claudePaths, resolvePaths } from '../paths.js';
 import { PRIVATE, profileHome } from '../profile.js';
 import { writeDurable, type DurableStages } from '../durable.js';
-import { holds } from '../path-tools.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { opencodeAdapter } from './opencode.js';
@@ -96,38 +93,6 @@ export function installSession(session: TransferSession, staged: string, io: Ins
     writeDurable(w.file, w.data, { mode: 0o600, stages: io.stages });
   }
   return { transcriptPath: destinationPath };
-}
-
-/** Where a terminal's agent resumes and, when its robot's repository holds that, the repository's main checkout and the top of its own; `at` makes each absolute. */
-export function resumeFolder(c: Robot, term: 2 | undefined, at: (p: string) => string): Omit<ResumeFolder, 'kind'> {
-  const cwd = at(term === 2 ? c.second?.cwd ?? c.cwd : c.cwd);
-  if (!c.repo || !holds(at(c.repo.root), cwd)) return { cwd };
-  return { cwd, repo: at(c.repo.mainRoot), root: at(c.repo.root) };
-}
-
-/** Where each session the manifest carries resumes on the destination, which is where it ran on the source, and whether its revive asks for bypass mode. */
-export function resumeFolders(m: TransferManifestV1): (ResumeFolder & { robotId: string })[] {
-  const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
-  return m.sessions.flatMap((s) => {
-    const c = m.snapshot.robots[s.robotId];
-    if (!c) return [];
-    const bypass = sessionAdapter(s.agent).asksBypass?.((s.term === 2 ? c.second : c)?.revive?.command ?? '');
-    return [{ robotId: s.robotId, kind: s.agent, ...resumeFolder(c, s.term, at), ...(bypass && { bypass }) }];
-  });
-}
-
-/** The imported state with every agent pointing at the transcript its session was placed as. */
-export function placeTranscripts(state: FleetState, sessions: readonly TransferSession[]): FleetState {
-  const next = structuredClone(state);
-  for (const c of Object.values(next.robots)) {
-    for (const [term, slot] of [[undefined, c], [2, c.second]] as const) {
-      if (!slot?.agent) continue;
-      const placed = sessions.find((s) => s.robotId === c.id && s.term === term && s.sessionId === slot.agent!.sessionId)?.destinationPath;
-      if (!placed) throw new Error(`${c.id}'s ${term ? 'second ' : ''}${slot.agent.kind} session was not placed on this machine`);
-      slot.agent.transcriptPath = placed;
-    }
-  }
-  return next;
 }
 
 /**
@@ -249,44 +214,3 @@ export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => 
   kind: p.kind, ...(p.version && { version: p.version }), adapter: (p.version && adapterFor(p.kind, p.version)?.adapter) || 0, home: p.home,
   loggedIn: p.loggedIn, hooks: p.hooks, ...(p.sandbox && { sandbox: p.sandbox }),
 }));
-
-/**
- * What stops the agents the fleet runs from resuming on the destination: a CLI that is not there, a release on
- * either machine older than its adapter's minimum or the two read by different adapters, a destination release older
- * than the source's, a destination not logged in, or one without Svall's hooks, whose SessionStart is how a resumed
- * agent reports back. An OpenCode logged in on neither machine whose agent has answered here only warns, into `warnings`.
- */
-export function agentBlockers(
-  o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[]; opencodeAnswered?: boolean }, warnings: Warning[] = [],
-): Blocker[] {
-  const blockers: Blocker[] = [];
-  for (const kind of new Set(o.kinds)) {
-    if (!HANDOVER_KINDS.includes(kind)) { blockers.push({ code: 'incompatible_adapter', message: `a handover carries no ${kind} sessions` }); continue; }
-    const there = o.destination.find((p) => p.kind === kind);
-    if (!there?.version) { blockers.push({ code: 'agent_cli_missing', message: `the destination has no ${kind} CLI` }); continue; }
-    const here = o.source.find((p) => p.kind === kind);
-    const [a, b] = [here?.version && adapterFor(kind, here.version), adapterFor(kind, there.version)];
-    const unsupported = [here?.version && !a && `this machine's ${kind} ${here.version}`, !b && `the destination's ${kind} ${there.version}`].filter(Boolean);
-    if (unsupported.length) {
-      blockers.push({ code: 'incompatible_adapter', message: `a handover carries ${kind} sessions from ${sessionAdapter(kind).min.join('.')} on; update ${unsupported.join(' and ')}` });
-      continue;
-    }
-    if (a && b && a !== b) blockers.push({ code: 'incompatible_adapter', message: `${kind} sessions are read by adapter ${a.adapter} here and ${b.adapter} on the destination` });
-    if (here?.version && compareVersions(there.version, here.version) === -1) {
-      blockers.push({ code: 'incompatible_adapter', message: `the destination's ${kind} ${there.version} is older than this machine's ${here!.version}, which writes sessions it may not read; update ${kind} on the destination` });
-    }
-    // one answering here with no provider's login runs on a model that needs none, as OpenCode Zen's free ones do
-    if (!there.loggedIn && kind === 'opencode' && here?.loggedIn === false && o.opencodeAnswered) {
-      warnings.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models; for a provider's model, run opencode auth login there` });
-    } else if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });
-    if (!there.hooks) {
-      blockers.push({
-        code: 'agent_hooks_missing',
-        message: kind === 'opencode'
-          ? `Svall's plugin is not installed for OpenCode on the destination (${opencodePaths({}, '~').plugin}, or under its XDG_CONFIG_HOME): run svall setup there`
-          : `Svall's hooks are not installed for ${kind} on the destination (${there.home}): run svall setup there`,
-      });
-    }
-  }
-  return blockers;
-}

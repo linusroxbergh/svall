@@ -110,18 +110,6 @@ export function svalldUnit(o: UnitOptions & { fleet: string; home: string }): Un
   };
 }
 
-export function gatewayUnit(o: UnitOptions): Unit {
-  return {
-    name: GATEWAY_UNIT,
-    text: render('svall-gateway.service.in', {
-      EXEC_START: execLine([...o.runtime.cli, 'gateway', 'serve']),
-      HOME: esc(o.homedir),
-      PATH: esc(unitPath(o)),
-      LOG: logFile(o, GATEWAY_UNIT).replace(/%/g, '%%'),
-    }),
-  };
-}
-
 export type LinuxSetup = UnitOptions & {
   home: string; fleet: string; unitDir: string; settingsPath: string; codex: CodexPaths; shimDir: string;
   user: string; run: Run; systemctl: boolean; replaceSettings?: boolean; port?: number; agents?: AgentKind[];
@@ -131,20 +119,17 @@ const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
 };
 
-/** The fleet's unit and, with `gateway`, the machine's gateway, written only when they are not already what they should be. */
-export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string; gateway?: true }): string[] {
+/** The fleet's unit, written only when it is not already what it should be. */
+export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string }): string[] {
   fs.mkdirSync(o.unitDir, { recursive: true });
   const logs = path.join(o.prefix, 'log');
   fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
   fs.chmodSync(logs, 0o700);
-  const done: string[] = [];
-  for (const unit of [svalldUnit(o), ...(o.gateway === true ? [gatewayUnit(o)] : [])]) {
-    const file = path.join(o.unitDir, unit.name);
-    if (readOrUndefined(file) === unit.text) continue;
-    writeDurable(file, Buffer.from(unit.text), { mode: 0o644 });
-    done.push(`systemd unit -> ${file}`);
-  }
-  return done;
+  const unit = svalldUnit(o);
+  const file = path.join(o.unitDir, unit.name);
+  if (readOrUndefined(file) === unit.text) return [];
+  writeDurable(file, Buffer.from(unit.text), { mode: 0o644 });
+  return [`systemd unit -> ${file}`];
 }
 
 type UnitStart = { started: true; done: string[] } | { started: false; reason: string };

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rollbackRelease } from '../../../scripts/install-release.mjs';
 import { codexPaths } from '../src/codex/install.js';
-import { agentHomesEnv, svalldUnit, gatewayUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
+import { agentHomesEnv, svalldUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
 import { opencodePaths } from '../src/opencode/install.js';
 import { resolvePaths } from '../src/paths.js';
@@ -64,31 +64,6 @@ WantedBy=default.target
 `);
   });
 
-  it('renders one gateway for the machine', () => {
-    const unit = gatewayUnit(release);
-    expect(unit.name).toBe('svall-gateway.service');
-    expect(unit.text).toBe(`# One per machine, rendered by \`svall setup\`: the ownership authority for every fleet that names
-# this machine as its gateway.
-[Unit]
-Description=Svall gateway
-After=network.target
-
-[Service]
-Type=simple
-ExecStart="/home/linus/.local/share/svall/current/bin/svall" "gateway" "serve"
-Environment="HOME=/home/linus"
-Environment="PATH=/home/linus/.local/share/svall/current/node/bin:/home/linus/.local/share/svall/current/bin:/home/linus/.local/bin:/home/linus/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
-Environment=LANG=C.UTF-8
-Restart=always
-RestartSec=2
-StandardOutput=append:/home/linus/.local/share/svall/log/svall-gateway.log
-StandardError=append:/home/linus/.local/share/svall/log/svall-gateway.log
-
-[Install]
-WantedBy=default.target
-`);
-  });
-
   // every rendered value takes a path with a space, a percent systemd would read as a specifier and
   // a dollar it would read as a variable
   const odd = {
@@ -113,14 +88,6 @@ WantedBy=default.target
     expect(unit.text).toContain('Description=Svall daemon for the work fleet\n');
   });
 
-  it('escapes the gateway the same way', () => {
-    const unit = gatewayUnit(odd);
-    expect(unit.text).toContain('ExecStart="/tmp/x y%%z/$home/.local/share/svall/current/bin/svall" "gateway" "serve"\n');
-    expect(unit.text).toContain('Environment="HOME=/tmp/x y%%z/$home"\n');
-    expect(unit.text).toContain('Environment="PATH=/tmp/x y%%z/$home/.local/share/svall/current/node/bin:/tmp/x y%%z/$home/.local/share/svall/current/bin:/tmp/x y%%z/$home/.local/bin:/tmp/x y%%z/$home/.opencode/bin:/usr/local/bin:/usr/bin:/bin"\n');
-    expect(unit.text).toContain('StandardOutput=append:/tmp/x y%%z/$home/.local/share/svall/log/svall-gateway.log\n');
-  });
-
   it('starts a development checkout through tsx, still with absolute paths', () => {
     const unit = svalldUnit({ runtime: checkoutRuntime('/src/svall'), homedir: '/home/linus', prefix: '/p', fleet: 'private', home: '/home/linus/.svall' });
     expect(unit.text).toContain('ExecStart="/src/svall/node_modules/.bin/tsx" "/src/svall/packages/svalld/src/bin.ts"\n');
@@ -138,13 +105,11 @@ WantedBy=default.target
     expect(svalldUnit({ ...release, fleet: 'private', home }).text).toContain('ExecStart="/home/linus/.local/share/svall/current/bin/svalld" "--worker"\n');
   });
 
-  it('writes the fleet\'s unit alone, and the gateway\'s only when asked for it', () => {
+  it('writes the fleet\'s unit alone', () => {
     const unitDir = makeHome();
     const o = { ...release, prefix: path.join(makeHome(), 'svall'), fleet: 'private', home: makeHome(), unitDir };
     writeUnits(o);
     expect(fs.readdirSync(unitDir)).toEqual(['svall-svalld@private.service']);
-    writeUnits({ ...o, gateway: true });
-    expect(fs.readdirSync(unitDir).sort()).toEqual(['svall-gateway.service', 'svall-svalld@private.service']);
   });
 });
 

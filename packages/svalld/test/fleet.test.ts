@@ -118,25 +118,6 @@ runIf('Fleet', () => {
     await fleet.closeRobot(c.id);
   });
 
-  it('ends every window and its tmux server once deactivated, keeps it down, and brings it back when activated again', async () => {
-    const { fleet, tmux } = await boot();
-    const island = fleet.createIsland({ name: 'handed' });
-    await fleet.createRobot({ islandId: island.id, cwd: '/tmp' });
-    await fleet.deactivate();
-    await expect(tmux.run('list-sessions')).rejects.toThrow();
-    // a lost control client would have brought a server back by now
-    await new Promise((r) => setTimeout(r, 1500));
-    await expect(tmux.run('list-sessions')).rejects.toThrow();
-    await fleet.activate();
-    await expect(tmux.run('list-sessions')).resolves.toBeDefined();
-
-    // a server lost just before the fleet lets go is not brought back by the recovery its loss scheduled
-    await tmux.killServer();
-    await fleet.deactivate();
-    await new Promise((r) => setTimeout(r, 1500));
-    await expect(tmux.run('list-sessions')).rejects.toThrow();
-  });
-
   it('gives robot shells an OpenCode config dir only where OpenCode is', async () => {
     const { fleet, tmux, home } = await boot();
     vi.stubEnv('XDG_CONFIG_HOME', path.join(home, 'xdg'));
@@ -1160,7 +1141,7 @@ runIf('Fleet', () => {
     expect(fresh.tmux).toBeDefined();
   });
 
-  it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet and while an open handover carries it', async () => {
+  it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
     await b.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b1' } });
@@ -1170,15 +1151,11 @@ runIf('Fleet', () => {
     expect(b.store.state.robots[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
 
     const typed: string[] = [];
-    const carried = await boot({ opening: true, state: structuredClone(b.store.state) });
-    carried.fleet.carries((id) => id === c.id);
     const frozen = await boot({ opening: true, state: structuredClone(b.store.state) });
     await frozen.ownership.freeze({ id: 'tx-1', fromMachineId: MachineId.parse(crypto.randomUUID()), toMachineId: MachineId.parse(crypto.randomUUID()), phase: 'preparing', startedAt: 1 });
-    for (const f of [carried, frozen]) {
-      vi.spyOn(f.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
-      await f.fleet.resumeInterrupted();
-      expect(f.store.state.robots[c.id].tmux).toBeUndefined();
-    }
+    vi.spyOn(frozen.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await frozen.fleet.resumeInterrupted();
+    expect(frozen.store.state.robots[c.id].tmux).toBeUndefined();
     expect(typed).toEqual([]);
   });
 
@@ -2302,16 +2279,6 @@ runIf('Fleet', () => {
       expect(typed).toEqual(['go']);
     });
 
-    it('is dropped when the fleet leaves this machine', async () => {
-      const { fleet, c, screen, typed } = await agentPane('claude');
-      screen.mockResolvedValue(pane('claude-draft'));
-      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      await fleet.deactivate();
-      screen.mockResolvedValue(pane('claude-empty'));
-      await new Promise((r) => setTimeout(r, 1200));
-      expect(typed).toEqual([]);
-    });
-
     it("is dropped when the agent's session ends, not typed into the next one", async () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
       screen.mockResolvedValue(pane('claude-draft'));
@@ -2579,68 +2546,6 @@ runIf('Fleet', () => {
     await waitFor(() => store.state.robots[c.id].agent === undefined, 3000);
   });
 
-  it('keeps the agent and resume command of a terminal a handover has yet to start while its pane sits at a shell prompt', async () => {
-    const { fleet, store } = await boot();
-    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    const second = await fleet.openSecond(c.id);
-    let carried = true;
-    fleet.carries(() => carried);
-    for (const term of [undefined, 2 as const]) {
-      await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: `sess-${term ?? 1}`, transcriptPath: '/nope', ...(term && { term }) } });
-    }
-    // a window its activation opened before the daemon that opened it could record it: the poll leaves it to the
-    // handover, and the reconcile an activation runs finds it
-    const { tmux: window } = store.state.robots[c.id];
-    store.update((d) => { delete d.robots[c.id].tmux; d.robots[c.id].revive = { command: 'claude --resume sess-1' }; });
-    await new Promise((r) => { setTimeout(r, 1000); });
-    expect(store.state.robots[c.id]).toMatchObject({ agent: { sessionId: 'sess-1' }, revive: { command: 'claude --resume sess-1' } });
-    expect(store.state.robots[c.id].tmux).toBeUndefined();
-    expect(store.state.robots[c.id].second).toMatchObject({ tmux: second.second!.tmux, agent: { sessionId: 'sess-2' } });
-    await fleet.reconcileNow();
-    expect(store.state.robots[c.id]).toMatchObject({ tmux: window, agent: { sessionId: 'sess-1' }, revive: { command: 'claude --resume sess-1' } });
-    await new Promise((r) => { setTimeout(r, 1000); });
-    expect(store.state.robots[c.id]).toMatchObject({ agent: { sessionId: 'sess-1' } });
-
-    carried = false;
-    await waitFor(() => store.state.robots[c.id].agent === undefined && store.state.robots[c.id].second?.agent === undefined, 3000);
-  });
-
-  it('keeps the resume command of a terminal a handover has yet to answer for when it opens it, so a retry lays it dormant with it again', async () => {
-    const { fleet, store, tmux } = await boot();
-    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    let carried = true;
-    fleet.carries(() => carried);
-    const main = { command: 'echo main' };
-    const second = { command: 'echo second' };
-    const dormant = () => store.update((d) => { delete d.robots[c.id].tmux; d.robots[c.id].revive = main; });
-    // dormant while its window lives on, then with that window gone, and a dormant second
-    dormant();
-    store.update((d) => { d.robots[c.id].second = { cwd: '/tmp', unread: false, revive: second }; });
-    expect((await fleet.reviveRobot(c.id)).revive).toEqual(main);
-    await tmux.killWindow(store.state.robots[c.id].tmux!.windowId);
-    dormant();
-    expect((await fleet.reviveRobot(c.id)).revive).toEqual(main);
-    expect((await fleet.openSecond(c.id)).second?.revive).toEqual(second);
-    // one the handover has answered for opens as any other
-    carried = false;
-    await tmux.killWindow(store.state.robots[c.id].tmux!.windowId);
-    dormant();
-    expect((await fleet.reviveRobot(c.id)).revive).toBeUndefined();
-  });
-
-  it('drops the resume command a live terminal kept for its handover once the handover has answered for it', async () => {
-    const { fleet, store } = await boot();
-    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    let carried = true;
-    fleet.carries(() => carried);
-    store.update((d) => { d.robots[c.id].revive = { command: 'claude --resume sess-1' }; });
-    await waitForPolls(fleet, 2);
-    expect(store.state.robots[c.id].revive).toEqual({ command: 'claude --resume sess-1' });
-    carried = false;
-    await waitFor(() => store.state.robots[c.id].revive === undefined, 3000);
-    expect(store.state.robots[c.id].tmux).toBeDefined();
-  });
-
   it('leaves a terminal whose ordinary revive exits back to its shell at that shell, and drops its agent', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
@@ -2683,26 +2588,6 @@ runIf('Fleet', () => {
     await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await waitFor(() => store.state.robots[c.id].agent === undefined, 5000);
     expect(store.state.robots[c.id].tmux).toBeDefined();
-  });
-
-  it('lays a revived terminal whose agent never comes up dormant again with its session once the wait for it runs out', async () => {
-    const { fleet, store, tmux } = await boot({ resumeMs: 1000 });
-    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
-    await tmux.killWindow(c.tmux!.windowId);
-    await waitFor(() => store.state.robots[c.id].tmux === undefined);
-    const revive = { command: `: --resume ${SID}` };
-    store.update((d) => { d.robots[c.id].revive = revive; });
-
-    // a terminal a handover carries, opened by that handover, which answers for it straight after
-    let carried = true;
-    fleet.carries(() => carried);
-    await fleet.reviveRobot(c.id);
-    carried = false;
-    await waitForPolls(fleet, 3);
-    expect(store.state.robots[c.id]).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
-    await waitFor(() => store.state.robots[c.id].tmux === undefined, 5000);
-    expect(store.state.robots[c.id]).toMatchObject({ agent: { sessionId: SID }, revive, resumeError: expect.stringMatching(/claude did not come up within 1 s before that session started/) });
   });
 
   it('creates the home island on start, copies config into state, and protects it', async () => {

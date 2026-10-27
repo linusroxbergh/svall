@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Operation } from 'fast-json-patch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CWD, type MachineId } from '@svall/protocol';
 import { createLogger } from '../src/log.js';
@@ -320,33 +319,6 @@ describe('prepared state', () => {
     const prepared = path.join(home, 'prepared-tx-1.json');
     fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
     expect(() => Store.readSnapshot(prepared)).toThrow();
-  });
-
-  it('promotes a prepared file onto state.json and replaces the live state', () => {
-    const home = makeHome();
-    const file = path.join(home, 'state.json');
-    const s = Store.load(file, () => {});
-    s.update((d) => { d.islands.i_1 = island('i_1'); });
-    const prepared = path.join(home, 'handover', 'prepared-tx-1.json');
-    fs.mkdirSync(path.dirname(prepared), { recursive: true });
-    fs.writeFileSync(prepared, JSON.stringify({ ...s.state, islands: { i_9: island('i_9') } }));
-    const seen: Operation[][] = [];
-    s.subscribe((ops) => seen.push(ops));
-    const ops = s.promote(prepared);
-    expect(seen).toEqual([ops]);
-    expect(Object.keys(s.state.islands)).toEqual(['i_9']);
-    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).islands)).toEqual(['i_9']);
-    expect(fs.existsSync(prepared)).toBe(false);
-  });
-
-  it('leaves the prepared file in place when it does not validate', () => {
-    const home = makeHome();
-    const s = Store.load(path.join(home, 'state.json'), () => {});
-    const prepared = path.join(home, 'prepared-tx-1.json');
-    fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
-    expect(() => s.promote(prepared)).toThrow();
-    expect(fs.existsSync(prepared)).toBe(true);
-    expect(s.state.islands).toEqual({});
   });
 });
 

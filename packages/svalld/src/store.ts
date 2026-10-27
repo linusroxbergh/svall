@@ -5,7 +5,7 @@ import jsonpatch, { type Operation } from 'fast-json-patch';
 import { Robot, FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@svall/protocol';
 import { readJsonOrQuarantine } from './jsonfile.js';
 import { sinkHome, trimHome } from './layout.js';
-import { cleanupDurableTemps, syncDir, writeDurable } from './durable.js';
+import { cleanupDurableTemps, writeDurable } from './durable.js';
 import { variant } from './runtime.js';
 
 type Listener = (ops: Operation[]) => void;
@@ -121,23 +121,6 @@ export class Store {
     return FleetState.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
   }
 
-  /**
-   * Makes a prepared file the active state once the gateway has committed the transaction: renamed into
-   * place, both directories synced, then published as it is on disk rather than written again.
-   */
-  promote(preparedFile: string): Operation[] {
-    const next = Store.readSnapshot(preparedFile);
-    fs.renameSync(preparedFile, this.file);
-    syncDir(path.dirname(this.file));
-    syncDir(path.dirname(preparedFile));
-    return this.publish(next);
-  }
-
-  /** Publishes what state.json holds, for a promotion whose rename landed before this process published it. */
-  reload(): Operation[] {
-    return this.publish(Store.readSnapshot(this.file));
-  }
-
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => { this.listeners.delete(fn); };
@@ -167,16 +150,6 @@ export class Store {
   private commit(next: FleetState, ops: Operation[]): void {
     this.persist(next);
     this.notify(next, ops);
-  }
-
-  // what is published is what state.json now holds
-  private publish(next: FleetState): Operation[] {
-    clearTimeout(this.writing);
-    this.writing = undefined;
-    this.dirty = false;
-    const ops = jsonpatch.compare(this.current, next);
-    this.notify(next, ops);
-    return ops;
   }
 
   // outside any hold, so what a listener starts may flush

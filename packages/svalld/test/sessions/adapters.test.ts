@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ResumeFolder, Warning } from '@svall/protocol';
+import type { ResumeFolder } from '@svall/protocol';
 import { claudeAdapter } from '../../src/sessions/claude.js';
 import { codexAdapter } from '../../src/sessions/codex.js';
 import { opencodeAdapter } from '../../src/sessions/opencode.js';
 import {
-  HANDOVER_KINDS, adapterFor, agentAdapters, agentBlockers, cliRunner, probeAgent, realProbeDeps, type AgentProbe, type AgentRun,
+  HANDOVER_KINDS, adapterFor, agentAdapters, cliRunner, probeAgent, realProbeDeps, type AgentProbe, type AgentRun,
 } from '../../src/sessions/registry.js';
 import { repairBrief } from '../../src/sessions/repair.js';
 import { SessionError, type CliRun, type SessionFs } from '../../src/sessions/types.js';
@@ -579,58 +579,6 @@ describe('agent preflight', () => {
     };
     expect(await probeAgent('claude', deps)).toEqual({ kind: 'claude', version: '2.1.280', home: '/home/t/.claude', loggedIn: false, hooks: false });
     expect(await probeAgent('codex', deps)).toEqual({ kind: 'codex', home: '/home/t/.codex', loggedIn: false, hooks: false });
-  });
-
-  it('blocks on the destination CLI, either release, login and hooks, only for the agents the fleet runs', () => {
-    const ok = (kind: 'claude' | 'codex', o: Partial<AgentProbe> = {}): AgentProbe =>
-      ({ kind, version: kind === 'claude' ? '2.1.280' : '0.156.1', home: `/h/.${kind}`, loggedIn: true, hooks: true, ...o });
-    const codes = (source: AgentProbe[], destination: AgentProbe[], kinds: ('claude' | 'codex')[] = ['claude']) =>
-      agentBlockers({ kinds, source, destination }).map((b) => b.code);
-    expect(codes([ok('claude')], [ok('claude')])).toEqual([]);
-    // a destination older than the source may not read what the source's release wrote; a newer one does
-    expect(codes([ok('claude')], [ok('claude', { version: '2.1.251' })])).toEqual(['incompatible_adapter']);
-    expect(agentBlockers({ kinds: ['claude'], source: [ok('claude')], destination: [ok('claude', { version: '2.1.251' })] })[0].message)
-      .toBe("the destination's claude 2.1.251 is older than this machine's 2.1.280, which writes sessions it may not read; update claude on the destination");
-    expect(codes([ok('claude', { version: '2.1.251' })], [ok('claude')])).toEqual([]);
-    // the same prerelease on both, or a later one there, reads what this machine wrote
-    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290-beta.1' })])).toEqual([]);
-    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290-beta.2' })])).toEqual([]);
-    expect(codes([ok('claude', { version: '2.1.290-beta.1' })], [ok('claude', { version: '2.1.290' })])).toEqual([]);
-    expect(codes([ok('claude', { version: '2.1.290' })], [ok('claude', { version: '2.1.290-beta.2' })])).toEqual(['incompatible_adapter']);
-    expect(codes([ok('claude')], [])).toEqual(['agent_cli_missing']);
-    expect(codes([ok('claude')], [ok('claude', { version: undefined })])).toEqual(['agent_cli_missing']);
-    // the Mac's own release, and one newer than any adapter has seen
-    expect(codes([ok('claude', { version: '2.1.283' })], [ok('claude', { version: '2.1.283' })])).toEqual([]);
-    expect(codes([ok('claude')], [ok('claude', { version: '2.4.0' })])).toEqual([]);
-    expect(codes([ok('claude')], [ok('claude', { version: '2.1.250' })])).toEqual(['incompatible_adapter']);
-    expect(codes([ok('claude', { version: '2.1.200' })], [ok('claude')])).toEqual(['incompatible_adapter']);
-    expect(agentBlockers({ kinds: ['claude'], source: [ok('claude', { version: '2.1.200' })], destination: [ok('claude', { version: '2.1.250' })] })[0].message)
-      .toBe("a handover carries claude sessions from 2.1.251 on; update this machine's claude 2.1.200 and the destination's claude 2.1.250");
-    expect(codes([ok('claude')], [ok('claude', { loggedIn: false })])).toEqual(['agent_logged_out']);
-    expect(codes([ok('claude')], [ok('claude', { hooks: false })])).toEqual(['agent_hooks_missing']);
-    // a fleet running no Codex does not care how Codex is on either machine
-    expect(codes([ok('claude')], [ok('claude'), ok('codex', { version: '0.1.0', loggedIn: false })])).toEqual([]);
-    expect(codes([ok('claude'), ok('codex')], [ok('claude'), ok('codex', { loggedIn: false })], ['claude', 'codex'])).toEqual(['agent_logged_out']);
-    const oc = (o: Partial<AgentProbe> = {}): AgentProbe => ({ kind: 'opencode', version: '2.0.22', home: '/h/.svall/transcripts/opencode', loggedIn: true, hooks: true, ...o });
-    const fleet = (destination: AgentProbe) => agentBlockers({ kinds: ['claude', 'opencode'], source: [ok('claude'), oc()], destination: [ok('claude'), destination] }).map((b) => b.code);
-    expect(fleet(oc())).toEqual([]);
-    expect(fleet(oc({ version: '2.0.21' }))).toEqual(['incompatible_adapter']);
-    expect(fleet(oc({ loggedIn: false }))).toEqual(['agent_logged_out']);
-    // an OpenCode that answers here with no provider's login, as on OpenCode Zen's free models, only warns of none there
-    const zen = (source: AgentProbe, opencodeAnswered: boolean) => {
-      const warnings: Warning[] = [];
-      const blockers = agentBlockers({ kinds: ['opencode'], source: [source], destination: [oc({ loggedIn: false })], opencodeAnswered }, warnings);
-      return { blockers: blockers.map((b) => b.code), warnings };
-    };
-    expect(zen(oc({ loggedIn: false }), true)).toEqual({ blockers: [], warnings: [{
-      code: 'agent_logged_out',
-      message: "opencode is not logged in on the destination, nor here, where its agent answers without a login, as on OpenCode Zen's free models; for a provider's model, run opencode auth login there",
-    }] });
-    expect(zen(oc({ loggedIn: false }), false)).toEqual({ blockers: ['agent_logged_out'], warnings: [] });
-    expect(zen(oc(), true)).toEqual({ blockers: ['agent_logged_out'], warnings: [] });
-    expect(fleet(oc({ hooks: false }))).toEqual(['agent_hooks_missing']);
-    expect(agentBlockers({ kinds: ['opencode'], source: [oc()], destination: [oc({ hooks: false })] })[0].message)
-      .toBe(`Svall's plugin is not installed for OpenCode on the destination (${opencodePaths({}, '~').plugin}, or under its XDG_CONFIG_HOME): run svall setup there`);
   });
 });
 
