@@ -108,6 +108,10 @@ describe('the end of a run', () => {
       .toEqual({ text: 'box is ready. 1 part of your agent setup will not work there yet.', done: true, setup: 1 });
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok'), gap('claude:mcp:linear', 'linear')])))
       .toEqual({ text: 'box has 1 thing to fix, and 1 part of your agent setup will not work there yet.', setup: 1 });
+    // a part with nothing to do about it, as a server that only runs on a Mac, will not work there, not yet
+    const macOnly = step('mirror:maconly:claude:chrome', 'skip', { gap: { name: 'chrome', what: 'runs only on a Mac' } });
+    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), macOnly]))).toEqual({ text: 'box is ready. 1 part of your agent setup will not work there.', done: true, setup: 1 });
+    expect(outcomeOf(ended('doctor', 0, [macOnly, gap('claude:mcp:linear', 'linear')])).text).toBe('box is ready. 2 parts of your agent setup will not work there yet.');
     // one stopped part way said nothing it left to do
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
     expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box has 1 thing to fix.' });

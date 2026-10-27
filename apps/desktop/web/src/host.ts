@@ -1,4 +1,4 @@
-import type { SetupRow } from '@svall/protocol';
+import { wayOn, type SetupRow } from '@svall/protocol';
 import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
@@ -169,9 +169,10 @@ const thingsLeft = (run: HostRun): number =>
 export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
   const left = thingsLeft(run);
-  // the mirror rows of what will not work on the machine yet
-  const setup = run.steps.filter((s) => s.step.startsWith(MIRROR) && s.gap).length;
-  const parts = `${plural(setup, 'part')} of your agent setup will not work there yet.`;
+  // the mirror rows of what will not work on the machine, yet while one has a way on
+  const gaps = run.steps.filter((s) => s.step.startsWith(MIRROR) && s.gap);
+  const setup = gaps.length;
+  const parts = `${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}.`;
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
   if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {

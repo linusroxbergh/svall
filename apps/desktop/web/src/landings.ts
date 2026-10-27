@@ -1,4 +1,4 @@
-import { settable, type SetupRow } from '@svall/protocol';
+import { wayOn, type SetupRow } from '@svall/protocol';
 import type { Api } from './api.js';
 import { machineName } from './placement.js';
 import type { AppStore } from './store/index.js';
@@ -7,7 +7,7 @@ import type { AppStore } from './store/index.js';
 export function setupNote(rows: SetupRow[]): string | undefined {
   const gaps = rows.filter((r) => r.gap);
   const n = gaps.length;
-  return gaps.some((r) => settable(r) || r.action) ? `${n} ${n === 1 ? 'part' : 'parts'} of its agent setup will not work there.` : undefined;
+  return gaps.some(wayOn) ? `${n} ${n === 1 ? 'part' : 'parts'} of its agent setup will not work there.` : undefined;
 }
 
 /**

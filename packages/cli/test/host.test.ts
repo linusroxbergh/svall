@@ -2371,6 +2371,14 @@ describe('the last line a run prints', () => {
     expect(outcomeText({ result: 'actions', actions: [linger, login] }, 'upgrade', 'trift')).toBe(`trift has 2 things to fix:\n  ${linger}\n  ${login}`);
     expect(outcomeText({ result: 'actions', actions: [linger], setup: [linear] }, 'add', 'trift', work))
       .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift yet:\n${listed}`);
+    // a list with nothing to do about any of it will not work there, not yet
+    const chrome = rowStep({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } });
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome] }, 'add', 'trift', work))
+      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  chrome  runs only on a Mac');
+    expect(outcomeText({ result: 'actions', actions: [linger], setup: [chrome] }, 'add', 'trift', work))
+      .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift:\n  chrome  runs only on a Mac`);
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome, linear] }, 'add', 'trift', work).split('\n')[0])
+      .toBe('trift is ready. 2 parts of your agent setup will not work there yet:');
     expect(outcomeText({ result: 'actions', actions: [linger], stopped: 'install' }, 'add', 'trift'))
       .toBe(`stopped at install; trift has 1 thing to fix:\n  ${linger}`);
     expect(outcomeText({ result: 'actions', actions: [linger] }, 'rollback', 'trift')).toBe(`still to do:\n  ${linger}`);
@@ -2380,6 +2388,8 @@ describe('the last line a run prints', () => {
     const warn = { name: 'tmux', status: 'warn' as const, detail: '3.4' };
     const fail = (name: string) => ({ name, status: 'fail' as const, detail: 'inactive' });
     expect(doctorVerdict([ok, warn, warn], 'trift', THERE)).toBe(ready);
+    expect(doctorVerdict([ok, rowCheck({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } })], 'trift', THERE))
+      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  chrome  runs only on a Mac');
     expect(doctorVerdict([ok, warn, fail('systemd')], 'trift', THERE)).toBe('trift has 1 thing to fix: systemd');
     expect(doctorVerdict([fail('systemd'), fail('release')], 'trift', THERE)).toBe('trift has 2 things to fix: systemd, release');
     // a mirror row by its own line, though two servers' rows read alike; rows that only ask to check again are not listed

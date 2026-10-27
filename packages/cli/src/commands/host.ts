@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { ApiError, checksAgain, PROTOCOL_VERSION, settable, toTick, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, checksAgain, PROTOCOL_VERSION, settable, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -88,9 +88,12 @@ export function doneLine(op: Op, name: string, o: { forget?: boolean } = {}): st
 const readyLine = (name: string): string => `${name} is ready. Robots you move there keep working while this Mac sleeps.`;
 const fixLine = (name: string, n: number): string => `${name} has ${plural(n, 'thing')} to fix`;
 const parts = (n: number, whose = 'your'): string => `${plural(n, 'part')} of ${whose} agent setup`;
-// the list under its line: after ready, or after the things to fix there
-const withList = (list: string[], name: string, ready: boolean): string[] =>
-  (!list.length ? [] : [ready ? `${name} is ready. ${parts(list.length)} will not work there yet:` : `${parts(list.length)} will not work on ${name} yet:`, ...list]);
+// the list of `rows` under its line: after ready, or after the things to fix there; yet while one has a way on
+const withList = (rows: Gapped[], name: string, there: There, ready: boolean): string[] => {
+  const list = setupList(rows, name, there);
+  const yet = rows.some(wayOn) ? ' yet' : '';
+  return !list.length ? [] : [ready ? `${name} is ready. ${parts(list.length)} will not work there${yet}:` : `${parts(list.length)} will not work on ${name}${yet}:`, ...list];
+};
 
 /** How a line of the list reaches the machine from this Mac's terminal: its ssh destination, and the svall that names this fleet. */
 export type There = { ssh: string; svall: string };
@@ -118,11 +121,11 @@ export function setupList(rows: Gapped[], machine: string, there: There): string
 /** The last line a run prints: what it did, or what is still to do; an add or an upgrade ends in the setup's lines. */
 export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forget?: boolean; there?: There } = {}): string {
   const setup = op === 'add' || op === 'upgrade';
-  const rows = (o.setup ?? []).map(asRow);
-  const list = setup && rows.length ? setupList(rows, name, flags.there!) : [];
-  if (o.result === 'ready') return !setup ? doneLine(op, name, flags) : list.length ? withList(list, name, true).join('\n') : readyLine(name);
+  const rows = setup ? (o.setup ?? []).map(asRow) : [];
+  const list = (ready: boolean) => (rows.length ? withList(rows, name, flags.there!, ready) : []);
+  if (o.result === 'ready') return !setup ? doneLine(op, name, flags) : rows.length ? list(true).join('\n') : readyLine(name);
   const left = setup ? `${fixLine(name, o.actions.length)}:` : 'still to do:';
-  return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`), ...withList(list, name, false)].join('\n');
+  return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`), ...list(false)].join('\n');
 }
 
 /** The end of a check: ready, or the things to fix there, each failed check and each warning's action once, then what of the agent setup will not work there. */
@@ -131,14 +134,14 @@ export function doctorVerdict(checks: Check[], name: string, there: There): stri
   // two checks can name the same thing to do
   const thing = (c: Check): string => c.action ?? c.name;
   const left = todo.filter((c, i) => todo.findIndex((o) => thing(o) === thing(c)) === i);
-  const list = setupList(checks.filter((c) => c.name.startsWith(MIRROR)).map(asRow), name, there);
-  if (!left.length) return list.length ? withList(list, name, true).join('\n') : readyLine(name);
-  return [`${fixLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}`, ...withList(list, name, false)].join('\n');
+  const rows = checks.filter((c) => c.name.startsWith(MIRROR) && c.gap).map(asRow);
+  if (!left.length) return rows.length ? withList(rows, name, there, true).join('\n') : readyLine(name);
+  return [`${fixLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}`, ...withList(rows, name, there, false)].join('\n');
 }
 
 /** What of a robot's agent setup will not work on `machine` yet, as a move prints its rows that name a gap. */
 export function robotSetupText(rows: SetupRow[], robot: string, machine: string, there: There): string {
-  return [`${parts(rows.length, `${robot}'s`)} will not work on ${machine} yet:`, ...setupList(rows, machine, there)].join('\n');
+  return [`${parts(rows.length, `${robot}'s`)} will not work on ${machine}${rows.some(wayOn) ? ' yet' : ''}:`, ...setupList(rows, machine, there)].join('\n');
 }
 
 type SetUpIo = { ask(q: string): Promise<string>; write(text: string): void; consent: HostDeps['consent'] };

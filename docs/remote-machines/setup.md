@@ -75,6 +75,9 @@ studio is ready. 3 parts of your agent setup will not work there yet:
 Set them up now? [Y/n]
 ```
 
+A list with nothing to do about any of it, such as servers that only run on a Mac, says "will not work there" without
+"yet"; so do a move's list and the app's footer.
+
 When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
 yes, and prints each command to run on the machine once. In the app the footer then offers **Set them up now**, which

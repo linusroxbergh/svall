@@ -95,3 +95,5 @@ export const checksAgain = (r: WayOn): boolean => /^check .+ again$/.test(r.acti
 export const toTick = (r: WayOn): boolean => r.tick !== undefined && !r.tick.on && !checksAgain(r);
 /** Whether a setup row can be set up now: ticked from here, or its command run there. */
 export const settable = (r: WayOn): boolean => toTick(r) || r.run !== undefined;
+/** Whether there is anything to do about a setup row: set it up now, or its action; a list with none will not work there, not yet. */
+export const wayOn = (r: WayOn): boolean => settable(r) || r.action !== undefined;
