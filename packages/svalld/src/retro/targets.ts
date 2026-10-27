@@ -52,7 +52,7 @@ const sha256 = (b: Buffer): string => crypto.createHash('sha256').update(b).dige
 /**
  * The skills and rule files the agents read here, from Claude's and Codex's own folders, ~/.agents, mission control's and
  * the repos'. The first of a real path is kept; a repo's or mission control's file whose real path leaves its folder, as a
- * committed link may, is none, and skills of one name in different files each have the folder they were found in in their id.
+ * committed link may, is none, and skills of one name under different folders each have their folder in their id.
  */
 export function inventory(o: {
   homedir: string; claudeDir: string; codexDir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean;

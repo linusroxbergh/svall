@@ -88,11 +88,12 @@ describe('indexSessions', () => {
     const onDisk = [
       straddle('claude-skill', '{"type":"tool_use","name":"Skill","input":{"skill":"superpowers:brainstorming"}}'),
       straddle('slash', '"content":"<command-name>/work-review</command-name>"'),
-      straddle('codex-read', '"cmd":"sed -n 1,200p /Users/me/.codex/skills/publish/SKILL.md"'),
+      straddle('rollout-codex-read', '"cmd":"sed -n 1,200p /Users/me/.codex/skills/publish/SKILL.md"'),
     ];
     const quoted = path.join(d, 'quoted.jsonl');
-    // a call quoted inside another string, and a name that only starts like a skill's, are no runs
-    fs.writeFileSync(quoted, '{"text":"{\\"skill\\":\\"handover\\"}"}\n{"input":{"skill":"publishing"}}\n');
+    // a call quoted inside another string, a name that only starts like a skill's, and a SKILL.md a Claude session
+    // only reads or mentions, are no runs
+    fs.writeFileSync(quoted, '{"text":"{\\"skill\\":\\"handover\\"}"}\n{"input":{"skill":"publishing"}}\n{"input":{"file_path":"/Users/me/.claude/skills/handover/SKILL.md"}}\n');
     const r = await indexSessions(job({ files: [], skills: ['handover', 'publish', 'superpowers:brainstorming', 'work-review'], onDisk: [...onDisk, quoted] }));
     expect(r).toEqual({ outlines: [], skillsSeen: ['publish', 'superpowers:brainstorming', 'work-review'] });
   });

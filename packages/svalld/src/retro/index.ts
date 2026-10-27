@@ -28,14 +28,15 @@ const EXPORT_MS = 20_000;
 const SCAN_COST = 0.5;
 const EXPORT_COST = 400e6;
 
-// what marks a run in a transcript's raw text: Claude's Skill input, a typed slash command, and skills/<name>/SKILL.md read
+// what marks a run in a transcript's raw text: Claude's Skill input, a typed slash command, and in a Codex rollout, which
+// runs a skill by reading it, skills/<name>/SKILL.md
 const INPUT = Buffer.from('"skill":"');
 const TYPED = Buffer.from('<command-name>/');
 const SKILL_MD = Buffer.from('/SKILL.md');
 const SKILLS = Buffer.from('skills/');
 
 // each name a chunk marks as a run, `max` bytes long at most
-function named(buf: Buffer, max: number, found: (name: string) => void): void {
+function named(buf: Buffer, max: number, codex: boolean, found: (name: string) => void): void {
   const after = (mark: Buffer, end: string) => {
     for (let i = buf.indexOf(mark); i >= 0; i = buf.indexOf(mark, i + mark.length)) {
       const from = i + mark.length;
@@ -45,6 +46,7 @@ function named(buf: Buffer, max: number, found: (name: string) => void): void {
   };
   after(INPUT, '"');
   after(TYPED, '<');
+  if (!codex) return;
   for (let i = buf.indexOf(SKILL_MD); i >= 0; i = buf.indexOf(SKILL_MD, i + SKILL_MD.length)) {
     const head = buf.subarray(Math.max(0, i - max - SKILLS.length), i);
     const slash = head.lastIndexOf('/');
@@ -60,12 +62,13 @@ function scan(files: string[], wanted: Set<string>, seen: Set<string>): void {
   const found = (name: string) => { if (wanted.has(name)) seen.add(name); };
   for (const file of files) {
     if (seen.size === wanted.size) return;
+    const codex = path.basename(file).startsWith('rollout-');
     let fd: number | undefined;
     try {
       fd = fs.openSync(file, 'r');
       for (let kept = 0, got; (got = fs.readSync(fd, buf, kept, buf.length - kept, null)) > 0;) {
         const end = kept + got;
-        named(buf.subarray(0, end), max, found);
+        named(buf.subarray(0, end), max, codex, found);
         kept = Math.min(overlap, end);
         buf.copy(buf, 0, end - kept, end);
       }

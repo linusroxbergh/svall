@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
-import { AGENT_LABEL, FocusPick, RetroSpan, type Finding, type Range, type RetroPlan, type RetroReport, type RetroStatus } from '@svall/protocol';
+import { AGENT_LABEL, FOCUS_OF, FocusPick, RetroSpan, type Finding, type Range, type RetroPlan, type RetroReport, type RetroStatus } from '@svall/protocol';
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { expandHome, resolvePaths } from '@svall/svalld/paths';
 import type { Client } from '../client.js';
@@ -52,7 +52,7 @@ export function formatPlan(p: RetroPlan): string {
   }
   const missing = Object.entries(c.missing).filter(([, n]) => n > 0);
   if (missing.length) lines.push(`missing: ${missing.map(([field, n]) => `${n} sessions without ${field}`).join(', ')}`);
-  lines.push(`reviews: ${p.reviews === 'gh' ? 'from gh' : 'skipped: gh is not installed or signed in'}`);
+  if (FOCUS_OF[p.focus].includes('review-tweaks')) lines.push(`reviews: ${p.reviews === 'gh' ? 'from gh' : 'skipped: gh is not installed or signed in'}`);
   lines.push(`batches: ${p.batches.length}, about ${tokens(p.batches.reduce((n, b) => n + b.tokens, 0))} tokens of excerpts`);
   for (const t of p.thin) lines.push(`too little to judge: ${t}`);
   lines.push(`${AGENT_LABEL[p.agent]}, ${BILLING[p.billing]}`);
@@ -69,7 +69,11 @@ function formatFinding(f: Finding, n: number): string {
   const t = f.target;
   const lines = [`${n}. ${f.title}`, `   ${f.claim}`, `   Change: ${f.change.summary}`];
   if (t) lines.push(`   Lands in: ${short(t.path)} (${LANDS[t.class]}${f.change.kind === 'diff' ? ', diff below' : ''})`);
-  for (const e of f.evidence) lines.push(`   ${source(e.source)}:`, '   ```', indent(e.quote, '   '), '   ```');
+  for (const e of f.evidence) {
+    // longer than any run of backticks in the quote, which so cannot close it
+    const fence = '`'.repeat(Math.max(3, ...[...e.quote.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+    lines.push(`   ${source(e.source)}:`, `   ${fence}`, indent(e.quote, '   '), `   ${fence}`);
+  }
   if (f.change.text) lines.push(indent(f.change.text, '      '));
   return lines.join('\n');
 }
@@ -198,14 +202,9 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
   return cmd;
 }
 
-// a number is the finding's place in the newest findings; anything else is an id
+// a number from 1 to how many the newest findings are is a finding's place in them; anything else is an id, all digits as some are
 async function resolveIds(c: Client, refs: string[]): Promise<string[]> {
   if (!refs.some((r) => /^\d+$/.test(r))) return refs;
   const { findings } = await c.call('retro.findings', {});
-  return refs.map((r) => {
-    if (!/^\d+$/.test(r)) return r;
-    const f = findings[Number(r) - 1];
-    if (!f) throw new Error(`no finding ${r}: the last findings have ${findings.length}`);
-    return f.id;
-  });
+  return refs.map((r) => (/^\d+$/.test(r) && Number(r) >= 1 && Number(r) <= findings.length ? findings[Number(r) - 1].id : r));
 }

@@ -119,7 +119,7 @@ export class Retro {
     if (!preset) throw new Invalid(`plan ${p.plan} has no preset ${p.preset}`);
     const status: RetroStatus = { run: p.plan, stage: 'planned', done: 0, total: planned.batches.length };
     const aborter = new AbortController();
-    // the budget the user approved: the preset's upper estimate on the plan they saw
+    // the budget the user approved, else the preset's upper estimate on the plan they saw
     const done = this.execute(planned, preset, p.budget ?? Math.ceil(preset.tokens.max), p.robot, status, aborter.signal);
     this.current = { status, aborter, done };
     return { run: p.plan };
@@ -165,7 +165,7 @@ export class Retro {
           continue;
         }
         const target = finding.target;
-        // a target the judge read has its hash; a path it named outside the inventory has none
+        // a target has a hash only when the judge read it
         const diff = finding.change.kind === 'diff' && !!target?.hash && !masked(finding);
         if (target?.class === 'local' && diff) {
           results.push({ id: finding.id, outcome: 'apply', path: target.path, diff: finding.change.text });

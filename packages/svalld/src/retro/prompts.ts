@@ -16,9 +16,11 @@ const strip = (v: unknown, names = false): unknown =>
 /** The JSON schema a CLI is sent for `s`, without the bounds Codex refuses; code clips lengths after parsing. */
 export const wireSchema = (s: z.ZodType): Record<string, unknown> => strip(z.toJSONSchema(s)) as Record<string, unknown>;
 
-// text inside a fence can neither close it nor open another of its kind
-function fence(name: string, head: string, text: string): string {
-  const body = text.replace(new RegExp(`<<<${name}|${name}>>>`, 'gi'), '[fence]');
+// the prompts' fences; text inside one can neither close it nor open or close any of them
+const FENCES = ['EXCERPT', 'NOTES', 'TARGET', 'PREVIOUS'] as const;
+const MARKER = new RegExp(`<<<(?:${FENCES.join('|')})|(?:${FENCES.join('|')})>>>`, 'gi');
+function fence(name: (typeof FENCES)[number], head: string, text: string): string {
+  const body = text.replace(MARKER, '[fence]');
   return `<<<${name}${head}\n${body}${body.endsWith('\n') ? '' : '\n'}${name}>>>`;
 }
 
