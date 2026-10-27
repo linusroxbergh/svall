@@ -9,7 +9,7 @@ import { AgentKind, ApiError, REPORT_MS, Sha256, type MachineId, type SetupRow }
 import { VAR_NAME } from '../claude.js';
 import { BATCH_WIDTH, DurableBatch, writeDurable } from '../durable.js';
 import { canonicalJson, sha256Hex } from '../hash.js';
-import { tryLock } from '../kernel-lock.js';
+import { lockAgentFiles } from '../kernel-lock.js';
 import { clean, holds } from '../path-tools.js';
 import { pool } from '../pool.js';
 import { relocate } from './relocate.js';
@@ -681,7 +681,8 @@ function put(file: string, data: Buffer, mode: number): boolean {
 // as `put`, written in `batch`
 async function place(batch: DurableBatch, file: string, data: Buffer, mode: number): Promise<boolean> {
   const at = realPath(file);
-  if (fs.existsSync(at) && (await fsp.readFile(at)).equals(data)) return false;
+  const was = await fsp.readFile(at).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
+  if (was?.equals(data)) return false;
   await batch.write(at, data, mode);
   return true;
 }
@@ -1160,21 +1161,6 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
   return p.data;
 };
 
-/**
- * Holds this user's agent files for one mirror's apply, waiting while another fleet's daemon holds them: every fleet's
- * mirror on a machine writes the same files. Rejects once `signal` aborts before it holds them.
- */
-export async function lockAgentFiles(homedir: string, signal?: AbortSignal): Promise<() => void> {
-  const name = `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`;
-  for (;;) {
-    signal?.throwIfAborted();
-    const unlock = await tryLock(path.join(homedir, '.svall-mirror.lock'), name);
-    if (unlock && signal?.aborted) unlock();
-    else if (unlock) return unlock;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
-
 // removes the blobs a daemon left under `stage`, which may hold ticked keys, answering how many
 function dropBlobs(stage: string): number {
   const left = (fs.existsSync(stage) ? fs.readdirSync(stage, { withFileTypes: true }) : []).filter((f) => f.isDirectory() && f.name.startsWith('mirror-'));
@@ -1359,7 +1345,8 @@ export function mirrorCalls(o: MirrorHomes & {
         return done;
       } finally {
         clearTimeout(late);
-        drop(id);
+        blobs.delete(id);
+        await fsp.rm(b.dir, { recursive: true, force: true });
       }
     },
   };

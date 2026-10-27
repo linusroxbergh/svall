@@ -156,6 +156,76 @@ test('a move stalled after its commit names its step from the robot\'s mark, and
   expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
 });
 
+test('a Retry shows the step running again, and one that fails again shows its new failure with no toast, Retry still offered', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await mark({ id: MOVE, to: VAULT, phase: 'activate', error: 'claude exited back to its shell' });
+  await move.settle({ moveId: MOVE });
+  let fail!: (e: Error) => void;
+  call.mockImplementation((method: string) => (method === 'robot.moveRetry' ? new Promise((_, reject) => { fail = reject; }) : Promise.resolve({})));
+  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  expect(lines().at(-1)).toBe('doing Starting ada there…');
+
+  await mark({ id: MOVE, to: VAULT, phase: 'activate', error: 'claude exited back to its shell again' });
+  await act(async () => fail(new ApiError('failed', 'claude exited back to its shell again')));
+  expect(lines().at(-1)).toBe('failed Start failed: claude exited back to its shell again.');
+  expect(store.getState().toast).toBeUndefined();
+  expect(screen.getByTestId('move-action').textContent).toBe('Retry');
+});
+
+test('a move whose answer is lost with the link to svalld goes on by the robot\'s mark, and is through once the mark goes with the robot there', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await mark({ id: MOVE, to: VAULT, phase: 'prepare' });
+  await move.settle(new Error('svalld connection closed'));
+  expect(lines()[3]).toBe('doing Carrying to linus-vault…');
+  expect(screen.queryByTestId('move-action')).toBeNull();
+
+  await mark({ id: MOVE, to: VAULT, phase: 'activate' });
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  await mark();
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
+  expect(call.mock.calls.filter(([m]) => m === 'robot.moveTo')).toHaveLength(1);
+});
+
+test('a move whose answer is lost with the link to svalld, and whose mark goes with the robot still here, failed at the step it reached', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await mark({ id: MOVE, to: VAULT, phase: 'prepare' });
+  await move.settle(new Error('svalld connection closed'));
+  await mark();
+  expect(lines().at(-1)).toBe('failed Carry failed: svalld connection closed; ada is back on this Mac.');
+  expect(screen.getByTestId('move-action').textContent).toBe('Try again');
+});
+
+test('a move back names its steps where they happen: the worker packs and carries, this Mac lands', async () => {
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  await open();
+  const move = heldMove();
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await mark({ id: MOVE, to: HOME, phase: 'bundle' });
+  expect(lines()[2]).toBe('doing Packing branch and session…');
+  await mark({ id: MOVE, to: HOME, phase: 'prepare' });
+  expect(lines().slice(2, 5)).toEqual(['done Packed branch and session', 'done Carried to this Mac', 'doing Landing on this Mac…']);
+
+  await mark();
+  await move.settle(new ApiError('refused', 'changes on this Mac in /Users/ada/svall since the move; stash or commit them', { phase: 'prepare', moveId: MOVE }));
+  expect(lines().at(-1)).toBe('failed Land failed: changes on this Mac in /Users/ada/svall since the move; stash or commit them; ada is back on linus-vault.');
+});
+
+test('the focus stays in the sheet while a move runs: on its × once Move goes, then on the button the move ends with', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  screen.getByTestId('move-go').focus();
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  expect(document.activeElement).toBe(screen.getByTestId('move-close'));
+  await move.settle({ moveId: MOVE });
+  expect(document.activeElement).toBe(screen.getByTestId('move-done'));
+});
+
 test('a move the daemon refuses at its own check fails at Check, and Check again shows the sheet\'s check', async () => {
   const move = heldMove();
   await open(VAULT);

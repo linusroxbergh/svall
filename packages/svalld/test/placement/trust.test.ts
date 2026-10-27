@@ -36,7 +36,7 @@ describe('seedTrust', () => {
     const folder = { cwd: w.worktree, repo: w.clone, root: w.worktree };
     expect(claudeAdapter.trusts!(w.agentHome, folder)).toBe(false);
 
-    expect(await seedTrust('claude', w.clone, { agentHome: w.agentHome, agentRunning: async () => false })).toBe('seeded');
+    expect(await seedTrust('claude', w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false })).toBe('seeded');
     const after = JSON.parse(fs.readFileSync(file, 'utf8'));
     expect(after).toEqual({ ...before, projects: { ...before.projects, [w.clone]: { lastCost: 2, hasTrustDialogAccepted: true } } });
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
@@ -44,7 +44,7 @@ describe('seedTrust', () => {
 
     const other = path.join(w.base, 'code', 'svall');
     const held = fs.readFileSync(file);
-    expect(await seedTrust('claude', other, { agentHome: w.agentHome, agentRunning: async () => true })).toBe('skipped');
+    expect(await seedTrust('claude', other, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => true })).toBe('skipped');
     expect(fs.readFileSync(file)).toEqual(held);
   });
 
@@ -54,8 +54,8 @@ describe('seedTrust', () => {
     const before = 'model = "gpt-6-sol"\n\n[projects."/home/ada/other"]\ntrust_level = "trusted"\n';
     fs.writeFileSync(file, before);
 
-    expect(await seedTrust('codex', w.clone, { agentHome: w.agentHome, agentRunning: async () => false })).toBe('seeded');
-    expect(await seedTrust('codex', w.clone, { agentHome: w.agentHome, agentRunning: async () => false })).toBe('seeded');
+    expect(await seedTrust('codex', w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false })).toBe('seeded');
+    expect(await seedTrust('codex', w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false })).toBe('seeded');
     const text = fs.readFileSync(file, 'utf8');
     expect(text.startsWith(before)).toBe(true);
     expect((parseToml(text) as { projects: Record<string, unknown> }).projects).toEqual({
@@ -67,7 +67,7 @@ describe('seedTrust', () => {
     const distrusted = path.join(w.base, 'code', 'svall');
     fs.appendFileSync(file, `\n[projects."${distrusted}"]\ntrust_level = "untrusted"\n`);
     const held = fs.readFileSync(file);
-    expect(await seedTrust('codex', distrusted, { agentHome: w.agentHome, agentRunning: async () => false })).toBe('skipped');
+    expect(await seedTrust('codex', distrusted, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false })).toBe('skipped');
     expect(fs.readFileSync(file)).toEqual(held);
   });
 });

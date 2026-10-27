@@ -350,7 +350,7 @@ export function moveWorld(o: {
     const box = mortal(vault, life);
     const prepare = new PrepareService({
       store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, homeName: 'mac', paths: workerPaths,
-      git: mortalGit(hooklessGit, life), cloneGit: mortalGit(hooklessGit, life), agents: async () => [{ ...macProbe, home: farHome }], processes: box.processes, kill: box.kill, clock,
+      git: mortalGit(hooklessGit, life), cloneGit: mortalGit(hooklessGit, life), agents: async () => [{ ...macProbe, home: farHome }], homedir: far, processes: box.processes, kill: box.kill, clock,
       agentRunning: async () => !!o.agentRunsThere, log: silentLogger, moves: mortal(new MoveFiles(workerPaths.moves), life), watchMs: 5000, cli: opencode.far.run,
     });
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);

@@ -663,7 +663,10 @@ export class Placement {
   // as one to a worker too busy writing to answer a ping, is waited for
   private async prepareThere(j: MoveJournal): Promise<void> {
     const link = this.d.links.for(j.to);
+    const relinking = !link?.synced;
     if (!link || !(await link.linked(RELINK_MS))) throw new ApiError('not_reachable', `${this.name(j.to)} is not reachable`);
+    // a link that came back pushes the agent configuration without waiting; the agent starts there only once it is applied
+    if (relinking) await this.d.links.pushMirror(j.to);
     const stage = this.files.stage(j.id);
     const ids = blobIds(j.id);
     const bundle = j.manifest ? path.join(stage, 'bundle.tar') : undefined;

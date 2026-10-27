@@ -193,6 +193,8 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     if (st.usageOpen) { st.toggleUsage(false); refocusSurface(ctx); return; }
     if (st.loadOpen) { st.toggleLoad(false); refocusSurface(ctx); return; }
     if (st.mobileOpen) { st.toggleMobile(false); refocusSurface(ctx); return; }
+    // the move sheet answers its own Escape; the card behind it stays
+    if (st.moveSheet) return;
     if (st.card) { st.closeCard(); return; }
     st.select(undefined);
     st.selectIsland(undefined);

@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import net from 'node:net';
+import path from 'node:path';
+import { sha256Hex } from './hash.js';
 
 // macOS's O_EXLOCK, which node names no constant for
 const O_EXLOCK = 0x20;
@@ -34,4 +36,19 @@ function lockSocket(name: string): Promise<(() => void) | undefined> {
       resolve(() => { if (server.listening) server.close(); });
     });
   });
+}
+
+/**
+ * Holds this user's agent files for a mirror's apply or a move's trust seed, waiting while another fleet's daemon holds
+ * them: every fleet's mirror on a machine writes the same files. Rejects once `signal` aborts before it holds them.
+ */
+export async function lockAgentFiles(homedir: string, signal?: AbortSignal): Promise<() => void> {
+  const name = `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`;
+  for (;;) {
+    signal?.throwIfAborted();
+    const unlock = await tryLock(path.join(homedir, '.svall-mirror.lock'), name);
+    if (unlock && signal?.aborted) unlock();
+    else if (unlock) return unlock;
+    await new Promise((r) => setTimeout(r, 100));
+  }
 }

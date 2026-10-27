@@ -675,7 +675,10 @@ describe.skipIf(!hasGit)('the move transaction', () => {
       fs.writeFileSync(path.join(w.wt, 'mine.md'), 'mine\n');
     });
 
-    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them` });
+    // with the step it failed at, which the move sheet names
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
+      code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare', moveId: expect.stringMatching(/^mv_/) },
+    });
 
     expect(fs.readFileSync(a, 'utf8')).toBe(`${held}edited on the Mac\n`);
     expect(fs.readFileSync(path.join(w.wt, 'mine.md'), 'utf8')).toBe('mine\n');
@@ -707,13 +710,19 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.windows.size).toBe(1);
   });
 
-  it('a move whose link to the worker drops before its prepare waits for the link to come back, and goes on', async () => {
-    const w = open();
+  it('a move whose link to the worker drops before its prepare waits for the link to come back, and goes on once the agent configuration has gone again', async () => {
+    let pushing = 0;
+    const w = open({ mirror: { push: async () => { pushing++; await new Promise((r) => setTimeout(r, 500)); pushing--; return { sent: 0 }; } } });
     const home = await w.start();
-    // as the home closes a link whose ping went unanswered
-    at('move.bundle', 'after', () => home.links.for(W)!['stream']!.close());
+    let [closed, atPrepare] = [false, -1];
+    disarm = armFailpoints((n, e) => {
+      // as the home closes a link whose ping went unanswered
+      if (n === 'move.bundle' && e === 'after' && !closed) { closed = true; home.links.for(W)!['stream']!.close(); }
+      if (n === 'worker.prepare.journal' && e === 'before') atPrepare = pushing;
+    });
     await home.placement.start('c_1', W);
     expect(home.store.state.robots.c_1.machine).toBe(W);
+    expect(atPrepare).toBe(0);
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
   });
 

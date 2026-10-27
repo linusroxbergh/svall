@@ -1,18 +1,21 @@
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DurableBatch } from '../../src/durable.js';
 import { sha256Hex } from '../../src/hash.js';
 import { realPath } from '../../src/path-tools.js';
 import { claudeAdapter } from '../../src/sessions/claude.js';
 import { clearConsent, mask, readConsent, setConsent, tickedFields } from '../../src/placement/mirror-consent.js';
 import { silentLogger } from '../../src/log.js';
 import { agentServers } from '../../src/placement/mirror-config.js';
-import { applyMirror, lockAgentFiles, MIRROR_FILE_MAX, mirrorCalls, mirrorPlan, packMirror, takeBackCopies } from '../../src/placement/mirror.js';
+import { lockAgentFiles } from '../../src/kernel-lock.js';
+import { applyMirror, MIRROR_FILE_MAX, mirrorCalls, mirrorPlan, packMirror, takeBackCopies } from '../../src/placement/mirror.js';
 import { fileSha, unpack } from '../../src/placement/move.js';
 import { seedTrust } from '../../src/placement/trust.js';
 import { SHIM } from '../../src/profile.js';
-import { cleanHomes, makeHome } from '../helpers.js';
+import { cleanHomes, diskLog, makeHome } from '../helpers.js';
 import { editJson, FAR_HOOKS, FAR_STATUS, farHome, macHome, mirroredFiles, put, statsOf } from './mirror-homes.js';
 import { H, W, until, world } from './world.js';
 
@@ -380,6 +383,23 @@ describe('the agent configuration mirror', () => {
     expect(fs.statSync(path.join(worker.claudeDir, 'settings.json'))).toMatchObject({ ino: settings.ino, mtimeMs: settings.mtimeMs });
   });
 
+  it('applyMirror writes its record of what it wrote last, once each file it wrote and each folder it wrote into is on disk', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const o = { ...worker, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json') };
+    await packMirror(mirrorPlan(mac), path.join(scratch, 'mirror.tar'));
+    await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
+    const events = diskLog();
+    await applyMirror(path.join(scratch, 'blob'), o);
+    const renames = events.flatMap((e, i) => (e.startsWith('rename ') ? [{ i, to: e.slice('rename '.length) }] : []));
+    const final = renames[renames.length - 1];
+    expect(final.to.endsWith('/mirror-state.json')).toBe(true);
+    expect(renames.some((r) => r.to.endsWith('/mirror-vars.json'))).toBe(true);
+    const unsynced = renames.slice(0, -1).filter((r) => !events.slice(r.i, final.i).includes(`sync ${path.dirname(r.to)}`));
+    expect(unsynced).toEqual([]);
+  });
+
   it('a worker takes the home\'s agent configuration over the link into its agent homes, its overrides last, before the push resolves', async () => {
     const mac = macHome();
     const worker = farHome();
@@ -396,16 +416,20 @@ describe('the agent configuration mirror', () => {
     await until(() => expect(fs.readdirSync(w.worker.paths.cache, { withFileTypes: true }).filter((f) => f.isDirectory() && f.name.startsWith('mirror-'))).toEqual([]));
   });
 
-  it('a worker applying a mirror on a disk slow to sync keeps answering its home', async () => {
+  it('a worker applying a mirror on a disk slow to sync and to remove keeps answering its home', async () => {
     const mac = macHome();
     for (let i = 0; i < 40; i++) put(path.join(mac.claudeDir, `skills/many/${i}.md`), `${i}\n`);
     const worker = farHome();
     const w = world({ mirror: { home: mac, worker } });
     stops.push(() => w.stop());
-    // each fsync holds the thread that asks it 20 ms, as a disk busy writing back does
-    const fsync = fs.fsyncSync;
-    const slow = vi.spyOn(fs, 'fsyncSync').mockImplementation((fd) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20); fsync(fd); });
-    stops.push(() => slow.mockRestore());
+    // each fsync takes 20 ms more, holding the thread that asks it, as a disk busy writing back does; removing a blob's
+    // folder holds it 1.5 s, as one of thousands of files does
+    const hold = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+    const [fsync, rm] = [fs.fsyncSync, fs.rmSync];
+    const slow = vi.spyOn(fs, 'fsyncSync').mockImplementation((fd) => { hold(20); fsync(fd); });
+    const slowRm = vi.spyOn(fs, 'rmSync').mockImplementation((p, o) => { if (path.basename(String(p)).startsWith('mirror-')) hold(1500); rm(p, o); });
+    stops.push(() => { slow.mockRestore(); slowRm.mockRestore(); });
+    diskLog({ syncMs: 20 });
     let last = performance.now();
     let stall = 0;
     const beat = setInterval(() => { stall = Math.max(stall, performance.now() - last); last = performance.now(); }, 5);
@@ -720,6 +744,83 @@ describe('the agent configuration mirror', () => {
   });
 
 
+  it('an apply that fails lets go of the agent files only once none of its writes is in flight, so a later apply is not written over', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const stage = path.join(scratch, 'cache');
+    const style = path.join(mac.claudeDir, 'rules/style.md');
+    const tars: Record<string, string> = {};
+    for (const id of ['old', 'new']) {
+      put(style, `${id}\n`);
+      await packMirror(mirrorPlan(mac), (tars[id] = path.join(scratch, `${id}.tar`)));
+    }
+    const connection = { receiveBlob: async (id: string, into: string) => { fs.copyFileSync(tars[id], into); return { sha256: await fileSha(into) }; } };
+    const m = mirrorCalls({ ...worker, stage, stateFile: path.join(stage, 'mirror-state.json'), varsFile: path.join(stage, 'mirror-vars.json'), envFile: path.join(stage, '.env'), connection, log: silentLogger });
+    // the first apply's rename of style.md waits; another of its writes fails meanwhile
+    const rename = fsp.rename;
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    let entered!: () => void;
+    const holding = new Promise<void>((r) => { entered = r; });
+    let failed!: () => void;
+    const failing = new Promise<void>((r) => { failed = r; });
+    let first = true;
+    let late: Promise<void> | undefined;
+    const spy = vi.spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
+      if (first && String(to).endsWith('rules/style.md')) { entered(); await held; return (late = rename(from, to)); }
+      if (first && String(to).endsWith('commands/ship.md')) {
+        await holding;
+        first = false;
+        failed();
+        throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' });
+      }
+      return rename(from, to);
+    });
+    stops.push(() => spy.mockRestore());
+    for (const id of ['old', 'new']) await m.calls['config.blob']({ id, sha256: await fileSha(tars[id]) });
+    const old = m.calls['config.apply']({ id: 'old', seq: 1 });
+    old.catch(() => {});
+    await failing;
+    const applied = m.calls['config.apply']({ id: 'new', seq: 2 });
+    await Promise.race([applied, new Promise((r) => setTimeout(r, 1000))]);
+    release();
+    await expect(old).rejects.toThrow('EIO');
+    await applied;
+    await late;
+    expect(read(path.join(worker.claudeDir, 'rules/style.md'))).toBe('new\n');
+  });
+
+  it('trust a move seeds while an apply holds the agent files is written after it, so the apply does not write over it', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const stage = path.join(scratch, 'cache');
+    const file = path.join(scratch, 'm.tar');
+    await packMirror(mirrorPlan(mac), file);
+    const connection = { receiveBlob: async (_id: string, into: string) => { fs.copyFileSync(file, into); return { sha256: await fileSha(into) }; } };
+    const m = mirrorCalls({ ...worker, stage, stateFile: path.join(stage, 'mirror-state.json'), varsFile: path.join(stage, 'mirror-vars.json'), envFile: path.join(stage, '.env'), connection, log: silentLogger });
+    const app = path.join(worker.homedir, 'code/app');
+    fs.mkdirSync(app, { recursive: true });
+    put(worker.claudeJson, JSON.stringify({ hasCompletedOnboarding: true }));
+    // the seed lands once the apply has read the config files and before it writes them
+    const settle = DurableBatch.prototype.settle;
+    let seeding: Promise<unknown> | undefined;
+    const spy = vi.spyOn(DurableBatch.prototype, 'settle').mockImplementation(async function (this: DurableBatch) {
+      if (!seeding) {
+        seeding = seedTrust('claude', app, { agentHome: worker.claudeDir, homedir: worker.homedir, agentRunning: async () => false });
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return settle.call(this);
+    });
+    stops.push(() => spy.mockRestore());
+    await m.calls['config.blob']({ id: 'one', sha256: await fileSha(file) });
+    await m.calls['config.apply']({ id: 'one', seq: 1 });
+    expect(await seeding).toBe('seeded');
+    expect(claudeAdapter.trusts!(worker.claudeDir, { cwd: app })).toBe(true);
+    expect(json(worker.claudeJson).mcpServers).toHaveProperty('linear');
+  });
+
   it('a mirror blob a daemon left in its cache goes at the next start, beside the record it keeps; a blob not yet applied goes when its link closes', async () => {
     const stage = path.join(makeHome(), 'cache');
     for (const f of ['mirror-abc123/mirror.tar', 'mirror-abc123/blob/mirror.json', 'docs-xyz/a.tar']) put(path.join(stage, f), 'x');
@@ -831,7 +932,7 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     expect(fs.existsSync(path.join(worker.homedir, '.claude.json'))).toBe(false);
     const app = path.join(worker.homedir, 'code/app');
     fs.mkdirSync(app, { recursive: true });
-    expect(await seedTrust('claude', app, { agentHome: worker.claudeDir, agentRunning: async () => false })).toBe('seeded');
+    expect(await seedTrust('claude', app, { agentHome: worker.claudeDir, homedir: worker.homedir, agentRunning: async () => false })).toBe('seeded');
     editJson(mac.claudeJson, (j) => { j.mcpServers.extra = { command: 'npx', args: ['extra-mcp'] }; }); await push();
     expect(claudeAdapter.trusts!(worker.claudeDir, { cwd: app })).toBe(true);
     expect(workerJson().mcpServers.extra).toEqual({ command: 'npx', args: ['extra-mcp'] });

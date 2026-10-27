@@ -1,9 +1,10 @@
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { afterEach, describe, expect, it } from 'vitest';
-import { DURABLE_TEMP, DurableJson, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../src/durable.js';
-import { cleanHomes, makeHome } from './helpers.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DURABLE_TEMP, DurableBatch, DurableJson, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../src/durable.js';
+import { cleanHomes, diskLog, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
 
@@ -127,6 +128,42 @@ describe('createDurable', () => {
     expect(fs.existsSync(path.join(dir, 'a.json'))).toBe(false);
     expect(() => createDurable(path.join(dir, 'b.json'), { v: 1 }, { stages: failAfter('link') })).toThrow('crash');
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'b.json'), 'utf8')).v).toBe(1);
+  });
+});
+
+describe('DurableBatch', () => {
+  it('fsyncs each file before it is renamed into place, and at settle each folder written into, once, after its renames', async () => {
+    const home = makeHome();
+    const files = ['a/x.json', 'a/y.json', 'b/z.json'].map((f) => path.join(home, f));
+    const events = diskLog();
+    const batch = new DurableBatch();
+    for (const f of files) await batch.write(f, Buffer.from(f));
+    const written = events.length;
+    await batch.settle();
+    for (const f of files) {
+      const synced = events.findIndex((e) => e.startsWith(`sync ${f}.durable-`));
+      expect([synced >= 0, synced < events.indexOf(`rename ${f}`), fs.readFileSync(f, 'utf8')]).toEqual([true, true, f]);
+    }
+    expect(events.slice(written).sort()).toEqual([`sync ${path.join(home, 'a')}`, `sync ${path.join(home, 'b')}`]);
+    await batch.settle();
+    expect(events).toHaveLength(written + 2);
+  });
+
+  it('leaves a temp of its name that another writer holds', async () => {
+    const file = path.join(makeHome(), 'x.json');
+    const open = fsp.open;
+    let taken = '';
+    const spy = vi.spyOn(fsp, 'open').mockImplementation(async (at, ...rest) => {
+      taken = String(at);
+      fs.writeFileSync(taken, 'theirs');
+      return open(at, ...rest);
+    });
+    try {
+      await expect(new DurableBatch().write(file, Buffer.from('mine'))).rejects.toMatchObject({ code: 'EEXIST' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect([fs.readFileSync(taken, 'utf8'), fs.existsSync(file)]).toEqual(['theirs', false]);
   });
 });
 

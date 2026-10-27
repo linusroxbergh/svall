@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
 import { writeDurable } from '../durable.js';
+import { lockAgentFiles } from '../kernel-lock.js';
 import { realPath } from '../path-tools.js';
 import { configOf } from '../sessions/claude.js';
 import type { SessionAdapter } from '../sessions/types.js';
@@ -53,14 +54,20 @@ const nap = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((re
 });
 
 /**
- * Trusts the clone's main checkout, and so every worktree in it, in the agent's own file: written read-modify-write and
- * only while no agent of that kind runs, which would write the file over again. OpenCode never asks.
+ * Trusts the clone's main checkout, and so every worktree in it, in the agent's own file: written read-modify-write while
+ * holding the agent files of the user at `homedir`, as a mirror's apply does, and only while no agent of that kind runs,
+ * which would write the file over again. OpenCode never asks.
  */
-export async function seedTrust(kind: AgentKind, clone: string, o: { agentHome: string; agentRunning: () => Promise<boolean> }): Promise<'seeded' | 'skipped'> {
+export async function seedTrust(kind: AgentKind, clone: string, o: { agentHome: string; homedir: string; agentRunning: () => Promise<boolean> }): Promise<'seeded' | 'skipped'> {
   if (kind === 'opencode') return 'seeded';
-  if (await o.agentRunning()) return 'skipped';
-  const key = realPath(clone);
-  return kind === 'claude' ? seedClaude(o.agentHome, key.normalize('NFC')) : seedCodex(o.agentHome, key);
+  const unlock = await lockAgentFiles(o.homedir);
+  try {
+    if (await o.agentRunning()) return 'skipped';
+    const key = realPath(clone);
+    return kind === 'claude' ? seedClaude(o.agentHome, key.normalize('NFC')) : seedCodex(o.agentHome, key);
+  } finally {
+    unlock();
+  }
 }
 
 // a dialog's choice row: the pointer if it marks it, the choice's number, its text
